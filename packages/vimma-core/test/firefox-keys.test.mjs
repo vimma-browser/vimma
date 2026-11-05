@@ -15,6 +15,10 @@ import {
   xulKeyChord,
 } from "../src/firefox-keys.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
+import { insertEditCommand } from "../src/editable.mjs";
+
+/** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
+const TEXT_FIELD = new Set(["insert", "command", "help"]);
 import { getAction } from "../src/actions.mjs";
 
 describe("xulKeyChord", () => {
@@ -284,7 +288,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     ["f7", "caret_browsing"],
   ])("%s runs %s by default, after the page", (chord, action) => {
     expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
-    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(action);
+    // In a text field ctrl+j and ctrl+m are Enter (key-handling-batch § 2), the field's key.
+    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(
+      insertEditCommand(chord) ? undefined : action,
+    );
     expect(pageFirst(chord)).toBe(true);
   });
 
@@ -318,6 +325,11 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
         expect(node?.children.size, `${r.chord} in ${mode} is a whole binding`).toBe(0);
       }
@@ -599,6 +611,11 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
         const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
       }
     }

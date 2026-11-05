@@ -339,7 +339,11 @@ support-files = ["file_vimma_plain.html"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_edit_keys.js"]
-support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
+support-files = [
+  "file_vimma_insert_scroll.html",
+  "file_vimma_frame.html",
+  "file_vimma_enter_keys.html",
+]
 
 ["browser_vimma_bookmarks.js"]
 

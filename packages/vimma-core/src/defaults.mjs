@@ -550,7 +550,8 @@ export function formatDefaultsToml() {
     `timeout_ms = ${modal.timeout_ms}`,
     "# Hint labels are made of these characters, the first ones most often.",
     `hint_chars = ${tomlString(modal.hint_chars)}`,
-    "# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character.",
+    "# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character,",
+    "# and ctrl+j and ctrl+m are Enter.",
     `insert_editing = ${modal.insert_editing}`,
   );
   for (const [mode, table] of Object.entries(modal)) {

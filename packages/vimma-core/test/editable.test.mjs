@@ -11,6 +11,7 @@ import {
   parseDescriptor,
   DESCRIPTOR_MAX_STRING,
   INSERT_EDIT_COMMANDS,
+  INSERT_ENTER,
   insertEditCommand,
   DESCRIPTOR_MAX_CLASSES,
 } from "../src/editable.mjs";
@@ -506,12 +507,31 @@ describe("insertEditCommand", () => {
     expect(INSERT_EDIT_COMMANDS).toContain(command);
   });
 
-  test.each(["ctrl+shift+w", "ctrl+alt+u", "alt+h", "w", "ctrl+meta+h", "ctrl+d"])(
-    "%s is no edit key",
-    (chord) => {
-      expect(insertEditCommand(chord)).toBeNull();
-    },
-  );
+  test.each(["ctrl+j", "ctrl+m"])("%s is Enter, as in Vim (i_CTRL-J, i_CTRL-M)", (chord) => {
+    expect(insertEditCommand(chord)).toBe(INSERT_ENTER);
+    expect(insertEditCommand(chord, { mac: true })).toBe(INSERT_ENTER);
+  });
+
+  test("Enter is no editor command: the content actor never takes it", () => {
+    expect(INSERT_ENTER.startsWith("cmd_")).toBe(false);
+    expect(INSERT_EDIT_COMMANDS).not.toContain(INSERT_ENTER);
+    expect(INSERT_EDIT_COMMANDS).toHaveLength(3);
+  });
+
+  test.each([
+    "ctrl+shift+w",
+    "ctrl+alt+u",
+    "alt+h",
+    "w",
+    "ctrl+meta+h",
+    "ctrl+d",
+    "ctrl+shift+j",
+    "ctrl+alt+m",
+    "j",
+    "m",
+  ])("%s is no edit key", (chord) => {
+    expect(insertEditCommand(chord)).toBeNull();
+  });
 
   test("on macOS ctrl+h is left to Cocoa's own binding; ctrl+w and ctrl+u stay", () => {
     expect(insertEditCommand("ctrl+h", { mac: true })).toBeNull();

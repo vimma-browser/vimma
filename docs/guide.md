@@ -455,12 +455,19 @@ a capital I typed into the field, as in Vim; press `Esc` first.
 **Text fields have Vim's editing keys.** In insert mode, and in the address bar, the `:` line, the
 find bar and the panels' filters, `ctrl+w` deletes the word before the caret, `ctrl+u`
 everything before it on the line, and `ctrl+h` one character, as `Backspace`. They are the
-text field's own delete commands, so `ctrl+z` undoes them. A page that handles one of these keys
-itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vimma edits only when the page
-left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls, `ctrl+w h` moves
-between panes). `[modal] insert_editing = false` in `config.toml` turns them off; Firefox's own
-actions on those keys stay off either way. On macOS, `ctrl+h` is already a backspace in text
-fields, so Vimma adds nothing there.
+text field's own delete commands, so `ctrl+z` undoes them. `ctrl+j` and `ctrl+m` are `Enter`, as
+in Vim, so your hands stay on the home row: a new line in a text area, the form sent from a
+one-line field, the address loaded from the address bar, the command run from the `:` line
+(everywhere above but the side panel's filters). The page sees a real `Enter`, so a chat box
+that sends on `Enter` sends. A page that handles one of
+these keys itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vimma acts only
+when the page left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls,
+`ctrl+w h` moves between panes, `ctrl+m` mutes the tab, `ctrl+j` is the web search). A
+`[modal.insert]` binding of yours on one of these keys wins; so does a `[keys]` binding of yours
+that is not the default. `[modal] insert_editing = false` in `config.toml` turns them off (then
+`ctrl+m` and `ctrl+j` mute and search in text fields too); Firefox's own actions on those keys
+stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
+nothing there.
 
 **`Esc` in a text field is Vimma's.** It leaves insert, so the page does not see that `Esc`: a
 site's own `Esc` (closing an autocomplete list or a dialog) does not fire from the field. Press
@@ -3975,7 +3982,7 @@ accent = "#ff9e64"
   `[workspaces]` (a new one gets its container at once; one removed from the file stays, as a
   workspace you can close yourself); `[firefox] disable` and `enable` (which of Firefox's own
   shortcuts are off, [above](#firefoxs-own-shortcuts)); `[modal] insert_editing` (`ctrl+w`,
-  `ctrl+u`, `ctrl+h` in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
+  `ctrl+u`, `ctrl+h`, and `ctrl+j` and `ctrl+m` as `Enter`, in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
   [bookmarks panel](#bookmarks) lists and where paths start); `[panel] numbers` (`"absolute"`, the
   default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);

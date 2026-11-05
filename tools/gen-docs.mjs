@@ -3,11 +3,13 @@
 import { writeFileSync } from "node:fs";
 import {
   FIREFOX_SHORTCUTS,
+  INSERT_ENTER,
   MAC_KEYS,
   bindingTable,
   bindingsJson,
   compileKeymap,
   formatDefaultsToml,
+  insertEditCommand,
   keyLegend,
 } from "../packages/vimma-core/src/index.mjs";
 
@@ -79,7 +81,9 @@ lines.push(
 const fate = (r) => {
   if (r.action) {
     const where = r.modes === "normal" ? " (normal mode)" : "";
-    return `\`${r.action}\`${where}${r.first === "P" ? ", page first" : ""}`;
+    // In a text field ctrl+j and ctrl+m are Enter (docs/specs/key-handling-batch.md § 2).
+    const field = r.modes === "all" && insertEditCommand(r.chord) === INSERT_ENTER;
+    return `\`${r.action}\`${where}${r.first === "P" ? ", page first" : ""}${field ? "; Enter in a field" : ""}`;
   }
   if (r.fate === "a") return "Vimma's own key";
   if (r.fate === "d") return "unchanged";

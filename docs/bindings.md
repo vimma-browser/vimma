@@ -426,7 +426,7 @@ unchanged.
 | `ctrl+l`              | focus the address bar                          | `focus_urlbar`, page first                  |
 | `alt+d`               | focus the address bar                          | `focus_urlbar`, page first                  |
 | `ctrl+k`              | web search                                     | Vimma's own key                             |
-| `ctrl+j`              | web search                                     | `web_search`, page first                    |
+| `ctrl+j`              | web search                                     | `web_search`, page first; Enter in a field  |
 | `ctrl+shift+y`        | Library: downloads                             | `downloads`, page first                     |
 | `ctrl+shift+f`        | add-ons manager                                | `addons_manager`, page first                |
 | `ctrl+o`              | open a file                                    | `history_back` (normal mode)                |
@@ -434,7 +434,7 @@ unchanged.
 | `ctrl+p`              | print                                          | `print_page`, page first                    |
 | `ctrl+w`              | close tab                                      | Vimma's own key                             |
 | `ctrl+shift+w`        | close window                                   | `close_window`                              |
-| `ctrl+m`              | mute the tab                                   | `mute_tab`, page first                      |
+| `ctrl+m`              | mute the tab                                   | `mute_tab`, page first; Enter in a field    |
 | `ctrl+z`              | undo in a field                                | unchanged                                   |
 | `ctrl+shift+z`        | redo in a field                                | unchanged                                   |
 | `ctrl+x`              | cut                                            | unchanged                                   |
