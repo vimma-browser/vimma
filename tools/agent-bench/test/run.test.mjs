@@ -504,6 +504,15 @@ describe("parseArgs", () => {
     expect(() => parseArgs(["--keep-results", "-1"])).toThrow(/--keep-results/);
   });
 
+  it("takes the two-shop scenario, alone or after the lists named", () => {
+    expect(parseArgs([])).toMatchObject({ twoShops: false });
+    expect(parseArgs(["--two-shops"])).toMatchObject({ twoShops: true, lists: null });
+    expect(parseArgs(["--lists", "L04", "--two-shops"])).toMatchObject({
+      twoShops: true,
+      lists: ["L04"],
+    });
+  });
+
   it("refuses a provider it does not know and a model-less real provider", () => {
     expect(() => parseArgs(["--provider", "magic"])).toThrow(/provider/);
     expect(() => parseArgs(["--provider", "openai"])).toThrow(/--model/);

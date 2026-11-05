@@ -1,6 +1,6 @@
 # Spec: mcp-consequence
 
-Status: accepted (Delivery 1 built; Delivery 2 open) · Area: `packages/vimma-core/src/`
+Status: implemented · Area: `packages/vimma-core/src/`
 (`agent-checkpoint.mjs`, `agent.mjs`, `agent-prompt.mjs`); `src/browser/base/content/vimma/`
 (`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
 `host/agent-ui.mjs`, `agent/AgentChat.sys.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: the
@@ -179,7 +179,14 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
 
 ### Bench (`tools/agent-bench`)
 
-- The two-shop scenario of issue #693 (Delivery 2).
+- The two-shop scenario of issue #693 (Delivery 2, `npm run agent-bench -- --two-shops`,
+  `tools/agent-bench/two-shops.mjs`): five items compared across two local shops on two hosts,
+  whose product cards name the product in a heading and show the price apart. One shop's add
+  button is an icon-only button named by its `aria-label` whose script posts to the shop; the
+  other's is a repeated "Add", the submit button of a form with hidden fields and a quantity.
+  The scripted floor finds each product's button by its name in the element list, and the run
+  fails unless both baskets hold each shop's cheapest match, only the two checkouts ask, and no
+  result says that questions are waiting. CI runs it with `--check` in `e2e.yml`.
 
 ## Docs and changelog
 
