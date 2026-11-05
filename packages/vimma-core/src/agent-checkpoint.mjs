@@ -227,9 +227,12 @@ export function parsePayInfo(raw) {
 }
 
 /**
- * @typedef {{ name: string, value?: string, secret?: true, file?: true }} SentField  one field a
- *   submission sends: its value, or `secret` (a password, card or one-time-code field, whose
- *   value is never read), or `file`
+ * @typedef {{ name: string, value?: string, secret?: true, file?: true, text?: true,
+ *   identity?: true, cut?: true }} SentField  one field a submission sends: its value, or `secret` (a
+ *   password, card or one-time-code field, whose value is never read), or `file`; `text`: a
+ *   field someone types into (a textarea, a text-like input), `identity`: a name, contact,
+ *   address or birth-date field (docs/specs/mcp-consequence.md K2); `cut`: its value was longer
+ *   than the child sends, so what it holds past the cut is not known (K3)
  * @typedef {{ fields: SentField[], hidden: number, more: number }} SentFields  `hidden`: hidden
  *   fields sent but not listed; `more`: fields past the cap
  */
@@ -252,10 +255,12 @@ export function parseSentFields(raw) {
   const fields = [];
   for (const f of v.fields) {
     if (!isRecord(f)) return null;
-    const { name, value, secret, file } = /** @type {Record<string, unknown>} */ (f);
+    const { name, value, secret, file, text, identity, cut } =
+      /** @type {Record<string, unknown>} */ (f);
     if (!isText(name, CHECKPOINT_CAPS.name)) return null;
-    if (secret !== undefined && secret !== true) return null;
-    if (file !== undefined && file !== true) return null;
+    for (const mark of [secret, file, text, identity, cut]) {
+      if (mark !== undefined && mark !== true) return null;
+    }
     if (value !== undefined && (secret || file || !isText(value, CHECKPOINT_CAPS.value))) {
       return null;
     }
@@ -264,6 +269,9 @@ export function parseSentFields(raw) {
     if (secret) out.secret = true;
     else if (file) out.file = true;
     else out.value = typeof value === "string" ? value : "";
+    if (text) out.text = true;
+    if (identity) out.identity = true;
+    if (cut) out.cut = true;
     fields.push(out);
   }
   return {
@@ -271,4 +279,105 @@ export function parseSentFields(raw) {
     hidden: /** @type {number} */ (v.hidden),
     more: /** @type {number} */ (v.more),
   };
+}
+
+/**
+ * Autocomplete field names of a person's identity, contact or address (docs/specs/mcp-consequence.md
+ * K2): a form that sends one asks under a grant. The child also counts the names form autofill's
+ * address heuristics infer, and `type=email` and `type=tel`.
+ */
+export const IDENTITY_FIELDS = Object.freeze([
+  "name",
+  "honorific-prefix",
+  "given-name",
+  "additional-name",
+  "family-name",
+  "honorific-suffix",
+  "nickname",
+  "username",
+  "organization-title",
+  "organization",
+  "street-address",
+  "address-line1",
+  "address-line2",
+  "address-line3",
+  "address-level1",
+  "address-level2",
+  "address-level3",
+  "address-level4",
+  "country",
+  "country-name",
+  "postal-code",
+  "bday",
+  "bday-day",
+  "bday-month",
+  "bday-year",
+  "sex",
+  "email",
+  "impp",
+  "tel",
+  "tel-country-code",
+  "tel-national",
+  "tel-area-code",
+  "tel-local",
+  "tel-local-prefix",
+  "tel-local-suffix",
+  "tel-extension",
+]);
+
+/**
+ * A value that is only a quantity: up to three ASCII digits, and decimals (`2`, `1,5`, `-3`,
+ * `10.00`), on the raw value, so that digits of other scripts or compatibility forms, which a
+ * cleaning would turn into ASCII, never pass; a longer number (a code, a PIN, an account) is
+ * free text.
+ */
+const NUMBER_ONLY = /^[-+]?[0-9]{1,3}(?:[.,][0-9]{1,3})?$/;
+
+/**
+ * Whether a form submission has a consequence the user has to judge under a grant
+ * (docs/specs/mcp-consequence.md K2, K3): it pays, or it sends a secret, a file, an identity
+ * field or free text (a typed value that is not empty and not only a quantity); or what it
+ * sends is not known whole (`sent` null, fields past the cap, a value cut), because a doubt asks.
+ * @param {{ pay: boolean, sent: SentFields | null }} step
+ */
+export function isConsequential({ pay, sent }) {
+  if (pay || !sent || sent.more > 0) return true;
+  return sent.fields.some(
+    (f) =>
+      f.secret ||
+      f.file ||
+      f.identity ||
+      f.cut ||
+      (f.text && !!pageText(f.value) && !NUMBER_ONLY.test(String(f.value ?? "").trim())),
+  );
+}
+
+/**
+ * Whether a form checkpoint may offer `a`, which allows its button on its site for the rest of
+ * the grant (docs/specs/mcp-consequence.md K5): never for a payment, a secret or a file, nor
+ * when what it sends is not known whole.
+ * @param {{ pay: boolean, sent: SentFields | null }} step
+ */
+export function mayAllowHere({ pay, sent }) {
+  if (pay || !sent || sent.more > 0) return false;
+  return !sent.fields.some((f) => f.secret || f.file);
+}
+
+/**
+ * The allowance `a` makes (docs/specs/mcp-consequence.md K5): the tab's site, the form's method,
+ * its destination's scheme, host, port and path (not the query, which differs per product), and
+ * the pressed button's text as a checkpoint cleans it; null when one is missing.
+ * @param {{ site: string, method: string, action: string, text: string }} step
+ * @returns {string | null}
+ */
+export function allowanceKey({ site, method, action, text }) {
+  if (!site) return null;
+  let to;
+  try {
+    const url = new URL(action);
+    to = `${url.protocol}//${url.host}${url.pathname}`;
+  } catch {
+    return null;
+  }
+  return JSON.stringify([site, String(method).toLowerCase(), to, pageText(text)]);
 }

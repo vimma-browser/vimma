@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_checkpoint.js (docs/specs/mcp-consequence.md): a shop whose
+   - basket buttons each submit a small form of their own, as some real shops build them. Two
+   - "Lisää koriin" forms send a hidden product id and a quantity; a delivery form sends a postal
+   - code; a message form sends text; a form with an "Osta" (buy) button pays; a "Tallenna"
+   - (save) form sends an empty note, which its button's mousedown fills. Every form is a GET
+   - to file_vimma_agent_page.html, so the address after a submission says what was sent. -->
+<html lang="fi">
+  <head>
+    <meta charset="utf-8" />
+    <title>Tuotteet · Kauppa</title>
+    <style>
+      body {
+        margin: 8px 16px;
+        font: 14px sans-serif;
+      }
+      form {
+        margin: 4px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Tuotteet</h1>
+    <form id="oat" method="get" action="file_vimma_agent_page.html">
+      Kaurajuoma 1 l
+      <input type="hidden" name="product" value="oat" />
+      <input type="number" name="qty" value="1" aria-label="Määrä" />
+      <button type="submit">Lisää koriin</button>
+    </form>
+    <form id="tofu" method="get" action="file_vimma_agent_page.html">
+      Tofu 250 g
+      <input type="hidden" name="product" value="tofu" />
+      <input type="text" name="qty" value="2" inputmode="numeric" aria-label="Kpl" />
+      <button type="submit">Lisää koriin</button>
+    </form>
+    <form id="zip" method="get" action="file_vimma_agent_page.html">
+      <input name="zip" autocomplete="postal-code" value="00100" aria-label="Postinumero" />
+      <button type="submit">Tarkista toimitus</button>
+    </form>
+    <form id="msg" method="get" action="file_vimma_agent_page.html">
+      <textarea name="message" aria-label="Viesti">Hei</textarea>
+      <button type="submit">Lähetä viesti</button>
+    </form>
+    <form id="late" method="get" action="file_vimma_agent_page.html">
+      <textarea name="note" aria-label="Lisätieto"></textarea>
+      <button type="submit" id="late-send">Tallenna</button>
+    </form>
+    <form id="buy" method="get" action="file_vimma_agent_page.html">
+      <input type="hidden" name="order" value="1" />
+      <button type="submit">Osta</button>
+    </form>
+    <script>
+      // As the button is pressed, the page writes into the form the agent's click was judged by.
+      document.getElementById("late-send").addEventListener("mousedown", () => {
+        document.querySelector("#late textarea").value = "written as it was pressed";
+      });
+    </script>
+  </body>
+</html>

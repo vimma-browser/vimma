@@ -240,6 +240,7 @@ support-files = [
 
 ["browser_vimma_mcp_checkpoint.js"]
 support-files = [
+  "file_vimma_agent_basket_form.html",
   "file_vimma_agent_checkout.html",
   "file_vimma_agent_hosted_pay.html",
   "file_vimma_agent_page.html",

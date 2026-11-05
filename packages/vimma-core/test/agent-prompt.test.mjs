@@ -262,8 +262,8 @@ describe("the keys (decisions 13 and 20)", () => {
 describe("notices and notifications (decisions 15, 16 and 23)", () => {
   test("a grant names the waiting calls it let run, which the user did not see asked", () => {
     expect(grantNotice(read, { minutes: 15, capped: false }, 2)).toBe(
-      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
-        "(ctrl+b shift+a ends it) · it also ran 2 waiting calls (:mcp log)",
+      "example-agent may use the agent workspace for 15 min; paying and sending text or personal " +
+        "details still ask (ctrl+b shift+a ends it) · it also ran 2 waiting calls (:mcp log)",
     );
     expect(grantNotice(read, { minutes: 15, capped: false }, 1)).toMatch(
       / · it also ran 1 waiting call \(:mcp log\)$/,
@@ -272,19 +272,19 @@ describe("notices and notifications (decisions 15, 16 and 23)", () => {
 
   test("a grant names its scope, its length, the cap, and the key that ends it", () => {
     expect(grantNotice(read, { minutes: 15, capped: false })).toBe(
-      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
-        "(ctrl+b shift+a ends it)",
+      "example-agent may use the agent workspace for 15 min; paying and sending text or personal " +
+        "details still ask (ctrl+b shift+a ends it)",
     );
     expect(grantNotice(read, { minutes: 480, capped: true })).toBe(
       "example-agent may use the agent workspace for 480 min, the most [mcp] grant_max_minutes " +
-        "allows; sending a form or paying still asks (ctrl+b shift+a ends it)",
+        "allows; paying and sending text or personal details still ask (ctrl+b shift+a ends it)",
     );
   });
 
   test("a grant for the whole connection says it lasts until the agent quits", () => {
     expect(grantNotice(read, { minutes: Infinity, capped: false })).toBe(
-      "example-agent may use the agent workspace until it quits; sending a form or paying still " +
-        "asks (ctrl+b shift+a ends it)",
+      "example-agent may use the agent workspace until it quits; paying and sending text or " +
+        "personal details still ask (ctrl+b shift+a ends it)",
     );
   });
 
@@ -1054,5 +1054,80 @@ describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
       outcome: "failed",
     };
     expect(logRow(e)).toMatch(/ · failed$/);
+  });
+});
+
+// docs/specs/mcp-consequence.md Behaviour 1, 4, 5: under a grant, a form checkpoint that may be
+// allowed offers `a` for that button on that site; a payment never does.
+describe("a form allowed for the grant (mcp-consequence K5)", () => {
+  const form = {
+    tool: "vimma_activate",
+    label: { client: "claude-code" },
+    what: {
+      tab: "7",
+      index: 2,
+      title: "Kori · Kauppa",
+      url: "https://shop.example/kori",
+      label: "ad",
+      kind: "button",
+      text: "Lisää koriin",
+      submit: {
+        method: "post",
+        action: "https://shop.example/cart",
+        host: "shop.example",
+        fields: 2,
+      },
+      sent: { fields: [{ name: "zip", value: "00100" }], hidden: 1, more: 0 },
+      here: { site: "shop.example", key: "k" },
+    },
+  };
+
+  test("a form checkpoint under a grant offers a", () => {
+    expect(questionLine(form, { grantMinutes: 0 }).hint).toBe("y send it · a always here · n stop");
+    expect(promptKey({ count: "" }, "a", { noGrant: true, here: true })).toEqual({
+      kind: "answer",
+      answer: { kind: "here" },
+    });
+    // A count before it means nothing: the allowance lasts as the grant does.
+    expect(promptKey({ count: "15" }, "a", { noGrant: true, here: true })).toEqual({
+      kind: "answer",
+      answer: { kind: "here" },
+    });
+    expect(promptKey({ count: "" }, "5", { noGrant: true, here: true })).toEqual({
+      kind: "ignore",
+    });
+  });
+
+  test("a payment checkpoint never offers a", () => {
+    const pay = { ...form, what: { ...form.what, pay: { text: "Osta", site: "shop.example" } } };
+    expect(questionLine(pay, { grantMinutes: 0 }).hint).toBe("y pay · n stop");
+    const plain = { ...form, what: { ...form.what, here: undefined } };
+    expect(questionLine(plain, { grantMinutes: 0 }).hint).toBe("y send it · n stop");
+    expect(promptKey({ count: "" }, "a", { noGrant: true })).toEqual({ kind: "ignore" });
+  });
+
+  test("the allowance's notice and log outcome", () => {
+    expect(checkpointNotice(form, true)).toBe(
+      'allowed "Lisää koriin" on shop.example for this grant',
+    );
+    expect(checkpointNotice(form)).toBe("allowed sending the form to shop.example");
+    const row = logRow({
+      at: 0,
+      conn: 1,
+      client: "claude-code",
+      tool: "vimma_activate",
+      title: "Kori",
+      detail: "ad",
+      outcome: "checkpoint-here",
+    });
+    expect(row).toMatch(/allowed \(checkpoint, for the grant\)$/);
+  });
+
+  test("a form run under a grant names where it went", () => {
+    const { here, ...rest } = form.what;
+    void here;
+    expect(ranNotice({ ...form, what: rest }, Infinity, 0)).toBe(
+      'claude-code clicked button "Lisää koriin" in "Kori · Kauppa" and sent the form to POST shop.example (grant)',
+    );
   });
 });

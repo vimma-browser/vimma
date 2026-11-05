@@ -2537,8 +2537,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   into the page), file fields (a click would open a file chooser), disabled elements, links to
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
   and links that are not web pages. These are refused before you are asked.
-- **A form submission asks every time**, also under a grant, with only `y` and `n`, naming where
-  the form goes and what it sends
+- **A form submission asks**, with only `y` and `n` (and `a` under a grant), naming where the
+  form goes and what it sends: every time without a grant, and under a grant when it sends text
+  or personal details
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)):
   `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
   A `y` sends that one form; it never makes or ends a grant.
@@ -2775,7 +2776,7 @@ One grant covers a task. Answer any request with `a`, and that agent may use eve
 it quits, without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace until it quits; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace until it quits; paying and sending text or personal details still ask (ctrl+b shift+a ends it)`.
 Answer `15a` instead to allow it for 15 minutes only; `[mcp] grant_minutes` makes a bare `a` a
 grant of that many minutes.
 The question's hint leaves that out, so the line stays short; the notice says it the moment you
@@ -2784,10 +2785,11 @@ answer. Requests that wait when you answer run at once.
 These still ask under any grant, and your yes allows that one step without making a grant or
 ending the one in force:
 
-- **Sending a form and paying**
-  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a form
-  sends data to a server, where sign-ups, messages and purchases happen, and a payment spends
-  your money.
+- **Paying, and sending a form with text or personal details**
+  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a payment
+  spends your money, and a form that sends a message, a name, an address, a password or a file
+  is where sign-ups and messages happen. A form that sends only the page's own values, such as a
+  basket's product and quantity, runs under the grant like any other click.
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -2799,19 +2801,37 @@ idle link) and it reconnects within two minutes, it keeps its grant; later, it a
 #### Checkpoints: sending a form and paying
 
 Under a grant an agent works through its task without asking, except at two checkpoints: before
-it sends a form and before it pays. A checkpoint is one question that shows what the step will
-do, answered with one key, after which the agent goes on under the grant it had:
+it pays and before it sends a form with text or personal details. A checkpoint is one question
+that shows what the step will do, answered with one key, after which the agent goes on under the
+grant it had:
 
 ```
 ▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"   y pay · n stop
 ▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", name "Ada", password •••, + 2 hidden   y send it · n stop
 ```
 
+- **Which forms ask.** Under a grant, a click that sends a form asks when the form sends free
+  text (a message, a search typed into a text field), a person's details (a name, an email
+  address, a phone number, a street address or postcode, a birth date, a username), a password,
+  payment card or one-time-code field, or a file; when it pays; or when Vimma cannot tell what it
+  sends. A form of hidden fields, numbers, checkboxes and choices from the page's own lists, such
+  as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
+  names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
+  form always asks, since it sends what the agent typed. Without a grant every form asks.
+- **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment
+  and sends no password, card, one-time-code or file field ends its hint with
+  `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
+  button (the same text, sending to the same address) on the same site send its form without
+  asking until the grant ends, for example a basket button whose form also sends a delivery
+  postcode. The notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log`
+  marks the row `allowed (checkpoint, for the grant)`. A payment never offers `a`.
+
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
 - **One key.** `y` runs that one step. `n`, `Esc`, `Enter` or `x` stops it: the agent is told
   no for that step and may go on with others under its grant (`ctrl+b shift+a` ends the grant).
-  No count or grant is offered, and neither answer makes, lengthens or ends a grant. Three noes
+  No count or grant is offered (only `a` on a form, above), and no answer makes, lengthens or
+  ends a grant. Three noes
   in a row ignore the agent for a minute, as for any question.
 - **What a payment shows.** The button's text (for a key, such as `H` on a checkout page, the
   keys), the site in bold, and the total the page states, quoted after "the page says". A button

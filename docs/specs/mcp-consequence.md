@@ -1,10 +1,12 @@
 # Spec: mcp-consequence
 
-Status: accepted · Area: `packages/vimma-core/src/` (`agent-checkpoint.mjs`, `agent.mjs`,
-`agent-prompt.mjs`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
-`ctl/AgentAct.sys.mjs`, `ctl/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
-`ui/agent-prompt.mjs`); `tools/agent-bench/` (the two-shop scenario) · Upstream patches: none ·
-ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged). No new dependency.
+Status: accepted (Delivery 1 built; Delivery 2 open) · Area: `packages/vimma-core/src/`
+(`agent-checkpoint.mjs`, `agent.mjs`, `agent-prompt.mjs`); `src/browser/base/content/vimma/`
+(`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
+`host/agent-ui.mjs`, `agent/AgentChat.sys.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: the
+instructions and `vimma_activate`'s description); `tools/agent-bench/` (the two-shop scenario) ·
+Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged). No new
+dependency.
 
 Issue: [#693](https://github.com/vimma-browser/vimma/issues/693)
 
@@ -98,18 +100,22 @@ per product, sends hidden fields (a product id, a token) and a quantity. The fix
    address, a telephone number, a postal address part, a birth date, a username or an
    organisation, or whose type is `email` or `tel`; or free text, a `textarea` or a text-like
    input (`text`, `url` and inputs without a known type) whose value is not empty and is not a
-   number, because those are where a message, a sign-up or a person's details go. Hidden fields,
+   quantity (at most three ASCII digits, with decimals, read on the raw value so that digits
+   of other scripts or compatibility forms never pass, and a code or account number is text),
+   because those are where a message, a sign-up or a person's details go. Hidden fields,
    checkboxes, radio buttons, selects, numbers, dates other than a birth date, empty fields, a
    `type=search` field and the pressed button's own value are not, because they hold values the
    page chose or the agent picked from the page's own options. The child marks each sent field
    that is a text or an identity field, and the parent decides from that list, so the rule is
-   one pure function in core (`agent-checkpoint.mjs`).
+   one pure function in core (`agent-checkpoint.mjs`). The child judges the form again just
+   before it presses the button and skips the click when it no longer passes, because another
+   call, such as a fill, may write into the form between the judgement and the click.
    Rejected: free text of any value, because a quantity box written as a text input would make
    every basket form ask again; the field's name (`message`, `comment`), because names are the
    page's choice in any language, the same weakness as the pay words.
 3. **A doubt asks (K3).** When the child does not say in time what the form sends, says
-   something malformed, or the form sends more fields than the question can list, the
-   submission asks, because a missed question can send a message or an order while a wrong one
+   something malformed, the form sends more fields than the question can list, or a value is
+   longer than the child reads of it, the submission asks, because a missed question can send a message or an order while a wrong one
    costs one key.
 4. **A fill that submits always asks (K4),** because it sends the values the agent has just
    typed, which is the content the user is asked to judge; a search goes by URL instead

@@ -17,6 +17,7 @@ import {
   scriptErrorSource,
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
+import { isConsequential, mayAllowHere, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { quietVerdict } from "../core/agent-wait.mjs";
 import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
 import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
@@ -1242,6 +1243,14 @@ export class VimmaChild extends JSWindowActorChild {
     if (!!now.submit !== !!named) return false;
     if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
       return false;
+    }
+    // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
+    // click; another call (a fill) may have changed it since, so it is judged again here, just
+    // before it is pressed, and skipped when it no longer passes.
+    if (now.submit && named.check) {
+      const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
+      if (named.check === "harmless" && isConsequential(step)) return false;
+      if (named.check === "allowed" && !mayAllowHere(step)) return false;
     }
     return (now.href ?? null) === (asked.href ?? null);
   }
