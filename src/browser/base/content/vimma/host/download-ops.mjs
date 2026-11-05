@@ -17,10 +17,12 @@ import {
   downloadSegment,
   downloadState,
   downloadSummary,
+  nameFromUrl,
 } from "../core/downloads.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { runCommand } from "./browser-ops.mjs";
+import { refusedScheme } from "../core/pageurl.mjs";
 import { openUrl } from "./tab-ops.mjs";
 
 /** @import { DownloadEndState, DownloadItem, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
@@ -162,7 +164,7 @@ export function recordOf(d, win = null) {
       : 0;
   return {
     id: idOf(d),
-    name: path ? PathUtils.filename(path) : String(d.source?.url ?? ""),
+    name: path ? PathUtils.filename(path) : nameFromUrl(String(d.source?.url ?? "")),
     url: String(d.source?.url ?? ""),
     path,
     referrer: d.source?.referrerInfo?.originalReferrer?.spec ?? null,
@@ -471,6 +473,31 @@ async function showInFolder(d) {
  */
 const RUNS = new Set(["open", "openSystem", "show", "copyLink", "copyPath", "referrer", "library"]);
 
+/**
+ * `u`: the page a download came from, in a new tab of the download's own container, or of the
+ * window's non-agent one for a history entry, which keeps none. Never the agent workspace's, even
+ * with it on screen: the full referrer may carry a token, and an agent can read that workspace's
+ * pages (docs/security.md D4). A private window opens it as any private tab.
+ * @param {Window} win
+ * @param {any} d
+ * @param {string} referrer  core allows an http: or https: page only
+ */
+function openReferrer(win, d, referrer) {
+  if (refusedScheme(referrer)) return;
+  if (lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
+    openUrl(win, referrer, "tab");
+    return;
+  }
+  const agent = WorkspaceStore.agent?.userContextId;
+  const own = d.source?.userContextId;
+  const userContextId =
+    own && own !== agent ? own : (WorkspaceStore.nonAgentUserContextId(win) ?? 0);
+  /** @type {any} */ (win).openTrustedLinkIn(referrer, "tab", {
+    userContextId,
+    inBackground: false,
+  });
+}
+
 /** @param {string} text */
 function copy(text) {
   /** @type {any} */ (Cc["@mozilla.org/widget/clipboardhelper;1"])
@@ -533,8 +560,7 @@ export function downloadPickerKey(win, rows, key, id, { say, close }) {
       return;
     case "referrer":
       close();
-      // Core refuses anything but an http: or https: page; openUrl refuses scripts again.
-      openUrl(win, /** @type {string} */ (r.referrer), "tab");
+      openReferrer(win, d, /** @type {string} */ (r.referrer));
       return;
     case "library":
       close();

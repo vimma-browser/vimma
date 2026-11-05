@@ -13,6 +13,7 @@ import {
   downloadSummary,
   downloadSegment,
   downloadEnds,
+  nameFromUrl,
 } from "../src/downloads.mjs";
 import { statusSegments } from "../src/statusbar.mjs";
 
@@ -176,6 +177,15 @@ describe("downloadRow", () => {
     expect(JSON.stringify(row)).not.toContain("token=secret");
     expect(downloadSearchText(row)).not.toContain("token");
     expect(downloadRow(rec({ url: "data:text/plain,hi" }), 0).host).toBe("");
+  });
+
+  test("a download with no file path is named by its URL's last segment, never the URL", () => {
+    expect(nameFromUrl("https://files.example.com/get/report%20one.pdf?token=secret#x")).toBe(
+      "report one.pdf",
+    );
+    expect(nameFromUrl("https://files.example.com/?token=secret")).toBe("files.example.com");
+    expect(nameFromUrl("data:text/plain,secret")).toBe("download");
+    expect(nameFromUrl("not a url")).toBe("download");
   });
 
   test("another workspace's download names it", () => {

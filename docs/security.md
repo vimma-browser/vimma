@@ -350,8 +350,9 @@ text that pages, add-ons and bookmarks choose.
   `host/download-ops.mjs`, and only on a key the user pressed in the downloads picker (§21), so
   Firefox's executable prompt and Vimma's agent-download rule (M12, the `launchDownload`
   override) are always on the way; it **never** calls `nsIFile.launch`, `nsIFile.reveal`,
-  `DownloadUIHelper.loadFileIn` or `DownloadIntegration.launchDownload` itself, but the agent
-  override's delegation to Firefox's own. Chrome code **never** calls
+  `DownloadUIHelper.loadFileIn`, `launchFile`, the external protocol service or
+  `DownloadIntegration.launchDownload` itself, but the agent override's delegation to Firefox's
+  own. Chrome code **never** calls
   native code, with one exception: the owner and mode of a file, read through js-ctypes for
   clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
   folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
@@ -3748,9 +3749,11 @@ referring pages are chosen by the sites the files came from.
 
 - D1. A row's file name, host, verdict and path **must** be set as text (C1), and a row **must**
   show the host a download came from, **never** its URL, so a token in a download link is not on
-  screen; `y` copies the full link only on request.
+  screen; a download with no file path is named by its URL's last path segment or host. `y`
+  copies the full link only on request.
   [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
-  [`a row shows the host, never the URL`](../packages/vimma-core/test/downloads.test.mjs)
+  [`a row shows the host, never the URL`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a download with no file path is named by its URL's last segment, never the URL`](../packages/vimma-core/test/downloads.test.mjs)
 - D2. A private window **must** list only its own private session's downloads, and a normal
   window **never** a private one; the status bar's segment counts the same way. A private
   download is gone with its session, as in Firefox.
@@ -3762,8 +3765,12 @@ referring pages are chosen by the sites the files came from.
   and its page was chosen by the agent; `o` is refused twice, by the picker and by M12's
   `launchDownload` override. Showing it in its folder, copying its link or path and removing it
   stay. For any download, `u` **must** open only an `http:` or `https:` page, never a script,
-  `data:` or `file:` address a page chose as its referrer.
+  `data:` or `file:` address a page chose as its referrer, and **must** open it in the
+  download's own container (the window's non-agent one for a history entry), **never** the agent
+  workspace's, even with that workspace on screen: the full referrer may carry a token.
   [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
+  [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
+  [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
   [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),
   [`the keys that apply follow isCommandEnabled for each state`](../packages/vimma-core/test/downloads.test.mjs)
 - D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not

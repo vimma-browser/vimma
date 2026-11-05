@@ -607,7 +607,35 @@ add_task(async function test_u_opens_the_referring_page() {
   EventUtils.synthesizeKey("u");
   const page = await opened;
   Assert.ok(!isOpen(), "the picker closed for the page");
+  const main = /** @type {any} */ (
+    WorkspaceStore.definitions.workspaces.find((w) => w.name === "main")
+  );
+  Assert.equal(page.userContextId, main.userContextId, "a download with no container: main's");
   BrowserTestUtils.removeTab(page);
+  await clean();
+
+  // A download from another workspace's container opens its page in that container, whatever
+  // workspace is on screen (docs/security.md D4).
+  const work = WorkspaceStore.addWorkspace({ name: "dlfrom", color: "blue", icon: "briefcase" });
+  try {
+    await finished("from-work.bin", {
+      source: { referrerInfo: referrerOf(from), userContextId: work.userContextId },
+    });
+    gBrowser.selectedTab = tab;
+    await focusContent(tab.linkedBrowser);
+    await openPicker();
+    const again = BrowserTestUtils.waitForNewTab(gBrowser, from, true);
+    EventUtils.synthesizeKey("u");
+    const workPage = await again;
+    Assert.equal(workPage.userContextId, work.userContextId, "in the download's own container");
+    BrowserTestUtils.removeTab(workPage);
+  } finally {
+    WorkspaceStore.setActive(window, main.id);
+    await WorkspaceStore.deleteWorkspace(work.id, { confirmed: true });
+    for (const t of [...gBrowser.tabs]) {
+      if (t !== gBrowser.tabs[0] && t !== tab) BrowserTestUtils.removeTab(t);
+    }
+  }
   BrowserTestUtils.removeTab(tab);
   await clean();
 });

@@ -255,7 +255,6 @@ describe("chrome code", () => {
     ]);
   });
 
-  // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).
   // security.md C2 and D4 (docs/specs/downloads.md decision 5): a download's file reaches the OS
   // only through Firefox's DownloadsCommon.openDownload and Download.showContainingDirectory,
   // from the downloads picker's ops, so Firefox's executable prompt and Vimma's agent rule
@@ -266,7 +265,7 @@ describe("chrome code", () => {
     const AGENT = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
     const TOOLBAR = "src/browser/base/content/vimma/ui/toolbar.mjs";
     const all = hits(
-      /\.launch\(|\.reveal\(|openDownload\(|showDownloadedFile\(|showDirectory\(|launchDownload\(|loadFileIn\(|launchWithFile\(|showContainingDirectory\(/,
+      /\.launch\(|\.reveal\(|launchFile\(|gExternalProtocolService|openDownload\(|showDownloadedFile\(|showDirectory\(|launchDownload\(|loadFileIn\(|launchWithFile\(|showContainingDirectory\(/,
     );
     const at = (/** @type {string} */ h) => h.replace(/:\d+:/, ":");
     expect(all.filter((h) => !h.startsWith(`${OPS}:`)).map(at)).toEqual([
@@ -289,6 +288,7 @@ describe("chrome code", () => {
     expect(reach.map((s) => s.path)).toEqual([]);
   });
 
+  // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).
   test("installs an add-on only from the setup page", () => {
     const SETUP = "src/browser/base/content/vimma/setup/SetupHost.sys.mjs";
     const all = hits(

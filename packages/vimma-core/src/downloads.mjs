@@ -238,6 +238,31 @@ function hostOf(url) {
 }
 
 /**
+ * A name for a download with no file path (an old history entry): its URL's last path segment,
+ * else its host, never the whole URL, so a token in the link stays off screen (decision 13).
+ * @param {string} url
+ */
+export function nameFromUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "ftp:") {
+      return "download";
+    }
+    const last = u.pathname.split("/").filter(Boolean).pop();
+    if (last) {
+      try {
+        return decodeURIComponent(last);
+      } catch {
+        return last;
+      }
+    }
+    return u.hostname || "download";
+  } catch {
+    return "download";
+  }
+}
+
+/**
  * Whether a download is listed under `active`: downloading, paused, or blocked with its data
  * kept (decision 3).
  * @param {DownloadRecord} r
