@@ -446,10 +446,12 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
      (`xdg-desktop-por*`, `flatpak-portal`), and a compositor or session process (`hyprland`,
      `sway`, `river`, `niri`, `kwin_wayland`, `kwin_x11`, `gnome-shell`, `plasmashell`,
      `gnome-session*`, `xfce4-session`, `uwsm`, `sddm`, `gdm*`, `lightdm`, `xorg`, `xwayland`);
-   - ends the list at a name that is not a token, after the names before it.
+   - passes over a name that is not a token without naming it, and goes on, because a child
+     that renames itself (`prctl`, a copy named `a b`) would otherwise hide the agent CLI above
+     it from decision 5's cut.
 
-   When the walk ends at the 32-step limit or at a name that is not a token, the farthest name kept
-   (decision 2) is the last process reached, not a terminal. Otherwise the walk stops at the
+   When the walk ends at the 32-step limit, the farthest name kept (decision 2) is the last
+   process reached, not a terminal. Otherwise the walk stops at the
    terminal or app that a launcher, LaunchServices or the compositor started, and names it.
    Reason: these are the processes whose name says which program the user was in; the stop list
    keeps the compositor and session out, so that a rule such as `app = "hyprland"` cannot match
@@ -467,8 +469,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    the one attached; and an opt-in lookup that continues from the server's client when exactly one
    exists, because it still cannot know which session that client shows, while a rule naming the
    multiplexer covers the case without a guess, as the worked example's `herdr` rule does.
-8. **`TERM_PROGRAM` only when the walk could not see the terminal.** When the walk ended at a name
-   that is not a token or at the 32-step limit, and `TERM_PROGRAM`, lower-cased, is a token not
+8. **`TERM_PROGRAM` only when the walk could not see the terminal.** When the walk passed a name
+   that is not a token or ended at the 32-step limit, and `TERM_PROGRAM`, lower-cased, is a token not
    already in the list, it is added last (within the cap). When the walk ended normally, at pid 1
    or a stop-list process, it is never added. Reason: in VS Code's integrated terminal on macOS the
    shell's parent is a helper named `Code Helper (Plugin)` (`ucomm` truncated to 16 bytes), which

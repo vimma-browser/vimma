@@ -493,21 +493,38 @@ describe("vimma-open", () => {
     processEntry(100, "slack", 1);
     // The AppImage runtime unmounts the image once AppRun's process exits: a browser handed off
     // in its own session would lose its files.
+    const mount = join(dir, "mount");
+    mkdirSync(join(mount, "usr/lib/vimma"), { recursive: true });
+    const launcher = join(mount, "usr/lib/vimma/vimma-open");
+    copyFileSync(LAUNCHER, launcher);
     const fake = join(dir, "vimma-pid");
     writeFileSync(fake, `#!/bin/sh\necho "$$ $*" > "${dir}/pid"\n`);
     chmodSync(fake, 0o755);
-    const r = spawnSync("/bin/sh", [LAUNCHER, LINK], {
-      env: {
-        PATH: "/usr/bin:/bin",
-        VIMMA_OPEN_PROC: proc,
-        VIMMA_OPEN_PPID: "100",
-        VIMMA_BIN: fake,
-        APPIMAGE: "/opt/apps/Vimma-1.0.0-x86_64.AppImage",
-      },
-      encoding: "utf8",
-    });
+    const env = {
+      PATH: "/usr/bin:/bin",
+      VIMMA_OPEN_PROC: proc,
+      VIMMA_OPEN_PPID: "100",
+      VIMMA_BIN: fake,
+      APPIMAGE: "/opt/apps/Vimma-1.0.0-x86_64.AppImage",
+      APPDIR: mount,
+    };
+    const r = spawnSync("/bin/sh", [launcher, LINK], { env, encoding: "utf8" });
     expect(r.status).toBe(0);
     expect(readFileSync(join(dir, "pid"), "utf8")).toBe(`${r.pid} -vimma-from slack ${LINK}\n`);
+
+    // Another AppImage app's APPIMAGE and APPDIR reach its children: a packaged vimma-open
+    // outside that mount still hands off.
+    writeFileSync(join(dir, "hold"), "");
+    const outside = run([LINK], { ppid: 100, env: { ...env, VIMMA_BIN: join(dir, "vimma") } });
+    expect(outside.args).toEqual(["-vimma-from", "slack", LINK]);
+  });
+
+  it("a name that is not a token never hides the names beyond it", () => {
+    processEntry(1, "systemd", 0);
+    // A child of an agent CLI that renamed itself (prctl, a copy named "a b").
+    const near = chain(1, ["ghostty", "zsh", "claude", "a b", "xdg-open"]);
+    expect(names(near, { TERM_PROGRAM: "ghostty" })).toBe("claude,zsh,ghostty");
+    expect(names(near, { TERM_PROGRAM: "x".repeat(65) })).toBe("claude,zsh,ghostty");
   });
 
   it("runs the vimma next to it when VIMMA_BIN is not set", () => {

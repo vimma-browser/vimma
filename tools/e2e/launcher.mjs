@@ -673,8 +673,7 @@ export function sessionBusConfig(socket) {
   <listen>unix:path=${socket}</listen>
   <auth>EXTERNAL</auth>
   <policy context="default">
-    <allow send_destination="*" eavesdrop="true"/>
-    <allow eavesdrop="true"/>
+    <allow send_destination="*"/>
     <allow own="*"/>
   </policy>
 </busconfig>

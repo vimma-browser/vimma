@@ -15,11 +15,14 @@
 # `vimma-open --from <app> <url>` names the program itself and skips the walk. Any other
 # arguments go to `vimma` unchanged.
 #
-# The walk starts no process (the shell's `read`, never cat or tr), and never runs a command of
-# a multiplexer it passes: its server ends the list, since nothing it could ask names the right
+# A step of the walk starts no process (the shell's `read`, never cat or tr; only under an
+# AppImage runtime, a readlink to recognise it), and the walk never runs a command of a
+# multiplexer it passes: its server ends the list, since nothing it could ask names the right
 # terminal (app-routes, decision 7).
 #
 # VIMMA_BIN (the browser), VIMMA_OPEN_PROC and VIMMA_OPEN_PPID (a fake /proc, for tests) override.
+# They give the caller no more than `--from` does: whatever they point at comes out only as
+# token names.
 
 proc=${VIMMA_OPEN_PROC:-/proc}
 
@@ -106,8 +109,8 @@ walk() {
   list=
   count=0
   last=
-  # How the walk ended: "seen" when it reached pid 1 or a stop-list process (or a parent that
-  # is gone), "blind" at a name that is not a token or the step limit.
+  # "blind" when the walk passed a name that is not a token or hit the step limit, so it may
+  # not have seen the terminal; else "seen" (pid 1, a stop-list process, a parent that is gone).
   ended=seen
   pid=${VIMMA_OPEN_PPID:-$PPID}
   steps=0
@@ -136,8 +139,9 @@ walk() {
     elif skip "$low"; then
       :
     elif ! token "$low"; then
+      # Passed over, not an end: a child that renames itself (prctl, a copy named "a b") must
+      # not hide an agent CLI's name above it from the agent rule (app-routes, decision 5).
       ended=blind
-      break
     elif [ "$low" != "$last" ]; then
       list="$list $low"
       count=$((count + 1))
@@ -149,7 +153,7 @@ walk() {
   # A terminal the walk could not see (VS Code's helper is not a token) names itself, last.
   # Never after a walk that ended normally: a job an agent CLI left behind is reparented to pid 1
   # and still inherits the terminal's TERM_PROGRAM (app-routes, decision 8).
-  if [ "$ended" = blind ] && [ -n "${TERM_PROGRAM:-}" ]; then
+  if [ "$ended" = blind ] && [ -n "${TERM_PROGRAM:-}" ] && [ "${#TERM_PROGRAM}" -le 64 ]; then
     lower "$TERM_PROGRAM"
     if token "$low"; then
       case " $list " in
@@ -174,9 +178,14 @@ walk() {
 # The browser in its own session, so a caller that waits for its browser command (CPython's
 # webbrowser, gh) returns at once, and a Vimma this starts is never the terminal's child.
 handoff() {
-  # Inside an AppImage (its AppRun runs us), the runtime unmounts the image once this process
-  # exits, so the browser runs in its place instead.
-  if [ -n "${APPIMAGE:-}" ]; then exec "$@"; fi
+  # Inside an AppImage (its AppRun runs us from the mount, $APPDIR), the runtime unmounts the
+  # image once this process exits, so the browser runs in its place instead. Checked by our own
+  # path: another AppImage app's APPIMAGE and APPDIR reach its children too.
+  if [ -n "${APPDIR:-}" ]; then
+    case $(readlink -f "$0") in
+      "$APPDIR"/*) exec "$@" ;;
+    esac
+  fi
   if command -v setsid >/dev/null 2>&1; then
     setsid -f "$@" </dev/null >/dev/null 2>&1
   else

@@ -203,7 +203,8 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   leaves that host, it is matched as any page is (R2).
   [`about_vimma_shows_the_last_names_without_the_url`](../tests/browser/browser_vimma_workspace_routes.js),
   [`an_app_routed_tab_is_not_hinted_back_by_a_domain_rule`](../tests/browser/browser_vimma_workspace_routes.js),
-  [`route_move_keeps_an_app_routed_tab_until_it_leaves_the_host`](../tests/browser/browser_vimma_workspace_routes.js)
+  [`route_move_keeps_an_app_routed_tab_until_it_leaves_the_host`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`an_app_routed_tabs_names_never_pick_the_agent_workspace`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 
@@ -523,17 +524,19 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   cannot become a browser flag (`-profile`, `--remote-debugging-port`).
   [`refuses a single argument that is a flag: %u must never smuggle one in`](../tools/package/test/vimma-open.test.mjs)
 - O6. The names **must** be at most eight lower-case tokens of at most 64 characters each,
-  separated by commas (the seven nearest and the farthest); the walk ends at the first name
-  that is not a token, keeping the names before it, and an inherited `VIMMA_FROM` is **never**
-  passed on. `TERM_PROGRAM` is added only when the walk could not see the terminal (a name that
-  is not a token, or the 32-step limit), so a job an agent CLI left behind, reparented to pid 1,
-  does not take the terminal's name.
+  separated by commas (the seven nearest and the farthest); a name that is not a token is
+  passed over, never passed on, so a child that renames itself cannot hide an agent CLI's name
+  above it (R8), and an inherited `VIMMA_FROM` is **never** passed on. `TERM_PROGRAM` is added
+  only when the walk could not see the terminal (it passed a name that is not a token, or hit
+  the 32-step limit), so a job an agent CLI left behind, reparented to pid 1, does not take the
+  terminal's name.
   [`never passes a name that is not a simple token, and keeps the names before it`](../tools/package/test/vimma-open.test.mjs),
   [`refuses a name with a newline in it`](../tools/package/test/vimma-open.test.mjs),
   [`never passes a VIMMA_FROM it did not set`](../tools/package/test/vimma-open.test.mjs),
   [`keeps the seven nearest names and the farthest past eight`](../tools/package/test/vimma-open.test.mjs),
   [`a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`](../tools/package/test/vimma-open.test.mjs),
-  [`stops at the compositor without naming it`](../tools/package/test/vimma-open.test.mjs)
+  [`stops at the compositor without naming it`](../tools/package/test/vimma-open.test.mjs),
+  [`a name that is not a token never hides the names beyond it`](../tools/package/test/vimma-open.test.mjs)
 - O7. A theme's `colors.toml` (anyone can publish a theme) **must** give only `#rrggbb` colours
   and one CSS rule, and be read in bounded time however deep or large it is.
   [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
@@ -554,7 +557,9 @@ Allowed: two or more arguments (other than `--from`) pass through unchanged; a l
 runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
 also name itself as any program, by `--from`, by the name of its executable or by a chain it
 forges (a renamed, detached process): the names are a hint that only selects a workspace a rule
-already routes to (R4), the boundary §11 accepts for programs running as you.
+already routes to (R4), the boundary §11 accepts for programs running as you. For the same
+reason `VIMMA_BIN`, `VIMMA_OPEN_PROC` and `VIMMA_OPEN_PPID`, which the tests use, are honoured:
+they give the caller no more than `--from`, and what they point at comes out only as token names.
 [`passes anything but one URL through unchanged`](../tools/package/test/vimma-open.test.mjs)
 
 ## 8. `config.toml` (`config/ConfigHost.sys.mjs`)

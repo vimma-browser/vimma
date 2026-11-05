@@ -555,10 +555,11 @@ export const WorkspaceRouter = {
         const place = pendingPlace;
         pendingPlace = null;
         // The first tab is made by #setupInitialBrowserAndTab, which fires no TabOpen: it is
-        // the window's selected tab once this window's setup task has ended.
+        // the window's first tab once this window's setup task has ended (never whichever tab
+        // a restore may have selected by then).
         if (place) {
           Services.tm.dispatchToMainThread(() => {
-            const tab = win.closed ? null : win.gBrowser?.selectedTab;
+            const tab = win.closed ? null : win.gBrowser?.tabs?.[0];
             if (tab?.userContextId === place.ucid) {
               placed.set(tab, { names: place.names, host: place.host });
             }

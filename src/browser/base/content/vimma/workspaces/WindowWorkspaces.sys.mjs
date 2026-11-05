@@ -634,10 +634,12 @@ export class WindowWorkspacesImpl {
       /** @type {any} */ location,
       /** @type {number} */ flags,
     ) => {
-      if (!webProgress?.isTopLevel || !this.#model || this.#pending) return;
+      if (!webProgress?.isTopLevel) return;
       if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
       const tab = /** @type {Tab | null} */ (this.#gBrowser.getTabForBrowser(browser));
+      // Also during a restore: a tab that leaves its host then must not keep its app names.
       if (tab) lazy.WorkspaceRouter.noteLocation(tab, location.spec);
+      if (!this.#model || this.#pending) return;
       if (tab?.selected) this.#hint(tab, location);
     },
   };
