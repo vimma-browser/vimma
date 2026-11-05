@@ -341,10 +341,7 @@ const KEY_OPS = Object.freeze({
   "shift+l": "library",
 });
 
-/**
- * The keys the picker hands to the host on a download row, besides Enter: the ones whose op the
- * host runs (Delivery 3 and 4). Unblock (`!`) joins with its op (Delivery 5).
- */
+/** The keys the picker hands to the host on a download row, besides Enter. */
 export const DOWNLOAD_PICKER_KEYS = Object.freeze([
   "o",
   "shift+o",
@@ -358,6 +355,7 @@ export const DOWNLOAD_PICKER_KEYS = Object.freeze([
   "r",
   "d",
   "shift+d",
+  "!",
 ]);
 
 /** The ops that ask `y/N` first, with the picker closed (decision 6). */
@@ -388,19 +386,21 @@ export function downloadQuestion(r, op) {
 }
 
 /**
- * Whether the download is no longer the one the user answered yes for (decision 6,
- * docs/security.md D5): gone from the list, in another state, its file at another path or gone,
- * or the op no longer applies. Bytes moving on while the question is open do not count.
+ * Whether the download is no longer the one the user answered for (decisions 6 and 7,
+ * docs/security.md D3 and D5): gone from the list, in another state, its file at another path or
+ * gone, or the op no longer applies. Bytes moving on while the question is open do not count.
  * @param {DownloadRecord} asked  the download as it was when the question showed
  * @param {DownloadRecord | null} now  as it is at the answer, or null when it has gone
  * @param {DownloadOp} op
+ * @param {{ allowOverride: boolean }} [ctx]  `browser.safebrowsing.allowOverride` at the answer;
+ *   only unblock reads it
  */
-export function downloadChanged(asked, now, op) {
+export function downloadChanged(asked, now, op, ctx = { allowOverride: false }) {
   if (!now || now.id !== asked.id) return true;
   if (downloadState(now) !== downloadState(asked)) return true;
   if (now.path !== asked.path || now.targetExists !== asked.targetExists) return true;
   if (now.deleted !== asked.deleted || now.hasBlockedData !== asked.hasBlockedData) return true;
-  return refusal(now, op, { allowOverride: false }) !== null;
+  return refusal(now, op, ctx) !== null;
 }
 
 const AGENT_NEVER_OPENED = "agent downloads are never opened by Vimma";

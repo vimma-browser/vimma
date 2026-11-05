@@ -4,15 +4,16 @@
 
 // docs/specs/downloads.md: the status bar's `↓` segment for downloads in progress and the last
 // end, announced once (Behaviour 12 and 13, decision 9); the `ctrl+b d` picker, its rows, live
-// updates and keys (Behaviour 1-11, 15; decisions 3-5, 8, 12, 13, 19); all behind
-// `vimma.feature.downloads` (decision 20); and Firefox's downloads panel, which stays shut for an
-// ordinary download and still opens for a blocked one (Behaviour 14, decision 10). An
+// updates and keys (Behaviour 1-11, 15; decisions 3-5, 8, 12, 13, 19); blocked downloads, allowed
+// or removed only through Firefox's own dialog (Behaviour 10, decision 7, docs/security.md D3);
+// and Firefox's downloads panel, which stays shut for an ordinary download and still opens for a
+// blocked one (Behaviour 14, decision 10). An
 // Integration.downloads override records what would reach the OS (launchFile,
 // confirmLaunchExecutable, showContainingDirectory) instead of reaching it.
 
 "use strict";
 
-// Twenty-seven tasks, several of them waiting on a download or a window.
+// Thirty-five tasks, several of them waiting on a download or a window.
 requestLongerTimeout(3);
 
 /* global DownloadsPanel -- browser window global (browser.js) */
@@ -22,6 +23,9 @@ requestLongerTimeout(3);
 const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+const { DownloadIntegration } = ChromeUtils.importESModule(
+  "resource://gre/modules/DownloadIntegration.sys.mjs",
+);
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -29,7 +33,6 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 
-const FEATURE = "vimma.feature.downloads";
 const HIDDEN = "vimma-toolbar-hidden";
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -188,12 +191,9 @@ add_task(async function setup() {
   await IOUtils.makeDirectory(saveDir);
   await SpecialPowers.pushPrefEnv({
     set: [
-      [FEATURE, true],
       ["browser.download.dir", saveDir],
       ["browser.download.folderList", 2],
       ["browser.download.always_ask_before_handling_new_types", false],
-      // Set by the sub-PR that turns the feature on (decision 20); the panel tests need it now.
-      ["browser.download.alwaysOpenPanel", false],
     ],
   });
   await clean();
@@ -253,20 +253,6 @@ add_task(async function test_the_status_bar_shows_progress_then_done_failed_or_b
   await clean();
 });
 
-add_task(async function test_no_segment_while_the_feature_is_off() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
-  const one = await held("off.bin");
-  // The segment would show within a frame; give the bar several before checking.
-  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-  await TestUtils.waitForTick();
-  Assert.equal(segment(), null, "no segment while vimma.feature.downloads is off");
-  await SpecialPowers.popPrefEnv();
-  await until(() => shown() === "↓ 50%", "it shows once the feature is on");
-  await release();
-  await one.done;
-  await clean();
-});
-
 add_task(async function test_a_private_window_counts_only_its_private_downloads() {
   const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   /** @param {Window} win */
@@ -296,10 +282,19 @@ add_task(async function test_a_private_window_counts_only_its_private_downloads(
 
 add_task(async function test_a_new_profiles_first_download_opens_no_panel() {
   // Firefox opens its panel on a profile's first download whatever alwaysOpenPanel says, unless
-  // the panel has shown before (DownloadsCommon.sys.mjs, _notifyDownloadEvent).
+  // the panel has shown before (DownloadsCommon.sys.mjs, _notifyDownloadEvent); both are needed.
+  const defaults = Services.prefs.getDefaultBranch("");
   Assert.ok(
-    Services.prefs.getDefaultBranch("").getBoolPref("browser.download.panel.shown"),
+    defaults.getBoolPref("browser.download.panel.shown"),
     "Vimma's default marks the panel as shown",
+  );
+  Assert.ok(
+    !defaults.getBoolPref("browser.download.alwaysOpenPanel"),
+    "and does not open it for every new burst of downloads",
+  );
+  Assert.ok(
+    !Services.prefs.prefHasUserValue("browser.download.alwaysOpenPanel"),
+    "the test runs on Vimma's default",
   );
 });
 
@@ -395,13 +390,14 @@ add_task(async function test_ctrl_b_d_opens_the_picker_and_esc_closes_it() {
   await clean();
 });
 
-add_task(async function test_no_picker_while_the_feature_is_off() {
-  await SpecialPowers.pushPrefEnv({ set: [[FEATURE, false]] });
+add_task(async function test_the_picker_is_on_by_default_in_help_and_the_command_line() {
+  Assert.equal(
+    Services.prefs.getPrefType("vimma.feature.downloads"),
+    Services.prefs.PREF_INVALID,
+    "no feature pref is left for the downloads picker",
+  );
   const tab = await pageTab();
-  prefix("d");
-  await TestUtils.waitForTick();
-  Assert.ok(!isOpen(), "ctrl+b d does nothing while vimma.feature.downloads is off");
-  // Its help row is not listed either, while `downloads` (the Library) still is.
+  // Its help row is listed beside `downloads` (the Library).
   prefix("?", { shiftKey: true });
   const help = () => document.getElementById("vimma-help");
   await until(() => !!(/** @type {any} */ (help())?.open), "the help overlay opens");
@@ -409,12 +405,17 @@ add_task(async function test_no_picker_while_the_feature_is_off() {
     BrowserTestUtils.isVisible(
       /** @type {Element} */ (help()?.querySelector(`[data-action="${name}"]`)),
     );
-  Assert.ok(!listed("downloads_picker"), "no downloads_picker row");
-  Assert.ok(listed("downloads"), "the Library's row stays");
+  Assert.ok(listed("downloads_picker"), "the downloads_picker row");
+  Assert.ok(listed("downloads"), "and the Library's row");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !(/** @type {any} */ (help())?.open), "the help overlay closes");
+  // `:downloads` opens it too.
+  EventUtils.synthesizeKey(":", { shiftKey: true });
+  EventUtils.sendString("downloads");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(isOpen, ":downloads opens the picker");
+  await closePicker();
   BrowserTestUtils.removeTab(tab);
-  await SpecialPowers.popPrefEnv();
   await clean();
 });
 
@@ -919,4 +920,275 @@ add_task(async function test_the_picker_never_opens_an_agent_download() {
   BrowserTestUtils.removeTab(tab);
   await clean();
   await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
+});
+
+const REP = Ci.nsIApplicationReputationService;
+
+/**
+ * A download Firefox blocked by a verdict, through the integration points its reputation and
+ * content-analysis checks ask (DownloadCore.sys.mjs, DownloadCopySaver). A reputation block keeps
+ * its bytes in the `.part` file; a content-analysis `Malware` block never does.
+ * @param {string} name
+ * @param {{ verdict?: number, by?: "reputation" | "contentAnalysis" }} [options]
+ */
+async function blockedDownload(name, { verdict = REP.VERDICT_UNCOMMON, by = "reputation" } = {}) {
+  const safe = { shouldBlock: false, verdict: REP.VERDICT_SAFE };
+  const block = (/** @type {any} */ base) => ({
+    __proto__: base,
+    async shouldBlockForReputationCheck() {
+      return by === "reputation" ? { shouldBlock: true, verdict } : safe;
+    },
+    async shouldBlockForContentAnalysis() {
+      return by === "contentAnalysis" ? { shouldBlock: true, verdict } : safe;
+    },
+    shouldKeepBlockedData: () => true,
+  });
+  Integration.downloads.register(block);
+  try {
+    const path = PathUtils.join(saveDir, name);
+    const download = await Downloads.createDownload({
+      source: `${SJS}?now&name=${name}`,
+      target: { path, partFilePath: `${path}.part` },
+    });
+    await (await Downloads.getList(Downloads.PUBLIC)).add(download);
+    const error = await download.start().then(
+      () => null,
+      (/** @type {any} */ e) => e,
+    );
+    Assert.ok(error?.becauseBlocked, `${name} is blocked`);
+    return download;
+  } finally {
+    Integration.downloads.unregister(block);
+  }
+}
+
+/** Firefox's commonDialog window, once built (CommonDialog.onLoad). */
+const nextDialog = () => TestUtils.topicObserved("common-dialog-loaded").then(([w]) => w);
+
+/** @param {any} download */
+const partOf = (download) => /** @type {string} */ (download.target.partFilePath);
+
+add_task(async function test_enter_on_a_blocked_download_says_why_and_the_keys() {
+  const tab = await pageTab();
+  const download = await blockedDownload("uncommon.bin");
+  // Blocked after its transfer: Firefox sends `finish`, not `error`, so no panel; the status bar
+  // is its warning (decision 10).
+  await until(() => shown() === "↓ blocked", "the status bar says blocked");
+  Assert.ok(!DownloadsPanel.isPanelShowing, "and Firefox's panel stays shut");
+  await openPicker();
+  await highlight("uncommon.bin");
+  Assert.equal(cell(rows()[0], "index"), "blocked", "listed as blocked");
+  Assert.deepEqual(headings(), ["Active · 1"], "under active while its data is kept");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => noticeText().startsWith("blocked: "), "Enter says why");
+  Assert.ok(
+    noticeText().endsWith("! allow or remove · d remove · shift+d delete"),
+    `and the keys that apply: ${noticeText()}`,
+  );
+  Assert.ok(isOpen(), "the picker stays open");
+  Assert.ok(download.hasBlockedData && !download.succeeded, "Enter never unblocks");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_a_blocked_download_unblocks_only_through_firefoxs_dialog() {
+  const tab = await pageTab();
+  const download = await blockedDownload("allow-me.bin");
+  await openPicker();
+  await highlight("allow-me.bin");
+  // Esc in Firefox's dialog cancels: nothing changes.
+  let shown = nextDialog();
+  EventUtils.synthesizeKey("!", { shiftKey: true });
+  let dialog = await shown;
+  Assert.ok(!isOpen(), "the picker closed before Firefox's dialog");
+  EventUtils.synthesizeKey("KEY_Escape", {}, dialog);
+  await until(() => dialog.closed, "Esc closes the dialog");
+  await TestUtils.waitForTick();
+  Assert.ok(download.hasBlockedData && !download.succeeded, "Esc keeps it blocked");
+  Assert.ok(await IOUtils.exists(partOf(download)), "and its data");
+  Assert.ok(!isOpen(), "the picker does not come back");
+  // Its allow button releases the file, and opens nothing, even for a download the page's
+  // question was answered "open" for (Behaviour 10: an allowed file is opened with `o`).
+  download.launchWhenSucceeded = true;
+  await focusContent(tab.linkedBrowser);
+  await openPicker();
+  await highlight("allow-me.bin");
+  shown = nextDialog();
+  EventUtils.synthesizeKey("!", { shiftKey: true });
+  dialog = await shown;
+  dialog.document.getElementById("commonDialog").getButton("accept").click();
+  await until(() => download.succeeded, "allowed, the download is done");
+  Assert.ok(await IOUtils.exists(download.target.path), "its file is in place");
+  await until(() => noticeText().includes("allowed"), "the notice says so");
+  Assert.deepEqual(calls, [], "nothing was opened or reached the OS");
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_enter_in_firefoxs_unblock_dialog_never_reaches_the_picker() {
+  const tab = await pageTab();
+  const download = await blockedDownload("enter-me.bin");
+  await openPicker();
+  await highlight("enter-me.bin");
+  const shown = nextDialog();
+  EventUtils.synthesizeKey("!", { shiftKey: true });
+  const dialog = await shown;
+  // The chooseUnblock dialog's default button removes the file (decision 7).
+  EventUtils.synthesizeKey("KEY_Enter", {}, dialog);
+  await until(() => download.deleted, "Enter removes the blocked file");
+  Assert.ok(!download.hasBlockedData && !download.succeeded, "nothing was allowed");
+  Assert.ok(!(await IOUtils.exists(partOf(download))), "its data is gone");
+  Assert.ok(!isOpen(), "the picker did not come back");
+  Assert.deepEqual(calls, [], "nothing reached the OS");
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_no_unblock_when_allowOverride_is_false() {
+  await SpecialPowers.pushPrefEnv({ set: [["browser.safebrowsing.allowOverride", false]] });
+  const tab = await pageTab();
+  const download = await blockedDownload("no-override.bin");
+  await openPicker();
+  await highlight("no-override.bin");
+  EventUtils.synthesizeKey("!", { shiftKey: true });
+  await until(() => noticeText().includes("allowOverride"), "! says why");
+  Assert.ok(isOpen(), "no dialog: the picker stays open");
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => noticeText().startsWith("blocked: "), "Enter says why");
+  Assert.ok(!noticeText().includes("allow or remove"), "and names no !");
+  Assert.ok(download.hasBlockedData, "still blocked");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await SpecialPowers.popPrefEnv();
+  await clean();
+});
+
+add_task(async function test_a_malware_verdict_can_only_be_removed() {
+  const tab = await pageTab();
+  const download = await blockedDownload("malware.bin", { verdict: REP.VERDICT_DANGEROUS });
+  Assert.equal(download.error.reputationCheckVerdict, "Malware", "a Malware verdict");
+  await openPicker();
+  await highlight("malware.bin");
+  EventUtils.synthesizeKey("!", { shiftKey: true });
+  await until(() => noticeText().includes("can only be removed"), "! says why");
+  Assert.ok(isOpen(), "no dialog: the picker stays open");
+  EventUtils.synthesizeKey("d");
+  await until(() => !titles().includes("malware.bin"), "d removes it");
+  await until(() => download.deleted, "with its blocked data");
+  Assert.ok(!(await IOUtils.exists(partOf(download))), "the data is gone from disk");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_d_on_a_blocked_download_deletes_its_data() {
+  const tab = await pageTab();
+  const download = await blockedDownload("remove-blocked.bin");
+  await openPicker();
+  await highlight("remove-blocked.bin");
+  EventUtils.synthesizeKey("d");
+  await until(() => !titles().includes("remove-blocked.bin"), "d removes the row");
+  await until(() => download.deleted && !download.hasBlockedData, "and confirms the block");
+  Assert.ok(!(await IOUtils.exists(partOf(download))), "its data is gone");
+  Assert.ok(!promptOpen(), "with no question, as Firefox's remove");
+  await until(() => noticeText().includes("and its blocked data"), "the notice says so");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_D_on_a_blocked_download_confirms_the_block() {
+  const tab = await pageTab();
+  const download = await blockedDownload("delete-blocked.bin");
+  await openPicker();
+  await highlight("delete-blocked.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  EventUtils.synthesizeKey("y");
+  await until(() => download.deleted && !download.hasBlockedData, "y confirms the block");
+  Assert.ok(!(await IOUtils.exists(partOf(download))), "its data is gone");
+  Assert.ok(!download.succeeded, "and nothing was allowed");
+  await until(() => noticeText().includes("deleted"), "the notice says so");
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+
+  // An Insecure block keeps no bytes, yet stays blocked until its block is confirmed
+  // (Download.refresh keeps hasBlockedData for that verdict).
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.block_download_insecure", true],
+      ["dom.security.https_first", false],
+    ],
+  });
+  const page = await pageTab();
+  const insecure = await clickDownload(`${SJS.replace("https://", "http://")}?now&name=http.bin`);
+  await until(() => insecure.hasBlockedData, "blocked as Insecure");
+  await until(() => DownloadsPanel.isPanelShowing, "Firefox's panel opens as its warning");
+  const hidden = BrowserTestUtils.waitForEvent(DownloadsPanel.panel, "popuphidden");
+  DownloadsPanel.hidePanel();
+  await hidden;
+  await focusContent(page.linkedBrowser);
+  await openPicker();
+  await highlight("http.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  EventUtils.synthesizeKey("y");
+  await until(() => insecure.deleted && !insecure.hasBlockedData, "y confirms the block");
+  Assert.ok(!insecure.succeeded, "and nothing was allowed");
+  BrowserTestUtils.removeTab(page);
+  await SpecialPowers.popPrefEnv();
+  await clean();
+});
+
+add_task(
+  async function test_a_content_analysis_malware_verdict_cannot_be_unblocked_removed_or_deleted() {
+    const tab = await pageTab();
+    const download = await blockedDownload("scanned.bin", {
+      verdict: REP.VERDICT_DANGEROUS,
+      by: "contentAnalysis",
+    });
+    Assert.ok(download.error.becauseBlockedByContentAnalysis, "blocked by content analysis");
+    await openPicker();
+    await highlight("scanned.bin");
+    EventUtils.synthesizeKey("!", { shiftKey: true });
+    await until(() => noticeText().includes("nothing blocked to allow"), "! says why");
+    EventUtils.synthesizeKey("d");
+    await until(() => noticeText().includes("scanner keeps"), "d says why");
+    EventUtils.synthesizeKey("D", { shiftKey: true });
+    await TestUtils.waitForTick();
+    Assert.ok(!promptOpen(), "shift+d asks nothing");
+    Assert.ok(noticeText().includes("scanner keeps"), "and says why");
+    Assert.ok(isOpen(), "the picker stays open");
+    Assert.deepEqual(titles(), ["scanned.bin"], "the row stays");
+    const list = await Downloads.getList(Downloads.ALL);
+    Assert.ok((await list.getAll()).includes(download), "and so does the download");
+    await closePicker();
+    BrowserTestUtils.removeTab(tab);
+    await clean();
+  },
+);
+
+add_task(async function test_spam_blocks_are_not_listed() {
+  const tab = await pageTab();
+  await finished("real.bin");
+  // As nsExternalAppHandler reports a page that started too many downloads.
+  Services.obs.notifyObservers(
+    tab.linkedBrowser.browsingContext,
+    "blocked-automatic-download",
+    `${DIR}spam.bin`,
+  );
+  const spam = DownloadIntegration.downloadSpamProtection;
+  await until(() => DownloadsPanel.isPanelShowing, "Firefox's panel shows the spam block");
+  const hidden = BrowserTestUtils.waitForEvent(DownloadsPanel.panel, "popuphidden");
+  DownloadsPanel.hidePanel();
+  await hidden;
+  await focusContent(tab.linkedBrowser);
+  await openPicker();
+  await until(() => titles().length > 0, "the picker lists its rows");
+  Assert.deepEqual(titles(), ["real.bin"], "the spam block is not listed");
+  await closePicker();
+  spam.removeDownloadSpamForWindow(`${DIR}spam.bin`, window);
+  BrowserTestUtils.removeTab(tab);
+  await clean();
 });

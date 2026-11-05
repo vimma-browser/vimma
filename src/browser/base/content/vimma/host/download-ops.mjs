@@ -49,12 +49,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
  */
 const integration = () => lazy.Integration.downloads.getCombined(lazy.DownloadIntegration);
 
-/** docs/specs/downloads.md decision 20; removed by the sub-PR that turns the feature on. */
-export const DOWNLOADS_FEATURE_PREF = "vimma.feature.downloads";
-
-/** Whether the downloads feature is on (decision 20). */
-export const downloadsOn = () => Services.prefs.getBoolPref(DOWNLOADS_FEATURE_PREF, false);
-
 /** A picker re-renders a download's progress at most this often (decision 12). */
 const PROGRESS_MS = 1000;
 
@@ -242,41 +236,29 @@ export class DownloadWatch {
     this.end = null;
     /** @type {number | null} the timer that takes `↓ done` away */
     this.doneTimer = null;
-    this.observe = () => void this.sync().catch(console.error);
-    Services.prefs.addObserver(DOWNLOADS_FEATURE_PREF, this.observe);
-    this.observe();
+    this.attach().catch(console.error);
   }
 
-  get on() {
-    return downloadsOn();
-  }
-
-  /** @private Attach to the list while the feature is on; detach while it is off. */
-  async sync() {
-    if (this.on && !this.view) {
-      const view = {
-        /** @param {any} d */
-        onDownloadAdded: (d) => (this.downloads.add(d), this.changed()),
-        onDownloadChanged: () => this.changed(),
-        /** @param {any} d */
-        onDownloadRemoved: (d) => (this.downloads.delete(d), this.changed()),
-      };
-      this.view = view;
-      this.since = Infinity;
-      const priv = lazy.PrivateBrowsingUtils.isWindowPrivate(this.win);
-      const list = await lazy.Downloads.getList(
-        priv ? lazy.Downloads.PRIVATE : lazy.Downloads.PUBLIC,
-      );
-      if (this.view !== view || this.destroyed) return;
-      this.list = list;
-      await list.addView(view);
-      // addView lists what is there already: those ends happened before this window looked.
-      this.seen = downloadEnds(new Map(), this.records(), { seed: true }).seen;
-      this.since = Date.now();
-    } else if (!this.on && this.view) {
-      this.detach();
-      this.changed();
-    }
+  /** @private A view on the window's list, for the life of the window. */
+  async attach() {
+    const view = {
+      /** @param {any} d */
+      onDownloadAdded: (d) => (this.downloads.add(d), this.changed()),
+      onDownloadChanged: () => this.changed(),
+      /** @param {any} d */
+      onDownloadRemoved: (d) => (this.downloads.delete(d), this.changed()),
+    };
+    this.view = view;
+    const priv = lazy.PrivateBrowsingUtils.isWindowPrivate(this.win);
+    const list = await lazy.Downloads.getList(
+      priv ? lazy.Downloads.PRIVATE : lazy.Downloads.PUBLIC,
+    );
+    if (this.view !== view || this.destroyed) return;
+    this.list = list;
+    await list.addView(view);
+    // addView lists what is there already: those ends happened before this window looked.
+    this.seen = downloadEnds(new Map(), this.records(), { seed: true }).seen;
+    this.since = Date.now();
   }
 
   /** @private */
@@ -340,13 +322,12 @@ export class DownloadWatch {
 
   /** @private */
   compute() {
-    if (!this.view || !this.on) return null;
+    if (!this.view) return null;
     return downloadSegment(downloadSummary(this.records()), this.end, Date.now());
   }
 
   destroy() {
     this.destroyed = true;
-    Services.prefs.removeObserver(DOWNLOADS_FEATURE_PREF, this.observe);
     if (this.doneTimer !== null) this.win.clearTimeout(this.doneTimer);
     this.detach();
   }
@@ -472,25 +453,6 @@ async function showInFolder(d) {
 }
 
 /**
- * The ops a picker key runs in this build; unblock comes with its key (docs/specs/downloads.md,
- * Delivery 5).
- */
-const RUNS = new Set([
-  "open",
-  "openSystem",
-  "show",
-  "copyLink",
-  "copyPath",
-  "referrer",
-  "library",
-  "pauseResume",
-  "cancel",
-  "retry",
-  "remove",
-  "delete",
-]);
-
-/**
  * The download as it is now, or null when it has left the window's list (removed in the
  * Library, by another window, or by clearing history).
  * @param {Window} win
@@ -526,6 +488,13 @@ async function answered(win, d, asked, op, say) {
     d.cancel().catch(() => {});
     await d.removePartialData().finally(() => d.target.refresh());
     say(`canceled "${asked.name}"`);
+    return;
+  }
+  if (d.hasBlockedData) {
+    // Blocked data is removed as Firefox's blocked view removes it (downloadsCmd_confirmBlock):
+    // `deleteDownloadFiles` would leave it marked as blocked (decision 7, docs/security.md D3).
+    await d.confirmBlock();
+    say(`deleted "${asked.name}"`);
     return;
   }
   // DownloadsViewUI's downloadsCmd_deleteFile, with the user's browser.download.clearHistoryOnDelete.
@@ -565,7 +534,12 @@ function runState(win, d, r, op, say) {
     say(`retrying "${r.name}"`);
   } else if (op === "remove") {
     lazy.DownloadsCommon.deleteDownload(d).catch(console.error);
-    say(`removed "${r.name}" from the list; the file stays`);
+    // Firefox's remove confirms the block of blocked data, which deletes it (decision 7, D3).
+    say(
+      r.hasBlockedData
+        ? `removed "${r.name}" and its blocked data`
+        : `removed "${r.name}" from the list; the file stays`,
+    );
   }
 }
 
@@ -594,6 +568,48 @@ function openReferrer(win, d, referrer) {
   });
 }
 
+/** `browser.safebrowsing.allowOverride`: off, no blocked download is allowed (decision 7). */
+const allowOverride = () => Services.prefs.getBoolPref("browser.safebrowsing.allowOverride", true);
+
+/**
+ * `!`: Firefox's own dialog decides, in Firefox's wording, and its answer runs as Firefox's
+ * Library runs it (DownloadsViewUI.sys.mjs, confirmUnblock). Always `chooseUnblock`, whose default
+ * button removes the file, never `chooseOpen`, whose default opens it: a habitual Enter cannot run
+ * a blocked file, and opening is a separate `o` (decision 7, docs/security.md D3). The answer
+ * stands only for the download asked about, as in D5: the dialog is modal, but the list, the file
+ * and the pref can change under it.
+ * @param {Window} win
+ * @param {any} d
+ * @param {DownloadRecord} asked
+ * @param {(text: string, error?: boolean) => void} say
+ */
+async function unblock(win, d, asked, say) {
+  const action = await lazy.DownloadsCommon.confirmUnblockDownload({
+    verdict: d.error?.reputationCheckVerdict,
+    // A content-analysis warning is worded by its verdict without the reputation flag.
+    becauseBlockedByReputationCheck: !!d.error?.becauseBlockedByReputationCheck,
+    window: win,
+    dialogType: "chooseUnblock",
+  });
+  if (action !== "unblock" && action !== "confirmBlock") return;
+  const op = action === "unblock" ? "unblock" : "delete";
+  if (downloadChanged(asked, await current(win, d), op, { allowOverride: allowOverride() })) {
+    say(`"${asked.name}" changed while Firefox asked; nothing was done`, true);
+    return;
+  }
+  if (action === "unblock") {
+    // A download whose question was answered "open with" would open as it is released
+    // (Download._succeed). An allowed file is opened with `o`, through Firefox's executable
+    // prompt, never by the allow itself (Behaviour 10).
+    d.launchWhenSucceeded = false;
+    await d.unblock();
+    say(`allowed "${asked.name}"; o opens it`);
+  } else {
+    await d.confirmBlock();
+    say(`removed the blocked file "${asked.name}"`);
+  }
+}
+
 /** @param {string} text */
 function copy(text) {
   /** @type {any} */ (Cc["@mozilla.org/widget/clipboardhelper;1"])
@@ -618,10 +634,11 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
     return;
   }
   const r = recordOf(d, win);
-  const allowOverride = Services.prefs.getBoolPref("browser.safebrowsing.allowOverride", true);
-  const result = downloadKey(r, key, { allowOverride });
+  const result = downloadKey(r, key, { allowOverride: allowOverride() });
   if (result.type === "refuse") say(result.text, true);
-  if (result.type !== "run" || !RUNS.has(result.op)) return;
+  // Enter on a blocked download: Firefox's reason and the keys that apply, never an unblock.
+  if (result.type === "notice") say(result.text);
+  if (result.type !== "run") return;
   if (downloadAsks(result.op)) {
     const op = /** @type {"cancel" | "delete"} */ (result.op);
     // An open picker takes every key first: it closes, so the `y` reaches the question
@@ -682,6 +699,18 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
     case "library":
       close();
       runCommand(win, "Tools:Downloads");
+      return;
+    case "unblock":
+      // An open picker takes every key first: it closes, so the dialog's keys reach the dialog
+      // (decision 6). The dialog is a modal `confirmEx`, which spins a nested event loop: it runs
+      // on its own turn, not inside the key's dispatch.
+      close();
+      win.setTimeout(() =>
+        unblock(win, d, r, say).catch((/** @type {any} */ e) => {
+          console.error(e);
+          say(`allow: ${e?.message ?? e}`, true);
+        }),
+      );
       return;
   }
 }

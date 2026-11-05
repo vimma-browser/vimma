@@ -645,15 +645,17 @@ describe("downloads picker (docs/specs/downloads.md)", () => {
     for (const key of ["p", "c", "r", "d", "shift+d"]) {
       expect(pickerKey(s, key).effect, key).toEqual({ type: "download", key, id: "2" });
     }
+    // Allow or remove a blocked one through Firefox's dialog (Delivery 5).
+    expect(pickerKey(s, "!").effect).toEqual({ type: "download", key: "!", id: "2" });
     expect(pickerKey(s, "x").effect).toBeNull();
     expect(pickerKey(s, "q").effect).toEqual({ type: "close" });
     s = pickerKey(s, "/").state;
-    for (const key of ["o", "s", "y", "u"]) {
+    for (const key of ["o", "s", "y", "u", "!"]) {
       const r = pickerKey(s, key);
       expect(r.effect, key).toBeNull();
       s = r.state;
     }
-    expect(s.query).toBe("osyu");
+    expect(s.query).toBe("osyu!");
   });
 
   test("the filter matches name, host, state and workspace", () => {

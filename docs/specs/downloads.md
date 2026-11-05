@@ -1,6 +1,6 @@
 # Spec: downloads
 
-Status: accepted (sub-PRs 1, 2, 3 and 4 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
+Status: implemented · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
 `picker.mjs`, `statusbar.mjs`, `actions.mjs`, `defaults.mjs`, `cmdline.mjs`);
 `src/browser/base/content/vimma/` (new `host/download-ops.mjs`; `ui/picker.mjs`, `ui/statusbar.mjs`,
 `host/VimmaHost.sys.mjs`); `src/browser/branding/vimma/pref/firefox-branding.js`; generated
@@ -103,8 +103,10 @@ Firefox's downloads UI is built for the mouse, and Vimma's hidden toolbar makes 
     the status bar's live region (`download finished: report.pdf`), and the segment's text says
     `downloading 42%` rather than the arrow.
 14. As a Vimma user, starting a download no longer opens Firefox's downloads panel or shows the
-    hidden toolbar, the first download of a new profile included. A download Firefox blocks still
-    opens the panel, with the toolbar, as in Firefox, because that panel is Firefox's warning. The
+    hidden toolbar, the first download of a new profile included. A download Firefox blocks as it
+    starts (an `http:` file from an `https:` page) or as spam still opens the panel, with the
+    toolbar, as in Firefox, because that panel is Firefox's warning; one blocked after its transfer
+    (a reputation or content-analysis verdict) shows as `↓ blocked` on the status bar. The
     toolbar's downloads button and its panel still work when the toolbar is shown (`ctrl+b u`).
 15. As a Vimma user, `shift+l` in the picker opens Firefox's full downloads view (the Library, or
     `about:downloads` in a private window), as `ctrl+shift+y` does.
@@ -233,8 +235,13 @@ action (Delivery). No config key is added.
   before (`browser.download.panel.shown`, default `false`, `firefox.js:939`) and
   `browser.download.alwaysOpenPanel` does not ask for it (`:1056-1068`). So a profile's first
   download opens the panel whatever `alwaysOpenPanel` says, and an `error` event opens it always.
-  `onDownloadAdded` sends `error` for every download blocked by a reputation or content-analysis
-  verdict (`:917-921`), `Insecure` included. A download blocked as spam opens the panel when no
+  `onDownloadAdded` sends `error` for a download that is already blocked by a reputation or
+  content-analysis verdict when it is added (`:917-921`): an `Insecure` one, which
+  `DownloadLegacy` adds blocked, or one restored blocked from the session. An ordinary download is
+  added as it starts and gets its verdict after the transfer (`DownloadCore.sys.mjs`,
+  `_checkReputationAndMove`); `onDownloadChanged` then sends `finish`, which only animates the
+  button once the panel has shown before. In stock Firefox the panel is open already from that
+  download's start (`alwaysOpenPanel`). A download blocked as spam opens the panel when no
   other download is running (`DownloadSpamProtection.sys.mjs:126-140`).
 - **Spam lists.** Downloads blocked because a page started too many are `DownloadSpam` objects in
   a per-window `DownloadList` (`DownloadSpamProtection.sys.mjs`, `spamList`, `getSpamListForWindow`
@@ -350,8 +357,9 @@ download list view and runs each action through Firefox's own objects. The picke
    (finished, removed elsewhere), nothing happens and the notice says so, as the add-on picker's
    remove does.
 7. **Blocked downloads keep Firefox's dialog.** `!` calls
-   `DownloadsCommon.confirmUnblockDownload` with the verdict, both `becauseBlockedByReputationCheck`
-   and `becauseBlockedByContentAnalysis` (the dialog words its message by them), and the dialog type
+   `DownloadsCommon.confirmUnblockDownload` with the verdict and `becauseBlockedByReputationCheck`
+   (the dialog words its message by them; in Firefox 159 it takes no content-analysis flag, and a
+   content-analysis warning reads as its verdict without the reputation flag), and the dialog type
    `chooseUnblock`, and runs what it returns (`unblock` or `confirmBlock`), so that a blocked
    download is released only through Firefox's own warning, in Firefox's wording. Vimma always
    uses `chooseUnblock`, whose default button removes the file, and never `chooseOpen`, whose
@@ -368,7 +376,17 @@ download list view and runs each action through Firefox's own objects. The picke
    state (Research), because the content-analysis agent, not the user, owns that file, and both
    keys would run `confirmBlock` on it.
    `Enter` on a blocked row never unblocks: it puts the verdict's text and the applicable keys in
-   the notice line. `shift+d` on a blocked row runs `confirmBlock` after `y/N`. Rejected: a Vimma
+   the notice line. `shift+d` on a blocked row runs `confirmBlock` after `y/N`, because
+   `deleteDownloadFiles` leaves an `Insecure` download marked as blocked; as with Firefox's own
+   "Remove file" in its blocked view, the entry stays in the list and history whatever
+   `browser.download.clearHistoryOnDelete` says, and `d` removes it. An allow sets the
+   download's `launchWhenSucceeded` to `false` before `unblock`, because a download whose page
+   question was answered "open" would otherwise open as it is released (`Download._succeed`),
+   which is the open from the dialog this decision rules out. The dialog's answer acts only on the
+   download asked about, as decision 6's `y/N` does, since the list, the file and
+   `allowOverride` can change under a modal dialog. The dialog opens on its own turn after the
+   key, because `confirmEx` spins a nested event loop that must not run inside the key's
+   dispatch. Rejected: a Vimma
    question in the notice line in place of Firefox's dialog, because it would be a second wording
    of a security warning to keep in step with Firefox's; one key to unblock, because Firefox never
    releases a blocked file in one step.
@@ -402,12 +420,19 @@ blocked`, and so on, and the end of each download is announced once (m7-a11y: no
     the toolbar hidden the panel brings the whole toolbar over the page for every first download
     of a burst, and the status-bar segment now carries that news;
     both are needed, since a profile whose panel never showed opens it on its first download
-    whatever `alwaysOpenPanel` says (Research). A blocked download (an `error` event, or a spam
-    block with no other download running) still opens the panel, because that panel is Firefox's
-    warning about a file it refused, and a warning that pushes the toolbar over the page once is
-    better than one the reader misses; stopping it would need an upstream patch to
-    `_notifyDownloadEvent` and `DownloadSpamProtection`, with a line in [ADR-003](../adr/003-own-files-minimal-patches.md), for no gain in
-    safety. The downloads button and its panel stay, so a user with the toolbar shown
+    whatever `alwaysOpenPanel` says (Research). A download blocked as it is added (an `error`
+    event: an `Insecure` one) or as spam with no other download running still opens the panel,
+    because that panel is Firefox's warning about a file it refused, and a warning that pushes the
+    toolbar over the page once is better than one the reader misses; stopping it would need an
+    upstream patch to `_notifyDownloadEvent` and `DownloadSpamProtection`, with a line in
+    [ADR-003](../adr/003-own-files-minimal-patches.md), for no gain in safety. A download blocked
+    after its transfer (a reputation verdict, which Vimma's builds reach only with a Safe Browsing
+    key, or a content-analysis one) opens no panel (Research): its warning is the status bar's
+    `↓ blocked`, in the error colour, announced once, and kept until the picker is opened
+    (decision 9), and the blocked file waits under `active` until `!`, `d` or `shift+d`.
+    Rejected: opening Firefox's panel from Vimma's code for it, because a panel opened at the end
+    of a download takes focus from whatever the reader is typing, the reason decision 11 keeps the
+    picker from opening by itself, and the file is held either way. The downloads button and its panel stay, so a user with the toolbar shown
     keeps Firefox's UI, and the pref can be set back in `about:config`. Rejected: removing the
     button or the panel, because they are the mouse path and cost nothing while hidden; flipping
     the pref only while the toolbar is hidden, because a pref that changes with the UI state would
@@ -531,7 +556,8 @@ Written first and seen to fail.
   `a content-analysis Malware verdict refuses !, d and shift+d`;
   `d on blocked data is offered with the data deleted, as Firefox's remove`;
   `an agent download refuses o, shift+o, u, r and !`;
-  `shift+d and c need a y/N; d does not`; `the filter matches name, host, state and workspace`;
+  `shift+d and c need a y/N; d does not`;
+  `an answer in Firefox's unblock dialog stands only while it still applies`; `the filter matches name, host, state and workspace`;
   `the segment shows one, several, unknown size and paused`;
   `done goes after 10 seconds; failed and blocked stay until the picker is opened`;
   `failed and blocked outrank the title; progress gives way first`;
@@ -572,6 +598,9 @@ reach those through `DownloadsCommon.openDownload` and `Download.showContainingD
 - `test_a_malware_verdict_can_only_be_removed`
 - `test_a_content_analysis_malware_verdict_cannot_be_unblocked_removed_or_deleted`
 - `test_d_on_a_blocked_download_deletes_its_data`
+- `test_D_on_a_blocked_download_confirms_the_block`
+- `test_enter_on_a_blocked_download_says_why_and_the_keys`
+- `test_the_picker_is_on_by_default_in_help_and_the_command_line`
 - `test_spam_blocks_are_not_listed`
 - `test_names_with_html_stay_text`
 - `test_L_opens_firefoxs_downloads_view`

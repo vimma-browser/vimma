@@ -63,6 +63,21 @@ registerCleanupFunction(() => {
   }
 });
 
+// A download an earlier test file left failed or blocked keeps `↓ failed` or `↓ blocked` on this
+// window's bar until the downloads picker opens (docs/specs/downloads.md decision 9), and that
+// segment takes width the fitting tasks measure. Opening the picker once clears it, as for a user.
+add_task(async function no_download_end_on_the_bar() {
+  if (!seg("downloads")) return;
+  await focusContent(gBrowser.selectedBrowser);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("d");
+  const picker = () => /** @type {any} */ ($("vimma-downloads-picker"));
+  await until(() => !!picker()?.open, "the downloads picker opens");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !picker()?.open, "and closes");
+  await until(() => !seg("downloads"), "the bar has no downloads segment");
+});
+
 add_task(async function bar_is_visible_at_the_window_bottom() {
   const b = bar();
   Assert.ok(b, "#vimma-statusbar exists");

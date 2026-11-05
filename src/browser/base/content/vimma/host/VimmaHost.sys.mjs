@@ -33,7 +33,7 @@ import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
-import { DownloadRows, DownloadWatch, downloadPickerKey, downloadsOn } from "./download-ops.mjs";
+import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { Find } from "./find.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { ElementFocus } from "./element-focus.mjs";
@@ -1144,9 +1144,8 @@ export const RUNNERS = Object.freeze({
     s.notice.hide();
     s.popups.open();
   },
-  // docs/specs/downloads.md: prefix+d / :downloads, behind vimma.feature.downloads (decision 20).
+  // docs/specs/downloads.md: prefix+d / :downloads.
   "downloads.picker": (/** @type {WindowState} */ s) => {
-    if (!downloadsOn()) return;
     s.notice.hide();
     // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
     s.downloads.clearEnd();
@@ -1579,13 +1578,7 @@ export const VimmaHost = {
         showOutlineBeside(state);
       },
       dispatcher: createDispatcher(keymap),
-      help: new HelpOverlay(
-        win,
-        keymap,
-        RUNNABLE,
-        () => state.firefoxKeys?.status().on ?? [],
-        () => (downloadsOn() ? [] : ["downloads_picker"]),
-      ),
+      help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
       notice: new Notice(win),
       cmdline: new CommandLine(win, {
         run: (result) => this._runCommand(state, result),
@@ -1596,8 +1589,6 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
-        // An unfinished feature's commands exist only with its pref on (`:downloads`).
-        hidden: () => (downloadsOn() ? [] : ["downloads.picker"]),
       }),
       tabStrip: null,
       toolbar: null,

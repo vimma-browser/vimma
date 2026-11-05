@@ -38,6 +38,11 @@ What works today, each with the section that explains it:
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
 - **[Hide the toolbar](#hiding-the-toolbar)** with `ctrl+b u`: the page reaches the top of the
   window, and the address bar comes back when you need it.
+- **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
+  one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
+  a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
+  `↓ done`, `↓ failed` or `↓ blocked` after, so Firefox's downloads panel no longer drops the
+  toolbar over the page.
 - **[Theming](#colours-and-themes):** the bars, Firefox's toolbar, menus, dialogs and settings
   pages, pickers, hints, start page and sidebar follow your desktop theme and change with it, or
   take your own colours.
@@ -825,6 +830,11 @@ with `F11` keeps it. From the left:
 - `pop-up blocked · y allow · n block · Esc close` (yellow) while the page has Firefox's pop-up
   blocked bar and [its keys](#blocked-pop-ups) count, and `pop-ups blocked · :popups to allow`
   on a site whose pop-ups you blocked with `n`;
+- `↓ 42%` while a download runs (`↓ 3 · 42%` for three, `↓ 3` while no size is known,
+  `↓ paused` when all are paused), then `↓ done` for 10 seconds; `↓ failed` or `↓ blocked`, in
+  red, stays until you next open the [downloads picker](#downloads) in that window. It never
+  shows a file name, and a screen reader hears `downloading 42%` and, once, each file that
+  finished, failed or was blocked;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -867,6 +877,11 @@ until a restart or until you edit that line.
   window's top edge does not. It also shows by itself while an add-on's popup or a panel from one
   of its buttons (downloads, the menu, the extensions menu) is open, so the popup hangs from its
   own button as with the toolbar shown.
+- **Downloads:** starting a download no longer opens Firefox's downloads panel, so the toolbar
+  stays hidden; the status bar's `↓` shows it, and `ctrl+b d` [lists them](#downloads). A
+  download Firefox refuses as it starts (an `http:` file from an `https:` page) still opens the
+  panel, and with it the toolbar, because that panel is Firefox's warning; one blocked after it
+  finished downloading shows as `↓ blocked` in red.
 - **Permission prompts** (camera, location, notifications) show the whole address bar, without
   the toolbar's buttons: the prompt points at its icon in the address bar, next to the site's
   identity, exactly as with the toolbar shown. Vimma never shows one without saying which site
@@ -1105,6 +1120,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b a`                                                                              | Bookmarks the page; type folders before its title: `work/docs/title` ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ctrl+b d`                                                                              | Opens the downloads picker: open, show in folder, pause, retry, remove, delete, allow a blocked file ([below](#downloads)).                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 8 panes by default (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -3751,6 +3767,72 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Sidebar add-ons** (a `sidebar_action`) open in Firefox's own sidebar, through the add-on's
   button or the View menu, not in Vimma's side panel.
 
+## Downloads
+
+Your downloads are one key away, without the mouse and without Firefox's downloads panel
+dropping the toolbar over the page. While a download runs, the [status bar](#status-bar) shows
+`↓ 42%`; when it ends, `↓ done` for a few seconds, or `↓ failed` or `↓ blocked` until you look.
+
+`ctrl+b d` (or `:downloads`) opens the downloads picker over the page: newest first, those in
+progress, paused or blocked under **Active**, the rest under **Recent**, up to 100 in all. Each row
+shows the file's name, its state (`42%`, `paused`, `done`, `failed`, `canceled`, `blocked`,
+`missing`), its size or progress (`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from
+(the host only, never the full link) and when it finished. A download from another workspace
+names that workspace, and one from the [agent workspace](#agent-workspace) says `◇ agent`.
+Progress updates in place. Like the other pickers, it takes every key while open; `Esc` or `q`
+closes it.
+
+| Key            | What it does                                                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `j` / `k`, `/` | Move; filter by name, site, state or workspace (`Esc` back to the list).                                                    |
+| `Enter`        | The obvious thing for its state: opens a finished file, resumes a paused one, retries a failed one, explains a blocked one. |
+| `o`            | Opens the file as Firefox would: a PDF or an image in a tab, anything else in its app. A program or script asks first.      |
+| `O`            | Opens a file Firefox shows itself (a PDF) in the system's app instead.                                                      |
+| `s`            | Shows the file in its folder (Finder on macOS).                                                                             |
+| `y` / `Y`      | Copies the download's link / the file's path.                                                                               |
+| `p`            | Pauses or resumes.                                                                                                          |
+| `c`            | Cancels, after a `y/N` question, and removes the partial file.                                                              |
+| `r`            | Retries a failed or canceled download.                                                                                      |
+| `u`            | Opens the page the download came from in a new tab.                                                                         |
+| `d`            | Removes it from the list and from history. The file stays (a blocked file's data is deleted, as in Firefox).                |
+| `D`            | Deletes the file from disk, after a `y/N` question.                                                                         |
+| `!`            | Allows or removes a blocked download, in Firefox's own dialog.                                                              |
+| `L`            | Opens Firefox's full downloads view (the Library, or `about:downloads` in a private window), as `ctrl+shift+y` does.        |
+
+A key that does not apply says why in the notice line (`not finished yet`, `the file is
+missing`). `c` and `D` close the picker before they ask, so your `y` answers the question; if the
+download changed before you answered (it finished, or its file went), nothing is done and the
+notice says so.
+
+**Blocked downloads.** Firefox blocks a file it does not trust. For an `http:` file from an
+`https:` page, refused as it starts, its downloads panel opens with its warning, the one time the
+toolbar still comes down by itself; a file blocked after it finished downloading (your
+organization's scanner, or Safe Browsing in a build that has it) shows as `↓ blocked` in red. In
+the picker the file is listed as `blocked`; `Enter` shows Firefox's reason and the keys that
+apply. `!` opens Firefox's own dialog: **Allow download**, **Remove file**, or **Cancel**. Its
+default, the one `Enter` presses, removes the file, and `Esc` cancels, so a habitual `Enter`
+never lets a blocked file through; `y` there allows it only after the dialog has been shown a
+moment with no key pressed, as in Firefox's other dialogs ([Answering a dialog](#answering-a-dialog)). Allowing a file never opens it: press
+`o` afterwards. `!` does nothing, and says why, when `browser.safebrowsing.allowOverride` is off
+or the file is named as malware, which can only be removed. A file your organization's scanner
+blocked as malware cannot be removed or deleted from the picker either.
+
+**Agent downloads.** A file the agent workspace downloaded is listed with `◇ agent` so you can
+find it, show it in its folder, copy its path or delete it, but Vimma never opens it, retries
+it, allows it or opens the page it came from
+([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
+
+**Private windows.** A private window lists only its own private downloads, and a normal window
+never lists a private one; they are gone when the private session ends, as in Firefox.
+
+**Linux and macOS.** The keys are the same. On macOS `s` shows the file selected in Finder. On
+Linux Vimma asks your file manager to show it, and a desktop without one (a bare tiling window
+manager) shows nothing: `Y` copies the path to paste in a terminal instead.
+
+`ctrl+b d` is the `downloads_picker` binding: like every binding, the prefix and the leader, it
+can be remapped in [config.toml](#configtoml). The keys inside the picker are fixed, as in the
+other pickers.
+
 ## Site permissions
 
 See and change what the site in the selected tab may do (camera, microphone, location,
@@ -3899,6 +3981,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                  |
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
+| `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                       |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
 | `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
 | `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
@@ -4342,11 +4425,14 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   back (`browser.startup.page` = `3`; Firefox's default `1` opens the home page).
 - **Firefox Sync leaves two settings alone**: `browser.startup.page` and
   `privacy.userContext.enabled` (turning containers off deletes every workspace's data).
-- **A file Firefox opens in a tab of its own opens no downloads panel.** A PDF that a site
-  serves as a download opens in the PDF viewer ready for your keys, with focus in its tab rather
-  than in the downloads panel; the downloads button still shows the download. Other downloads open
-  the panel as in Firefox, and a profile's first download behaves as every later one
-  (`browser.download.panel.shown` = `true`).
+- **A download opens no downloads panel.** The status bar's `↓` shows it and `ctrl+b d` lists
+  it ([Downloads](#downloads)), so the panel no longer brings the hidden toolbar over the page,
+  and a PDF that a site serves as a download opens in the PDF viewer with focus in its tab. A
+  download Firefox refuses as it starts still opens the panel, as its warning; one blocked after
+  it finished downloading shows as `↓ blocked` in red. The toolbar's downloads button
+  and its panel still work (`browser.download.alwaysOpenPanel` = `false`, and
+  `browser.download.panel.shown` = `true` so that a profile's first download behaves as every
+  later one).
 
 ## Accessibility
 
