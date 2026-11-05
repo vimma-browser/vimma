@@ -92,8 +92,12 @@ export const PANE_VIEW_EVENTS = Object.freeze([
   ...SPLIT_EVENTS,
 ]);
 
-/** Why a new pane is refused while the workspace's split is a hidden view (side-panel-unsplit). */
-export const HIDDEN_REASON = "the split is hidden: go to one of its tabs first";
+/**
+ * Why a new pane is refused while the workspace's split is a hidden view (side-panel-unsplit
+ * decision 29). It names the way back, and the host shows it until the next key
+ * (docs/specs/multiple-splits.md, decision 4).
+ */
+export const HIDDEN_REASON = "the split is hidden: select one of its tabs (ctrl+b b) to go back";
 
 /** Dwindle's area while the content area has no size yet: wide, as most windows are. */
 const WIDE = Object.freeze({ x: 0, y: 0, width: 16, height: 9 });

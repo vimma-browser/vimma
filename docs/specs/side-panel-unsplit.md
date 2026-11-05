@@ -271,6 +271,9 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
     split is hidden: go to one of its tabs first", so a second split never replaces the hidden
     one. Splitting the shown tab and dropping or merging the hidden view was rejected:
     refusing loses nothing.
+    (Since changed: the refusal reads "the split is hidden: select one of its tabs (ctrl+b b) to
+    go back" and stays until the next key;
+    [multiple-splits](multiple-splits.md), decision 4.)
 
 ### Behaviour changes (option B)
 

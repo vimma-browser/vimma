@@ -535,3 +535,26 @@ add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
   await reset();
   gBrowser.removeTab(followed);
 });
+
+// docs/specs/multiple-splits.md behaviour 4 and decision 4: the refusal to split a tab shown
+// alone stays until the next key, and says how to get back.
+add_task(async function splitting_the_lone_tab_is_refused_until_the_next_key() {
+  await reset();
+  await split(["a", "b"], "a");
+  gBrowser.selectedTab = tab("d");
+  await until(() => hiddenView(), "d alone, the split hidden");
+  await focusContent(tab("d").linkedBrowser);
+  const want = "the split is hidden: select one of its tabs (ctrl+b b) to go back";
+  for (const key of ["v", "-", "KEY_Enter"]) {
+    prefix(key);
+    await until(() => notice() === want, `ctrl+b ${key} is refused, naming the way back`);
+  }
+  // Longer than a plain notice stays (NOTICE_MS, 1500 ms in ui/notice.mjs).
+  await new Promise((r) => setTimeout(r, 2000));
+  Assert.equal(notice(), want, "still shown after 2 s");
+  Assert.ok(hiddenView(), "nothing changed: the split is still hidden");
+  Assert.equal(gBrowser.selectedTab, tab("d"), "and d still shows alone");
+  EventUtils.synthesizeKey("j", {});
+  await until(() => notice() === null, "the next key hides it");
+  await reset();
+});

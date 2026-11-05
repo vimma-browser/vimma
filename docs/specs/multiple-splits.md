@@ -1,11 +1,12 @@
 # Spec: multiple-splits
 
-Status: accepted · Area: core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`,
-`snapshot.mjs`, `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`,
-`actions.mjs`, `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`,
-`host/VimmaHost.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`, `ctl/VimmaControl.sys.mjs`), UI
-(`ui/side-panel.mjs`, `ui/notice.mjs`, `ui/picker.mjs`, `side-panel.css`), `tools/vimma-ctl`
-(`protocol.rs`) · Upstream patches: none · ADR: none
+Status: accepted (sub-PR 1 implemented: the hidden-split refusal stays until the next key) · Area:
+core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
+`statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
+`defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,
+`workspaces/WindowWorkspaces.sys.mjs`, `ctl/VimmaControl.sys.mjs`), UI (`ui/side-panel.mjs`,
+`ui/notice.mjs`, `ui/picker.mjs`, `side-panel.css`), `tools/vimma-ctl` (`protocol.rs`) · Upstream
+patches: none · ADR: none
 
 Issue: [#682](https://github.com/vimma-browser/vimma/issues/682)
 

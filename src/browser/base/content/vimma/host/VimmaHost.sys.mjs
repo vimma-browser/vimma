@@ -95,7 +95,7 @@ import {
   swapPane,
   zoomPane,
 } from "./pane-ops.mjs";
-import { PaneViews } from "../split/PaneView.mjs";
+import { HIDDEN_REASON, PaneViews } from "../split/PaneView.mjs";
 import { leaves } from "../core/panes.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -353,14 +353,15 @@ function openOrSay(s, text, where) {
 }
 
 /**
- * Runs a pane op (pane-ops.mjs) and shows its refusal, if any, as the notice.
+ * Runs a pane op (pane-ops.mjs) and shows its refusal, if any, as the notice. The hidden-split
+ * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
  * @param {(win: Window, action: Action) => string | null} op
  * @returns {(state: WindowState, action: Action) => void}
  */
 function paneRunner(op) {
   return (s, a) => {
     const refused = op(s.win, a);
-    if (refused) s.notice.show(refused);
+    if (refused) s.notice.show(refused, { untilKey: refused === HIDDEN_REASON });
     VimmaHost._emit(s);
   };
 }
@@ -2357,6 +2358,9 @@ export const VimmaHost = {
     // A key the page has had, back for chrome's shortcuts (requestReplyFromRemoteContent): it
     // was dispatched once already, before the page.
     if (/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) return;
+    // A notice shown until the next key goes on any key but a bare modifier, before the key's
+    // own action can show another (docs/specs/multiple-splits.md, decision 4).
+    if (chordFromEvent(e)) state.notice.keyPressed();
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);
