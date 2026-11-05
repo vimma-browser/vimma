@@ -430,7 +430,8 @@ add_task(async function test_lists_session_then_history_newest_first() {
   );
   Assert.deepEqual(headings(), ["Active · 1", "Recent · 3"], "two sections");
   Assert.equal(cell(rows()[0], "index"), "50%", "the state word");
-  Assert.ok(cell(rows()[1], "host").includes("example.com"), "the host it came from");
+  const parts = cell(rows()[1], "host").split(" · ");
+  Assert.ok(parts.includes("example.com"), "the host it came from, as a cell of its own");
   Assert.ok(!cell(rows()[1], "host").includes("?now"), "never the URL");
   await closePicker();
   await release();
