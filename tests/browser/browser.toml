@@ -417,6 +417,7 @@ support-files = [
   "file_vimma_update_manifest.sjs",
   "file_vimma_update_bomb.gz",
   "file_vimma_update_bomb.gz^headers^",
+  "file_vimma_update.mar",
 ]
 
 ["browser_vimma_update_appimage.js"]

@@ -380,6 +380,24 @@ describe("parseManifest", () => {
     expect(/** @type {any} */ (r).reason).toMatch(/^manifest: .*<patch>/);
   });
 
+  // Firefox's parser reads elements by local name: a prefixed <x:update> or <x:patch> would be an
+  // update to Firefox that this parser never sees.
+  test.each([
+    [
+      "a prefixed <update>",
+      (/** @type {string} */ m) =>
+        m.replace(/<(\/?)update /g, "<$1x:update ").replace("</update>", "</x:update>"),
+    ],
+    [
+      "a prefixed <patch>",
+      (/** @type {string} */ m) => m.replace("<patch ", '<x:patch xmlns:x="urn:x" '),
+    ],
+  ])("refuses %s", (_name, change) => {
+    const r = parseManifest(change(manifest()));
+    expect(r.ok).toBe(false);
+    expect(/** @type {any} */ (r).reason).toMatch(/prefixed/);
+  });
+
   test("refuses two <patch> elements, so Firefox can pick no MAR the download rule misses", () => {
     const two = manifest().replace(PATCH, (line) => line + line);
     const r = parseManifest(two);

@@ -3471,28 +3471,37 @@ _Pages_ and _extensions_ cannot reach it.
   [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../tools/update/test/check-build.test.mjs),
   [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs)
 
-- UP13. Firefox's update check **never** hands Firefox a manifest that Vimma's rules (UP1, UP2)
-  have not accepted: `UpdateService-sys-mjs.patch` (ADR-003) runs Vimma's verifier on the answer
-  before Firefox parses it, a refused manifest fails the check as a malformed file does, and a
-  manifest that offers nothing newer makes Firefox offer nothing. While checks are off or held,
-  and in a build run from its objdir (UP4), the check ends as not allowed before any request. Its
+- UP13. Firefox's update check **never** hands Firefox's update parser (`#parseUpdates`) or its
+  choice of an update a manifest that Vimma's rules (UP1, UP2) have not accepted:
+  `UpdateService-sys-mjs.patch` (ADR-003) runs Vimma's verifier on the answer first, a refused
+  manifest fails the check as a malformed file does, a manifest that offers nothing newer makes
+  Firefox offer nothing, and a prefixed element name (which Firefox would read by its local name)
+  is refused. While checks are off or held (but for `:update`, only for its own check), in a
+  build run from its objdir (UP4), and until Vimma knows the install type and has read
+  `config.toml`, the check ends as not allowed before any request. Its
   request is anonymous, with an empty `Accept-Language`, follows no redirect (UP3), asks for the
   file uncompressed and is **never** decoded, so a compressed answer fails the signature, and it
   is cancelled past 256 KiB (UP5). A manifest offers at most one MAR, a complete one on https.
   The MAR's download **never** carries cookies (spec decision 1): requests from chrome with no
-  browsing context to the URL the verified manifest named, and to the URLs its redirects lead
-  to, go without them; any other request is left as it is. The MAR's own signature is the
+  browsing context to the URL the verified manifest named (compared as Necko writes it), and to
+  the URLs its anonymous requests are redirected to until the download ends, go without them;
+  any other request is left as it is. The MAR's own signature is the
   updater's check (UP12). On a tarball Firefox's updater updates, Vimma's own fetch stays off,
   so one check runs, and `:update` starts Firefox's.
   **⚠ limit:** XMLHttpRequest reports progress about every 50 ms, so beyond the cap the parent
   holds at most what arrives in one such interval before the request is cancelled. Firefox's
-  timer, not Vimma's, decides when a tarball checks (`app.update.interval`, 12 hours).
+  timer, not Vimma's, decides when a tarball checks (`app.update.interval`, 12 hours). Turning
+  checks off stops later checks, not a download Firefox already started for a verified offer.
+  XMLHttpRequest builds its XML document from the answer before the verifier runs, as Firefox
+  without Vimma does.
   [`a_signed_newer_build_is_offered_and_the_request_is_anonymous`](../tests/browser/browser_vimma_update_verify.js),
   [`a_manifest_failing_the_rules_never_reaches_firefox`](../tests/browser/browser_vimma_update_verify.js),
   [`a_replay_is_refused_and_a_downgrade_offers_nothing`](../tests/browser/browser_vimma_update_verify.js),
   [`checks_off_send_no_request`](../tests/browser/browser_vimma_update_verify.js),
   [`an_oversized_or_compressed_body_is_refused`](../tests/browser/browser_vimma_update_verify.js),
   [`the_mar_download_goes_without_cookies`](../tests/browser/browser_vimma_update_verify.js),
+  [`a_real_download_is_shown_on_restart`](../tests/browser/browser_vimma_update_verify.js),
+  [`no_check_before_the_install_type_is_known`](../tests/browser/browser_vimma_update_verify.js),
   [`update_checks_a_tarball_through_firefoxs_updater`](../tests/browser/browser_vimma_update_verify.js),
   [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../packages/vimma-core/test/updates.test.mjs)
 

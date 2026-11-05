@@ -17,7 +17,8 @@
 // A tarball with Firefox's updater (a VIMMA_UPDATES=1 build, sub-PR 3) is checked by Firefox's
 // own timer and downloads and stages its MAR as Firefox does. UpdateService-sys-mjs.patch calls
 // beforeCheck before that check's request goes out and verify before Firefox parses the answer,
-// so the same rules decide, and a manifest that fails them never reaches Firefox's parser. The
+// so the same rules decide, and a manifest that fails them never reaches Firefox's update
+// parser (#parseUpdates) or its choice of an update. The
 // MAR's download goes without cookies (decision 1). Vimma's own fetch then stays off for it.
 
 import {
@@ -325,8 +326,9 @@ function manifestUrl() {
  * @property {(buildId: string) => Stage} stage  how far it got with that build
  * @property {boolean} busy  a download is under way or an update is in place: Firefox checks no
  *   further until it is applied
- * @property {() => Promise<unknown>} check  checks now, and downloads what it offers as Firefox's
- *   own background check does
+ * @property {(asked: boolean) => Promise<unknown>} check  checks now, and downloads what it
+ *   offers as Firefox's own background check does; `asked`: `:update`, which runs while checks
+ *   are held
  */
 
 /** @returns {FirefoxUpdater} */
@@ -335,7 +337,10 @@ function firefox() {
   const has = !!lazy.AppConstants.MOZ_UPDATER && "@mozilla.org/updates/update-service;1" in Cc;
   const aus = () =>
     Cc["@mozilla.org/updates/update-service;1"].getService(Ci.nsIApplicationUpdateService);
-  const um = () => Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
+  // The update manager's own getters are async; its internal ones are what Firefox's update
+  // service reads synchronously (UpdateService.sys.mjs, lazy.UM.internal).
+  const um = () =>
+    Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager).internal;
   const AUS = Ci.nsIApplicationUpdateService;
   return {
     get usable() {
@@ -359,9 +364,18 @@ function firefox() {
         service.isDownloading || service.currentState === AUS.STATE_STAGING || !!um().readyUpdate
       );
     },
-    async check() {
+    async check(asked) {
       const checker = Cc["@mozilla.org/updates/update-checker;1"].getService(Ci.nsIUpdateChecker);
-      const result = await checker.checkForUpdates(Ci.nsIUpdateChecker.FOREGROUND_CHECK).result;
+      // allowCheck runs inside checkForUpdates, synchronously: only this check is the one asked
+      // for, not a timer's check that starts while its answer is awaited.
+      askedCheck = asked;
+      let check;
+      try {
+        check = checker.checkForUpdates(Ci.nsIUpdateChecker.FOREGROUND_CHECK);
+      } finally {
+        askedCheck = false;
+      }
+      const result = await check.result;
       await aus().onCheckComplete(result);
       return result;
     },
@@ -571,7 +585,14 @@ async function judge(text) {
   if (!judged.ok) return refuse(judged.reason);
   Services.prefs.setStringPref(SERIAL_PREF, judged.serial);
   verifiedBuildId = judged.offer?.buildId ?? null;
-  marUrls = new Set(judged.offer?.marUrl ? [judged.offer.marUrl] : []);
+  marUrls = new Set();
+  // Kept as Necko writes it (host in lower case, no default port), so the exact comparison with
+  // a request's URL holds for a URL the manifest spells otherwise.
+  try {
+    if (judged.offer?.marUrl) marUrls.add(lazy.NetUtil.newURI(judged.offer.marUrl).spec);
+  } catch {
+    // parseManifest accepted it as https text; one Necko cannot read is never requested either.
+  }
   return finish({
     outcome: judged.offer ? "offer" : "current",
     reason: null,
@@ -596,12 +617,7 @@ async function firefoxCheck(asked) {
     return state;
   }
   const before = state.checkedAt;
-  askedCheck = asked;
-  try {
-    await updater.check();
-  } finally {
-    askedCheck = false;
-  }
+  await updater.check(asked);
   // The hook did not run: Firefox had no URL, or the check was cancelled.
   if (state.checkedAt === before) {
     return finish({ outcome: "unreachable", reason: "Firefox's update check did not run" });
@@ -633,7 +649,9 @@ function onMarRequest(subject, topic) {
     return;
   }
   // http-on-examine-response: a redirect's target is where the next pieces of the download go
-  // (nsIncrementalDownload keeps the final URL), so it is learnt too.
+  // (nsIncrementalDownload keeps the final URL), so it is learnt too, only from a request this
+  // rule made anonymous, and only until the download ends (onUpdaterTopic).
+  if (!(channel.loadFlags & Ci.nsIRequest.LOAD_ANONYMOUS)) return;
   const status = channel.responseStatus;
   if (status < 300 || status > 399 || marUrls.size >= MAX_MAR_URLS) return;
   try {
@@ -642,6 +660,16 @@ function onMarRequest(subject, topic) {
   } catch {
     // No Location header, or one that is not a URL: nothing to learn.
   }
+}
+
+/**
+ * Firefox's updater did something with an update: the status bars show it, and a finished
+ * download needs no more anonymous URLs (decision 1).
+ * @param {any} _subject @param {string} topic
+ */
+function onUpdaterTopic(_subject, topic) {
+  if (topic === "update-downloaded" || topic === "update-staged") marUrls = new Set();
+  notify();
 }
 
 /**
@@ -957,7 +985,7 @@ export const VimmaUpdates = {
     Services.obs.addObserver(firstWindow, "browser-delayed-startup-finished");
     pollTimer = lazy.setInterval(tick, POLL_MS);
     // A download Firefox's updater finished or staged changes what the status bar shows.
-    for (const topic of UPDATER_TOPICS) Services.obs.addObserver(notify, topic);
+    for (const topic of UPDATER_TOPICS) Services.obs.addObserver(onUpdaterTopic, topic);
     Services.obs.addObserver(onMarRequest, "http-on-modify-request-before-cookies");
     Services.obs.addObserver(onMarRequest, "http-on-examine-response");
     Services.obs.addObserver(() => {
@@ -966,7 +994,7 @@ export const VimmaUpdates = {
       lazy.clearTimeout(firstTimer);
       lazy.clearTimeout(offTimer);
       lazy.clearInterval(pollTimer);
-      for (const topic of UPDATER_TOPICS) Services.obs.removeObserver(notify, topic);
+      for (const topic of UPDATER_TOPICS) Services.obs.removeObserver(onUpdaterTopic, topic);
       Services.obs.removeObserver(onMarRequest, "http-on-modify-request-before-cookies");
       Services.obs.removeObserver(onMarRequest, "http-on-examine-response");
     }, "quit-application");
@@ -1013,6 +1041,13 @@ export const VimmaUpdates = {
    * @returns {boolean}
    */
   allowCheck() {
+    // Until the install type and config.toml are known, an objdir build or a `check = false`
+    // could not be told apart: no request yet (Firefox's timer asks again). `:update` waits for
+    // both before it checks.
+    if (knownType === null || (configCheck === null && !held)) {
+      installInfo().catch((e) => console.error("vimma: install type unknown", e));
+      return false;
+    }
     if (knownType === "source") {
       finish({ outcome: "source", reason: null, offer: null });
       return false;

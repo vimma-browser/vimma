@@ -419,6 +419,9 @@ export function parseManifest(body) {
   const bad = (why) =>
     /** @type {{ ok: false, reason: string }} */ ({ ok: false, reason: `manifest: ${why}` });
   if (/<!DOCTYPE|<!ENTITY|<!\[CDATA\[/i.test(body)) return bad("declarations are not allowed");
+  // Firefox's parser finds <update> and <patch> by local name, so a prefixed name would be an
+  // element to it that this parser does not read.
+  if (/<\/?[A-Za-z][\w.-]*:/.test(body)) return bad("prefixed element names are not allowed");
   const text = withoutComments(body.replace(/^<\?xml[^>]*\?>/, ""));
   if (text === null) return bad("a comment is not closed");
   const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)$/.exec(text);

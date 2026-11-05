@@ -60,6 +60,8 @@ async function makeKey() {
 async function manifest({
   update = {},
   patch = `${HOST}?redirect=host`,
+  size = 4,
+  hash = "0".repeat(128),
   channel = CHANNEL,
   signer = key,
   sign = true,
@@ -80,7 +82,7 @@ async function manifest({
     `  <update ${Object.entries(attrs)
       .map(([k, v]) => `${k}="${v}"`)
       .join(" ")}>\n` +
-    `    <patch type="complete" size="4" hashFunction="sha512" hashValue="${"0".repeat(128)}"` +
+    `    <patch type="complete" size="${size}" hashFunction="sha512" hashValue="${hash}"` +
     ` URL="${patch}"/>\n` +
     "  </update>\n</updates>\n";
   if (!sign) return body;
@@ -151,6 +153,8 @@ add_task(async function setup() {
   addCookie("example.com");
   addCookie("example.org");
   VimmaUpdates._reset();
+  // Firefox's check waits until Vimma knows how it was installed (allowCheck).
+  await VimmaUpdates.describe();
   registerCleanupFunction(() => {
     Services.cookies.removeAll();
     VimmaUpdates._reset();
@@ -226,6 +230,18 @@ add_task(async function checks_off_send_no_request() {
   Assert.ok(!result.checksAllowed, "the check ends as not allowed");
   Assert.equal(VimmaUpdates.status().outcome, "off");
   Assert.deepEqual(await requests(), [], "no request at all");
+});
+
+// Until Vimma knows the install type (an objdir build never checks), Firefox's check waits.
+add_task(async function no_check_before_the_install_type_is_known() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  VimmaUpdates._reset();
+  const result = await firefoxCheck();
+  Assert.ok(!result.checksAllowed, "not allowed yet");
+  Assert.deepEqual(await requests(), [], "no request");
+  await VimmaUpdates.describe();
+  Assert.ok((await firefoxCheck()).succeeded, "allowed once the install type is known");
 });
 
 add_task(async function a_host_that_does_not_answer_is_not_a_refusal() {
@@ -468,4 +484,59 @@ add_task(async function a_tarball_vimma_cannot_write_gets_its_owners_steps() {
   const info = await VimmaUpdates.describe();
   Assert.ok(info.offer.steps.text.startsWith("Vimma cannot write "), info.offer.steps.text);
   Assert.equal(info.firefox.canApply, false);
+});
+
+// The real path, nothing faked: `:update` runs Firefox's check through the hook, Firefox
+// downloads the offered file (any bytes with the signed hash; staging is off, so no updater
+// runs), its update becomes pending, and the status bar says to restart. Everything Firefox wrote
+// for it is removed afterwards.
+add_task(async function a_real_download_is_shown_on_restart() {
+  await freshTarball();
+  VimmaUpdates._setFirefox(null);
+  const mar = `${ROOT}file_vimma_update.mar`;
+  const bytes = new Uint8Array(await (await fetch(mar)).arrayBuffer());
+  const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-512", bytes))]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  await SpecialPowers.pushPrefEnv({ set: [["app.update.staging.enabled", false]] });
+  const aus = Cc["@mozilla.org/updates/update-service;1"].getService(
+    Ci.nsIApplicationUpdateService,
+  );
+  const um = Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
+  const watch = (subject) => {
+    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    if (channel.URI.spec === mar) {
+      anonymous.push(!!(channel.loadFlags & Ci.nsIRequest.LOAD_ANONYMOUS));
+    }
+  };
+  const anonymous = [];
+  Services.obs.addObserver(watch, "http-on-modify-request");
+  try {
+    await serve(
+      await manifest({
+        patch: mar,
+        size: bytes.length,
+        hash,
+        update: { vimmaUrgency: "security" },
+      }),
+    );
+    const r = await VimmaUpdates.check({ asked: true });
+    Assert.equal(r.outcome, "offer", r.reason ?? "");
+    await until(() => VimmaUpdates.status().stage === "staged", "Firefox's update is pending");
+    Assert.equal(aus.currentState, Ci.nsIApplicationUpdateService.STATE_PENDING);
+    Assert.equal((await um.getReadyUpdate())?.buildID, "20991231000000", "the verified build");
+    await until(
+      () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
+      "the status bar says to restart",
+    );
+    Assert.ok(anonymous.length >= 1, "Firefox downloaded the offered file");
+    Assert.ok(anonymous.every(Boolean), "every request of the download went without cookies");
+  } finally {
+    Services.obs.removeObserver(watch, "http-on-modify-request");
+    await aus.stopDownload();
+
+    await um.cleanupActiveUpdates();
+    UpdateUi._reset();
+    await SpecialPowers.popPrefEnv();
+  }
 });
