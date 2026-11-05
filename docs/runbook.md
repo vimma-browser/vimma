@@ -2379,7 +2379,7 @@ Vimma checks `https://updates.vimma.dev/updates/browser/<target>/<channel>/updat
 (`Linux_x86_64-gcc3`, or `Darwin_aarch64-gcc3` on Apple Silicon) every 12 hours and accepts only a manifest signed by a key pinned in
 `packages/vimma-core/src/update-keys.mjs` (step 5; a build with no pinned key refuses every
 manifest and shows nothing). These steps need the maintainer's accounts; do them once, in order.
-All steps but 4 (the offline secondary key) and 5b (the updater's certificates) are done. Step 7 sets up `update-publish.yml`, which
+All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
 signs and publishes a manifest for every published release; nothing is published while the
 repository variable `UPDATES_ENABLED` is not `true`. It is `true`, so update notices are on for
 every install of 0.1.2 or later (0.1.1 pins no key and never shows one).
@@ -2568,10 +2568,10 @@ certificate, made there with openssl, and `npm run gen-update-keys` pins it too.
 certificate's SHA-256 here; `npm test` fails when `update-keys.mjs` and the certificates
 disagree, or when the primary certificate's hash is missing from this file.
 
-| Certificate     | Subject                                 | SHA-256 of the DER                     |
-| --------------- | --------------------------------------- | -------------------------------------- |
-| `primary.der`   | `CN=Vimma update signing primary`       | not made yet (needs the KMS signature) |
-| `secondary.der` | the primary's certificate (decision 39) | not made yet                           |
+| Certificate     | Subject                                 | SHA-256 of the DER                                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------ |
+| `primary.der`   | `CN=Vimma update signing primary`       | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
+| `secondary.der` | the primary's certificate (decision 39) | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
 
 Before a package with the updater is signed or published, `tools/update/check-build.mjs
 <unpacked tarball>` checks that it asks `updates.vimma.dev`, that both channel files say
