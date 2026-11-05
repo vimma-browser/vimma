@@ -304,15 +304,16 @@ export const PdfOps = {
   },
 
   /**
-   * What tells `browser`'s document apart from the next one it shows: its window global and the
-   * viewer's count of the PDFs it opened; null unless it is the viewer with a state.
+   * What tells `browser`'s document apart from the next one it shows: its window global, from
+   * the parent's own view, never the viewer's count of the PDFs it opened, which a compromised
+   * viewer could raise to have its outline read and shown again (V8). Null unless it is the
+   * viewer with a state.
    * @param {any} browser
    * @returns {string | null}
    */
   documentKey(browser) {
     const wg = viewerGlobal(browser);
-    const state = this.state(browser);
-    return wg && state ? `${wg.innerWindowId}:${state.doc}` : null;
+    return wg && this.state(browser) ? String(wg.innerWindowId) : null;
   },
 
   /**

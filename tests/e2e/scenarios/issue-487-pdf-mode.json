@@ -1,7 +1,7 @@
 {
   "name": "issue-487-pdf-mode",
   "issue": 487,
-  "description": "PDF mode (docs/specs/pdf-mode.md), with no pref set: fixture:pdf-links.pdf (4 pages, an outline, 3 links) opens in Firefox's PDF viewer, which takes zathura's keys at once; 3G goes to page 3, and Tab opens the outline panel on the left in the theme, in INDEX mode, with the entry for page 3 selected (pdf-outline). Esc closes it, back in normal mode. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "description": "PDF mode (docs/specs/pdf-mode.md), with no pref set: fixture:pdf-links.pdf (4 pages, an outline, 3 links) opens in Firefox's PDF viewer, in the theme, with the outline shown beside it, and takes zathura's keys at once; 3G goes to page 3, and Tab moves into the outline panel on the left, in INDEX mode, with the entry for page 3 selected (pdf-outline). Esc closes it, back in normal mode. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
   "timeoutSeconds": 60,
   "steps": [
     {

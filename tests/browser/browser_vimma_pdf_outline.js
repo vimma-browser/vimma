@@ -99,6 +99,8 @@ async function withPdf(fn, url = PDF) {
 
 async function closeOutline() {
   if (!shown()) return;
+  // An outline shown beside the document (decision 19) has not the keys: give it them first.
+  if (mode() !== "index") VimmaHost._state(window).outline.focus();
   EventUtils.synthesizeKey("KEY_Escape");
   await TestUtils.waitForCondition(() => !shown(), "the outline closes");
 }

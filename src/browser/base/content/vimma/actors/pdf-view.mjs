@@ -189,6 +189,8 @@ export class PdfView {
   #listeners = [];
   /** The token sheet loaded into the viewer, as a data: URI; "" before the first. */
   #themeUri = "";
+  /** PDF_SHEET is loaded (once). */
+  #sheetLoaded = false;
 
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
@@ -727,7 +729,10 @@ export class PdfView {
     if (uri === this.#themeUri) return;
     try {
       const utils = this.#win.windowUtils;
-      if (!this.#themeUri) utils.loadSheetUsingURIString(PDF_SHEET, utils.AUTHOR_SHEET);
+      if (!this.#sheetLoaded) {
+        utils.loadSheetUsingURIString(PDF_SHEET, utils.AUTHOR_SHEET);
+        this.#sheetLoaded = true;
+      }
       utils.loadSheetUsingURIString(uri, utils.AUTHOR_SHEET);
       if (this.#themeUri) utils.removeSheetUsingURIString(this.#themeUri, utils.AUTHOR_SHEET);
       this.#themeUri = uri;

@@ -3552,9 +3552,12 @@ bindings, so it is accepted here.
   [`marks`](../tests/browser/browser_vimma_pdf_marks.js)
 - V8. The adapter **must** read the outline only when the parent asks (the `outline` operation):
   for the user's `Tab` in the PDF viewer, and once per document when the viewer reports its first
-  state in the selected tab with `[ui] pdf_outline` shown (pdf-mode decision 19). An outline read
-  that way is shown without focus, so it takes no key; it is not shown over another panel or
-  under a picker. The adapter **must** send only each entry's title, level, page number, kind, collapsed flag
+  state in the selected tab with `[ui] pdf_outline` shown (pdf-mode decision 19). That read is
+  keyed by the top window global, never by the viewer's own count of documents, so a viewer cannot
+  have it read or shown again by claiming a new document. An outline read that way is shown
+  without focus, so it takes no key, only in normal mode, and never over another panel or under a
+  picker. Accepted: a PDF's outline titles (at most 512 characters each) show in a chrome panel
+  without a key press, under the panel's visible `Outline` heading, as page titles show in tabs. The adapter **must** send only each entry's title, level, page number, kind, collapsed flag
   and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and stops at
   5,000 entries and a depth of 32. The parent **must** take an outline message only from the top
   viewer's current actor after asking that document for it (for `Tab`, opening the panel only if no

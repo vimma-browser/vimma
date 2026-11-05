@@ -517,9 +517,10 @@ const outlineHidden = new WeakMap();
 
 /**
  * Shows the selected tab's PDF outline beside the document, without the keys (decision 19):
- * when `[ui] pdf_outline` is "shown", the user has not closed it for this document, and no other
- * panel or Vimma surface is open. The outline is asked for once per document (V8); its answer
- * comes back here through the outline subscription.
+ * when `[ui] pdf_outline` is "shown", the user has not closed it for this document, the window is
+ * in normal mode and no other panel or Vimma surface is open. The outline is asked for once per
+ * document (V8); its answer comes back here through the outline subscription. Called again when
+ * focus moves, so a PDF opened from the address bar shows it once focus reaches the page.
  * @param {WindowState} s
  */
 function showOutlineBeside(s) {
@@ -528,6 +529,7 @@ function showOutlineBeside(s) {
   const key = browser && PdfOps.documentKey(browser);
   if (!key || s.outline.isOpen || outlineHidden.get(browser) === key) return;
   if (vimmaSurfaceOpen(s) || s.agentChat.isOpen) return;
+  if (VimmaHost._mode(s) !== "normal") return;
   const outline = PdfOps.outline(browser);
   if (outline) {
     if (outline.entries.length) {
@@ -1723,6 +1725,7 @@ export const VimmaHost = {
       onFocus: () => {
         AgentUi.onFocusChange(win);
         UpdateUi.onFocusChange(win);
+        showOutlineBeside(state);
       },
       panel: new SidePanel(win, {
         // A private window lists its tabs as the private workspace (private-workspace 6).

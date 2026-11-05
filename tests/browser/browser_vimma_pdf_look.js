@@ -229,5 +229,28 @@ add_task(async function the_theme_reaches_only_the_viewer() {
   });
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, ROOT + "file_vimma_plain.html");
   Assert.equal(await ask(tab.linkedBrowser), null, "a web page gets nothing");
+  // A viewer in a page's frame is not the viewer (V2): it gets nothing either.
+  await SpecialPowers.spawn(tab.linkedBrowser, [PAGEMODE], (url) => {
+    const el = content.document.createElement("iframe");
+    el.src = url;
+    el.style.cssText = "width:600px;height:600px";
+    content.document.body.append(el);
+  });
+  const frame = await TestUtils.waitForCondition(() =>
+    tab.linkedBrowser.browsingContext.children.find((bc) =>
+      bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
+    ),
+  );
+  const framed = await SpecialPowers.spawn(frame, [], () =>
+    content.windowGlobalChild.getActor("Vimma").sendQuery("Vimma:PdfTheme"),
+  );
+  Assert.equal(framed, null, "a viewer in a frame gets nothing");
+  const sheets = await SpecialPowers.spawn(
+    frame,
+    [],
+    () =>
+      content.getComputedStyle(content.document.getElementById("viewsManagerToggleButton")).display,
+  );
+  Assert.notEqual(sheets, "none", "and no sheet: its page's look is its own");
   BrowserTestUtils.removeTab(tab);
 });
