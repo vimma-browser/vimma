@@ -300,6 +300,21 @@ add_task(async function closing_a_tab_of_a_hidden_split_ends_it() {
   byName.delete("e");
 });
 
+add_task(async function the_shown_split_ending_on_a_close_keeps_the_hidden_ones_at_once() {
+  // h: one more tab outside every split.
+  opened.push(await page("h"));
+  await pick(tab("f"));
+  Assert.ok(view().showTabs([tab("b"), tab("f")], tab("f")).ok, "S1: b, f, made on a lone tab");
+  await until(() => splitsOf().shown === 1, "S1 shows");
+  gBrowser.removeTab(tab("f"));
+  // Before the reconcile: a save or a switch in this gap must still see S2.
+  Assert.equal(splitsOf().all, "S2:x[c,d]", "S2 is kept the moment S1 ends");
+  await until(() => !tab("b").splitview, "S1's wrapper is undone");
+  Assert.equal(splitsOf().all, "S2:x[c,d]", "and still kept after the reconcile");
+  opened.splice(opened.indexOf(tab("f")), 1);
+  byName.delete("f");
+});
+
 add_task(async function a_workspace_switch_and_a_session_restore_keep_every_split() {
   const A = WorkspaceStore.addWorkspace({ name: "ms-a", color: "blue", icon: "briefcase" });
   const B = WorkspaceStore.addWorkspace({ name: "ms-b", color: "green", icon: "briefcase" });

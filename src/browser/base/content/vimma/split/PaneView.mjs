@@ -904,8 +904,32 @@ export class PaneView {
     const pane = panes && paneOfTab(panes, tab.linkedPanel);
     if (!panes || !pane) return;
     this.#panes = leaves(panes).length > 2 ? closePane(panes, pane) : null;
+    // The current split ended with others kept: one takes its place now, so the model, a save
+    // or a workspace switch before the reconcile never loses them; the ended one's wrapper and
+    // geometry go at the reconcile.
+    if (!this.#panes && this.#others.size) {
+      this.#ended.push({ panes, wrapper: this.#wrapper, laidOut: this.#laidOut });
+      this.#promote();
+    }
     // Not while Firefox is removing the tab: once it is gone, in a later task.
     this.#schedule();
+  }
+
+  /**
+   * The lowest other split becomes the current tree, as the split shown last, hidden, so a
+   * workspace with splits always has a current tree (and `]s` a way back). None: nothing.
+   */
+  #promote() {
+    const [first] = [...this.#others.keys()].sort((a, b) => a - b);
+    if (first === undefined) return;
+    const slot = /** @type {Slot} */ (this.#others.get(first));
+    this.#others.delete(first);
+    this.#panes = hideView(slot.panes);
+    this.#wrapper = slot.wrapper;
+    this.#laidOut = slot.laidOut;
+    this.#number = first;
+    this.#resize?.disconnect();
+    this.#resize = null;
   }
 
   /**
@@ -1010,14 +1034,8 @@ export class PaneView {
       this.#reconcile();
       // The current split ended while others are kept: the lowest becomes the one shown last,
       // hidden, so a workspace with splits always has a current tree (and `]s` a way back).
-      const [first] = [...this.#others.keys()].sort((a, b) => a - b);
-      if (!this.#panes && first !== undefined) {
-        const slot = /** @type {Slot} */ (this.#others.get(first));
-        this.#others.delete(first);
-        this.#panes = hideView(slot.panes);
-        this.#wrapper = slot.wrapper;
-        this.#laidOut = slot.laidOut;
-        this.#number = first;
+      if (!this.#panes && this.#others.size) {
+        this.#promote();
         this.#reconcile();
       } else if (!this.#panes) {
         this.#number = 1;

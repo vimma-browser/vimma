@@ -485,7 +485,14 @@ add_task(async function test_state_splits() {
   Assert.ok(view.showTabs([c, d], d).ok, "S2: c | d, made on a lone tab");
   await TestUtils.waitForCondition(() => view.splits.shown === 2, "S2 shows");
   const before = view.splits;
+  const firefox = () => ({
+    selected: gBrowser.selectedTab,
+    wrappers: gBrowser.splitViews.map((w) => w.tabs.map((t) => t.linkedPanel)),
+    active: tabs.map((t) => t.linkedBrowser.docShellIsActive),
+  });
+  const was = firefox();
   const result = await state(4);
+  Assert.deepEqual(firefox(), was, "state changed no selection, wrapper or page (S9)");
   const id = (tab) => String(tab.linkedBrowser.browserId);
   const index = (tab) => result.tabs.findIndex((t) => t.id === id(tab));
   const row = (x, y) => ({
