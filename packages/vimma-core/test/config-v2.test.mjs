@@ -5,6 +5,7 @@ import { CONFIG_SCHEMA_VERSION, MIGRATIONS, migrate, parseConfig } from "../src/
 import { DEFAULT_CONFIG, formatDefaultsToml } from "../src/defaults.mjs";
 import { DEFAULT_HINT_CHARS } from "../src/hints.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "../src/panes.mjs";
+import { MAX_SPLITS_DEFAULT } from "../src/splits.mjs";
 
 /** @param {string[]} lines */
 const toml = (...lines) => lines.join("\n") + "\n";
@@ -80,6 +81,7 @@ describe("[panes] max", () => {
       max,
       layout: "dwindle",
       mainSize: 0.6,
+      maxSplits: MAX_SPLITS_DEFAULT,
     });
   });
 
@@ -115,10 +117,45 @@ describe("[panes] max", () => {
   });
 });
 
+// docs/specs/multiple-splits.md decision 7.
+describe("[panes] max_splits", () => {
+  test("defaults to 9", () => {
+    expect(ok(v2("")).panes.maxSplits).toBe(MAX_SPLITS_DEFAULT);
+    expect(MAX_SPLITS_DEFAULT).toBe(9);
+  });
+
+  test.each([[1], [4], [9]])("max_splits = %i is accepted", (n) => {
+    expect(ok(v2("[panes]", `max_splits = ${n}`)).panes.maxSplits).toBe(n);
+  });
+
+  test.each([
+    ["0", "must be an integer between 1 and 9"],
+    ["10", "must be an integer between 1 and 9"],
+    ["-1", "must be an integer between 1 and 9"],
+    ["2.0", "expected an integer, got a float"],
+    ['"3"', "expected an integer, got a string"],
+  ])("max_splits = %s is an error at its line", (v, message) => {
+    expect(errors(v2("", "[panes]", `max_splits = ${v}`))).toEqual([
+      { line: 4, path: "panes.max_splits", message },
+    ]);
+  });
+
+  test("a near miss suggests max_splits", () => {
+    expect(errors(v2("[panes]", "max_split = 3"))).toEqual([
+      {
+        line: 3,
+        path: "panes.max_split",
+        message: 'unknown key "max_split"',
+        suggestion: "max_splits",
+      },
+    ]);
+  });
+});
+
 // docs/specs/tiling-layouts.md
 describe("[panes] layout and main_size", () => {
   test("defaults: dwindle, 60 %", () => {
-    expect(ok(v2("")).panes).toEqual({ max: 8, layout: "dwindle", mainSize: 0.6 });
+    expect(ok(v2("")).panes).toEqual({ max: 8, layout: "dwindle", mainSize: 0.6, maxSplits: 9 });
   });
 
   test.each([["dwindle"], ["manual"]])('layout = "%s" is accepted', (layout) => {

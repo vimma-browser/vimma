@@ -15,8 +15,15 @@ import { DEFAULT_HINT_CHARS, hintLabels } from "./hints.mjs";
 import { KeymapError, compileKeymap } from "./keymap.mjs";
 import { MODES, isKeymapTable } from "./modes.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "./panes.mjs";
+import { MAX_SPLITS_DEFAULT, MAX_SPLITS_LIMIT } from "./splits.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
-import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
+import {
+  APPEARANCES,
+  BUILTIN_THEMES,
+  THEME_COLOR_KEYS,
+  isHexColor,
+  normalizeHex,
+} from "./theme.mjs";
 import { resolveRoutes, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
@@ -71,8 +78,9 @@ import { hasControl } from "./strings.mjs";
  * @property {Record<string, string[]>} unbind
  * @property {Workspace[]} workspaces                     file order = workspace order
  * @property {ThemeConfig} theme
- * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number }} panes
- *   `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6), docs/specs/tiling-layouts.md
+ * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number }}
+ *   panes `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6),
+ *   docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`, docs/specs/multiple-splits.md
  * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
  * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
  * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
@@ -224,7 +232,7 @@ const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
 const THEME_SOURCES = ["omarchy", "file"];
-const PANES_KEYS = ["max", "layout", "main_size"];
+const PANES_KEYS = ["max", "layout", "main_size", "max_splits"];
 /** `[panes] layout` (docs/specs/tiling-layouts.md): where a pane opened without a direction goes. */
 export const PANES_LAYOUT_MODES = Object.freeze(["dwindle", "manual"]);
 /** `[panes] main_size` bounds, in percent. */
@@ -599,6 +607,11 @@ function validate(raw, declared, warnings = []) {
         else if (v < BigInt(MAIN_SIZE_MIN) || v > BigInt(MAIN_SIZE_MAX)) {
           fail(path, `must be an integer between ${MAIN_SIZE_MIN} and ${MAIN_SIZE_MAX} (percent)`);
         }
+      } else if (key === "max_splits") {
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < 1n || v > BigInt(MAX_SPLITS_LIMIT)) {
+          fail(path, `must be an integer between 1 and ${MAX_SPLITS_LIMIT}`);
+        }
       } else if (key !== "max") unknownKey(path, key, PANES_KEYS);
       else if (typeof v !== "bigint") typeError(path, v, "an integer");
       else if (v < 1n || v > BigInt(PANES_MAX_LIMIT)) {
@@ -748,8 +761,8 @@ function validate(raw, declared, warnings = []) {
         if (!table(path, v)) continue;
         for (const [name, c] of Object.entries(v)) {
           const at = [...path, name];
-          if (!PALETTE_KEYS.includes(name)) {
-            fail(at, `unknown colour key "${name}"`, closest(name, PALETTE_KEYS));
+          if (!THEME_COLOR_KEYS.includes(name)) {
+            fail(at, `unknown colour key "${name}"`, closest(name, THEME_COLOR_KEYS));
           } else if (name === "mode") {
             if (c !== "dark" && c !== "light") fail(at, `must be "dark" or "light"`);
           } else if (!isHexColor(c)) {
@@ -1163,6 +1176,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       max: user.panes?.max ?? PANES_MAX_DEFAULT,
       layout: user.panes?.layout ?? "dwindle",
       mainSize: (user.panes?.main_size ?? MAIN_SIZE_DEFAULT * 100) / 100,
+      // Not in defaults.mjs' UserConfig yet: the key joins defaults.toml when several splits
+      // ship (docs/specs/multiple-splits.md, Delivery 6).
+      maxSplits:
+        /** @type {{ max_splits?: number }} */ (user.panes ?? {}).max_splits ?? MAX_SPLITS_DEFAULT,
     },
     hintChars: /** @type {string | undefined} */ (user.modal?.hint_chars) ?? DEFAULT_HINT_CHARS,
     sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({

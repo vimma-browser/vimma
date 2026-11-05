@@ -1,6 +1,7 @@
 # Spec: multiple-splits
 
-Status: accepted (sub-PR 1 implemented: the hidden-split refusal stays until the next key) · Area:
+Status: accepted (sub-PRs 1 and 2 implemented: the hidden-split refusal stays until the next key;
+the core model, snapshot, status bar text, split colours and `max_splits` parsing) · Area:
 core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
 `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
 `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,
@@ -127,7 +128,11 @@ All references are to `main` at aac585a5, Firefox 157.
    `number`. The pure functions live in a new `packages/vimma-core/src/splits.mjs`, because the
    pane operations in `panes.mjs` act on one tree and stay unchanged. Rejected: several `Panes`
    with `hidden: true` and one without, because "exactly one is not hidden" would be a rule every
-   caller must keep instead of a shape.
+   caller must keep instead of a shape. `WorkspaceState` also holds `last`, the split shown last,
+   because behaviour 8 and the snapshot's `panes` both go back to it once none shows. The three
+   fields are optional and `panes` stays beside them until the host keeps several splits
+   (Delivery 3), because the host builds and saves `panes` today; `splitsOf` reads a workspace
+   without them as its one tree, number 1.
 2. **A tab belongs to one split at most**, so selecting a tab has exactly one answer and the side
    panel's labels are never ambiguous. Rejected: a tab in several splits, because selecting it
    would need a rule to pick a split the user cannot see.
@@ -198,7 +203,11 @@ All references are to `main` at aac585a5, Firefox 157.
     shown last with `hidden: true`) and `activeTab`, so an older Vimma reading the file restores
     one split instead of failing. A file without `splits` reads `panes` as a one-item list with
     number 1. A `splits` entry that is malformed, repeats a number, or shares a tab with an
-    earlier entry is dropped, so a damaged file never puts one tab in two splits.
+    earlier entry is dropped, so a damaged file never puts one tab in two splits. On reading,
+    the shown split is the one holding the tab `activeTab` and `alone` name, and the split shown
+    last the one holding the written `activeTab`, because an older Vimma that rewrites the file
+    keeps those two fields current but not `shown`. A workspace without the new fields writes no
+    `splits`, so a file is unchanged until the host keeps several splits.
 16. **One Firefox wrapper per split.** PaneView keeps a wrapper for each split and lets Firefox
     suspend the hidden ones, because that is how Firefox's split view handles a selection outside
     a wrapper already (Research), and it needs no patch.
