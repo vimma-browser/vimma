@@ -87,6 +87,12 @@ describe("the whitelist (D9)", () => {
     );
   });
 
+  test("the split actions are not agent key actions (docs/specs/multiple-splits.md)", () => {
+    for (const id of ["pane.split_picker", "pane.next_split", "pane.previous_split"]) {
+      expect(AGENT_KEY_ACTIONS.has(id)).toBe(false);
+    }
+  });
+
   test("downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)", () => {
     expect(AGENT_KEY_ACTIONS.has("downloads.picker")).toBe(false);
     expect(refusal("ctrl+b d")).toContain("the prefix");

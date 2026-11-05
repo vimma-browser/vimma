@@ -65,9 +65,10 @@ import { graphemes } from "./textwidth.mjs";
 /** @import { PermissionItem, PermissionOp } from "./sitepermissions.mjs" */
 /** @import { PopupItem } from "./popups.mjs" */
 /** @import { DownloadItem } from "./downloads.mjs" */
+/** @import { SplitItem } from "./splits.mjs" */
 /**
  * @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem
- *   | DownloadItem} AnyItem
+ *   | DownloadItem | SplitItem} AnyItem
  */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
@@ -388,6 +389,7 @@ export function itemId(item) {
   if (item.kind === "permission") return item.permissionId;
   if (item.kind === "popup") return item.popupId;
   if (item.kind === "download") return item.downloadId;
+  if (item.kind === "split") return item.splitId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
 
@@ -740,6 +742,13 @@ export function pickerKey(state, key) {
         const m = pickerSelection(state);
         if (key === "m" && m && "kind" in m.item && m.item.kind === "workspace") {
           return done(state, { type: "move", id: m.item.workspaceId });
+        }
+        // The split picker's digits show that split at once (multiple-splits behaviour 7).
+        if (/^[1-9]$/.test(key)) {
+          const split = state.items.find(
+            (i) => "kind" in i && i.kind === "split" && i.splitId === key,
+          );
+          if (split) return done(state, { type: "select", id: key });
         }
         const op = Object.hasOwn(ADDON_KEYS, key) ? ADDON_KEYS[key] : undefined;
         if (op && m && "kind" in m.item && m.item.kind === "addon") {

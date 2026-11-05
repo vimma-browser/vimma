@@ -19,6 +19,7 @@ import { accessibleName, countText, rowRange, sectionHeading } from "../core/tab
 /** @import { PermissionItem, PermissionOp } from "../core/sitepermissions.mjs" */
 /** @import { PopupItem } from "../core/popups.mjs" */
 /** @import { DownloadItem } from "../core/downloads.mjs" */
+/** @import { SplitItem } from "../core/splits.mjs" */
 
 export const PICKER_ID = "vimma-picker";
 export const WORKSPACE_PICKER_ID = "vimma-workspace-picker";
@@ -27,6 +28,7 @@ export const MCP_LOG_ID = "vimma-mcp-log";
 export const PERMISSION_PICKER_ID = "vimma-permission-picker";
 export const POPUP_PICKER_ID = "vimma-popup-picker";
 export const DOWNLOAD_PICKER_ID = "vimma-downloads-picker";
+export const SPLIT_PICKER_ID = "vimma-split-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 /** @type {WeakSet<Window>} windows our stylesheet is loaded into */
@@ -58,6 +60,8 @@ const styled = new WeakSet();
  * @property {(item: any, count: number) => string} [heading]  a section's heading, for a picker
  *   listed in sections (core sectionOf) other than tab search
  * @property {(item: any) => string} [rowClass]  a class for a row
+ * @property {(item: any) => string} [swatch]  a colour shown before the row's index (a CSS
+ *   value), as `--vimma-picker-swatch`
  * @property {boolean} [tabs]  tab search (docs/specs/tab-search.md): typing from the first
  *   key, section headings, a muted cell for workspace, window and markers, host highlights,
  *   accessible names and a live count
@@ -175,6 +179,23 @@ const POPUPS = {
   listLabel: "Blocked pop-ups on this page",
   hint: "j/k move · / search · Enter run · Esc close",
   cells: (/** @type {PopupItem} */ item) => ["", item.detail],
+};
+
+/**
+ * docs/specs/multiple-splits.md decision 12: the workspace's splits, each with its colour, its
+ * label, the panes' titles and its pane count; a digit shows that split.
+ * @type {PickerLook}
+ */
+const SPLITS = {
+  id: SPLIT_PICKER_ID,
+  title: "Splits",
+  listLabel: "Splits in this workspace",
+  hint: "1-9 or Enter show · j/k move · / search · Esc close",
+  cells: (/** @type {SplitItem} */ item) => [
+    item.label,
+    `${item.paneCount} panes${item.active ? " · shown" : ""}`,
+  ],
+  swatch: (/** @type {SplitItem} */ item) => `var(--vimma-split-${item.number})`,
 };
 
 /**
@@ -400,6 +421,11 @@ export class GotoPicker {
       if ("enabled" in m.item && !m.item.enabled) row.classList.add("vimma-picker-disabled");
       const extra = this.look.rowClass?.(m.item);
       if (extra) row.classList.add(extra);
+      const swatch = this.look.swatch?.(m.item);
+      if (swatch) {
+        row.classList.add("vimma-picker-swatched");
+        row.style.setProperty("--vimma-picker-swatch", swatch);
+      }
       const title = marked(
         el("span", "vimma-picker-title"),
         m.item.display,
@@ -699,5 +725,19 @@ export class DownloadPicker extends AddonPicker {
     const open = this.isOpen;
     super.close(options);
     if (open) this.closed();
+  }
+}
+
+/**
+ * The split picker (docs/specs/multiple-splits.md behaviour 7): the shown workspace's splits,
+ * read when it opens; a digit or Enter shows one.
+ */
+export class SplitPicker extends GotoPicker {
+  /**
+   * @param {Window} win  a browser window
+   * @param {PickerHost} host
+   */
+  constructor(win, host) {
+    super(win, host, SPLITS);
   }
 }

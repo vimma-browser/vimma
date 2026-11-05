@@ -660,6 +660,21 @@
           "name": "layout_dwindle",
           "description": "Layout: a spiral (dwindle)",
           "keys": []
+        },
+        {
+          "name": "split_picker",
+          "description": "Split picker: show one of the workspace's splits",
+          "keys": []
+        },
+        {
+          "name": "next_split",
+          "description": "Show the next split",
+          "keys": []
+        },
+        {
+          "name": "previous_split",
+          "description": "Show the previous split",
+          "keys": []
         }
       ]
     },

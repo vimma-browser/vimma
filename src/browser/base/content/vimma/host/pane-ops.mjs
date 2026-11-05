@@ -9,13 +9,15 @@
 import { closest, describeAction } from "../core/actions.mjs";
 import { LAYOUTS, isLayoutName, layoutOfAction } from "../core/layouts.mjs";
 import { leaves } from "../core/panes.mjs";
-import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
+import { NO_SPLITS_TO_PICK, splitFocusTab, splitPickerItems, stepSplit } from "../core/splits.mjs";
+import { MULTIPLE_SPLITS_PREF, PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
 import { closeTab } from "./tab-ops.mjs";
 import { tabById } from "./goto.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { Direction, ResizeDirection } from "../core/panes.mjs" */
 /** @import { PaneResult } from "../split/PaneView.mjs" */
+/** @import { SplitItem } from "../core/splits.mjs" */
 
 /** One resize key's step: a share of the split (m3-m4-core-models, For the host specs). */
 export const RESIZE_STEP = 0.05;
@@ -287,4 +289,60 @@ export function resizePane(win, action) {
   if (!view?.panes) return null;
   const direction = /** @type {ResizeDirection} */ (action.id.slice("pane.resize_".length));
   return refusal(action, view.resize(direction, RESIZE_STEP * (action.count ?? 1)));
+}
+
+/**
+ * Whether a workspace keeps several splits (docs/specs/multiple-splits.md decision 17): the split
+ * picker and the step actions exist only then.
+ */
+export function multipleSplitsOn() {
+  return Services.prefs.getBoolPref(MULTIPLE_SPLITS_PREF, false);
+}
+
+/**
+ * The split picker's rows (behaviour 7): the shown workspace's splits with their tabs' titles,
+ * or the notice to show instead when it has none.
+ * @param {Window} win
+ * @returns {{ items: SplitItem[] } | { refused: string }}
+ */
+export function splitPickerRows(win) {
+  const view = PaneViews.get(win);
+  const items = view?.panes
+    ? splitPickerItems(view.splits, (id) => tabById(win, id)?.label ?? "")
+    : [];
+  return items.length ? { items } : { refused: NO_SPLITS_TO_PICK };
+}
+
+/**
+ * Shows split `number` by selecting its focused pane's tab: the window's tab selection then
+ * shows the split whole (behaviour 2), and its page gets keyboard focus.
+ * @param {Window} win
+ * @param {number} number
+ */
+export function showSplit(win, number) {
+  const view = PaneViews.get(win);
+  const id = view?.panes ? splitFocusTab(view.splits, number) : null;
+  const tab = id ? tabById(win, id) : null;
+  if (!tab) return;
+  /** @type {any} */ (gBrowserOf(win)).selectedTab = tab;
+  focusPage(win);
+}
+
+/**
+ * pane.next_split / pane.previous_split (behaviour 8): the next or previous split by number,
+ * wrapping; from a lone tab the split shown last. Returns the refusal (`no splits`), or null.
+ * @param {Window} win
+ * @param {Action} action
+ * @returns {string | null}
+ */
+export function stepSplits(win, action) {
+  const view = PaneViews.get(win);
+  const by = action.id === "pane.next_split" ? 1 : -1;
+  const { splits, refusal: refused } = stepSplit(
+    view?.panes ? view.splits : { splits: [], shown: null, last: null },
+    by,
+  );
+  if (refused || splits.shown === null) return refused;
+  showSplit(win, splits.shown);
+  return null;
 }

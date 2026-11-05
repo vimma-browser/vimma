@@ -302,3 +302,51 @@ export function stepSplit(s, by) {
   }
   return { splits: showSplit(s, number), refusal: null };
 }
+
+/** The split picker's notice in a workspace without splits; it does not open (behaviour 7). */
+export const NO_SPLITS_TO_PICK = "no splits in this workspace";
+
+/**
+ * A row of the split picker (behaviour 7, decision 12).
+ * @typedef {object} SplitItem
+ * @property {"split"} kind
+ * @property {string} splitId  the number as text: the picker selects by string ids
+ * @property {number} number
+ * @property {string} label    `S1` to `S9`
+ * @property {number} paneCount
+ * @property {string} display  the panes' tab titles in pane order, joined with ` · `
+ * @property {boolean} active  the split shown
+ */
+
+/**
+ * The split picker's rows, one per split in number order.
+ * @param {Splits} s
+ * @param {(tabId: string) => string} titleOf
+ * @returns {SplitItem[]}
+ */
+export function splitPickerItems(s, titleOf) {
+  return s.splits.map((x) => {
+    const tabs = leaves(x).map((l) => l.tab);
+    return Object.freeze({
+      kind: /** @type {const} */ ("split"),
+      splitId: String(x.number),
+      number: x.number,
+      label: splitLabel(x.number),
+      paneCount: tabs.length,
+      display: tabs.map(titleOf).join(" · "),
+      active: s.shown === x.number,
+    });
+  });
+}
+
+/**
+ * The tab to select to show split `number`: its focused pane's, so the split comes back with
+ * the focus it had (behaviour 2). Null without that split.
+ * @param {Splits} s
+ * @param {number} number
+ * @returns {string | null}
+ */
+export function splitFocusTab(s, number) {
+  const x = s.splits.find((y) => y.number === number);
+  return x ? (leaves(x).find((l) => l.pane === x.focus)?.tab ?? null) : null;
+}

@@ -51,6 +51,7 @@ import {
   MCP_LOG,
   PermissionPicker,
   PopupPicker,
+  SplitPicker,
   WorkspacePicker,
 } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
@@ -87,13 +88,17 @@ import {
   focusPane,
   hasPanes,
   layoutPanes,
+  multipleSplitsOn,
   newPane,
   resizePane,
   showAlone,
+  showSplit,
   showTabs,
   shownSplit,
   splitPane,
+  splitPickerRows,
   splitStatus,
+  stepSplits,
   swapPane,
   zoomPane,
 } from "./pane-ops.mjs";
@@ -251,6 +256,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
+ * @property {SplitPicker} splitPicker  the workspace's splits (docs/specs/multiple-splits.md)
  * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
  * @property {DownloadPicker} downloadPicker  the prefix+d overlay (docs/specs/downloads.md)
  * @property {DownloadRows} downloadRows  the picker's rows while it is open
@@ -310,6 +316,7 @@ function vimmaSurfaceOpen(s) {
     s.addonPicker.isOpen ||
     s.permissionPicker.isOpen ||
     s.popups.isOpen ||
+    s.splitPicker.isOpen ||
     s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
@@ -369,6 +376,22 @@ function paneRunner(op) {
     if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
     VimmaHost._emit(s);
   };
+}
+
+/**
+ * The split actions' config names and ids (docs/specs/multiple-splits.md decision 13): with the
+ * feature pref off they are left out of the help overlay and the command line, as if absent.
+ */
+const SPLIT_ACTION_NAMES = Object.freeze(["split_picker", "next_split", "previous_split"]);
+const SPLIT_ACTION_IDS = Object.freeze(SPLIT_ACTION_NAMES.map((n) => `pane.${n}`));
+
+/**
+ * pane.next_split / pane.previous_split, only with the feature pref on (decision 17).
+ * @param {WindowState} s
+ * @param {Action} a
+ */
+function splitStepRunner(s, a) {
+  if (multipleSplitsOn()) paneRunner(stepSplits)(s, a);
 }
 
 /**
@@ -884,6 +907,16 @@ export const RUNNERS = Object.freeze({
   "pane.resize_wider": paneRunner(resizePane),
   "pane.resize_taller": paneRunner(resizePane),
   "pane.resize_shorter": paneRunner(resizePane),
+  // docs/specs/multiple-splits.md behaviours 7 and 8, behind vimma.feature.multiple_splits.
+  "pane.split_picker": (/** @type {WindowState} */ s) => {
+    if (!multipleSplitsOn()) return;
+    s.notice.hide();
+    const rows = splitPickerRows(s.win);
+    if ("refused" in rows) s.notice.show(rows.refused);
+    else s.splitPicker.open();
+  },
+  "pane.next_split": splitStepRunner,
+  "pane.previous_split": splitStepRunner,
   // docs/specs/tiling-layouts.md: dwindle's new pane, tmux's presets; the notice names the preset.
   "pane.new": paneRunner(newPane),
   "pane.next_layout": layoutRunner,
@@ -1549,6 +1582,7 @@ export const VimmaHost = {
         state.addonPicker.close({ tabChanged: true });
         state.permissionPicker.close({ tabChanged: true });
         state.popups.close({ tabChanged: true });
+        state.splitPicker.close({ tabChanged: true });
         state.downloadPicker.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
@@ -1568,7 +1602,10 @@ export const VimmaHost = {
         keymap,
         RUNNABLE,
         () => state.firefoxKeys?.status().on ?? [],
-        () => (downloadsOn() ? [] : ["downloads_picker"]),
+        () => [
+          ...(downloadsOn() ? [] : ["downloads_picker"]),
+          ...(multipleSplitsOn() ? [] : SPLIT_ACTION_NAMES),
+        ],
       ),
       notice: new Notice(win),
       cmdline: new CommandLine(win, {
@@ -1581,7 +1618,10 @@ export const VimmaHost = {
           search: SearchHost.completions,
         }),
         // An unfinished feature's commands exist only with its pref on (`:downloads`).
-        hidden: () => (downloadsOn() ? [] : ["downloads.picker"]),
+        hidden: () => [
+          ...(downloadsOn() ? [] : ["downloads.picker"]),
+          ...(multipleSplitsOn() ? [] : SPLIT_ACTION_IDS),
+        ],
       }),
       tabStrip: null,
       toolbar: null,
@@ -1701,6 +1741,17 @@ export const VimmaHost = {
             close: () => state.downloadPicker.close(),
           }),
         closed: () => state.downloadRows.close(),
+      }),
+      splitPicker: new SplitPicker(win, {
+        items: () => {
+          const rows = splitPickerRows(win);
+          return "items" in rows ? rows.items : [];
+        },
+        activeId: () => PaneViews.get(win)?.splits.shown?.toString() ?? null,
+        select: (id) => {
+          showSplit(win, Number(id));
+          this._emit(state);
+        },
       }),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
@@ -2023,6 +2074,7 @@ export const VimmaHost = {
     state.permissionPicker.destroy();
     forgetSitePermissions(win);
     state.popups.destroy();
+    state.splitPicker.destroy();
     state.downloads.destroy();
     state.downloadPicker.destroy();
     state.downloadRows.close();
@@ -2333,6 +2385,7 @@ export const VimmaHost = {
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.permissionPicker.isOpen) return "help";
     if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
+    if (state.splitPicker.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
@@ -2459,6 +2512,7 @@ export const VimmaHost = {
       state.addonPicker,
       state.permissionPicker,
       state.popups,
+      state.splitPicker,
       state.downloadPicker,
       state.mcpLog,
       state.grep,

@@ -100,6 +100,10 @@ group("Panes", [
   ["layout_main_horizontal", "pane.layout_main_horizontal", "Layout: main pane on top, rest below"],
   ["layout_tiled", "pane.layout_tiled", "Layout: a grid"],
   ["layout_dwindle", "pane.layout_dwindle", "Layout: a spiral (dwindle)"],
+  // docs/specs/multiple-splits.md decision 13: several splits per workspace.
+  ["split_picker", "pane.split_picker", "Split picker: show one of the workspace's splits"],
+  ["next_split", "pane.next_split", "Show the next split"],
+  ["previous_split", "pane.previous_split", "Show the previous split"],
 ]);
 
 group("Workspaces", [
