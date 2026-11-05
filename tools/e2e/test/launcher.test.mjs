@@ -83,14 +83,30 @@ const alive = (pid) => {
 
 describe("alive", () => {
   it("counts an exited process that no one has reaped yet (a zombie) as gone", async () => {
-    // The exec'd sleep never waits for the backgrounded one, which stays a zombie for 5 s.
-    const parent = spawn("sh", ["-c", "sleep 0 & echo $!; exec sleep 5"], {
+    // The exec'd sleep never waits for the backgrounded one, so once that child dies it stays a
+    // zombie. It must die only after the exec: a shell that is still running reaps a child the
+    // moment it exits (bash does, from its SIGCHLD handler), and then there is never a zombie.
+    // A child that exited by itself (`sleep 0`) lost that race on a loaded machine.
+    const parent = spawn("sh", ["-c", "sleep 30 & echo $!; exec sleep 30"], {
       stdio: ["ignore", "pipe", "ignore"],
     });
-    cleanups.push(async () => void parent.kill("SIGKILL"));
     const zombie = Number(
       await new Promise((resolve) => parent.stdout.once("data", (d) => resolve(String(d).trim()))),
     );
+    cleanups.push(async () => {
+      parent.kill("SIGKILL");
+      try {
+        process.kill(zombie, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    });
+    /** @param {number} pid */
+    const command = (pid) =>
+      execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    for (let i = 0; i < 200 && !/sleep$/.test(command(/** @type {number} */ (parent.pid))); i++)
+      await sleep(25);
+    process.kill(zombie, "SIGKILL");
     for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
     expect(psState(zombie)).toMatch(/^Z/);
     expect(() => process.kill(zombie, 0)).not.toThrow();

@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { checkBash } from "../hooks/lib/bash-rules.mjs";
+import { checkBash, runCommitlint } from "../hooks/lib/bash-rules.mjs";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 /** A commitlint stand-in: passes every message, and records what it was given. */
@@ -257,5 +257,26 @@ describe("ordinary commands", () => {
     "",
   ])("allows %s", (command) => {
     expect(blocked(command)).toBeNull();
+  });
+});
+
+describe("runCommitlint", () => {
+  it("runs the commitlint CLI installed under cwd with node, without npx", () => {
+    // A stand-in package with no node_modules/.bin link: npx cannot find it, a node resolve can.
+    const dir = tempDir("vimma-guard-cli-");
+    const cli = join(dir, "node_modules", "@commitlint", "cli");
+    mkdirSync(join(dir, "sub"));
+    mkdirSync(cli, { recursive: true });
+    writeFileSync(join(cli, "package.json"), '{ "name": "@commitlint/cli", "type": "module" }\n');
+    writeFileSync(
+      join(cli, "cli.js"),
+      'import { readFileSync } from "node:fs";\n' +
+        'process.stdout.write("stand-in: " + readFileSync(0, "utf8"));\n' +
+        "process.exitCode = 1;\n",
+    );
+    expect(runCommitlint("feat: x\n", join(dir, "sub"))).toEqual({
+      ok: false,
+      output: "stand-in: feat: x\n",
+    });
   });
 });

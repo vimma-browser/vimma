@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { commitlint } from "../../commitlint/test/repo-commitlint.mjs";
 import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from "../detect.mjs";
 import {
   BODY_LIMIT,
@@ -309,7 +310,7 @@ describe("autopilot body", () => {
     expect(securityRelease.release.advisories.map((x) => x.id)).toEqual(["MFSA 2026-105"]);
   });
 
-  it("the PR title passes commitlint with zero, one and three advisories", () => {
+  it("the PR title passes commitlint with zero, one and three advisories", async () => {
     const a = (/** @type {string} */ id) => ({ id, url: "", severity: "high" });
     const titles = [
       prTitle("157.0.2", []),
@@ -318,12 +319,8 @@ describe("autopilot body", () => {
     ];
     for (const title of titles) {
       // The squash commit: the title with GitHub's PR number, then the PR body.
-      const run = spawnSync("npx", ["--no-install", "commitlint"], {
-        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-        input: `${title} (#200)\n\nBumps Firefox.\n`,
-        encoding: "utf8",
-      });
-      expect(run.status, title + run.stdout + run.stderr).toBe(0);
+      const run = await commitlint(`${title} (#200)\n\nBumps Firefox.\n`);
+      expect(run.status, title + run.output).toBe(0);
     }
   });
 
