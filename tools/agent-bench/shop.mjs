@@ -27,7 +27,7 @@ export function loadCatalog() {
 }
 
 /** @param {string} s */
-const esc = (s) =>
+export const esc = (s) =>
   s.replace(
     /[&<>"']/g,
     (c) =>
@@ -47,7 +47,7 @@ const euros = (n) => `${n.toFixed(2)} €`;
 const fullName = (p) => `${p.name} (${p.brand}, ${p.size})`;
 
 /** @param {import("node:http").ServerResponse} res @param {number} status @param {string} body */
-function send(res, status, body, type = "text/html; charset=utf-8") {
+export function send(res, status, body, type = "text/html; charset=utf-8") {
   res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
   res.end(body);
 }
@@ -277,7 +277,7 @@ ${reviews}`,
 }
 
 /** @param {import("node:http").IncomingMessage} req @returns {Promise<string>} */
-function readBody(req) {
+export function readBody(req) {
   return new Promise((resolve) => {
     let s = "";
     req.setEncoding("utf8");
@@ -290,7 +290,7 @@ function readBody(req) {
 }
 
 /** @param {import("node:http").Server} server */
-function listen(server) {
+export function listen(server) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve(undefined));
@@ -298,13 +298,13 @@ function listen(server) {
 }
 
 /** @param {import("node:http").Server} server */
-function port(server) {
+export function port(server) {
   const a = server.address();
   return typeof a === "object" && a ? a.port : 0;
 }
 
 /** @param {import("node:http").Server} server @returns {Promise<void>} */
-function close(server) {
+export function close(server) {
   return new Promise((resolve) => {
     server.closeAllConnections();
     server.close(() => resolve());

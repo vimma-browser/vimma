@@ -270,10 +270,12 @@ jobs:
       # with its scripted provider, which needs no model and makes no request beyond the bench
       # shop on 127.0.0.1. Fails unless the run fills the basket, stops at the payment checkpoint
       # and sends nothing unasked, so the bench keeps working between hand-run model results.
+      # --two-shops adds issue #693's scenario on two local shops (127.0.0.1 and localhost), which
+      # also fails when anything but a checkout asks or a result says that questions are waiting.
       - name: Agent bench, scripted provider (npm run agent-bench -- --artifact --check)
         id: agent-bench
         continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
-        run: npm run agent-bench -- --artifact --check --lists L04
+        run: npm run agent-bench -- --artifact --check --lists L04 --two-shops
 
       - name: Upload site-compat-offline/ (the snapshot gate's report and screenshots)
         if: failure() || (steps.mode.outputs.beta == 'true' && steps.sites-offline.outcome == 'failure')
