@@ -902,7 +902,15 @@ async function removeLeftovers(target) {
 function stage() {
   const offer = state.offer;
   if (!offer) return "none";
-  if (firefoxMode()) return firefox().stage(offer.buildId);
+  // Firefox's update service can throw (late in shutdown, a broken install). The status bar,
+  // about:vimma and the control socket's `state` all read this, so a failure counts as nothing
+  // staged instead of breaking them.
+  try {
+    if (firefoxMode()) return firefox().stage(offer.buildId);
+  } catch (e) {
+    console.error("vimma: Firefox's updater state unknown", e);
+    return "none";
+  }
   if (replacement.buildId === offer.buildId) return replacement.stage;
   return knownType === "appimage" && enabled() && offer.buildId === verifiedBuildId
     ? "pending"

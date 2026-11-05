@@ -560,7 +560,11 @@ add_task(async function test_state_update() {
     stage(buildId) {
       return buildId === "20991231000000" ? this.staged : "none";
     },
-    check: () => Promise.reject(new Error("no check in this test")),
+    checks: 0,
+    check() {
+      this.checks++;
+      return Promise.reject(new Error("no check in this test"));
+    },
   };
   const offer = {
     appVersion: "999.0",
@@ -626,6 +630,18 @@ add_task(async function test_state_update() {
   );
   fake.staged = "pending";
   Assert.equal((await state(2)).stage, "pending", "read when asked, not cached");
+  Assert.equal(fake.checks, 0, "reading it starts no check (S9)");
+
+  // Firefox's update service failing (late in shutdown, a broken install) counts as nothing
+  // staged: `state` (and the status bar it reads) still answers.
+  const stage = fake.stage;
+  fake.stage = () => {
+    throw new Error("the update manager is gone");
+  };
+  const failed = await client.request(9, "state");
+  Assert.ok(failed.ok, "state still answers");
+  Assert.equal(failed.result?.update?.stage, "none", "nothing staged as far as Vimma knows");
+  fake.stage = stage;
 
   VimmaUpdates._reset();
   await VimmaUpdates.ownAppImage();
