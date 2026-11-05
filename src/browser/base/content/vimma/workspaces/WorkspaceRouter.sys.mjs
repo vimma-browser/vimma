@@ -406,12 +406,15 @@ export const WorkspaceRouter = {
       const url = singleUrl(win.arguments?.[0]);
       if (!url) return null;
       WorkspaceStore.ensureLoaded();
-      // At a cold start BrowserContentHandler passes the command line's URLs as an nsIArray,
-      // without `fromExternal` (openBrowserWindow's list branch).
+      // At a cold start BrowserContentHandler passes the command line's URLs as an nsIArray in
+      // arguments[0], without `fromExternal` (openBrowserWindow's list branch); its default
+      // arguments (the home page) arrive as a string, also for a Smart Window, whose nsIArray
+      // is the argument list itself.
       const external =
         fromExternal(win.arguments?.[1]) || (first && win.arguments?.[0] instanceof Ci.nsIArray);
       if (external) return this.externalContainer(fixup(url), apps);
-      return notAgent(this.userContextIdFor(fixup(url), apps));
+      // Names count only for links from other programs (app-routes, decision 13).
+      return notAgent(this.userContextIdFor(fixup(url)));
     } catch (e) {
       console.error("vimma: routing a new window failed", e);
       return null;

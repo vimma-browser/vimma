@@ -167,7 +167,7 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   [`private_windows_are_untouched`](../tests/browser/browser_vimma_workspace_routing.js)
 - R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
   each, and **must** only select a workspace that a rule in config.toml names and that exists;
-  anything but a lower-case token never matches. Spec: [app-routes](specs/app-routes.md).
+  a name that is not a token once lower-cased is dropped. Spec: [app-routes](specs/app-routes.md).
   [`a hint that is not a token never matches`](../packages/vimma-core/test/routes.test.mjs),
   [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs),
   [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../packages/vimma-core/test/routes.test.mjs),
@@ -194,6 +194,7 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   the agent workspace, and never in a private window.
   [`the_default_workspace_never_applies_to_the_url_bar`](../tests/browser/browser_vimma_workspace_routes.js),
   [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`the_default_workspace_never_applies_in_a_private_window`](../tests/browser/browser_vimma_workspace_routes.js),
   [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)

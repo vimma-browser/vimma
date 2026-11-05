@@ -403,7 +403,22 @@ add_task(async function a_new_windows_first_tab_is_routed_with_the_startup_app()
 
   Services.env.set("VIMMA_FROM", "coldapp");
   WorkspaceRouter.resetStartupAppForTesting();
-  const cold = await openWindow(`${ELSEWHERE}?cold`);
+  // As BrowserContentHandler opens a cold start's window: its command-line URLs as an nsIArray.
+  const coldList = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+  const coldUrl = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+  coldUrl.data = `${ELSEWHERE}?cold`;
+  coldList.appendElement(coldUrl);
+  const coldArgs = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+  coldArgs.appendElement(coldList);
+  const coldOpened = BrowserTestUtils.waitForNewWindow({ url: coldUrl.data });
+  Services.ww.openWindow(
+    null,
+    AppConstants.BROWSER_CHROME_URL,
+    "_blank",
+    "chrome,all,dialog=no",
+    coldArgs,
+  );
+  const cold = await coldOpened;
   Assert.equal(
     cold.gBrowser.selectedTab.userContextId,
     home.userContextId,
@@ -599,6 +614,30 @@ add_task(async function a_cold_start_link_with_no_rule_opens_in_the_default_work
     );
     await BrowserTestUtils.closeWindow(firstWin);
 
+    // A later window with a one-URL list (Places' "Open All in New Window", an extension's
+    // windows.create) is not the cold start's.
+    const later = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+    const laterStr = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+    laterStr.data = `${ELSEWHERE}?later-list`;
+    later.appendElement(laterStr);
+    const laterArgs = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+    laterArgs.appendElement(later);
+    const laterOpened = BrowserTestUtils.waitForNewWindow({ url: laterStr.data });
+    Services.ww.openWindow(
+      null,
+      AppConstants.BROWSER_CHROME_URL,
+      "_blank",
+      "chrome,all,dialog=no",
+      laterArgs,
+    );
+    const laterWin = await laterOpened;
+    Assert.notEqual(
+      laterWin.gBrowser.selectedTab.userContextId,
+      home.userContextId,
+      "a later window's URL list does not take the default",
+    );
+    await BrowserTestUtils.closeWindow(laterWin);
+
     const url = `${ELSEWHERE}?own-window`;
     const own = BrowserTestUtils.waitForNewWindow({ url });
     window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", "chrome,all,dialog=no", url);
@@ -610,6 +649,27 @@ add_task(async function a_cold_start_link_with_no_rule_opens_in_the_default_work
     );
     await BrowserTestUtils.closeWindow(w);
   } finally {
+    defaultTo(null);
+  }
+});
+
+add_task(async function the_default_workspace_never_applies_in_a_private_window() {
+  defaultTo("rt-home");
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  try {
+    const opened = nextTab(priv);
+    priv.browserDOMWindow.openURI(
+      Services.io.newURI(`${ELSEWHERE}?private-external`),
+      null,
+      Ci.nsIBrowserDOMWindow.OPEN_NEWTAB,
+      Ci.nsIBrowserDOMWindow.OPEN_EXTERNAL,
+      Services.scriptSecurityManager.getSystemPrincipal(),
+    );
+    const tab = await opened;
+    Assert.equal(tab.userContextId, 0, "a link from another program in a private window");
+    Assert.equal(tab.ownerDocument.defaultView, priv, "stays there, with no container");
+  } finally {
+    await BrowserTestUtils.closeWindow(priv);
     defaultTo(null);
   }
 });
