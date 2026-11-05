@@ -1,6 +1,6 @@
 # Spec: multiple-splits
 
-Status: draft · Area: core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`,
+Status: accepted · Area: core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`,
 `snapshot.mjs`, `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`,
 `actions.mjs`, `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`,
 `host/VimmaHost.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`, `ctl/VimmaControl.sys.mjs`), UI
@@ -139,12 +139,16 @@ All references are to `main` at aac585a5, Firefox 157.
    later notice replaces it. The text names the split shown last, the keys back (`]s`,
    `ctrl+b S`) and the way to a new split. Before the keys exist (behaviour 12) it reads
    `the split is hidden: select one of its tabs (ctrl+b b) to go back`.
-5. **A second split is started from the side panel's marks** (open question 1), because marking
-   tabs and pressing `Enter` already makes a split ([m4-side-panel-multiselect](m4-side-panel-multiselect.md)),
-   it needs no new key, and it is a deliberate act that cannot happen by the slip decision 3
-   guards against. The panel opens with no marks on a lone tab (behaviour 6), so marking starts
-   from nothing. Rejected for now, and listed in the open question: a "new split" entry in the
-   split picker, a dedicated key, and confirming with a second `ctrl+b v`.
+5. **A second split is started from the side panel's marks**, because marking tabs and pressing
+   `Enter` already makes a split ([m4-side-panel-multiselect](m4-side-panel-multiselect.md)), it
+   needs no new key, and it is a deliberate act that cannot happen by the slip decision 3 guards
+   against. The panel opens with no marks on a lone tab (behaviour 6), so marking starts from
+   nothing. The cost is that the lone tab cannot be split with a fresh empty tab in one step.
+   Rejected: a "new split" entry in the split picker, because the picker would then hold an
+   action as well as a list (it can follow later without changing this decision); a dedicated
+   key such as `ctrl+b V`, because it is one more default key to learn and to keep apart from
+   `ctrl+b v`; and confirming with a second `ctrl+b v` while the refusal shows, because a quick
+   double press would defeat the refusal's purpose.
 6. **Marking a tab of another split moves it**, because the marks state the wanted panes
    (side-panel-unsplit decision 3) and the tab's label shows where it came from. Its pane closes
    in the old split as `ctrl+b x` closes it (side-panel-unsplit decision 15), so the other sizes
@@ -336,18 +340,4 @@ snapshot.
 
 ## Open questions
 
-1. **How is a second split started, while splitting the lone tab stays refused?**
-   - (a) Mark two or more tabs in the side panel (`ctrl+b b`, `space`, `Enter`); the marked tabs
-     become a new split. No new key; uses multiselect as it is; deliberate, so it cannot happen by
-     the slip the refusal guards against. It cannot split the lone tab with a fresh empty tab in
-     one step.
-   - (b) A "new split" entry in the split picker (`ctrl+b S`), which splits the lone tab as
-     `ctrl+b v` would. One more step than `ctrl+b v`, discoverable from the refusal notice; the
-     picker then holds an action as well as a list.
-   - (c) A dedicated key, for example `ctrl+b V`, that always starts a new split from the current
-     tab. Fast, but one more default key to learn and to keep apart from `ctrl+b v`.
-   - (d) Pressing `ctrl+b v` again while the refusal notice shows confirms a new split. No new
-     key; but a quick double press defeats the refusal's purpose.
-
-   Recommendation: (a), because it is already built and tested, adds no key, and starting a
-   second split is a deliberate choice of tabs; (b) can follow later without changing (a).
+None: issue #682's question 1 is answered by decision 5.
