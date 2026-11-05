@@ -988,6 +988,82 @@ function checkStateResult(result, errors) {
   // Every split of the workspace (docs/specs/multiple-splits.md, "Control protocol"): optional,
   // so a client works with a Vimma that predates it.
   if ("splits" in result) checkSplits(result.splits, errors);
+  // The update check (docs/specs/m6a-updater.md, decision 41): optional, as `splits`.
+  if ("update" in result) checkUpdate(result.update, errors);
+}
+
+/**
+ * `state.update`'s outcomes: VimmaUpdates' (`never`: no check yet; `current`: up to date;
+ * `offer`: a newer build; `unreachable`; `refused`: a manifest failed verification; `off`;
+ * `source`: a build run from its objdir, which never checks).
+ */
+export const UPDATE_OUTCOMES = Object.freeze([
+  "never",
+  "current",
+  "offer",
+  "unreachable",
+  "refused",
+  "off",
+  "source",
+]);
+/** How far the offered build got: downloading or replacing (`pending`), or `staged`. */
+export const UPDATE_STAGES = Object.freeze(["none", "pending", "staged"]);
+
+/**
+ * `state.update` from VimmaUpdates.status() and the install type: an allow-list, so that a field
+ * added to the update state later reaches the socket only by a change here (decision 41). The
+ * refusal's reason, the manifest's serial and key, the release and MAR URLs and the advisories
+ * stay in about:vimma.
+ * @param {{ enabled: boolean, outcome: string, checkedAt: number | null, stage: string,
+ *   offer: { displayVersion: string, buildId: string, urgent: boolean } | null }} status
+ * @param {string | null} installType  null until VimmaUpdates knows it
+ */
+export function controlUpdateState(status, installType) {
+  const { offer } = status;
+  return {
+    enabled: status.enabled,
+    installType,
+    outcome: status.outcome,
+    // The saved result is a pref: a hand-edited time must not make every `state` invalid.
+    checkedAt: isInt(status.checkedAt, 0, Number.MAX_SAFE_INTEGER) ? status.checkedAt : null,
+    offer: offer
+      ? { version: offer.displayVersion, buildId: offer.buildId, urgent: offer.urgent }
+      : null,
+    stage: status.stage,
+  };
+}
+
+/** @param {unknown} update @param {string[]} errors */
+function checkUpdate(update, errors) {
+  if (!isObject(update)) {
+    errors.push("result.update must be an object");
+    return;
+  }
+  if (typeof update.enabled !== "boolean") errors.push("result.update.enabled must be a boolean");
+  if (update.installType !== null && typeof update.installType !== "string") {
+    errors.push("result.update.installType must be a string or null");
+  }
+  if (!UPDATE_OUTCOMES.includes(/** @type {any} */ (update.outcome))) {
+    errors.push(`result.update.outcome must be one of ${UPDATE_OUTCOMES.join(", ")}`);
+  }
+  if (update.checkedAt !== null && !isInt(update.checkedAt, 0, Number.MAX_SAFE_INTEGER)) {
+    errors.push("result.update.checkedAt must be a non-negative integer or null");
+  }
+  const { offer } = update;
+  if (offer !== null && !isObject(offer)) {
+    errors.push("result.update.offer must be an object or null");
+  } else if (offer !== null) {
+    for (const key of ["version", "buildId"]) {
+      if (typeof offer[key] !== "string")
+        errors.push(`result.update.offer.${key} must be a string`);
+    }
+    if (typeof offer.urgent !== "boolean") {
+      errors.push("result.update.offer.urgent must be a boolean");
+    }
+  }
+  if (!UPDATE_STAGES.includes(/** @type {any} */ (update.stage))) {
+    errors.push(`result.update.stage must be one of ${UPDATE_STAGES.join(", ")}`);
+  }
 }
 
 /** @param {unknown} splits @param {string[]} errors */

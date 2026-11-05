@@ -4193,7 +4193,7 @@ is **off by default**.
 
    ```sh
    vimma-ctl state                    # mode, pending keys, workspace, tabs
-   vimma-ctl state --json             # the same, as JSON
+   vimma-ctl state --json             # as JSON, with the splits and the update check
    vimma-ctl send-keys "ctrl+b ?"     # typed as if on the keyboard: opens the help overlay
    vimma-ctl send-keys esc
    vimma-ctl open https://example.com # a new tab; only http, https, file and about URLs
