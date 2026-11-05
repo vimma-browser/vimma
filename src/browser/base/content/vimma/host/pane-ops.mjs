@@ -10,7 +10,7 @@ import { closest, describeAction } from "../core/actions.mjs";
 import { LAYOUTS, isLayoutName, layoutOfAction } from "../core/layouts.mjs";
 import { leaves } from "../core/panes.mjs";
 import { NO_SPLITS_TO_PICK, splitFocusTab, splitPickerItems, stepSplit } from "../core/splits.mjs";
-import { MULTIPLE_SPLITS_PREF, PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
+import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
 import { closeTab } from "./tab-ops.mjs";
 import { tabById } from "./goto.mjs";
 
@@ -198,7 +198,6 @@ export function shownSplit(win) {
     focus: order.find((l) => l.pane === panes.focus)?.tab ?? null,
     hidden: panes.hidden === true,
   };
-  if (!view.multiple) return split;
   const { splits, shown } = view.splits;
   return {
     ...(shown === null ? { panes: [], focus: null, hidden: false } : split),
@@ -215,7 +214,7 @@ export function shownSplit(win) {
  */
 export function splitStatus(win) {
   const view = PaneViews.get(win);
-  if (!view?.panes || !view.multiple) return {};
+  if (!view?.panes) return {};
   const { splits, shown, last } = view.splits;
   return { split: shown ?? last ?? undefined, splits: splits.length };
 }
@@ -289,14 +288,6 @@ export function resizePane(win, action) {
   if (!view?.panes) return null;
   const direction = /** @type {ResizeDirection} */ (action.id.slice("pane.resize_".length));
   return refusal(action, view.resize(direction, RESIZE_STEP * (action.count ?? 1)));
-}
-
-/**
- * Whether a workspace keeps several splits (docs/specs/multiple-splits.md decision 17): the split
- * picker and the step actions exist only then.
- */
-export function multipleSplitsOn() {
-  return Services.prefs.getBoolPref(MULTIPLE_SPLITS_PREF, false);
 }
 
 /**

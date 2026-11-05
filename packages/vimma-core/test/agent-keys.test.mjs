@@ -92,6 +92,10 @@ describe("the whitelist (D9)", () => {
       expect(AGENT_KEY_ACTIONS.has(id)).toBe(false);
     }
     expect(refusal("ctrl+b S")).toContain("the prefix");
+    expect(refusal("]s")).toBe(
+      'key "]s" (pane.next_split) is refused: the tabs, workspaces, windows and layout are the user\'s',
+    );
+    expect(refusal("[s")).toContain("(pane.previous_split) is refused");
   });
 
   test("downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)", () => {

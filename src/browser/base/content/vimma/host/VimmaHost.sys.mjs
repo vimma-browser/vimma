@@ -88,7 +88,6 @@ import {
   focusPane,
   hasPanes,
   layoutPanes,
-  multipleSplitsOn,
   newPane,
   resizePane,
   showAlone,
@@ -376,22 +375,6 @@ function paneRunner(op) {
     if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
     VimmaHost._emit(s);
   };
-}
-
-/**
- * The split actions' config names and ids (docs/specs/multiple-splits.md decision 13): with the
- * feature pref off they are left out of the help overlay and the command line, as if absent.
- */
-const SPLIT_ACTION_NAMES = Object.freeze(["split_picker", "next_split", "previous_split"]);
-const SPLIT_ACTION_IDS = Object.freeze(SPLIT_ACTION_NAMES.map((n) => `pane.${n}`));
-
-/**
- * pane.next_split / pane.previous_split, only with the feature pref on (decision 17).
- * @param {WindowState} s
- * @param {Action} a
- */
-function splitStepRunner(s, a) {
-  if (multipleSplitsOn()) paneRunner(stepSplits)(s, a);
 }
 
 /**
@@ -907,16 +890,15 @@ export const RUNNERS = Object.freeze({
   "pane.resize_wider": paneRunner(resizePane),
   "pane.resize_taller": paneRunner(resizePane),
   "pane.resize_shorter": paneRunner(resizePane),
-  // docs/specs/multiple-splits.md behaviours 7 and 8, behind vimma.feature.multiple_splits.
+  // docs/specs/multiple-splits.md behaviours 7 and 8.
   "pane.split_picker": (/** @type {WindowState} */ s) => {
-    if (!multipleSplitsOn()) return;
     s.notice.hide();
     const rows = splitPickerRows(s.win);
     if ("refused" in rows) s.notice.show(rows.refused);
     else s.splitPicker.open();
   },
-  "pane.next_split": splitStepRunner,
-  "pane.previous_split": splitStepRunner,
+  "pane.next_split": paneRunner(stepSplits),
+  "pane.previous_split": paneRunner(stepSplits),
   // docs/specs/tiling-layouts.md: dwindle's new pane, tmux's presets; the notice names the preset.
   "pane.new": paneRunner(newPane),
   "pane.next_layout": layoutRunner,
@@ -1602,10 +1584,7 @@ export const VimmaHost = {
         keymap,
         RUNNABLE,
         () => state.firefoxKeys?.status().on ?? [],
-        () => [
-          ...(downloadsOn() ? [] : ["downloads_picker"]),
-          ...(multipleSplitsOn() ? [] : SPLIT_ACTION_NAMES),
-        ],
+        () => (downloadsOn() ? [] : ["downloads_picker"]),
       ),
       notice: new Notice(win),
       cmdline: new CommandLine(win, {
@@ -1618,10 +1597,7 @@ export const VimmaHost = {
           search: SearchHost.completions,
         }),
         // An unfinished feature's commands exist only with its pref on (`:downloads`).
-        hidden: () => [
-          ...(downloadsOn() ? [] : ["downloads.picker"]),
-          ...(multipleSplitsOn() ? [] : SPLIT_ACTION_IDS),
-        ],
+        hidden: () => (downloadsOn() ? [] : ["downloads.picker"]),
       }),
       tabStrip: null,
       toolbar: null,

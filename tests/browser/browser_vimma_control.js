@@ -467,9 +467,6 @@ add_task(async function test_state_splits() {
     Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
     return result;
   };
-  Assert.ok(!("splits" in (await state(1))), "no splits field while the feature is off");
-
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.multiple_splits", true]] });
   const tabs = [];
   for (const q of ["s1", "s2", "s3", "s4", "s5"]) {
     const t = BrowserTestUtils.addTab(gBrowser, `https://example.com/?${q}`);
@@ -477,8 +474,7 @@ add_task(async function test_state_splits() {
     tabs.push(t);
   }
   const [a, b, c, d, lone] = tabs;
-  Assert.equal(Object.keys(await state(2)).includes("splits"), true, "splits with the feature");
-  Assert.deepEqual((await state(3)).splits, [], "none yet");
+  Assert.deepEqual((await state(1)).splits, [], "splits is there, none yet");
 
   Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
   gBrowser.selectedTab = lone;

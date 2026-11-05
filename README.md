@@ -23,7 +23,8 @@ and workspaces, and your hands never leave the keyboard.
 - **PDFs with zathura's keys:** `J`/`K` and `12G` by page, zoom and fit, the outline on `Tab`,
   marks and presentation mode in Firefox's own PDF viewer, with the page count in the status bar.
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
-  `w` to switch workspace. If your fingers know tmux, they already know Vimma.
+  `w` to switch workspace. A workspace keeps several splits, one shown at a time, and `]s` steps
+  between them. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.

@@ -92,15 +92,14 @@ import {
  * @typedef {{ panes: Panes, wrapper: Wrapper | null, laidOut: Set<Tab> }} Slot
  */
 
-/**
- * Several splits per workspace (docs/specs/multiple-splits.md decision 17); removed by the
- * sub-PR that turns the feature on.
- */
-export const MULTIPLE_SPLITS_PREF = "vimma.feature.multiple_splits";
-
 /** The notices for splits made outside Vimma that Vimma undoes (m3-workspaces decision 14). */
 export const SPANS_WORKSPACES = "split undone: its tabs are in different workspaces";
-export const SECOND_SPLIT = "split undone: one split per workspace";
+/**
+ * A second split made by Firefox's own commands in a workspace that has one: Vimma makes further
+ * splits from the side panel's marks only (docs/specs/multiple-splits.md decision 5), so the
+ * notice names that way.
+ */
+export const SECOND_SPLIT = "split undone: mark tabs in ctrl+b b for another split";
 
 /** Firefox's split-view events that may mean a split made or changed outside Vimma. */
 const SPLIT_EVENTS = ["SplitViewCreated", "SplitViewTabChange", "SplitViewRemoved"];
@@ -114,19 +113,12 @@ export const PANE_VIEW_EVENTS = Object.freeze([
 ]);
 
 /**
- * Why a new pane is refused while the workspace's split is a hidden view (side-panel-unsplit
- * decision 29). It names the way back, and the host shows it until the next key
- * (docs/specs/multiple-splits.md, decision 4).
- */
-export const HIDDEN_REASON = "the split is hidden: select one of its tabs (ctrl+b b) to go back";
-
-/**
- * Whether `text` is the hidden-split refusal, which the host keeps on screen until the next key
- * (multiple-splits decision 4): HIDDEN_REASON, or core's text naming the split.
+ * Whether `text` is the hidden-split refusal (core's `hiddenSplitRefusal`), which the host keeps
+ * on screen until the next key (docs/specs/multiple-splits.md decision 4).
  * @param {string} text
  */
 export function isHiddenRefusal(text) {
-  return text === HIDDEN_REASON || /^split S\d is hidden: /.test(text);
+  return /^split S\d is hidden: /.test(text);
 }
 
 /**
@@ -195,8 +187,8 @@ export class PaneView {
    */
   #number = 1;
   /**
-   * The shown workspace's other splits by number, each hidden; empty while the feature pref is
-   * off. Never non-empty without a current tree: when that ends, one of these takes its place.
+   * The shown workspace's other splits by number, each hidden. Never non-empty without a
+   * current tree: when that ends, one of these takes its place.
    * @type {Map<number, Slot>}
    */
   #others = new Map();
@@ -289,11 +281,6 @@ export class PaneView {
    */
   get hidden() {
     return !!this.#panes && isHiddenView(this.#panes);
-  }
-
-  /** Whether a workspace keeps several splits (multiple-splits decision 17). */
-  get multiple() {
-    return Services.prefs.getBoolPref(MULTIPLE_SPLITS_PREF, false);
   }
 
   /**
@@ -449,9 +436,9 @@ export class PaneView {
     return away;
   }
 
-  /** The refusal of a new pane on a lone tab: naming the split once there can be several. */
+  /** The refusal of a new pane on a lone tab, naming the split shown last. */
   #hiddenReason() {
-    return this.multiple ? hiddenSplitRefusal(this.#number) : HIDDEN_REASON;
+    return hiddenSplitRefusal(this.#number);
   }
 
   /** @param {number} max  config `[panes] max` */
@@ -734,8 +721,7 @@ export class PaneView {
    */
   showTabs(tabs, focus, { alone } = {}) {
     const ids = tabs.map((t) => t.linkedPanel);
-    const multiple = this.multiple;
-    const fresh = multiple && this.hidden;
+    const fresh = this.hidden;
     const base = fresh ? null : this.#panes;
     const options = {
       preset: base?.layout,
@@ -753,7 +739,7 @@ export class PaneView {
       if (made.refusal) return { ok: false, reason: made.refusal };
       this.#use(updateSplit(made.splits, /** @type {number} */ (made.splits.shown), next));
       next = /** @type {Panes} */ (this.#panes);
-    } else if (multiple && ids.some((id) => this.#otherOf(id) !== undefined)) {
+    } else if (ids.some((id) => this.#otherOf(id) !== undefined)) {
       let model = this.splits;
       for (const id of ids) if (this.#otherOf(id) !== undefined) model = removeSplitTab(model, id);
       this.#use(model);

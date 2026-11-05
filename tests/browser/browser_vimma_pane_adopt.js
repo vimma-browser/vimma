@@ -208,7 +208,11 @@ add_task(async function an_extensions_split_keeps_its_shares_one_per_workspace_a
 
   gBrowser.addTabSplitView([t3, t4], { insertBefore: t3 });
   await until(() => !t3.splitview && !t4.splitview, "a second split in the workspace is undone");
-  Assert.ok(notice(win)?.includes("one split per workspace"), `the notice says why`);
+  Assert.equal(
+    notice(win),
+    "split undone: mark tabs in ctrl+b b for another split",
+    "the notice says how to make another split",
+  );
   Assert.deepEqual(shown(win).tabs, [t1, t2], "the first split is left as it was");
   Assert.equal(gBrowser.selectedTab, t2, "and still shows");
 

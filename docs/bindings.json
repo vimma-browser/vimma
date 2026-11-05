@@ -674,12 +674,22 @@
         {
           "name": "next_split",
           "description": "Show the next split",
-          "keys": []
+          "keys": [
+            {
+              "keys": "]s",
+              "chords": ["]s"]
+            }
+          ]
         },
         {
           "name": "previous_split",
           "description": "Show the previous split",
-          "keys": []
+          "keys": [
+            {
+              "keys": "[s",
+              "chords": ["[s"]
+            }
+          ]
         }
       ]
     },

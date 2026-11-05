@@ -241,7 +241,8 @@ are sent.
 false` in place of `hidden`. `panes` keeps its meaning: the shown split, else the split shown
   last with `hidden: true`. Added without a version bump; vimma-ctl accepts it when present and
   checks that it is an array of objects with an integer `number` from 1 to 9 and a boolean
-  `shown`.
+  `shown`. (Since changed: the pref is gone and `splits` is always present;
+  [multiple-splits](multiple-splits.md), decision 17.)
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

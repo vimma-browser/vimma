@@ -211,4 +211,3 @@ pref("vimma.feature.downloads", false);
 
 // Unfinished: several splits per workspace (docs/specs/multiple-splits.md), delivered over several
 // pull requests (CONTRIBUTING.md, "Unfinished features").
-pref("vimma.feature.multiple_splits", false);

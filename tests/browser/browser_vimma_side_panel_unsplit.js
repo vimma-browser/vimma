@@ -410,7 +410,9 @@ add_task(async function the_users_flow_space_on_c_enter_on_c_shows_c_alone() {
 
   await openPanel();
   Assert.equal(count().textContent, "split: 2 panes (hidden)", "the panel header says so");
-  Assert.deepEqual([...markedTitles()].sort(), ["a", "b"], "with the view's tabs marked");
+  // docs/specs/multiple-splits.md decision 9: on a lone tab nothing starts marked, since marks
+  // there start a new split.
+  Assert.deepEqual([...markedTitles()], [], "and nothing marked on the lone tab");
   EventUtils.synthesizeKey("KEY_Escape", {});
   await until(() => !isOpen(), "one Esc closes the panel");
 });
@@ -544,7 +546,8 @@ add_task(async function splitting_the_lone_tab_is_refused_until_the_next_key() {
   gBrowser.selectedTab = tab("d");
   await until(() => hiddenView(), "d alone, the split hidden");
   await focusContent(tab("d").linkedBrowser);
-  const want = "the split is hidden: select one of its tabs (ctrl+b b) to go back";
+  const want =
+    "split S1 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split";
   for (const key of ["v", "-", "KEY_Enter"]) {
     prefix(key);
     await until(() => notice() === want, `ctrl+b ${key} is refused, naming the way back`);

@@ -24,8 +24,9 @@ What works today, each with the section that explains it:
   viewer in your theme.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
-  `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
-  cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
+  `h/j/k/l`, `z` zoom, swap, resize); [several splits](#several-splits) in a workspace, one shown
+  at a time (`]s` / `[s` to step, `ctrl+b S` to pick); tiling [layouts](#layouts) (`enter`
+  dwindle, `space` cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
   with its tabs and split layout across restarts; `ctrl+^` goes back to the last one; a
   [private workspace](#private-workspace) (`ctrl+b shift+p`); a [side panel](#side-panel)
@@ -804,9 +805,10 @@ with `F11` keeps it. From the left:
 - the **pending keys**, e.g. `prefix` after `ctrl+b`;
 - the **workspace**: `● 2:work`, its number in workspace order and its name;
 - `tab 2/5`: the selected tab and how many the workspace shows;
-- in a split, `pane 2/3`: the focused pane and how many there are; `split 3 hidden` (dim) when
-  the workspace's split is kept out of sight while another tab shows alone
-  ([below](#picking-a-tab-during-a-split));
+- in a split, `pane 2/3`: the focused pane and how many there are, and `S2 pane 2/3` when the
+  workspace has [several splits](#several-splits), S2 being the one shown; `split 3 hidden`
+  (dim) when the workspace's split is kept out of sight while another tab shows alone
+  ([below](#picking-a-tab-during-a-split)), `3 splits hidden` with several;
 - in the [PDF viewer](#pdf-viewer), the **page**: `page 3/12`, or `page iv (4/120)` when the
   page has a label that is not its number;
 - the page **title**, or your rename (`ctrl+b shift+t`);
@@ -1107,6 +1109,8 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b shift+h j k l`                                                                  | Swaps the pane with the one left / below / above / right; it keeps focus and its page. `ctrl+w H J K L` in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b r`                                                                              | Resize mode ([below](#resize-mode)): `h j k l` move the pane's divider, `Esc` leaves. `ctrl+w < > + -` resize directly in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `ctrl+b enter`                                                                          | A new pane along the focused pane's longer side: side by side when it is wide, stacked when it is tall ([Layouts](#layouts)). `[panes] layout = "manual"`: as `ctrl+b v`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `]s` / `[s`                                                                             | Normal mode: shows the workspace's next / previous split, wrapping; on a tab shown alone, the split shown last ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ctrl+b S`                                                                              | The split picker: the workspace's splits with their colour, pane count and titles; a digit or `Enter` shows one, `/` filters by title ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b space`                                                                          | Cycles the layout presets, as tmux does; the status bar names the one you get ([Layouts](#layouts)). `:layout tiled` picks one.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `ctrl+b shift+x`, `x`, `ctrl+F4`                                                        | Closes the tab, as Firefox's `ctrl+w` did: on a pinned tab it selects the first unpinned tab instead; closing the last tab opens a new tab and keeps the window ([Firefox behaviour Vimma changes](#firefox-behaviour-vimma-changes)). `x` in normal mode. `ctrl+shift+t` reopens the last closed tab, in every mode.                                                                                                                                                                                                                                                                     |
 | `ctrl+b` then anything else                                                             | Never leaks to the page. A binding without a command shows "… not implemented yet" for 1.5 s; an unbound key does nothing. Firefox's `ctrl+b` bookmarks sidebar is off.                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -1142,9 +1146,11 @@ alone in the whole window, as Firefox's own split view does. The split is not lo
 hidden, with its panes, sizes and focused pane, and the status bar says `split 3 hidden`. Go to
 any of its tabs, by any of the same routes, and the whole split comes back, with that tab's pane
 focused. A pinned tab works the same way. While the split is hidden the pane keys act on the tab
-you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "the split is hidden: select one
-of its tabs (ctrl+b b) to go back"; the message stays until your next key. The hidden split
-survives a workspace switch and a restart.
+you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "split S1 is hidden: ]s or
+ctrl+b S to go back, or mark tabs in ctrl+b b for a new split"; the message stays until your
+next key. `]s` brings the split back. The hidden split survives a workspace switch and a
+restart. To show the tab you are on beside others, start another split from the side panel
+([Several splits](#several-splits)).
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) opens in the focused
@@ -1154,9 +1160,41 @@ A split made outside Vimma (Firefox's own split-view command, an extension, or a
 Firefox session) becomes the workspace's panes: its tabs side by side in its order, at the
 widths Firefox gave them, with the selected tab's pane focused. The pane keys then work on it,
 and the workspace keeps it like any other split. If such a split's tabs are in different
-workspaces, or the workspace already has a split, Vimma separates its tabs again and the
-status bar says why; the tabs stay in their workspaces. Separating a split outside Vimma closes
-its panes.
+workspaces, Vimma separates its tabs again and the status bar says why; the tabs stay in their
+workspaces. If the workspace already has a split, Vimma separates it too and the status bar
+says "split undone: mark tabs in ctrl+b b for another split": a further split is made from the
+side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
+panes.
+
+### Several splits
+
+A workspace can keep several splits, up to 9, and shows one at a time: an editor beside its
+docs, and a second comparison of two pages, without breaking up the first.
+
+- **Starting another split.** Go to a tab that is in no split, so it shows alone and the split
+  waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone nothing starts marked.
+  Mark two or more tabs with `space` or `V` and press `Enter`; they become a new split, shown at
+  once, and the split you had before waits hidden. A marked tab that was in another split leaves
+  it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
+- **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
+  and the colour of that number from the theme. In the side panel each split's tabs carry a
+  stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
+  `3 splits (none shown)` on a tab shown alone. A new split takes the lowest free number.
+- **Going between them.** `]s` shows the next split by number and `[s` the previous one,
+  wrapping; on a tab shown alone both bring back the split shown last first. `ctrl+b S` opens the
+  split picker: each split with its colour, label, pane count and the titles of its tabs; a digit
+  or `Enter` shows one, `/` filters by title. Selecting any tab of a split, by any route, shows
+  that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b S` says
+  `no splits in this workspace`.
+- **Splitting a lone tab.** While the workspace has a split and a tab shows alone, `ctrl+b v`,
+  `ctrl+b -` and `ctrl+b enter` are refused, so a split you meant to be on screen is never hidden
+  further by mistake; the message names the split and the ways back. With no split in the
+  workspace these keys split the tab as usual.
+- **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
+  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, the side
+  panel says `new split: at most 9 splits in a workspace` and changes nothing.
+- **Kept.** A workspace switch, a restart and the private workspace keep every split, its sizes
+  and which one shows.
 
 ### Resize mode
 
@@ -3212,8 +3250,10 @@ which tabs they are, and the head says `split: 3 panes`. Change the marks as abo
   focused there; any other tab shows alone and the split waits hidden
   ([Picking a tab during a split](#picking-a-tab-during-a-split)). One `Esc` closes the panel.
   After a change, the first `Esc` puts the split's marks back and the second closes.
-- **A hidden split** is listed the same way, its tabs marked, and the head says
-  `split: 2 panes (hidden)`.
+- **A hidden split** is listed with its label, but its tabs are not marked: on a tab shown
+  alone the marks start a new split ([Several splits](#several-splits)). The head says
+  `split: 2 panes (hidden)`, or `3 splits (none shown)` with several. To change a hidden split,
+  show it first (`]s`, `ctrl+b S` or any of its tabs).
 
 `ctrl+b )` / `ctrl+b (` with the panel open list the other workspace with its own split marked.
 No page reloads.
@@ -3973,7 +4013,8 @@ accent = "#ff9e64"
   message goes away at the next check.
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
   and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
-  splits), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
+  splits), `[panes] max_splits` (most splits in a workspace, 1 to 9, default 9;
+  [Several splits](#several-splits)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
   built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),
