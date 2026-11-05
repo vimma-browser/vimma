@@ -1,6 +1,8 @@
 # Spec: app-routes
 
-Status: draft · Area: `packages/vimma-core/src/routes.mjs`; `src/browser/base/content/vimma/`
+Status: accepted (Linux: sub-PRs 1 and 2 close the issue; sub-PRs 3 and 4 are the macOS step,
+not yet scheduled) · Area: `packages/vimma-core/src/routes.mjs`,
+`packages/vimma-core/src/config.mjs`; `src/browser/base/content/vimma/`
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
 `tools/package/package.mjs`, `tools/package/cask.mjs`, the macOS bundle manifest; `tools/e2e/`;
@@ -54,7 +56,7 @@ Today none of these paths names the right program:
 ## Behaviour
 
 1. **Rules keep their syntax.** `[[routes]]` keeps its keys (`app`, `domain`, `url`, `workspace`),
-   and `app` stays one string (it does not take a list; Open question 5). A config file valid today
+   and `app` stays one string (it does not take a list; decision 1). A config file valid today
    stays valid (`schema = 2`), and a rule with no `app` keeps its meaning.
 2. **A link carries the names of the programs that opened it, nearest first**, up to eight
    lower-case names, shells included: `az login` run in herdr inside Ghostty on macOS gives
@@ -103,8 +105,8 @@ Today none of these paths names the right program:
 5. **Multiplexers.** Inside tmux, zellij or a detached herdr, the chain ends at the multiplexer
    server, so a rule naming `tmux`, `zellij` or `herdr` works, and a rule naming the terminal
    behind it does not. The terminal is known only while the server still runs under it, as herdr's
-   does until its session is first detached. Following a client to its terminal is Open
-   question 6.
+   does until its session is first detached. Vimma does not follow a client to its terminal
+   (decision 7).
 6. **macOS apps name themselves.** A link a running app sends (a cmd-click in Ghostty, Slack and
    other Electron apps) carries the app's bundle identifier and executable name
    (`com.mitchellh.ghostty,ghostty`). A link from a command-line tool that calls `/usr/bin/open` or
@@ -114,7 +116,9 @@ Today none of these paths names the right program:
    comes from a macOS app as an Apple Event does so only if the event's sender is that app at a cold
    start too, which sub-PR 3 measures; otherwise it names nothing and docs/limits.md says so.
 8. **An unknown program matches no `app` rule.** `domain` and `url` rules still apply, then
-   Firefox's container guess, then the workspace default, as today.
+   `[routing] default_workspace` when it is set (Behaviour 13), else Firefox's container guess,
+   then the workspace default, as today. Vimma never guesses the program from the focused window
+   (decision 4).
 9. **App rules apply to links from other programs only**: a link from another app and the first
    tab of a window opened for one. A page's own navigation, and the links a page opens, are never
    routed (workspace-routing, decision 3). A tab placed by an app rule is not hinted back to a
@@ -130,6 +134,11 @@ Today none of these paths names the right program:
 12. **about:vimma shows the last names.** Its Routing section says which names the most recent link
     from another program carried and which rule it matched, without its URL, and marks a rule that
     an earlier rule always wins against as `shadowed by rule N`.
+13. **A default workspace for links from other programs.** `[routing] default_workspace = "work"`
+    opens every link from another program that no `[[routes]]` rule matches in `work`, whether its
+    program is known or not. What the user types, and a page's own links, are never affected.
+    Unset, the default is today's: Firefox's container guess, then the window's workspace. It is
+    never the agent or the private workspace (Behaviour 10).
 
 ## Research
 
@@ -351,7 +360,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 
 1. **No new key, no new value.** `app` stays a string; the change is what it is compared with.
    Reason: one rule per program keeps `:route`, `:route add` and about:vimma one name per rule, and
-   an older Vimma reads every file this one writes. A list value is Open question 5.
+   an older Vimma reads every file this one writes. Rejected: a list value
+   (`app = ["herdr", "ghostty"]`), because two rules are as clear and an older Vimma refuses a
+   list (`expected a string`) and would keep its last good config.
 2. **The names are a list, nearest first.** `-vimma-from` and `VIMMA_FROM` carry up to eight names
    separated by commas; a comma cannot occur in a name, so the list needs no quoting, and a single
    name is a list of one. A name is a token, `[a-z0-9][a-z0-9._+-]{0,63}`, 64 characters so that
@@ -382,7 +393,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
 4. **Unknown means no app rule.** With no names, the chain goes on as today: a `domain` or `url`
    rule, Firefox's guess, the workspace default. Rejected: a guess from the focused window or the
    frontmost app, because a background app's link (a chat notification while the terminal has
-   focus) would take the terminal's workspace (Open question 1).
+   focus) would take the terminal's workspace, and the fallback differs per compositor, with none
+   on GNOME. A fixed workspace for unmatched links is decision 16 instead.
 5. **A rule naming the agent workspace is passed over, and matching goes on.** At the external
    routing points `matchRoute` gets `skip: [<agent workspace>]` and treats such a rule as one whose
    workspace does not exist, so a later rule can still apply; about:vimma marks it
@@ -452,7 +464,9 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    Rejected: asking the server (`tmux display-message -p '#{client_pid}'`), because it runs the
    user's `after-display-message` hooks on every link and its cost was not measured; and the
    inherited `GHOSTTY_RESOURCES_DIR`, because it names the terminal that started the server, not
-   the one attached. An opt-in client lookup is Open question 6.
+   the one attached; and an opt-in lookup that continues from the server's client when exactly one
+   exists, because it still cannot know which session that client shows, while a rule naming the
+   multiplexer covers the case without a guess, as the worked example's `herdr` rule does.
 8. **`TERM_PROGRAM` only when the walk could not see the terminal.** When the walk ended at a name
    that is not a token or at the 32-step limit, and `TERM_PROGRAM`, lower-cased, is a token not
    already in the list, it is added last (within the cap). When the walk ended normally, at pid 1
@@ -495,8 +509,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
     `<app>` must be a token and `<url>` must not start with `-`, or it exits 64. Reason: a systemd
     unit or a script started outside any terminal has no useful chain. It is not needed for
     `BROWSER`, which must be one command name (Research, "CLIs"). Rejected: `--workspace <name>`,
-    because any caller could then pick any workspace, while `--from` leaves the choice to
-    `config.toml` (Open question 4).
+    because any local caller could then pick any workspace, while `--from` leaves the choice to
+    `config.toml`; the same goes for a `--workspace` on `vimma-ctl open`.
 11. **macOS: a patch in `openURLs:` names the sending app.** The new patch
     `src/toolkit/xre/MacApplicationDelegate-mm.patch` changes `-[MacApplicationDelegate openURLs:]`:
     - Take `currentAppleEvent`; only if its class is `kInternetEventClass` and its id `kAEGetURL`,
@@ -506,8 +520,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
       `keySenderApplicationSandboxed` is true, only the bundle identifier is kept, because a
       sandboxed app's executable name is whatever its developer chose, while an App Store app's
       bundle identifier is registered to one developer team; a sandboxed app distributed outside
-      the store can still use any bundle identifier (Open question 3). A sender that is not an
-      app or has exited gives no names.
+      the store can still use any bundle identifier. A sender that is not an app or has exited
+      gives no names.
     - Running Vimma: insert `-vimma-from <names>` before the first `-url`, so the existing
       `k-vimma-from` handler takes it while `x-default` opens the link in the same task.
     - Cold start (`CollectingURLs`): `setenv("VIMMA_FROM", names, 1)` when there are names, and
@@ -520,8 +534,11 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
     Reason: the sender is known only while the event is handled, and only native code can read it;
     reusing the flag and the variable keeps the rest of the path the one Linux uses. A reused pid
     could name the wrong app if the sender exited and another app took its pid before the event was
-    handled; the names are a hint (Security and privacy), so this is accepted, and an audit-token
-    check is Open question 3. If `currentAppleEvent` turns out to be nil inside `openURLs:`, the
+    handled; the names are a hint (Security and privacy), so this is accepted. Rejected: resolving
+    the sender from its audit token with the Security framework (`SecCodeCopyGuestWithAttributes`)
+    and a `team` key compared with its Team ID, because a forged name reaches only workspaces the
+    rules already route to, pairing `app` with `domain` meets the residual risks, and the key
+    could be honoured on macOS only. If `currentAppleEvent` turns out to be nil inside `openURLs:`, the
     patch instead installs its own `kAEGetURL` handler in `applicationWillFinishLaunching:`, as
     Finicky does, which reads the sender and calls `openURLs:`; that needs more lines than the
     budget below and a new register line in the same sub-PR. Rejected: js-ctypes calls into the
@@ -578,6 +595,28 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
     one is inert (decision 3). A rule with `app` never shadows one without, since the latter also
     applies to typed opens. The section marks rule `i` `shadowed by rule N`.
     Reason: with app and domain rules mixed, an unreachable rule is the likeliest mistake.
+16. **`[routing] default_workspace` catches the links from other programs that no rule
+    matches.** A new table, `[routing]` (schema 2), with one key, `default_workspace`, a workspace
+    name checked as a rule's `workspace` is. At the external routing points
+    (`externalUserContextId`, and `firstTab` when the window's single URL came from another
+    program's command line), after every rule has been tried and none applied, the link opens in
+    that workspace's container; then Firefox's guess and the window's workspace follow only when
+    it is unset, names a workspace that does not exist, or names the agent workspace (passed over
+    as a rule naming it is, decision 5, and marked in about:vimma). `routeLinkIn` never uses it.
+    It applies whether the link's names are known, unknown or dropped by the agent cut, because it
+    is the user's choice for "any other program", not an attribution. It is `[routing]` and not
+    `[routes]` because TOML cannot make `routes` both the `[[routes]]` array and a table.
+    Reason: "links from anywhere else go to `work`" is otherwise not expressible without also
+    routing what the user types. It does not bring back the focus guess that decision 4 rejects:
+    the workspace is fixed in `config.toml`, so a background app's link lands in the same
+    workspace whatever has focus, and nothing about the sender is inferred. It does widen where an
+    unknown or forged sender's link goes, from the window's workspace to one fixed workspace, so
+    the guide recommends a workspace without privileged sign-ins, as for agent CLIs (Security and
+    privacy). It goes before Firefox's guess because an explicit setting should beat a heuristic
+    from the open tabs; a user who prefers the guess leaves the key unset. Rejected: `app = "*"`
+    as a rule, because a wildcard in a token key would be the one `app` value that is not a
+    program name, and a rule's place in the file would decide whether it is a catch-all or is
+    shadowed, while one key has one meaning wherever it is written.
 
 ## Security and privacy
 
@@ -592,6 +631,11 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   can do without the hint, since a link from another program already opens in a workspace with the
   user's logins (a `domain` rule, Firefox's guess or the workspace default), and malware running as
   the user can read the profile directly (docs/security.md §11).
+- **The default workspace.** `[routing] default_workspace` sends every unmatched link from another
+  program to one workspace, a forged or agent's link included, as the window's workspace does
+  today; it is never the agent's or private (decision 16), and the guide recommends one without
+  privileged sign-ins. New R9: "`[routing] default_workspace` applies only to links from other
+  programs that no rule matches, never to the agent or the private workspace".
 - **Residual risks.** (1) A sandboxed or App Store app can name its executable after another
   program; on macOS only its bundle identifier is used (decision 11), a sandboxed app distributed
   outside the store can still choose any bundle identifier, and on Linux nothing tells a look-alike
@@ -606,7 +650,7 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   recommends routing agent CLIs (`claude`, `codex`) by name to a workspace with no privileged
   sign-ins. For a workspace that holds privileged sign-ins, the guide recommends pairing `app` with
   `domain`, as the worked example does, so that a forged name opens only the sign-in host there.
-  Open question 3 weighs a Team ID check.
+  A Team ID check was rejected (decision 11).
 - **What is recorded.** The last link's names and each app-placed tab's names live in memory only
   and appear only in about:vimma; nothing is written to disk, the URL is never shown with them, and
   the `:bug` report omits them, because they can reveal which programs a user runs.
@@ -663,6 +707,9 @@ Written first and seen to fail.
   - `with no app known, app rules never match and domain rules still do`
   - `shadowedBy: a covering earlier rule shadows, an app rule never shadows one without app`
   - `shadowedBy: a skipped rule shadows nothing`
+- **Vitest, `packages/vimma-core/test/config.test.mjs`:** `[routing] default_workspace takes a
+workspace name`; `[routing] refuses an unknown key and a name that is not a workspace name`;
+  `[routing] needs schema 2`.
 - **Fuzz, `packages/vimma-core/test/fuzz/routes.fuzz.test.mjs`:** `parseAppList returns only tokens,
 at most eight, never two equal neighbours`.
 - **Shell, `tools/package/test/vimma-open.test.mjs`** (a fake `/proc` on Linux and a fake `ps` on
@@ -696,10 +743,15 @@ at most eight, never two equal neighbours`.
   `route_move_keeps_an_app_routed_tab_until_it_leaves_the_host`,
   `about_vimma_shows_the_last_names_without_the_url`,
   `about_vimma_marks_a_shadowed_rule_and_an_agent_rule`,
-  `an_app_rule_never_opens_a_link_in_the_private_workspace`. In
+  `an_app_rule_never_opens_a_link_in_the_private_workspace`,
+  `an_unmatched_external_link_opens_in_the_default_workspace`,
+  `the_default_workspace_never_applies_to_the_url_bar`,
+  `a_rule_beats_the_default_workspace`,
+  `a_cold_start_link_with_no_rule_opens_in_the_default_workspace`. In
   `browser_vimma_agent_outside_opens.js`: `a_rule_after_one_naming_the_agent_workspace_applies`,
   `an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`,
-  `a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`. Also
+  `a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`,
+  `a_default_workspace_naming_the_agent_workspace_is_passed_over`. Also
   `a_cold_start_app_routed_first_tab_is_not_hinted_back`.
 - **e2e (Linux, Xvfb):** a scenario `app-routes.json` with a new step `external`, which runs the
   packaged `vimma-open` with the given arguments. The harness runs the browser and the step under
@@ -724,7 +776,8 @@ at most eight, never two equal neighbours`.
   platforms: the names a link carries and the nearest-first rule; the worked example (the three
   rules and `export BROWSER=vimma-open`, with the note that the `herdr` rule keeps a detached
   session working); multiplexers; the advice to pair `app` with `domain` for sign-in workspaces and
-  to route agent CLIs (`claude`, `codex`) by name to a workspace with no privileged sign-ins; that
+  to route agent CLIs (`claude`, `codex`) by name to a workspace with no privileged sign-ins;
+  `[routing] default_workspace`, with the same advice; that
   about:vimma shows the last link's names; `--from`; and what has no
   names (portal and Flatpak callers, a CLI calling `open` or `osascript` without `BROWSER`,
   Handoff, a terminal behind a daemonised multiplexer server).
@@ -734,65 +787,45 @@ at most eight, never two equal neighbours`.
   at the token's length, since that spec is implemented and frozen.
 - **`CHANGELOG.md` `[Unreleased]`** (added at merge), one line per sub-PR: "Routing rules with
   `app` compare every program on the way, nearest first, and accept names of up to 64
-  characters"; "`BROWSER=vimma-open` routes links from command-line tools by the terminal and
+  characters, and `[routing] default_workspace` opens other programs' unmatched links in one
+  workspace"; "`BROWSER=vimma-open` routes links from command-line tools by the terminal and
   multiplexer they run in"; "Links from macOS apps name the app for `app` rules"; "`vimma-open` on
   macOS".
 
 ## Delivery
 
 Each sub-PR is mergeable and tested on its own, updates docs/security.md for what it changes, and
-gets a review by a fresh agent before merging.
+gets a review by a fresh agent before merging. Sub-PRs 1 and 2 make the feature work on Linux and
+close the issue; sub-PRs 3 and 4 are the macOS step, specified here and built later, because they
+need a Mac for the patch's smoke and the cold-start measurement. Each part is usable on its own:
+sub-PR 1 changes matching only, so no feature flag is needed.
 
 1. **`feat(routing): app rules match every name a link carries, nearest first`.** Core
    `parseAppList`, the 64-character token, nearest-first matching, `skip`, `shadowedBy`, with
    Vitest and fuzz cases; `WorkspaceRouter` accepts lists in `-vimma-from` and `VIMMA_FROM` and
-   passes over agent-workspace rules (decision 5); R4 and R8; guide lines; a changelog line, since
-   longer names and the new precedence are visible.
+   passes over agent-workspace rules (decision 5); `[routing] default_workspace` (decision 16);
+   R4, R8 and R9; guide lines; a changelog line, since longer names and the new precedence are
+   visible.
 2. **`feat(routing): vimma-open walks the whole chain and hands off without blocking`.** Linux:
    decisions 6 to 10, per-tab names and the hint (decision 14), about:vimma (decision 15), the e2e
-   step, the shell tests including CPython's `webbrowser`; O6, O8, O9; guide and limits.
+   step, the shell tests including CPython's `webbrowser`; O6, O8, O9; guide and limits. Sets the
+   status to `implemented` on Linux, names sub-PRs 3 and 4 as the macOS step on the status line,
+   and closes the issue.
 3. **`feat(macos): links from other apps name the app that sent them`.** The patch and its ADR-003
    line (decision 11), R7, the macOS smoke with the helper app. Its description records the
    cold-start sender, whether `currentAppleEvent` was set, and Teams' sender and executable name as
    about:vimma shows them.
 4. **`feat(macos): vimma-open in the app bundle`.** The `ps` walk and the macOS hand-off
    (decision 9); the script in `Contents/Resources/vimma-open`, the bundle manifest, the cask's
-   `binary`; the guide's macOS setup. Sets this spec to `implemented` and closes the issue.
+   `binary`; the guide's macOS setup. Sets this spec to `implemented` without exceptions.
 
-## Open questions
+## Answered questions
 
-1. **A guess when the program is unknown.** (a) None (decision 4). (b) The focused window's app
-   (Hyprland's `activewindow`, X11's `_NET_ACTIVE_WINDOW`, macOS's `frontmostApplication`), as a
-   separate, opt-in key. **Recommendation: (a)**, because a link from a background app would be
-   attributed to whatever has focus, and the fallback differs per compositor, with none on GNOME.
-2. **A rule for every link from another program.** (a) None: a `domain` rule applies to typed and
-   external links alike. (b) `app = "*"`, which matches every link from another program, whether
-   its names are known or not, as Zen's default route for external links does.
-   **Recommendation: (b)**, as a small follow-up after sub-PR 2, because "sign-in links from
-   anywhere else go to `work`" is otherwise not expressible without also routing what the user
-   types.
-3. **Checking the sender's identity on macOS.** (a) No: names are hints (Security and privacy),
-   paired with `domain` where it matters. (b) Resolve the sender from its audit token with the
-   Security framework (`SecCodeCopyGuestWithAttributes`), which also rules out pid reuse, and offer
-   a `team` key compared with its Team ID, so that a look-alike app cannot claim Teams.
-   **Recommendation: (a)**, because a forged name reaches only workspaces the rules already route
-   to, the residual risks (a look-alike executable name, a page starting an app through an
-   external protocol) are met by pairing `app` with `domain`, and (b) adds a key only macOS can
-   honour.
-4. **A workspace chosen by the caller.** (a) None: callers name a program, `config.toml` picks the
-   workspace (decision 10). (b) `vimma-open --workspace <name>`, or a `--workspace` for
-   `vimma-ctl open` on the `full` role, for scripts. **Recommendation: (a)**, because (b) lets any
-   local caller choose any workspace, and a script can name itself with `--from` and get a rule.
-5. **A list value for `app`.** (a) One string per rule (decision 1); the worked example uses one
-   rule for `herdr` and one for `ghostty`. (b) `app = ["herdr", "ghostty"]`, matching when any
-   listed name is among the link's names, at the nearest of them. **Recommendation: (a)**, because
-   two rules are as clear, `:route add` and about:vimma stay one name per rule, and an older Vimma
-   refuses a list (`expected a string`) and would keep its last good config.
-6. **Following a multiplexer's client to its terminal.** (a) No: the chain ends at the server
-   (decision 7), and the multiplexer's own rule applies. (b) Opt-in (`[routes] follow_clients`
-   or a `vimma-open` flag): list the user's own processes once (`ps -U "$(id -u)"`, with Linux's
-   `tmux: client` mapped like the walk's names), treat a server whose parent is pid 1 or a
-   stop-list process as detached, and continue from its client when exactly one exists. It still
-   cannot know which session that client shows, so a link from a detached session can be credited
-   to the terminal showing another. **Recommendation: (a)**, because a rule naming the multiplexer
-   covers the case without a guess, as the worked example's `herdr` rule does.
+- **A guess when the program is unknown:** none (decisions 4 and 16).
+- **A rule for every link from another program:** no `app = "*"`; `[routing] default_workspace`
+  instead (decision 16).
+- **Checking the sender's identity on macOS:** no; names are hints, paired with `domain`
+  (decision 11).
+- **A workspace chosen by the caller:** no (decision 10).
+- **A list value for `app`:** no (decision 1).
+- **Following a multiplexer's client to its terminal:** no (decision 7).
