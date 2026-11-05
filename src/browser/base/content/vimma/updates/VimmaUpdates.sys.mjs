@@ -1007,16 +1007,12 @@ export const VimmaUpdates = {
   },
 
   /**
-   * UpdateService-sys-mjs.patch, before Firefox's checker sends its request: false stops the
-   * check (checks off, or a source build), so no request leaves. Otherwise the request goes
-   * without cookies, redirects or languages, as Vimma's own fetch (decision 30), and asks for
-   * the file uncompressed and stops past MAX_RESPONSE_BYTES (decision 32): XMLHttpRequest
-   * reports progress in the bytes it received, so a compressed body is not decoded, and a
-   * compressed answer fails the signature.
-   * @param {XMLHttpRequest} request  opened, not sent
+   * UpdateService-sys-mjs.patch, as Firefox's checker starts a check: false ends it as not
+   * allowed, before any request, while checks are off (or held, unless `:update` asked) and on a
+   * build run from its objdir (decision 28), as it ends one an enterprise policy forbids.
    * @returns {boolean}
    */
-  beforeCheck(request) {
+  allowCheck() {
     if (knownType === "source") {
       finish({ outcome: "source", reason: null, offer: null });
       return false;
@@ -1025,11 +1021,19 @@ export const VimmaUpdates = {
       finish({ outcome: "off", reason: null, offer: null });
       return false;
     }
+    return true;
+  },
+
+  /**
+   * UpdateService-sys-mjs.patch, before Firefox's checker sends its request: it goes without
+   * cookies, redirects or languages, as Vimma's own fetch (decision 30), asks for the file
+   * uncompressed and stops past MAX_RESPONSE_BYTES (decision 32). XMLHttpRequest counts its
+   * progress in the bytes it received, so the body is not decoded: a compressed answer then
+   * fails the signature instead of growing in memory.
+   * @param {XMLHttpRequest} request  opened, not sent
+   */
+  beforeCheck(request) {
     const channel = /** @type {any} */ (request).channel.QueryInterface(Ci.nsIHttpChannel);
-    if (!channel.URI.schemeIs("https") && !(channel.URI.schemeIs("http") && inAutomation())) {
-      finish({ outcome: "unreachable", reason: "the update URL is not https" });
-      return false;
-    }
     channel.loadFlags |= Ci.nsIRequest.LOAD_ANONYMOUS;
     channel.redirectionLimit = 0;
     channel.QueryInterface(Ci.nsIEncodedChannel).applyConversion = false;
@@ -1052,7 +1056,6 @@ export const VimmaUpdates = {
       if (tooLarge) refuse(TOO_LARGE);
       else finish({ outcome: "unreachable", reason: "the update host did not answer" });
     });
-    return true;
   },
 
   /**

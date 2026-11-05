@@ -3126,7 +3126,9 @@ Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at st
 is due, and on `:update`, and tells the status bar, about:vimma and, once per version, a short
 message whether a newer release exists; a security release also asks once per session whether
 to show the update command, and once it is installed, whether to restart (UP11). Only the AppImage installs anything: it replaces its own file with
-the offered AppImage (UP10); every other install downloads and installs nothing. Who can reach it: whoever
+the offered AppImage (UP10); every other install downloads and installs nothing, except a tarball
+built with Firefox's updater (UP12), which Firefox's own check and download update through
+Vimma's hook (UP13). Who can reach it: whoever
 controls the update host or the network path (TLS stops the path), _you_ through `about:config`
 and `config.toml`, and the control socket's full role (`app.update_check` and `app.restart`, as
 it can run `app.quit`). The agent role reaches no action, so a local AI agent can neither trigger
@@ -3450,9 +3452,8 @@ _Pages_ and _extensions_ cannot reach it.
   keys, takes another. `check-build.mjs` checks a package (the URL, both channel files, and
   that its `updater` carries Vimma's certificates and none of Mozilla's); the release and
   nightly jobs run it from sub-PR 4 on.
-  **⚠ limit:** until sub-PR 3's hook, Firefox's update service would parse the manifest without
-  Vimma's verifier (UP1), so no release or nightly sets `VIMMA_UPDATES=1` before that hook lands
-  (sub-PR 4). Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
+  **⚠ limit:** no release or nightly sets `VIMMA_UPDATES=1` before sub-PR 4, which first
+  builds and signs the MARs; Firefox's check runs Vimma's verifier first (UP13). Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
   Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
   [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.mjs),
   [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.mjs),
@@ -3469,6 +3470,31 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses a certificate whose self-signature does not verify`](../tools/update/test/gen-update-keys.test.mjs),
   [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../tools/update/test/check-build.test.mjs),
   [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs)
+
+- UP13. Firefox's update check **never** hands Firefox a manifest that Vimma's rules (UP1, UP2)
+  have not accepted: `UpdateService-sys-mjs.patch` (ADR-003) runs Vimma's verifier on the answer
+  before Firefox parses it, a refused manifest fails the check as a malformed file does, and a
+  manifest that offers nothing newer makes Firefox offer nothing. While checks are off or held,
+  and in a build run from its objdir (UP4), the check ends as not allowed before any request. Its
+  request is anonymous, with an empty `Accept-Language`, follows no redirect (UP3), asks for the
+  file uncompressed and is **never** decoded, so a compressed answer fails the signature, and it
+  is cancelled past 256 KiB (UP5). A manifest offers at most one MAR, a complete one on https.
+  The MAR's download **never** carries cookies (spec decision 1): requests from chrome with no
+  browsing context to the URL the verified manifest named, and to the URLs its redirects lead
+  to, go without them; any other request is left as it is. The MAR's own signature is the
+  updater's check (UP12). On a tarball Firefox's updater updates, Vimma's own fetch stays off,
+  so one check runs, and `:update` starts Firefox's.
+  **⚠ limit:** XMLHttpRequest reports progress about every 50 ms, so beyond the cap the parent
+  holds at most what arrives in one such interval before the request is cancelled. Firefox's
+  timer, not Vimma's, decides when a tarball checks (`app.update.interval`, 12 hours).
+  [`a_signed_newer_build_is_offered_and_the_request_is_anonymous`](../tests/browser/browser_vimma_update_verify.js),
+  [`a_manifest_failing_the_rules_never_reaches_firefox`](../tests/browser/browser_vimma_update_verify.js),
+  [`a_replay_is_refused_and_a_downgrade_offers_nothing`](../tests/browser/browser_vimma_update_verify.js),
+  [`checks_off_send_no_request`](../tests/browser/browser_vimma_update_verify.js),
+  [`an_oversized_or_compressed_body_is_refused`](../tests/browser/browser_vimma_update_verify.js),
+  [`the_mar_download_goes_without_cookies`](../tests/browser/browser_vimma_update_verify.js),
+  [`update_checks_a_tarball_through_firefoxs_updater`](../tests/browser/browser_vimma_update_verify.js),
+  [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../packages/vimma-core/test/updates.test.mjs)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can

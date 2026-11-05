@@ -1,25 +1,40 @@
 diff --git a/toolkit/mozapps/update/UpdateService.sys.mjs b/toolkit/mozapps/update/UpdateService.sys.mjs
-index 164381ebc1073b644ab0a95910e2aab6c397e879..ab7f4acaaba5cffd60c2ac50b6ed9a2b99ad07ee 100644
+index 164381ebc1073b644ab0a95910e2aab6c397e879..1945228e473a4dc4474b8692c3b98c3e0d2112dc 100644
 --- a/toolkit/mozapps/update/UpdateService.sys.mjs
 +++ b/toolkit/mozapps/update/UpdateService.sys.mjs
-@@ -5661,6 +5661,11 @@ export class CheckerService {
+@@ -22,6 +22,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
+   DeferredTask: "resource://gre/modules/DeferredTask.sys.mjs",
+   UpdateLog: "resource://gre/modules/UpdateLog.sys.mjs",
+   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
++  VimmaUpdates: "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
+   WindowsRegistry: "resource://gre/modules/WindowsRegistry.sys.mjs",
+   setTimeout: "resource://gre/modules/Timer.sys.mjs",
+ });
+@@ -5565,7 +5566,8 @@ export class CheckerService {
+ 
+     // `checkType == FOREGROUND_CHECK` can override `canCheckForUpdates`. But
+     // nothing should override enterprise policies.
+-    if (lazy.AUS.disabled) {
++    // Vimma (m6a-updater §4): no request at all while its update checks are off.
++    if (lazy.AUS.disabled || !lazy.VimmaUpdates.allowCheck()) {
+       LOG("CheckerService:checkForUpdates - disabled by policy");
+       return this.#getChecksNotAllowedObject(checkId);
+     }
+@@ -5661,6 +5663,8 @@ export class CheckerService {
      // HTTP/1.0 servers might not implement Cache-Control and
      // might only implement Pragma: no-cache
      request.setRequestHeader("Pragma", "no-cache");
-+    // Vimma (m6a-updater §4): no cookies, a size cap, and no request while checks are off.
-+    const { VimmaUpdates } = ChromeUtils.importESModule("chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs");
-+    if (!VimmaUpdates.beforeCheck(request)) {
-+      return this.#getChecksNotAllowedObject().result;
-+    }
++    // Vimma: no cookies, redirects or languages, and a size cap (m6a-updater §4).
++    lazy.VimmaUpdates.beforeCheck(request);
  
      const UPDATE_CHECK_LOAD_SUCCESS = 1;
      const UPDATE_CHECK_LOAD_ERROR = 2;
-@@ -5754,8 +5759,10 @@ export class CheckerService {
+@@ -5754,8 +5758,10 @@ export class CheckerService {
  
      let updates;
      try {
 +      // Vimma: throws unless signed by a pinned key, for this install, newer and no replay.
-+      const offered = await VimmaUpdates.verify(request);
++      const offered = await lazy.VimmaUpdates.verify(request);
        // Analyze the resulting DOM and determine the set of updates.
 -      updates = this.#parseUpdates(request);
 +      updates = offered ? this.#parseUpdates(request) : [];

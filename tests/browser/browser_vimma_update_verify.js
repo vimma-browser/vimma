@@ -13,14 +13,18 @@
 
 "use strict";
 
+/* global NetUtil -- the browser-chrome harness (browser-test.js) */
+
 const { VimmaUpdates } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
+);
+const { UpdateUi } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/update-ui.mjs",
 );
 const { base64Encode, signatureComment, signedBytes, spkiKeyId } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/updates.mjs",
 );
 const { UpdateUtils } = ChromeUtils.importESModule("resource://gre/modules/UpdateUtils.sys.mjs");
-const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -37,6 +41,10 @@ let stranger;
 let serial = Number(
   new Date(Date.now() + 6 * 3600 * 1000).toISOString().replace(/\D/g, "").slice(0, 14),
 );
+
+function until(cond, msg) {
+  return TestUtils.waitForCondition(cond, msg, 50, 100);
+}
 
 async function makeKey() {
   const pair = await crypto.subtle.generateKey(
@@ -247,13 +255,45 @@ add_task(async function an_oversized_or_compressed_body_is_refused() {
   setUpdateURL(`${HOST}?firefox=%CHANNEL%`);
 });
 
+/** Reads a system-principal request to `uri` to its end. */
+function load(uri) {
+  return new Promise((resolve) => {
+    NetUtil.newChannel({ uri, loadUsingSystemPrincipal: true }).asyncOpen({
+      onStartRequest() {},
+      onDataAvailable(_r, stream, _o, count) {
+        NetUtil.readInputStream(stream, count);
+      },
+      onStopRequest: resolve,
+      QueryInterface: ChromeUtils.generateQI(["nsIStreamListener"]),
+    });
+  });
+}
+
+/**
+ * Each request's query and whether it went anonymous (LOAD_ANONYMOUS: no cookie is read or
+ * stored), as the request goes out, after Vimma's observer had its turn.
+ */
+function watchRequests() {
+  /** @type {[string, boolean][]} */
+  const seen = [];
+  const observe = (subject) => {
+    const channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    if (!channel.URI.spec.includes("file_vimma_update_manifest.sjs")) return;
+    const query = channel.URI.query;
+    if (query === "log" || query === "reset" || query === "set") return;
+    seen.push([query, !!(channel.loadFlags & Ci.nsIRequest.LOAD_ANONYMOUS)]);
+  };
+  Services.obs.addObserver(observe, "http-on-modify-request");
+  return { seen, stop: () => Services.obs.removeObserver(observe, "http-on-modify-request") };
+}
+
 // Decision 1: the MAR's download (nsIncrementalDownload, a system-principal channel with no
-// browsing context) sends no cookie, on the first request, its redirect, and the requests to
-// the redirect's target that the next pieces of a download make.
+// browsing context) goes without cookies: its first request, the redirect, and the requests to
+// the redirect's target that the next pieces of a download make. Nothing else is touched.
 add_task(async function the_mar_download_goes_without_cookies() {
   await serve(await manifest());
   Assert.ok((await firefoxCheck()).succeeded, "an offer with a MAR");
-  await fetch(`${HOST}?reset`);
+  Assert.deepEqual(VimmaUpdates._marUrls(), [`${HOST}?redirect=host`], "the offered MAR");
   const file = await IOUtils.createUniqueFile(PathUtils.tempDir, "vimma-mar-test");
   registerCleanupFunction(() => IOUtils.remove(file));
   const download = Cc["@mozilla.org/network/incremental-download;1"].createInstance(
@@ -261,56 +301,171 @@ add_task(async function the_mar_download_goes_without_cookies() {
   );
   const target = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   target.initWithPath(file);
-  download.init(Services.io.newURI(`${HOST}?redirect=host`), target, -1, 0);
-  await new Promise((resolve) => {
-    download.start(
-      {
-        onStartRequest() {},
-        onStopRequest: resolve,
-        QueryInterface: ChromeUtils.generateQI(["nsIRequestObserver"]),
-      },
-      null,
+  download.init(Services.io.newURI(`${HOST}?redirect=host`), target, -1, 0, "");
+  const watch = watchRequests();
+  try {
+    await new Promise((resolve) => {
+      download.start(
+        {
+          onStartRequest() {},
+          onStopRequest: resolve,
+          QueryInterface: ChromeUtils.generateQI(["nsIRequestObserver"]),
+        },
+        null,
+      );
+    });
+    const landed = `${HOST.replace("example.com", "example.org")}?landed`;
+    Assert.ok(VimmaUpdates._marUrls().includes(landed), "the redirect's target is learnt");
+    // The next piece of a download asks the redirect's target directly.
+    await load(landed);
+    // Another request from chrome, and the same MAR from a page, keep their cookies.
+    await load(`${HOST}?other`);
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      await SpecialPowers.spawn(browser, [`${HOST}?redirect=host`], async (url) => {
+        await content.fetch(url, { redirect: "manual" }).catch(() => {});
+      });
+    });
+  } finally {
+    watch.stop();
+  }
+  Assert.deepEqual(
+    watch.seen,
+    [
+      ["redirect=host", true],
+      ["landed", true],
+      ["landed", true],
+      ["other", false],
+      ["redirect=host", false],
+    ],
+    "only the offered MAR's download goes without cookies",
+  );
+});
+
+// A tarball that Firefox's updater updates (spec §3, §5). Firefox's download and staging are
+// faked (they would write into this build's own update directory); its check is the real one,
+// through the hook. `stage` is what Firefox's updater did with the offered build.
+const fake = {
+  usable: true,
+  canApply: true,
+  busy: false,
+  staged: "none",
+  stage() {
+    return this.staged;
+  },
+  check: firefoxCheck,
+};
+
+function segment() {
+  return document.querySelector('#vimma-statusbar [data-segment="update"]');
+}
+
+/** A tarball with Firefox's updater, no result from an earlier task, nothing asked yet. */
+async function freshTarball() {
+  await fetch(`${HOST}?reset`);
+  Object.assign(fake, { usable: true, canApply: true, busy: false, staged: "none" });
+  VimmaUpdates._reset();
+  VimmaUpdates._setFirefox(fake);
+  Services.prefs.clearUserPref("vimma.update.announced");
+  UpdateUi._reset();
+  registerCleanupFunction(() => VimmaUpdates._setFirefox(null));
+}
+
+/** Firefox's updater finished a download or staged it, and says so. */
+function stageAs(stage) {
+  fake.staged = stage;
+  Services.obs.notifyObservers(null, stage === "staged" ? "update-staged" : "update-downloading");
+}
+
+add_task(async function update_checks_a_tarball_through_firefoxs_updater() {
+  await freshTarball();
+  await serve(await manifest());
+  const r = await VimmaUpdates.check({ asked: true });
+  Assert.equal(r.outcome, "offer", r.reason ?? "");
+  const log = await requests();
+  Assert.equal(log.length, 1, "one request");
+  Assert.ok(log[0].query.startsWith(`firefox=${CHANNEL}`), `Firefox's check: ${log[0].query}`);
+
+  // Firefox's own timer checks it: Vimma's startup check sends nothing of its own.
+  await fetch(`${HOST}?reset`);
+  await VimmaUpdates._startupCheck();
+  Assert.deepEqual(await requests(), [], "no request from Vimma's own check");
+
+  // While a download is under way or an update is in place, Firefox checks no further.
+  fake.busy = true;
+  const busy = await VimmaUpdates.check({ asked: true });
+  Assert.equal(busy.outcome, "offer", "the offer stays");
+  Assert.deepEqual(await requests(), [], "and no check is made");
+});
+
+add_task(async function a_staged_update_shows_on_restart() {
+  await freshTarball();
+  await serve(await manifest());
+  await VimmaUpdates.check();
+  stageAs("pending");
+  await until(() => segment()?.textContent === "⇡ 9.9.9 available", "downloading");
+  stageAs("staged");
+  await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "staged: on restart");
+  Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
+  const info = await VimmaUpdates.describe();
+  Assert.deepEqual(info.firefox, { stage: "staged", canApply: true });
+  Assert.equal(
+    info.offer.steps.text,
+    "Vimma 9.9.9 is downloaded and applies at the next start: restart Vimma (:restart) to use it.",
+  );
+  Assert.deepEqual(info.offer.steps.commands, [], "nothing to run");
+  await BrowserTestUtils.withNewTab("about:vimma#updates", async (browser) => {
+    await until(
+      () => browser.contentDocument?.documentElement?.dataset.ready === "true",
+      "rendered",
+    );
+    Assert.equal(
+      browser.contentDocument.getElementById("update-firefox").textContent,
+      "downloaded: applies at the next start",
     );
   });
-  const landed = `${HOST.replace("example.com", "example.org")}?landed`;
-  Assert.ok(VimmaUpdates._marUrls().includes(landed), "the redirect's target is learnt");
-  // The next piece of a download asks the redirect's target directly.
-  await new Promise((resolve) => {
-    NetUtil.newChannel({ uri: landed, loadUsingSystemPrincipal: true }).asyncOpen({
-      onStartRequest() {},
-      onDataAvailable(_r, stream, _o, count) {
-        NetUtil.readInputStream(stream, count);
-      },
-      onStopRequest: resolve,
-      QueryInterface: ChromeUtils.generateQI(["nsIStreamListener"]),
-    });
-  });
-  const log = await requests();
-  Assert.deepEqual(
-    log.map((r) => [r.query, r.cookie]),
-    [
-      ["redirect=host", false],
-      ["landed", false],
-      ["landed", false],
-    ],
-    "no request of the download carried a cookie",
-  );
+  Assert.ok(!UpdateUi.isOpen(window), "an ordinary update asks nothing");
+});
 
-  // Any other request keeps its cookies: only the offered MAR's download is touched.
-  await fetch(`${HOST}?reset`);
-  await new Promise((resolve) => {
-    NetUtil.newChannel({ uri: `${HOST}?other`, loadUsingSystemPrincipal: true }).asyncOpen({
-      onStartRequest() {},
-      onDataAvailable(_r, stream, _o, count) {
-        NetUtil.readInputStream(stream, count);
-      },
-      onStopRequest: resolve,
-      QueryInterface: ChromeUtils.generateQI(["nsIStreamListener"]),
+add_task(async function a_staged_security_update_asks_to_restart() {
+  await freshTarball();
+  await serve(await manifest({ update: { vimmaUrgency: "security" } }));
+  const line = () => document.getElementById("vimma-update-prompt");
+  const lineShown = () => !!line() && !line().hidden;
+  const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
+  const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
+  try {
+    await BrowserTestUtils.withNewTab("https://example.com/", async (browser) => {
+      browser.focus();
+      await VimmaUpdates.check();
+      stageAs("staged");
+      await until(
+        () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
+        "a staged security update in the error colour, naming :restart",
+      );
+      Assert.equal(segment().style.color, "var(--vimma-text-error)");
+      UpdateUi._sync();
+      await until(lineShown, "the restart question shows once no key came for a moment");
+      Assert.equal(
+        lineText(),
+        "Security update 9.9.9 is ready. Restart now? Tabs come back. (y/N)",
+      );
+      await until(armed, "armed after the delay");
+      EventUtils.synthesizeKey("n");
+      await until(() => !lineShown(), "n closes it");
     });
-  });
-  Assert.deepEqual(
-    (await requests()).map((r) => [r.query, r.cookie]),
-    [["other", true]],
-    "another chrome request still carries the host's cookie",
-  );
+  } finally {
+    UpdateUi._reset();
+  }
+});
+
+// Behaviour 2: Firefox's updater cannot apply where Vimma cannot write; its owner updates it.
+add_task(async function a_tarball_vimma_cannot_write_gets_its_owners_steps() {
+  await freshTarball();
+  fake.canApply = false;
+  await serve(await manifest());
+  await VimmaUpdates.check();
+  await until(() => segment()?.textContent === "⇡ 9.9.9 available", "offered");
+  const info = await VimmaUpdates.describe();
+  Assert.ok(info.offer.steps.text.startsWith("Vimma cannot write "), info.offer.steps.text);
+  Assert.equal(info.firefox.canApply, false);
 });
