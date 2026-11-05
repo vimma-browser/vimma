@@ -122,6 +122,12 @@ describe("parseCommandLine: plan §2 commands", () => {
     [":TABNEW", run("tabnew", "tab.new")],
     // docs/specs/downloads.md decision 2.
     [":downloads", run("downloads", "downloads.picker")],
+    // docs/specs/pdf-mode.md decision 21: the PDF layouts zathura keeps on Vimma's keys.
+    [":rotate", run("rotate", "pdf.rotate")],
+    [":dual", run("dual", "pdf.dual_page")],
+    [":present", run("present", "pdf.presentation")],
+    [":pdf_page_top", run("pdf_page_top", "pdf.page_top")],
+    [":show_link_target", run("show_link_target", "hint.show_target")],
   ])("%j", (text, expected) => {
     expect(parseCommandLine(text)).toEqual(expected);
   });

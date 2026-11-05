@@ -249,7 +249,7 @@ group("Hints", [
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
   ["follow_link_new_tab_fg", "hint.follow_new_tab_fg", "Follow link in new tab and switch to it"],
   ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
-  // docs/specs/pdf-mode.md decision 16: zathura's F and c, bound in the PDF viewer.
+  // docs/specs/pdf-mode.md decisions 16 and 21: zathura's F and c; c is bound in the PDF viewer.
   ["show_link_target", "hint.show_target", "Show a link's target without following it"],
   ["copy_link_target", "hint.copy_target", "Copy a link's target"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
@@ -424,7 +424,8 @@ group("Pop-ups", [
   ["popup_picker", "popups.picker", "Blocked pop-ups: open one, allow the site, settings"],
 ]);
 
-// docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, bound in [modal.pdf].
+// docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, bound in [modal.pdf] where normal mode
+// leaves the key free (decision 21); the others are commands, by their names.
 group("PDF viewer", [
   ["pdf_next_page", "pdf.next_page", "Next page (with a count: that many pages)"],
   ["pdf_previous_page", "pdf.previous_page", "Previous page (with a count: that many pages)"],
@@ -438,11 +439,11 @@ group("PDF viewer", [
   ["pdf_zoom_set", "pdf.zoom_set", "Zoom to 100 %; with a count, that percent (150=)"],
   ["pdf_fit_page", "pdf.fit_page", "Fit the whole page, also after a resize"],
   ["pdf_fit_width", "pdf.fit_width", "Fit the page's width, also after a resize"],
-  ["pdf_dual_page", "pdf.dual_page", "Two pages side by side, or one"],
+  ["pdf_dual_page", "pdf.dual_page", "Two pages side by side, or one (:dual)"],
   ["pdf_first_page_alone", "pdf.first_page_alone", "Two pages: the first alone, or paired"],
   ["pdf_single_page", "pdf.single_page", "One page at a time, or scrolling"],
-  ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (with a count: n times)"],
-  ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it"],
+  ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (:rotate; a count: n times)"],
+  ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it (:present)"],
   ["pdf_outline", "pdf.outline", "Open the outline (table of contents) in a panel"],
   // Decision 11: marks in memory, per document.
   ["pdf_mark_set", "pdf.mark_set", "Set a mark here: m and a letter or digit", { takesChar: true }],

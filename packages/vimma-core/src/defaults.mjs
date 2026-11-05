@@ -216,6 +216,22 @@ export function defaultKeys({ mac = false } = {}) {
   return mac ? MAC_MERGED : keys;
 }
 
+/**
+ * zathura's keys that the PDF viewer leaves to Vimma's meaning (docs/specs/pdf-mode.md decision
+ * 21), as `[modal.pdf]` lines: config.toml shows them commented out, for those who want zathura's.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const ZATHURA_PDF_KEYS = Object.freeze({
+  d: "pdf.dual_page",
+  r: "pdf.rotate",
+  H: "pdf.page_top",
+  L: "pdf.page_bottom",
+  P: "pdf.page_top",
+  F: "hint.show_target",
+  "<C-f>": "pdf.screen_down",
+  "<F5>": "pdf.presentation",
+});
+
 const modal = {
   leader: " ",
   timeout_ms: 800,
@@ -296,17 +312,15 @@ const modal = {
     "<C-w>+": "pane.resize_taller",
     "<C-w>-": "pane.resize_shorter",
   },
-  // docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, over normal mode's (decision 5).
-  // The keys they shadow keep a twin there: ctrl+d, ctrl+o / ctrl+i, R, p, /.
+  // docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, only on the keys normal mode leaves
+  // free (decision 21), so that every Vimma key does the same in a PDF as on a page. gg and G
+  // still go to the top and the bottom; in a PDF their count is a page (decision 6). zathura's
+  // d, r, H, L, P, F, ctrl+f and F5 are commands there, and ZATHURA_PDF_KEYS puts them back.
   pdf: {
     J: "pdf.next_page",
     K: "pdf.previous_page",
     gg: "pdf.first_page",
     G: "pdf.last_page",
-    H: "pdf.page_top",
-    P: "pdf.page_top",
-    L: "pdf.page_bottom",
-    "<C-f>": "pdf.screen_down",
     "+": "pdf.zoom_in",
     zi: "pdf.zoom_in",
     zI: "pdf.zoom_in",
@@ -319,20 +333,15 @@ const modal = {
     z0: "pdf.zoom_set",
     a: "pdf.fit_page",
     s: "pdf.fit_width",
-    d: "pdf.dual_page",
     D: "pdf.first_page_alone",
     w: "pdf.single_page",
-    r: "pdf.rotate",
     R: "page.reload",
     Y: "page.yank_url",
-    "<F5>": "pdf.presentation",
     // The outline panel (decision 10); shift+Tab still moves focus through pdf.js's toolbar.
     "<Tab>": "pdf.outline",
-    // Marks (decision 11) and zathura's link keys (decision 16); F shadows the text-block
-    // hints, which pdf.js's lines do not have.
+    // Marks (decision 11) and zathura's c, which copies a link's target (decision 16).
     m: "pdf.mark_set",
     "'": "pdf.mark_go",
-    F: "hint.show_target",
     c: "hint.copy_target",
   },
   insert: { "<Esc>": "mode.normal" },
@@ -566,6 +575,12 @@ export function formatDefaultsToml() {
     lines.push("", `[modal.${mode}]`);
     for (const [seq, action] of Object.entries(table)) {
       lines.push(`${tomlString(seq)} = ${tomlString(action)}`);
+    }
+    if (mode === "pdf") {
+      lines.push("# zathura's keys over Vimma's in the PDF viewer, for those who want them:");
+      for (const [seq, action] of Object.entries(ZATHURA_PDF_KEYS)) {
+        lines.push(`# ${tomlString(seq)} = ${tomlString(action)}`);
+      }
     }
   }
   lines.push(

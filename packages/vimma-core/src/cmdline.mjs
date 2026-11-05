@@ -168,6 +168,10 @@ export const COMMANDS = Object.freeze([
   cmd("popups", "none", "popups.picker", "Blocked pop-ups picker"),
   // docs/specs/downloads.md decision 2.
   cmd("downloads", "none", "downloads.picker", "Downloads picker"),
+  // docs/specs/pdf-mode.md decision 21: zathura's r, d and F5, whose keys stay Vimma's.
+  cmd("rotate", "none", "pdf.rotate", "PDF viewer: rotate the pages 90 degrees clockwise"),
+  cmd("dual", "none", "pdf.dual_page", "PDF viewer: two pages side by side, or one"),
+  cmd("present", "none", "pdf.presentation", "PDF viewer: presentation mode, or leave it"),
   // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(

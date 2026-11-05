@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { parseConfig } from "../src/config.mjs";
-import { DEFAULT_CONFIG } from "../src/defaults.mjs";
+import { DEFAULT_CONFIG, formatConfigTemplate } from "../src/defaults.mjs";
 import { createDispatcher } from "../src/dispatcher.mjs";
 import { boundChords } from "../src/firefox-keys.mjs";
 import { KeymapError, compileKeymap } from "../src/keymap.mjs";
@@ -38,16 +38,13 @@ describe("keymap contexts", () => {
     expect(km.sequences("normal")).toEqual(km.sequences("normal", "page"));
   });
 
-  // docs/specs/pdf-mode.md Behaviour 2 to 4 and decision 5: zathura's keys in the PDF viewer.
+  // docs/specs/pdf-mode.md Behaviour 2 to 4 and decision 21: the PDF viewer adds zathura's keys
+  // only where Vimma's normal mode has none, so a Vimma key does the same in a PDF as on a page.
   test.each([
-    ["J", "pdf_next_page", "J"],
+    ["J", "pdf_next_page", undefined],
     ["K", "pdf_previous_page", undefined],
     ["gg", "pdf_first_page", "scroll_top"],
     ["G", "pdf_last_page", "scroll_bottom"],
-    ["H", "pdf_page_top", "history_back"],
-    ["L", "pdf_page_bottom", "history_forward"],
-    ["P", "pdf_page_top", "open_clipboard_tab"],
-    ["ctrl+f", "pdf_screen_down", "find_forward"],
     ["+", "pdf_zoom_in", undefined],
     ["z i", "pdf_zoom_in", undefined],
     ["z shift+i", "pdf_zoom_in", undefined],
@@ -60,18 +57,71 @@ describe("keymap contexts", () => {
     ["z 0", "pdf_zoom_set", undefined],
     ["a", "pdf_fit_page", undefined],
     ["s", "pdf_fit_width", undefined],
-    ["d", "pdf_dual_page", "scroll_half_down"],
     ["D", "pdf_first_page_alone", undefined],
     ["w", "pdf_single_page", undefined],
-    ["r", "pdf_rotate", "reload"],
     ["R", "reload", undefined],
     ["Y", "yank_url", undefined],
-    ["f5", "pdf_presentation", "reload"],
+    ["tab", "pdf_outline", undefined],
+    ["c", "copy_link_target", undefined],
   ])("%s is %s in the pdf context, %s on pages", (key, pdf, page) => {
     const km = compileKeymap();
     const seq = key.replace(/^(g)(g)$/, "$1 $2");
     expect(lookup(km.trie("normal", "pdf"), seq)).toBe(pdf);
-    expect(lookup(km.trie("normal", "page"), seq)).toBe(page === "J" ? undefined : page);
+    expect(lookup(km.trie("normal", "page"), seq)).toBe(page);
+  });
+
+  // Decision 21: zathura's meanings no longer shadow these keys in the PDF viewer.
+  test.each([
+    ["d", "scroll_half_down"],
+    ["r", "reload"],
+    ["H", "history_back"],
+    ["L", "history_forward"],
+    ["F", "focus_element"],
+    ["P", "open_clipboard_tab"],
+    ["ctrl+f", "find_forward"],
+    ["f5", "reload"],
+  ])("%s is %s in the PDF viewer, as on pages", (key, action) => {
+    const km = compileKeymap();
+    expect(lookup(km.trie("normal", "pdf"), key)).toBe(action);
+    expect(lookup(km.trie("normal", "page"), key)).toBe(action);
+  });
+
+  test("no default [modal.pdf] key changes a page key's meaning, only gg and G take a page", () => {
+    const km = compileKeymap();
+    const page = new Map(km.sequences("normal", "page").map((e) => [e.seq, e.name]));
+    const shadowed = Object.keys(DEFAULT_CONFIG.modal.pdf)
+      .map((t) => parseBinding(t).map(formatKey).join(" "))
+      .filter((seq) => page.has(seq));
+    // gg and G still go to the top and the bottom; in a PDF a count names a page (decision 6).
+    expect(shadowed.sort()).toEqual(["g g", "shift+g"]);
+  });
+
+  test("the config template's zathura block, uncommented, gives zathura's keys back", () => {
+    const lines = formatConfigTemplate().split("\n");
+    const start = lines.findIndex((l) => /zathura/.test(l) && l.startsWith("#"));
+    expect(start).toBeGreaterThan(lines.indexOf("[modal.pdf]"));
+    const block = [];
+    for (const l of lines.slice(start + 1)) {
+      const m = /^# ("[^"]+" = "[^"]+")$/.exec(l);
+      if (!m) break;
+      block.push(m[1]);
+    }
+    const pdf = Object.fromEntries(
+      block.map((l) => /** @type {[string, string]} */ (JSON.parse(`[${l.replace(" = ", ",")}]`))),
+    );
+    const km = compileKeymap({ modal: { pdf } });
+    for (const [key, action] of [
+      ["d", "pdf_dual_page"],
+      ["r", "pdf_rotate"],
+      ["H", "pdf_page_top"],
+      ["L", "pdf_page_bottom"],
+      ["P", "pdf_page_top"],
+      ["F", "show_link_target"],
+      ["ctrl+f", "pdf_screen_down"],
+      ["f5", "pdf_presentation"],
+    ]) {
+      expect(lookup(km.trie("normal", "pdf"), key), key).toBe(action);
+    }
   });
 
   test("[modal.pdf] shadows normal's binding only in the pdf context", () => {
