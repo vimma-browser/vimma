@@ -90,6 +90,10 @@ add_task(async function firefox_chrome_is_square() {
   // The URL bar, closed and open with its suggestions.
   assertSquare(gURLBar.querySelector(".urlbar-background"), "URL bar");
   assertSquare(document.getElementById("urlbar"), "URL bar frame");
+  // The workspace's container chip at the field's end: a label on a tint, not a round icon.
+  const chip = /** @type {Element} */ (document.getElementById("userContext-icons"));
+  Assert.greater(chip.getBoundingClientRect().width, 0, "the workspace chip shows");
+  assertSquare(chip, "workspace chip");
   gURLBar.focus();
   gURLBar.search("corners");
   await TestUtils.waitForCondition(() => gURLBar.view.isOpen, "the suggestions open");

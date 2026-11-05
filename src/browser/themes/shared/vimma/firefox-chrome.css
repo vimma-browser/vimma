@@ -48,6 +48,12 @@
   --urlbarview-row-border-radius: var(--vimma-radius) !important;
 }
 
+/* The workspace's container chip in the URL field: a label on a tint, which Firefox draws as a
+ * pill with --border-radius-circle (usercontext.css). */
+#userContext-icons {
+  border-radius: var(--vimma-radius) !important;
+}
+
 /* The find bar `/` and `?` open as a floating prompt in the pickers' style (picker.css;
  * host/find-bar.mjs; docs/specs/m1-find.md, "Since changed"): over the foot of the page instead
  * of a row under it, so opening it never reflows the page, framed like a picker,
