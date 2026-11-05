@@ -32,6 +32,8 @@ export { textWidth };
  * @property {number} min           shortest width it may be shrunk to
  * @property {"end" | "middle" | "url" | "none"} cut  "url": truncateUrl with `origin`
  * @property {UrlOrigin | null} [origin]  for `cut: "url"`
+ * @property {string} [label]  the accessible text, when the shown text leans on a glyph
+ *   (m7-a11y: no meaning by glyph alone)
  * @property {boolean} [keep]  never dropped: cut to its `min` while others give way, and past it
  *   only as the last resort
  */
@@ -76,6 +78,8 @@ export { textWidth };
  *   selected tab shows it (docs/specs/pdf-mode.md decision 13)
  * @property {string | null} [popups]  the selected page has Firefox's pop-up blocked bar: the cue
  *   (popups.mjs popupCue, docs/specs/popup-blocked.md)
+ * @property {import("./downloads.mjs").DownloadSegment | null} [downloads]  the window's
+ *   downloads (downloads.mjs downloadSegment, docs/specs/downloads.md decision 9)
  */
 /**
  * A hint session (docs/specs/follow-link-switch.md decision 8): its action, and the first label
@@ -356,6 +360,7 @@ export function statusSegments(input) {
     hint = null,
     popups = null,
     pdf = null,
+    downloads = null,
   } = input;
   /** @type {Segment[]} */
   const left = [];
@@ -564,6 +569,20 @@ export function statusSegments(input) {
         priority: 4.5,
         min: 14,
         cut: "end",
+      }),
+    );
+  }
+  if (downloads) {
+    right.push(
+      seg({
+        id: "downloads",
+        text: downloads.text,
+        label: downloads.label,
+        // A failed or blocked download waits to be seen and outlasts the title (5); progress
+        // and `done` give way before it (docs/specs/downloads.md decision 9).
+        fg: downloads.problem ? "--vimma-text-error" : "--vimma-fg-dim",
+        side: "right",
+        priority: downloads.problem ? 3 : 6.5,
       }),
     );
   }

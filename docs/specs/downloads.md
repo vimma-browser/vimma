@@ -1,11 +1,11 @@
 # Spec: downloads
 
-Status: accepted · Area: `packages/vimma-core/src/` (new `downloads.mjs`; `picker.mjs`,
-`statusbar.mjs`, `actions.mjs`, `defaults.mjs`, `cmdline.mjs`); `src/browser/base/content/vimma/`
-(new `host/download-ops.mjs`; `ui/picker.mjs`, `ui/statusbar.mjs`, `host/VimmaHost.sys.mjs`);
-`src/browser/branding/vimma/pref/firefox-branding.js`; generated `docs/bindings.md`,
-`docs/bindings.json`, `packages/vimma-core/defaults.toml` · Upstream patches: none · ADR: none.
-No new dependency.
+Status: accepted (sub-PR 1 built) · Area: `packages/vimma-core/src/` (new `downloads.mjs`;
+`picker.mjs`, `statusbar.mjs`, `actions.mjs`, `defaults.mjs`, `cmdline.mjs`);
+`src/browser/base/content/vimma/` (new `host/download-ops.mjs`; `ui/picker.mjs`, `ui/statusbar.mjs`,
+`host/VimmaHost.sys.mjs`); `src/browser/branding/vimma/pref/firefox-branding.js`; generated
+`docs/bindings.md`, `docs/bindings.json`, `packages/vimma-core/defaults.toml` · Upstream patches:
+none · ADR: none. No new dependency.
 
 Issue: [#618](https://github.com/vimma-browser/vimma/issues/618)
 
