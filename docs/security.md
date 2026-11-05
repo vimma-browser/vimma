@@ -165,10 +165,14 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 - R3. A private window is **never** routed and gets no container.
   [`private_windows_are_never_routed`](../tests/browser/browser_vimma_workspace_routes.js),
   [`private_windows_are_untouched`](../tests/browser/browser_vimma_workspace_routing.js)
-- R4. The app hint (`-vimma-from`, `VIMMA_FROM`) **must** only select a workspace that a rule in
-  config.toml names and that exists; anything but a short lower-case token never matches.
+- R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
+  each, and **must** only select a workspace that a rule in config.toml names and that exists;
+  anything but a lower-case token never matches. Spec: [app-routes](specs/app-routes.md).
   [`a hint that is not a token never matches`](../packages/vimma-core/test/routes.test.mjs),
-  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs)
+  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
+  [`an_app_list_with_a_bad_name_routes_by_the_rest`](../tests/browser/browser_vimma_workspace_routes.js)
 - R5. `VIMMA_FROM` **must** be read once and cleared, so it never reaches a later window or a
   process Vimma starts.
   [`a_new_windows_first_tab_is_routed_with_the_startup_app`](../tests/browser/browser_vimma_workspace_routes.js)
@@ -177,6 +181,20 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   (`github.com@evil`, a path, query or fragment, `\`, `%2e`, the ideographic full stop).
   [`a domain rule never matches a URL whose host is outside its domain`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
   [`a domain rule matches its own host and subdomains, however written`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs)
+- R8. A rule naming the agent workspace **never** applies to a link from another program (the
+  next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
+  to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
+  [`a_rule_after_one_naming_the_agent_workspace_applies`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../packages/vimma-core/test/routes.test.mjs),
+  [`the agent cut applies below the first rule without app too`](../packages/vimma-core/test/routes.test.mjs)
+- R9. `[routing] default_workspace` applies **only** to links from other programs that no rule
+  matches (a remote command line, or a window opened for one), never to what you type, never to
+  the agent workspace, and never in a private window.
+  [`the_default_workspace_never_applies_to_the_url_bar`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 

@@ -372,7 +372,7 @@ add_task(async function an_external_link_routes_by_the_app_that_opened_it() {
   Assert.equal(cmdLine.findFlag("vimma-from", false), -1, "the flag is consumed");
   Assert.equal(fromApp.userContextId, home.userContextId, "the app rule wins: rt-home");
   await until(() => activeName() === "rt-home", "a foreground external open switches");
-  Assert.equal(WorkspaceRouter.app, null, "the app hint ends with the command line");
+  Assert.deepEqual(WorkspaceRouter.apps, [], "the app hint ends with the command line");
 
   // Without the flag (a terminal's `vimma <url>`): the domain rule.
   const { tab: plain } = await remote([`${WORK}?noapp`]);
@@ -443,6 +443,175 @@ add_task(async function a_new_windows_first_tab_is_routed_with_the_startup_app()
   );
   await BrowserTestUtils.closeWindow(byDomain);
   route([{ domain: "example.com", workspace: "rt-work" }]);
+});
+
+// docs/specs/app-routes.md: a link carries every program on the way, nearest first.
+add_task(async function an_external_link_matches_by_the_nearest_name() {
+  route([
+    { app: "ghostty", workspace: "rt-work" },
+    { app: "herdr", workspace: "rt-home" },
+  ]);
+  ww().switchTo({ id: def("main").id });
+  const { tab } = await remote(["-vimma-from", "python3,zsh,herdr,zsh,ghostty", `${ELSEWHERE}?n`]);
+  Assert.equal(tab.userContextId, home.userContextId, "herdr is nearer than ghostty: rt-home");
+  Assert.deepEqual(WorkspaceRouter.apps, [], "the names end with the command line");
+  const { tab: far } = await remote(["-vimma-from", "python3,zsh,ghostty", `${ELSEWHERE}?far`]);
+  Assert.equal(far.userContextId, work.userContextId, "only ghostty is named: rt-work");
+  route([{ domain: "example.com", workspace: "rt-work" }]);
+  tidy();
+});
+
+add_task(async function an_app_list_with_a_bad_name_routes_by_the_rest() {
+  route([{ app: "herdr", workspace: "rt-home" }]);
+  ww().switchTo({ id: def("main").id });
+  const { tab } = await remote(["-vimma-from", "py thon,../x,HERDR", `${ELSEWHERE}?bad-name`]);
+  Assert.equal(tab.userContextId, home.userContextId, "the names that are tokens still match");
+  route([{ domain: "example.com", workspace: "rt-work" }]);
+  tidy();
+});
+
+/**
+ * A window opened for one URL from another program's command line, as BrowserContentHandler's
+ * openBrowserWindow opens it (a cold start or an external window open: `fromExternal`).
+ * @param {string} url
+ */
+async function openExternalWindow(url) {
+  const extra = Cc["@mozilla.org/hash-property-bag;1"].createInstance(Ci.nsIWritablePropertyBag2);
+  extra.setPropertyAsBool("fromExternal", true);
+  const args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+  const str = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+  str.data = url;
+  args.appendElement(str);
+  args.appendElement(extra);
+  const opened = BrowserTestUtils.waitForNewWindow({ url });
+  Services.ww.openWindow(
+    null,
+    AppConstants.BROWSER_CHROME_URL,
+    "_blank",
+    "chrome,all,dialog=no",
+    args,
+  );
+  return opened;
+}
+
+add_task(async function the_startup_name_list_routes_the_first_tab() {
+  route([{ app: "coldapp", workspace: "rt-home" }]);
+  Services.env.set("VIMMA_FROM", "python3,zsh,coldapp");
+  WorkspaceRouter.resetStartupAppForTesting();
+  const cold = await openExternalWindow(`${ELSEWHERE}?cold-list`);
+  Assert.equal(
+    cold.gBrowser.selectedTab.userContextId,
+    home.userContextId,
+    "a cold start's name list (VIMMA_FROM) routes its first tab",
+  );
+  await BrowserTestUtils.closeWindow(cold);
+  route([{ domain: "example.com", workspace: "rt-work" }]);
+});
+
+/** `[routing] default_workspace` as ConfigHost sets it. */
+const defaultTo = (/** @type {string | null} */ name) => WorkspaceRouter.setDefaultWorkspace(name);
+
+add_task(async function an_unmatched_external_link_opens_in_the_default_workspace() {
+  route([{ domain: "example.com", workspace: "rt-work" }]);
+  defaultTo("rt-home");
+  try {
+    ww().switchTo({ id: def("main").id });
+    const { tab } = await remote([`${ELSEWHERE}?default`]);
+    Assert.equal(tab.userContextId, home.userContextId, "no rule, no program: rt-home");
+    const { tab: named } = await remote(["-vimma-from", "slack", `${ELSEWHERE}?default-named`]);
+    Assert.equal(named.userContextId, home.userContextId, "a program no rule names: rt-home");
+    route([]);
+    const { tab: noRules } = await remote([`${ELSEWHERE}?no-rules`]);
+    Assert.equal(noRules.userContextId, home.userContextId, "with no rules at all, too");
+  } finally {
+    defaultTo(null);
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
+
+add_task(async function a_rule_beats_the_default_workspace() {
+  defaultTo("rt-home");
+  try {
+    ww().switchTo({ id: def("main").id });
+    const { tab } = await remote([`${WORK}?rule-first`]);
+    Assert.equal(tab.userContextId, work.userContextId, "the domain rule: rt-work");
+  } finally {
+    defaultTo(null);
+    tidy();
+  }
+});
+
+add_task(async function the_default_workspace_never_applies_to_the_url_bar() {
+  defaultTo("rt-work");
+  try {
+    ww().switchTo({ id: home.id });
+    const opened = nextTab();
+    // What the URL bar, :open and bookmarks go through (routeLinkIn).
+    window.openTrustedLinkIn(`${ELSEWHERE}?typed`, "tab");
+    const tab = await opened;
+    Assert.equal(tab.userContextId, home.userContextId, "what you type stays in rt-home");
+    const plain = await BrowserTestUtils.openNewBrowserWindow();
+    Assert.notEqual(
+      plain.gBrowser.selectedTab.userContextId,
+      work.userContextId,
+      "a new window you open is not routed to the default",
+    );
+    await BrowserTestUtils.closeWindow(plain);
+  } finally {
+    defaultTo(null);
+    tidy();
+  }
+});
+
+add_task(async function a_cold_start_link_with_no_rule_opens_in_the_default_workspace() {
+  defaultTo("rt-home");
+  try {
+    const cold = await openExternalWindow(`${ELSEWHERE}?cold-default`);
+    Assert.equal(
+      cold.gBrowser.selectedTab.userContextId,
+      home.userContextId,
+      "a window opened for another program's link: rt-home",
+    );
+    await BrowserTestUtils.closeWindow(cold);
+
+    // A cold start: the first window's URL list, as BrowserContentHandler passes it.
+    WorkspaceRouter.resetStartupAppForTesting();
+    const list = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+    const str = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
+    str.data = `${ELSEWHERE}?cold-list-default`;
+    list.appendElement(str);
+    const args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
+    args.appendElement(list);
+    const first = BrowserTestUtils.waitForNewWindow({ url: str.data });
+    Services.ww.openWindow(
+      null,
+      AppConstants.BROWSER_CHROME_URL,
+      "_blank",
+      "chrome,all,dialog=no",
+      args,
+    );
+    const firstWin = await first;
+    Assert.equal(
+      firstWin.gBrowser.selectedTab.userContextId,
+      home.userContextId,
+      "the cold start's command-line URL: rt-home",
+    );
+    await BrowserTestUtils.closeWindow(firstWin);
+
+    const url = `${ELSEWHERE}?own-window`;
+    const own = BrowserTestUtils.waitForNewWindow({ url });
+    window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", "chrome,all,dialog=no", url);
+    const w = await own;
+    Assert.notEqual(
+      w.gBrowser.selectedTab.userContextId,
+      home.userContextId,
+      "a window opened from inside Vimma does not take the default",
+    );
+    await BrowserTestUtils.closeWindow(w);
+  } finally {
+    defaultTo(null);
+  }
 });
 
 add_task(async function private_windows_are_never_routed() {

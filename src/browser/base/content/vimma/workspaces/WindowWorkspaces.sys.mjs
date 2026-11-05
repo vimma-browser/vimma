@@ -648,7 +648,7 @@ export class WindowWorkspacesImpl {
    */
   #hint(tab, location = tab.linkedBrowser?.currentURI) {
     if (tab.pinned || !location) return;
-    const hit = lazy.WorkspaceRouter.match(location.spec, null);
+    const hit = lazy.WorkspaceRouter.match(location.spec);
     if (!hit || hit.workspace.userContextId === tab.userContextId) {
       this.#hinted.delete(tab);
       return;

@@ -127,7 +127,9 @@ caller reaches the running Vimma.
      a boundary: the URL ends there or goes on with `/`, `?` or `#`, unless the prefix itself ends
      in `/` (`https://example.com/app` matches `/app/x`, `/app?q`, not `/apples`). `about:`,
      `file:`, `data:`, `moz-extension:` and the like are never matched by a `domain` rule.
-   - **`app`** is a token (`[a-z0-9][a-z0-9._+-]{0,31}`, compared lower-case).
+   - **`app`** is a token (`[a-z0-9][a-z0-9._+-]{0,31}`, compared lower-case). (Since changed:
+     up to 64 characters, and a link carries up to eight names; see
+     [app-routes](app-routes.md), decision 2.)
    - New in schema 2, no schema bump: nothing has been released (release gate), so no older Vimma
      reads these files. A file that declares schema 1 gets "is new in schema 2" as `[panes]` does.
    - `:route add` is the second write to `config.toml` (m5-config-load had one: `:config` creating
@@ -140,7 +142,10 @@ caller reaches the running Vimma.
 2. **Precedence: file order, the first match wins.** No implicit "domain beats app" or
    "longest match": a rule that matters more goes higher, as in Zen's list. A rule whose workspace
    does not exist (a typo, a runtime workspace closed) is skipped and flagged in `:route` and
-   about:vimma; matching goes on to the next rule.
+   about:vimma; matching goes on to the next rule. (Since changed: among the `app` rules above the first matching
+   rule without `app`, the one naming the nearest program wins, and a rule naming the agent
+   workspace is passed over for links from other programs; see [app-routes](app-routes.md),
+   decisions 3 and 5.)
 
 3. **Where rules apply: only opens the user or chrome starts** (the routing points):
    - **`openLinkIn`**, through the existing `URILoadingHelper-sys-mjs.patch` hunk, before its

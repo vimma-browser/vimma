@@ -76,6 +76,7 @@ import { hasControl } from "./strings.mjs";
  * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
  * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
  * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
+ * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
  * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
@@ -205,6 +206,7 @@ const TOP_KEYS = [
   "panes",
   "sites",
   "routes",
+  "routing",
   "firefox",
   "bookmarks",
   "private",
@@ -236,6 +238,7 @@ const SCHEMA_2_KEYS = [
   "sites",
   "modal.hint_chars",
   "routes",
+  "routing",
   "firefox",
   "modal.insert_editing",
   "bookmarks",
@@ -251,6 +254,8 @@ const SCHEMA_2_KEYS = [
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
 const BOOKMARKS_KEYS = ["root"];
+/** `[routing]` (docs/specs/app-routes.md, decision 16). */
+const ROUTING_KEYS = ["default_workspace"];
 /** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
 const PANEL_KEYS = ["numbers"];
 /** `[private] placement` (docs/specs/private-swap.md, decision 1). */
@@ -608,6 +613,17 @@ function validate(raw, declared, warnings = []) {
       else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
         fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
       }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.routing)) {
+    for (const [key, v] of Object.entries(raw.routing)) {
+      const path = ["routing", key];
+      if (!ROUTING_KEYS.includes(key)) unknownKey(path, key, ROUTING_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if ([...v].length < 1 || [...v].length > MAX_WORKSPACE_NAME) {
+        fail(path, `workspace name must be 1 to ${MAX_WORKSPACE_NAME} characters`);
+      } else if (hasControl(v)) fail(path, "workspace name must not contain control characters");
     }
   }
 
@@ -1150,6 +1166,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       insert: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.insert ?? "auto",
     })),
     routes: resolveRoutes(/** @type {Record<string, string>[]} */ (user.routes ?? [])),
+    routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
     firefox: resolveFirefox(user.firefox),
     insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
     bookmarks: { root: user.bookmarks?.root ?? "workspace" },

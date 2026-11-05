@@ -147,6 +147,7 @@ function apply(next, text) {
   PrivateSwap.configure(config.private.placement);
   PanelNumbers.set(config.panel.numbers);
   WorkspaceRouter.setRoutes(config.routes);
+  WorkspaceRouter.setDefaultWorkspace(config.routing.defaultWorkspace);
   McpHost.configure(config.mcp);
   McpHost.configureAgent(config.agent);
   if (config.ui.toolbar !== appliedToolbar) {

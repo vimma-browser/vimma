@@ -55,7 +55,7 @@ function addRoute(win, tab, name, say) {
     : model.workspaces.find((/** @type {{ id: string }} */ w) => w.id === model.active)?.name;
   if (!workspace) return `:route add: no workspace "${name}"`;
   const url = `https://${domain.includes(":") ? `[${domain}]` : domain}/`;
-  const earlier = matchRoute(WorkspaceRouter.routes, { url, app: null });
+  const earlier = matchRoute(WorkspaceRouter.routes, { url });
   if (earlier) {
     return earlier.workspace === workspace
       ? `:route add: ${domain} already goes to "${workspace}" (route ${earlier.index})`
@@ -81,7 +81,7 @@ function addRoute(win, tab, name, say) {
  */
 function moveByRoute(win, tab) {
   const ww = /** @type {any} */ (WindowWorkspaces.get(win));
-  const hit = WorkspaceRouter.match(tab.linkedBrowser.currentURI?.spec ?? "", null);
+  const hit = WorkspaceRouter.match(tab.linkedBrowser.currentURI?.spec ?? "");
   if (!hit) return ":route move: no rule matches this page";
   if (hit.workspace.userContextId === tab.userContextId) {
     return `:route move: already in "${hit.workspace.name}"`;
