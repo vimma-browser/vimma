@@ -93,7 +93,13 @@ registerCleanupFunction(async () => {
 /** `keys` typed on the page in normal mode. */
 async function normal(keys) {
   const browser = gBrowser.selectedBrowser;
-  await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
+  // A split just shown may still have its panels suspended; focusing an inactive browser never
+  // settles on macOS (SpecialPowers' EnsureFocus waits on it until the test times out).
+  await until(
+    () => !browser.webProgress?.isLoadingDocument && browser.docShellIsActive,
+    "the selected page has loaded and is shown",
+  );
+  await nextFrame();
   await focusContent(browser);
   EventUtils.sendString(keys);
 }
