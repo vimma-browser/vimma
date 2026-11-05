@@ -201,3 +201,8 @@ pref("pdfjs.featuresNotificationImpressionLimit", 0);
 // Unfinished: the PDF viewer's zathura keys and status (docs/specs/pdf-mode.md), delivered over
 // several pull requests (CONTRIBUTING.md, "Unfinished features").
 pref("vimma.feature.pdf_mode", false);
+
+// Unfinished: the downloads picker and the status bar's downloads segment
+// (docs/specs/downloads.md), delivered over several pull requests (CONTRIBUTING.md, "Unfinished
+// features").
+pref("vimma.feature.downloads", false);

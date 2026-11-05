@@ -292,6 +292,12 @@ support-files = [
   "file_vimma_agent_sw.js",
 ]
 
+["browser_vimma_downloads.js"]
+support-files = [
+  "file_vimma_downloads.sjs",
+  "file_vimma_plain.html",
+]
+
 ["browser_vimma_mcp_downloads.js"]
 support-files = [
   "file_vimma_agent_page.html",
