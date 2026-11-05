@@ -1245,10 +1245,11 @@ enable = [
 ]
 ```
 
-In a windowed Mac build a key that is off may still run from the menu bar when it has a menu
-item there (`cmd+t` is File > New Tab, `cmd+w` File > Close Tab): macOS's menu bar takes the
-item's key from Firefox's shortcut without seeing that it is off. This has not been checked on a
-Mac yet.
+A key that is off is off in the Mac menu bar too: its menu items (File > New Tab for `cmd+t`,
+File > Close Tab for `cmd+w`, Tools > Downloads for `cmd+j`) show no shortcut and still work when
+you click them. A key you list in `enable` shows beside its menu item again and runs from there.
+Windows other than browser windows, such as the Library, keep Firefox's menu keys, and so does
+the menu bar macOS shows when no Vimma window is open, so `cmd+n` still opens a window then.
 
 ### Firefox's shortcuts on Vim's keys
 

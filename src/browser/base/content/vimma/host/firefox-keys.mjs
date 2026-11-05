@@ -8,9 +8,17 @@
 // `disabled="true"`, which dom/events/GlobalKeyListener.cpp reads at key time (CanHandle →
 // KeyElementIsDisabled), so a disabled shortcut neither runs nor is reserved: the page gets the
 // chord. Core firefox-keys.mjs decides which, from the platform's inventory (macOS has its own);
-// this reads the elements and writes the attribute.
+// this reads the elements and writes the attribute. On macOS the menu items of those keys also
+// lose their `key` (docs/specs/macos-build.md decision 22): the native menu bar copies a menu
+// item's chord from the `<key>` it names without reading `disabled`
+// (widget/cocoa/nsMenuItemX.mm, SetKeyEquiv), so the item would still run on that chord.
 
-import { firefoxShortcuts, planFirefoxKeys, xulKeyChord } from "../core/firefox-keys.mjs";
+import {
+  firefoxShortcuts,
+  planFirefoxKeys,
+  planMenuKeys,
+  xulKeyChord,
+} from "../core/firefox-keys.mjs";
 
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 
@@ -20,6 +28,10 @@ const KEYSET_ID = "mainKeyset";
 const MARK = "vimma-disabled";
 /** Attributes whose change can change a key's chord or undo our `disabled`. */
 const WATCHED = ["key", "keycode", "modifiers", "disabled"];
+/** On a menu item (macOS): the `<key>` id we took off it, to give back. */
+const MENU_MARK = "vimma-key";
+/** The menu bar, where DevTools and others add menu items with keys after startup. */
+const MENUBAR_ID = "main-menubar";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -99,11 +111,13 @@ export class FirefoxKeys {
       // Our own writes come back as records too; apply() writes only what differs, so this ends.
       // The body and the root report every child they gain: only a keyset there matters.
       const { body, documentElement } = this.win.document;
-      const keyChange = records.some(
-        (r) =>
-          r.target !== body &&
-          r.target !== documentElement &&
-          (r.type === "childList" || r.attributeName !== MARK),
+      const menubar = this.menubar;
+      const keyChange = records.some((r) =>
+        menubar?.contains(r.target)
+          ? isMenuKeyRecord(r)
+          : r.target !== body &&
+            r.target !== documentElement &&
+            (r.type === "childList" || r.attributeName !== MARK),
       );
       if (keysetMoved || keyChange) this.apply();
     });
@@ -128,6 +142,22 @@ export class FirefoxKeys {
         attributeFilter: [...WATCHED, MARK],
       });
     }
+    // Only the menu bar's items run their chord when the menu is closed; a context menu's item
+    // added later is caught at the next apply().
+    const menubar = this.menubar;
+    if (menubar) {
+      observer.observe(menubar, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ["key"],
+      });
+    }
+  }
+
+  /** The window's menu bar on macOS, or null (elsewhere its items' keys only draw text). */
+  get menubar() {
+    return this.mac ? this.win.document.getElementById(MENUBAR_ID) : null;
   }
 
   /**
@@ -184,6 +214,27 @@ export class FirefoxKeys {
       }
     }
     this.unmatched = plan.unmatched;
+    if (this.mac) {
+      this.applyMenus(new Set(keys.filter((k) => k.el.hasAttribute(MARK)).map((k) => k.el.id)));
+    }
+  }
+
+  /**
+   * macOS: takes the `key` off every menu item that names a key in `off`, remembered in
+   * MENU_MARK, and gives it back to the others (core planMenuKeys). nsMenuItemX observes the
+   * attribute and clears or sets the native key equivalent; the item still runs from a click.
+   * @param {ReadonlySet<string>} off  ids of the `<key>` elements we turned off
+   */
+  applyMenus(off) {
+    const items = [
+      ...this.win.document.querySelectorAll(`menuitem[key], menuitem[${MENU_MARK}]`),
+    ].map((el) => ({ el, key: el.getAttribute("key"), stripped: el.getAttribute(MENU_MARK) }));
+    for (const { item, key, stripped } of planMenuKeys(items, off)) {
+      if (key) item.el.setAttribute("key", key);
+      else item.el.removeAttribute("key");
+      if (stripped) item.el.setAttribute(MENU_MARK, stripped);
+      else item.el.removeAttribute(MENU_MARK);
+    }
   }
 
   /**
@@ -236,5 +287,20 @@ export class FirefoxKeys {
       el.removeAttribute(MARK);
       el.removeAttribute("disabled");
     }
+    if (this.mac) this.applyMenus(new Set());
   }
+}
+
+/**
+ * Whether a menu bar mutation can change which menu items name a key: a `key` set or removed,
+ * or a menu item with one added. Menus that fill on opening (History, Bookmarks) add many items
+ * without keys, and those need no apply().
+ * @param {MutationRecord} r
+ */
+function isMenuKeyRecord(r) {
+  if (r.type === "attributes") return true;
+  return [...r.addedNodes].some((n) => {
+    const el = /** @type {Element} */ (n);
+    return el.nodeType === 1 && (el.hasAttribute("key") || !!el.querySelector("menuitem[key]"));
+  });
 }

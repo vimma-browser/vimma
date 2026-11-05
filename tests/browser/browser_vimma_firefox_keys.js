@@ -406,6 +406,85 @@ add_task(async function accel_is_cmd_and_disable_all_keeps_cmd_q_on_macos() {
   Assert.ok(!off.some((k) => k.endsWith(" key_quitApplication")), "cmd+q is not listed as off");
 });
 
+/** File and Tools menu items by id, with the `<key>` each names (issue #613). */
+const MENU_KEYS = {
+  menu_newNavigatorTab: "key_newNavigatorTab",
+  menu_newNavigator: "key_newNavigator",
+  menu_close: "key_close",
+  menu_openDownloads: "key_openDownloads",
+};
+/**
+ * What `key` each of MENU_KEYS' menu items has now.
+ * @param {Window} win
+ */
+function menuKeys(win) {
+  return Object.fromEntries(
+    Object.keys(MENU_KEYS).map((id) => [id, win.document.getElementById(id).getAttribute("key")]),
+  );
+}
+const NO_MENU_KEYS = Object.fromEntries(Object.keys(MENU_KEYS).map((id) => [id, null]));
+
+// On macOS the native menu bar runs a menu item's chord whatever its <key>'s `disabled` says
+// (nsMenuItemX::SetKeyEquiv), so firefox-keys takes the `key` off the menu items of the keys it
+// turns off, and puts it back when they are on again. Elsewhere the attribute only draws the
+// shortcut beside the label, and nothing changes.
+add_task(async function menu_items_of_a_key_that_is_off_lose_it_on_macos_only() {
+  await useConfig(`[firefox]\ndisable = "all"`);
+  for (const id of Object.values(MENU_KEYS)) {
+    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
+  }
+  if (!MAC) {
+    Assert.deepEqual(menuKeys(window), MENU_KEYS, "Linux: the menu items keep their keys");
+    return;
+  }
+  Assert.deepEqual(menuKeys(window), NO_MENU_KEYS, "no menu item names a key that is off");
+  Assert.equal(
+    document.getElementById("menu_FileQuitItem").getAttribute("key"),
+    "key_quitApplication",
+    "cmd+q is on, so Quit keeps its key",
+  );
+  const offKeyItems = [...document.querySelectorAll("menuitem[key]")].filter(
+    // vimma-disabled: off by firefox-keys, not by Firefox (key_exitFullScreen until full screen).
+    (m) => document.getElementById(m.getAttribute("key"))?.hasAttribute("vimma-disabled"),
+  );
+  Assert.deepEqual(
+    offKeyItems.map((m) => `${m.id} ${m.getAttribute("key")}`),
+    [],
+    "no menu item anywhere names a key firefox-keys turned off",
+  );
+
+  await useConfig(`[firefox]\nenable = ["meta+w", "meta+t"]`);
+  Assert.deepEqual(
+    menuKeys(window),
+    { ...NO_MENU_KEYS, menu_close: "key_close", menu_newNavigatorTab: "key_newNavigatorTab" },
+    "enable gives the menu items of cmd+w and cmd+t their keys back, exactly",
+  );
+
+  // A menu item added later, as DevTools adds theirs to Browser Tools.
+  const late = document.createXULElement("menuitem");
+  late.setAttribute("key", "key_newNavigator");
+  document.getElementById("menu_FilePopup").append(late);
+  await TestUtils.waitForCondition(() => !late.hasAttribute("key"), "a late item is stripped");
+  late.remove();
+
+  // A new window gets the same.
+  const win = await BrowserTestUtils.openNewBrowserWindow();
+  await TestUtils.waitForCondition(() => VimmaHost._state(win)?.firefoxKeys, "its firefox-keys");
+  Assert.deepEqual(
+    menuKeys(win),
+    { ...NO_MENU_KEYS, menu_close: "key_close", menu_newNavigatorTab: "key_newNavigatorTab" },
+    "a new window's menu items",
+  );
+  // Vimma turned off (VimmaHost.uninit) gives every menu item its key back.
+  VimmaHost._state(win).firefoxKeys.destroy();
+  Assert.deepEqual(menuKeys(win), MENU_KEYS, "destroy gives them all back");
+  await BrowserTestUtils.closeWindow(win);
+
+  await IOUtils.remove(file);
+  await ConfigHost.reload();
+  Assert.deepEqual(menuKeys(window), NO_MENU_KEYS, "the default strips them again");
+});
+
 add_task(async function enabling_a_chord_the_user_binds_is_an_error() {
   writes++;
   await IOUtils.writeUTF8(

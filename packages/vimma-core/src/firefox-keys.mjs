@@ -1228,3 +1228,26 @@ export function planFirefoxKeys(keys, setting, { bound = new Set(), mac = false 
   const unmatched = [...listed].filter((c) => !matched.has(c) && !enable.has(c));
   return { off, unmatched };
 }
+
+/**
+ * The menu items whose `key` attribute changes (docs/specs/macos-build.md decision 22): on macOS
+ * the native menu bar runs a menu item's chord whatever its `<key>`'s `disabled` says, so an
+ * item that names a key that is off loses its `key`, remembered in `stripped`, and gets it back
+ * when the key is on again. A `key` present wins over the remembered one: Firefox set it since.
+ * Returns only the items to write, each with the `key` and `stripped` it should have.
+ * @template {{ key: string | null, stripped: string | null }} M
+ * @param {readonly M[]} items  menu items with a `key` or a remembered one
+ * @param {ReadonlySet<string>} off  the ids of the `<key>` elements that are off
+ * @returns {{ item: M, key: string | null, stripped: string | null }[]}
+ */
+export function planMenuKeys(items, off) {
+  /** @type {{ item: M, key: string | null, stripped: string | null }[]} */
+  const writes = [];
+  for (const item of items) {
+    const id = item.key || item.stripped;
+    if (!id) continue;
+    const want = off.has(id) ? { key: null, stripped: id } : { key: id, stripped: null };
+    if (want.key !== item.key || want.stripped !== item.stripped) writes.push({ item, ...want });
+  }
+  return writes;
+}
