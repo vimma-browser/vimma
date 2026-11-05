@@ -133,6 +133,20 @@ function renderUpdates(u) {
     const attrs = failed ? { id: "update-appimage", class: "error" } : { id: "update-appimage" };
     rows.push(["AppImage", el("span", attrs, text)]);
   }
+  // A tarball that Firefox's updater updates (m6a-updater §3): how far it got with the offer.
+  if (u.firefox) {
+    const { stage, canApply } = u.firefox;
+    const text = !canApply
+      ? "cannot apply here: Vimma cannot write its install directory"
+      : stage === "staged"
+        ? "downloaded: applies at the next start"
+        : stage === "pending"
+          ? "downloading the update"
+          : u.offer
+            ? "Firefox's updater: not downloaded yet"
+            : "Firefox's updater";
+    rows.push(["Updater", el("span", { id: "update-firefox" }, text)]);
+  }
   rows.push(
     ["Manifest serial", u.serial ?? "-"],
     ["Signed by", u.key ? `${u.key.id} (${u.key.slot} key)` : "-"],

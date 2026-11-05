@@ -194,6 +194,16 @@ describe("stagedSteps (what :update and about:vimma say once the file is replace
       link: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
     });
   });
+
+  // A tarball's update, downloaded and staged by Firefox's updater (m6a-updater §5).
+  test("a tarball: Firefox's updater applies it at the next start", () => {
+    expect(stagedSteps(offer(), "tarball")).toEqual({
+      text: "Vimma 0.3.1 is downloaded and applies at the next start: restart Vimma (:restart) to use it.",
+      commands: [],
+      link: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
+    });
+    expect(stagedSteps(offer(), "appimage")).toEqual(stagedSteps(offer()));
+  });
 });
 
 describe("ownAppImage (the AppImage a restart starts again, spec §5)", () => {
