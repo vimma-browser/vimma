@@ -2,12 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/multiple-splits.md (Delivery 4 and 5, behind vimma.feature.multiple_splits).
-// The split picker lists the workspace's splits with label, pane count and titles; a digit or
-// Enter shows one. The step actions show the next or previous split, wrapping, and from a lone
-// tab the split shown last. Without splits both say so. The step actions have no default key
-// yet, so the test runs the actions by name on the command line; with the pref off those
-// commands do not exist. ctrl+b S opens the picker with the pref on and does nothing without it.
+// Spec: docs/specs/multiple-splits.md (Delivery 4 to 6). The split picker lists the workspace's
+// splits with label, pane count and titles; a digit or Enter shows one. ]s and [s show the next
+// or previous split, wrapping, and from a lone tab the split shown last. Without splits both say
+// so. ctrl+b S opens the picker; the help overlay lists the three keys.
 
 "use strict";
 
@@ -20,11 +18,11 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 
-const PREF = "vimma.feature.multiple_splits";
 const PAGE = "https://example.com/";
 const PICKER_ID = "vimma-split-picker";
 const NOTICE_ID = "vimma-notice";
 const CMDLINE_ERROR = ".vimma-cmdline-error";
+const HELP_ID = "vimma-help";
 
 const view = () => PaneViews.get(window);
 const picker = () => document.getElementById(PICKER_ID);
@@ -92,27 +90,33 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
 
-add_task(async function with_the_pref_off_the_commands_do_not_exist() {
+/** `keys` typed on the page in normal mode. */
+async function normal(keys) {
+  const browser = gBrowser.selectedBrowser;
+  // A split just shown may still have its panels suspended; focusing an inactive browser never
+  // settles on macOS (SpecialPowers' EnsureFocus waits on it until the test times out).
+  await until(
+    () => !browser.webProgress?.isLoadingDocument && browser.docShellIsActive,
+    "the selected page has loaded and is shown",
+  );
+  await nextFrame();
+  await focusContent(browser);
+  EventUtils.sendString(keys);
+}
+
+add_task(async function without_splits_the_picker_and_steps_say_so() {
   await WindowWorkspaces.get(window).ready;
   for (const n of ["a", "b", "c", "d", "e", "f"]) opened.push(await page(n));
   await pick(tab("f"));
   await runCommand("split_picker");
-  await until(
-    () => document.querySelector(CMDLINE_ERROR)?.textContent.includes("split_picker"),
-    "the command line says the command is unknown",
-  );
-  Assert.ok(!isOpen(), "no picker");
-  EventUtils.synthesizeKey("KEY_Escape", {});
-});
-
-add_task(async function without_splits_the_picker_and_steps_say_so() {
-  await SpecialPowers.pushPrefEnv({ set: [[PREF, true]] });
-  await pick(tab("f"));
-  await runCommand("split_picker");
   await until(() => notice() === "no splits in this workspace", "the picker's notice");
   Assert.ok(!isOpen(), "the picker does not open");
-  await runCommand("next_split");
-  await until(() => notice() === "no splits", "the step's notice");
+  Assert.ok(
+    !document.querySelector(CMDLINE_ERROR)?.textContent.includes("split_picker"),
+    "the command exists",
+  );
+  await normal("]s");
+  await until(() => notice() === "no splits", "]s says so");
 });
 
 add_task(async function the_picker_lists_the_splits_and_a_digit_shows_one() {
@@ -157,18 +161,20 @@ add_task(async function enter_shows_the_selected_split_and_slash_filters_by_titl
 });
 
 add_task(async function the_steps_wrap_and_go_back_from_a_lone_tab() {
+  await normal("]s");
+  await until(() => shown() === 1, "]s from S2 wraps to S1");
+  await normal("]s");
+  await until(() => shown() === 2, "]s from S1 is S2");
+  await normal("[s");
+  await until(() => shown() === 1, "[s from S2 is S1");
   await runCommand("next_split");
-  await until(() => shown() === 1, "next from S2 wraps to S1");
-  await runCommand("next_split");
-  await until(() => shown() === 2, "next from S1 is S2");
-  await runCommand("previous_split");
-  await until(() => shown() === 1, "previous from S2 is S1");
+  await until(() => shown() === 2, ":next_split runs the same step");
 
   await pick(tab("f"));
   Assert.equal(shown(), null, "f shows alone");
-  await runCommand("previous_split");
-  await until(() => shown() === 1, "from a lone tab, the split shown last comes back");
-  Assert.equal(gBrowser.selectedTab, tab("b"), "with its focus");
+  await normal("[s");
+  await until(() => shown() === 2, "from a lone tab, the split shown last comes back");
+  Assert.equal(gBrowser.selectedTab, tab("c"), "with its focus");
 });
 
 /** ctrl+b S from the page. */
@@ -178,16 +184,23 @@ async function prefixShiftS() {
   EventUtils.synthesizeKey("S", { shiftKey: true });
 }
 
-add_task(async function ctrl_b_shift_s_opens_the_picker_only_with_the_pref_on() {
+add_task(async function ctrl_b_shift_s_opens_the_picker() {
   await prefixShiftS();
   await until(isOpen, "ctrl+b S opens the split picker");
   EventUtils.synthesizeKey("KEY_Escape", {});
   await until(() => !isOpen(), "Esc closes it");
+});
 
-  await SpecialPowers.pushPrefEnv({ set: [[PREF, false]] });
-  await prefixShiftS();
-  await nextFrame();
-  await nextFrame();
-  Assert.ok(!isOpen(), "with the pref off the key opens nothing");
-  Assert.equal(notice(), null, "and says nothing");
+add_task(async function the_help_overlay_lists_the_split_keys() {
+  await focusContent(gBrowser.selectedBrowser);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("?", { shiftKey: true });
+  const help = () => document.getElementById(HELP_ID);
+  await until(() => !!help()?.open, "ctrl+b ? opens the help overlay");
+  for (const name of ["split_picker", "next_split", "previous_split"]) {
+    const row = help().querySelector(`[data-action="${name}"]`);
+    Assert.ok(row && BrowserTestUtils.isVisible(row), `the overlay lists ${name}`);
+  }
+  EventUtils.synthesizeKey("KEY_Escape", {});
+  await until(() => !help()?.open, "Esc closes it");
 });

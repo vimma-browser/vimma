@@ -439,9 +439,9 @@ describe("invariants", () => {
 });
 
 describe("hiddenSplitRefusal (decision 4)", () => {
-  test("names the split shown last and the way back, before the split keys exist", () => {
+  test("names the split shown last, the keys back and the way to a new split", () => {
     expect(hiddenSplitRefusal(2)).toBe(
-      "split S2 is hidden: select one of its tabs (ctrl+b b) to go back, or mark tabs there for a new split",
+      "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split",
     );
   });
 });

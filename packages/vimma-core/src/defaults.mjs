@@ -272,6 +272,9 @@ const modal = {
     // unimpaired's quickfix keys over the last live grep's results (live-grep decision 8).
     "]q": "grep.next",
     "[q": "grep.previous",
+    // The workspace's splits, as ]w / [w step workspaces (multiple-splits decision 13).
+    "]s": "pane.next_split",
+    "[s": "pane.previous_split",
     yy: "page.yank_url",
     p: "page.open_clipboard",
     P: "page.open_clipboard_new_tab",

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/multiple-splits.md (Delivery 3, behind vimma.feature.multiple_splits). A
+// Spec: docs/specs/multiple-splits.md (Delivery 3, on by default since Delivery 6). A
 // workspace holds several splits, one shown at a time, each in its own Firefox wrapper: marking
 // tabs in the side panel on a lone tab makes a new split; selecting a tab of a split shows that
 // split whole and suspends the other; the panel labels and stripes each split's rows; a
@@ -29,7 +29,6 @@ const { TabStateFlusher } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
 );
 
-const PREF = "vimma.feature.multiple_splits";
 const PAGE = "https://example.com/";
 const PANEL_ID = "vimma-panel";
 const NOTICE_ID = "vimma-notice";
@@ -168,8 +167,7 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
 
-add_task(async function setup_six_pages_with_the_feature_on() {
-  await SpecialPowers.pushPrefEnv({ set: [[PREF, true]] });
+add_task(async function setup_six_pages() {
   await WindowWorkspaces.get(window).ready;
   for (const n of ["a", "b", "c", "d", "e", "f"]) opened.push(await page(n));
   await BrowserTestUtils.switchTab(gBrowser, tab("a"));
@@ -247,7 +245,7 @@ add_task(async function a_lone_tab_hides_both_and_splitting_it_names_the_split()
   await until(() => notice() !== null, "a notice");
   Assert.equal(
     notice(),
-    "split S2 is hidden: select one of its tabs (ctrl+b b) to go back, or mark tabs there for a new split",
+    "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b for a new split",
     "naming the split shown last",
   );
   Assert.equal(splitsOf().all, "S1:x[a,b] S2:x[c,d]", "nothing changed");

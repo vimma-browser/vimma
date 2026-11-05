@@ -16,7 +16,7 @@
 
 import { planWorkspaceSwitch } from "../core/switchplan.mjs";
 import { canWrite, readSnapshot, toSnapshot } from "../core/snapshot.mjs";
-import { closePane, leaves, showView } from "../core/panes.mjs";
+import { closePane, leaves } from "../core/panes.mjs";
 import {
   activeWorkspace,
   addWorkspace,
@@ -600,7 +600,11 @@ export class WindowWorkspacesImpl {
         return;
       case "SSWindowStateReady":
         this.#endPending();
-        if (this.#started) this.#reconcile();
+        // A switch that selects a lazy tab makes SessionStore restore it inside the switch
+        // (insertBrowser, then #restoreTab), which can send this before the switch has selected
+        // that tab: a rebuild then would read the old selection and switch back. Run it after.
+        if (this.#started && this.#switching) this.#win.queueMicrotask(() => this.#reconcile());
+        else if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
         this.#save();
@@ -958,8 +962,7 @@ export class WindowWorkspacesImpl {
   #restorePanes(saved, model) {
     const view = PaneViews.get(this.#win);
     if (!view) return false;
-    const multiple = view.multiple;
-    /** @type {Map<string, Panes | Splits>} */
+    /** @type {Map<string, Splits>} */
     const trees = new Map();
     for (const w of saved.workspaces) {
       const ours = findWorkspace(model, { id: w.id });
@@ -972,24 +975,18 @@ export class WindowWorkspacesImpl {
       };
       // Every split with its number, which one shows and which showed last
       // (docs/specs/multiple-splits.md behaviour 10).
-      if (multiple) {
-        const own = splitsOf(w);
-        /** @type {NumberedSplit[]} */
-        const list = [];
-        for (const x of own.splits) {
-          const tree = mapTree(x, panel);
-          if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
-        }
-        const kept = (/** @type {number | null} */ n) =>
-          n !== null && list.some((x) => x.number === n) ? n : null;
-        if (list.length) {
-          trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
-        }
-        continue;
+      const own = splitsOf(w);
+      /** @type {NumberedSplit[]} */
+      const list = [];
+      for (const x of own.splits) {
+        const tree = mapTree(x, panel);
+        if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
       }
-      if (!w.panes) continue;
-      const tree = mapTree(w.panes, panel);
-      if (tree) trees.set(w.id, tree);
+      const kept = (/** @type {number | null} */ n) =>
+        n !== null && list.some((x) => x.number === n) ? n : null;
+      if (list.length) {
+        trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
+      }
     }
     view.restore(trees, model.active);
     return true;
@@ -1351,28 +1348,10 @@ export class WindowWorkspacesImpl {
       const tab = this.#gBrowser.tabs.find((t) => t.linkedPanel === panel && this.#live(t));
       return tab ? this.#idOf(tab) : undefined;
     };
-    const multiple = view.multiple;
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {
-      if (multiple) {
-        const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
-        return withSplits(w, splits, uuid);
-      }
-      const panes = w.id === model.active ? view.panes : view.parked(w.id);
-      const tree =
-        panes &&
-        mapTree(panes, (p) => {
-          const id = uuid(p);
-          return id && w.tabs.includes(id) ? id : undefined;
-        });
-      if (!tree) return w;
-      // A hidden view keeps the tab shown alone as the selected one; core's snapshot writes it
-      // as `alone` (docs/specs/side-panel-unsplit.md decision 24).
-      const alone = tree.hidden && w.activeTab && !leaves(tree).some((l) => l.tab === w.activeTab);
-      if (alone) return { ...w, panes: tree };
-      const shown = showView(tree);
-      const focus = leaves(tree).find((l) => l.pane === tree.focus)?.tab;
-      return focus ? { ...w, panes: shown, activeTab: focus } : w;
+      const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
+      return withSplits(w, splits, uuid);
     });
     return { ...model, workspaces };
   }

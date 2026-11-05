@@ -55,8 +55,8 @@ Panes
   layout_tiled              (unbound)                                            Layout: a grid
   layout_dwindle            (unbound)                                            Layout: a spiral (dwindle)
   split_picker              ctrl+b shift+s                                       Split picker: show one of the workspace's splits
-  next_split                (unbound)                                            Show the next split
-  previous_split            (unbound)                                            Show the previous split
+  next_split                ]s                                                   Show the next split
+  previous_split            [s                                                   Show the previous split
 
 Workspaces
   next_workspace            ctrl+b ), ]w                                         Next workspace
@@ -379,8 +379,8 @@ Panes
   layout_tiled              (unbound)                                            Layout: a grid
   layout_dwindle            (unbound)                                            Layout: a spiral (dwindle)
   split_picker              ctrl+b shift+s                                       Split picker: show one of the workspace's splits
-  next_split                (unbound)                                            Show the next split
-  previous_split            (unbound)                                            Show the previous split
+  next_split                ]s                                                   Show the next split
+  previous_split            [s                                                   Show the previous split
 
 Workspaces
   next_workspace            ctrl+b ), ]w                                         Next workspace

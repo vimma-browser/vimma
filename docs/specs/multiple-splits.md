@@ -1,11 +1,6 @@
 # Spec: multiple-splits
 
-Status: accepted (sub-PRs 1 to 3 implemented: the hidden-split refusal stays until the next key;
-the core model, snapshot, status bar text, split colours and `max_splits` parsing; several splits
-in the window, the side panel's labels and new-split flow and `state.splits`, behind
-`vimma.feature.multiple_splits`; sub-PR 4 implemented: the split picker and the step actions,
-without default keys, behind the same pref; sub-PR 5 implemented: `ctrl+b S` opens the split
-picker, which does nothing while the pref is off) · Area:
+Status: implemented (sub-PRs 1 to 6; the pref of decision 17 is removed) · Area:
 core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
 `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
 `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,
@@ -83,7 +78,11 @@ workspace` and does not open.
     `panes` keeps its meaning for older clients.
 12. **Behind a pref until finished.** While `vimma.feature.multiple_splits` is `false` (the
     default until the last PR), Vimma behaves as today: one split, hidden or shown. Behaviour 4's
-    notice is the exception: it ships first, alone, because it fixes today's missed message.
+    notice is the exception: it ships first, alone, because it fixes today's missed message. The
+    last PR removes the pref, and several splits are always on.
+13. **A split made by Firefox's own commands** (its tab context menu, an extension) in a workspace
+    that already has a split is still undone, as before, and the notice says how to make another
+    one: `split undone: mark tabs in ctrl+b b for another split`.
 
 ## Research
 
@@ -220,7 +219,15 @@ All references are to `main` at aac585a5, Firefox 157.
 17. **A feature pref**, `vimma.feature.multiple_splits` (default `false`), because the feature
     lands over several pull requests and `main` must stay releasable
     ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Unfinished features"). With it off, `max_splits`
-    is treated as 1, the new `state` field is absent and the panel shows no labels.
+    is treated as 1, the new `state` field is absent and the panel shows no labels. The last
+    sub-PR removes the pref and every read of it, so `state.splits` is always present.
+18. **A second split from Firefox's own commands is still undone** (behaviour 13), as
+    [m4-split-panes](m4-split-panes.md) sub-spec 6 undoes it, because decision 5 makes the side
+    panel's marks the one way to start another split: adopting Firefox's wrapper as a new split
+    would need decision 7's limit and decision 8's numbering on an event path that cannot refuse
+    with a message the user is looking at. The notice changes from `one split per workspace`,
+    which is no longer true, to the way that works. Adopting such a split can follow in a later
+    change without changing the model.
 
 ### Control protocol
 
@@ -352,7 +359,8 @@ snapshot.
 5. **feat(keys): ctrl+b S opens the split picker.** Keymap change; stops at ready.
 6. **feat(keys): ]s and [s step between splits; enable multiple splits.** Keymap change, removes
    the pref and its reads, adds the guide, README and `defaults.toml` text and the `Since changed`
-   notes, sets this spec `implemented`. A default-key change and a big feature: stops at ready.
+   notes, the e2e scenario, behaviour 13's notice, sets this spec `implemented`. A default-key
+   change and a big feature: stops at ready.
 
 ## Open questions
 

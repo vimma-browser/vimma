@@ -524,7 +524,6 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
 // docs/specs/multiple-splits.md: the private workspace keeps several splits too, and
 // `state.splits` names their tabs by id and place only (security.md S9).
 add_task(async function the_private_workspace_keeps_two_splits_and_state_names_no_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.multiple_splits", true]] });
   const [priv] = privateWindows();
   await SimpleTest.promiseFocus(priv);
   const view = PaneViews.get(priv);

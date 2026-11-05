@@ -302,14 +302,14 @@ function paneState(win, visible) {
 /**
  * `state.splits`: every split of the window's workspace in number order, each with the shape of
  * `panes` and `number` and `shown` in place of `hidden` (docs/specs/multiple-splits.md, "Control
- * protocol"), as `{ splits }` to spread into the result; `{}` while the feature pref is off, so
- * the key is absent. Tab ids and places only: a private window's entry names no URL or title.
+ * protocol"), as `{ splits }` to spread into the result; `{}` without a PaneView, so the key is
+ * absent. Tab ids and places only: a private window's entry names no URL or title.
  * @param {any} win
  * @param {any[]} visible gBrowser.visibleTabs
  */
 function splitsState(win, visible) {
   const view = PaneViews.get(win);
-  if (!view?.multiple) return {};
+  if (!view) return {};
   const { splits, shown } = view.splits;
   return {
     splits: splits.map((x) => {
