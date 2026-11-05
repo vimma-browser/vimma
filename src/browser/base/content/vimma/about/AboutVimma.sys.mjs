@@ -85,9 +85,15 @@ const CONTRACT = "@mozilla.org/network/protocol/about;1?what=vimma";
  * The `[[routes]]` rules in force, and the one for the tab `:route` was typed in (by its uuid in
  * the page's `?tab=`): its host only, never its URL.
  * @typedef {object} RoutesData
- * @property {{ index: number, match: string, workspace: string, skipped: string | null }[]} rules
+ * @property {{ index: number, match: string, workspace: string, skipped: string | null,
+ *   shadowedBy: number | null, agent: boolean }[]} rules
  * @property {{ host: string, workspace: string, rule: number | null, target: string | null }
  *   | null} tab
+ * @property {{ names: readonly string[], rule: number | null, workspace: string | null,
+ *   by: "rule" | "default" | "none" } | null} last  the most recent link from another program
+ *   (docs/specs/app-routes.md, decision 15): its names and what it matched, never its URL
+ * @property {{ name: string, state: string } | null} defaultWorkspace  `[routing]
+ *   default_workspace`
  */
 
 /**
@@ -171,15 +177,20 @@ async function omarchyThemeName(dir) {
  */
 function routesOf(win, tabId) {
   const names = WorkspaceStore.definitions.workspaces.map((d) => d.name);
-  const rules = WorkspaceRouter.routes.map((r) => ({
+  const marks = WorkspaceRouter.ruleMarks();
+  const rules = WorkspaceRouter.routes.map((r, i) => ({
     index: r.index,
     match: describeRoute(r),
     workspace: r.workspace,
     skipped: names.includes(r.workspace) ? null : "no such workspace",
+    shadowedBy: marks[i]?.shadowedBy ?? null,
+    agent: marks[i]?.agent ?? false,
   }));
+  const last = WorkspaceRouter.lastLink;
+  const defaultWorkspace = WorkspaceRouter.defaultWorkspaceState();
   const ww = WindowWorkspaces.get(win);
   const tab = tabId && ww?.model ? /** @type {any} */ (ww.tabOf(tabId)) : null;
-  if (!tab) return { rules, tab: null };
+  if (!tab) return { rules, tab: null, last, defaultWorkspace };
   const uri = tab.linkedBrowser.currentURI;
   /** @type {string} */
   let host;
@@ -188,12 +199,14 @@ function routesOf(win, tabId) {
   } catch {
     host = uri.scheme;
   }
-  const hit = WorkspaceRouter.match(uri.spec);
+  const hit = WorkspaceRouter.matchTab(tab);
   const inWs = WorkspaceStore.definitions.workspaces.find(
     (d) => d.userContextId === tab.userContextId,
   );
   return {
     rules,
+    last,
+    defaultWorkspace,
     tab: {
       host,
       workspace: inWs?.name ?? "no workspace's container",

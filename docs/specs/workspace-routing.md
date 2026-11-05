@@ -209,7 +209,10 @@ caller reaches the running Vimma.
    that starts with `-` is refused (exit 64): `%u` must never smuggle a flag such as `-profile`
    into vimma. Otherwise it unsets any inherited `VIMMA_FROM` and runs `vimma "$@"`. The
    AppImage's `AppRun` sends only a single non-flag argument through it; desktop actions'
-   flags go straight to vimma.
+   flags go straight to vimma. (Since changed: the walk keeps shells and every other program up
+   to the terminal or app, up to 32 steps, stops at the compositor and the session, takes
+   `--from <app>`, and hands the link off in its own session without waiting; see
+   [app-routes](app-routes.md), decisions 6 to 10.)
    - **Running Vimma:** `WorkspaceRouter.init()` (once per process, from `vimma.js`) registers a
      command-line handler under `k-vimma-from` (before x-default). It takes `-vimma-from <app>`
      off the line (`handleFlagWithParam`), keeps it only if it is a token, and holds it until the

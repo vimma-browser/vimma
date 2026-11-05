@@ -196,6 +196,15 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../tests/browser/browser_vimma_workspace_routes.js),
   [`the_default_workspace_never_applies_in_a_private_window`](../tests/browser/browser_vimma_workspace_routes.js),
   [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../tests/browser/browser_vimma_agent_outside_opens.js)
+- R10. The names of the last link from another program, and of each tab an app rule placed, are
+  kept **in memory only**, are shown only in about:vimma and **never** with the link's URL, and
+  the `:bug` report keeps only the rule count, because they tell which programs you run. A
+  tab's names apply only while it stays on the host it was opened on: once its own navigation
+  leaves that host, it is matched as any page is (R2).
+  [`about_vimma_shows_the_last_names_without_the_url`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`an_app_routed_tab_is_not_hinted_back_by_a_domain_rule`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`route_move_keeps_an_app_routed_tab_until_it_leaves_the_host`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`an_app_routed_tabs_names_never_pick_the_agent_workspace`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 
@@ -492,10 +501,14 @@ text that pages, add-ons and bookmarks choose.
 
 The hook (`omarchy/vimma-theme-reload.sh`) runs when you change your Omarchy theme. Vimma
 writes it into `~/.config/omarchy/hooks/theme-set.d/`. `vimma-open` (`tools/package/`) is the
-desktop entry's launcher (`vimma-open %u`): it finds which app opened a link, for routing.
+desktop entry's launcher (`vimma-open %u`) and the command `BROWSER=vimma-open` runs: it names
+the programs that opened a link, nearest first, for routing (spec
+[app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to `vimma` in its own
+session.
 
 **Reach:** the hook gets the theme name, which comes from a theme anyone can publish.
-`vimma-open` gets a URL from any local app, and reads `/proc` for the app's name.
+`vimma-open` gets a URL and its arguments from any local program, reads `/proc` for the names
+of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
 
 - O1. The hook **must** only ask running Vimmas to reload their theme (D-Bus, else
   `vimma-ctl reload-theme`) and **never** start a Vimma.
@@ -510,19 +523,43 @@ desktop entry's launcher (`vimma-open %u`): it finds which app opened a link, fo
 - O5. `vimma-open` **never** passes a single argument that starts with `-`, so a crafted link
   cannot become a browser flag (`-profile`, `--remote-debugging-port`).
   [`refuses a single argument that is a flag: %u must never smuggle one in`](../tools/package/test/vimma-open.test.mjs)
-- O6. The app name **must** be a lower-case token of at most 32 characters, and an inherited
-  `VIMMA_FROM` is **never** passed on.
-  [`never passes a name that is not a simple token`](../tools/package/test/vimma-open.test.mjs),
+- O6. The names **must** be at most eight lower-case tokens of at most 64 characters each,
+  separated by commas (the seven nearest and the farthest); a name that is not a token is
+  passed over, never passed on, so a child that renames itself cannot hide an agent CLI's name
+  above it (R8), and an inherited `VIMMA_FROM` is **never** passed on. `TERM_PROGRAM` is added
+  only when the walk could not see the terminal (it passed a name that is not a token, or hit
+  the 32-step limit), so a job an agent CLI left behind, reparented to pid 1, does not take the
+  terminal's name.
+  [`never passes a name that is not a simple token, and keeps the names before it`](../tools/package/test/vimma-open.test.mjs),
   [`refuses a name with a newline in it`](../tools/package/test/vimma-open.test.mjs),
-  [`never passes a VIMMA_FROM it did not set`](../tools/package/test/vimma-open.test.mjs)
+  [`never passes a VIMMA_FROM it did not set`](../tools/package/test/vimma-open.test.mjs),
+  [`keeps the seven nearest names and the farthest past eight`](../tools/package/test/vimma-open.test.mjs),
+  [`a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`](../tools/package/test/vimma-open.test.mjs),
+  [`stops at the compositor without naming it`](../tools/package/test/vimma-open.test.mjs),
+  [`a name that is not a token never hides the names beyond it`](../tools/package/test/vimma-open.test.mjs)
 - O7. A theme's `colors.toml` (anyone can publish a theme) **must** give only `#rrggbb` colours
   and one CSS rule, and be read in bounded time however deep or large it is.
   [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
   [`any theme file and any accepted font give CSS that tokensToCss accepts`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
   [`a hostile theme file is read in bounded time: deep, huge, many keys`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs)
+- O8. `--from` **must** take exactly one app token and one URL that does not start with `-`
+  (else exit 64): it names a program, never a workspace, so the choice stays with config.toml.
+  [`--from refuses a name that is not a token`](../tools/package/test/vimma-open.test.mjs),
+  [`--from refuses a URL that is a flag`](../tools/package/test/vimma-open.test.mjs),
+  [`--from names the app and skips the walk`](../tools/package/test/vimma-open.test.mjs)
+- O9. `vimma-open` **never** runs a command of a multiplexer it passes (`tmux`, `herdr`,
+  `zellij`): asking a server for its client would run your tmux hooks on every link, and could
+  name the wrong terminal. Its server ends the list instead.
+  [`never runs tmux or herdr`](../tools/package/test/vimma-open.test.mjs),
+  [`a daemonised tmux server ends the list at tmux, whatever its clients`](../tools/package/test/vimma-open.test.mjs)
 
-Allowed: two or more arguments pass through unchanged; a local app that runs `vimma-open` with
-its own flags could run `vimma` with them directly.
+Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
+runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
+also name itself as any program, by `--from`, by the name of its executable or by a chain it
+forges (a renamed, detached process): the names are a hint that only selects a workspace a rule
+already routes to (R4), the boundary §11 accepts for programs running as you. For the same
+reason `VIMMA_BIN`, `VIMMA_OPEN_PROC` and `VIMMA_OPEN_PPID`, which the tests use, are honoured:
+they give the caller no more than `--from`, and what they point at comes out only as token names.
 [`passes anything but one URL through unchanged`](../tools/package/test/vimma-open.test.mjs)
 
 ## 8. `config.toml` (`config/ConfigHost.sys.mjs`)

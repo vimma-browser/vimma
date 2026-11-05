@@ -312,6 +312,73 @@ add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed
   }
 });
 
+// docs/specs/app-routes.md, decision 14 (docs/security.md R10): a tab's recorded names never
+// pick a rule naming the agent workspace, for the hint, :route move or about:vimma.
+add_task(async function an_app_routed_tabs_names_never_pick_the_agent_workspace() {
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([{ app: "testapp", domain: "example.com", workspace: "oo-home" }]),
+  );
+  try {
+    await inAgentAfterHome();
+    const tab = await fromPrograms("testapp", LOGIN);
+    Assert.equal(tab.userContextId, home.userContextId, "the app rule places it in oo-home");
+    await until(
+      () => WorkspaceRouter.matchTab(tab)?.workspace.name === "oo-home",
+      "the tab keeps its names on its host",
+    );
+    WorkspaceRouter.setRoutes(
+      resolveRoutes([
+        { app: "testapp", workspace: agent().name },
+        { app: "testapp", domain: "example.com", workspace: "oo-home" },
+      ]),
+    );
+    Assert.notEqual(
+      WorkspaceRouter.matchTab(tab)?.workspace.name,
+      agent().name,
+      "a rule naming the agent workspace is never chosen with the tab's names",
+    );
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    tidy();
+  }
+});
+
+// docs/specs/app-routes.md, decision 15.
+add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([
+      { app: "claude", workspace: agent().name },
+      { domain: "example.com", workspace: "oo-home" },
+    ]),
+  );
+  WorkspaceRouter.setDefaultWorkspace(agent().name);
+  try {
+    const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
+    await until(
+      () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+      "about:vimma rendered",
+    );
+    const doc = about.linkedBrowser.contentDocument;
+    const states = [...doc.querySelectorAll("#routes tbody tr td:last-child")].map(
+      (td) => td.textContent,
+    );
+    Assert.deepEqual(
+      states,
+      ["never for links from other apps: the agent workspace", "in force"],
+      "the agent rule is marked",
+    );
+    Assert.stringContains(
+      doc.getElementById("route-default").textContent,
+      "never for links from other apps: the agent workspace",
+      "and so is a default workspace naming it",
+    );
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    WorkspaceRouter.setDefaultWorkspace(null);
+    tidy();
+  }
+});
+
 add_task(async function a_tab_sent_from_another_device_skips_the_agent_container() {
   await inAgentAfterHome();
   const opened = nextTab();

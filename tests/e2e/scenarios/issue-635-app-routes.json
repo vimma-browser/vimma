@@ -1,0 +1,41 @@
+{
+  "name": "issue-635-app-routes",
+  "issue": 635,
+  "description": "docs/specs/app-routes.md, Tests: the packaged vimma-open, run as another program runs it, hands a link to the browser under test over the D-Bus remote (the harness gives the scenario a session bus of its own, and vimma-open a vimma that adds -profile). With config.toml's rules (tests/e2e/fixtures/app-routes.toml), `vimma-open --from teams <url>` opens the page in work by the app rule, above the domain rule that also matches; `vimma-open <url>` from the harness, whose process chain names no program a rule names, opens it in admin by the domain rule. The first workspace in config.toml, home, is shown at the start. A foreground link from another program switches to its workspace.",
+  "timeoutSeconds": 60,
+  "prefs": {
+    "vimma.config.path": "checkout:tests/e2e/fixtures/app-routes.toml"
+  },
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "home"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "external": ["--from", "teams", "fixture:article.html"]
+    },
+    {
+      "wait-for-state": {
+        "workspace": "work",
+        "tabs": [
+          {
+            "title": "article",
+            "selected": true
+          }
+        ]
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "external": ["fixture:long.html"]
+    },
+    {
+      "wait-for-state": {
+        "workspace": "admin"
+      },
+      "timeoutSeconds": 20
+    }
+  ]
+}

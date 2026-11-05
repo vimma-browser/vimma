@@ -81,7 +81,7 @@ function addRoute(win, tab, name, say) {
  */
 function moveByRoute(win, tab) {
   const ww = /** @type {any} */ (WindowWorkspaces.get(win));
-  const hit = WorkspaceRouter.match(tab.linkedBrowser.currentURI?.spec ?? "");
+  const hit = WorkspaceRouter.matchTab(tab);
   if (!hit) return ":route move: no rule matches this page";
   if (hit.workspace.userContextId === tab.userContextId) {
     return `:route move: already in "${hit.workspace.name}"`;

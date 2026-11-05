@@ -83,7 +83,11 @@ the [user guide](guide.md); planned work is on the
   and click the key icon to save the password.
 - [Routing rules](guide.md#routing-which-workspace-a-link-opens-in) do not move a page's own
   navigation or the links a page opens. App rules do not recognise links from Flatpak or other
-  sandboxed apps, or from apps started through systemd (`uwsm app`).
+  sandboxed apps, from apps that open links through the desktop portal (Ghostty's link clicks
+  on Linux), from apps started through systemd (`uwsm app`), or from a program that has exited
+  before its link arrives. Behind a tmux, zellij or detached herdr server, the names end at the
+  multiplexer: a rule for the terminal behind it does not match. On macOS, app rules do not
+  apply yet.
 
 ## Bookmarks
 

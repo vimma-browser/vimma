@@ -3285,18 +3285,65 @@ there (it loses its back/forward history, as any move does). A container you cho
 
 **By application.** Vimma's packages install `vimma-open` and make it the desktop entry's
 command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open` looks up which
-program asked (through `/proc`, skipping `xdg-open`, `gio` and shells) and tells Vimma. A link
-you open from a shell counts as the terminal's. Apps in Flatpak (they go through the desktop
-portal), apps started through systemd (`uwsm app`) and links opened while the asking program
-has already exited have no app: only `domain` and `url` rules apply to them. To see what an app
-is called, run `vimma-open https://example.com` from it, or look at its process name
-(`ps -o comm`), lower-cased.
+programs asked (through `/proc`, skipping openers such as `xdg-open` and `gio`) and tells Vimma.
+A link carries up to eight program names, nearest first, shells included: `az login` run in a
+herdr pane in Ghostty carries `python3, zsh, herdr, zsh, ghostty`, so a rule can name whichever
+of them stands for the role, and the rule naming the nearest one wins.
 
-A link carries up to eight program names, nearest first, so a rule can name whichever of them
-stands for the role. When a rule sends an AI agent's command-line tool (`app = "claude"`) to the
-agent workspace, that link never matches an `app` rule at all, so an agent cannot reach a
-workspace you route your terminal's sign-ins to; route agent tools by name, and pair `app` with
-`domain` for a workspace that holds privileged sign-ins.
+Command-line tools (the Azure CLI, `gh`, anything written in Python) open links through the
+`BROWSER` variable. Set it in your shell's startup file, and their links are routed by the
+terminal and multiplexer they run in:
+
+```sh
+# ~/.zshrc (or ~/.bashrc; in config.fish: set -gx BROWSER vimma-open)
+export BROWSER=vimma-open
+```
+
+```toml
+[[routes]]
+app = "herdr"
+domain = "login.microsoftonline.com"
+workspace = "admin"
+
+[[routes]]
+app = "ghostty"
+domain = "login.microsoftonline.com"
+workspace = "admin"
+
+[[routes]]
+domain = "login.microsoftonline.com"
+workspace = "work"
+```
+
+With these rules, `az login` in Ghostty, or in herdr inside Ghostty, opens its sign-in page in
+`admin`, and the same sign-in link from any other app opens in `work`. `vimma-open` returns at
+once, so the tool never waits for the browser, and a Vimma it starts does not close with the
+terminal.
+
+- **Multiplexers.** Inside tmux, zellij or a herdr session you have detached and attached again,
+  the pane's processes run under the multiplexer's server, not under the terminal, so the names
+  end at `tmux`, `zellij` or `herdr`. Write a rule for the multiplexer, as the `herdr` rule above
+  does; a rule for the terminal behind it does not match. Vimma never asks the multiplexer which
+  terminal is attached.
+- **A program not on the way.** `vimma-open --from <name> <url>` names the program itself, for a
+  script or a systemd unit started outside any terminal: `vimma-open --from backup
+https://example.com`. It names a program, never a workspace: `config.toml` still decides.
+- **What has no names:** apps in Flatpak (they go through the desktop portal, as Ghostty's own
+  link clicks do), apps started through systemd (`uwsm app`), and links opened after the asking
+  program has exited. Only `domain` and `url` rules apply to them, then
+  `[routing] default_workspace`.
+- **What an app is called:** about:vimma's Routing section (`:route`) shows the names the last
+  link from another app carried and the rule it matched (never its address), and marks a rule
+  that an earlier rule always wins against as `shadowed by rule N`. You can also run
+  `vimma-open https://example.com` from the app, or look at its process name (`ps -o comm`),
+  lower-cased.
+
+Every program you run in a terminal carries the terminal's names, an AI agent's command-line
+tool included. When a rule sends an agent's tool (`app = "claude"`) to the agent workspace, that
+tool's links never match an `app` rule at all, so an agent cannot reach a workspace you route
+your terminal's sign-ins to. Route agent tools (`claude`, `codex`) by name, and pair `app` with
+`domain` for a workspace that holds privileged sign-ins, as above, so that a program that only
+claims a name opens nothing but the sign-in host there.
 
 **Commands.**
 

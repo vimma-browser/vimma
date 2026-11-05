@@ -686,6 +686,205 @@ add_task(async function private_windows_are_never_routed() {
   await BrowserTestUtils.closeWindow(priv);
 });
 
+// docs/specs/app-routes.md, decision 14: a tab an app rule placed keeps its names on its host.
+const SIGNIN = [
+  { app: "testapp", domain: "example.com", workspace: "rt-home" },
+  { domain: "example.com", workspace: "rt-work" },
+  { domain: "example.org", workspace: "rt-work" },
+];
+
+/**
+ * Every text the status bar notice of `win` shows from now on, until `stop()`.
+ * @param {Window} [win]
+ */
+function recordNotices(win = window) {
+  /** @type {string[]} */
+  const seen = [];
+  const take = () => {
+    const text = noticeText(win);
+    if (text && seen.at(-1) !== text) seen.push(text);
+  };
+  const observer = new win.MutationObserver(take);
+  observer.observe(win.document.documentElement, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+  });
+  return { seen, stop: () => observer.disconnect() };
+}
+
+/** Loads `url` in `tab` as the page's own navigation. */
+async function navigate(tab, url) {
+  const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+  await SpecialPowers.spawn(tab.linkedBrowser, [url], (u) => {
+    content.location.href = u;
+  });
+  await loaded;
+}
+
+/** The app-routed sign-in tab: `testapp` opens example.com, the app rule puts it in rt-home. */
+async function signInTab() {
+  route(SIGNIN);
+  ww().switchTo({ id: def("main").id });
+  const { tab } = await remote(["-vimma-from", "testapp", `${WORK}?signin`]);
+  Assert.equal(tab.userContextId, home.userContextId, "the app rule places it in rt-home");
+  await until(() => gBrowser.selectedTab === tab, "the tab is shown");
+  await until(
+    () =>
+      tab.linkedBrowser.currentURI.spec === `${WORK}?signin` &&
+      !tab.linkedBrowser.webProgress?.isLoadingDocument,
+    "the sign-in page has loaded",
+  );
+  return tab;
+}
+
+add_task(async function an_app_routed_tab_is_not_hinted_back_by_a_domain_rule() {
+  const notices = recordNotices();
+  try {
+    const tab = await signInTab();
+    await navigate(tab, `${WORK}?signin-step-2`);
+    // Leaving the host is the page's own navigation: the hint describes it as before.
+    await navigate(tab, `${ELSEWHERE}?left`);
+    await until(
+      () => noticeText() === 'example.org goes to "rt-work" (route 3): :route move',
+      "a host the app rule did not place it on is hinted",
+    );
+    Assert.deepEqual(
+      // Route 2 is SIGNIN's domain rule (route 1 of the earlier rules may be hinted on the way).
+      notices.seen.filter((t) => t === 'example.com goes to "rt-work" (route 2): :route move'),
+      [],
+      "the sign-in host is never hinted back to rt-work",
+    );
+  } finally {
+    notices.stop();
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
+
+add_task(async function route_move_keeps_an_app_routed_tab_until_it_leaves_the_host() {
+  try {
+    const tab = await signInTab();
+    clearNotice();
+    await runCommand("route move");
+    await until(
+      () => noticeText() === ':route move: already in "rt-home"',
+      ":route move matches with the tab's names while it is on the sign-in host",
+    );
+    Assert.ok(tab.isConnected, "the tab stays");
+
+    await navigate(tab, `${ELSEWHERE}?left-move`);
+    // The move opens a home tab first when it empties rt-home: wait for a tab in rt-work.
+    const moved = BrowserTestUtils.waitForEvent(
+      gBrowser.tabContainer,
+      "TabOpen",
+      false,
+      (e) => e.target.userContextId === work.userContextId,
+    );
+    await runCommand("route move");
+    await moved;
+    await until(() => !tab.isConnected, "after it leaves, the domain rule's: moved to rt-work");
+  } finally {
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
+
+add_task(async function a_cold_start_app_routed_first_tab_is_not_hinted_back() {
+  route(SIGNIN);
+  Services.env.set("VIMMA_FROM", "testapp");
+  WorkspaceRouter.resetStartupAppForTesting();
+  const cold = await openExternalWindow(`${WORK}?cold-signin`);
+  try {
+    const tab = cold.gBrowser.selectedTab;
+    Assert.equal(tab.userContextId, home.userContextId, "the app rule places the first tab");
+    await until(
+      () => WorkspaceRouter.matchTab(tab)?.workspace.name === "rt-home",
+      "the first tab keeps the cold start's names on its host",
+    );
+    await navigate(tab, `${ELSEWHERE}?cold-left`);
+    Assert.equal(
+      WorkspaceRouter.matchTab(tab)?.workspace.name,
+      "rt-work",
+      "once it leaves the host, the rules alone",
+    );
+  } finally {
+    await BrowserTestUtils.closeWindow(cold);
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+  }
+});
+
+/** Opens about:vimma in a new tab and waits for it to render. */
+async function openAboutVimma() {
+  const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
+  await until(
+    () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+    "about:vimma rendered",
+  );
+  return about;
+}
+
+// docs/specs/app-routes.md, decision 15.
+add_task(async function about_vimma_shows_the_last_names_without_the_url() {
+  const { AboutVimma } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
+  );
+  try {
+    await signInTab();
+    const about = await openAboutVimma();
+    const last = about.linkedBrowser.contentDocument.getElementById("route-last").textContent;
+    Assert.stringContains(last, "testapp", "the names the link carried");
+    Assert.stringContains(last, "rule 1 (rt-home)", "and the rule it matched");
+    Assert.ok(!/signin|example\.com/.test(last), "never its URL");
+    const report = AboutVimma.report(await AboutVimma.collect(window));
+    Assert.ok(!report.includes("testapp"), "the :bug report keeps only the rule count");
+    BrowserTestUtils.removeTab(about);
+
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    defaultTo("rt-work");
+    await remote(["-vimma-from", "otherapp", `${ELSEWHERE}?unmatched`]);
+    const again = await openAboutVimma();
+    const doc = again.linkedBrowser.contentDocument;
+    Assert.stringContains(
+      doc.getElementById("route-last").textContent,
+      "otherapp → [routing] default_workspace (rt-work)",
+      "an unmatched link names the default workspace",
+    );
+    Assert.stringContains(
+      doc.getElementById("route-default").textContent,
+      "rt-work",
+      "the section shows [routing] default_workspace",
+    );
+  } finally {
+    defaultTo(null);
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
+
+add_task(async function about_vimma_marks_a_shadowed_rule() {
+  route([
+    { domain: "example.com", workspace: "rt-work" },
+    { domain: "a.example.com", workspace: "rt-home" },
+    { app: "testapp", domain: "example.com", workspace: "rt-home" },
+    { domain: "example.org", workspace: "rt-home" },
+  ]);
+  try {
+    const about = await openAboutVimma();
+    const states = [
+      ...about.linkedBrowser.contentDocument.querySelectorAll("#routes tbody tr td:last-child"),
+    ].map((td) => td.textContent);
+    Assert.deepEqual(
+      states,
+      ["in force", "shadowed by rule 1", "shadowed by rule 1", "in force"],
+      "an earlier rule that always wins marks the later ones",
+    );
+  } finally {
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
+
 add_task(async function route_add_writes_a_rule_and_route_lists_them() {
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-routes");
   const file = PathUtils.join(dir, "config.toml");
