@@ -105,6 +105,8 @@ const keys = {
   // docs/specs/tiling-layouts.md: tmux's split-window on enter, next-layout on space.
   new_pane: ["prefix+enter"],
   next_layout: ["prefix+space"],
+  // docs/specs/multiple-splits.md decision 13: S for splits, next to w for workspaces.
+  split_picker: ["prefix+shift+s"],
   next_workspace: ["prefix+)"],
   previous_workspace: ["prefix+("],
   // tmux's last session; prefix+ctrl+6 for layouts where ^ is a dead key (Finnish, German).

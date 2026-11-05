@@ -91,6 +91,7 @@ describe("the whitelist (D9)", () => {
     for (const id of ["pane.split_picker", "pane.next_split", "pane.previous_split"]) {
       expect(AGENT_KEY_ACTIONS.has(id)).toBe(false);
     }
+    expect(refusal("ctrl+b S")).toContain("the prefix");
   });
 
   test("downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)", () => {

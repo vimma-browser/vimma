@@ -69,7 +69,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Layout: main pane on top, rest below             | `layout_main_horizontal` | —                                                        |
 | Layout: a grid                                   | `layout_tiled`           | —                                                        |
 | Layout: a spiral (dwindle)                       | `layout_dwindle`         | —                                                        |
-| Split picker: show one of the workspace's splits | `split_picker`           | —                                                        |
+| Split picker: show one of the workspace's splits | `split_picker`           | `ctrl+b shift+s`                                         |
 | Show the next split                              | `next_split`             | —                                                        |
 | Show the previous split                          | `previous_split`         | —                                                        |
 

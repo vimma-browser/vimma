@@ -2,11 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/multiple-splits.md (Delivery 4, behind vimma.feature.multiple_splits). The
-// split picker lists the workspace's splits with label, pane count and titles; a digit or Enter
-// shows one. The step actions show the next or previous split, wrapping, and from a lone tab the
-// split shown last. Without splits both say so. The actions have no default key yet, so the
-// test runs them by name on the command line; with the pref off those commands do not exist.
+// Spec: docs/specs/multiple-splits.md (Delivery 4 and 5, behind vimma.feature.multiple_splits).
+// The split picker lists the workspace's splits with label, pane count and titles; a digit or
+// Enter shows one. The step actions show the next or previous split, wrapping, and from a lone
+// tab the split shown last. Without splits both say so. The step actions have no default key
+// yet, so the test runs the actions by name on the command line; with the pref off those
+// commands do not exist. ctrl+b S opens the picker with the pref on and does nothing without it.
 
 "use strict";
 
@@ -168,4 +169,25 @@ add_task(async function the_steps_wrap_and_go_back_from_a_lone_tab() {
   await runCommand("previous_split");
   await until(() => shown() === 1, "from a lone tab, the split shown last comes back");
   Assert.equal(gBrowser.selectedTab, tab("b"), "with its focus");
+});
+
+/** ctrl+b S from the page. */
+async function prefixShiftS() {
+  await focusContent(gBrowser.selectedBrowser);
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("S", { shiftKey: true });
+}
+
+add_task(async function ctrl_b_shift_s_opens_the_picker_only_with_the_pref_on() {
+  await prefixShiftS();
+  await until(isOpen, "ctrl+b S opens the split picker");
+  EventUtils.synthesizeKey("KEY_Escape", {});
+  await until(() => !isOpen(), "Esc closes it");
+
+  await SpecialPowers.pushPrefEnv({ set: [[PREF, false]] });
+  await prefixShiftS();
+  await nextFrame();
+  await nextFrame();
+  Assert.ok(!isOpen(), "with the pref off the key opens nothing");
+  Assert.equal(notice(), null, "and says nothing");
 });
