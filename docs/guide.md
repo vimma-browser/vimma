@@ -3157,10 +3157,28 @@ workspace = "notes"
 - **`domain`** matches `http` and `https` pages only, on whole labels (`github.com` is not
   `notgithub.com`), whatever the port; Unicode names work written either way
   (`bücher.example` or `xn--bcher-kva.example`), and an IP address matches only itself.
-- **`app`** is the name of the program that opened the link, as `vimma-open` sees it (below).
+- **`app`** is the name of a program that opened the link, as `vimma-open` sees it (below), up
+  to 64 characters.
 - **Order is the precedence.** Put the rule that matters most first: with `app = "slack"` above
-  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`.
-- A rule naming a workspace that does not exist is skipped (`:route` says so).
+  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`. Among `app` rules above
+  the first matching rule without `app`, the one naming the program nearest the link wins,
+  whatever their order: a link from a herdr pane in Ghostty matches `app = "herdr"` before
+  `app = "ghostty"`. An `app` rule below a matching rule without `app` never applies to that
+  link.
+- A rule naming a workspace that does not exist is skipped (`:route` says so), and so is a rule
+  naming the agent workspace for a link from another app: the next rule applies.
+- **Links from other programs that no rule matches** open where `[routing] default_workspace`
+  says, when you set it:
+
+  ```toml
+  [routing]
+  default_workspace = "work"   # links from other programs that no rule matches
+  ```
+
+  Left out, they open in the workspace Firefox guesses from your open tabs, else in the
+  window's. It never applies to what you type or open in Vimma, and never to the agent
+  workspace. Every program's links can land there, including an AI agent's, so choose a
+  workspace without privileged sign-ins.
 
 **Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
 bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
@@ -3185,6 +3203,12 @@ portal), apps started through systemd (`uwsm app`) and links opened while the as
 has already exited have no app: only `domain` and `url` rules apply to them. To see what an app
 is called, run `vimma-open https://example.com` from it, or look at its process name
 (`ps -o comm`), lower-cased.
+
+A link carries up to eight program names, nearest first, so a rule can name whichever of them
+stands for the role. When a rule sends an AI agent's command-line tool (`app = "claude"`) to the
+agent workspace, that link never matches an `app` rule at all, so an agent cannot reach a
+workspace you route your terminal's sign-ins to; route agent tools by name, and pair `app` with
+`domain` for a workspace that holds privileged sign-ins.
 
 **Commands.**
 
@@ -3835,7 +3859,8 @@ accent = "#ff9e64"
   (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
   Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
-- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
+- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[routing]`,
+  `[firefox]`,
   `[bookmarks]`, `[panel]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as

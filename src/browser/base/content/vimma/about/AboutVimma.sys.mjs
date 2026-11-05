@@ -188,7 +188,7 @@ function routesOf(win, tabId) {
   } catch {
     host = uri.scheme;
   }
-  const hit = WorkspaceRouter.match(uri.spec, null);
+  const hit = WorkspaceRouter.match(uri.spec);
   const inWs = WorkspaceStore.definitions.workspaces.find(
     (d) => d.userContextId === tab.userContextId,
   );

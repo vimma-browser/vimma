@@ -1,7 +1,7 @@
 # Spec: app-routes
 
-Status: accepted (Linux: sub-PRs 1 and 2 close the issue; sub-PRs 3 and 4 are the macOS step,
-not yet scheduled) · Area: `packages/vimma-core/src/routes.mjs`,
+Status: accepted (sub-PR 1 implemented; Linux: sub-PRs 1 and 2 close the issue; sub-PRs 3 and
+4 are the macOS step, not yet scheduled) · Area: `packages/vimma-core/src/routes.mjs`,
 `packages/vimma-core/src/config.mjs`; `src/browser/base/content/vimma/`
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
