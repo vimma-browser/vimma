@@ -12,7 +12,7 @@
 
 "use strict";
 
-// Twenty tasks, several of them waiting on a download or a window.
+// Twenty-seven tasks, several of them waiting on a download or a window.
 requestLongerTimeout(3);
 
 /* global DownloadsPanel -- browser window global (browser.js) */
@@ -56,12 +56,19 @@ function shown() {
   return segment()?.querySelector("[aria-hidden]")?.textContent ?? null;
 }
 
-/** @param {string} name */
-async function held(name) {
+/**
+ * A download of `name` that stops half way until `release`. `resumable` keeps its `.part` file
+ * on a pause, as Firefox does for a download from a page (DownloadLegacy.sys.mjs).
+ * @param {string} name
+ * @param {{ resumable?: boolean }} [options]
+ */
+async function held(name, { resumable = false } = {}) {
   const list = await Downloads.getList(Downloads.PUBLIC);
+  const path = PathUtils.join(saveDir, name);
   const download = await Downloads.createDownload({
     source: `${SJS}?hold&name=${name}`,
-    target: PathUtils.join(saveDir, name),
+    target: resumable ? { path, partFilePath: `${path}.part` } : path,
+    ...(resumable ? { tryToKeepPartialData: true } : {}),
   });
   await list.add(download);
   const done = download.start();
@@ -129,6 +136,11 @@ const selectedTitle = () =>
 const headings = () =>
   [...(picker()?.querySelectorAll(".vimma-picker-heading") ?? [])].map((h) => h.textContent);
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
+/** The `y/N` line at the window's foot (ui/rename-prompt.mjs). */
+const promptOpen = () => document.getElementById("vimma-rename")?.hidden === false;
+const promptText = () =>
+  document.getElementById("vimma-rename")?.querySelector(".vimma-cmdline-prompt")?.textContent ??
+  "";
 
 /** ctrl+b, then `key`. @param {string} key @param {object} [mods] */
 function prefix(key, mods = {}) {
@@ -148,6 +160,7 @@ async function closePicker() {
 
 /** Highlights the row titled `name`. @param {string} name */
 async function highlight(name) {
+  await until(() => titles().includes(name), `${name} is listed`);
   for (let i = 0; i < rows().length && selectedTitle() !== name; i++) {
     EventUtils.synthesizeKey("j");
   }
@@ -595,6 +608,189 @@ add_task(async function test_y_copies_the_link_and_Y_the_path() {
   );
   Assert.ok(isOpen(), "the picker stays open");
   await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_pause_resume_and_retry() {
+  const tab = await pageTab();
+  const one = await held("pause-me.bin", { resumable: true });
+  await openPicker();
+  await highlight("pause-me.bin");
+  EventUtils.synthesizeKey("p");
+  await until(() => one.download.stopped && one.download.hasPartialData, "p pauses it");
+  await until(() => cell(rows()[0], "index") === "paused", "the row says paused");
+  Assert.ok(await IOUtils.exists(`${one.download.target.path}.part`), "its partial file stays");
+  // Enter on a paused download resumes it, from where it stopped.
+  EventUtils.synthesizeKey("KEY_Enter");
+  await until(() => one.download.succeeded, "Enter resumes it, and it finishes");
+  Assert.equal((await IOUtils.stat(one.download.target.path)).size, 20000, "all of the file");
+  Assert.ok(isOpen(), "the picker stays open");
+  await closePicker();
+
+  // The first answer for this name is short, so it fails; a retry gets all of it.
+  const list = await Downloads.getList(Downloads.PUBLIC);
+  const failing = await Downloads.createDownload({
+    source: `${SJS}?short&name=retry-me.bin`,
+    target: PathUtils.join(saveDir, "retry-me.bin"),
+  });
+  await list.add(failing);
+  await failing.start().catch(() => {});
+  Assert.ok(failing.error, "the first attempt failed");
+  await openPicker();
+  await highlight("retry-me.bin");
+  EventUtils.synthesizeKey("r");
+  await until(() => failing.succeeded, "r retries it");
+  // A finished download has nothing to pause: the key says why.
+  EventUtils.synthesizeKey("p");
+  await until(() => noticeText().includes("cannot pause"), "p on a finished one says why");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_cancel_asks_and_removes_the_partial_file() {
+  const tab = await pageTab();
+  const one = await held("cancel-me.bin", { resumable: true });
+  const part = `${one.download.target.path}.part`;
+  await openPicker();
+  await highlight("cancel-me.bin");
+  EventUtils.synthesizeKey("c");
+  await until(promptOpen, "c asks first");
+  Assert.ok(!isOpen(), "with the picker closed");
+  Assert.equal(promptText(), 'cancel "cancel-me.bin" and remove its partial file? (y/N) ');
+  EventUtils.synthesizeKey("n");
+  await until(() => !promptOpen(), "n answers no");
+  Assert.ok(!one.download.stopped, "and the download runs on");
+  await openPicker();
+  await highlight("cancel-me.bin");
+  EventUtils.synthesizeKey("c");
+  await until(promptOpen, "c asks again");
+  EventUtils.synthesizeKey("y");
+  await until(
+    () => one.download.canceled && !one.download.hasPartialData,
+    "y cancels it and removes its partial data",
+  );
+  await until(() => noticeText().includes("canceled"), "the notice says so");
+  Assert.ok(!(await IOUtils.exists(part)), "the .part file is gone");
+  await openPicker();
+  Assert.equal(cell(rows()[0], "index"), "canceled", "the row says canceled");
+  await closePicker();
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_d_removes_the_entry_and_keeps_the_file() {
+  const tab = await pageTab();
+  await finished("keep-me.bin");
+  const gone = await finished("remove-me.bin");
+  await openPicker();
+  await highlight("remove-me.bin");
+  EventUtils.synthesizeKey("d");
+  await until(() => !titles().includes("remove-me.bin"), "d removes the row at once");
+  Assert.ok(!promptOpen(), "with no question");
+  Assert.ok(isOpen(), "and the picker stays open");
+  Assert.deepEqual(titles(), ["keep-me.bin"], "the other download stays");
+  Assert.ok(await IOUtils.exists(gone.target.path), "the file stays on disk");
+  const list = await Downloads.getList(Downloads.ALL);
+  Assert.ok(!(await list.getAll()).includes(gone), "and the download left Firefox's list");
+  // A running download is not removed by mistake.
+  const one = await held("running.bin");
+  await until(() => titles().includes("running.bin"), "the running one is listed");
+  // It heads the active section, above the highlight.
+  EventUtils.synthesizeKey("k");
+  await highlight("running.bin");
+  EventUtils.synthesizeKey("d");
+  await until(() => noticeText().includes("still downloading"), "d on a running one says why");
+  await closePicker();
+  await release();
+  await one.done;
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_D_asks_and_deletes_the_file() {
+  const tab = await pageTab();
+  const file = await finished("delete-me.bin");
+  await openPicker();
+  await highlight("delete-me.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks first");
+  Assert.ok(!isOpen(), "with the picker closed");
+  Assert.equal(promptText(), 'delete "delete-me.bin" from disk? (y/N) ');
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !promptOpen(), "Esc answers no");
+  Assert.ok(await IOUtils.exists(file.target.path), "and the file stays");
+  await openPicker();
+  await highlight("delete-me.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks again");
+  EventUtils.synthesizeKey("y");
+  await until(() => file.deleted, "y deletes the file");
+  Assert.ok(!(await IOUtils.exists(file.target.path)), "it is gone from disk");
+  await until(() => noticeText().includes("deleted"), "the notice says so");
+  Assert.deepEqual(calls, [], "nothing reached the OS");
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_the_y_answer_goes_to_the_question_never_to_the_picker() {
+  const tab = await pageTab();
+  const file = await finished("answer-me.bin");
+  await openPicker();
+  await highlight("answer-me.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  Assert.ok(!isOpen(), "the picker is closed before the question shows");
+  // In the picker `y` would copy the link; here it is the answer.
+  EventUtils.synthesizeKey("y");
+  await until(() => file.deleted, "the y reached the question");
+  Assert.ok(!isOpen(), "and the picker did not come back");
+  Assert.ok(!noticeText().includes("copied"), "nothing was copied");
+  BrowserTestUtils.removeTab(tab);
+  await clean();
+});
+
+add_task(async function test_an_answer_does_nothing_if_the_download_changed() {
+  const tab = await pageTab();
+  const one = await held("changes.bin");
+  await openPicker();
+  await highlight("changes.bin");
+  EventUtils.synthesizeKey("c");
+  await until(promptOpen, "c asks");
+  // It finishes while the question is open: the yes was for a running download.
+  await release();
+  await one.done;
+  EventUtils.synthesizeKey("y");
+  await until(() => noticeText().includes("changed"), "the notice says it changed");
+  Assert.ok(one.download.succeeded && !one.download.canceled, "the download was not canceled");
+  Assert.ok(await IOUtils.exists(one.download.target.path), "and its file stays");
+  // Removed elsewhere while asked: nothing is deleted either.
+  const file = await finished("removed-elsewhere.bin");
+  await openPicker();
+  await highlight("removed-elsewhere.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  const list = await Downloads.getList(Downloads.PUBLIC);
+  await list.remove(file);
+  await PlacesUtils.history.clear();
+  EventUtils.synthesizeKey("y");
+  await until(() => noticeText().includes("changed"), "the notice says it changed");
+  Assert.ok(await IOUtils.exists(file.target.path), "the file stays");
+  // Its file deleted outside Firefox while asked: the answer finds it changed.
+  const outside = await finished("deleted-outside.bin");
+  await openPicker();
+  await highlight("deleted-outside.bin");
+  EventUtils.synthesizeKey("D", { shiftKey: true });
+  await until(promptOpen, "shift+d asks");
+  await IOUtils.remove(outside.target.path);
+  const said = noticeText();
+  EventUtils.synthesizeKey("y");
+  await until(
+    () => noticeText() !== said && noticeText().includes("changed"),
+    "a file gone while asked counts as a change",
+  );
+  Assert.ok(!outside.deleted, "nothing was deleted");
   BrowserTestUtils.removeTab(tab);
   await clean();
 });
