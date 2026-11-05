@@ -22,7 +22,13 @@
  * default_workspace` takes the links from other apps that no rule matches (decision 16).
  */
 
-import { defaultWorkspaceFor, matchRoute, parseAppList } from "../core/routes.mjs";
+import {
+  defaultWorkspaceFor,
+  isAppToken,
+  matchRoute,
+  parseAppList,
+  shadowedBy,
+} from "../core/routes.mjs";
 import { WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Route } from "../core/routes.mjs" */
@@ -73,6 +79,53 @@ let startupApps = null;
  * cold start's, whose URL list (an nsIArray) came from the command line.
  */
 let coldStart = true;
+
+/**
+ * A tab an app rule placed: the link's names and host (app-routes, decision 14). The hint,
+ * `:route move` and about:vimma match the tab with these names while it stays on that host, so
+ * a `domain` rule below the app rule does not call it misplaced. Memory only, never shown with
+ * a URL.
+ * @typedef {{ names: readonly string[], host: string }} Placed
+ */
+/** @type {WeakMap<any, Placed>} */
+const placed = new WeakMap();
+/**
+ * The open an app rule just routed, until TabOpen adopts the tab openURI creates for it (in the
+ * same task) or the task ends.
+ * @type {(Placed & { ucid: number }) | null}
+ */
+let pendingPlace = null;
+/**
+ * The most recent link from another program, for about:vimma (decision 15): its names and what
+ * it matched, never its URL. Memory only.
+ * @typedef {{ names: readonly string[], rule: number | null, workspace: string | null,
+ *   by: "rule" | "default" | "none" }} LastLink
+ */
+/** @type {LastLink | null} */
+let lastLink = null;
+
+/**
+ * The host of `url`, or null (a URL with none, such as about:blank).
+ * @param {string} url
+ */
+function hostOf(url) {
+  try {
+    return new URL(url).hostname || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Holds `place` for the tab the routed open creates, until the current task ends.
+ * @param {Placed & { ucid: number }} place
+ */
+function placeNext(place) {
+  pendingPlace = place;
+  Services.tm.dispatchToMainThread(() => {
+    if (pendingPlace === place) pendingPlace = null;
+  });
+}
 
 /**
  * Reads `VIMMA_FROM` once and clears it, whether or not anything uses it: it must never reach
@@ -275,14 +328,99 @@ export const WorkspaceRouter = {
    */
   externalContainer(url, apps) {
     if (WorkspaceStore.disabled) return null;
-    const hit = notAgent(this.match(url, apps, { external: true })?.workspace.userContextId);
-    if (hit !== null || defaultWorkspace === null) return hit;
+    const names = apps.filter((a) => isAppToken(a));
+    const match = this.match(url, names, { external: true });
+    const hit = notAgent(match?.workspace.userContextId);
+    if (match && hit !== null) {
+      lastLink = { names, rule: match.route.index, workspace: match.workspace.name, by: "rule" };
+      const host = hostOf(url);
+      if (match.route.app !== undefined && host) placeNext({ names, host, ucid: hit });
+      return hit;
+    }
+    lastLink = { names, rule: null, workspace: null, by: "none" };
+    if (defaultWorkspace === null) return null;
     const defs = WorkspaceStore.definitions.workspaces;
     const name = defaultWorkspaceFor(defaultWorkspace, {
       workspaces: defs.map((d) => d.name),
       skip: agentNames(),
     });
-    return notAgent(defs.find((d) => d.name === name)?.userContextId);
+    const ucid = notAgent(defs.find((d) => d.name === name)?.userContextId);
+    if (ucid !== null) lastLink = { names, rule: null, workspace: name, by: "default" };
+    return ucid;
+  },
+
+  /**
+   * WindowWorkspaces, on TabOpen: the tab openURI created for the link an app rule just
+   * routed takes that link's names (decision 14).
+   * @param {any} tab
+   */
+  adoptTab(tab) {
+    const place = pendingPlace;
+    if (!place || tab?.userContextId !== place.ucid) return;
+    pendingPlace = null;
+    placed.set(tab, { names: place.names, host: place.host });
+  },
+
+  /**
+   * WindowWorkspaces, on a tab's top-level location change: a tab that left the host its app
+   * rule placed it on is matched by the rules alone from then on (its own navigation).
+   * @param {any} tab
+   * @param {string} url
+   */
+  noteLocation(tab, url) {
+    const rec = placed.get(tab);
+    const host = rec && hostOf(url);
+    if (rec && host && host !== rec.host) placed.delete(tab);
+  },
+
+  /**
+   * The rule for `tab`'s page (or `url`, the location it is changing to): with the names of the
+   * link an app rule placed it for while it stays on that host, else with none, as what the
+   * user opens (decision 14). For the hint, `:route move` and about:vimma.
+   * @param {any} tab
+   * @param {string} [url]
+   */
+  matchTab(tab, url = tab?.linkedBrowser?.currentURI?.spec ?? "") {
+    const rec = placed.get(tab);
+    if (rec && hostOf(url) === rec.host) return this.match(url, rec.names, { external: true });
+    return this.match(url);
+  },
+
+  /** The most recent link from another program: its names and what it matched, or null. */
+  get lastLink() {
+    return lastLink;
+  },
+
+  /**
+   * For about:vimma (decision 15), per rule: the earlier rule that wins over it wherever it
+   * applies (core `shadowedBy`), and whether it names the agent workspace, which links from
+   * other programs pass over.
+   * @returns {{ shadowedBy: number | null, agent: boolean }[]}
+   */
+  ruleMarks() {
+    const agents = agentNames();
+    const options = {
+      workspaces: WorkspaceStore.definitions.workspaces.map((d) => d.name),
+      skip: agents,
+    };
+    return routes.map((r, i) => ({
+      shadowedBy: shadowedBy(routes, i, options)?.index ?? null,
+      agent: agents.includes(r.workspace),
+    }));
+  },
+
+  /**
+   * `[routing] default_workspace` for about:vimma: its name and whether it applies.
+   * @returns {{ name: string, state: "in force" | "no such workspace" | "agent" } | null}
+   */
+  defaultWorkspaceState() {
+    if (defaultWorkspace === null) return null;
+    const names = WorkspaceStore.definitions.workspaces.map((d) => d.name);
+    if (!names.includes(defaultWorkspace)) {
+      return { name: defaultWorkspace, state: "no such workspace" };
+    }
+    if (agentNames().includes(defaultWorkspace)) return { name: defaultWorkspace, state: "agent" };
+    return { name: defaultWorkspace, state: "in force" };
   },
 
   /**
@@ -412,7 +550,22 @@ export const WorkspaceRouter = {
       // is the argument list itself.
       const external =
         fromExternal(win.arguments?.[1]) || (first && win.arguments?.[0] instanceof Ci.nsIArray);
-      if (external) return this.externalContainer(fixup(url), apps);
+      if (external) {
+        const ucid = this.externalContainer(fixup(url), apps);
+        const place = pendingPlace;
+        pendingPlace = null;
+        // The first tab is made by #setupInitialBrowserAndTab, which fires no TabOpen: it is
+        // the window's selected tab once this window's setup task has ended.
+        if (place) {
+          Services.tm.dispatchToMainThread(() => {
+            const tab = win.closed ? null : win.gBrowser?.selectedTab;
+            if (tab?.userContextId === place.ucid) {
+              placed.set(tab, { names: place.names, host: place.host });
+            }
+          });
+        }
+        return ucid;
+      }
       // Names count only for links from other programs (app-routes, decision 13).
       return notAgent(this.userContextIdFor(fixup(url)));
     } catch (e) {

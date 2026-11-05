@@ -312,6 +312,42 @@ add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed
   }
 });
 
+// docs/specs/app-routes.md, decision 15.
+add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([
+      { app: "claude", workspace: agent().name },
+      { domain: "example.com", workspace: "oo-home" },
+    ]),
+  );
+  WorkspaceRouter.setDefaultWorkspace(agent().name);
+  try {
+    const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
+    await until(
+      () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+      "about:vimma rendered",
+    );
+    const doc = about.linkedBrowser.contentDocument;
+    const states = [...doc.querySelectorAll("#routes tbody tr td:last-child")].map(
+      (td) => td.textContent,
+    );
+    Assert.deepEqual(
+      states,
+      ["never for links from other apps: the agent workspace", "in force"],
+      "the agent rule is marked",
+    );
+    Assert.stringContains(
+      doc.getElementById("route-default").textContent,
+      "never for links from other apps: the agent workspace",
+      "and so is a default workspace naming it",
+    );
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    WorkspaceRouter.setDefaultWorkspace(null);
+    tidy();
+  }
+});
+
 add_task(async function a_tab_sent_from_another_device_skips_the_agent_container() {
   await inAgentAfterHome();
   const opened = nextTab();

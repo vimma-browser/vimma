@@ -1,7 +1,7 @@
 # Spec: app-routes
 
-Status: accepted (sub-PR 1 implemented; Linux: sub-PRs 1 and 2 close the issue; sub-PRs 3 and
-4 are the macOS step, not yet scheduled) · Area: `packages/vimma-core/src/routes.mjs`,
+Status: implemented on Linux (sub-PRs 1 and 2); sub-PRs 3 and 4 are the macOS step, specified
+here and not yet scheduled · Area: `packages/vimma-core/src/routes.mjs`,
 `packages/vimma-core/src/config.mjs`; `src/browser/base/content/vimma/`
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
@@ -487,7 +487,10 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
    and die with the terminal.
    - Linux: `setsid -f <vimma> -vimma-from <names> <url>` with `VIMMA_FROM=<names>`, falling back
      to `nohup … &` without util-linux's `setsid`, so a cold start runs in its own session, not
-     under the terminal.
+     under the terminal. Inside the AppImage (`APPIMAGE` set, its `AppRun` runs `vimma-open`), it
+     runs `vimma` in its own place instead, because the AppImage runtime unmounts the image once
+     that process exits; the AppImage puts no `vimma-open` on `PATH`, so `BROWSER` does not reach
+     it.
    - macOS, Vimma running (`pgrep -U <uid> -x vimma`): the bundle's `Contents/MacOS/vimma` with
      `-vimma-from <names> <url>`, run with `nohup … &`, which forwards over the remote server and
      exits. `pgrep` also matches a development build or a Vimma running another profile; the
@@ -753,11 +756,13 @@ at most eight, never two equal neighbours`.
   `a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`,
   `a_default_workspace_naming_the_agent_workspace_is_passed_over`. Also
   `a_cold_start_app_routed_first_tab_is_not_hinted_back`.
-- **e2e (Linux, Xvfb):** a scenario `app-routes.json` with a new step `external`, which runs the
-  packaged `vimma-open` with the given arguments. The harness runs the browser and the step under
-  one `dbus-run-session`, so the D-Bus remote has a session bus, and the step sets `VIMMA_BIN` to a
-  wrapper that adds `-profile <harness profile>`, so the forwarded command line reaches the
-  instance under test: `vimma-open --from teams <url>` switches to `work`; `vimma-open <url>` from
+- **e2e (Linux, Xvfb):** a scenario `issue-635-app-routes.json` with a new step `external`, which
+  runs the packaged `vimma-open` with the given arguments. For a scenario with that step the
+  harness starts a `dbus-daemon` of its own, with no service directories, and gives its address to
+  the browser and the step, so the D-Bus remote has a session bus and nothing is activated on it
+  (`dbus-run-session` runs one command, and the step runs beside the browser); the step sets
+  `VIMMA_BIN` to a wrapper that adds `-profile <harness profile>`, so the forwarded command line
+  reaches the instance under test: `vimma-open --from teams <url>` switches to `work`; `vimma-open <url>` from
   the harness goes to the domain rule's workspace, checked with `wait-for-state`.
 - **macOS smoke (`macos.yml`, on the hosted Mac, not headless, since a headless start does not run
   the event loop that receives Apple Events):** a helper app built in the job from

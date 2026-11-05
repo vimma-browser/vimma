@@ -538,6 +538,8 @@ export class WindowWorkspacesImpl {
   /** @param {Event} e */
   handleEvent(e) {
     if (this.#win.closed) return;
+    // Before the restore check: openURI's tab for a routed link comes in the routing's task.
+    if (e.type === "TabOpen") lazy.WorkspaceRouter.adoptTab(e.target);
     switch (e.type) {
       case "SSWindowRestoring":
       case "SSWindowStateBusy":
@@ -635,6 +637,7 @@ export class WindowWorkspacesImpl {
       if (!webProgress?.isTopLevel || !this.#model || this.#pending) return;
       if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
       const tab = /** @type {Tab | null} */ (this.#gBrowser.getTabForBrowser(browser));
+      if (tab) lazy.WorkspaceRouter.noteLocation(tab, location.spec);
       if (tab?.selected) this.#hint(tab, location);
     },
   };
@@ -648,7 +651,7 @@ export class WindowWorkspacesImpl {
    */
   #hint(tab, location = tab.linkedBrowser?.currentURI) {
     if (tab.pinned || !location) return;
-    const hit = lazy.WorkspaceRouter.match(location.spec);
+    const hit = lazy.WorkspaceRouter.matchTab(tab, location.spec);
     if (!hit || hit.workspace.userContextId === tab.userContextId) {
       this.#hinted.delete(tab);
       return;
