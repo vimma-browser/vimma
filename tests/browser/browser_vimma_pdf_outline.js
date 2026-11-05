@@ -153,7 +153,12 @@ add_task(async function index_mode() {
     await TestUtils.waitForCondition(shown, "the outline opens");
     Assert.ok(document.getElementById("vimma-bookmarks").hidden, "the bookmarks panel closed");
     Assert.equal(panel().parentNode.id, "browser", "in the side panel's slot");
-    Assert.equal(panel().parentNode.firstElementChild, panel(), "on the left");
+    // On the left of the pages; other panels' boxes may come first in the slot, hidden.
+    Assert.lessOrEqual(
+      panel().getBoundingClientRect().right,
+      browser.getBoundingClientRect().left,
+      "on the left",
+    );
     Assert.equal(selected(), "Section 1.2", "the entry for page 5 is selected");
     Assert.deepEqual(rows(), ["Preface", "Chapter 1", "Section 1.1", "Section 1.2", "Chapter 2"]);
 
