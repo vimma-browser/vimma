@@ -1,22 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { bodyRequiredForTypes, ignoreCommit } from "../body-required.mjs";
-
-const root = fileURLToPath(new URL("../../..", import.meta.url));
-
-/**
- * Runs the repo's commitlint CLI (and so commitlint.config.mjs) on a message.
- * @param {string} message
- */
-function commitlint(message) {
-  const run = spawnSync("npx", ["--no-install", "commitlint"], {
-    cwd: root,
-    input: message,
-    encoding: "utf8",
-  });
-  return { status: run.status, output: run.stdout + run.stderr };
-}
+import { cliPath, commitlint, root } from "./repo-commitlint.mjs";
 
 describe("body-required-for-types rule", () => {
   const types = ["feat", "fix"];
@@ -75,21 +60,42 @@ describe("ignoreCommit (replaces commitlint's default ignores)", () => {
   });
 });
 
-describe("repo commitlint config (CLI)", () => {
-  it("rejects `feat: x` without a body", () => {
-    const run = commitlint("feat: x\n");
+describe("the commitlint CLI", () => {
+  // The other tests lint in-process (repo-commitlint.mjs); this one runs the installed CLI on
+  // stdin from the repository root, as CI and the merge check do, so a change in how the CLI
+  // finds the config or reports a failure still shows here.
+  /** @param {string} input */
+  const run = (input) =>
+    spawnSync(process.execPath, [cliPath], { cwd: root, input, encoding: "utf8" });
+
+  it("finds commitlint.config.mjs and exits 1 on a bodyless feat", () => {
+    const bad = run("feat: x\n");
+    expect(bad.status, bad.stdout + bad.stderr).toBe(1);
+    expect(bad.stdout + bad.stderr).toMatch(/body-required-for-types/);
+  });
+
+  it("exits 0 and prints nothing on a feat with a body", () => {
+    const good = run("feat: x\n\nAdds x to the status bar.\n");
+    expect(good.status, good.stdout + good.stderr).toBe(0);
+    expect(good.stdout + good.stderr).toBe("");
+  });
+});
+
+describe("repo commitlint config", () => {
+  it("rejects `feat: x` without a body", async () => {
+    const run = await commitlint("feat: x\n");
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/body-required-for-types/);
   });
 
-  it("rejects `fix(host): y` without a body", () => {
-    const run = commitlint("fix(host): y\n");
+  it("rejects `fix(host): y` without a body", async () => {
+    const run = await commitlint("fix(host): y\n");
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/body-required-for-types/);
   });
 
-  it("accepts `feat: x` with a body", () => {
-    const run = commitlint("feat: x\n\nAdds x to the status bar.\n");
+  it("accepts `feat: x` with a body", async () => {
+    const run = await commitlint("feat: x\n\nAdds x to the status bar.\n");
     expect(run.output).toBe("");
     expect(run.status).toBe(0);
   });
@@ -98,44 +104,44 @@ describe("repo commitlint config (CLI)", () => {
     ["only a `Closes` footer", "feat: x\n\nCloses #3\n"],
     ["only a BREAKING CHANGE footer", "feat: x\n\nBREAKING CHANGE: y\n"],
     ["only trailers", "fix: x\n\nCo-Authored-By: A <a@b.c>\n"],
-  ])("rejects feat/fix with %s (footers are not a body)", (_, message) => {
-    const run = commitlint(message);
+  ])("rejects feat/fix with %s (footers are not a body)", async (_, message) => {
+    const run = await commitlint(message);
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/body-required-for-types/);
   });
 
-  it("rejects `revert: feat: x` without a body", () => {
-    const run = commitlint("revert: feat: x\n");
+  it("rejects `revert: feat: x` without a body", async () => {
+    const run = await commitlint("revert: feat: x\n");
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/body-required-for-types/);
   });
 
-  it("accepts `revert: feat: x` with a body", () => {
-    expect(commitlint("revert: feat: x\n\nThe status bar flickered.\n").status).toBe(0);
+  it("accepts `revert: feat: x` with a body", async () => {
+    expect((await commitlint("revert: feat: x\n\nThe status bar flickered.\n")).status).toBe(0);
   });
 
-  it('rejects a git-style `Revert "feat: x"` without a body', () => {
-    const run = commitlint('Revert "feat: x"\n');
+  it('rejects a git-style `Revert "feat: x"` without a body', async () => {
+    const run = await commitlint('Revert "feat: x"\n');
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/body-required-for-types/);
   });
 
-  it('accepts a git-style `Revert "feat: x"` with a body', () => {
-    expect(commitlint('Revert "feat: x"\n\nThis reverts commit abc1234.\n').status).toBe(0);
+  it('accepts a git-style `Revert "feat: x"` with a body', async () => {
+    expect((await commitlint('Revert "feat: x"\n\nThis reverts commit abc1234.\n')).status).toBe(0);
   });
 
-  it("accepts `docs: x` without a body", () => {
-    expect(commitlint("docs: x\n").status).toBe(0);
+  it("accepts `docs: x` without a body", async () => {
+    expect((await commitlint("docs: x\n")).status).toBe(0);
   });
 });
 
-describe("Dependabot's commits (repo commitlint config, CLI)", () => {
+describe("Dependabot's commits (repo commitlint config)", () => {
   // Dependabot writes `Bump` in sentence case or lower case, titles that can pass 100 columns and
   // a body of release notes with longer lines; none of it can be set in .github/dependabot.yml.
   const signedOff = "Signed-off-by: dependabot[bot] <support@github.com>";
   const longLine = `- ${"release note ".repeat(12)}`;
 
-  it("accepts a Dependabot commit on its branch", () => {
+  it("accepts a Dependabot commit on its branch", async () => {
     const message = [
       "build(deps-dev): Bump the npm-minor-patch group with 2 updates",
       "",
@@ -145,12 +151,12 @@ describe("Dependabot's commits (repo commitlint config, CLI)", () => {
       signedOff,
       "",
     ].join("\n");
-    const run = commitlint(message);
+    const run = await commitlint(message);
     expect(run.output).toBe("");
     expect(run.status).toBe(0);
   });
 
-  it("accepts the squash of a Dependabot pull request (title and body)", () => {
+  it("accepts the squash of a Dependabot pull request (title and body)", async () => {
     const message = [
       "build(deps): Bump js-yaml from 4.3.2 to 5.4.3 (#288)",
       "",
@@ -159,15 +165,15 @@ describe("Dependabot's commits (repo commitlint config, CLI)", () => {
       "Dependabot will resolve any conflicts with this PR as long as you don't alter it yourself.",
       "",
     ].join("\n");
-    expect(commitlint(message).status).toBe(0);
+    expect((await commitlint(message)).status).toBe(0);
   });
 
-  it("accepts a GitHub Actions update", () => {
+  it("accepts a GitHub Actions update", async () => {
     const message = `ci(deps): Bump actions/checkout from 7.0.1 to 7.1.0\n\n${signedOff}\n`;
-    expect(commitlint(message).status).toBe(0);
+    expect((await commitlint(message)).status).toBe(0);
   });
 
-  it("accepts the squash of a lower-case Dependabot title over 100 columns", () => {
+  it("accepts the squash of a lower-case Dependabot title over 100 columns", async () => {
     const message = [
       "ci(deps): bump anthropics/claude-code-action from 1.0.251 to 1.0.252 in the actions-minor-patch group (#396)",
       "",
@@ -176,25 +182,25 @@ describe("Dependabot's commits (repo commitlint config, CLI)", () => {
       signedOff,
       "",
     ].join("\n");
-    const run = commitlint(message);
+    const run = await commitlint(message);
     expect(run.output).toBe("");
     expect(run.status).toBe(0);
   });
 
-  it("still rejects a lower-case `bump` over 100 columns that does not come from Dependabot", () => {
-    const run = commitlint(`build(deps): bump ${"x".repeat(100)} from 1 to 2\n\nBy hand.\n`);
+  it("still rejects a lower-case `bump` over 100 columns that does not come from Dependabot", async () => {
+    const run = await commitlint(`build(deps): bump ${"x".repeat(100)} from 1 to 2\n\nBy hand.\n`);
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/header-max-length/);
   });
 
-  it("still rejects a sentence-case `Bump` that does not come from Dependabot", () => {
-    const run = commitlint("build(deps): Bump x from 1 to 2\n\nBy hand.\n");
+  it("still rejects a sentence-case `Bump` that does not come from Dependabot", async () => {
+    const run = await commitlint("build(deps): Bump x from 1 to 2\n\nBy hand.\n");
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/subject-case/);
   });
 
-  it("still rejects another header with Dependabot's trailer", () => {
-    const run = commitlint(`feat: Bump everything\n\nBody.\n\n${signedOff}\n`);
+  it("still rejects another header with Dependabot's trailer", async () => {
+    const run = await commitlint(`feat: Bump everything\n\nBody.\n\n${signedOff}\n`);
     expect(run.status).not.toBe(0);
     expect(run.output).toMatch(/subject-case/);
   });

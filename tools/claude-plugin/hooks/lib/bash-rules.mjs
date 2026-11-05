@@ -9,7 +9,8 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { isAbsolute, resolve } from "node:path";
+import { createRequire } from "node:module";
+import { isAbsolute, join, resolve } from "node:path";
 import { commandOf, parseShell } from "./shell.mjs";
 
 /**
@@ -301,7 +302,12 @@ function checkMerge(args, ctx) {
 
 /** Runs the repository's own commitlint (its config and plugins) on `message`. @type {Commitlint} */
 export function runCommitlint(message, cwd) {
-  const run = spawnSync("npx", ["--no-install", "commitlint"], {
+  // The CLI the repository installed, found the way node resolves it from cwd, runs with node
+  // directly: going through npx adds an npm start-up to every merge check (it doubled the time
+  // on a loaded machine). npx stays the fallback where node cannot resolve the package.
+  const cli = localCommitlint(cwd);
+  const [file, args] = cli ? [process.execPath, [cli]] : ["npx", ["--no-install", "commitlint"]];
+  const run = spawnSync(file, args, {
     cwd,
     input: message,
     encoding: "utf8",
@@ -309,4 +315,13 @@ export function runCommitlint(message, cwd) {
   });
   if (run.error) return { ok: false, output: `could not run commitlint: ${run.error.message}` };
   return { ok: run.status === 0, output: `${run.stdout}${run.stderr}` };
+}
+
+/** @param {string} cwd @returns {string | null} the path of @commitlint/cli's cli.js, if any */
+function localCommitlint(cwd) {
+  try {
+    return createRequire(join(resolve(cwd), "noop.js")).resolve("@commitlint/cli/cli.js");
+  } catch {
+    return null;
+  }
 }

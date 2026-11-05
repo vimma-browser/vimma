@@ -91,20 +91,28 @@ describe("bash-guard.mjs", () => {
     expect(out).toMatchObject({ status: 0, stdout: "" });
   });
 
-  it("runs the repository's commitlint on a merge message", () => {
-    const dir = tempDir("vimma-guard-msg-");
-    writeFileSync(join(dir, "good.txt"), "Explains why.\n");
-    const merge = (/** @type {string} */ subject) =>
-      runHook("bash-guard.mjs", {
+  describe("runs the repository's commitlint on a merge message", () => {
+    // One hook run (node, then the commitlint CLI) per test, so each has its own time budget.
+    const merge = (/** @type {string} */ subject) => {
+      const dir = tempDir("vimma-guard-msg-");
+      writeFileSync(join(dir, "good.txt"), "Explains why.\n");
+      return runHook("bash-guard.mjs", {
         tool_name: "Bash",
         tool_input: {
           command: `cd ${ROOT} && gh pr merge 1 --squash --subject '${subject}' --body-file ${dir}/good.txt`,
         },
         cwd: ROOT,
       });
-    expect(merge("fix(x): a lower-case subject (#1)").stdout).toBe("");
-    const bad = JSON.parse(merge("Fix: Upper Case Type").stdout).hookSpecificOutput;
-    expect(bad.permissionDecisionReason).toMatch(/commitlint/);
+    };
+
+    it("allows a message that passes", () => {
+      expect(merge("fix(x): a lower-case subject (#1)").stdout).toBe("");
+    });
+
+    it("blocks one that fails", () => {
+      const bad = JSON.parse(merge("Fix: Upper Case Type").stdout).hookSpecificOutput;
+      expect(bad.permissionDecisionReason).toMatch(/commitlint/);
+    });
   });
 });
 
