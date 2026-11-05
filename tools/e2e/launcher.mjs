@@ -672,8 +672,11 @@ export function sessionBusConfig(socket) {
   <type>session</type>
   <listen>unix:path=${socket}</listen>
   <auth>EXTERNAL</auth>
+  <!-- dbus's own session.conf policy; without its eavesdrop lines the remote's call is not
+       delivered. The socket sits in the profile's 0700 folder. -->
   <policy context="default">
-    <allow send_destination="*"/>
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
     <allow own="*"/>
   </policy>
 </busconfig>
