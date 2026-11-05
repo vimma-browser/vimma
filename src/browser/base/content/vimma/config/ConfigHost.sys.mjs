@@ -131,6 +131,7 @@ function applyToWindow(win, config) {
   const view = PaneViews.get(win);
   if (!view) return;
   view.max = config.panes.max;
+  view.maxSplits = config.panes.maxSplits;
   view.mode = config.panes.layout;
   view.mainSize = config.panes.mainSize;
 }

@@ -92,10 +92,11 @@ import {
   showTabs,
   shownSplit,
   splitPane,
+  splitStatus,
   swapPane,
   zoomPane,
 } from "./pane-ops.mjs";
-import { HIDDEN_REASON, PaneViews } from "../split/PaneView.mjs";
+import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
 import { leaves } from "../core/panes.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -361,7 +362,7 @@ function openOrSay(s, text, where) {
 function paneRunner(op) {
   return (s, a) => {
     const refused = op(s.win, a);
-    if (refused) s.notice.show(refused, { untilKey: refused === HIDDEN_REASON });
+    if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
     VimmaHost._emit(s);
   };
 }
@@ -1453,6 +1454,7 @@ function paneStatus(win) {
     count: order.length,
     // A split kept as a hidden view (docs/specs/side-panel-unsplit.md decision 27).
     ...(panes.hidden ? { hidden: true } : {}),
+    ...splitStatus(win),
   };
 }
 

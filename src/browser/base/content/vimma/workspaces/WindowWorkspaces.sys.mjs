@@ -24,6 +24,7 @@ import {
   createWorkspaces,
   deleteWorkspace,
   findWorkspace,
+  splitsOf,
   lastWorkspace,
   leaveSkipped,
   moveTab,
@@ -44,6 +45,7 @@ import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Workspaces, WorkspaceRef, WorkspaceState } from "../core/workspaces.mjs" */
 /** @import { Panes, PaneNode } from "../core/panes.mjs" */
+/** @import { NumberedSplit, Splits } from "../core/splits.mjs" */
 /** @import { TabInfo } from "../core/switchplan.mjs" */
 /** @import { TabLabels } from "../core/tablabels.mjs" */
 
@@ -157,6 +159,40 @@ function mapTree(panes, fn) {
       ? { ...n, tab: /** @type {string} */ (fn(n.tab)) }
       : { ...n, children: n.children.map(walk) };
   return leaves(tree).length >= 2 ? { ...tree, root: walk(tree.root) } : null;
+}
+
+/**
+ * Workspace `w` with its splits (docs/specs/multiple-splits.md decision 15) in uuids, for core's
+ * snapshot, which writes them as `splits` and `shown` and derives `panes` from them as an older
+ * Vimma reads it. A split loses the panes whose tab is gone or in another workspace, and ends
+ * below two. The selected tab is the shown split's focused pane's, else the tab shown alone.
+ * @param {WorkspaceState} w
+ * @param {Splits} splits  PaneView's, in panel ids
+ * @param {(panel: string) => string | undefined} uuid
+ * @returns {WorkspaceState}
+ */
+function withSplits(w, splits, uuid) {
+  /** @type {NumberedSplit[]} */
+  const list = [];
+  for (const x of splits.splits) {
+    const tree = mapTree(x, (panel) => {
+      const id = uuid(panel);
+      return id && w.tabs.includes(id) ? id : undefined;
+    });
+    if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+  }
+  const kept = (/** @type {number | null} */ n) =>
+    n !== null && list.some((x) => x.number === n) ? n : null;
+  const shown = kept(splits.shown);
+  const showing = list.find((x) => x.number === shown);
+  const focus = showing && leaves(showing).find((l) => l.pane === showing.focus)?.tab;
+  return {
+    ...w,
+    splits: Object.freeze(list),
+    shown,
+    last: kept(splits.last),
+    ...(focus ? { activeTab: focus } : {}),
+  };
 }
 
 /**
@@ -922,17 +958,37 @@ export class WindowWorkspacesImpl {
   #restorePanes(saved, model) {
     const view = PaneViews.get(this.#win);
     if (!view) return false;
-    /** @type {Map<string, Panes>} */
+    const multiple = view.multiple;
+    /** @type {Map<string, Panes | Splits>} */
     const trees = new Map();
     for (const w of saved.workspaces) {
       const ours = findWorkspace(model, { id: w.id });
-      if (!w.panes || !ours) continue;
-      const tree = mapTree(w.panes, (id) => {
+      if (!ours) continue;
+      const panel = (/** @type {string} */ id) => {
         const tab = this.#tab(id);
         if (!tab || !ours.tabs.includes(id)) return undefined;
         if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
         return tab.linkedPanel ?? undefined;
-      });
+      };
+      // Every split with its number, which one shows and which showed last
+      // (docs/specs/multiple-splits.md behaviour 10).
+      if (multiple) {
+        const own = splitsOf(w);
+        /** @type {NumberedSplit[]} */
+        const list = [];
+        for (const x of own.splits) {
+          const tree = mapTree(x, panel);
+          if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+        }
+        const kept = (/** @type {number | null} */ n) =>
+          n !== null && list.some((x) => x.number === n) ? n : null;
+        if (list.length) {
+          trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
+        }
+        continue;
+      }
+      if (!w.panes) continue;
+      const tree = mapTree(w.panes, panel);
       if (tree) trees.set(w.id, tree);
     }
     view.restore(trees, model.active);
@@ -1295,8 +1351,13 @@ export class WindowWorkspacesImpl {
       const tab = this.#gBrowser.tabs.find((t) => t.linkedPanel === panel && this.#live(t));
       return tab ? this.#idOf(tab) : undefined;
     };
+    const multiple = view.multiple;
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {
+      if (multiple) {
+        const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
+        return withSplits(w, splits, uuid);
+      }
       const panes = w.id === model.active ? view.panes : view.parked(w.id);
       const tree =
         panes &&

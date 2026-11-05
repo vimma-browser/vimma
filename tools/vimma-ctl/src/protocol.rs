@@ -545,6 +545,27 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
             "result.panes must be present (null before split view)",
         ));
     }
+    // Every split of the workspace (docs/specs/multiple-splits.md, "Control protocol"): optional,
+    // so this works with a Vimma that predates it.
+    match map.get("splits") {
+        None => {}
+        Some(Value::Array(splits)) => {
+            for (i, split) in splits.iter().enumerate() {
+                if !matches!(split, Value::Object(_)) {
+                    return Err(fail(&format!("result.splits[{i}] must be an object")));
+                }
+                if !matches!(split.get("number").and_then(Value::as_u64), Some(1..=9)) {
+                    return Err(fail(&format!(
+                        "result.splits[{i}].number must be an integer from 1 to 9"
+                    )));
+                }
+                if !matches!(split.get("shown"), Some(Value::Bool(_))) {
+                    return Err(fail(&format!("result.splits[{i}].shown must be a boolean")));
+                }
+            }
+        }
+        Some(_) => return Err(fail("result.splits must be an array")),
+    }
     Ok(State {
         mode: mode.to_string(),
         pending,
@@ -1039,6 +1060,20 @@ mod tests {
     }
 
     #[test]
+    fn decode_state_accepts_splits_or_none() {
+        for good in [
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null,"splits":[]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null,"splits":[{"number":1,"shown":false,"focus":"7","zoomed":false,"root":{}},{"number":9,"shown":true,"focus":"8","zoomed":true,"root":{}}]}"#,
+        ] {
+            assert!(
+                decode_result(&Command::State, &parse(good).unwrap()).is_ok(),
+                "refused {good}"
+            );
+        }
+    }
+
+    #[test]
     fn decode_private_state_has_no_urls_or_titles() {
         let raw = parse(
             r#"{"mode":"normal","pending":null,"workspace":"private","private":true,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
@@ -1063,6 +1098,12 @@ mod tests {
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"private":true,"tabs":[{"id":"1","url":"u","title":null,"selected":true}],"panes":null}"#,
             r#"{"pending":null,"workspace":null,"tabs":[],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":{}}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[1]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":0,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":10,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":1.5,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":2,"shown":"yes"}]}"#,
             r#""state""#,
         ] {
             assert!(
