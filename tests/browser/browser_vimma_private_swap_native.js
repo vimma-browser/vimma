@@ -251,6 +251,61 @@ add_task(async function a_zoomed_window_hands_its_zoom_and_its_restored_frame_on
   await until(() => window.windowState === window.STATE_NORMAL, "un-zoomed");
 });
 
+add_task(async function a_window_shown_at_another_size_is_active_and_laid_out_when_shown() {
+  // #773. Ordered out, a window on macOS is fully occluded, so its browsing context goes inactive
+  // (AppWindow::OcclusionStateChanged): a resize then waits (PresShell::ShouldDelayResize), and it
+  // neither paints nor composites until macOS reports it visible again, some frames after it is
+  // ordered in. Until then it shows the contents of the size it was hidden at. Headless has no
+  // occlusion, so the test deactivates each hidden window as macOS does, and reads the shown
+  // window's state at its visibility write: active, and laid out at its new size, unflushed.
+  await start();
+  /** @type {{ win: Window, active: boolean, width: number }[]} */
+  const shown = [];
+  log.push = function (/** @type {{ win: Window, visible: boolean }} */ e) {
+    const w = /** @type {any} */ (e.win);
+    if (e.visible) {
+      const root = w.document.documentElement;
+      shown.push({
+        win: w,
+        active: w.browsingContext.isActive,
+        width: w.windowUtils.getBoundsWithoutFlushing(root).width,
+      });
+    } else {
+      w.browsingContext.isActive = false;
+    }
+    return Array.prototype.push.call(this, e);
+  };
+  /** @param {Window} win the root's width once laid out */
+  const laidOut = (win) => win.document.documentElement.getBoundingClientRect().width;
+  let priv;
+  try {
+    priv = await enter();
+    const oldWidth = laidOut(window);
+    // Leaving: the normal window, hidden at FRAME, comes back at the private window's frame.
+    await place(priv, { x: 120, y: 100, width: 700, height: 560 });
+    shown.length = 0;
+    await leave(priv);
+    Assert.equal(shown.length, 1, "leaving: one window shown");
+    Assert.ok(shown[0].active, "leaving: the normal window is active when it is shown");
+    Assert.notEqual(laidOut(window), oldWidth, "leaving: the normal window has a new width");
+    Assert.equal(shown[0].width, laidOut(window), "leaving: and is laid out at it when shown");
+    // Entering: the private window, hidden at 700 wide, comes back at the normal window's frame.
+    const privWidth = laidOut(priv);
+    await place(window, { x: 60, y: 50, width: 860, height: 640 });
+    shown.length = 0;
+    Assert.equal(await enter(), priv, "the same private window");
+    Assert.equal(shown.length, 1, "entering: one window shown");
+    Assert.ok(shown[0].active, "entering: the private window is active when it is shown");
+    Assert.notEqual(laidOut(priv), privWidth, "entering: the private window has a new width");
+    Assert.equal(shown[0].width, laidOut(priv), "entering: and is laid out at it when shown");
+  } finally {
+    delete log.push;
+    for (const w of [window, priv]) {
+      if (w && !w.closed) /** @type {any} */ (w).browsingContext.isActive = true;
+    }
+  }
+});
+
 add_task(async function closing_the_private_window_any_way_brings_normal_back_first() {
   for (const how of ["ctrl+shift+w", "close()", "ctrl+b shift+d"]) {
     await start();

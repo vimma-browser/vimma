@@ -106,6 +106,41 @@ function windowOf(id) {
   return win && !win.closed ? win : null;
 }
 
+/** @type {Map<Window, () => void>} the windows a swap keeps active, and how each lets go */
+const held = new Map();
+
+/**
+ * Keeps `win` active from before a swap moves it until macOS reports it on screen (#773).
+ * Ordered out, a window is fully occluded, which makes its browsing context inactive
+ * (AppWindow::OcclusionStateChanged): a resize then waits (PresShell::ShouldDelayResize) and
+ * its compositor is paused (CanonicalBrowsingContext::RecomputeAppWindowVisibility). macOS
+ * reports it visible only some frames after it is ordered in, so until then it showed the
+ * contents of the size it was hidden at. Active, it lays out at its new size before it is shown
+ * and paints as soon as it is on screen.
+ * @param {Window} win
+ */
+function holdActive(win) {
+  const bc = /** @type {any} */ (win).browsingContext;
+  // Picture-in-Picture forces its window active too: a force already set is never undone here.
+  if (held.has(win) || bc.forceAppWindowActive) return;
+  bc.forceAppWindowActive = true;
+  // Ordered in, the window is still marked occluded until macOS says otherwise, so the first
+  // change of its occlusion state is the one that shows it on screen.
+  const onChange = () => letGo(win);
+  win.addEventListener("occlusionstatechange", onChange);
+  held.set(win, () => {
+    win.removeEventListener("occlusionstatechange", onChange);
+    if (!win.closed) bc.forceAppWindowActive = false;
+  });
+}
+
+/** @param {Window} win */
+function letGo(win) {
+  const release = held.get(win);
+  held.delete(win);
+  release?.();
+}
+
 /**
  * Shows or hides `win`'s native window, as Firefox's SessionStore and Tabbrowser do
  * (nsIBaseWindow.visibility, Research).
@@ -115,8 +150,14 @@ function windowOf(id) {
 function setVisible(win, visible) {
   const base = /** @type {any} */ (win).docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
   base.visibility = visible;
-  if (visible) hidden.delete(win);
-  else hidden.add(win);
+  if (visible) {
+    hidden.delete(win);
+    // Never occluded (headless, or a window macOS had not marked yet): nothing to wait for.
+    if (!(/** @type {any} */ (win).isFullyOccluded)) letGo(win);
+  } else {
+    hidden.add(win);
+    letGo(win);
+  }
   spy?.push({ win, visible });
 }
 
@@ -266,10 +307,13 @@ function showInPlace(op) {
   const others = [x, ...(y && !y.closed ? [y] : [])];
   try {
     for (const w of others) suppress(w, true);
+    holdActive(x);
     if (plan.restoreFirst) /** @type {any} */ (x).restore();
     x.moveTo(plan.frame.x, plan.frame.y);
     x.resizeTo(plan.frame.width, plan.frame.height);
     if (plan.zoom) /** @type {any} */ (x).maximize();
+    // Laid out at the new size before it is shown: its first paint on screen needs no reflow.
+    /** @type {any} */ (x).windowUtils.flushLayoutWithoutThrottledAnimations();
     // X first, at Y's frame, so nothing behind them shows through.
     setVisible(x, true);
     if (y && !y.closed) setVisible(y, false);
@@ -347,6 +391,7 @@ function onTabOpen(win) {
  */
 function onUnload(win) {
   windows.delete(win);
+  letGo(win);
   const id = ids.get(win);
   if (!id) return;
   if (pair && (pair.normal === id || pair.private === id)) {
