@@ -549,8 +549,27 @@ add_task(async function the_private_workspace_keeps_two_splits_and_state_names_n
 
   const result = VimmaControl._commands.state();
   Assert.equal(result.splits.length, 2, "state lists both");
-  const text = JSON.stringify(result.splits);
-  Assert.ok(!text.includes("example.com") && !text.includes("ps"), "no url or title in splits");
+  // Only these fields, and every string a tab id from `tabs`: no room for a url or a title.
+  const keys = new Set();
+  const strings = [];
+  const walk = (/** @type {any} */ n) => {
+    for (const [k, v] of Object.entries(n)) {
+      keys.add(k);
+      if (typeof v === "string") strings.push(v);
+      else if (v && typeof v === "object") walk(v);
+    }
+  };
+  for (const x of result.splits) walk(x);
+  Assert.deepEqual(
+    [...keys].filter((k) => !/^\d+$/.test(k)).sort(),
+    ["axis", "children", "focus", "index", "number", "ratios", "root", "shown", "tab", "zoomed"],
+    "splits carry structure only",
+  );
+  const ids = new Set(result.tabs.map((t) => t.id));
+  Assert.ok(
+    strings.every((s) => ids.has(s) || s === "x" || s === "y"),
+    "and no string but tab ids and axes: no url or title",
+  );
   const v = validateMessage(
     { type: "response", id: 1, ok: true, result },
     { kind: "response", command: "state" },
