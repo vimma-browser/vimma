@@ -129,7 +129,7 @@ function changed() {
       c.transcript.notice(
         granted
           ? "granted: this conversation may use the agent workspace until this task ends; " +
-              "sending a form or paying still asks"
+              "paying and sending text or personal details still ask"
           : "grant ended: each step asks until you send with Enter",
       );
     }

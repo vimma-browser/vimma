@@ -264,7 +264,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
         path: "agent.providers[0].cli",
         message:
           'unknown agent CLI "claude-cod": this provider is skipped ' +
-          '(this version knows "claude-code" or "codex")',
+          '(this version knows "claude-code", "codex" or "gemini")',
         suggestion: "claude-code",
       },
     ]);
@@ -273,7 +273,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
   });
 
   test("a default naming a skipped provider is no error, and no default is set", () => {
-    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
     const r = parseConfig(v2("[agent]", 'default = "new"', ...other, ...CLI));
     expect(r.errors).toEqual([]);
     expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);
@@ -281,7 +281,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
   });
 
   test("a skipped provider's other mistakes are still errors", () => {
-    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
     expect(errors(v2(...other, 'command = "/bin/sh"'))[0]).toMatchObject({
       path: "agent.providers[0].command",
     });
@@ -294,7 +294,7 @@ describe("[[agent.providers]] of kind cli (docs/specs/builtin-agent-cli.md C4, C
 
   test("a file without unknown CLIs has no warnings, and reloadConfig passes them on", () => {
     expect(parseConfig(v2(...CLI)).warnings).toEqual([]);
-    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "gemini"'];
+    const other = ["[[agent.providers]]", 'name = "new"', 'kind = "cli"', 'cli = "opencode"'];
     const r = reloadConfig(null, v2(...other));
     expect(r.kept).toBe(false);
     expect(r.warnings.map((w) => w.path)).toEqual(["agent.providers[0].cli"]);

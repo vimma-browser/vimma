@@ -460,11 +460,17 @@ clamav_max_age_days = 7
 # [sites."docs.google.com"]
 # insert = "always"
 
-# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the app
-# that opened it (vimma-open). The first matching rule wins. None by default.
+# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the
+# programs that opened it (vimma-open). The first matching rule wins, except that among the
+# app rules above it, the one naming the nearest program wins. None by default.
 # [[routes]]
 # domain = "github.com"
 # workspace = "work"
+
+# Where a link from another program opens when no rule matches. Left out, it opens where
+# Firefox guesses from your open tabs, else in the window's workspace.
+# [routing]
+# default_workspace = "work"
 
 # Search engines. default: an installed engine's name (as in Settings > Search), or
 # "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar

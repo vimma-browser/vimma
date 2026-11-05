@@ -95,6 +95,14 @@ describe("the basket and the order", () => {
     expect(text).toContain("2.97");
   });
 
+  it("changes the basket in-process as /api/basket does, for a stand-in page script", () => {
+    expect(shop.addToBasket("milk-pirkka", 2)).toBe(true);
+    expect(shop.addToBasket("milk-pirkka", -1)).toBe(true);
+    expect(shop.addToBasket("nope", 1)).toBe(false);
+    expect(shop.addToBasket("butter-pirkka", 1.5)).toBe(false);
+    expect(shop.record().basket).toEqual({ "milk-pirkka": 1 });
+  });
+
   it("refuses an unknown product", async () => {
     const res = await post("/api/basket", { id: "nope", delta: 1 });
     expect(res.status).toBe(400);

@@ -165,10 +165,14 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 - R3. A private window is **never** routed and gets no container.
   [`private_windows_are_never_routed`](../tests/browser/browser_vimma_workspace_routes.js),
   [`private_windows_are_untouched`](../tests/browser/browser_vimma_workspace_routing.js)
-- R4. The app hint (`-vimma-from`, `VIMMA_FROM`) **must** only select a workspace that a rule in
-  config.toml names and that exists; anything but a short lower-case token never matches.
+- R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
+  each, and **must** only select a workspace that a rule in config.toml names and that exists;
+  a name that is not a token once lower-cased is dropped. Spec: [app-routes](specs/app-routes.md).
   [`a hint that is not a token never matches`](../packages/vimma-core/test/routes.test.mjs),
-  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs)
+  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
+  [`an_app_list_with_a_bad_name_routes_by_the_rest`](../tests/browser/browser_vimma_workspace_routes.js)
 - R5. `VIMMA_FROM` **must** be read once and cleared, so it never reaches a later window or a
   process Vimma starts.
   [`a_new_windows_first_tab_is_routed_with_the_startup_app`](../tests/browser/browser_vimma_workspace_routes.js)
@@ -177,6 +181,21 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   (`github.com@evil`, a path, query or fragment, `\`, `%2e`, the ideographic full stop).
   [`a domain rule never matches a URL whose host is outside its domain`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
   [`a domain rule matches its own host and subdomains, however written`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs)
+- R8. A rule naming the agent workspace **never** applies to a link from another program (the
+  next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
+  to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
+  [`a_rule_after_one_naming_the_agent_workspace_applies`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../packages/vimma-core/test/routes.test.mjs),
+  [`the agent cut applies below the first rule without app too`](../packages/vimma-core/test/routes.test.mjs)
+- R9. `[routing] default_workspace` applies **only** to links from other programs that no rule
+  matches (a remote command line, or a window opened for one), never to what you type, never to
+  the agent workspace, and never in a private window.
+  [`the_default_workspace_never_applies_to_the_url_bar`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`the_default_workspace_never_applies_in_a_private_window`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 
@@ -856,9 +875,10 @@ workspace. What limits it: the agent workspace's container holds none of your ot
 (vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
 under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
-with a shell can send what it read over its own network without Vimma anyway. A form submission,
-a step that may pay, a show, a dangerous or unscanned download and a page's own download still
-ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
+with a shell can send what it read over its own network without Vimma anyway. A step that may pay,
+a form submission that sends text, personal details, a secret or a file
+([mcp-consequence](specs/mcp-consequence.md)), a show, a dangerous or unscanned download and a
+page's own download still ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
 spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
 (`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
@@ -873,7 +893,8 @@ submission: it gives no new reach, since any URL could already be opened under a
 is under the same rules as every other open (M6, the open rate of M3, the notice and the
 `:mcp log` row of M23). It skips only the form question; the words of the search are what the
 agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
-page, a search included, is still a form submission and asked every time (M28).
+page, a search included, is still a form submission under M28, asked whenever it sends what was
+typed.
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
@@ -1425,11 +1446,40 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
-  **must** ask every time, also under any grant, with only `y` and `n`, naming
+  **must** ask every time without a grant, and under a grant when it is consequential
+  ([mcp-consequence](specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
+  a password, payment card, one-time-code or file field, an identity field (an autocomplete
+  name of a person's name, contact, address, birth date, username or organisation, one form
+  autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
+  marks every field), or free text (a textarea or a text-like input other than `type=search`
+  whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
+  value so digits of other scripts or forms never pass); or a form whose fields the page did
+  not say in time, that sends more fields than the question lists, or one of whose values is
+  longer than the child reads of it. It asks with only `y` and `n`, naming
   the form's method, destination and each field it sends by name and value (hidden fields
   counted, a file field by its name), **never** a password, payment card or one-time-code
   field's value, only its name and `•••`, or the number of fields when the page did not say in
-  time; its yes **never** makes or ends a grant, and its `x` is a plain no; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
+  submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
+  row naming its method and destination (M23), and the guard below lets that one submission
+  through as after a yes. Because another call (a fill) may change the form between that
+  judgement and the click, the child judges the form again just before it presses the button,
+  after the page's handlers of the pressing ran, and skips the click when it no longer passes
+  (no longer harmless, or, under an allowance, sending a secret or file). Under a grant, the question of a consequential submission that is not
+  a payment step and sends no password, card, one-time-code or file field also takes `a`
+  (mcp-consequence K5): it allows that submission and every later click of the same connection
+  whose tab's site (registrable domain), form method, destination (scheme, host, port and path)
+  and pressed button's text are the same, checked again on each click against the payment and
+  secret rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
+  conversation's stop, the connection's close; an allowance is held in memory and never kept
+  for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
+  step. An allowance covers later submissions whatever text or personal details they send,
+  which no question shows. Not covered: a page's own script that copies typed text into hidden
+  fields before a harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17);
+  a form that sends only the page's own values runs unasked under a grant whatever it does on
+  the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
+  only the payment signals of M33 add a question there; a short number typed into a plain text
+  field (a quantity, but also a three-digit code) is not free text. So **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1479,6 +1529,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   not http or https, and data a button's script sends with `fetch`, also from a cancelled
   submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_basket_form_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_message_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_allows_that_button_on_that_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_is_not_offered_on_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`free text, an identity field, a secret or a file makes it consequential`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`an allowance ends with the grant: its end, revoke, endGrant`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_a_message_cut_or_written_late_still_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`a value cut to fit, digits in other scripts or forms, or a long number is free text`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),
@@ -1725,8 +1783,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M33. A payment step (mcp-checkpoints C6) **must** ask under any grant, with only `y` and `n`
-  (`x` is a plain no), and its yes **never** makes, lengthens or ends a grant; its no denies that
-  step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
+  (`x` is a plain no; `a` is no answer there and an allowance of M28 **never** covers it), and
+  its yes **never** makes, lengthens or ends a grant; its no denies that step only. The pay
+  phrases only add questions (mcp-consequence K6). A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
   `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
   field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates
@@ -2129,6 +2188,20 @@ own process, not a process group.
   asdf, volta) runs the real tool from the manager's own install folder and configuration, which
   Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
   revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
+  A CLI that records its runs **must** be asked not to (`--no-session-persistence`,
+  `--ephemeral`); Gemini CLI, which cannot be asked, **must** have what it recorded of a run
+  removed when the run ends, a stop included: the project folders in its `tmp/` and `history/`
+  whose `.project_root` marker names the run's folder (its session files, the whole
+  conversation with the page text, among them) and the registry entry in `projects.json`,
+  edited under Gemini CLI's own lock, which is waited for and never broken. At each start Vimma
+  **must** remove the same of every run of its own whose folder is gone, and of every run folder
+  a crash left, with the folder: one whose marked process is gone (Linux), that its own
+  process id marks while unused, or older than a day and an hour; a registry that is a link
+  is not edited. A project is Vimma's only when its path is a run folder's name directly in a
+  folder runs are made in, so no project of the user's is ever touched. Gemini CLI's `TMPDIR` is the run's
+  folder, since its error reports hold the conversation. Between a run's start and its end,
+  and after a crash until the next start, the conversation is on disk in Gemini CLI's folder
+  (`docs/limits.md`).
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
@@ -2153,14 +2226,33 @@ own process, not a process group.
   [`a cli provider's model is refused by the rule its run uses`](../packages/vimma-core/test/config-agent.test.mjs),
   [`test_setup_asks_the_clis_model_and_saves_it`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
+  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini's arguments are the fixture`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_setup_finds_gemini_with_its_version`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_task_on_stdin_fixed_arguments_and_the_folders_settings`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_gemini_keeps_nothing_of_the_run_after_it`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_stopped_run_keeps_nothing_either`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_rejected_key_is_the_runs_error_and_its_report_goes`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_leftovers_of_runs_a_crash_ended_go_at_the_next_start`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_run_folder_a_crash_left_goes_with_its_records`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_linked_registry_is_left_a_link`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_lock_gemini_holds_is_waited_for_not_broken`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`only a run folder of vimma's is one of its runs`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the registry keeps every other project, and names the runs' folders`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a slug that is not a plain folder name is never a folder to remove`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
-  `env`, in a file that is 0600 in that 0700 folder and removed with it, or, for a CLI whose
+  `env`, in a file that is 0600 in that 0700 folder (for Gemini CLI, `.gemini/settings.json`
+  there, in a 0700 `.gemini` folder, which it reads from its working directory once
+  `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder) and removed with it,
+  or, for a CLI whose
   servers are arguments (Codex), through the CLI's own environment, passed to the server by
   name (`env_vars`) and set empty for the CLI's own shell commands
   (`shell_environment_policy.set`, which keeps the user's policy); **never** through a
   command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
-  only through the gate: `--strict-mcp-config`, or for Codex each server its own list names
+  only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
+  naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
+  user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
+  server that ran ending the run; or for Codex each server its own list names
   turned off by name, its apps, plugins and a skill's MCP server installs off with
   `--disable` (which fails on a feature name the version does not know), its server named apart from any the user may
   have (`vimma_chat`, whose name in the list refuses the run, as does a name that is not
@@ -2191,7 +2283,10 @@ own process, not a process group.
   [`test_ticket_by_name_in_codexs_environment_never_an_argument`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_every_other_server_of_codexs_configuration_is_off`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_server_named_as_vimmas_refuses_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`vimma's server is in the run folder's settings file, the ticket in its env`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini trusts the run folder from its environment, and keeps its reports there`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a tool of another mcp server that ran ends the run; one never offered does not`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
@@ -2205,7 +2300,9 @@ own process, not a process group.
   [`each gate event of the conversation is a step, asked or run under the grant`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`mcp tool calls of vimma's server are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`a recorded gemini stream maps to replies, own-tool lines and usage`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a step its policy refuses is marked refused`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;

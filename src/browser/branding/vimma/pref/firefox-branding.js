@@ -203,3 +203,8 @@ pref("pdfjs.featuresNotificationImpressionLimit", 0);
 // pdf.js opens its sidebar on no view by itself (a PDF's /PageMode, the view last used): Vimma's
 // outline panel is the outline, and firefox-pdf.css hides pdf.js's sidebar (pdf-mode decision 18).
 pref("pdfjs.sidebarViewOnLoad", 0);
+
+// Unfinished: the downloads picker and the status bar's downloads segment
+// (docs/specs/downloads.md), delivered over several pull requests (CONTRIBUTING.md, "Unfinished
+// features").
+pref("vimma.feature.downloads", false);

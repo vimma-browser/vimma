@@ -18,9 +18,10 @@ const text = (/** @type {string} */ t) => ({ content: [{ type: "text", text: t }
 /**
  * A stand-in for Vimma behind vimma-ctl mcp, enough for the shopper: pages are opened by URL,
  * with their elements when asked; a product page has one basket button and a search listing one
- * for each product it finds, which post to the shop as the page's script does; the checkout's
- * pay button is a checkpoint the user answers no. Opens are held to Vimma's open rate on the
- * clock it is given, so a run that goes faster than the rate is refused as Vimma refuses it.
+ * for each product it finds, which change the shop's basket as the page's script does (called
+ * in-process; the shop's own tests cover /api/basket over HTTP); the checkout's pay button is a
+ * checkpoint the user answers no. Opens are held to Vimma's open rate on the clock it is given,
+ * so a run that goes faster than the rate is refused as Vimma refuses it.
  * With `clickRate`, a click is held to it too, as Vimma's agent-activate checks it before a
  * click; the other runs leave it out, because their clock moves only by the scripted pace and
  * never by the time Vimma's tools take.
@@ -84,11 +85,7 @@ function fakeVimma({ clock = () => 0, clickRate = false } = {}) {
       if (url.includes("/checkout"))
         return { isError: true, ...text("The user denied this request in Vimma.") };
       const id = buttons(url).find(([label]) => label === args.label)?.[2];
-      await fetch(new URL("/api/basket", shop.base), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, delta: 1 }),
-      });
+      shop.addToBasket(id, 1);
       return text(`Clicked ${args.label} in tab ${args.tab} of Vimma's agent workspace.`);
     }
     return { isError: true, ...text(`no ${name} here`) };

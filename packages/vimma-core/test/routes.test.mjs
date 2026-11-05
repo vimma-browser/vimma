@@ -4,11 +4,14 @@ import { describe, expect, test } from "vitest";
 import { appendRouteText, parseConfig } from "../src/config.mjs";
 import { formatConfigTemplate } from "../src/defaults.mjs";
 import {
+  defaultWorkspaceFor,
   describeRoute,
   isAppToken,
   matchRoute,
+  parseAppList,
   resolveRoutes,
   routeDomainFor,
+  shadowedBy,
   validateRoutes,
 } from "../src/routes.mjs";
 
@@ -46,7 +49,8 @@ const routes = (raw) => {
  * @param {string} url
  * @param {string | null} [app]
  */
-const target = (raw, url, app = null) => matchRoute(routes(raw), { url, app })?.workspace ?? null;
+const target = (raw, url, app = null) =>
+  matchRoute(routes(raw), { url, apps: app === null ? [] : [app] })?.workspace ?? null;
 
 describe("[[routes]] in config.toml", () => {
   test("are read in file order, with their rule number", () => {
@@ -297,7 +301,7 @@ describe("app rules", () => {
     for (const ok of ["slack", "nvim", "org.gnome.nautilus", "c++", "a", "x-1_2"]) {
       expect(isAppToken(ok)).toBe(true);
     }
-    for (const bad of ["", "Slack", "my app", "../etc", "a/b", "-x", ".x", "a".repeat(33), "ä"]) {
+    for (const bad of ["", "Slack", "my app", "../etc", "a/b", "-x", ".x", "a".repeat(65), "ä"]) {
       expect(isAppToken(bad)).toBe(false);
     }
     expect(isAppToken(/** @type {any} */ (null))).toBe(false);
@@ -329,17 +333,17 @@ describe("precedence", () => {
     ]);
     const hit = matchRoute(
       rules,
-      { url: "https://github.com/", app: null },
+      { url: "https://github.com/", apps: [] },
       { workspaces: ["work"] },
     );
     expect(hit).toMatchObject({ index: 2, workspace: "work" });
     expect(
-      matchRoute(rules, { url: "https://github.com/", app: null }, { workspaces: [] }),
+      matchRoute(rules, { url: "https://github.com/", apps: [] }, { workspaces: [] }),
     ).toBeNull();
   });
 
   test("no rules, no match", () => {
-    expect(matchRoute([], { url: "https://github.com/", app: "slack" })).toBeNull();
+    expect(matchRoute([], { url: "https://github.com/", apps: ["slack"] })).toBeNull();
   });
 });
 
@@ -429,5 +433,277 @@ describe("describing and adding rules", () => {
     expect(appendRouteText(v2(), { domain: "a b", workspace: "w" })).toEqual({
       error: expect.stringMatching(/hostname/),
     });
+  });
+});
+
+// docs/specs/app-routes.md: a link carries every program on the way, nearest first.
+describe("app names, nearest first (app-routes)", () => {
+  /**
+   * @param {Record<string, string>[]} raw
+   * @param {string} url
+   * @param {string} apps  comma-separated, as -vimma-from carries them
+   * @param {{ workspaces?: string[], skip?: string[] }} [options]
+   */
+  const pick = (raw, url, apps, options) =>
+    matchRoute(routes(raw), { url, apps: parseAppList(apps) }, options)?.workspace ?? null;
+  const signIn = "https://login.microsoftonline.com/common/oauth2/authorize";
+  const worked = [
+    { app: "herdr", domain: "login.microsoftonline.com", workspace: "admin" },
+    { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
+    { app: "com.microsoft.teams2", workspace: "work" },
+    { domain: "login.microsoftonline.com", workspace: "work" },
+  ];
+
+  test("az login in Ghostty and in herdr in Ghostty goes to admin; Teams goes to work", () => {
+    expect(pick(worked, signIn, "python3,zsh,ghostty")).toBe("admin");
+    expect(pick(worked, signIn, "python3,zsh,herdr,zsh,ghostty")).toBe("admin");
+    expect(pick(worked, signIn, "python3,zsh,herdr")).toBe("admin");
+    const teams = routes(worked);
+    expect(
+      matchRoute(teams, { url: signIn, apps: parseAppList("com.microsoft.teams2,msteams") }),
+    ).toMatchObject({ index: 3, workspace: "work" });
+    expect(matchRoute(teams, { url: signIn, apps: [] })).toMatchObject({ index: 4 });
+  });
+
+  test("the nearest name wins among app rules: az,herdr,ghostty picks herdr whatever the file order", () => {
+    const herdrFirst = [
+      { app: "herdr", workspace: "h" },
+      { app: "ghostty", workspace: "g" },
+    ];
+    expect(pick(herdrFirst, signIn, "az,herdr,ghostty")).toBe("h");
+    expect(pick([herdrFirst[1], herdrFirst[0]], signIn, "az,herdr,ghostty")).toBe("h");
+  });
+
+  test("slack,ghostty picks the slack rule over the ghostty rule", () => {
+    const rules = [
+      { app: "ghostty", workspace: "admin" },
+      { app: "slack", workspace: "chat" },
+    ];
+    expect(pick(rules, "https://a.example/", "slack,ghostty")).toBe("chat");
+  });
+
+  test("an equal name is a tie: the earlier rule wins", () => {
+    const rules = [
+      { app: "ghostty", domain: "a.example", workspace: "one" },
+      { app: "ghostty", workspace: "two" },
+    ];
+    expect(pick(rules, "https://a.example/", "zsh,ghostty")).toBe("one");
+    expect(pick(rules, "https://b.example/", "zsh,ghostty")).toBe("two");
+  });
+
+  test("a rule without app earlier in the file beats later app rules; a later one does not", () => {
+    const domainFirst = [
+      { domain: "login.microsoftonline.com", workspace: "work" },
+      { app: "ghostty", workspace: "admin" },
+    ];
+    expect(pick(domainFirst, signIn, "python3,zsh,ghostty")).toBe("work");
+    expect(pick([domainFirst[1], domainFirst[0]], signIn, "python3,zsh,ghostty")).toBe("admin");
+  });
+
+  test("an app rule below the first matching rule without app never applies", () => {
+    const rules = [
+      { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
+      { domain: "login.microsoftonline.com", workspace: "work" },
+      { app: "herdr", workspace: "personal" },
+    ];
+    expect(pick(rules, signIn, "python3,zsh,herdr,zsh,ghostty")).toBe("admin");
+    expect(pick(rules.slice(1), signIn, "python3,zsh,herdr,zsh,ghostty")).toBe("work");
+  });
+
+  test("an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule", () => {
+    const rules = [
+      { app: "claude", workspace: "agent" },
+      { app: "ghostty", domain: "login.microsoftonline.com", workspace: "admin" },
+      { domain: "login.microsoftonline.com", workspace: "work" },
+    ];
+    const opts = { skip: ["agent"] };
+    expect(pick(rules, signIn, "claude,zsh,ghostty", opts)).toBe("work");
+    expect(pick(rules.slice(0, 2), signIn, "claude,zsh,ghostty", opts)).toBeNull();
+    expect(pick(rules, signIn, "python3,zsh,ghostty", opts)).toBe("admin");
+  });
+
+  test("a child named after the terminal under an agent CLI never reaches the terminal's rule", () => {
+    const rules = [
+      { app: "ghostty", workspace: "admin" },
+      { app: "claude", workspace: "agent" },
+    ];
+    expect(pick(rules, signIn, "ghostty,claude,zsh,ghostty", { skip: ["agent"] })).toBeNull();
+  });
+
+  test("az login run by an agent never reaches a python3 sign-in rule", () => {
+    const rules = [
+      { app: "python3", domain: "login.microsoftonline.com", workspace: "admin" },
+      { app: "claude", workspace: "agent" },
+    ];
+    expect(pick(rules, signIn, "python3,claude,zsh,ghostty", { skip: ["agent"] })).toBeNull();
+  });
+
+  test("the agent cut applies below the first rule without app too", () => {
+    const rules = [
+      { app: "ghostty", workspace: "admin" },
+      { domain: "login.microsoftonline.com", workspace: "work" },
+      { app: "claude", workspace: "agent" },
+    ];
+    expect(pick(rules, signIn, "claude,zsh,ghostty", { skip: ["agent"] })).toBe("work");
+  });
+
+  test("an agent rule with a domain still drops the names for the agent's other links", () => {
+    const rules = [
+      { app: "claude", domain: "github.com", workspace: "agent" },
+      { app: "ghostty", workspace: "admin" },
+    ];
+    expect(pick(rules, signIn, "claude,zsh,ghostty", { skip: ["agent"] })).toBeNull();
+  });
+
+  test("a skipped workspace's rule is passed over and the next rule applies", () => {
+    const rules = [
+      { domain: "github.com", workspace: "agent" },
+      { domain: "github.com", workspace: "work" },
+    ];
+    expect(pick(rules, "https://github.com/", "", { skip: ["agent"] })).toBe("work");
+    expect(pick(rules, "https://github.com/", "")).toBe("agent");
+  });
+
+  test("a shell in the chain matches only a rule that names it, and only when no nearer name matched", () => {
+    const rules = [
+      { app: "zsh", workspace: "shell" },
+      { app: "python3", workspace: "py" },
+    ];
+    expect(pick(rules, signIn, "python3,zsh,ghostty")).toBe("py");
+    expect(pick(rules, signIn, "node,zsh,ghostty")).toBe("shell");
+    expect(pick([{ app: "slack", workspace: "s" }], signIn, "python3,zsh,ghostty")).toBeNull();
+  });
+
+  test("with no app known, app rules never match and domain rules still do", () => {
+    const rules = [
+      { app: "ghostty", workspace: "admin" },
+      { domain: "login.microsoftonline.com", workspace: "work" },
+    ];
+    expect(pick(rules, signIn, "")).toBe("work");
+    expect(pick(rules, "https://a.example/", "")).toBeNull();
+    expect(matchRoute(routes(rules), { url: signIn })?.workspace).toBe("work");
+  });
+
+  test("parseAppList collapses consecutive duplicates: python3,zsh,herdr,herdr,zsh,ghostty", () => {
+    expect(parseAppList("python3,zsh,herdr,herdr,zsh,ghostty")).toEqual([
+      "python3",
+      "zsh",
+      "herdr",
+      "zsh",
+      "ghostty",
+    ]);
+  });
+
+  test("parseAppList keeps at most eight names, drops non-tokens, keeps the rest", () => {
+    expect(parseAppList("a,b,c,d,e,f,g,h,i,j")).toEqual(["a", "b", "c", "d", "e", "f", "g", "h"]);
+    expect(parseAppList("Slack,my app,../x,,nvim")).toEqual(["slack", "nvim"]);
+    expect(parseAppList("a,bad name,a")).toEqual(["a"]);
+    expect(parseAppList("")).toEqual([]);
+    expect(parseAppList(/** @type {any} */ (null))).toEqual([]);
+    expect(parseAppList("com.mitchellh.ghostty,ghostty")).toEqual([
+      "com.mitchellh.ghostty",
+      "ghostty",
+    ]);
+  });
+
+  test("an app name is a token of 1 to 64 characters", () => {
+    expect(isAppToken("a".repeat(64))).toBe(true);
+    expect(isAppToken("a".repeat(65))).toBe(false);
+    expect(validateRoutes([{ app: "a".repeat(64), workspace: "w" }])).toEqual([]);
+    expect(validateRoutes([{ app: "a".repeat(65), workspace: "w" }])).toHaveLength(1);
+  });
+
+  describe("shadowedBy", () => {
+    test("a covering earlier rule shadows, an app rule never shadows one without app", () => {
+      const rules = routes([
+        { domain: "github.com", workspace: "work" },
+        { domain: "gist.github.com", workspace: "other" },
+        { app: "ghostty", domain: "github.com", workspace: "admin" },
+        { app: "ghostty", workspace: "admin" },
+        { domain: "example.org", workspace: "x" },
+        { app: "ghostty", url: "https://github.com/login", workspace: "admin" },
+        { url: "https://example.com/a/", workspace: "x" },
+        { url: "https://example.com/a/b", workspace: "y" },
+        { app: "slack", workspace: "chat" },
+        { app: "slack", domain: "slack.com", workspace: "chat2" },
+      ]);
+      expect(shadowedBy(rules, 0)).toBeNull();
+      expect(shadowedBy(rules, 1)?.index).toBe(1);
+      expect(shadowedBy(rules, 2)?.index).toBe(1);
+      expect(shadowedBy(rules, 3)).toBeNull();
+      expect(shadowedBy(rules, 4)).toBeNull();
+      expect(shadowedBy(rules, 5)?.index).toBe(1);
+      expect(shadowedBy(rules, 6)).toBeNull();
+      expect(shadowedBy(rules, 7)?.index).toBe(7);
+      expect(shadowedBy(rules, 8)).toBeNull();
+      expect(shadowedBy(rules, 9)?.index).toBe(9);
+    });
+
+    test("subdomain-only domains cover only what they match", () => {
+      const rules = routes([
+        { domain: "*.corp.example", workspace: "w" },
+        { domain: "corp.example", workspace: "x" },
+        { domain: "a.corp.example", workspace: "y" },
+        { domain: "*.a.corp.example", workspace: "z" },
+      ]);
+      expect(shadowedBy(rules, 1)).toBeNull();
+      expect(shadowedBy(rules, 2)?.index).toBe(1);
+      expect(shadowedBy(rules, 3)?.index).toBe(1);
+    });
+
+    test("a skipped rule shadows nothing", () => {
+      const rules = routes([
+        { domain: "github.com", workspace: "agent" },
+        { domain: "github.com", workspace: "work" },
+      ]);
+      expect(shadowedBy(rules, 1, { skip: ["agent"] })).toBeNull();
+      expect(shadowedBy(rules, 1, { workspaces: ["work"] })).toBeNull();
+      expect(shadowedBy(rules, 1)?.index).toBe(1);
+    });
+  });
+});
+
+describe("[routing] default_workspace (app-routes, decision 16)", () => {
+  test("takes a workspace name", () => {
+    expect(config(v2("[routing]", 'default_workspace = "work"')).routing).toEqual({
+      defaultWorkspace: "work",
+    });
+    expect(config(v2()).routing).toEqual({ defaultWorkspace: null });
+  });
+
+  test("refuses an unknown key and a name that is not a workspace name", () => {
+    expect(errors(v2("[routing]", 'default_workspac = "work"'))).toEqual([
+      {
+        line: 3,
+        path: "routing.default_workspac",
+        message: 'unknown key "default_workspac"',
+        suggestion: "default_workspace",
+      },
+    ]);
+    expect(errors(v2("[routing]", "default_workspace = 1"))).toEqual([
+      {
+        line: 3,
+        path: "routing.default_workspace",
+        message: "expected a string, got an integer",
+      },
+    ]);
+    expect(errors(v2("[routing]", 'default_workspace = ""'))).toEqual([
+      {
+        line: 3,
+        path: "routing.default_workspace",
+        message: "workspace name must be 1 to 32 characters",
+      },
+    ]);
+  });
+
+  test("needs schema 2", () => {
+    expect(errors('[routing]\ndefault_workspace = "work"\n')[0]?.path).toBe("routing");
+  });
+
+  test("defaultWorkspaceFor: the default when no rule matched and it is usable", () => {
+    expect(defaultWorkspaceFor("work", { workspaces: ["work"], skip: [] })).toBe("work");
+    expect(defaultWorkspaceFor("work", { workspaces: ["home"] })).toBeNull();
+    expect(defaultWorkspaceFor("agent", { workspaces: ["agent"], skip: ["agent"] })).toBeNull();
+    expect(defaultWorkspaceFor(null, { workspaces: ["work"] })).toBeNull();
   });
 });

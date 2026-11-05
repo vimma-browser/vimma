@@ -169,10 +169,19 @@ the [user guide](guide.md); planned work is on the
   passwords are: by a primary password if one is set, otherwise readable by anything that can
   read the profile.
 - The window does not open in a private window.
-- The window runs Claude Code and Codex (checked with Claude Code 2.1.303 and Codex 0.163.0);
-  Gemini CLI and opencode are not offered yet: Gemini CLI 0.66.0 keeps every run's
-  conversation in a file of its own folder, with no setting to stop it, and opencode 2.0.32
-  cannot be limited to Vimma's tools alone.
+- The window runs Claude Code, Codex and Gemini CLI (checked with Claude Code 2.1.303, Codex
+  0.163.0 and Gemini CLI 0.66.0); opencode is not offered: opencode 2.0.32 cannot be limited to
+  Vimma's tools alone.
+- Gemini CLI saves each task's conversation, page text included, in its own folder
+  (`~/.gemini/tmp`), with no setting to stop it. Vimma deletes it when the task ends, but until
+  then it is on disk, unencrypted, and a crash or a power cut leaves it there until the next
+  start of Vimma (on macOS, which Vimma cannot ask whether a process is gone, until a start a
+  day after the task). A `projects.json` that is a link is not edited: Vimma's tasks stay
+  listed in it, without their folders. Vimma relies on Gemini CLI's own layout of that folder (0.66.0): a version that
+  saves elsewhere keeps its files until Vimma knows of it.
+- Gemini CLI does not report an MCP server that did not start: a task whose `vimma-ctl` failed
+  runs without the browser's tools, and no message says why. It reports neither its tools nor a
+  cost, and cannot take a message during a task, as Codex.
 - Codex reports neither its tools nor its sandbox, so the window says only that its tools are
   `as its configuration allows`, and it reports no refusal of its own commands, so a command its
   sandbox stopped still shows as run. It reports no cost.

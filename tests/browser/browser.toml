@@ -240,6 +240,7 @@ support-files = [
 
 ["browser_vimma_mcp_checkpoint.js"]
 support-files = [
+  "file_vimma_agent_basket_form.html",
   "file_vimma_agent_checkout.html",
   "file_vimma_agent_hosted_pay.html",
   "file_vimma_agent_page.html",
@@ -289,6 +290,12 @@ support-files = [
   "file_vimma_agent_page.html",
   "file_vimma_agent_sw.html",
   "file_vimma_agent_sw.js",
+]
+
+["browser_vimma_downloads.js"]
+support-files = [
+  "file_vimma_downloads.sjs",
+  "file_vimma_plain.html",
 ]
 
 ["browser_vimma_mcp_downloads.js"]
@@ -410,6 +417,9 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_agent_cli_codex.js"]
 support-files = ["fake_vimma_agent_codex.py", "head_vimma_control.js"]
+
+["browser_vimma_agent_cli_gemini.js"]
+support-files = ["fake_vimma_agent_gemini.py", "head_vimma_control.js"]
 
 ["browser_vimma_agent_cli_run.js"]
 support-files = [

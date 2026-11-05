@@ -23,6 +23,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number }} [panes]
  * @property {Record<string, { insert?: import("./editable.mjs").InsertSiteMode }>} [sites]
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
+ * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
+ *   rule matches open (docs/specs/app-routes.md)
  * @property {{ disable?: "all" | readonly string[], enable?: readonly string[] }} [firefox]
  *   Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
  * @property {{ root?: "workspace" | "toolbar" | "all" }} [bookmarks]  the bookmarks panel's root
@@ -640,11 +642,17 @@ export function formatDefaultsToml() {
     '# [sites."docs.google.com"]',
     '# insert = "always"',
     "",
-    "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the app",
-    "# that opened it (vimma-open). The first matching rule wins. None by default.",
+    "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the",
+    "# programs that opened it (vimma-open). The first matching rule wins, except that among the",
+    "# app rules above it, the one naming the nearest program wins. None by default.",
     "# [[routes]]",
     '# domain = "github.com"',
     '# workspace = "work"',
+    "",
+    "# Where a link from another program opens when no rule matches. Left out, it opens where",
+    "# Firefox guesses from your open tabs, else in the window's workspace.",
+    "# [routing]",
+    '# default_workspace = "work"',
     "",
     "# Search engines. default: an installed engine's name (as in Settings > Search), or",
     '# "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar',

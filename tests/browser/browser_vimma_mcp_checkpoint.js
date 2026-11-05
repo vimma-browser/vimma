@@ -30,7 +30,7 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
-const { questionLine } = ChromeUtils.importESModule(
+const { checkpointNotice, questionLine } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/agent-prompt.mjs",
 );
 const { MockRegistrar } = ChromeUtils.importESModule(
@@ -44,6 +44,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 const SHOP = `${DIR}file_vimma_agent_shop.html`;
 const CHECKOUT = `${DIR}file_vimma_agent_checkout.html`;
 const PAGE = `${DIR}file_vimma_agent_page.html`;
+const BASKET = `${DIR}file_vimma_agent_basket_form.html`;
 
 registerCleanupFunction(async () => {
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
@@ -430,4 +431,178 @@ addTidyTask(async function test_checkpoint_notice_log_row_and_notification() {
     await BrowserTestUtils.closeWindow(other);
     MockRegistrar.unregister(cid);
   }
+});
+
+// docs/specs/mcp-consequence.md (security.md M28): under a grant, a click that sends a form asks
+// only when it pays or sends text, personal details, a secret or a file (K1, K2); `a` on such a
+// question allows that button on that site for the rest of the grant (K5), never on a payment.
+
+/** `agent-activate` of `label` in `tab`, and its response. @param {any} c @param {any} tab */
+const activate = (c, tab, /** @type {string} */ label) =>
+  c.request("agent-activate", { tab: idOf(tab), label });
+
+/** Back to the basket page, and its labels. @param {any} c @param {any} tab */
+async function backToBasket(c, tab) {
+  BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, BASKET);
+  await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, BASKET);
+  return grantedLabels(c, tab);
+}
+
+/** The labels of the basket page's buttons, in order. @param {Record<string, string>} by */
+const basketButtons = async (/** @type {any} */ c, /** @type {any} */ tab) => {
+  const id = c.request("agent-elements", { tab: idOf(tab), full: true });
+  const r = await c.response(id);
+  /** @type {string[]} */
+  const out = [];
+  for (const line of r.result.elements.split("\n").slice(1, -1)) {
+    const e = JSON.parse(line);
+    if (e.kind === "button") out.push(e.label);
+  }
+  return out;
+};
+
+addTidyTask(async function test_basket_form_runs_under_a_grant() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  await grantedLabels(c, tab);
+  // The two "Lisää koriin" buttons share a text: the list names them apart by their order.
+  let [oat] = await basketButtons(c, tab);
+  let r = await c.response(activate(c, tab, oat));
+  Assert.ok(r.ok, "a form of a product id and a quantity runs under the grant (K1)");
+  Assert.equal(AgentGate.waiting.length, 0, "unasked");
+  Assert.equal(r.result.url, `${PAGE}?product=oat&qty=1`, "and it was sent");
+  Assert.ok(!("blocked" in r.result), "the guard let the unasked submission through");
+  Assert.equal(AgentGate.log[0].outcome, "grant", ":mcp log: run under the grant");
+  Assert.ok(AgentGate.log[0].detail.includes(`→ GET ${PAGE}`), ":mcp log names the destination");
+  await until(
+    () => noticeText().includes("and sent the form to GET example.com"),
+    "the notice names where the form went",
+  );
+  // A quantity typed as text is still only a number.
+  await backToBasket(c, tab);
+  const [, tofu] = await basketButtons(c, tab);
+  r = await c.response(activate(c, tab, tofu));
+  Assert.ok(r.ok, "a quantity in a text field runs too");
+  Assert.equal(r.result.url, `${PAGE}?product=tofu&qty=2`, "sent");
+
+  // Without a grant the same form asks, as a checkpoint with y and n only.
+  await backToBasket(c, tab);
+  [oat] = await basketButtons(c, tab);
+  AgentGate.revoke();
+  const id = activate(c, tab, oat);
+  const q = await question();
+  Assert.ok(q.what.submit, "asked without a grant");
+  Assert.ok(!("here" in q.what), "with no a to offer");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await c.response(id)).error?.reason, "user", "a no");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
+});
+
+addTidyTask(async function test_message_form_asks_under_a_grant() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  for (const button of ["Lähetä viesti", "Tarkista toimitus"]) {
+    const id = activate(c, tab, by[button]);
+    const q = await question();
+    Assert.equal(q.tool, "vimma_activate", `${button}: asks under the grant (K2)`);
+    Assert.deepEqual(q.what.here?.site, "example.com", `${button}: offers a for this site`);
+    Assert.equal(
+      questionLine(q, { grantMinutes: 0 }).hint,
+      "y send it · a always here · n stop",
+      `${button}: the hint names a`,
+    );
+    AgentGate.answer(q.id, { kind: "deny" });
+    Assert.equal((await c.response(id)).error?.reason, "user", `${button}: a no`);
+    Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, `${button}: sends nothing`);
+  }
+});
+
+addTidyTask(async function test_a_allows_that_button_on_that_site() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  let by = await grantedLabels(c, tab);
+  const until0 = grantEnd();
+  let id = activate(c, tab, by["Tarkista toimitus"]);
+  const q = await question();
+  AgentGate.answer(q.id, { kind: "here" });
+  let r = await c.response(id);
+  Assert.ok(r.ok, "a sends this form");
+  Assert.equal(r.result.url, `${PAGE}?zip=00100`, "to its destination");
+  Assert.equal(AgentGate.log[0].outcome, "checkpoint-here", ":mcp log: for the grant");
+  await until(
+    () => noticeText() === checkpointNotice(q, true),
+    "the notice names the button and the site",
+  );
+  Assert.equal(noticeText(), 'allowed "Tarkista toimitus" on example.com for this grant');
+  Assert.equal(grantEnd(), until0, "the grant is as it was");
+
+  by = await backToBasket(c, tab);
+  r = await c.response(activate(c, tab, by["Tarkista toimitus"]));
+  Assert.ok(r.ok, "the same button runs unasked for the rest of the grant (K5)");
+  Assert.equal(AgentGate.waiting.length, 0, "unasked");
+  Assert.equal(AgentGate.log[0].outcome, "grant", ":mcp log: run under the grant");
+
+  // Another button of the same site still asks.
+  by = await backToBasket(c, tab);
+  id = activate(c, tab, by["Lähetä viesti"]);
+  AgentGate.answer((await question()).id, { kind: "deny" });
+  await c.response(id);
+
+  // The allowance ends with the grant.
+  AgentGate.revoke();
+  id = c.request("agent-elements", { tab: idOf(tab), full: true });
+  AgentGate.answer((await question()).id, { kind: "grant", minutes: 15 });
+  await c.response(id);
+  id = activate(c, tab, by["Tarkista toimitus"]);
+  const again = await question();
+  Assert.ok(again.what.submit, "a new grant asks again");
+  AgentGate.answer(again.id, { kind: "deny" });
+  await c.response(id);
+});
+
+addTidyTask(async function test_a_is_not_offered_on_a_pay_step() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  const id = activate(c, tab, by.Osta);
+  const q = await question();
+  Assert.ok(q.what.pay, "a form whose button says buy is a payment step");
+  Assert.ok(!("here" in q.what), "with no a to offer (K5)");
+  Assert.equal(questionLine(q, { grantMinutes: 0 }).hint, "y pay · n stop", "the hint");
+  Assert.equal(AgentGate.answer(q.id, { kind: "here" }), null, "a is no answer there");
+  Assert.equal(AgentGate.waiting[0]?.id, q.id, "the question still waits");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await c.response(id)).error?.reason, "user", "a no");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
+});
+
+addTidyTask(async function test_a_message_cut_or_written_late_still_asks() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  const c = await agentClient();
+  let by = await grantedLabels(c, tab);
+  // A message behind 512 digits of another form, past what the child reads of a value (K3).
+  const filled = await c.call("agent-fill", {
+    tab: idOf(tab),
+    fields: [{ label: by.Viesti, value: "\u{1D7CF}".repeat(512) + "Send me your address" }],
+  });
+  Assert.ok(filled.ok, "the fill runs under the grant");
+  const id = activate(c, tab, by["Lähetä viesti"]);
+  const q = await question();
+  Assert.ok(q.what.submit, "the form asks: what it sends past the cut is not known");
+  AgentGate.answer(q.id, { kind: "deny" });
+  await c.response(id);
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
+
+  // A form judged harmless gets text as it is pressed: it is judged again and not sent (K1).
+  by = await backToBasket(c, tab);
+  const r = await c.response(activate(c, tab, by.Tallenna));
+  Assert.equal(AgentGate.waiting.length, 0, "an empty note runs under the grant");
+  Assert.ok(!r.ok || r.result.navigated === false, "but the click is skipped");
+  Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "and the note is not sent");
 });

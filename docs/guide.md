@@ -1630,7 +1630,7 @@ it. A private window has no agent. With no model set up, the window says how to 
   which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
   model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
   what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
-- `add: agent CLI (Claude Code, Codex)`, and once one is set up, its models: Vimma runs the agent CLI
+- `add: agent CLI (Claude Code, Codex, Gemini CLI)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
@@ -1884,7 +1884,7 @@ one. New conversations start with `[agent] default`. A model you pick that `conf
 not list is added there, and becomes the default only when none was set; to change the default,
 edit `[agent] default`.
 
-**Claude Code and Codex** run as programs on your computer rather than as models Vimma calls,
+**Claude Code, Codex and Gemini CLI** run as programs on your computer rather than as models Vimma calls,
 so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
 
 #### Connecting an agent's tool
@@ -1998,7 +1998,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 
 1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
    Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
-   `claude` and `/login`; for Codex, `codex login`). Vimma runs the same program with the same login.
+   `claude` and `/login`; for Codex, `codex login`; for Gemini CLI, `gemini` and its sign-in). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
@@ -2014,7 +2014,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
    (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
    its steps and tokens. Writing in the input while it works adds an instruction to the running
-   task (Codex takes it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   task (Codex and Gemini CLI take it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
    `done · ≈ $0.41 (claude-code estimate)`.
 7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
    (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
@@ -2255,6 +2255,42 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   session file, but Codex still updates its own state in `~/.codex`.
 - Not logged in, or a key its provider refused: `stopped:` with Codex's own error, such as
   `unexpected status 401 Unauthorized`; run `codex login` in a terminal.
+
+**Gemini CLI** (`cli = "gemini"`, from version 0.66.0):
+
+- Program: `gemini` on your `PATH`. Sign in by running `gemini` once in a terminal; a Google
+  account, a Gemini API key or Vertex AI all work, as your Gemini CLI settings choose.
+- Models: setup leaves the model empty, for Gemini CLI's own default (its router, which picks a
+  model for each request); the picker lists `pro`, `flash` and `flash-lite` (Gemini CLI's aliases
+  for its newest models), and `other model…` takes a full model name such as `gemini-2.5-pro`.
+- Its own tools follow your Gemini CLI settings and policies. Run without a terminal, Gemini CLI
+  offers its model only the tools that need no confirmation (reading and searching files, its
+  web search) unless a policy of yours allows more, so the header says
+  `its own tools: as its configuration allows`. A tool it did not offer, or that a policy
+  refused, shows as refused on its `◆` line
+  (`◆ gemini ran its own tool: run_shell_command "ls /"`).
+- Vimma gives it one MCP server, `vimma_chat`, in a settings file in the task's own folder, and
+  lets no other server start (`--allowed-mcp-server-names vimma_chat`); its extensions are off
+  for these runs (`-e none`), since they bring servers and tools of their own. So the `vimma`
+  server you may have added for a terminal (Using Vimma from an agent) stays in your settings but
+  does not start. A call to any other server ends the task.
+- Gemini CLI saves every conversation, page text included, under `~/.gemini/tmp`, and has no
+  setting to stop it. After each task, Vimma deletes what Gemini CLI saved of it: its session
+  file, its project folders in `~/.gemini/tmp` and `~/.gemini/history`, and its entry in
+  `~/.gemini/projects.json`. It finds them by the task's own folder, so your other Gemini CLI
+  projects and sessions are never touched. If Vimma or the computer stops during a task, the next
+  start of Vimma deletes what that task left (on macOS, once the task's folder is a day old).
+  If `~/.gemini/projects.json` is a link, as a dotfile manager makes it, Vimma leaves it as it
+  is, so the tasks' entries stay in it; their folders still go. Gemini CLI's error reports, which also hold the
+  conversation, go to the task's own folder, which goes when the task ends.
+- If `vimma-ctl` does not start, Gemini CLI does not say so: the task runs without the
+  browser's tools, and its reply says it could not reach them. Check that `vimma-ctl` is next to
+  Vimma (or the pref `vimma.agent.cli.vimmaCtl`).
+- It reports tokens and no cost. It cannot take a message during a task: a message you send
+  then waits for the next task.
+- Not signed in, or a key its provider refused: `stopped:` with Gemini CLI's own error, such as
+  `gemini exited (145): [API Error: … API key not valid …]`; run `gemini` in a terminal to sign
+  in again.
 
 #### Running an agent CLI headless
 
@@ -2588,8 +2624,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   into the page), file fields (a click would open a file chooser), disabled elements, links to
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
   and links that are not web pages. These are refused before you are asked.
-- **A form submission asks every time**, also under a grant, with only `y` and `n`, naming where
-  the form goes and what it sends
+- **A form submission asks**, with only `y` and `n` (and `a` under a grant), naming where the
+  form goes and what it sends: every time without a grant, and under a grant when it sends text
+  or personal details
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)):
   `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
   A `y` sends that one form; it never makes or ends a grant.
@@ -2826,7 +2863,7 @@ One grant covers a task. Answer any request with `a`, and that agent may use eve
 it quits, without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace until it quits; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace until it quits; paying and sending text or personal details still ask (ctrl+b shift+a ends it)`.
 Answer `15a` instead to allow it for 15 minutes only; `[mcp] grant_minutes` makes a bare `a` a
 grant of that many minutes.
 The question's hint leaves that out, so the line stays short; the notice says it the moment you
@@ -2835,10 +2872,11 @@ answer. Requests that wait when you answer run at once.
 These still ask under any grant, and your yes allows that one step without making a grant or
 ending the one in force:
 
-- **Sending a form and paying**
-  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a form
-  sends data to a server, where sign-ups, messages and purchases happen, and a payment spends
-  your money.
+- **Paying, and sending a form with text or personal details**
+  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a payment
+  spends your money, and a form that sends a message, a name, an address, a password or a file
+  is where sign-ups and messages happen. A form that sends only the page's own values, such as a
+  basket's product and quantity, runs under the grant like any other click.
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -2850,19 +2888,37 @@ idle link) and it reconnects within two minutes, it keeps its grant; later, it a
 #### Checkpoints: sending a form and paying
 
 Under a grant an agent works through its task without asking, except at two checkpoints: before
-it sends a form and before it pays. A checkpoint is one question that shows what the step will
-do, answered with one key, after which the agent goes on under the grant it had:
+it pays and before it sends a form with text or personal details. A checkpoint is one question
+that shows what the step will do, answered with one key, after which the agent goes on under the
+grant it had:
 
 ```
 ▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"   y pay · n stop
 ▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", name "Ada", password •••, + 2 hidden   y send it · n stop
 ```
 
+- **Which forms ask.** Under a grant, a click that sends a form asks when the form sends free
+  text (a message, a search typed into a text field), a person's details (a name, an email
+  address, a phone number, a street address or postcode, a birth date, a username), a password,
+  payment card or one-time-code field, or a file; when it pays; or when Vimma cannot tell what it
+  sends. A form of hidden fields, numbers, checkboxes and choices from the page's own lists, such
+  as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
+  names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
+  form always asks, since it sends what the agent typed. Without a grant every form asks.
+- **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment
+  and sends no password, card, one-time-code or file field ends its hint with
+  `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
+  button (the same text, sending to the same address) on the same site send its form without
+  asking until the grant ends, for example a basket button whose form also sends a delivery
+  postcode. The notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log`
+  marks the row `allowed (checkpoint, for the grant)`. A payment never offers `a`.
+
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
 - **One key.** `y` runs that one step. `n`, `Esc`, `Enter` or `x` stops it: the agent is told
   no for that step and may go on with others under its grant (`ctrl+b shift+a` ends the grant).
-  No count or grant is offered, and neither answer makes, lengthens or ends a grant. Three noes
+  No count or grant is offered (only `a` on a form, above), and no answer makes, lengthens or
+  ends a grant. Three noes
   in a row ignore the agent for a minute, as for any question.
 - **What a payment shows.** The button's text (for a key, such as `H` on a checkout page, the
   keys), the site in bold, and the total the page states, quoted after "the page says". A button
@@ -3188,10 +3244,28 @@ workspace = "notes"
 - **`domain`** matches `http` and `https` pages only, on whole labels (`github.com` is not
   `notgithub.com`), whatever the port; Unicode names work written either way
   (`bücher.example` or `xn--bcher-kva.example`), and an IP address matches only itself.
-- **`app`** is the name of the program that opened the link, as `vimma-open` sees it (below).
+- **`app`** is the name of a program that opened the link, as `vimma-open` sees it (below), up
+  to 64 characters.
 - **Order is the precedence.** Put the rule that matters most first: with `app = "slack"` above
-  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`.
-- A rule naming a workspace that does not exist is skipped (`:route` says so).
+  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`. Among `app` rules above
+  the first matching rule without `app`, the one naming the program nearest the link wins,
+  whatever their order: a link from a herdr pane in Ghostty matches `app = "herdr"` before
+  `app = "ghostty"`. An `app` rule below a matching rule without `app` never applies to that
+  link.
+- A rule naming a workspace that does not exist is skipped (`:route` says so), and so is a rule
+  naming the agent workspace for a link from another app: the next rule applies.
+- **Links from other programs that no rule matches** open where `[routing] default_workspace`
+  says, when you set it:
+
+  ```toml
+  [routing]
+  default_workspace = "work"   # links from other programs that no rule matches
+  ```
+
+  Left out, they open in the workspace Firefox guesses from your open tabs, else in the
+  window's. It never applies to what you type or open in Vimma, and never to the agent
+  workspace. Every program's links can land there, including an AI agent's, so choose a
+  workspace without privileged sign-ins.
 
 **Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
 bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
@@ -3216,6 +3290,12 @@ portal), apps started through systemd (`uwsm app`) and links opened while the as
 has already exited have no app: only `domain` and `url` rules apply to them. To see what an app
 is called, run `vimma-open https://example.com` from it, or look at its process name
 (`ps -o comm`), lower-cased.
+
+A link carries up to eight program names, nearest first, so a rule can name whichever of them
+stands for the role. When a rule sends an AI agent's command-line tool (`app = "claude"`) to the
+agent workspace, that link never matches an `app` rule at all, so an agent cannot reach a
+workspace you route your terminal's sign-ins to; route agent tools by name, and pair `app` with
+`domain` for a workspace that holds privileged sign-ins.
 
 **Commands.**
 
@@ -3869,7 +3949,8 @@ accent = "#ff9e64"
   (`"shown"`, the default, or `"hidden"`: the [PDF viewer](#pdf-viewer)'s outline when a PDF
   opens; applied at startup and when the line changes); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
-- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
+- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[routing]`,
+  `[firefox]`,
   `[bookmarks]`, `[panel]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as

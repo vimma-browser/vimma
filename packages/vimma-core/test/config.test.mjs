@@ -387,6 +387,7 @@ describe("mergeWithDefaults", () => {
       hintChars: "asdfghjkl",
       sites: [],
       routes: [],
+      routing: { defaultWorkspace: null },
       firefox: {
         disable: "all",
         enable: [],
