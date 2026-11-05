@@ -4,6 +4,7 @@ import fc from "fast-check";
 import { closePane, createRow, hideView, leaves, paneOfTab, split } from "../src/panes.mjs";
 import {
   MAX_SPLITS_DEFAULT,
+  NO_SPLITS_TO_PICK,
   MAX_SPLITS_LIMIT,
   SplitsError,
   createSplits,
@@ -15,7 +16,9 @@ import {
   showSplit,
   shownSplit,
   splitLabel,
+  splitFocusTab,
   splitOfTab,
+  splitPickerItems,
   splitsFromPanes,
   stepSplit,
   updateSplit,
@@ -440,5 +443,67 @@ describe("hiddenSplitRefusal (decision 4)", () => {
     expect(hiddenSplitRefusal(2)).toBe(
       "split S2 is hidden: select one of its tabs (ctrl+b b) to go back, or mark tabs there for a new split",
     );
+  });
+});
+
+describe("the split picker's rows (behaviour 7, decision 12)", () => {
+  const titles = /** @type {Record<string, string>} */ ({
+    a: "Editor",
+    b: "PDF",
+    c: "Search",
+    d: "Docs",
+    e: "Notes",
+  });
+  const titleOf = (/** @type {string} */ id) => titles[id] ?? "";
+
+  test("one row per split in number order: label, pane count, titles; the shown one active", () => {
+    const s = showSplit(
+      made([
+        ["a", "b"],
+        ["c", "d", "e"],
+      ]),
+      1,
+    );
+    const items = splitPickerItems(s, titleOf);
+    expect(items).toEqual([
+      {
+        kind: "split",
+        splitId: "1",
+        number: 1,
+        label: "S1",
+        paneCount: 2,
+        display: "Editor · PDF",
+        active: true,
+      },
+      {
+        kind: "split",
+        splitId: "2",
+        number: 2,
+        label: "S2",
+        paneCount: 3,
+        display: "Search · Docs · Notes",
+        active: false,
+      },
+    ]);
+    expect(Object.isFrozen(items[0])).toBe(true);
+  });
+
+  test("on a lone tab no row is active; without splits there are none", () => {
+    const s = selectSplitTab(made([["a", "b"]]), "z").splits;
+    expect(splitPickerItems(s, titleOf).map((i) => i.active)).toEqual([false]);
+    expect(splitPickerItems(createSplits(), titleOf)).toEqual([]);
+    expect(NO_SPLITS_TO_PICK).toBe("no splits in this workspace");
+  });
+
+  test("a split is shown by selecting its focused pane's tab", () => {
+    let s = made([
+      ["a", "b"],
+      ["c", "d"],
+    ]);
+    s = selectSplitTab(s, "d").splits;
+    s = selectSplitTab(s, "a").splits;
+    expect(splitFocusTab(s, 2)).toBe("d");
+    expect(splitFocusTab(s, 1)).toBe("a");
+    expect(splitFocusTab(s, 3)).toBeNull();
   });
 });

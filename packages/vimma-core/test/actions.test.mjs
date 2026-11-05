@@ -290,3 +290,17 @@ describe("the downloads picker (docs/specs/downloads.md decision 2)", () => {
     expect(compileKeymap().bindingsFor("downloads")).toEqual(["ctrl+shift+y"]);
   });
 });
+
+describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4)", () => {
+  test("split_picker, next_split and previous_split are pane actions without a default key", () => {
+    const keymap = compileKeymap();
+    for (const [name, id] of [
+      ["split_picker", "pane.split_picker"],
+      ["next_split", "pane.next_split"],
+      ["previous_split", "pane.previous_split"],
+    ]) {
+      expect(getAction(name)).toMatchObject({ id, group: "Panes" });
+      expect(keymap.bindingsFor(name)).toEqual([]);
+    }
+  });
+});

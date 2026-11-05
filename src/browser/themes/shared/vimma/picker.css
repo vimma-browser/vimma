@@ -101,6 +101,22 @@
     grid-template-columns: 9ch minmax(0, 1fr) minmax(0, 28rem);
   }
 
+  /* The split picker (docs/specs/multiple-splits.md decision 12): a swatch in the split's colour
+     before its label, which says the same for readers who cannot tell the colours apart. */
+  &#vimma-split-picker .vimma-picker-row {
+    grid-template-columns: 5ch minmax(0, 1fr) max-content;
+  }
+
+  & .vimma-picker-swatched .vimma-picker-index::before {
+    content: "";
+    display: inline-block;
+    width: 0.7em;
+    height: 0.7em;
+    margin-inline-end: 0.5ch;
+    border-radius: 2px;
+    background: var(--vimma-picker-swatch);
+  }
+
   & .vimma-picker-problem .vimma-picker-index {
     color: var(--vimma-text-error, var(--vimma-text-accent, AccentColor));
   }

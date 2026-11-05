@@ -15,6 +15,7 @@ import {
   workspaceItems,
 } from "../src/picker.mjs";
 import { downloadSections } from "../src/downloads.mjs";
+import { createSplits, newSplit, splitPickerItems } from "../src/splits.mjs";
 
 /** @import { PickerState, PickerItem } from "../src/picker.mjs" */
 
@@ -678,5 +679,49 @@ describe("downloads picker (docs/specs/downloads.md)", () => {
     s = setPickerItems(s, moved);
     expect(pickerSelection(s)?.item).toMatchObject({ downloadId: "2" });
     expect(s.selected).toBe(2);
+  });
+});
+
+describe("split picker (docs/specs/multiple-splits.md behaviour 7)", () => {
+  let model = createSplits();
+  for (const tabs of [
+    ["a", "b"],
+    ["c", "d"],
+    ["e", "f"],
+  ])
+    model = newSplit(model, tabs).splits;
+  const titles = /** @type {Record<string, string>} */ ({
+    a: "Editor",
+    b: "PDF",
+    c: "Search",
+    d: "Docs",
+    e: "Mail",
+    f: "Calendar",
+  });
+  const items = splitPickerItems(model, (id) => titles[id] ?? "");
+  /** @param {PickerState} s */
+  const selectedSplit = (s) => /** @type {any} */ (pickerSelection(s)?.item)?.splitId;
+
+  test("opens on the shown split; Enter shows the selected one", () => {
+    let s = openPicker(items, { activeId: "3" });
+    expect(selectedSplit(s)).toBe("3");
+    s = pickerKey(s, "k").state;
+    expect(pickerKey(s, "enter").effect).toEqual({ type: "select", id: "2" });
+  });
+
+  test("a digit shows that split at once; a digit without a split does nothing", () => {
+    const s = openPicker(items, { activeId: "3" });
+    expect(pickerKey(s, "1").effect).toEqual({ type: "select", id: "1" });
+    expect(pickerKey(s, "2").effect).toEqual({ type: "select", id: "2" });
+    expect(pickerKey(s, "7")).toEqual({ state: s, effect: null });
+  });
+
+  test("typing after / filters by the panes' titles", () => {
+    let s = openPicker(items, { activeId: "1" });
+    for (const k of ["/", "c", "a", "l"]) s = pickerKey(s, k).state;
+    expect(s.matches.map((m) => /** @type {any} */ (m.item).splitId)).toEqual(["3"]);
+    // In search mode a digit is typed, not a split picked.
+    expect(pickerKey(s, "2").effect).toBeNull();
+    expect(pickerKey(s, "enter").effect).toEqual({ type: "select", id: "3" });
   });
 });

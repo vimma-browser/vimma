@@ -40,35 +40,38 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Panes
 
-| Action                                       | Config name              | Bindings                                                 |
-| -------------------------------------------- | ------------------------ | -------------------------------------------------------- |
-| Split right                                  | `split_vertical`         | `ctrl+b v`                                               |
-| Split down                                   | `split_horizontal`       | `ctrl+b -`                                               |
-| Focus pane to the left                       | `focus_pane_left`        | `ctrl+b h`, `ctrl+w h`                                   |
-| Focus pane below                             | `focus_pane_down`        | `ctrl+b j`, `ctrl+w j`                                   |
-| Focus pane above                             | `focus_pane_up`          | `ctrl+b k`, `ctrl+w k`                                   |
-| Focus pane to the right                      | `focus_pane_right`       | `ctrl+b l`, `ctrl+w l`                                   |
-| Swap with pane to the left                   | `swap_pane_left`         | `ctrl+b shift+h`, `ctrl+w H`                             |
-| Swap with pane below                         | `swap_pane_down`         | `ctrl+b shift+j`, `ctrl+w J`                             |
-| Swap with pane above                         | `swap_pane_up`           | `ctrl+b shift+k`, `ctrl+w K`                             |
-| Swap with pane to the right                  | `swap_pane_right`        | `ctrl+b shift+l`, `ctrl+w L`                             |
-| Zoom pane                                    | `zoom`                   | `ctrl+b z`, `ctrl+w o`                                   |
-| Close pane; the last pane closes the tab     | `close_pane`             | `ctrl+b x`                                               |
-| Resize mode                                  | `resize_mode`            | `ctrl+b r`                                               |
-| Leave resize mode                            | `resize_exit`            | `esc [resize]`, `enter [resize]`, `q [resize]`           |
-| Make pane narrower                           | `resize_narrower`        | `ctrl+w <`, `h [resize]`, `left [resize]`, `< [resize]`  |
-| Make pane wider                              | `resize_wider`           | `ctrl+w >`, `l [resize]`, `right [resize]`, `> [resize]` |
-| Make pane taller                             | `resize_taller`          | `ctrl+w +`, `j [resize]`, `down [resize]`, `+ [resize]`  |
-| Make pane shorter                            | `resize_shorter`         | `ctrl+w -`, `k [resize]`, `up [resize]`, `- [resize]`    |
-| New pane, along the longer side              | `new_pane`               | `ctrl+b enter`                                           |
-| Next layout                                  | `next_layout`            | `ctrl+b space`                                           |
-| Apply a layout preset by name (:layout name) | `select_layout`          | —                                                        |
-| Layout: all side by side                     | `layout_even_horizontal` | —                                                        |
-| Layout: all stacked                          | `layout_even_vertical`   | —                                                        |
-| Layout: main pane left, rest stacked         | `layout_main_vertical`   | —                                                        |
-| Layout: main pane on top, rest below         | `layout_main_horizontal` | —                                                        |
-| Layout: a grid                               | `layout_tiled`           | —                                                        |
-| Layout: a spiral (dwindle)                   | `layout_dwindle`         | —                                                        |
+| Action                                           | Config name              | Bindings                                                 |
+| ------------------------------------------------ | ------------------------ | -------------------------------------------------------- |
+| Split right                                      | `split_vertical`         | `ctrl+b v`                                               |
+| Split down                                       | `split_horizontal`       | `ctrl+b -`                                               |
+| Focus pane to the left                           | `focus_pane_left`        | `ctrl+b h`, `ctrl+w h`                                   |
+| Focus pane below                                 | `focus_pane_down`        | `ctrl+b j`, `ctrl+w j`                                   |
+| Focus pane above                                 | `focus_pane_up`          | `ctrl+b k`, `ctrl+w k`                                   |
+| Focus pane to the right                          | `focus_pane_right`       | `ctrl+b l`, `ctrl+w l`                                   |
+| Swap with pane to the left                       | `swap_pane_left`         | `ctrl+b shift+h`, `ctrl+w H`                             |
+| Swap with pane below                             | `swap_pane_down`         | `ctrl+b shift+j`, `ctrl+w J`                             |
+| Swap with pane above                             | `swap_pane_up`           | `ctrl+b shift+k`, `ctrl+w K`                             |
+| Swap with pane to the right                      | `swap_pane_right`        | `ctrl+b shift+l`, `ctrl+w L`                             |
+| Zoom pane                                        | `zoom`                   | `ctrl+b z`, `ctrl+w o`                                   |
+| Close pane; the last pane closes the tab         | `close_pane`             | `ctrl+b x`                                               |
+| Resize mode                                      | `resize_mode`            | `ctrl+b r`                                               |
+| Leave resize mode                                | `resize_exit`            | `esc [resize]`, `enter [resize]`, `q [resize]`           |
+| Make pane narrower                               | `resize_narrower`        | `ctrl+w <`, `h [resize]`, `left [resize]`, `< [resize]`  |
+| Make pane wider                                  | `resize_wider`           | `ctrl+w >`, `l [resize]`, `right [resize]`, `> [resize]` |
+| Make pane taller                                 | `resize_taller`          | `ctrl+w +`, `j [resize]`, `down [resize]`, `+ [resize]`  |
+| Make pane shorter                                | `resize_shorter`         | `ctrl+w -`, `k [resize]`, `up [resize]`, `- [resize]`    |
+| New pane, along the longer side                  | `new_pane`               | `ctrl+b enter`                                           |
+| Next layout                                      | `next_layout`            | `ctrl+b space`                                           |
+| Apply a layout preset by name (:layout name)     | `select_layout`          | —                                                        |
+| Layout: all side by side                         | `layout_even_horizontal` | —                                                        |
+| Layout: all stacked                              | `layout_even_vertical`   | —                                                        |
+| Layout: main pane left, rest stacked             | `layout_main_vertical`   | —                                                        |
+| Layout: main pane on top, rest below             | `layout_main_horizontal` | —                                                        |
+| Layout: a grid                                   | `layout_tiled`           | —                                                        |
+| Layout: a spiral (dwindle)                       | `layout_dwindle`         | —                                                        |
+| Split picker: show one of the workspace's splits | `split_picker`           | —                                                        |
+| Show the next split                              | `next_split`             | —                                                        |
+| Show the previous split                          | `previous_split`         | —                                                        |
 
 ## Workspaces
 

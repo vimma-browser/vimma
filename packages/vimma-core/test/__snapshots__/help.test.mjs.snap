@@ -54,6 +54,9 @@ Panes
   layout_main_horizontal    (unbound)                                            Layout: main pane on top, rest below
   layout_tiled              (unbound)                                            Layout: a grid
   layout_dwindle            (unbound)                                            Layout: a spiral (dwindle)
+  split_picker              (unbound)                                            Split picker: show one of the workspace's splits
+  next_split                (unbound)                                            Show the next split
+  previous_split            (unbound)                                            Show the previous split
 
 Workspaces
   next_workspace            ctrl+b ), ]w                                         Next workspace
@@ -375,6 +378,9 @@ Panes
   layout_main_horizontal    (unbound)                                            Layout: main pane on top, rest below
   layout_tiled              (unbound)                                            Layout: a grid
   layout_dwindle            (unbound)                                            Layout: a spiral (dwindle)
+  split_picker              (unbound)                                            Split picker: show one of the workspace's splits
+  next_split                (unbound)                                            Show the next split
+  previous_split            (unbound)                                            Show the previous split
 
 Workspaces
   next_workspace            ctrl+b ), ]w                                         Next workspace

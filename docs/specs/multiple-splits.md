@@ -3,7 +3,8 @@
 Status: accepted (sub-PRs 1 to 3 implemented: the hidden-split refusal stays until the next key;
 the core model, snapshot, status bar text, split colours and `max_splits` parsing; several splits
 in the window, the side panel's labels and new-split flow and `state.splits`, behind
-`vimma.feature.multiple_splits`) · Area:
+`vimma.feature.multiple_splits`; sub-PR 4 implemented: the split picker and the step actions,
+without default keys, behind the same pref) · Area:
 core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
 `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
 `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,
@@ -189,7 +190,9 @@ All references are to `main` at aac585a5, Firefox 157.
     and drifts from the theme's look.
 12. **The split picker reuses the picker** (`ui/picker.mjs`, as the goto and tab-search pickers
     do), because filtering, digits, `Esc` and theming already work there. A row shows the colour
-    swatch, `S2`, `3 panes` and the panes' tab titles joined with `·`, filtered by title.
+    swatch, `S2`, `3 panes` and the panes' tab titles joined with `·`, filtered by title. The
+    filter starts with `/`, as in the workspace picker, because the bare keys are the picker's
+    own: the digits, `j` / `k` and `q`.
 13. **Keys: `ctrl+b S` for the picker, `]s` / `[s` to step**, because `S` reads as "splits" next
     to `ctrl+b w` for workspaces, and `]s` / `[s` follow `]w` / `[w` and `]q` / `[q`. On a lone
     tab both first show the split shown last, because going back is the common case. The actions
