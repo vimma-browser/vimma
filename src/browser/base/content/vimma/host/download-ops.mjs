@@ -534,7 +534,7 @@ function runState(win, d, r, op, say) {
     say(`retrying "${r.name}"`);
   } else if (op === "remove") {
     lazy.DownloadsCommon.deleteDownload(d).catch(console.error);
-    // Firefox's remove confirms the block of blocked data, which deletes it (decision 6).
+    // Firefox's remove confirms the block of blocked data, which deletes it (decision 7, D3).
     say(
       r.hasBlockedData
         ? `removed "${r.name}" and its blocked data`
