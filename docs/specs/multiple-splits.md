@@ -1,7 +1,9 @@
 # Spec: multiple-splits
 
-Status: accepted (sub-PRs 1 and 2 implemented: the hidden-split refusal stays until the next key;
-the core model, snapshot, status bar text, split colours and `max_splits` parsing) · Area:
+Status: accepted (sub-PRs 1 to 3 implemented: the hidden-split refusal stays until the next key;
+the core model, snapshot, status bar text, split colours and `max_splits` parsing; several splits
+in the window, the side panel's labels and new-split flow and `state.splits`, behind
+`vimma.feature.multiple_splits`) · Area:
 core (`packages/vimma-core/src/panes.mjs`, `splits.mjs` new, `sidepanel.mjs`, `snapshot.mjs`,
 `statusbar.mjs`, `workspaces.mjs`, `theme.mjs`, `config.mjs`, `picker.mjs`, `actions.mjs`,
 `defaults.mjs`), host (`split/PaneView.mjs`, `host/pane-ops.mjs`, `host/VimmaHost.sys.mjs`,

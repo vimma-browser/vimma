@@ -452,6 +452,87 @@ add_task(async function test_state_panes() {
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
+// docs/specs/multiple-splits.md, "Control protocol": every split of the workspace in `splits`,
+// read-only; `panes` keeps its meaning (the shown split, else the one shown last, hidden).
+add_task(async function test_state_splits() {
+  await enable();
+  const client = await session();
+  const view = PaneViews.get(window);
+  const state = async (id) => {
+    const { result } = await client.request(id, "state");
+    const v = validateMessage(
+      { type: "response", id, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
+    return result;
+  };
+  Assert.ok(!("splits" in (await state(1))), "no splits field while the feature is off");
+
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.feature.multiple_splits", true]] });
+  const tabs = [];
+  for (const q of ["s1", "s2", "s3", "s4", "s5"]) {
+    const t = BrowserTestUtils.addTab(gBrowser, `https://example.com/?${q}`);
+    await BrowserTestUtils.browserLoaded(t.linkedBrowser);
+    tabs.push(t);
+  }
+  const [a, b, c, d, lone] = tabs;
+  Assert.equal(Object.keys(await state(2)).includes("splits"), true, "splits with the feature");
+  Assert.deepEqual((await state(3)).splits, [], "none yet");
+
+  Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
+  gBrowser.selectedTab = lone;
+  Assert.ok(view.showTabs([c, d], d).ok, "S2: c | d, made on a lone tab");
+  await TestUtils.waitForCondition(() => view.splits.shown === 2, "S2 shows");
+  const before = view.splits;
+  const result = await state(4);
+  const id = (tab) => String(tab.linkedBrowser.browserId);
+  const index = (tab) => result.tabs.findIndex((t) => t.id === id(tab));
+  const row = (x, y) => ({
+    axis: "x",
+    ratios: [0.5, 0.5],
+    children: [
+      { tab: id(x), index: index(x) },
+      { tab: id(y), index: index(y) },
+    ],
+  });
+  Assert.deepEqual(
+    result.splits,
+    [
+      { number: 1, shown: false, focus: id(a), zoomed: false, root: row(a, b) },
+      { number: 2, shown: true, focus: id(d), zoomed: false, root: row(c, d) },
+    ],
+    "both splits in number order, tab ids and places only",
+  );
+  Assert.deepEqual(
+    result.panes,
+    { focus: id(d), zoomed: false, hidden: false, root: row(c, d) },
+    "panes is the shown split",
+  );
+  Assert.equal(view.splits.shown, before.shown, "state changed nothing (read-only)");
+  Assert.deepEqual(view.splits.splits, before.splits, "the splits are the same");
+
+  gBrowser.selectedTab = lone;
+  const hidden = await state(5);
+  Assert.deepEqual(
+    hidden.splits.map((x) => [x.number, x.shown]),
+    [
+      [1, false],
+      [2, false],
+    ],
+    "a lone tab: none shown",
+  );
+  Assert.equal(hidden.panes.hidden, true, "panes: the split shown last, hidden");
+  Assert.equal(hidden.panes.focus, id(d), "S2's focus");
+
+  client.close();
+  await disable();
+  for (const t of tabs) gBrowser.removeTab(t);
+  await TestUtils.waitForCondition(() => !view.panes, "no split left");
+  await SpecialPowers.popPrefEnv();
+  Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
+});
+
 add_task(async function test_send_keys_reach_the_page() {
   await enable();
   const client = await session();

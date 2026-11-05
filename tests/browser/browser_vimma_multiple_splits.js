@@ -70,9 +70,7 @@ const tabOf = (panelId, win = window) => win.gBrowser.tabs.find((t) => t.linkedP
 /** A tree with each leaf named by its tab: `x[a,b]`; none: "". */
 function shape(panes, win = window) {
   const walk = (n) =>
-    n.type === "leaf"
-      ? nameOf(tabOf(n.tab, win))
-      : `${n.axis}[${n.children.map(walk).join(",")}]`;
+    n.type === "leaf" ? nameOf(tabOf(n.tab, win)) : `${n.axis}[${n.children.map(walk).join(",")}]`;
   return panes ? walk(panes.root) : "";
 }
 
@@ -103,7 +101,12 @@ function prefix(key, win = window) {
 async function openPanel(win = window) {
   const browser = win.gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
-  await focusContent(browser);
+  if (win === window) await focusContent(browser);
+  else {
+    // head.js's focusContent checks the test's own window.
+    await SimpleTest.promiseFocus(browser);
+    await until(() => win.document.activeElement === browser, "focus is in the content browser");
+  }
   prefix("b", win);
   await until(() => isOpen(win), "ctrl+b b opens the side panel");
 }
@@ -165,7 +168,7 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
 
-add_setup(async function () {
+add_task(async function setup_six_pages_with_the_feature_on() {
   await SpecialPowers.pushPrefEnv({ set: [[PREF, true]] });
   await WindowWorkspaces.get(window).ready;
   for (const n of ["a", "b", "c", "d", "e", "f"]) opened.push(await page(n));
@@ -260,7 +263,9 @@ add_task(async function marking_a_tab_of_another_split_moves_it_and_ends_that_sp
     "a left S1, which ended with one pane; the new split took the free number 1",
   );
   Assert.ok(!tab("b").splitview, "b is in no split");
-  Assert.ok(!laidOut(tab("b")), "and not on screen");
+  const bPanel = document.getElementById(tab("b").linkedPanel);
+  Assert.equal(bPanel.style.getPropertyValue("--vimma-pane-w"), "", "b's panel lost S1's size");
+  Assert.ok(!bPanel.classList.contains("split-view-panel"), "and its place in a split view");
   Assert.equal(tab("a").splitview, tab("e").splitview, "a and e share a wrapper");
 });
 
