@@ -21,6 +21,7 @@ requestLongerTimeout(3);
 
 const { Downloads } = ChromeUtils.importESModule("resource://gre/modules/Downloads.sys.mjs");
 const { Integration } = ChromeUtils.importESModule("resource://gre/modules/Integration.sys.mjs");
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { WorkspaceStore } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
 );
@@ -570,7 +571,9 @@ add_task(async function test_s_shows_the_file_in_its_folder() {
   EventUtils.synthesizeKey("s");
   await until(() => calls.length === 1, "s reaches showContainingDirectory");
   Assert.deepEqual(calls[0], { op: "show", path: file.target.path });
-  await until(() => noticeText().includes("file manager"), "says what it asked");
+  // macOS confirms with Finder; elsewhere Vimma only asked the file manager (decision 15).
+  const said = AppConstants.platform === "macosx" ? "shown in Finder" : "file manager";
+  await until(() => noticeText().includes(said), "says what it asked");
   Assert.ok(isOpen(), "the picker stays open");
   await closePicker();
   BrowserTestUtils.removeTab(tab);
