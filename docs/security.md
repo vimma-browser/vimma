@@ -330,10 +330,11 @@ Allowed without a question, as in about:addons: enable, disable, and private-win
 Vimma's status bar, pickers, side panel and overlays run with full browser privileges and show
 text that pages, add-ons and bookmarks choose.
 
-- C1. Page titles, add-on names and bookmark titles **must** be set as text (`textContent`),
-  **never** parsed as HTML.
+- C1. Page titles, add-on names, bookmark titles and the downloads picker's file names, hosts,
+  verdicts and paths (D1) **must** be set as text (`textContent`), **never** parsed as HTML.
   [`page_titles_with_html_stay_text`](../tests/browser/browser_vimma_security_invariants.js),
   [`names_with_html_are_text`](../tests/browser/browser_vimma_addons.js),
+  [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
@@ -354,7 +355,15 @@ text that pages, add-ons and bookmarks choose.
   chat window; its `--version` is the only other call, with that fixed argument, while setup
   lists what a search of `PATH` found, and, for a CLI that has no flag to leave out its other
   MCP servers (Codex), one fixed listing of them (`codex mcp list --json`) right before the
-  run, from the same checked path, with no shell and no standard input. Chrome code **never** calls
+  run, from the same checked path, with no shell and no standard input. Opening a download or
+  showing it in its folder hands a file to the OS too: chrome code **must** ask Firefox for it
+  only through `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
+  `host/download-ops.mjs`, and only on a key the user pressed in the downloads picker (§21), so
+  Firefox's executable prompt and Vimma's agent-download rule (M12, the `launchDownload`
+  override) are always on the way; it **never** calls `nsIFile.launch`, `nsIFile.reveal`,
+  `DownloadUIHelper.loadFileIn`, `launchFile`, the external protocol service or
+  `DownloadIntegration.launchDownload` itself, but the agent override's delegation to Firefox's
+  own. Chrome code **never** calls
   native code, with one exception: the owner and mode of a file, read through js-ctypes for
   clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
   folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
@@ -371,7 +380,10 @@ text that pages, add-ons and bookmarks choose.
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs),
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs),
+  [`test_enter_and_o_open_through_launchDownload`](../tests/browser/browser_vimma_downloads.js),
+  [`test_an_executable_asks_firefoxs_prompt_first`](../tests/browser/browser_vimma_downloads.js)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -3773,3 +3785,52 @@ bindings, so it is accepted here.
   [`the_viewer_follows_the_theme`](../tests/browser/browser_vimma_pdf_look.js),
   [`pdfjs_sidebar_stays_closed`](../tests/browser/browser_vimma_pdf_look.js),
   [`the_theme_reaches_only_the_viewer`](../tests/browser/browser_vimma_pdf_look.js)
+
+## 21. Downloads picker (`host/download-ops.mjs`)
+
+`ctrl+b d` (or `:downloads`) opens a picker over the window's downloads, where one key opens a
+file, opens it in the system's app, shows it in its folder, copies its link or path, opens the
+page it came from, or opens Firefox's full downloads view. It lists files on your disk and
+hands them to the OS, so these rules keep it to Firefox's own download code and out of an
+agent's reach. Spec: [downloads](specs/downloads.md).
+
+**Reach:** only you, with `ctrl+b d`, `:downloads` or a key you bind. No control-socket or MCP
+command reaches it, and an agent's keys are a fixed list without it (S7, M16). A `full`-role
+connection holds your token and can press `ctrl+b d` as your keyboard can (§1). It shows what
+Firefox's panel and Library show already, and stores nothing of its own. File names and
+referring pages are chosen by the sites the files came from.
+
+- D1. A row's file name, host, verdict and path **must** be set as text (C1), and a row **must**
+  show the host a download came from, **never** its URL, so a token in a download link is not on
+  screen; a download with no file path is named by its URL's last path segment or host. `y`
+  copies the full link only on request.
+  [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
+  [`a row shows the host, never the URL`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a download with no file path is named by its URL's last segment, never the URL`](../packages/vimma-core/test/downloads.test.mjs)
+- D2. A private window **must** list only its own private session's downloads, and a normal
+  window **never** a private one; the status bar's segment counts the same way. A private
+  download is gone with its session, as in Firefox.
+  [`test_a_private_window_lists_only_private_downloads`](../tests/browser/browser_vimma_downloads.js),
+  [`test_a_private_window_counts_only_its_private_downloads`](../tests/browser/browser_vimma_downloads.js)
+- D4. An agent download (M11's test: its container, its tab's container, or a path in the
+  quarantine folder) **must never** be opened, opened in the system's app, retried, allowed or
+  followed to its referring page from the picker, because its file is admitted only under M12
+  and its page was chosen by the agent; `o` is refused twice, by the picker and by M12's
+  `launchDownload` override. Showing it in its folder, copying its link or path and removing it
+  stay. For any download, `u` **must** open only an `http:` or `https:` page, never a script,
+  `data:` or `file:` address a page chose as its referrer, and **must** open it in the
+  download's own container (the window's non-agent one for a history entry), **never** the agent
+  workspace's, even with that workspace on screen: the full referrer may carry a token.
+  [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
+  [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
+  [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
+  [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),
+  [`the keys that apply follow isCommandEnabled for each state`](../packages/vimma-core/test/downloads.test.mjs)
+- D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not
+  one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
+  `ctl/` or `agent/` module imports the picker's ops.
+  [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs)
+
+D3 (blocked downloads, released only through Firefox's dialog) and D5 (`y/N` before cancel and
+delete) come with the keys they govern.

@@ -177,6 +177,8 @@ const keys = {
   agent_chat: ["prefix+i"],
   copy_mode: ["prefix+["],
   addon_picker: ["prefix+e"],
+  // docs/specs/downloads.md decision 2: the feature's initial, beside the other pickers.
+  downloads_picker: ["prefix+d"],
 };
 
 /**

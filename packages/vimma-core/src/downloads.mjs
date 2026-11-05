@@ -238,6 +238,31 @@ function hostOf(url) {
 }
 
 /**
+ * A name for a download with no file path (an old history entry): its URL's last path segment,
+ * else its host, never the whole URL, so a token in the link stays off screen (decision 13).
+ * @param {string} url
+ */
+export function nameFromUrl(url) {
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "ftp:") {
+      return "download";
+    }
+    const last = u.pathname.split("/").filter(Boolean).pop();
+    if (last) {
+      try {
+        return decodeURIComponent(last);
+      } catch {
+        return last;
+      }
+    }
+    return u.hostname || "download";
+  } catch {
+    return "download";
+  }
+}
+
+/**
  * Whether a download is listed under `active`: downloading, paused, or blocked with its data
  * kept (decision 3).
  * @param {DownloadRecord} r
@@ -316,6 +341,20 @@ const KEY_OPS = Object.freeze({
   "shift+l": "library",
 });
 
+/**
+ * The keys the picker hands to the host on a download row, besides Enter: the ones whose op the
+ * host runs (Delivery 3). Pause, cancel, retry, remove, delete and unblock join with their ops.
+ */
+export const DOWNLOAD_PICKER_KEYS = Object.freeze([
+  "o",
+  "shift+o",
+  "s",
+  "y",
+  "shift+y",
+  "u",
+  "shift+l",
+]);
+
 /** The ops that ask `y/N` first, with the picker closed (decision 6). */
 const ASKS = new Set(["cancel", "delete"]);
 
@@ -366,7 +405,8 @@ function refusal(r, op, { allowOverride }) {
       return state === S.FAILED || state === S.CANCELED ? null : "only a failed or canceled one";
     case "referrer":
       if (r.agent) return "an agent download's page is never opened by Vimma";
-      return r.referrer && r.referrer !== "about:blank" ? null : "no page it came from";
+      // The referrer is the page's choice: only a web page opens, never a script, data or file.
+      return r.referrer && /^https?:/i.test(r.referrer) ? null : "no page it came from";
     case "remove":
       if (contentAnalysisMalware) return "your organization's scanner keeps this download";
       return r.stopped ? null : "still downloading; c cancels it";
@@ -519,7 +559,9 @@ const END_WORDS = { done: "finished", failed: "failed", blocked: "blocked" };
  * worst of those ends for the segment. `seen` maps a download's id to its last state; `seed`
  * reads the list as the window first finds it, which announces nothing. A download first seen
  * already ended is announced only when it started at or after `since` (the seed's time),
- * because history entries and restored downloads reach the list late, after the seed.
+ * because history entries and restored downloads reach the list late, after the seed. One with
+ * no start time is new: Firefox adds an insecure download already blocked, before it starts
+ * (DownloadLegacy.sys.mjs).
  * @param {ReadonlyMap<number, number>} seen
  * @param {readonly DownloadRecord[]} records
  * @param {{ seed?: boolean, since?: number }} [options]
@@ -540,7 +582,7 @@ export function downloadEnds(seen, records, { seed = false, since = -Infinity } 
     const end = endOf(state);
     if (!end || (before !== undefined && endOf(before) !== null)) continue;
     if (before === S.CANCELED) continue;
-    if (before === undefined && r.startTime < since) continue;
+    if (before === undefined && r.startTime > 0 && r.startTime < since) continue;
     texts.push(`download ${END_WORDS[end]}: ${r.name}`);
     if (worst === null || END_RANK[end] > END_RANK[worst]) worst = end;
   }

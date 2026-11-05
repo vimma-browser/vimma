@@ -13,6 +13,7 @@ import {
   downloadSummary,
   downloadSegment,
   downloadEnds,
+  nameFromUrl,
 } from "../src/downloads.mjs";
 import { statusSegments } from "../src/statusbar.mjs";
 
@@ -178,6 +179,15 @@ describe("downloadRow", () => {
     expect(downloadRow(rec({ url: "data:text/plain,hi" }), 0).host).toBe("");
   });
 
+  test("a download with no file path is named by its URL's last segment, never the URL", () => {
+    expect(nameFromUrl("https://files.example.com/get/report%20one.pdf?token=secret#x")).toBe(
+      "report one.pdf",
+    );
+    expect(nameFromUrl("https://files.example.com/?token=secret")).toBe("files.example.com");
+    expect(nameFromUrl("data:text/plain,secret")).toBe("download");
+    expect(nameFromUrl("not a url")).toBe("download");
+  });
+
   test("another workspace's download names it", () => {
     expect(downloadRow(rec({ workspace: "work" }), 0).workspace).toBe("work");
   });
@@ -256,6 +266,11 @@ describe("downloadKey", () => {
     expect(op(rec(), "u")).toBe("referrer");
     expect(op(rec({ referrer: null }), "u")).toBe("refuse");
     expect(op(rec({ referrer: "about:blank" }), "u")).toBe("refuse");
+    // A referrer is chosen by the page: only a web page is opened, never a script or a file.
+    expect(op(rec({ referrer: "http://example.com/a" }), "u")).toBe("referrer");
+    for (const referrer of ["javascript:alert(1)", "data:text/html,x", "file:///etc/passwd"]) {
+      expect(op(rec({ referrer }), "u"), referrer).toBe("refuse");
+    }
     expect(op(rec(), "d")).toBe("remove");
     expect(op(rec(), "shift+d")).toBe("delete");
     expect(op(rec(), "!")).toBe("refuse");
@@ -465,6 +480,16 @@ describe("downloadEnds", () => {
     out = downloadEnds(out.seen, [rec(), failed({ id: 2 }), rec({ id: 3, name: "c.iso" })]);
     expect(out.texts).toEqual([]);
     expect(out.end).toBe(null);
+  });
+
+  test("a download blocked before it started is new, whatever the seed's time", () => {
+    // Firefox adds an insecure download already blocked, with no start time yet.
+    const seeded = downloadEnds(new Map(), [rec()], { seed: true }).seen;
+    const out = downloadEnds(seeded, [rec(), blocked({ id: 2, name: "x.bin", startTime: 0 })], {
+      since: 5000,
+    });
+    expect(out.texts).toEqual(["download blocked: x.bin"]);
+    expect(out.end).toBe("blocked");
   });
 
   test("a canceled or paused download is not an end", () => {

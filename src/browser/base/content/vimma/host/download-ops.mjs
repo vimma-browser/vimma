@@ -2,22 +2,57 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The window's downloads for the status bar's `↓` segment (docs/specs/downloads.md, Behaviour 12
-// and decision 9): a view on the window's Firefox download list, read into core
-// DownloadRecords. Read only: nothing here starts, opens or changes a download.
+// The window's downloads (docs/specs/downloads.md): the status bar's `↓` segment (Behaviour 12,
+// decision 9) and the `ctrl+b d` picker (decisions 3, 5 and 12), each a view on the window's
+// Firefox download list, read into core DownloadRecords. A picker key runs through Firefox's own
+// download code only: `DownloadsCommon.openDownload` and `Download.showContainingDirectory` are
+// the only calls here that hand a file to the OS (docs/security.md C2).
 
-import { downloadSegment, downloadSummary } from "../core/downloads.mjs";
+import {
+  DONE_MS,
+  DOWNLOAD_ROW_CAP,
+  downloadEnds,
+  downloadKey,
+  downloadSections,
+  downloadSegment,
+  downloadState,
+  downloadSummary,
+  nameFromUrl,
+} from "../core/downloads.mjs";
+import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
+import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { runCommand } from "./browser-ops.mjs";
+import { refusedScheme } from "../core/pageurl.mjs";
+import { openUrl } from "./tab-ops.mjs";
 
-/** @import { DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
+/** @import { DownloadEndState, DownloadItem, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
+  AgentDownloads: "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
+  AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
+  DownloadHistory: "resource://gre/modules/DownloadHistory.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
+  DownloadsCommon: "moz-src:///browser/components/downloads/DownloadsCommon.sys.mjs",
+  DownloadIntegration: "resource://gre/modules/DownloadIntegration.sys.mjs",
+  Integration: "resource://gre/modules/Integration.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
+/**
+ * The combined download integration, as DownloadsViewUI reads it: Firefox's
+ * DownloadsViewableInternally registers the types it shows itself there, not on the module.
+ */
+const integration = () => lazy.Integration.downloads.getCombined(lazy.DownloadIntegration);
+
 /** docs/specs/downloads.md decision 20; removed by the sub-PR that turns the feature on. */
 export const DOWNLOADS_FEATURE_PREF = "vimma.feature.downloads";
+
+/** Whether the downloads feature is on (decision 20). */
+export const downloadsOn = () => Services.prefs.getBoolPref(DOWNLOADS_FEATURE_PREF, false);
+
+/** A picker re-renders a download's progress at most this often (decision 12). */
+const PROGRESS_MS = 1000;
 
 /** A per-session id for each Firefox `Download` object, so a row keeps its download. */
 const ids = new WeakMap();
@@ -52,54 +87,140 @@ function errorOf(error) {
 }
 
 /**
- * A Firefox `Download` (toolkit/components/downloads/DownloadCore.sys.mjs) as a core record.
+ * What a picker row needs beyond the status bar: whether it is an agent download, another
+ * workspace's name, and whether Firefox shows the file itself. Read once per state, not on every
+ * progress chunk: the agent test and the MIME lookup cost more than the byte counts.
+ * @typedef {{ key: string, agent: boolean, workspace: string | null, viewsInternally: boolean }}
+ *   About
+ */
+/** @type {WeakMap<object, About>} */
+const abouts = new WeakMap();
+
+/**
+ * The workspace whose container a session download came from, when it is not this window's
+ * current one (decision 4). A history entry keeps no container, so it names none.
+ * @param {Window} win
  * @param {any} d
+ */
+function workspaceOf(win, d) {
+  const ucid = d.source?.userContextId;
+  if (!ucid) return null;
+  const def = WorkspaceStore.definitions.workspaces.find((w) => w.userContextId === ucid);
+  if (!def) return null;
+  return def.name === WindowWorkspaces.get(win)?.status()?.name ? null : def.name;
+}
+
+/**
+ * Whether Firefox would show the finished file in a tab of its own (a PDF), as its panel decides
+ * `openInSystemViewer` (DownloadsViewUI.sys.mjs, isCommandEnabled).
+ * @param {any} d
+ */
+function viewsInternally(d) {
+  if (!d.succeeded) return false;
+  try {
+    const type = lazy.DownloadsCommon.getMimeInfo(d)?.type;
+    return !!type && !!integration().shouldViewDownloadInternally(type);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {Window} win
+ * @param {any} d
+ * @returns {About}
+ */
+function aboutOf(win, d) {
+  const key = `${d.stopped}/${d.succeeded}/${d.target?.path ?? ""}`;
+  const known = abouts.get(d);
+  if (known && known.key === key) return known;
+  const about = {
+    key,
+    // The test AgentDownloads applies to every download: its container, its tab's, or the
+    // quarantine folder (docs/security.md M11).
+    agent: !!lazy.AgentDownloads.isAgentDownload(d),
+    workspace: workspaceOf(win, d),
+    viewsInternally: viewsInternally(d),
+  };
+  abouts.set(d, about);
+  return about;
+}
+
+/**
+ * A Firefox `Download` (toolkit/components/downloads/DownloadCore.sys.mjs), or a history entry
+ * (DownloadHistory.sys.mjs, HistoryDownload: no byte counts, no referrer, no start time but its
+ * Places visit's), as a core record. With `win`, the picker's fields are filled too.
+ * @param {any} d
+ * @param {Window | null} [win]
  * @returns {DownloadRecord}
  */
-export function recordOf(d) {
-  const referrer = d.source?.referrerInfo?.originalReferrer?.spec ?? null;
+export function recordOf(d, win = null) {
+  const path = d.target?.path ?? "";
+  const about = win ? aboutOf(win, d) : { agent: false, workspace: null, viewsInternally: false };
+  const start = d.startTime
+    ? new Date(d.startTime).getTime()
+    : d.placesNode
+      ? d.placesNode.time / 1000
+      : 0;
   return {
     id: idOf(d),
-    name: PathUtils.filename(d.target.path),
-    url: d.source.url,
-    path: d.target.path,
-    referrer,
-    stopped: d.stopped,
-    succeeded: d.succeeded,
-    canceled: d.canceled,
+    name: path ? PathUtils.filename(path) : nameFromUrl(String(d.source?.url ?? "")),
+    url: String(d.source?.url ?? ""),
+    path,
+    referrer: d.source?.referrerInfo?.originalReferrer?.spec ?? null,
+    stopped: !!d.stopped,
+    succeeded: !!d.succeeded,
+    canceled: !!d.canceled,
     deleted: !!d.deleted,
-    hasProgress: d.hasProgress,
-    hasPartialData: d.hasPartialData,
-    hasBlockedData: d.hasBlockedData,
-    currentBytes: d.currentBytes,
-    totalBytes: d.totalBytes,
-    size: d.target.size ?? 0,
-    speed: d.speed,
-    targetExists: !!d.target.exists,
-    partFileExists: !!d.target.partFileExists,
+    hasProgress: !!d.hasProgress,
+    hasPartialData: !!d.hasPartialData,
+    hasBlockedData: !!d.hasBlockedData,
+    currentBytes: d.currentBytes ?? 0,
+    totalBytes: d.totalBytes ?? 0,
+    size: d.target?.size ?? 0,
+    speed: d.speed ?? 0,
+    targetExists: !!d.target?.exists,
+    partFileExists: !!d.target?.partFileExists,
     error: errorOf(d.error),
-    startTime: d.startTime ? d.startTime.getTime() : 0,
+    startTime: start,
     endTime: d.endTime ? new Date(d.endTime).getTime() : null,
-    viewsInternally: false,
-    // The segment counts every download of the window's kind; which workspace a row belongs to
-    // and whether it is an agent's matter only to the picker's rows.
-    workspace: null,
-    agent: false,
+    viewsInternally: about.viewsInternally,
+    workspace: about.workspace,
+    agent: about.agent,
   };
+}
+
+/**
+ * The list a window shows (decision 3): a private window, its private session's downloads only;
+ * a normal one, the profile's session downloads then the newest from history, as the Library.
+ * @param {Window} win
+ */
+function listFor(win) {
+  if (lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
+    return lazy.Downloads.getList(lazy.Downloads.PRIVATE);
+  }
+  return lazy.DownloadHistory.getList({
+    type: lazy.Downloads.PUBLIC,
+    maxHistoryResults: DOWNLOAD_ROW_CAP,
+  });
 }
 
 /**
  * One window's view on its download list: the private session's in a private window, the
  * profile's otherwise (decision 3), so a private download is never counted in a normal window.
+ * It keeps the last end (`done`, `failed`, `blocked`) for the segment and announces each end
+ * once (Behaviour 12 and 13).
  */
 export class DownloadWatch {
   /**
    * @param {Window} win
    * @param {() => void} emit  the segment changed
+   * @param {(text: string) => void} [say]  an announcement for the status bar's live region
    */
-  constructor(win, emit) {
+  constructor(win, emit, say = () => {}) {
     this.win = win;
     this.emit = emit;
+    this.say = say;
     /** @type {Set<any>} */
     this.downloads = new Set();
     /** @type {any} */
@@ -109,13 +230,21 @@ export class DownloadWatch {
     this.current = null;
     this.text = "null";
     this.destroyed = false;
+    /** @type {Map<number, number>} each download's last state, for downloadEnds */
+    this.seen = new Map();
+    /** When the list was first read: a download already ended before it is not announced. */
+    this.since = Infinity;
+    /** @type {{ state: DownloadEndState, at: number } | null} */
+    this.end = null;
+    /** @type {number | null} the timer that takes `↓ done` away */
+    this.doneTimer = null;
     this.observe = () => void this.sync().catch(console.error);
     Services.prefs.addObserver(DOWNLOADS_FEATURE_PREF, this.observe);
     this.observe();
   }
 
   get on() {
-    return Services.prefs.getBoolPref(DOWNLOADS_FEATURE_PREF, false);
+    return downloadsOn();
   }
 
   /** @private Attach to the list while the feature is on; detach while it is off. */
@@ -129,6 +258,7 @@ export class DownloadWatch {
         onDownloadRemoved: (d) => (this.downloads.delete(d), this.changed()),
       };
       this.view = view;
+      this.since = Infinity;
       const priv = lazy.PrivateBrowsingUtils.isWindowPrivate(this.win);
       const list = await lazy.Downloads.getList(
         priv ? lazy.Downloads.PRIVATE : lazy.Downloads.PUBLIC,
@@ -136,6 +266,9 @@ export class DownloadWatch {
       if (this.view !== view || this.destroyed) return;
       this.list = list;
       await list.addView(view);
+      // addView lists what is there already: those ends happened before this window looked.
+      this.seen = downloadEnds(new Map(), this.records(), { seed: true }).seen;
+      this.since = Date.now();
     } else if (!this.on && this.view) {
       this.detach();
       this.changed();
@@ -148,15 +281,49 @@ export class DownloadWatch {
     this.list = null;
     this.view = null;
     this.downloads.clear();
+    this.seen = new Map();
+    this.end = null;
+  }
+
+  /** @private */
+  records() {
+    return [...this.downloads].map((d) => recordOf(d));
   }
 
   /** @private Progress fires on every chunk; the bar hears only of a change it shows. */
   changed() {
+    if (this.view && this.since !== Infinity) this.ended();
     this.current = this.compute();
     const text = JSON.stringify(this.current);
     if (text === this.text) return;
     this.text = text;
     this.emit();
+  }
+
+  /** @private Announce the downloads that ended, and keep the worst end for the segment. */
+  ended() {
+    const { texts, end, seen } = downloadEnds(this.seen, this.records(), { since: this.since });
+    this.seen = seen;
+    // One announcement for every end at once: a second write to the region would cut the first.
+    if (texts.length) this.say(texts.join(". "));
+    if (!end) return;
+    // `failed` and `blocked` wait for the picker; a later `done` does not hide them.
+    if (end === "done" && this.end && this.end.state !== "done") return;
+    this.end = { state: end, at: Date.now() };
+    if (end === "done") {
+      if (this.doneTimer !== null) this.win.clearTimeout(this.doneTimer);
+      this.doneTimer = this.win.setTimeout(() => {
+        this.doneTimer = null;
+        this.changed();
+      }, DONE_MS);
+    }
+  }
+
+  /** The picker opened in this window: `failed`, `blocked` and `done` have been seen. */
+  clearEnd() {
+    if (!this.end) return;
+    this.end = null;
+    this.changed();
   }
 
   /**
@@ -170,15 +337,234 @@ export class DownloadWatch {
   /** @private */
   compute() {
     if (!this.view || !this.on) return null;
-    const records = [...this.downloads].map(recordOf);
-    // The end states (`done`, `failed`, `blocked`) clear when the picker opens, so they come
-    // with it (Delivery 3).
-    return downloadSegment(downloadSummary(records), null, Date.now());
+    return downloadSegment(downloadSummary(this.records()), this.end, Date.now());
   }
 
   destroy() {
     this.destroyed = true;
     Services.prefs.removeObserver(DOWNLOADS_FEATURE_PREF, this.observe);
+    if (this.doneTimer !== null) this.win.clearTimeout(this.doneTimer);
     this.detach();
+  }
+}
+
+/**
+ * The picker's rows while it is open (decision 12): a view on the window's list, attached on
+ * open and removed on close. A state change or a new download re-renders at once; progress at
+ * most once a second, so a fast download does not rebuild the list on every chunk.
+ */
+export class DownloadRows {
+  /**
+   * @param {Window} win
+   * @param {(rows: DownloadItem[]) => void} changed  new rows while open
+   */
+  constructor(win, changed) {
+    this.win = win;
+    this.changed = changed;
+    /** @type {Set<any>} */
+    this.downloads = new Set();
+    /** @type {any} */
+    this.list = null;
+    /** @type {object | null} */
+    this.view = null;
+    this.shape = "";
+    this.at = 0;
+    /** @type {number | null} */
+    this.timer = null;
+  }
+
+  /**
+   * Attach to the window's list and read it.
+   * @returns {Promise<DownloadItem[]>}
+   */
+  async open() {
+    if (!this.view) {
+      const view = {
+        /** @param {any} d */
+        onDownloadAdded: (d) => (this.downloads.add(d), this.update()),
+        onDownloadChanged: () => this.update(),
+        /** @param {any} d */
+        onDownloadRemoved: (d) => (this.downloads.delete(d), this.update()),
+      };
+      this.view = view;
+      const list = await listFor(this.win);
+      if (this.view !== view) return [];
+      this.list = list;
+      await list.addView(view);
+      // A history entry assumes its file is there, and a finished file can be deleted outside
+      // Firefox: `refresh` checks the disk, as Firefox's views do, and reports a change.
+      for (const d of this.downloads) {
+        if (d.stopped && typeof d.refresh === "function") d.refresh().catch(() => {});
+      }
+    }
+    const { rows } = this.read();
+    return rows;
+  }
+
+  /** Detach (the picker closed). */
+  close() {
+    if (this.list && this.view) this.list.removeView(this.view);
+    this.list = null;
+    this.view = null;
+    this.downloads.clear();
+    this.shape = "";
+    if (this.timer !== null) this.win.clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /**
+   * The download a row stands for, or null when it has gone.
+   * @param {string} id
+   */
+  byId(id) {
+    for (const d of this.downloads) if (String(idOf(d)) === id) return d;
+    return null;
+  }
+
+  /** @private */
+  read() {
+    const records = [...this.downloads].map((d) => recordOf(d, this.win));
+    const shape = JSON.stringify(
+      records.map((r) => [r.id, downloadState(r), r.targetExists, r.partFileExists, r.deleted]),
+    );
+    return { rows: downloadSections(records, Date.now()), shape };
+  }
+
+  /** @private */
+  update() {
+    if (!this.list) return;
+    const { rows, shape } = this.read();
+    const now = Date.now();
+    if (shape !== this.shape || now - this.at >= PROGRESS_MS) {
+      this.shape = shape;
+      this.at = now;
+      if (this.timer !== null) this.win.clearTimeout(this.timer);
+      this.timer = null;
+      this.changed(rows);
+    } else if (this.timer === null) {
+      this.timer = this.win.setTimeout(
+        () => {
+          this.timer = null;
+          this.update();
+        },
+        PROGRESS_MS - (now - this.at),
+      );
+    }
+  }
+}
+
+/**
+ * Show a download's file in its folder through `Download.showContainingDirectory`, which goes
+ * through DownloadIntegration (decision 5). A history entry is not a `Download`: one is made for
+ * its path, as `DownloadsCommon.openDownload` makes one to open it.
+ * @param {any} d
+ */
+async function showInFolder(d) {
+  const download =
+    typeof d.showContainingDirectory === "function"
+      ? d
+      : await lazy.Downloads.createDownload({ source: d.source.url, target: d.target.path });
+  await download.showContainingDirectory();
+}
+
+/**
+ * The ops a picker key runs in this build; Enter's resume and retry, and the other keys of the
+ * table, come with theirs (docs/specs/downloads.md, Delivery).
+ */
+const RUNS = new Set(["open", "openSystem", "show", "copyLink", "copyPath", "referrer", "library"]);
+
+/**
+ * `u`: the page a download came from, in a new tab of the download's own container, or of the
+ * window's non-agent one for a history entry, which keeps none. Never the agent workspace's, even
+ * with it on screen: the full referrer may carry a token, and an agent can read that workspace's
+ * pages (docs/security.md D4). A private window opens it as any private tab.
+ * @param {Window} win
+ * @param {any} d
+ * @param {string} referrer  core allows an http: or https: page only
+ */
+function openReferrer(win, d, referrer) {
+  if (refusedScheme(referrer)) return;
+  if (lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
+    openUrl(win, referrer, "tab");
+    return;
+  }
+  const agent = WorkspaceStore.agent?.userContextId;
+  const own = d.source?.userContextId;
+  const userContextId =
+    own && own !== agent ? own : (WorkspaceStore.nonAgentUserContextId(win) ?? 0);
+  /** @type {any} */ (win).openTrustedLinkIn(referrer, "tab", {
+    userContextId,
+    inBackground: false,
+  });
+}
+
+/** @param {string} text */
+function copy(text) {
+  /** @type {any} */ (Cc["@mozilla.org/widget/clipboardhelper;1"])
+    .getService(Ci.nsIClipboardHelper)
+    .copyString(text);
+}
+
+/**
+ * A key on a download row (the table under Behaviour), through core downloadKey and Firefox's
+ * own download code.
+ * @param {Window} win
+ * @param {DownloadRows} rows
+ * @param {string} key
+ * @param {string} id
+ * @param {{ say: (text: string, error?: boolean) => void, close: () => void }} ui
+ */
+export function downloadPickerKey(win, rows, key, id, { say, close }) {
+  const d = rows.byId(id);
+  if (!d) {
+    say("that download is gone", true);
+    return;
+  }
+  const r = recordOf(d, win);
+  const allowOverride = Services.prefs.getBoolPref("browser.safebrowsing.allowOverride", true);
+  const result = downloadKey(r, key, { allowOverride });
+  if (result.type === "refuse") say(result.text, true);
+  if (result.type !== "run" || !RUNS.has(result.op)) return;
+  switch (result.op) {
+    case "open":
+    case "openSystem":
+      // The file shows over the picker's page, in a tab or the system's app.
+      close();
+      lazy.DownloadsCommon.openDownload(
+        d,
+        result.op === "openSystem" ? { useSystemDefault: true } : {},
+      ).catch(console.error);
+      return;
+    case "show":
+      showInFolder(d)
+        .then(() =>
+          // Only macOS confirms that something showed (decision 15).
+          say(
+            lazy.AppConstants.platform === "macosx"
+              ? "shown in Finder"
+              : "asked the file manager to show it",
+          ),
+        )
+        .catch((/** @type {unknown} */ e) => {
+          console.error(e);
+          say("could not show the folder", true);
+        });
+      return;
+    case "copyLink":
+      lazy.DownloadsCommon.copyDownloadLink(d);
+      say("copied the link");
+      return;
+    case "copyPath":
+      copy(r.path);
+      say("copied the path");
+      return;
+    case "referrer":
+      close();
+      openReferrer(win, d, /** @type {string} */ (r.referrer));
+      return;
+    case "library":
+      close();
+      runCommand(win, "Tools:Downloads");
+      return;
   }
 }

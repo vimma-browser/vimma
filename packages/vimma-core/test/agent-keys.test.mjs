@@ -87,6 +87,11 @@ describe("the whitelist (D9)", () => {
     );
   });
 
+  test("downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)", () => {
+    expect(AGENT_KEY_ACTIONS.has("downloads.picker")).toBe(false);
+    expect(refusal("ctrl+b d")).toContain("the prefix");
+  });
+
   test("counts, sequences and whitespace between keys", () => {
     expect(ids("3j")).toEqual(["3scroll.down"]);
     expect(ids("3j gg  G")).toEqual(["3scroll.down", "scroll.top", "scroll.bottom"]);

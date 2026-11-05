@@ -4,7 +4,8 @@
 
 // Fixture for browser_vimma_downloads.js. `?hold&name=<file>` answers a 20000-byte attachment,
 // sends half of it and keeps the rest until `?release` is requested; `?now&name=<file>` sends a
-// small attachment at once; `?release` lets every held download finish.
+// small attachment at once; `?short&name=<file>` promises 20000 bytes and sends half, so the
+// download fails; `?release` lets every held download finish.
 const SIZE = 20000;
 const HALF = "a".repeat(SIZE / 2);
 
@@ -30,6 +31,15 @@ function handleRequest(request, response) {
   if (query.has("now")) {
     attachment(response, name, 5);
     response.write("hello");
+    return;
+  }
+  if (query.has("short")) {
+    // Fewer bytes than the length promised: the download fails. Asynchronous, so httpd.js
+    // keeps the promised Content-Length instead of counting the body.
+    response.processAsync();
+    attachment(response, name, SIZE);
+    response.write(HALF);
+    response.finish();
     return;
   }
   setState("vimma-downloads-release", "");

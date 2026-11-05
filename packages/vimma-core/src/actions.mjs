@@ -197,6 +197,12 @@ group("Browser", [
   ["save_page", "page.save", "Save the page"],
   ["print_page", "page.print", "Print the page"],
   ["downloads", "browser.downloads", "Downloads (the Library)"],
+  // docs/specs/downloads.md decision 2.
+  [
+    "downloads_picker",
+    "downloads.picker",
+    "Downloads picker: open, show in folder, pause, retry, remove",
+  ],
   ["addons_manager", "browser.addons", "Add-ons manager (about:addons)"],
   ["history_library", "browser.history", "History (the Library)"],
   ["bookmarks_library", "browser.bookmarks", "Bookmarks (the Library)"],
