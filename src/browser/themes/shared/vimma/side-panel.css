@@ -223,7 +223,7 @@
     & code {
       padding: 0 0.3ch;
       border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-      border-radius: 3px;
+      border-radius: var(--vimma-radius, 0);
       color: var(--vimma-text-accent, AccentColor);
       font: inherit;
     }
