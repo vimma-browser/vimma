@@ -85,8 +85,10 @@ only the agent workspace, and every request asks you first (§12).
 - S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
   gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
   title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
-  and the pane structure.
+  and the pane structure of every split (`panes` and `splits`, tab ids and places only).
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
+  [`test_state_splits`](../tests/browser/browser_vimma_control.js),
+  [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js)

@@ -16,7 +16,9 @@ import {
   panelKey,
   refreshPanel,
   rowNumber,
+  rowSplitName,
 } from "../core/sidepanel.mjs";
+import { splitLabel } from "../core/splits.mjs";
 import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH } from "../core/privatews.mjs";
 
 /** @import { PanelNumbers as Numbers, PanelOptions, PanelState, PanelTabInfo } from "../core/sidepanel.mjs" */
@@ -73,10 +75,11 @@ export function rowsShown(list) {
  *   (docs/specs/m4-side-panel-multiselect.md), or with `alone` keep them as a hidden view and show
  *   that tab by itself (side-panel-unsplit decision 25); a refusal's text, or null once done (the
  *   panel then closes)
- * @property {() => { panes: string[], focus: string | null, hidden?: boolean } | null} [split]
+ * @property {() => { panes: string[], focus: string | null, hidden?: boolean,
+ *   splits?: { number: number, tabs: string[] }[], shown?: number | null } | null} [split]
  *   the active workspace's split, its tabs (row ids), focused pane's tab and whether it is a
- *   hidden view; null without one
- *   (docs/specs/side-panel-unsplit.md)
+ *   hidden view; null without one (docs/specs/side-panel-unsplit.md); with several splits also
+ *   each split and the shown one's number (docs/specs/multiple-splits.md)
  * @property {(tabId: string) => void} [alone]  `Enter` down to one mark or none: end the split
  *   and show that tab alone (side-panel-unsplit); the panel then closes
  */
@@ -220,6 +223,8 @@ export class SidePanel {
       color: this.host.color(),
       ...this.host.where?.(),
       ...(split ? { panes: split.panes, paneFocus: split.focus, paneHidden: !!split.hidden } : {}),
+      // Several splits (docs/specs/multiple-splits.md behaviour 6): labels, stripes, header.
+      ...(split?.splits ? { splits: split.splits, shownSplit: split.shown ?? null } : {}),
     };
   }
 
@@ -307,6 +312,15 @@ export class SidePanel {
           el("span", "vimma-panel-host", r.host),
         );
         if (marks.length) row.append(el("span", "vimma-panel-marks", marks.join(" ")));
+        // Its split's colour as a stripe and its label as text (docs/specs/multiple-splits.md
+        // decision 10); the label's accessible name ends the row's with ", split 2".
+        if (r.split !== null) {
+          row.dataset.split = String(r.split);
+          row.style.setProperty("--vimma-row-split", `var(--vimma-split-${r.split})`);
+          const label = el("span", "vimma-panel-split", splitLabel(r.split));
+          label.setAttribute("aria-label", rowSplitName(r));
+          row.append(label);
+        }
         return row;
       }),
     );

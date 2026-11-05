@@ -235,6 +235,13 @@ are sent.
   tab's id as in `tabs` and its place there (`-1` if it is not visible). Read-only, like the
   rest of `state`. Since side-panel-unsplit (decision 28) it also has `"hidden": true | false`:
   true while the split is kept as a hidden view and another tab shows alone.
+- `splits` (since [multiple-splits](multiple-splits.md), while `vimma.feature.multiple_splits` is
+  on): every split of the window's workspace in number order, `[]` without one; absent while
+  the feature is off. Each has the shape of `panes` with `"number": 1`-`9` and `"shown": true |
+false` in place of `hidden`. `panes` keeps its meaning: the shown split, else the split shown
+  last with `hidden: true`. Added without a version bump; vimma-ctl accepts it when present and
+  checks that it is an array of objects with an integer `number` from 1 to 9 and a boolean
+  `shown`.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

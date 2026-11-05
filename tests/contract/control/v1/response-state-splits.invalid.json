@@ -1,0 +1,18 @@
+{
+  "description": "a split's number is outside 1 to 9 (multiple-splits)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [],
+      "panes": null,
+      "splits": [{ "number": 10, "shown": false, "focus": "7", "zoomed": false, "root": {} }]
+    }
+  }
+}
