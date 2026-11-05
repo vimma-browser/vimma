@@ -30,7 +30,7 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -328,29 +328,41 @@ export function releaseInfo(tarball) {
 }
 
 /**
+ * hdiutil with its output captured: the calls are not `-quiet`, so a failure's error carries
+ * hdiutil's reason, where `-quiet` leaves exit status 1 and nothing else (#715).
+ * @param {string[]} args
+ */
+const runHdiutil = (args) =>
+  execFileSync("hdiutil", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+
+/**
  * The same from the app inside the .dmg: the Mac build has its own build ID (it is built in
  * another job), so the Linux tarball's would not match it. hdiutil is macOS's, so this runs on
- * a macOS runner; the image is mounted read-only and not browsed.
+ * a macOS runner; the image is mounted read-only and not browsed. The mount point is removed
+ * with rmdir, which never reaches into a volume a failed detach left mounted.
  * @param {string} dmg
+ * @param {(args: string[]) => string} [hdiutil]  runs hdiutil; the default is the real one
  */
-export function dmgInfo(dmg) {
+export function dmgInfo(dmg, hdiutil = runHdiutil) {
   const mount = mkdtempSync(join(dirname(dmg), ".vimma-dmg-"));
-  execFileSync("hdiutil", [
-    "attach",
-    "-quiet",
-    "-nobrowse",
-    "-readonly",
-    "-mountpoint",
-    mount,
-    dmg,
-  ]);
+  try {
+    hdiutil(["attach", "-nobrowse", "-readonly", "-mountpoint", mount, dmg]);
+  } catch (e) {
+    try {
+      rmdirSync(mount);
+    } catch {
+      // An attach that failed after mounting leaves the volume there, so the mount point stays;
+      // hdiutil's reason is what the error must carry.
+    }
+    throw e;
+  }
   try {
     return iniInfo(
       readFileSync(join(mount, "Vimma.app/Contents/Resources/application.ini"), "utf8"),
     );
   } finally {
-    execFileSync("hdiutil", ["detach", "-quiet", mount]);
-    rmSync(mount, { recursive: true, force: true });
+    hdiutil(["detach", mount]);
+    rmdirSync(mount);
   }
 }
 

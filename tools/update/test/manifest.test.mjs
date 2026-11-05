@@ -7,7 +7,7 @@
 import { describe, expect, it, beforeAll } from "vitest";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, privateEncrypt, constants } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
@@ -787,11 +787,54 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
         "[App]\nName=Vimma\nVersion=158.0\nBuildID=20261019132138\n",
       );
       const dmg = join(dir, "v.dmg");
-      execFileSync("hdiutil", ["create", "-quiet", "-srcfolder", join(dir, "src"), dmg]);
+      // HFS+, as the release's .dmg is (macos-dmg-pack.sh). hdiutil's default is APFS, and an
+      // APFS image's attach fails at times with EAGAIN while other disk-image work runs (#715).
+      execFileSync("hdiutil", [
+        "create",
+        "-quiet",
+        "-fs",
+        "HFS+",
+        "-srcfolder",
+        join(dir, "src"),
+        dmg,
+      ]);
       expect(dmgInfo(dmg)).toEqual({ appVersion: "158.0", buildId: "20261019132138" });
     },
     60_000,
   );
+
+  // hdiutil's own words are the only clue to why an attach failed: with -quiet it exits 1 and
+  // says nothing (#715).
+  it.runIf(process.platform === "darwin")(
+    "names hdiutil's reason when a real attach fails, and leaves no mount point behind",
+    () => {
+      const dir = tempDir("vimma-dmg-");
+      const dmg = join(dir, "v.dmg");
+      writeFileSync(dmg, "not a disk image");
+      expect(() => dmgInfo(dmg)).toThrow(/hdiutil: attach failed/);
+      expect(readdirSync(dir)).toEqual(["v.dmg"]);
+    },
+    60_000,
+  );
+
+  // An attach can fail after the volume is mounted, and then the mount point cannot be removed:
+  // that cleanup failure must not replace hdiutil's reason.
+  it("keeps hdiutil's reason when the mount point of a failed attach cannot be removed", () => {
+    const dir = tempDir("vimma-dmg-");
+    const dmg = join(dir, "v.dmg");
+    writeFileSync(dmg, "");
+    /** @param {string[]} args */
+    const hdiutil = (args) => {
+      writeFileSync(join(args[args.indexOf("-mountpoint") + 1], "mounted"), "");
+      // as execFileSync reports a failure: the command, then hdiutil's stderr
+      const stderr = "hdiutil: attach failed - Resource temporarily unavailable\n";
+      throw Object.assign(new Error(`Command failed: hdiutil ${args.join(" ")}\n${stderr}`), {
+        status: 1,
+        stderr,
+      });
+    };
+    expect(() => dmgInfo(dmg, hdiutil)).toThrow(/hdiutil: attach failed/);
+  });
 });
 
 const REAL = process.env.VIMMA_UPDATE_ASSETS;

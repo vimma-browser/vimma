@@ -44,6 +44,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
+const { HINT_SIZE_WAIT_MS } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/hints.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -121,6 +124,34 @@ function collectState(tab) {
     size: `${browser.clientWidth}x${browser.clientHeight}`,
   });
 }
+
+const CHILD = "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs";
+
+/** How many hint collections in `tab`'s process wait for their page's size (a test hook). */
+const sizeWaits = (/** @type {any} */ tab) =>
+  SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [CHILD],
+    (url) => ChromeUtils.importESModule(url).VimmaChild._sizeWaitsForTests,
+  );
+
+/**
+ * How often, in ms, a collection in `tab`'s process that waits for its page's size looks again
+ * (a test hook; null: the default).
+ * @param {any} tab @param {number | null} ms
+ */
+const sizePoll = (tab, ms) =>
+  SpecialPowers.spawn(tab.linkedBrowser, [CHILD, ms], (url, v) => {
+    ChromeUtils.importESModule(url).VimmaChild._sizePollMsForTests = v;
+  });
+
+/** Whether `tab`'s page has a viewport size. @param {any} tab */
+const sized = (tab) =>
+  SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [],
+    () => content.innerWidth > 0 && content.innerHeight > 0,
+  );
 
 /** An agent connection, after its agent-hello. */
 async function agentClient(name = "example-agent") {
@@ -340,6 +371,139 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   Assert.ok(true, "the user's target still follows after an agent's collection there");
   c.close();
   BrowserTestUtils.removeTab(mine);
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// A new tab's page has no viewport size until the parent lays out its <browser> and sends the
+// size, which on a busy chrome (the macOS runner's software compositing) can come after the page
+// loaded. An agent's f there waits for the size instead of listing nothing (#605). Pausing the
+// chrome refresh driver holds that layout back, as the runner did.
+add_task(async function test_f_on_a_tab_not_sized_yet_waits_for_its_size() {
+  await mcp(true);
+  const c = await agentClient();
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = await openAgentTab();
+  const size = await SpecialPowers.spawn(tab.linkedBrowser, [], () => [
+    content.innerWidth,
+    content.innerHeight,
+  ]);
+  Assert.deepEqual(size, [0, 0], "the page loaded before the parent sized it");
+  const id = c.request("agent-keys", { tab: idOf(tab), keys: "f" });
+  AgentGate.answer((await question()).id, { kind: "once" });
+  const response = c.response(id);
+  let answered = false;
+  response.then(() => (answered = true));
+  // The layout resumes once the collection waits for it; a collection that did not wait has
+  // answered by then, and must not leave the next test's tabs unsized either.
+  await TestUtils.waitForCondition(
+    async () => answered || (await sizeWaits(tab)) > 0,
+    "the collection waits for the page's size",
+    20,
+    250,
+  );
+  utils.restoreNormalRefresh();
+  const r = await response;
+  Assert.deepEqual(
+    lines(r.result.links).map((l) => l.split(" ")[0]),
+    Object.values(LABEL),
+    `f lists every link once the page has its size (steps: ${JSON.stringify(r.result.steps)}; ` +
+      `collection: ${collectState(tab)})`,
+  );
+  Assert.equal(VimmaActors.lastCollectReason(tab.linkedBrowser), "ok", "the collection ended ok");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// Two collections of the agent's elements in one unsized tab: the older waits for the size, the
+// newer comes once the tab has it and answers at once. The older answers last and must not take
+// the frame's elements from the newer, which the agent was given.
+add_task(async function test_a_collection_that_waited_keeps_a_newer_ones_elements() {
+  await mcp(true);
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  Assert.ok(!(await sized(tab)), "the page loaded before the parent sized it");
+  // The older collection looks at the size again only after the newer one has answered.
+  await sizePoll(tab, 1000);
+  try {
+    const elements = { agent: true, elements: true };
+    const older = VimmaActors.collectHints(browser, "hint.follow", elements);
+    await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) > 0, "it waits", 20, 250);
+    utils.restoreNormalRefresh();
+    await TestUtils.waitForCondition(() => sized(tab), "the page gets its size", 20, 250);
+    const newer = await VimmaActors.collectHints(browser, "hint.follow", elements);
+    Assert.greater(newer.length, 0, "the newer collection lists the page's elements");
+    Assert.deepEqual(await older, [], "the older one is superseded");
+    Assert.ok(
+      await VimmaActors.agentElementAlive(newer[0]),
+      "the newer collection's elements are still the frame's",
+    );
+  } finally {
+    // Before the tab goes: the setting is its process's, and later tests may share it.
+    await sizePoll(tab, null);
+  }
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// The wait is bounded: a page that never gets its size is collected as it is. An agent's
+// collection waits 4 s for the page (HINT_AGENT_FRAMES_MS), far longer than the 1.5 s wait, so
+// the page's own answer, not a clock reading, shows that the wait ended; a wait without an end
+// would leave the parent nothing to read (no-reply).
+add_task(async function test_a_page_that_gets_no_size_is_answered_within_the_wait() {
+  await mcp(true);
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = await openAgentTab();
+  const t0 = Date.now();
+  const found = await VimmaActors.collectHints(tab.linkedBrowser, "hint.follow", { agent: true });
+  const ms = Date.now() - t0;
+  utils.restoreNormalRefresh();
+  Assert.deepEqual(found, [], "nothing is on screen");
+  Assert.equal(
+    VimmaActors.lastCollectReason(tab.linkedBrowser),
+    "no-targets",
+    `the page answered, with nothing on screen (${ms} ms)`,
+  );
+  Assert.greaterOrEqual(ms, HINT_SIZE_WAIT_MS / 2, `after it waited for the size (${ms} ms)`);
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// A page that goes away while its collection waits for the size ends the wait at once. The
+// wait's end is read from the page's process, the same one for the next page of this site, so
+// it is measured whether the old page stays in the back-forward cache or is destroyed.
+add_task(async function test_a_page_that_goes_away_ends_the_wait() {
+  await mcp(true);
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  const pid = browser.browsingContext.currentWindowGlobal.osPid;
+  const collection = VimmaActors.collectHints(browser, "hint.follow", { agent: true });
+  await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) > 0, "it waits", 20, 250);
+  const t0 = Date.now();
+  BrowserTestUtils.startLoadingURIString(browser, PAGE);
+  await BrowserTestUtils.browserLoaded(browser, false, PAGE);
+  const found = await collection;
+  Assert.equal(browser.browsingContext.currentWindowGlobal.osPid, pid, "in the same process");
+  await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) === 0, "it ends", 20, 250);
+  const ms = Date.now() - t0;
+  utils.restoreNormalRefresh();
+  Assert.deepEqual(found, [], "nothing is listed");
+  // The old page's actor answers null when the page stays in the back-forward cache, and its
+  // query is rejected when the page is destroyed first; which one comes is Firefox's choice.
+  const reason = VimmaActors.lastCollectReason(browser);
+  Assert.ok(["no-reply", "threw"].includes(reason), `the old page listed nothing (${reason})`);
+  Assert.less(ms, HINT_SIZE_WAIT_MS, `its wait ended before it ran out (${ms} ms)`);
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
