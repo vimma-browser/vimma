@@ -6,7 +6,9 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import {
+  HINT_AGENT_FRAMES_MS,
   HINT_REPLY_MAX_TARGETS,
+  HINT_TOP_TIMEOUT_MS,
   hintCollectReason,
   parseBlockReply,
   parseHintReply,
@@ -77,16 +79,6 @@ const lastReasons = new WeakMap();
 /** How long a subframe may take to answer (ms) before its targets are left out. */
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 const FRAME_TIMEOUT_DEFAULT = 150;
-/** The top frame gets longer: without it there are no hints at all. */
-const TOP_TIMEOUT_MS = 2000;
-/**
- * An agent's collection (docs/specs/mcp-drive.md D12, mcp-forms.md F2): every frame answers
- * within this of its start. No user waits on labels there, and an agent's tab is in the
- * background, whose frames' processes may be busy or just started: at the user's 150 ms, a
- * frame of another site would be left out of the list without a word. The calls give up after
- * 5 s, so the frames that answered are still listed then.
- */
-const AGENT_FRAMES_MS = 4000;
 
 /** At most this many targets in all frames (each frame: core HINT_REPLY_MAX_TARGETS). */
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
@@ -376,11 +368,11 @@ export const VimmaActors = {
     liveGen.set(key, gen);
     const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
-    const agentDeadline = Date.now() + AGENT_FRAMES_MS;
+    const agentDeadline = Date.now() + HINT_AGENT_FRAMES_MS;
     /** How long the frame at `depth` may take, from now. @param {number} depth */
     const timeoutAt = (depth) => {
       if (agent) return Math.max(0, agentDeadline - Date.now());
-      return depth === 0 ? TOP_TIMEOUT_MS : frameTimeout;
+      return depth === 0 ? HINT_TOP_TIMEOUT_MS : frameTimeout;
     };
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();

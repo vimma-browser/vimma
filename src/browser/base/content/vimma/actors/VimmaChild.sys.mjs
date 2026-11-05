@@ -18,7 +18,8 @@ import {
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
 import { quietVerdict } from "../core/agent-wait.mjs";
-import { collectTargets, linkText } from "./hint-collect.mjs";
+import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
+import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
 import {
   actTargetOf,
   cardFieldShown,
@@ -133,6 +134,14 @@ function canScroll(el, vertical) {
 const SEARCH_LIMIT = 10000;
 /** A search that found nothing is not repeated for this long (holding j). */
 const SEARCH_BACKOFF_MS = 1000;
+/** How often, in ms, a collection waiting for its page's first size looks again (#sized). */
+const SIZE_POLL_MS = 25;
+
+/** Whether the frame has been given a viewport size. @param {Window} win */
+function hasSize(win) {
+  const { vw, vh } = viewportSize(win);
+  return vw > 0 && vh > 0;
+}
 
 /**
  * The parent element, stepping out of a shadow root to its host.
@@ -193,6 +202,20 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {string | null}
    */
   static _beforeSubmitCheckForTests = null;
+
+  /**
+   * Test-only (browser_vimma_mcp_follow.js): how many hint collections in this process wait for
+   * their page's first size now (#sized), so that a test can act during the wait.
+   */
+  static _sizeWaitsForTests = 0;
+
+  /**
+   * Test-only (browser_vimma_mcp_follow.js): how often, in ms, a collection waiting for its
+   * page's size looks again, instead of SIZE_POLL_MS, so that a test can order two collections.
+   * Read only in automation (`Cu.isInAutomation`); null otherwise.
+   * @type {number | null}
+   */
+  static _sizePollMsForTests = null;
 
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
@@ -763,22 +786,30 @@ export class VimmaChild extends JSWindowActorChild {
    * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
-   * the user's (F4).
+   * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
    *   elements?: boolean }} data
    */
-  #collectHints(data) {
+  async #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
-    const t0 = ChromeUtils.now();
     const elements = data.elements === true;
+    const texts = data.texts === true && !elements;
+    if (!this.browsingContext?.parent && !hasSize(win)) {
+      if (!(await this.#sized(win))) return null;
+      // Collections that wait can end out of order. Generations only grow, so a stored newer
+      // generation means a newer collection of the same kind answered meanwhile; the elements it
+      // stored are the ones the parent acts on, and they stay.
+      const stored = elements ? this.#agentEls : texts ? null : this.#hints;
+      if (stored && stored.gen > gen) return null;
+    }
+    const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
       linksOnly: data.linksOnly === true && !elements,
       blocks: data.blocks === true && !elements,
       disabled: elements,
     });
-    const texts = data.texts === true && !elements;
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
     if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
@@ -799,6 +830,39 @@ export class VimmaChild extends JSWindowActorChild {
       ms: ChromeUtils.now() - t0,
       ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * Waits, at most HINT_SIZE_WAIT_MS, for this top frame's viewport to have a size; false when
+   * its document went away meanwhile. The parent sends a tab its size after a layout of its
+   * <browser>, and on a busy chrome (its refresh driver waiting on a slow compositor) that can
+   * come after the page loaded: a fresh hidden tab can be complete at 0 by 0, where no element is
+   * on screen, and an agent's `f` there listed no link (#605). Out of time, the page is collected
+   * as it is.
+   * @param {Window} win
+   */
+  async #sized(win) {
+    const doc = win.document;
+    const until = ChromeUtils.now() + HINT_SIZE_WAIT_MS;
+    const test = Cu.isInAutomation ? VimmaChild._sizePollMsForTests : null;
+    const poll = test ?? SIZE_POLL_MS;
+    VimmaChild._sizeWaitsForTests++;
+    try {
+      while (!hasSize(win) && ChromeUtils.now() < until) {
+        // A chrome timer: a hidden tab's page timers are held to one a second.
+        await new Promise((resolve) => lazy.setTimeout(resolve, poll));
+        try {
+          if (!(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      VimmaChild._sizeWaitsForTests--;
+    }
   }
 
   /**
