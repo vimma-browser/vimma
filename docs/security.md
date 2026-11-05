@@ -85,9 +85,15 @@ only the agent workspace, and every request asks you first (§12).
 - S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
   gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
   title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
-  and the pane structure of every split (`panes` and `splits`, tab ids and places only).
+  and the pane structure of every split (`panes` and `splits`, tab ids and places only). Its
+  `update` field is an allow-list of the update check's result (whether checks are on, the
+  install type, the outcome and its time, the offered version and build ID, how far the update
+  got) and **never** carries the reason of a refusal, the manifest's serial or key, a URL or an
+  advisory; reading it starts no check and no download.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
+  [`test_state_update`](../tests/browser/browser_vimma_control.js),
+  [`controlUpdateState keeps only the fields the protocol names (m6a-updater 41)`](../packages/vimma-core/test/control.test.mjs),
   [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),

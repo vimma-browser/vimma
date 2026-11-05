@@ -11,6 +11,8 @@ import {
   LineFramer,
   RESERVED_COMMANDS,
   tokensEqual,
+  UPDATE_OUTCOMES,
+  UPDATE_STAGES,
   validateMessage,
 } from "../../src/control.mjs";
 import { parseKey } from "../../src/keys.mjs";
@@ -184,8 +186,23 @@ const validMessage = fc.oneof(
         ),
         { nil: undefined },
       ),
+      // The update check (m6a-updater, decision 41): optional, as from an older Vimma.
+      fc.option(
+        fc.record({
+          enabled: fc.boolean(),
+          installType: fc.option(fc.string(), { nil: null }),
+          outcome: fc.constantFrom(...UPDATE_OUTCOMES),
+          checkedAt: fc.option(fc.nat(), { nil: null }),
+          offer: fc.option(
+            fc.record({ version: fc.string(), buildId: fc.string(), urgent: fc.boolean() }),
+            { nil: null },
+          ),
+          stage: fc.constantFrom(...UPDATE_STAGES),
+        }),
+        { nil: undefined },
+      ),
     )
-    .map(([mode, tabs, splits]) => ({
+    .map(([mode, tabs, splits, update]) => ({
       m: {
         type: "response",
         id: 1,
@@ -197,6 +214,7 @@ const validMessage = fc.oneof(
           tabs,
           panes: null,
           ...(splits ? { splits } : {}),
+          ...(update ? { update } : {}),
         },
       },
       o: { command: "state" },

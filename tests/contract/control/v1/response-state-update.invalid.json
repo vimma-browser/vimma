@@ -1,0 +1,25 @@
+{
+  "description": "the update's stage is not one Vimma reports (m6a-updater, decision 41)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [],
+      "panes": null,
+      "update": {
+        "enabled": true,
+        "installType": "tarball",
+        "outcome": "offer",
+        "checkedAt": null,
+        "offer": { "version": "0.3.1", "buildId": "20261101031500", "urgent": false },
+        "stage": "applied"
+      }
+    }
+  }
+}

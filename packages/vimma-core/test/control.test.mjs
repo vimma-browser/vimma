@@ -11,6 +11,9 @@ import {
   validateMessage,
   tokensEqual,
   LineFramer,
+  UPDATE_OUTCOMES,
+  UPDATE_STAGES,
+  controlUpdateState,
 } from "../src/control.mjs";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v1/", import.meta.url));
@@ -317,6 +320,101 @@ describe("validateMessage: state", () => {
       "result.tabs[1] must be an object",
       "result.panes must be present (null before split view)",
     ]);
+  });
+
+  // docs/specs/m6a-updater.md, decision 41: the update check's outcome and how far the update
+  // got, so a script (sub-PR 5's e2e scenario) can wait until it is staged.
+  test("update, when present, is the update check's outcome and stage (m6a-updater)", () => {
+    const update = {
+      enabled: true,
+      installType: "tarball",
+      outcome: "offer",
+      checkedAt: 1_793_000_000_000,
+      offer: { version: "0.3.1", buildId: "20261101031500", urgent: false },
+      stage: "staged",
+    };
+    expect(errorsOf(ok({ ...state, update }), { command: "state" })).toEqual([]);
+    const none = { ...update, installType: null, outcome: "never", checkedAt: null, offer: null };
+    expect(
+      errorsOf(ok({ ...state, update: { ...none, stage: "none" } }), { command: "state" }),
+    ).toEqual([]);
+    expect(errorsOf(ok({ ...state, update: null }), { command: "state" })).toEqual([
+      "result.update must be an object",
+    ]);
+    const broken = {
+      enabled: "yes",
+      installType: 3,
+      outcome: "maybe",
+      checkedAt: -1,
+      offer: { version: 1, buildId: null, urgent: "no" },
+      stage: "done",
+    };
+    expect(errorsOf(ok({ ...state, update: broken }), { command: "state" })).toEqual([
+      "result.update.enabled must be a boolean",
+      "result.update.installType must be a string or null",
+      `result.update.outcome must be one of ${UPDATE_OUTCOMES.join(", ")}`,
+      "result.update.checkedAt must be a non-negative integer or null",
+      "result.update.offer.version must be a string",
+      "result.update.offer.buildId must be a string",
+      "result.update.offer.urgent must be a boolean",
+      `result.update.stage must be one of ${UPDATE_STAGES.join(", ")}`,
+    ]);
+    expect(
+      errorsOf(ok({ ...state, update: { ...update, offer: [] } }), { command: "state" }),
+    ).toEqual(["result.update.offer must be an object or null"]);
+    expect(
+      errorsOf(ok({ ...state, update: { ...update, checkedAt: 1.5 } }), { command: "state" }),
+    ).toEqual(["result.update.checkedAt must be a non-negative integer or null"]);
+  });
+
+  test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {
+    const offer = {
+      appVersion: "160.0",
+      buildId: "20261101031500",
+      displayVersion: "0.3.1",
+      detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v0.3.1",
+      urgent: true,
+      advisories: ["MFSA 2026-90"],
+      assets: { tarball: { size: 1, sha512: "ab" } },
+      marUrl: "https://github.com/vimma-browser/vimma/releases/download/v0.3.1/x.mar",
+    };
+    const status = {
+      checkedAt: 1_793_000_000_000,
+      okAt: 1_793_000_000_000,
+      outcome: "offer",
+      reason: null,
+      offer,
+      serial: "20261101031500",
+      key: { id: "abc", slot: "primary" },
+      refusals: 0,
+      stage: "staged",
+      enabled: true,
+      from: "default",
+    };
+    const field = controlUpdateState(status, "tarball");
+    expect(field).toEqual({
+      enabled: true,
+      installType: "tarball",
+      outcome: "offer",
+      checkedAt: 1_793_000_000_000,
+      offer: { version: "0.3.1", buildId: "20261101031500", urgent: true },
+      stage: "staged",
+    });
+    expect(errorsOf(ok({ ...state, update: field }), { command: "state" })).toEqual([]);
+    // A refusal's reason, the manifest's serial and key, the URLs and advisories stay in
+    // about:vimma: the field is what a script waits on, not the check's diagnostics.
+    const refused = { ...status, outcome: "refused", reason: "bad signature", offer: null };
+    expect(controlUpdateState({ ...refused, stage: "none" }, null)).toEqual({
+      enabled: true,
+      installType: null,
+      outcome: "refused",
+      checkedAt: 1_793_000_000_000,
+      offer: null,
+      stage: "none",
+    });
+    for (const checkedAt of [1.5, -1, Number.MAX_VALUE]) {
+      expect(controlUpdateState({ ...status, checkedAt }, null).checkedAt).toBe(null);
+    }
   });
 
   test("splits, when present, is a list of numbered splits (multiple-splits)", () => {

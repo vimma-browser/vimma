@@ -46,6 +46,8 @@ import {
   stagedSteps,
 } from "../core/appimage-update.mjs";
 import { checkDue } from "../core/update-notices.mjs";
+// The control socket's `state.update` names the same outcomes (m6a-updater, decision 41).
+import { UPDATE_OUTCOMES as OUTCOMES } from "../core/control.mjs";
 
 /** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
 /** @import { Stage } from "../core/update-notices.mjs" */
@@ -123,9 +125,6 @@ const MAX_MAR_URLS = 8;
  * @property {{ id: string, slot: string } | null} key  that signed it
  * @property {number} refusals           refused manifests in a row
  */
-
-/** @type {readonly Outcome[]} */
-const OUTCOMES = ["never", "current", "offer", "unreachable", "refused", "off", "source"];
 
 /** @returns {UpdateState} */
 const fresh = () => ({
@@ -903,7 +902,15 @@ async function removeLeftovers(target) {
 function stage() {
   const offer = state.offer;
   if (!offer) return "none";
-  if (firefoxMode()) return firefox().stage(offer.buildId);
+  // Firefox's update service can throw (late in shutdown, a broken install). The status bar,
+  // about:vimma and the control socket's `state` all read this, so a failure counts as nothing
+  // staged instead of breaking them.
+  try {
+    if (firefoxMode()) return firefox().stage(offer.buildId);
+  } catch (e) {
+    console.error("vimma: Firefox's updater state unknown", e);
+    return "none";
+  }
   if (replacement.buildId === offer.buildId) return replacement.stage;
   return knownType === "appimage" && enabled() && offer.buildId === verifiedBuildId
     ? "pending"

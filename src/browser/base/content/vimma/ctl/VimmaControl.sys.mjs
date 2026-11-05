@@ -33,6 +33,7 @@ import {
   validateMessage,
   CHALLENGE_CONTEXT,
   TICKET_CONTEXT,
+  controlUpdateState,
 } from "../core/control.mjs";
 import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
@@ -41,6 +42,7 @@ import { PaneViews } from "../split/PaneView.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
+import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
 import { AgentError, forgetAgentConnection, runAgentCommand } from "./agent-commands.mjs";
 
@@ -398,6 +400,9 @@ const COMMANDS = {
       })),
       panes: paneState(win, visible),
       ...splitsState(win, visible),
+      // The update check (docs/specs/m6a-updater.md, decision 41): the full role's only, as all
+      // of `state`; the agent role never reaches `state` (security.md S12).
+      update: controlUpdateState(VimmaUpdates.status(), VimmaUpdates.installType),
     };
   },
 

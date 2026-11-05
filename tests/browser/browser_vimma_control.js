@@ -536,6 +536,132 @@ add_task(async function test_state_splits() {
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
+// docs/specs/m6a-updater.md, decision 41: `state.update` is the update check's outcome and how far
+// the offered build got, read live, and nothing of the check's diagnostics. Firefox's updater is
+// faked as in browser_vimma_update_verify.js: its real download would write into this build.
+add_task(async function test_state_update() {
+  const { VimmaUpdates } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/updates/VimmaUpdates.sys.mjs",
+  );
+  const { UpdateUi } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/update-ui.mjs",
+  );
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.update.installType", "tarball"],
+      ["vimma.update.enabled", true],
+    ],
+  });
+  const fake = {
+    usable: true,
+    canApply: true,
+    busy: true,
+    staged: "staged",
+    stage(buildId) {
+      return buildId === "20991231000000" ? this.staged : "none";
+    },
+    checks: 0,
+    check() {
+      this.checks++;
+      return Promise.reject(new Error("no check in this test"));
+    },
+  };
+  const offer = {
+    appVersion: "999.0",
+    buildId: "20991231000000",
+    displayVersion: "9.9.9",
+    detailsUrl: "https://github.com/vimma-browser/vimma/releases/tag/v9.9.9",
+    // Not urgent: an urgent staged update asks its restart question, which would take the keys
+    // of the tasks that follow.
+    urgent: false,
+    advisories: [],
+    assets: {},
+  };
+  const checkedAt = Date.now() - 60_000;
+  VimmaUpdates._reset();
+  Services.prefs.setStringPref(
+    "vimma.update.last",
+    JSON.stringify({
+      checkedAt,
+      okAt: checkedAt,
+      outcome: "offer",
+      reason: null,
+      offer,
+      serial: "20991231000000",
+      key: { id: "k", slot: "primary" },
+      refusals: 0,
+    }),
+  );
+  VimmaUpdates._setFirefox(fake);
+  VimmaUpdates._load();
+  await VimmaUpdates.ownAppImage();
+  registerCleanupFunction(() => {
+    VimmaUpdates._setFirefox(null);
+    VimmaUpdates._reset();
+    Services.prefs.clearUserPref("vimma.update.last");
+    // The one-time message for the version offered here.
+    Services.prefs.clearUserPref("vimma.update.announced");
+    UpdateUi._reset();
+    document.getElementById("vimma-notice")?.hidePopover?.();
+  });
+
+  await enable();
+  const client = await session();
+  const state = async (id) => {
+    const { result } = await client.request(id, "state");
+    const v = validateMessage(
+      { type: "response", id, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state is valid: ${v.errors.join("; ")}`);
+    return result.update;
+  };
+  Assert.deepEqual(
+    await state(1),
+    {
+      enabled: true,
+      installType: "tarball",
+      outcome: "offer",
+      checkedAt,
+      offer: { version: "9.9.9", buildId: "20991231000000", urgent: false },
+      stage: "staged",
+    },
+    "a staged update, without the release URL, advisories, serial or key",
+  );
+  fake.staged = "pending";
+  Assert.equal((await state(2)).stage, "pending", "read when asked, not cached");
+  Assert.equal(fake.checks, 0, "reading it starts no check (S9)");
+
+  // Firefox's update service failing (late in shutdown, a broken install) counts as nothing
+  // staged: `state` (and the status bar it reads) still answers.
+  const stage = fake.stage;
+  fake.stage = () => {
+    throw new Error("the update manager is gone");
+  };
+  const failed = await client.request(9, "state");
+  Assert.ok(failed.ok, "state still answers");
+  Assert.equal(failed.result?.update?.stage, "none", "nothing staged as far as Vimma knows");
+  fake.stage = stage;
+
+  VimmaUpdates._reset();
+  await VimmaUpdates.ownAppImage();
+  Assert.deepEqual(
+    await state(3),
+    {
+      enabled: true,
+      installType: "tarball",
+      outcome: "never",
+      checkedAt: null,
+      offer: null,
+      stage: "none",
+    },
+    "before any check",
+  );
+  client.close();
+  await disable();
+  await SpecialPowers.popPrefEnv();
+});
+
 add_task(async function test_send_keys_reach_the_page() {
   await enable();
   const client = await session();

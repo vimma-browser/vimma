@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 2, sub-PR 3 but for the control `state` field, and sub-PR 4's release manifest implemented; the control `state` field, sub-PR 4's MAR and nightly parts and sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 2, sub-PR 3 and sub-PR 4's release manifest implemented; sub-PR 4's MAR and nightly parts and sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -979,6 +979,24 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     because the macOS binary cannot run on the Linux job that builds the manifest; and comparing
     Vimma versions instead of build IDs in rule 4, because Firefox's updater, which tarball
     installs are to use (sub-PRs 2 and 5), selects by build ID, and the two must agree.
+41. **The control socket's `state` has an `update` field that names only what a script waits
+    on**: whether checks are on, the install type, the last check's outcome and time, the offered
+    version, build ID and urgency, and how far that build got (`none`, `pending`, `staged`;
+    shape in [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md),
+    "`state`"). The e2e scenario waits on it until an update is staged, and asserts the outcome
+    of the downgrade and bad-signature cases. It is built from an allow-list
+    (`controlUpdateState` in `control.mjs`), because the update state also holds a refusal's
+    reason, the manifest's serial and signing key, the release and MAR URLs and the advisories:
+    about:vimma shows those to the user, and a script needs none of them to know whether an update
+    is staged; an allow-list keeps a field added to the update state later off the socket until
+    the protocol names it. It is read when `state` is asked, so it starts no check and no
+    download (S9). Only the `full` role sees it, as all of `state`: the agent role never reaches
+    `state` (security.md S12), and this spec gives the agent role nothing of the updater (Security
+    and privacy, "Local surface"). It is the same in a private window, because it names no page.
+    Added without a protocol version bump, as `panes` and `splits`, because clients ignore fields
+    they do not know. Rejected: a command of its own (`update-state`), because it would be a new
+    command for the agent role's closed list to keep out and a new request for scripts that already
+    poll `state`.
 
 ### 9. Not in this spec
 
@@ -1170,7 +1188,7 @@ tested:
    mochitests.
    (Since changed: the control `state` field comes in a pull request of its own after the hook,
    because it changes the control protocol, vimma-ctl's validator and the protocol docs, a
-   surface of its own; sub-PR 5's scenario is its first user. The hook has four hunks and ten
+   surface of its own; sub-PR 5's scenario is its first user. Its shape is decision 41. The hook has four hunks and ten
    lines, not two: the lazy import of `VimmaUpdates`, `allowCheck` in `#checkForUpdates` next to
    the policy check, `beforeCheck` before the request is sent and `verify` before
    `#parseUpdates`. Checks that are off end as not allowed there, before any request, because a
