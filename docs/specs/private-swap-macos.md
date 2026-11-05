@@ -1,8 +1,9 @@
 # Spec: private-swap-macos
 
 Status: implemented, except the leftovers in
-[#623](https://github.com/vimma-browser/vimma/issues/623) (the hand checks not yet run) · Area:
-`packages/vimma-core/src/` (`hyprswap.mjs`'s pair state machine moved to a backend-neutral
+[#623](https://github.com/vimma-browser/vimma/issues/623) (the hand checks with two Spaces and
+with two displays, not yet run) · Area: `packages/vimma-core/src/` (`hyprswap.mjs`'s pair state
+machine moved to a backend-neutral
 `privatepair.mjs`, `nativeswap.mjs` new); `host/private-swap.mjs` (a backend switch),
 `host/native-swap.mjs` (new, and its `jar.mn` line), `host/private-ops.mjs`,
 `about/AboutVimma.sys.mjs`; `docs/guide.md`, `docs/limits.md` · Upstream patches: none · ADR:
@@ -498,3 +499,64 @@ With the AeroSpace tiling window manager running, AeroSpace had trouble with the
 that was not investigated here. The other hand
 checks (Tests, "By hand on a Mac") have not been run yet; they are tracked in
 [#623](https://github.com/vimma-browser/vimma/issues/623).
+
+### The other hand checks, on an Apple Silicon Mac (2026-11-05)
+
+Vimma 0.1.15 (Firefox 159.0.1), the signed release, on macOS 27.2 with the built-in Retina
+display, as a second Vimma instance on a throwaway profile and config directory. The AeroSpace
+tiling window manager was running: it tiles a window each time macOS shows it again, so each
+frame was read from Vimma's side straight after the swap, before AeroSpace moved the window, and
+screen recordings at 60 frames per second were read frame by frame.
+
+- **No animation on enter and leave**, normal and zoomed: passes. The shown window appears at its
+  full frame from one recorded frame to the next, with no zoom-in, fade or intermediate size,
+  including `maximize()` on a zoomed slot and the restore of a zoomed window into a non-zoomed
+  slot. A window shown at another size than the one it was hidden at draws its old-size
+  contents for two to four frames before it repaints
+  ([#773](https://github.com/vimma-browser/vimma/issues/773)).
+- **No flash of the desktop when the slot window closes**: passes for the red close button,
+  `ctrl+shift+w` and File → Close Window. The normal window replaces the private one from one
+  recorded frame to the next. `cmd+w` on the last tab does not close the window, because
+  `browser.tabs.closeWindowWithLastTab` is `false`: a new private tab replaces the closed one and
+  nothing swaps.
+- **No false `swap failed`**: passes. Over about fifteen swaps, including windows moved, resized,
+  zoomed and un-zoomed while hidden and windows that AeroSpace moved right after the swap,
+  `about:vimma`'s placement stayed `swap`.
+- **Mission Control, App Exposé and `` cmd+` ``**: the hidden normal window is absent from all
+  three. With a second normal window open, `` cmd+` `` cycles between the two visible windows only.
+- **The Window menu and the Dock menu** (decision 15): macOS lists the private window and not the
+  hidden normal window in either menu, so neither offers a way back to it; the swap back from
+  `activate` is not reached from them.
+- **A link while Vimma is in the background**: passes from Firefox's external-link handler on. A
+  link opened with `OPEN_EXTERNAL` while another app was active landed in the hidden normal
+  window, which was shown in the private window's place in the same call, and Vimma became the
+  active app with the normal window in front. The Apple event from another app was not sent: it
+  could not be addressed to the test instance alone without a macOS Automation consent prompt,
+  and LaunchServices would have chosen between the two running Vimma instances.
+- **`cmd+h` and unhide**: passes. Unhiding shows the private window only; the normal window stays
+  hidden.
+- **A Dock click**: passes. With the private window shown and another app active, a click brings
+  Vimma forward and opens no window. With the private window minimized and the normal window
+  hidden, a click restores the private window, and the normal window stays hidden.
+- **A zoomed window**: entering from a zoomed normal window shows the private window zoomed at the
+  same frame; leaving to it from a non-zoomed private window shows it un-zoomed at the private
+  window's frame. After zooming a moved and resized window, its persisted `screenX`, `screenY`,
+  `width` and `height` attributes held the frame from before the zoom, which settles that item
+  of Research.
+- **Native full screen** (decision 7): passes. From a fullscreen normal window, the private
+  workspace opens in a fullscreen Space of its own and nothing is hidden; going back switches to
+  the normal window's Space. A fullscreen window ordered out directly (which Vimma never does)
+  leaves macOS on the desktop Space with the window's fullscreen Space kept as an empty Space in
+  Mission Control; showing the window again puts it back in that Space without switching to it.
+  This confirms decision 7.
+- **`kill -9` while the normal window is hidden, then a restart** on the same profile: passes. The
+  normal window comes back visible with its tab, and no private window or swap state remains.
+- **`document.hidden` in the hidden window**: `true`, with a `visibilitychange` event on hiding,
+  and `false` again with an event on showing. This settles the occlusion item in Research.
+- With AeroSpace, the private window is tiled into the workspace after each swap instead of
+  keeping the normal window's frame, and closing the private window leaves an empty tile for
+  about a second and a half before AeroSpace closes it.
+
+Not run here, and still tracked in #623: two Spaces (the window shown on the active Space), and two
+displays with different scale factors. AeroSpace manages both displays on this Mac, and a test
+window on the second display would have been tiled with the windows already there.
