@@ -2560,6 +2560,46 @@ installs keep trusting it until they are updated by hand.
 | primary   | Cloud KMS key ring `vimma-updates`, key `update-primary`, version 1, HSM, RSA-4096 | `fb4d33b6` | `fb4d33b6ea54ddb81a6a40ce50a61a6f9383b5850f27e2218045f5d3a07dab9a` |
 | secondary | not pinned yet (step 4)                                                            | -          | -                                                                  |
 
+**5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
+certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
+links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
+and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
+They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
+header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,
+which signs only a DigestInfo it is sent, so `tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
+fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
+With `update-primary.pem` from step 3 and the maintainer's own `gcloud` credentials, as in
+step 6:
+
+```sh
+node tools/update/update-cert.mjs request --public-key update-primary.pem --slot primary --out-dir cert
+gcloud kms asymmetric-sign --version 1 --key update-primary --keyring vimma-updates \
+  --location "$LOCATION" --input-file cert/primary.digestinfo.bin --signature-file cert/primary.sig.bin
+node tools/update/update-cert.mjs assemble --dir cert --slot primary --signature cert/primary.sig.bin \
+  --out configs/updater/primary.der
+cp configs/updater/primary.der configs/updater/secondary.der
+openssl x509 -inform DER -in configs/updater/primary.der -noout -subject -pubkey \
+  | openssl pkey -pubin -outform DER | sha256sum   # the primary's SPKI SHA-256 in the table above
+sha256sum configs/updater/*.der
+npm run gen-update-keys   # update-keys.mjs from the certificates; it must not change the key
+```
+
+`assemble` refuses a signature that does not verify with the certificate's own key, and a key
+other than the primary `update-keys.mjs` pins. The secondary slot holds the primary's
+certificate again until step 4's ceremony; after it, `secondary.der` is the offline key's
+certificate, made there with openssl, and `npm run gen-update-keys` pins it too. Record each
+certificate's SHA-256 here; `npm test` fails when `update-keys.mjs` and the certificates
+disagree, or when the primary certificate's hash is missing from this file.
+
+| Certificate     | Subject                                 | SHA-256 of the DER                                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------ |
+| `primary.der`   | `CN=Vimma update signing primary`       | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
+| `secondary.der` | the primary's certificate (decision 39) | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
+
+Before a package with the updater is signed or published, `tools/update/check-build.mjs
+<unpacked tarball>` checks that it asks `updates.vimma.dev`, that both channel files say
+`vimma`, and that its `updater` binary carries these certificates and none of Mozilla's.
+
 **6. Check the chain end to end** before the pipeline exists: sign a manifest with KMS and serve
 it. The raw PKCS#1 key signs exactly the bytes it is sent, so the SHA-384 DigestInfo is built
 locally: the fixed DER prefix for SHA-384 followed by the 48-byte hash.

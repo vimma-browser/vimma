@@ -868,9 +868,11 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - **Gecko itself.** Page isolation, the sandbox, TLS and the JavaScript engine are Firefox's.
   Vimma is only as safe as the Firefox release under it, so security comes from shipping each
   Firefox release, and each security dot release, quickly: §10 above and
-  [docs/rebase.md](rebase.md) ("Security dot release: the fast path"). Vimma has no built-in
-  updater ([`updater_is_not_built`](../tests/browser/browser_vimma_updater.js)); updates come
-  with your package.
+  [docs/rebase.md](rebase.md) ("Security dot release: the fast path"). Source and dev builds
+  have no built-in updater, and release builds will carry Firefox's updater pointed at
+  updates.vimma.dev only (UP12,
+  [`update_url_matches_the_build`](../tests/browser/browser_vimma_updater.js)); until then
+  updates come with your package or Vimma's update check (§16).
 - **Malware running as you.** It can read your profile, cookies, the control token and
   config.toml, and drive any app you run. Vimma does not defend against it; file modes keep out
   other local users, not your own processes.
@@ -3432,6 +3434,41 @@ _Pages_ and _extensions_ cannot reach it.
   [`history cleared on close: an AppImage's restart is a quit, so the session is purged`](../packages/vimma-core/test/restart.test.mjs),
   [`an AppImage without a usable $APPIMAGE falls back to Firefox's restart`](../packages/vimma-core/test/restart.test.mjs),
   [`gives up after RELAUNCH_WAIT_S when the old process never exits`](../packages/vimma-core/test/restart.test.mjs)
+- UP12. Firefox's updater is built **only** with `VIMMA_UPDATES=1` (the release and nightly
+  jobs; source and dev builds keep `--disable-updater`), **only** for the update channel
+  `vimma`, and such a binary **only** asks `updates.vimma.dev` and **only** applies a MAR signed
+  by a key whose certificate Vimma commits (`configs/updater/`, which `npm run import` links to
+  `engine/toolkit/mozapps/update/updater/vimma/` where `moz-build.patch` reads it; ADR-016). It
+  **never** trusts Mozilla's keys, test-signing keys (`dep1.der`, `dep2.der`, whose
+  private halves are public) included: the mozconfig stops the build when either of Vimma's
+  certificates is missing or empty in the engine (a dangling link counts as missing) or differs
+  from the committed one, the import refuses to link a missing, empty or symlinked one, and `moz-build.patch` stops it on any other channel, since every
+  other channel embeds Mozilla's. The manifest check's pinned keys (UP1) are generated from the
+  same certificates, so the two verifiers trust the same keys, and a certificate that is not
+  self-signed by its own key is refused. The primary's certificate is made from the request
+  `update-cert.mjs` builds for the pinned primary key; only `--any-key`, for throwaway test
+  keys, takes another. `check-build.mjs` checks a package (the URL, both channel files, and
+  that its `updater` carries Vimma's certificates and none of Mozilla's); the release and
+  nightly jobs run it from sub-PR 4 on.
+  **⚠ limit:** until sub-PR 3's hook, Firefox's update service would parse the manifest without
+  Vimma's verifier (UP1), so no release or nightly sets `VIMMA_UPDATES=1` before that hook lands
+  (sub-PR 4). Artifact builds (ADR-010) run Mozilla's prebuilt updater, which trusts only
+  Mozilla's keys, and keep `aus5.mozilla.org`; they are never shipped.
+  [`is not built without VIMMA_UPDATES (source and dev builds)`](../tools/test/mozconfig-updater.test.mjs),
+  [`refuses VIMMA_UPDATES=1 without Vimma's certificates, so no updater trusts Mozilla's test keys`](../tools/test/mozconfig-updater.test.mjs),
+  [`refuses any other value of VIMMA_UPDATES rather than guessing`](../tools/test/mozconfig-updater.test.mjs),
+  [`links both certificates into the engine and ignores them in its git`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses a repository without a certificate, so no import leaves a half-set behind`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses a certificate that is a link, which could lead to any file on the machine`](../tools/import/test/link-update-certs.test.mjs),
+  [`refuses VIMMA_UPDATES=1 when a certificate in the engine is not the committed one`](../tools/test/mozconfig-updater.test.mjs),
+  [`fails when the updater lacks Vimma's certificate or carries one of Mozilla's`](../tools/update/test/check-build.test.mjs),
+  [`fails without the [AppUpdate] URL or with another host`](../tools/update/test/check-build.test.mjs),
+  [`the repository: update-keys.mjs is what the committed certificates give`](../tools/update/test/gen-update-keys.test.mjs),
+  [`pins the primary once when the secondary slot holds the primary again (decision 39)`](../tools/update/test/gen-update-keys.test.mjs),
+  [`refuses a signature that is not the key's own over this request`](../tools/update/test/update-cert.test.mjs),
+  [`refuses a certificate whose self-signature does not verify`](../tools/update/test/gen-update-keys.test.mjs),
+  [`fails when --mozilla-certs lacks Mozilla's certificates, rather than comparing nothing`](../tools/update/test/check-build.test.mjs),
+  [`CLI: request, then assemble with a KMS signature, refusing a key other than the pinned primary`](../tools/update/test/update-cert.test.mjs)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing job on `main`, in the `update-signing` environment, can
@@ -3441,6 +3478,8 @@ The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded
 and checked by
 [`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../packages/vimma-core/test/updates.test.mjs));
 the secondary is pinned in a later release, an ordinary one whose manifest the primary signs.
+Firefox's updater embeds the same keys as self-signed certificates, the secondary slot holding the
+primary's again until then (decision 39; runbook step 5b, UP12).
 Until then a lost or leaked primary cannot be replaced through the update check: installs keep
 trusting it until they are updated by hand. A leaked primary can announce a version that does
 not exist and link its details page anywhere over https, but the commands about:vimma shows

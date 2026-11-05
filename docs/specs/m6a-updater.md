@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, and sub-PR 4's release manifest implemented; Firefox's updater for tarball installs, that is sub-PRs 2 and 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, sub-PR 4's release manifest, and sub-PR 2's build switch, patches and certificate tools implemented; Firefox's updater for tarball installs, that is sub-PR 2's primary certificate, sub-PR 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -468,7 +468,10 @@ Rules, in order (each failure has a reason string for about:vimma and the status
    secondary slot. The public keys are the SPKI of the DER certificates the updater embeds,
    generated into `vimma/updates/keys.mjs` at import time from
    `src/toolkit/mozapps/update/updater/vimma/`. A test key is accepted only from the pref
-   `vimma.update.testKeys` and only when `Cu.isInAutomation`.
+   `vimma.update.testKeys` and only when `Cu.isInAutomation`. (Since changed: the keys are
+   generated into `packages/vimma-core/src/update-keys.mjs` by `npm run gen-update-keys` from
+   `configs/updater/`, outside `src/` because `surfer license-check` cannot accept a binary file
+   there.)
 2. `vimmaChannel` equals `UpdateUtils.UpdateChannel` and `vimmaTarget` equals the build target (a
    nightly or other-target manifest served at the release path is refused).
 3. **Replay**: `vimmaSerial` must be ≥ the highest serial this profile has accepted
@@ -581,8 +584,9 @@ ever added, its own spec can revisit it.
 
 **Key ceremony (any option).** RSA-4096, a self-signed certificate per slot (the updater only
 reads the public key; the subject is `CN=Vimma update signing primary|secondary`; validity is
-irrelevant). The two public DERs are committed under `src/toolkit/mozapps/update/updater/vimma/`
-with their SHA-256 in the runbook. The secondary's private half is never on a networked machine.
+irrelevant). The two public DERs are committed under `configs/updater/` (linked into the engine
+by `npm run import`, since `surfer license-check` refuses a binary file under `src/`) with their
+SHA-256 in the runbook. The secondary's private half is never on a networked machine.
 
 **Rotation (planned, for example every two years or on any doubt).** Release R carries an updater
 with `primary = new`, `secondary = cold` and is signed with the **old** primary, which every client
@@ -1140,6 +1144,26 @@ tested:
    `[AppUpdate] URL=https://updates.vimma.dev/…`, `update-settings.ini` says `vimma`, the `updater` binary
    contains Vimma's primary DER's bytes and not `dep1.der`'s, and the built updater applies a
    test-signed MAR from an installed tarball (rpath question answered).
+   (Since changed: sub-PR 2 brings two of the three patches, `moz-configure.patch` and
+   `moz-build.patch`; `UpdateService-sys-mjs.patch` comes with sub-PR 3, whose hook it is,
+   because a patch with no verifier to call would only be a hunk to rebase, and no shipped build
+   has the updater before sub-PR 4 sets `VIMMA_UPDATES=1`. `MOZ_APPUPDATE_HOST` is set outside
+   artifact builds only (`when=~artifact_builds`), because their updater is Mozilla's prebuilt
+   one, which trusts only Mozilla's keys, so they keep asking `aus5.mozilla.org` as before
+   (ADR-010). The mozconfig stops a `VIMMA_UPDATES=1` build when either certificate is missing,
+   because the channel's fallback branch in `moz.build` would embed Mozilla's test keys, and
+   `moz-build.patch` stops an updater build on any channel but `vimma` (Surfer's brand sets the
+   channel), because every other channel embeds Mozilla's keys; an artifact build, which
+   compiles no updater, takes neither branch and needs no certificate.
+   `update-keys.mjs` is generated from the certificates by `npm run gen-update-keys`
+   (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
+   Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and
+   `tools/update/check-build.mjs` checks a package against the done criteria above. ADR-016
+   records the channel, host and certificates. The rpath question is answered: Firefox 159.0.1's
+   Linux `updater` already has `RUNPATH $ORIGIN`, and the `updater` of an installed
+   `VIMMA_UPDATES=1` tarball, run with an empty environment, applied a complete MAR signed with a
+   test key in its slots and refused one signed with Mozilla's test key (`failed: 19`), so Zen's
+   `-Wl,-rpath=$ORIGIN` hunk is not needed.)
 3. **Host for Firefox's updater** (the `UpdateService-sys-mjs.patch` hook calling the same
    verifier, the staged notices, the urgent prompt, `:restart`, `updates: off` once per session,
    AppImage replacement, the anonymous MAR download, the control `state` field): the remaining

@@ -38,10 +38,45 @@ for _vimma_version_file in version.txt version_display.txt; do
 done
 unset _vimma_version_file
 
-# App updates (docs/specs/m0-updater.md). No updater until M6 brings our own update manifest:
-# the built-in one asks aus5.mozilla.org for Firefox builds. Without it, application.ini has no
-# [AppUpdate] URL, the About dialog shows the version only and Settings no update controls.
-ac_add_options --disable-updater
+# App updates (docs/specs/m0-updater.md, m6a-updater.md §3). Firefox's updater is built only
+# when VIMMA_UPDATES=1, which the release and nightly jobs set: a source or dev build would offer
+# itself every release (its build ID is newer) and only adds traffic to the update host. Without
+# it, application.ini has no [AppUpdate] URL, the About dialog shows the version only and
+# Settings no update controls. With it, the updater embeds Vimma's update certificates
+# (toolkit/mozapps/update/updater/moz-build.patch), which `npm run import` links from
+# configs/updater/; a tree without them would fall back to Mozilla's test keys (dep1.der), so
+# the build stops instead.
+case "${VIMMA_UPDATES:-}" in
+  "" | 1) ;;
+  *)
+    echo "mozconfig: VIMMA_UPDATES must be 1 or unset, not '$VIMMA_UPDATES'" >&2
+    exit 1
+    ;;
+esac
+if [ "${VIMMA_UPDATES:-}" = 1 ]; then
+  for _vimma_cert in primary.der secondary.der; do
+    if [ ! -s "$topsrcdir/toolkit/mozapps/update/updater/vimma/$_vimma_cert" ]; then
+      echo "mozconfig: VIMMA_UPDATES=1 needs toolkit/mozapps/update/updater/vimma/$_vimma_cert," \
+        "linked from configs/updater/ by npm run import" \
+        "(docs/runbook.md, \"Update signing keys and the update host\")" >&2
+      exit 1
+    fi
+    # engine/ sits in the repository: a stale file or a link to another checkout, from a build
+    # that skipped npm run import, would embed other keys than the committed ones.
+    if ! cmp -s "$topsrcdir/toolkit/mozapps/update/updater/vimma/$_vimma_cert" \
+      "$topsrcdir/../configs/updater/$_vimma_cert"; then
+      echo "mozconfig: toolkit/mozapps/update/updater/vimma/$_vimma_cert is not" \
+        "configs/updater/$_vimma_cert; run npm run import" >&2
+      exit 1
+    fi
+  done
+  unset _vimma_cert
+  ac_add_options --enable-updater
+else
+  # The artifact build turns the line below into a comment; the no-op keeps this branch valid.
+  :
+  ac_add_options --disable-updater
+fi
 
 # Google Safe Browsing key (docs/specs/m0-safebrowsing-key.md): only when the key file exists,
 # so keyless builds keep working; Vimma then defaults Safe Browsing off (MozillaServices.sys.mjs).
