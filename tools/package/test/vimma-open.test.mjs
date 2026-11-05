@@ -519,6 +519,35 @@ describe("vimma-open", () => {
     expect(outside.args).toEqual(["-vimma-from", "slack", LINK]);
   });
 
+  it("inside an AppImage whose APPDIR is reached through a symlink still runs in place", () => {
+    processEntry(1, "systemd", 0);
+    processEntry(100, "slack", 1);
+    // The runtime mounts under $TMPDIR, which can be a symlink (macOS's /var/folders is under
+    // /private/var): APPDIR then names the link while the launcher's own path is resolved.
+    const mount = join(dir, "mount");
+    mkdirSync(join(mount, "usr/lib/vimma"), { recursive: true });
+    const via = join(dir, "via");
+    symlinkSync(mount, via);
+    const launcher = join(via, "usr/lib/vimma/vimma-open");
+    copyFileSync(LAUNCHER, launcher);
+    const fake = join(dir, "vimma-pid");
+    writeFileSync(fake, `#!/bin/sh\necho "$$ $*" > "${dir}/pid"\n`);
+    chmodSync(fake, 0o755);
+    const r = spawnSync("/bin/sh", [launcher, LINK], {
+      env: {
+        PATH: "/usr/bin:/bin",
+        VIMMA_OPEN_PROC: proc,
+        VIMMA_OPEN_PPID: "100",
+        VIMMA_BIN: fake,
+        APPIMAGE: "/opt/apps/Vimma-1.0.0-x86_64.AppImage",
+        APPDIR: via,
+      },
+      encoding: "utf8",
+    });
+    expect(r.status).toBe(0);
+    expect(readFileSync(join(dir, "pid"), "utf8")).toBe(`${r.pid} -vimma-from slack ${LINK}\n`);
+  });
+
   it("a name that is not a token never hides the names beyond it", () => {
     processEntry(1, "systemd", 0);
     // A child of an agent CLI that renamed itself (prctl, a copy named "a b").
