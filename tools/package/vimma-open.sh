@@ -181,9 +181,14 @@ handoff() {
   # Inside an AppImage (its AppRun runs us from the mount, $APPDIR), the runtime unmounts the
   # image once this process exits, so the browser runs in its place instead. Checked by our own
   # path: another AppImage app's APPIMAGE and APPDIR reach its children too.
+  # APPDIR is compared resolved too, as our own path is: the mount can sit under a symlink
+  # (macOS's /var/folders is /private/var/folders, a TMPDIR that is a link).
   if [ -n "${APPDIR:-}" ]; then
+    appdir=$(readlink -f "$APPDIR" 2>/dev/null)
+    # An empty one would make the pattern "/*", which every path matches.
+    [ -n "$appdir" ] || appdir=$APPDIR
     case $(readlink -f "$0") in
-      "$APPDIR"/*) exec "$@" ;;
+      "$APPDIR"/* | "$appdir"/*) exec "$@" ;;
     esac
   fi
   if command -v setsid >/dev/null 2>&1; then
