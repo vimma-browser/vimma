@@ -1636,6 +1636,28 @@
           ]
         },
         {
+          "name": "show_link_target",
+          "description": "Show a link's target without following it",
+          "keys": [
+            {
+              "keys": "F",
+              "chords": ["F"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "copy_link_target",
+          "description": "Copy a link's target",
+          "keys": [
+            {
+              "keys": "c",
+              "chords": ["c"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
           "name": "hint_cancel",
           "description": "Leave hint mode",
           "keys": [
@@ -2939,6 +2961,28 @@
             {
               "keys": "tab",
               "chords": ["tab"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_mark_set",
+          "description": "Set a mark here: m and a letter or digit",
+          "keys": [
+            {
+              "keys": "m",
+              "chords": ["m"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_mark_go",
+          "description": "Go back to a mark: ' and its letter or digit",
+          "keys": [
+            {
+              "keys": "'",
+              "chords": ["'"],
               "mode": "pdf"
             }
           ]

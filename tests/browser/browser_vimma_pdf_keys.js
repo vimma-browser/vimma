@@ -343,6 +343,41 @@ add_task(async function jumps() {
   });
 });
 
+// Decision 9: ctrl+o walks back through the jumps inside the PDF one at a time, then leaves it.
+// pdf.js's history entries carry no user interaction (Vimma takes the keys in chrome), which
+// Firefox's goBack skips (browser.navigation.requireUserInteraction).
+add_task(async function jumps_walk_back_one_at_a_time() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
+  const browser = tab.linkedBrowser;
+  try {
+    await loadPdf(browser, PDF);
+    await TestUtils.waitForCondition(() => segment("page").startsWith("page"), "the page");
+    await focusNormal(browser);
+    type("2G");
+    await until(browser, { page: 2 }, "2G");
+    type("5G");
+    await until(browser, { page: 5 }, "5G");
+    // pdf.js's two history entries have reached the parent's session history.
+    const sh = browser.browsingContext.sessionHistory;
+    await TestUtils.waitForCondition(() => sh.count === 4 && sh.index === 3, "two jumps");
+    EventUtils.synthesizeKey("o", { ctrlKey: true });
+    await until(browser, { page: 2 }, "the first ctrl+o comes back to the last jump's start");
+    EventUtils.synthesizeKey("o", { ctrlKey: true });
+    await until(browser, { page: 1 }, "the second ctrl+o comes back to the first page");
+    EventUtils.synthesizeKey("i", { ctrlKey: true });
+    await until(browser, { page: 2 }, "ctrl+i goes forward one jump");
+    EventUtils.synthesizeKey("o", { ctrlKey: true });
+    await until(browser, { page: 1 }, "ctrl+o again");
+    EventUtils.synthesizeKey("o", { ctrlKey: true });
+    await TestUtils.waitForCondition(
+      () => browser.currentURI.spec === "https://example.com/",
+      "the next ctrl+o leaves the PDF for the page before it",
+    );
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
+});
+
 add_task(async function keys_on_web_pages_are_unchanged() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
   try {

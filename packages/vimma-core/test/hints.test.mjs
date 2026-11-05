@@ -228,6 +228,8 @@ describe("hint mode", () => {
       "hint.follow_new_tab",
       "hint.follow_new_tab_fg",
       "hint.element",
+      "hint.show_target",
+      "hint.copy_target",
     ]);
     for (const id of HINT_ACTIONS) expect(ids.has(id)).toBe(true);
   });

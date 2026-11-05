@@ -2,8 +2,11 @@ import { describe, test, expect } from "vitest";
 import {
   PDF_SCROLL,
   PDF_SPREAD,
+  isPdfMarkChar,
   parsePdfOp,
+  parsePdfPosition,
   parsePdfState,
+  pdfDocumentKey,
   pdfPageText,
   pdfPageTarget,
   pdfRotation,
@@ -15,7 +18,8 @@ import {
 } from "../src/pdf.mjs";
 
 // docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
-const good = { page: 3, pages: 12, label: "", find: { current: 0, total: 0 } };
+// `doc` counts the documents pdf.js has opened in this viewer (V11).
+const good = { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 };
 
 describe("parsePdfState", () => {
   test("accepts a full record", () => {
@@ -43,6 +47,9 @@ describe("parsePdfState", () => {
       ["no find count", { ...good, find: undefined }],
       ["a match past the total", { ...good, find: { current: 5, total: 4 } }],
       ["a negative total", { ...good, find: { current: 0, total: -2 } }],
+      ["no document count", { ...good, doc: undefined }],
+      ["a document count that is not a count", { ...good, doc: -1 }],
+      ["a document count as a string", { ...good, doc: "1" }],
     ])("%s", (_name, raw) => {
       expect(parsePdfState(raw)).toBeNull();
     });
@@ -143,5 +150,45 @@ describe("the parent sends only operations and numbers", () => {
     ["an extra field", { op: "next", n: 1, css: "x" }],
   ])("%s is dropped", (_, raw) => {
     expect(parsePdfOp(raw)).toBeNull();
+  });
+});
+
+// Delivery PR 5: marks (decision 11). A mark is a position the parent keeps; going back to it
+// sends the viewer that position's four numbers (V7).
+describe("pdf marks", () => {
+  const at = { page: 3, left: 12.5, top: 700, scale: 1.25 };
+  test("a letter or a digit names a mark", () => {
+    for (const c of ["a", "Z", "0", "9"]) expect(isPdfMarkChar(c)).toBe(true);
+    for (const c of ["", "ab", "'", " ", "<Esc>", "ä", undefined]) {
+      expect(isPdfMarkChar(/** @type {any} */ (c))).toBe(false);
+    }
+  });
+  test("marks are kept per document, without the fragment", () => {
+    expect(pdfDocumentKey("https://a.example/x.pdf#page=3")).toBe("https://a.example/x.pdf");
+    expect(pdfDocumentKey("https://a.example/x.pdf?v=1")).toBe("https://a.example/x.pdf?v=1");
+    expect(pdfDocumentKey("not a url")).toBeNull();
+  });
+  test("a position in bounds passes", () => {
+    expect(parsePdfPosition(at)).toEqual(at);
+    expect(parsePdfPosition({ ...at, left: -40 })).toEqual({ ...at, left: -40 });
+  });
+  test.each([
+    ["no record", null],
+    ["page 0", { ...at, page: 0 }],
+    ["a fractional page", { ...at, page: 1.5 }],
+    ["text for a number", { ...at, top: "700" }],
+    ["an infinite offset", { ...at, left: Infinity }],
+    ["a huge offset", { ...at, top: 1e9 }],
+    ["a scale past pdf.js's limit", { ...at, scale: 30 }],
+    ["a missing field", { page: 3, left: 0, top: 0 }],
+    ["an extra field", { ...at, css: "x" }],
+  ])("%s is dropped", (_, raw) => {
+    expect(parsePdfPosition(raw)).toBeNull();
+  });
+  test("going to a mark sends its position and nothing else", () => {
+    expect(parsePdfOp({ op: "go", n: 0, at })).toEqual({ op: "go", n: 0, at });
+    expect(parsePdfOp({ op: "go", n: 0 })).toBeNull();
+    expect(parsePdfOp({ op: "go", n: 0, at: { ...at, page: -1 } })).toBeNull();
+    expect(parsePdfOp({ op: "next", n: 0, at })).toBeNull();
   });
 });

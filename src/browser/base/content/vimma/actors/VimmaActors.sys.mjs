@@ -387,7 +387,9 @@ export const VimmaActors = {
     const linksOnly =
       (agent && !elements) ||
       action === "hint.follow_new_tab" ||
-      action === "hint.follow_new_tab_fg";
+      action === "hint.follow_new_tab_fg" ||
+      action === "hint.show_target" ||
+      action === "hint.copy_target";
     const blocks = !agent && action === "hint.element";
     const texts = agent && !elements;
     /** @type {HintTarget[]} */

@@ -49,11 +49,16 @@ export const OVERLAP_CHORDS = Object.freeze([
  * @property {string} [action]  the Vimma action bound to the chord by default (a, b)
  * @property {"all" | "normal"} [modes]  where that binding works
  * @property {"P" | "V"} [first]  a and b: who has the key first, the page (P) or Vimma (V)
+ * @property {"pdf"} [context]  the action is bound in this keymap context only (ADR-024); Firefox's
+ *   key is off in every tab all the same
  * @property {boolean} [conditional]  only in some builds or settings
  * @property {boolean} [unbound]  the action has no default key on this chord (another row's
  *   action owns it)
  * @property {"fullscreen"} [when]  only then (Firefox's reserved F11 that leaves full screen)
  */
+
+/** A row whose action is bound in the PDF viewer only (docs/specs/pdf-mode.md). */
+const PDF = /** @type {const} */ ({ context: "pdf" });
 
 /**
  * @param {FirefoxShortcut["source"]} source
@@ -728,7 +733,8 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
     ],
   ]),
   ...rowsOf("page", [
-    ["'", "FindBarChild", "", "quick find, links only", "c"],
+    // Off by its pref (decision 16); Vimma binds it in the PDF viewer only, for zathura's marks.
+    ["'", "FindBarChild", "", "quick find, links only", "a", "pdf_mark_go", "normal", "V", PDF],
     ["/", "FindBarChild", "", "quick find", "a", "find_forward", "normal", "V"],
   ]),
   ...rowsOf("platform", [

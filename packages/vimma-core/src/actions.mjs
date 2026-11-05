@@ -239,6 +239,9 @@ group("Hints", [
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
   ["follow_link_new_tab_fg", "hint.follow_new_tab_fg", "Follow link in new tab and switch to it"],
   ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
+  // docs/specs/pdf-mode.md decision 16: zathura's F and c, bound in the PDF viewer.
+  ["show_link_target", "hint.show_target", "Show a link's target without following it"],
+  ["copy_link_target", "hint.copy_target", "Copy a link's target"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
 ]);
 
@@ -431,6 +434,14 @@ group("PDF viewer", [
   ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (with a count: n times)"],
   ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it"],
   ["pdf_outline", "pdf.outline", "Open the outline (table of contents) in a panel"],
+  // Decision 11: marks in memory, per document.
+  ["pdf_mark_set", "pdf.mark_set", "Set a mark here: m and a letter or digit", { takesChar: true }],
+  [
+    "pdf_mark_go",
+    "pdf.mark_go",
+    "Go back to a mark: ' and its letter or digit",
+    { takesChar: true },
+  ],
 ]);
 
 // docs/specs/pdf-mode.md decision 10: the outline panel's `index` mode, zathura's index keys.

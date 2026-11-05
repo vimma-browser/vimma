@@ -409,6 +409,31 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
   });
 });
 
+// V11: pdf.js can open another PDF in the same viewer, with no navigation; an outline read
+// from the first goes even when the second has as many pages.
+add_task(async function another_pdf_in_the_same_viewer_drops_the_outline() {
+  await withPdf(async (browser) => {
+    await openOutline();
+    Assert.ok(PdfOps.outline(browser), "the outline is read");
+    const loaded = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      null,
+      true,
+    );
+    // The same bytes again: a new document with the same page count.
+    await SpecialPowers.spawn(browser, [], async () => {
+      const app = content.wrappedJSObject.PDFViewerApplication;
+      const data = await app.pdfDocument.getData();
+      app.open(Cu.cloneInto({ data }, content));
+    });
+    await loaded;
+    await TestUtils.waitForCondition(() => !shown(), "the open outline closes");
+    Assert.equal(PdfOps.outline(browser), null, "the outline went with the first document");
+  });
+});
+
 add_task(async function a_hostile_outline_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await recordingOutline(async (seen) => {

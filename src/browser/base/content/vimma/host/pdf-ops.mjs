@@ -6,11 +6,21 @@
 // section 20): which tabs are the viewer, decided from the parent's own view of the top document
 // (V2), and the state their adapter reports, parsed before anything shows it (V6).
 
-import { parsePdfOp, parsePdfState } from "../core/pdf.mjs";
+import {
+  isPdfMarkChar,
+  parsePdfOp,
+  parsePdfPosition,
+  parsePdfState,
+  pdfDocumentKey,
+} from "../core/pdf.mjs";
 import { outlineUrlAllowed, parsePdfOutline } from "../core/pdfoutline.mjs";
 import { PDF_FEATURE_PREF, isPdfJsPrincipal } from "../actors/pdf-view.mjs";
 
-/** @import { PdfState } from "../core/pdf.mjs" */
+const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
+);
+
+/** @import { PdfPosition, PdfState } from "../core/pdf.mjs" */
 /** @import { PdfOutline } from "../core/pdfoutline.mjs" */
 /** @import { Context } from "../core/modes.mjs" */
 /** @import { FindStatus } from "../core/find.mjs" */
@@ -23,8 +33,9 @@ const listeners = new Set();
 
 /**
  * The parsed outline of a tab's document, kept in memory until the tab navigates or closes
- * (decision 10, V11), and the documents asked for theirs (V8).
- * @type {WeakMap<object, { windowId: number, pages: number, outline: PdfOutline }>}
+ * (decision 10, V11), and the documents asked for theirs (V8). `doc` is the viewer's count of
+ * documents it opened when the outline was read.
+ * @type {WeakMap<object, { windowId: number, doc: number, outline: PdfOutline }>}
  */
 const outlines = new WeakMap();
 /** @type {WeakMap<object, number>} by <browser>: the window global asked for its outline */
@@ -32,6 +43,25 @@ const asked = new WeakMap();
 
 /** @type {Set<(browser: any, outline: PdfOutline | null) => void>} */
 const outlineListeners = new Set();
+
+/**
+ * Marks (decision 11, V11): by document (pdfDocumentKey), then by character, in memory only.
+ * A private window's marks are kept apart and go when the last private window closes.
+ * @type {{ normal: Map<string, Map<string, PdfPosition>>, private: Map<string, Map<string, PdfPosition>> }}
+ */
+const marks = { normal: new Map(), private: new Map() };
+/** Documents with marks kept at most; the one marked longest ago goes first. */
+const MAX_MARKED_DOCUMENTS = 1000;
+Services.obs.addObserver(() => marks.private.clear(), "last-pb-context-exited");
+
+/**
+ * The marks of `browser`'s kind of window.
+ * @param {any} browser
+ */
+const marksFor = (browser) => {
+  const win = browser?.ownerDocument?.defaultView;
+  return win && PrivateBrowsingUtils.isWindowPrivate(win) ? marks.private : marks.normal;
+};
 
 /**
  * The top document's window global when it is the pdf.js viewer, from the parent's view.
@@ -53,7 +83,8 @@ const sameState = (a, b) =>
   a.pages === b.pages &&
   a.label === b.label &&
   a.find.current === b.find.current &&
-  a.find.total === b.find.total;
+  a.find.total === b.find.total &&
+  a.doc === b.doc;
 
 export const PdfOps = {
   /** Whether the PDF mode is on (CONTRIBUTING.md, "Unfinished features"). */
@@ -102,7 +133,7 @@ export const PdfOps = {
     // Another document, or another PDF pdf.js opened in the same viewer: the outline read from
     // the last one goes (V11).
     const read = outlines.get(browser);
-    if (read && (read.windowId !== wg.innerWindowId || read.pages !== state?.pages)) {
+    if (read && (read.windowId !== wg.innerWindowId || read.doc !== state?.doc)) {
       outlines.delete(browser);
     }
     // Nothing changed: no redraw, so a flood of equal messages costs the parent little.
@@ -138,6 +169,107 @@ export const PdfOps = {
       // the document is going away
       return false;
     }
+  },
+
+  /**
+   * The session history index one step from the current entry when that entry is another jump
+   * inside the PDF the tab shows (decision 9), or null. pdf.js records its jumps with pushState
+   * while Vimma takes the keys in chrome, so the entries carry no user interaction, and goBack /
+   * goForward would skip them all (browser.navigation.requireUserInteraction).
+   * @param {any} browser
+   * @param {number} delta  -1 back, 1 forward; any other step is not a jump
+   * @returns {number | null}
+   */
+  jumpIndex(browser, delta) {
+    if (Math.abs(delta) !== 1 || this.context(browser) !== "pdf") return null;
+    const history = browser.browsingContext?.sessionHistory;
+    if (!history) return null;
+    const next = history.index + delta;
+    if (next < 0 || next >= history.count) return null;
+    try {
+      const here = history.getEntryAtIndex(history.index);
+      return here.sharesDocumentWith(history.getEntryAtIndex(next)) ? next : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /**
+   * `m{c}` (decision 11): asks the viewer where its view is and keeps that as mark `c` of the
+   * document, in memory only (V11).
+   * @param {any} browser
+   * @param {string} c  a letter or digit
+   * @returns {Promise<boolean>} false when nothing was kept
+   */
+  async setMark(browser, c) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const key = wg && pdfDocumentKey(wg.documentURI.spec);
+    if (!wg || !key || !isPdfMarkChar(c)) return false;
+    /** @type {unknown} */
+    let raw;
+    try {
+      raw = await wg.getActor("Vimma").sendQuery("Vimma:PdfWhere");
+    } catch {
+      return false; // the document went away
+    }
+    // From the content process: kept only as four bounded numbers (V6, V7).
+    const at = parsePdfPosition(raw);
+    if (!at || viewerGlobal(browser) !== wg) return false;
+    const all = marksFor(browser);
+    const mine = all.get(key) ?? new Map();
+    // The document marked last goes to the end, so the oldest is dropped first.
+    all.delete(key);
+    all.set(key, mine.set(c, at));
+    if (all.size > MAX_MARKED_DOCUMENTS) all.delete(all.keys().next().value ?? "");
+    return true;
+  },
+
+  /**
+   * `'{c}` (decision 11): sends the viewer mark `c` of its document as an `XYZ` destination,
+   * which pdf.js records as a jump (decision 9).
+   * @param {any} browser
+   * @param {string} c
+   * @returns {"went" | "none" | "not-pdf"}
+   */
+  goToMark(browser, c) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const key = wg && pdfDocumentKey(wg.documentURI.spec);
+    if (!wg || !key) return "not-pdf";
+    const at = marksFor(browser).get(key)?.get(c);
+    const msg = at && parsePdfOp({ op: "go", n: 0, at });
+    if (!msg) return "none";
+    try {
+      wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
+    } catch {
+      // the document is going away
+    }
+    return "went";
+  },
+
+  /**
+   * The page an internal link of the PDF goes to, for `F` (decision 16): asked of the viewer
+   * that labelled it, by the hint's own generation and index, never by its URL (V7); 0 when
+   * `target` is not a link of `browser`'s viewer or does not resolve.
+   * @param {any} browser
+   * @param {{ gen: number, id: number, bc: any, wg: any }} target  a hint target
+   * @returns {Promise<number>}
+   */
+  async linkPage(browser, target) {
+    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const pages = this.state(browser)?.pages ?? 0;
+    if (!wg || target.wg !== wg || target.bc !== browser.browsingContext) return 0;
+    /** @type {unknown} */
+    let page;
+    try {
+      page = await wg
+        .getActor("Vimma")
+        .sendQuery("Vimma:PdfLinkPage", { gen: target.gen, id: target.id });
+    } catch {
+      return 0;
+    }
+    return Number.isSafeInteger(page) && Number(page) >= 1 && Number(page) <= pages
+      ? Number(page)
+      : 0;
   },
 
   /**
@@ -231,9 +363,10 @@ export const PdfOps = {
     const wg = viewerGlobal(browser);
     if (!wg || wg !== actor.manager || asked.get(browser) !== wg.innerWindowId) return;
     asked.delete(browser);
-    const pages = this.state(browser)?.pages;
-    const outline = pages ? parsePdfOutline(data, pages) : null;
-    if (outline) outlines.set(browser, { windowId: wg.innerWindowId, pages: pages ?? 0, outline });
+    const state = this.state(browser);
+    const outline = state ? parsePdfOutline(data, state.pages) : null;
+    if (outline && state)
+      outlines.set(browser, { windowId: wg.innerWindowId, doc: state.doc, outline });
     for (const fn of outlineListeners) {
       try {
         fn(browser, outline);
@@ -302,6 +435,8 @@ const PDF_ACTIONS = Object.freeze({
 export const PDF_ACTION_IDS = Object.freeze([
   ...Object.keys(PDF_ACTIONS),
   "pdf.outline",
+  "pdf.mark_set",
+  "pdf.mark_go",
   ...[
     "down",
     "up",
@@ -327,15 +462,30 @@ export const PDF_ACTION_IDS = Object.freeze([
  * @returns {Record<string, (browser: any, action: { count?: number }) => void>}
  */
 export function pdfRunners(notice) {
-  return Object.fromEntries(
-    Object.entries(PDF_ACTIONS).map(([id, [op, sign = 1]]) => [
-      id,
-      (browser, action) => {
-        // Zoom steps carry their direction; every other count is a count (0 for none).
-        const count = action.count ?? 0;
-        const n = op === "zoom" ? sign * (count || 1) : count;
-        if (!PdfOps.run(browser, op, n)) notice(browser, NOT_PDF);
-      },
-    ]),
-  );
+  return {
+    ...Object.fromEntries(
+      Object.entries(PDF_ACTIONS).map(([id, [op, sign = 1]]) => [
+        id,
+        (/** @type {any} */ browser, /** @type {{ count?: number }} */ action) => {
+          // Zoom steps carry their direction; every other count is a count (0 for none).
+          const count = action.count ?? 0;
+          const n = op === "zoom" ? sign * (count || 1) : count;
+          if (!PdfOps.run(browser, op, n)) notice(browser, NOT_PDF);
+        },
+      ]),
+    ),
+    // Marks (decision 11): a letter or digit; any other key after m or ' does nothing.
+    "pdf.mark_set": (browser, action) => {
+      const c = /** @type {{ char?: string }} */ (action).char ?? "";
+      if (PdfOps.context(browser) !== "pdf") notice(browser, NOT_PDF);
+      else if (isPdfMarkChar(c)) PdfOps.setMark(browser, c);
+    },
+    "pdf.mark_go": (browser, action) => {
+      const c = /** @type {{ char?: string }} */ (action).char ?? "";
+      if (!isPdfMarkChar(c)) return;
+      const went = PdfOps.goToMark(browser, c);
+      if (went === "not-pdf") notice(browser, NOT_PDF);
+      else if (went === "none") notice(browser, `no mark '${c}'`);
+    },
+  };
 }

@@ -180,6 +180,7 @@ declare const Cu: {
   waiveXrays<T>(obj: T): any;
   unwaiveXrays<T>(obj: T): any;
   exportFunction(fn: Function, target: object): Function;
+  cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 };
 
 // XPCOM in system modules: interface constants and component constructors.

@@ -224,6 +224,10 @@ insert_editing = true
 "Y" = "page.yank_url"
 "<F5>" = "pdf.presentation"
 "<Tab>" = "pdf.outline"
+"m" = "pdf.mark_set"
+"'" = "pdf.mark_go"
+"F" = "hint.show_target"
+"c" = "hint.copy_target"
 
 [modal.insert]
 "<Esc>" = "mode.normal"

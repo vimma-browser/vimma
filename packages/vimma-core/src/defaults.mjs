@@ -317,6 +317,12 @@ const modal = {
     "<F5>": "pdf.presentation",
     // The outline panel (decision 10); shift+Tab still moves focus through pdf.js's toolbar.
     "<Tab>": "pdf.outline",
+    // Marks (decision 11) and zathura's link keys (decision 16); F shadows the text-block
+    // hints, which pdf.js's lines do not have.
+    m: "pdf.mark_set",
+    "'": "pdf.mark_go",
+    F: "hint.show_target",
+    c: "hint.copy_target",
   },
   insert: { "<Esc>": "mode.normal" },
   visual: {
