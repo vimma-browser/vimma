@@ -33,19 +33,17 @@ if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){2,}$/.test(APP_ID)) {
 export const RUNTIME_VERSION = "25.08";
 
 /**
- * The commit whose `docs/assets/screenshots/` the metainfo's screenshots come from. Flathub asks
- * for screenshot URLs that never change, and raw GitHub URLs pinned to a commit cannot; the
- * images are versioned with the code, and Flathub mirrors them when it builds. To replace one,
- * commit the new file and move this to that commit (docs/assets/screenshots/README.md).
+ * The metainfo's screenshots, the default first, from `docs/assets/screenshots/`. Flathub asks
+ * for screenshot URLs that never change and mirrors the images when it builds, so each release's
+ * metainfo links them at that release's tag (`vX.Y.Z`, as the tarball URL), which never moves. A
+ * commit hash would not do: the squash merge gives the images a commit that is not known before
+ * they merge. To replace one, commit the new file; the next release's metainfo shows it.
  */
-export const SCREENSHOTS_COMMIT = "0e1b3056af4b3ea8fe085045f5bbd84a87f9c6ff";
-
-/** The metainfo's screenshots, the default first (Vimma 0.1.14, built-in theme, 1280x800). */
 export const SCREENSHOTS = Object.freeze([
   { file: "hints.png", caption: "Link hints: type the letters to follow a link" },
   { file: "split.png", caption: "Two pages side by side in split panes" },
   { file: "panel.png", caption: "The side panel lists the tabs of the workspace" },
-  { file: "grep.png", caption: "Live grep searches the text of every open tab" },
+  { file: "grep.png", caption: "Live grep searches the text of the open tabs" },
   { file: "help.png", caption: "Every key binding, in an overlay you can filter" },
 ]);
 
@@ -255,7 +253,7 @@ export function metainfo({ version, date }) {
 ${SCREENSHOTS.map(
   ({ file, caption }, i) => `    <screenshot${i === 0 ? ' type="default"' : ""}>
       <caption>${caption}</caption>
-      <image>https://raw.githubusercontent.com/${REPO}/${SCREENSHOTS_COMMIT}/docs/assets/screenshots/${file}</image>
+      <image>https://raw.githubusercontent.com/${REPO}/v${version}/docs/assets/screenshots/${file}</image>
     </screenshot>`,
 ).join("\n")}
   </screenshots>

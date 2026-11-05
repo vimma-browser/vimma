@@ -9,9 +9,9 @@ theme, on [vimma.dev](https://vimma.dev):
 | `hints.png` | link hints (`f`) on vimma.dev; the default screenshot |
 | `split.png` | two split panes side by side (`ctrl+b v`)             |
 | `panel.png` | the side panel's tab list (`ctrl+b b`)                |
-| `grep.png`  | live grep across the open tabs (`ctrl+b f g`)         |
+| `grep.png`  | live grep through the workspace's tabs (`ctrl+b f g`) |
 | `help.png`  | the key bindings overlay (`ctrl+b ?`)                 |
 
-`tools/package/flatpak.mjs` links them as raw GitHub URLs pinned to the commit that added them
-(`SCREENSHOTS_COMMIT`), so the links never change under Flathub. To replace one, commit the new
-file and move `SCREENSHOTS_COMMIT` to that commit.
+`tools/package/flatpak.mjs` links them as raw GitHub URLs at each release's tag (`vX.Y.Z`), so
+the links of a release never change under Flathub. To replace one, commit the new file under the
+same name; the metainfo of the next release links it.

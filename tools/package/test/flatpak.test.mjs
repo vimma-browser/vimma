@@ -12,7 +12,6 @@ import {
   FINISH_ARGS,
   RUNTIME_VERSION,
   SCREENSHOTS,
-  SCREENSHOTS_COMMIT,
   flatpakDesktopEntry,
   flatpakLauncher,
   flatpakManifest,
@@ -197,15 +196,14 @@ describe("Flatpak metainfo", () => {
   });
 
   // Flathub requires screenshots at URLs that never change (its quality guidelines), and
-  // mirrors them at build time; raw GitHub URLs pinned to a commit cannot change.
-  it("shows the screenshots, one default, each captioned, at raw URLs pinned to a commit", () => {
-    expect(SCREENSHOTS_COMMIT).toMatch(/^[0-9a-f]{40}$/);
+  // mirrors them at build time; raw GitHub URLs at the release's tag cannot change.
+  it("shows the screenshots, one default, each captioned, at raw URLs pinned to the release tag", () => {
     expect(SCREENSHOTS.length).toBeGreaterThanOrEqual(3);
     const shots = [...xml.matchAll(/<screenshot( type="default")?>([\s\S]*?)<\/screenshot>/g)];
     expect(shots.map((m) => m[2].match(/<image>(.*)<\/image>/)?.[1])).toEqual(
       SCREENSHOTS.map(
         (s) =>
-          `https://raw.githubusercontent.com/vimma-browser/vimma/${SCREENSHOTS_COMMIT}/docs/assets/screenshots/${s.file}`,
+          `https://raw.githubusercontent.com/vimma-browser/vimma/v0.1.6/docs/assets/screenshots/${s.file}`,
       ),
     );
     expect(shots.filter((m) => m[1]).length).toBe(1);
@@ -223,21 +221,6 @@ describe("Flatpak metainfo", () => {
       const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
       expect(w, file).toBeGreaterThan(h);
       expect(w, file).toBeLessThanOrEqual(1920);
-    }
-  });
-
-  const pinned = spawnSync("git", ["-C", repo, "cat-file", "-e", `${SCREENSHOTS_COMMIT}^{commit}`]);
-  it.skipIf(pinned.status !== 0)("pins a commit whose screenshots are the files here", () => {
-    for (const { file } of SCREENSHOTS) {
-      const r = spawnSync(
-        "git",
-        ["-C", repo, "cat-file", "blob", `${SCREENSHOTS_COMMIT}:docs/assets/screenshots/${file}`],
-        { maxBuffer: 1 << 24 },
-      );
-      expect(r.status, file).toBe(0);
-      expect(r.stdout.equals(readFileSync(join(repo, "docs/assets/screenshots", file))), file).toBe(
-        true,
-      );
     }
   });
 
