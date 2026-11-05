@@ -382,7 +382,7 @@ export class PdfView {
           return true;
         }
         case "presentation":
-          // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
+          // Only for the user's own key or :present (V9), which the parent sends in the PDF viewer.
           // A viewer that claims presentation without being full screen gets nothing to exit.
           if (this.presenting()) {
             if (this.#doc.fullscreenElement) this.#doc.exitFullscreen().catch(() => {});

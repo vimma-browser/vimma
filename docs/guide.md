@@ -20,8 +20,8 @@ What works today, each with the section that explains it:
   [command line](#the-command-line) with completion and history.
 - **[PDFs with zathura's keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`,
   `-`, `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
-  marks, presentation on `F5`, `page 3/12` with the match count in the status bar, and the
-  viewer in your theme.
+  marks, presentation with `:present`, `page 3/12` with the match count in the status bar, and
+  the viewer in your theme. Vimma's own keys keep their meaning there.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); [several splits](#several-splits) in a workspace, one shown
@@ -521,8 +521,8 @@ Firefox's `browser.tabs.loadInBackground` setting changes neither: the key you t
 `config.toml` that binds `F = "hint.follow_new_tab"` under `[modal.normal]` keeps background-tab
 hints on `F`.)
 
-In the [PDF viewer](#pdf-viewer) `f` labels the PDF's links, and `F` and `c` show or copy a
-link's target instead of following it.
+In the [PDF viewer](#pdf-viewer) `f` labels the PDF's links, `c` copies a link's target and
+`:show_link_target` shows it, instead of following it.
 
 The labels are drawn by the browser, over the page, not inside it: the page cannot see them,
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
@@ -564,8 +564,7 @@ click leaves element focus.
   `y` copies its text anyway and the notice says so; `v` shows no highlight there.
 - **Frames.** Blocks in frames get labels too. `y` copies from a frame without moving focus into
   it; `v` moves focus into the frame, where copy mode then runs. `+` stops at the frame's edge.
-- **PDFs.** In the [PDF viewer](#pdf-viewer) `F` shows a link's target instead. The viewer has
-  lines, not paragraphs: element focus bound to another key there says
+- **PDFs.** The [PDF viewer](#pdf-viewer) has lines, not paragraphs: `F` there says
   `no text blocks here (PDF: use v)`, and [copy mode](#copy-mode) copies from a PDF.
 
 Element focus is `F` in normal mode and `:focus_element` on the command line; bind
@@ -726,23 +725,24 @@ own sidebar and its button do not show: Vimma's outline takes its place. To open
 the outline, put `[ui] pdf_outline = "hidden"` in [config.toml](#configtoml); `Tab` still opens
 it.
 
-Vimma's normal-mode keys work in the PDF viewer as on any page (`j`, `k`, `h`, `l`, `ctrl+d`,
-`ctrl+u`, `/`, `n`, `N`, `f`, `v`, `:`, `t`, `x`, `gt`, `ctrl+o`, `ctrl+i` and the prefix layer),
-except these, which take their zathura meaning there:
+Every Vimma key does in the PDF viewer what it does on any page, so your hands need not know
+which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
+and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. The
+viewer adds zathura's keys only on the keys Vimma leaves free, and zathura's other keys are
+commands:
 
 - **Pages.** `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
   page and `G` to the last; with a count, to that page (`12G`, `12gg`), counted from 1 whatever
-  the page labels say. `:12` on the command line goes to page 12 too. `H` / `L` go to the top /
-  bottom of the current page, and `P` snaps the view to the top of the current page. `ctrl+f`
-  scrolls a screen down; `space` and `shift+space` scroll a screen down and up, and `Home` / `End`
-  go to the first / last page, as in pdf.js.
+  the page labels say. `:12` on the command line goes to page 12 too. `:pdf_page_top` and
+  `:pdf_page_bottom` go to the top / bottom of the current page. `space` and `shift+space` scroll
+  a screen down and up, and `Home` / `End` go to the first / last page, as in pdf.js.
 - **Zoom.** `+`, `zi`, `zI` zoom in and `-`, `zo`, `zO` zoom out by 10 % per step, with a count
   (`2+`). `=`, `zz`, `zZ` and `z0` set 100 %, and a count sets that percent (`150=`). `a` fits the
   whole page and `s` the page's width, and the fit follows window and pane resizes until you zoom
   by hand.
-- **Layout.** `d` shows two pages side by side, with the first page alone as in a printed book;
-  `D` toggles whether the first page stands alone. `w` shows one page at a time. `r` rotates the
-  pages 90° clockwise, with a count.
+- **Layout.** `:dual` shows two pages side by side, with the first page alone as in a printed
+  book, and again goes back to one; `D` toggles whether the first page stands alone. `w` shows
+  one page at a time. `:rotate` rotates the pages 90° clockwise.
 - **Outline.** `Tab` moves into the document's outline (its table of contents), in a panel on
   the left of the window in your theme, opening it if it is not shown, with the entry for the
   current page selected; the badge says `INDEX`. `j` / `k` (and the arrow keys) move, `l` / `zo` expand and `h` / `zc` collapse an
@@ -761,13 +761,14 @@ except these, which take their zathura meaning there:
 - **Jumps.** `ctrl+o` / `ctrl+i` walk back and forward through your jumps inside the PDF (a link,
   a page jump, a search hit, a mark, an outline entry) before they leave the PDF for the page
   before it, as Vim's jump list does.
-- **Links.** `f` labels the links on screen and follows the one you pick. `F` labels them and
-  shows the chosen link's target in a notice without following it, and `c` copies the target.
-- **Presentation.** `F5` starts pdf.js's presentation mode: full screen, one page at a time,
-  fitted to the screen. There `j`, `J`, `space` and the arrow keys go forward a page and `k`, `K`
-  and `shift+space` back; `F5` or `Esc` leaves it. `F11` is Vimma's full screen, as everywhere.
-- **Files.** `R` and `ctrl+r` reload the PDF (`r` and `F5` have their PDF meanings here),
-  `ctrl+p` prints it, `ctrl+s` saves it, and `yy` and `Y` copy its address.
+- **Links.** `f` labels the links on screen and follows the one you pick. `c` labels them and
+  copies the chosen link's target, and `:show_link_target` shows it in a notice without
+  following it.
+- **Presentation.** `:present` starts pdf.js's presentation mode: full screen, one page at a
+  time, fitted to the screen. There `j`, `J`, `space` and the arrow keys go forward a page and
+  `k`, `K` and `shift+space` back; `Esc` leaves it. `F11` is Vimma's full screen, as everywhere.
+- **Files.** `r`, `R`, `F5` and `ctrl+r` reload the PDF, `ctrl+p` prints it, `ctrl+s` saves it,
+  and `yy` and `Y` copy its address.
 
 Form fields in a PDF are text fields like any other: focusing one is insert mode, and `Esc`
 leaves it. `/` finds in the PDF with the match count in the status bar, and the status bar shows
@@ -783,7 +784,9 @@ file (`:open` with a `file://` address does), and there is no SyncTeX.
 
 Every one of these keys can be changed in [config.toml](#configtoml): `[modal.pdf]` holds the
 PDF viewer's normal-mode keys, over `[modal.normal]`, and `[modal.index]` the outline's. `[unbind]
-pdf = ["d"]` takes `d` off in the PDF viewer only. `ctrl+b ?`
+pdf = ["D"]` takes `D` off in the PDF viewer only. To have zathura's `d`, `r`, `H`, `L`, `P`,
+`F`, `ctrl+f` and `F5` in the PDF viewer instead of Vimma's, uncomment the zathura block under
+`[modal.pdf]` in the file `:config` writes (or copy it from `defaults.toml`). `ctrl+b ?`
 lists them under `[pdf]` and `[index]`, and [bindings.md](bindings.md#pdf-viewer) has their
 config names.
 
