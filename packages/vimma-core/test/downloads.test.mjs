@@ -39,7 +39,8 @@ const rec = (over = {}) => ({
   hasPartialData: false,
   hasBlockedData: false,
   currentBytes: 7.4 * MB,
-  totalBytes: 7.4 * MB,
+  totalBytes: 0,
+  size: 7.4 * MB,
   speed: 0,
   targetExists: true,
   partFileExists: false,
@@ -159,6 +160,11 @@ describe("downloadRow", () => {
     expect(downloadProgress(running({ speed: 0 }))).toBe("3.1 / 7.4 MB");
   });
 
+  test("a size just under a unit reads in the larger unit", () => {
+    expect(downloadProgress(rec({ size: 1024 * 1024 - 10 }))).toBe("1.0 MB");
+    expect(downloadProgress(rec({ size: 512 }))).toBe("512 B");
+  });
+
   test("an unknown size shows bytes so far", () => {
     expect(downloadProgress(running({ hasProgress: false, totalBytes: 0 }))).toBe(
       "3.1 MB · 1.2 MB/s",
@@ -204,6 +210,13 @@ describe("downloadSections", () => {
       ["recent", "1"],
       ["recent", "6"],
     ]);
+  });
+
+  test("the cap keeps active rows over old finished ones", () => {
+    const many = Array.from({ length: 120 }, (_, i) => rec({ id: i + 10, startTime: 100 + i }));
+    const rows = downloadSections([paused({ id: 1, startTime: 1 }), ...many], 0);
+    expect(rows).toHaveLength(DOWNLOAD_ROW_CAP);
+    expect(rows[0].downloadId).toBe("1");
   });
 
   test("the list is capped at 100 rows", () => {
@@ -478,6 +491,17 @@ describe("downloadEnds", () => {
       "download blocked: b.exe",
     ]);
     expect(out.end).toBe("blocked");
+  });
+
+  test("a history entry that reaches the list after the seed is not announced", () => {
+    const out = downloadEnds(
+      new Map(),
+      [rec({ id: 7, startTime: 500 }), blocked({ id: 8, startTime: 2000 })],
+      {
+        since: 1000,
+      },
+    );
+    expect(out.texts).toEqual(["download blocked: report.pdf"]);
   });
 
   test("a download blocked as it is added is announced", () => {

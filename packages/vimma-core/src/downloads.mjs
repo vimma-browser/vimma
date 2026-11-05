@@ -50,6 +50,8 @@ export const DONE_MS = 10_000;
  * @property {boolean} hasBlockedData
  * @property {number} currentBytes
  * @property {number} totalBytes
+ * @property {number} size        the finished file's size (`target.size`; a history entry has no
+ *   byte counts)
  * @property {number} speed       bytes a second
  * @property {boolean} targetExists
  * @property {boolean} partFileExists
@@ -64,7 +66,7 @@ export const DONE_MS = 10_000;
  * `kind`: what stopped it. `parental`, `reputation` and `contentAnalysis` are Firefox's
  * `becauseBlockedBy…` flags; `failed` is any other error.
  * @typedef {object} DownloadError
- * @property {"failed" | "parental" | "reputation" | "contentAnalysis" | "policy"} kind
+ * @property {"failed" | "parental" | "reputation" | "contentAnalysis"} kind
  * @property {string} verdict  `Malware`, `PotentiallyUnwanted`, `Insecure`, `Uncommon`,
  *   `DownloadSpam`, or ""
  * @property {string} reason   Firefox's own wording of the verdict
@@ -110,7 +112,6 @@ export function downloadState(r) {
     if (r.error.kind === "contentAnalysis") {
       return r.error.verdict === "Malware" ? S.BLOCKED_CONTENT_ANALYSIS : S.DIRTY;
     }
-    if (r.error.kind === "policy") return S.BLOCKED_POLICY;
     return S.FAILED;
   }
   if (r.canceled) return r.hasPartialData ? S.PAUSED : S.CANCELED;
@@ -148,10 +149,14 @@ function stateWord(r) {
 
 const UNITS = ["B", "KB", "MB", "GB", "TB"];
 
-/** @param {number} bytes */
+/**
+ * The unit a size is shown in, chosen after rounding to one decimal, so that a size just under
+ * a unit boundary reads `1.0 MB`, never `1024.0 KB`.
+ * @param {number} bytes
+ */
 function unitOf(bytes) {
   let i = 0;
-  while (bytes >= 1024 ** (i + 1) && i < UNITS.length - 1) i++;
+  while (i < UNITS.length - 1 && Number((bytes / 1024 ** i).toFixed(1)) >= 1024) i++;
   return i;
 }
 
@@ -183,7 +188,7 @@ function clock(seconds) {
  */
 export function downloadProgress(r) {
   const state = downloadState(r);
-  if (state === S.FINISHED) return r.totalBytes > 0 ? size(r.totalBytes) : "";
+  if (state === S.FINISHED) return r.size > 0 ? size(r.size) : "";
   if (state !== S.DOWNLOADING && state !== S.PAUSED) return "";
   const running = state === S.DOWNLOADING && r.speed > 0;
   const parts = [];
@@ -276,12 +281,14 @@ export function downloadRow(r, now) {
  * @returns {DownloadItem[]}
  */
 export function downloadSections(records, now) {
-  const newest = [...records].sort((a, b) => b.startTime - a.startTime).slice(0, DOWNLOAD_ROW_CAP);
-  const rows = newest.map((r) => downloadRow(r, now));
+  const rows = [...records]
+    .sort((a, b) => b.startTime - a.startTime)
+    .map((r) => downloadRow(r, now));
+  // The cap cuts old finished rows first: a paused or blocked one still waits for the user.
   return [
     ...rows.filter((row) => row.section === "active"),
     ...rows.filter((row) => row.section === "recent"),
-  ];
+  ].slice(0, DOWNLOAD_ROW_CAP);
 }
 
 /**
@@ -510,13 +517,15 @@ const END_WORDS = { done: "finished", failed: "failed", blocked: "blocked" };
 /**
  * The downloads that ended since the last call, each announced once (Behaviour 13), and the
  * worst of those ends for the segment. `seen` maps a download's id to its last state; `seed`
- * reads the list as the window first finds it, which announces nothing.
+ * reads the list as the window first finds it, which announces nothing. A download first seen
+ * already ended is announced only when it started at or after `since` (the seed's time),
+ * because history entries and restored downloads reach the list late, after the seed.
  * @param {ReadonlyMap<number, number>} seen
  * @param {readonly DownloadRecord[]} records
- * @param {{ seed?: boolean }} [options]
+ * @param {{ seed?: boolean, since?: number }} [options]
  * @returns {{ texts: string[], end: DownloadEndState | null, seen: Map<number, number> }}
  */
-export function downloadEnds(seen, records, { seed = false } = {}) {
+export function downloadEnds(seen, records, { seed = false, since = -Infinity } = {}) {
   /** @type {Map<number, number>} */
   const next = new Map();
   /** @type {string[]} */
@@ -531,6 +540,7 @@ export function downloadEnds(seen, records, { seed = false } = {}) {
     const end = endOf(state);
     if (!end || (before !== undefined && endOf(before) !== null)) continue;
     if (before === S.CANCELED) continue;
+    if (before === undefined && r.startTime < since) continue;
     texts.push(`download ${END_WORDS[end]}: ${r.name}`);
     if (worst === null || END_RANK[end] > END_RANK[worst]) worst = end;
   }
