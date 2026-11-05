@@ -36,6 +36,11 @@ the [user guide](guide.md); planned work is on the
 - Pages keep the document's colours: there is no recolouring for a dark theme, as zathura's
   `ctrl+r` gives (`ctrl+r` reloads).
 - No SyncTeX: neither forward search from an editor nor `ctrl`+click back to the source.
+- pdf.js's sidebar does not show, so its page thumbnails and its attachments and layers views
+  are not reachable; Vimma's outline (`Tab`) is the outline, and an attachment entry in it is not
+  opened.
+- While a PDF is still downloading, the viewer's toolbar shows Firefox's colours; it takes the
+  theme once pdf.js has the document.
 - A PDF opened from a `blob:` or `data:` address (a site's in-page "open PDF" button often
   makes one) has Vimma's prefix keys but none of the PDF keys, the page count or the outline;
   download it and open the file.

@@ -191,6 +191,29 @@ export function openOutline(outline, page) {
 }
 
 /**
+ * The outline shown beside the document follows its page (docs/specs/pdf-mode.md decision 19):
+ * the entry for `page` selected and the path to it expanded, the rest as the user left it. A
+ * filtered outline stays as typed. The same state when nothing changes.
+ * @param {OutlineState} s
+ * @param {number} page
+ * @returns {OutlineState}
+ */
+export function selectOutlinePage(s, page) {
+  if (s.query !== null) return s;
+  const selected = currentEntry(s.outline, page);
+  if (selected === s.selected) return s;
+  const expanded = [...s.expanded];
+  for (
+    let p = selected >= 0 ? s.parents[selected] : -1;
+    p !== undefined && p >= 0;
+    p = s.parents[p]
+  ) {
+    expanded[p] = true;
+  }
+  return Object.freeze({ ...s, selected, expanded: Object.freeze(expanded) });
+}
+
+/**
  * The entries shown in the tree: those whose ancestors are all expanded.
  * @param {OutlineState} s
  * @returns {number[]}

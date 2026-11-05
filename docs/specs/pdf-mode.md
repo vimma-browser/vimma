@@ -7,7 +7,7 @@ panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js)
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`,
 `host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` (new: the outline panel, styled
 in `side-panel.css` beside the bookmarks panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
-`docs/limits.md`, `docs/security.md` · Upstream patches: none (decision 2) · ADR:
+`docs/limits.md`, `docs/security.md`; `browser/themes/shared/vimma/firefox-pdf.css` (decision 20), `config.mjs` (`[ui] pdf_outline`, decision 19) · Upstream patches: none (decision 2) · ADR:
 [ADR-024](../adr/024-keymap-contexts.md), keymap contexts (decision 4)
 
 Issue: [#487](https://github.com/vimma-browser/vimma/issues/487)
@@ -77,7 +77,8 @@ changes.
    filters the outline: typed text narrows it to the entries that match fuzzily, best match
    first, each shown with the titles of the entries above it; the arrow
    keys move, `Enter` goes to the entry, and `Esc` returns to the whole outline. A PDF without an
-   outline says `no outline in this PDF`.
+   outline says `no outline in this PDF`. (Since changed: decision 19 shows the outline when a
+   PDF with one opens, without taking the keys; `Tab` then focuses it, and a second `Tab` hides it.)
 6. As a user, PDF pages look exactly as the document draws them: Vimma does not recolour them,
    and `ctrl+r` reloads as on any page.
 7. As a user, `m` and a letter or digit sets a mark at the current position (page, place on it,
@@ -107,6 +108,15 @@ changes.
     `Esc` leaves it.
 16. As a user, no promotion bar ("PDFs just got easier") covers a document in the viewer;
     `about:pdf` and its menu entries stay as Firefox ships them.
+17. As a user, pdf.js's own sidebar and its toolbar button do not show: Vimma's outline is the
+    PDF's outline (decision 18).
+18. As a user, a PDF with an outline opens with Vimma's outline shown beside it, the entry for the
+    current page selected, while the keys stay the document's (`J`, `/` and the rest page and find
+    as before); `Tab` focuses it in `INDEX` mode, and `Esc` or following an entry gives the keys
+    back to the document with the outline still shown. A second `Tab` hides it for that document.
+    `[ui] pdf_outline = "hidden"` in `config.toml` keeps it hidden until `Tab` (decision 19).
+19. As a user, pdf.js's toolbar, find bar, menus, zoom drop-down and the space around the pages
+    follow the Vimma or Omarchy theme, light or dark, as the rest of the window does (decision 20).
 
 ### zathura's defaults and what Vimma does
 
@@ -496,7 +506,8 @@ find: { current, total } }`), sent to the parent on the viewer's events.
       reached with `F4` (which Vimma does not bind, so it reaches pdf.js) or the toolbar. Reason:
       Vimma has no thumbnails, attachments or layers views of its own, and hiding only the outline
       view would need a style sheet inside the viewer, which nothing else in this spec needs; with
-      none, Vimma adds nothing to the viewer's document.
+      none, Vimma adds nothing to the viewer's document. (Since changed: decision 18 hides pdf.js's
+      sidebar, and decision 20 adds a style sheet to the viewer.)
 11. **Marks in memory, per document.** A mark stores `{ page, left, top, scale }` from pdf.js's
     current location, keyed by the document's URL without its fragment, in the host, for the
     session; the host asks the viewer for it on `m` (`Vimma:PdfWhere`) and checks it with
@@ -521,7 +532,9 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     mode (Research), an accessibility setting of the system rather than a theme. Rejected:
     zathura's recolour on `ctrl+r` in the theme's colours, for the reason above;
     `pdfjs.forcePageColors`, for the same reason, and because it is read once per viewer and
-    posterizes pages to six grey steps (Research).
+    posterizes pages to six grey steps (Research). (Since changed: decision 20 adds a style sheet
+    for pdf.js's own surfaces around the pages; the pages are still drawn as the document draws
+    them.)
 13. **Status bar and find.** The adapter reports the page, page count, label and match count on
     pdf.js's `pagechanging`, `updatefindmatchescount` and `updatefindcontrolstate` events; the
     status bar shows `page x/y` (or `page label (x/y)`) beside `tab` and `pane`, in Vimma's
@@ -562,6 +575,51 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     on `about:pdf` itself goes too (Research). Rejected: rewording `aboutPDF.ftl`, or hiding
     `about:pdf` and its entry points, because each needs an upstream patch rebased with every
     release for wording that is already accurate.
+
+18. **pdf.js's sidebar does not show.** `firefox-branding.js` sets `pdfjs.sidebarViewOnLoad` to
+    0 (no view), so pdf.js no longer opens its sidebar by itself for a PDF whose catalog asks for
+    the outline (`/PageMode /UseOutlines`, `apiPageModeToSidebarView` in `viewer.mjs`) or that was
+    last read with it open; the viewer's style sheet (decision 20) hides the sidebar
+    (`#viewsManager`) and its toolbar button (`#viewsManagerToggleButton`), and keeps the pages in
+    place when a `#pagemode=` link or `F4` opens it anyway. The outline entry for an attachment
+    says `the PDF viewer does not open attachments`. Reason: two outlines of the same document, one
+    keyed and themed and one not, compete for the same place, and pdf.js's opened by itself over
+    the page; Vimma's outline is the one the keys reach. Accepted: pdf.js's thumbnails,
+    attachments and layers views are out of reach in Vimma (`docs/limits.md`). Rejected: hiding
+    only the sidebar's outline view, because the sidebar would still open by itself on the
+    thumbnails.
+19. **Vimma's outline is shown when a PDF with one opens.** When the selected tab shows a PDF and
+    the viewer reports its first state, the host asks the viewer for the outline once (V8) and,
+    when it has entries, shows it in the side panel's slot without focusing it: the tab stays in
+    normal mode with the `pdf` context, and the panel's selection follows the page. `Tab` focuses
+    it (`INDEX`); `Esc` and following an entry give focus back and leave it shown; `Tab` while it
+    has focus hides it for that document until the tab loads another. Switching to another tab
+    hides it and switching back shows it again. It is not shown over another panel in the slot or
+    under a picker, and a PDF without an outline shows nothing and says nothing. `[ui]
+pdf_outline = "hidden"` keeps the old behaviour (closed until `Tab`); ConfigHost applies it to
+    the pref `vimma.ui.pdf_outline.hidden` at startup and when the line changes, as `[ui]
+toolbar` is applied. Reason: zathura users open a document to read it, and a long PDF's
+    outline is the fastest way into it; shown beside the page, it costs no key and takes none, so
+    every key keeps paging the document. Rejected: opening it focused, because the first `J`
+    would then move in the outline rather than the document.
+20. **The viewer follows the theme.** The child loads two author sheets into the viewer's
+    document with `windowUtils.loadSheetUsingURIString`, as Firefox's own pages get theirs
+    ([firefox-surfaces-theme](firefox-surfaces-theme.md)): the token sheet `ThemeHost` builds,
+    which the parent sends only to the top viewer's current actor on its request and again on
+    every theme change (V12), and `firefox-pdf.css`, which points pdf.js's custom properties
+    (`--toolbar-bg-color`, `--body-bg-color`, `--doorhanger-bg-color`, `--field-*`, `--menu-*`)
+    and the Firefox design-system tokens its Nova look reads (`--toolbar-background-color`,
+    `--background-color-box`, `--text-color`) at Vimma's: bars, the find bar and menus on
+    `--vimma-bg-dark`, the space around the pages and fields on `--vimma-bg`, borders
+    `--vimma-muted`, the colour scheme the theme's. Reason: the viewer is the whole tab, and its
+    light toolbar under a dark theme was the one surface left in Firefox's colours; pointing
+    pdf.js's own properties at the tokens follows pdf.js's widgets as they change, as decision 1 of
+    firefox-surfaces-theme does for Firefox's pages. With the system's high-contrast setting,
+    pdf.js keeps its own colours. The sheets are attached when the viewer reports
+    `documentloaded`, so its toolbar shows Firefox's colours while a PDF is still downloading.
+    Rejected: per-selector overrides, because they break with each pdf.js redesign; a global user
+    sheet, because the viewer's document has the PDF's URL and no selector tells it apart from a
+    web page.
 
 ## Security and privacy
 
@@ -636,6 +694,9 @@ the adapter touches.
 >   `pdf_mode_writes_no_pdfjs_prefs`
 > - V11. Marks and the parsed outline **must** stay in memory, and the outline **must** be dropped
 >   when its tab navigates or closes. `pdf_marks_and_outlines_are_not_written`
+
+(Since changed: decisions 18 to 20 change V7, V8 and V10 and add V12; `docs/security.md`
+section 20 has the rules as they stand.)
 
 Section 13's page-mode rules apply unchanged. The PR that adds the adapter and the PR that adds
 the outline panel each get a review by a fresh agent before they merge, as every content-actor

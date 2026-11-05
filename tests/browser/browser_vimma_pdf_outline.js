@@ -28,7 +28,12 @@ const NO_OUTLINE = ROOT + "file_vimma_test.pdf";
 
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
-    set: [["general.smoothScroll", false]],
+    // Most tasks here are about Tab opening the outline: they start with it closed, as
+    // `[ui] pdf_outline = "hidden"` keeps it (decision 19). The tasks at the end show it.
+    set: [
+      ["general.smoothScroll", false],
+      ["vimma.ui.pdf_outline.hidden", true],
+    ],
   });
 });
 
@@ -102,9 +107,16 @@ async function closeOutline() {
 const page = (browser) =>
   SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.PDFViewerApplication.page);
 
-/** @param {XULBrowserElement} browser @param {number} want @param {string} what */
+/**
+ * Until pdf.js shows page `want` and the parent has heard so: the outline opens on the page the
+ * parent holds (PdfOps.state), which the viewer reports up to 100 ms after it moves (V5).
+ * @param {XULBrowserElement} browser @param {number} want @param {string} what
+ */
 async function untilPage(browser, want, what) {
-  await TestUtils.waitForCondition(async () => (await page(browser)) === want, what);
+  await TestUtils.waitForCondition(
+    async () => (await page(browser)) === want && PdfOps.state(browser)?.page === want,
+    what,
+  );
 }
 
 /** @param {string} keys */
@@ -290,8 +302,8 @@ add_task(async function each_kind_of_entry() {
     await untilSelected("Notes attachment", "jjjjj");
     EventUtils.synthesizeKey("KEY_Enter");
     await TestUtils.waitForCondition(
-      () => noticeText() === "open attachments from pdf.js's sidebar (F4)",
-      "an attachment entry says where to open it",
+      () => noticeText() === "the PDF viewer does not open attachments",
+      "an attachment entry says it is not opened",
     );
     // A collapsed entry starts collapsed.
     await openOutline();
@@ -553,4 +565,106 @@ add_task(async function a_late_outline_opens_nothing() {
       Assert.equal(mode(), "normal", "the keys stay normal mode's");
     });
   });
+});
+
+// Decision 19: with `[ui] pdf_outline = "shown"` (the default), a PDF with an outline opens with
+// Vimma's outline beside it, the keys still the document's; Tab gives it the keys, following an
+// entry gives them back with the outline still shown, and closing it hides it for that document.
+const PAGEMODE = ROOT + "file_vimma_outline_pagemode.pdf";
+
+/** @param {boolean} hidden */
+const outlinePref = (hidden) =>
+  SpecialPowers.pushPrefEnv({ set: [["vimma.ui.pdf_outline.hidden", hidden]] });
+
+/** @param {any} tab */
+async function awayAndBack(tab) {
+  const other = BrowserTestUtils.addTab(gBrowser, "about:blank");
+  gBrowser.selectedTab = other;
+  await TestUtils.waitForCondition(() => !shown(), "another tab hides the outline");
+  gBrowser.selectedTab = tab;
+  BrowserTestUtils.removeTab(other);
+  await focusNormal(tab.linkedBrowser);
+}
+
+add_task(async function the_outline_is_shown_when_a_pdf_with_one_opens() {
+  await outlinePref(false);
+  await recordingOutline(async (seen) => {
+    await withPdf(async (browser, tab) => {
+      await TestUtils.waitForCondition(shown, "the outline is shown when the PDF opens");
+      Assert.equal(seen.length, 1, "read once, as the document loaded");
+      Assert.equal(mode(), "normal", "the keys stay the document's");
+      Assert.equal(Services.focus.focusedElement, browser, "focus stays on the document");
+      Assert.equal(selected(), "Preface", "the entry for page 1 is selected");
+      type("2J");
+      await untilPage(browser, 3, "J pages the PDF beside the outline");
+      await untilSelected("Chapter 1", "the selection follows the page");
+
+      // Tab gives it the keys; following an entry gives them back and leaves it shown.
+      await openOutline();
+      type("G");
+      await untilSelected("Chapter 2", "G");
+      EventUtils.synthesizeKey("KEY_Enter");
+      await untilPage(browser, 6, "Enter follows");
+      await TestUtils.waitForCondition(() => mode() === "normal", "back to the document");
+      Assert.ok(shown(), "the outline stays shown");
+
+      // Another tab and back: still shown.
+      await awayAndBack(tab);
+      await TestUtils.waitForCondition(shown, "coming back shows it again");
+
+      // Closing it (Esc) hides it for this document, also after another tab.
+      await openOutline();
+      EventUtils.synthesizeKey("KEY_Escape");
+      await TestUtils.waitForCondition(() => !shown(), "Esc hides it");
+      Assert.equal(mode(), "normal", "in normal mode");
+      await awayAndBack(tab);
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.ok(!shown(), "hidden stays hidden for this document");
+      Assert.equal(seen.length, 1, "and nothing is read again");
+
+      // Tab opens it with the keys, and Tab closes it, as with [ui] pdf_outline = "hidden".
+      await openOutline();
+      EventUtils.synthesizeKey("KEY_Tab");
+      await TestUtils.waitForCondition(() => !shown(), "Tab closes it");
+    }, PAGEMODE);
+  });
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function pdf_outline_hidden_keeps_it_closed() {
+  await outlinePref(true);
+  await recordingOutline(async (seen) => {
+    await withPdf(async (browser) => {
+      type("J");
+      await untilPage(browser, 2, "J");
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.ok(!shown(), "no outline when a PDF opens");
+      Assert.equal(seen.length, 0, "and none is read");
+      await openOutline();
+    });
+  });
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function a_pdf_without_an_outline_opens_none() {
+  await outlinePref(false);
+  const notice = VimmaHost._state(window).notice;
+  const said = [];
+  const show = notice.show;
+  notice.show = function (text, ...rest) {
+    said.push(text);
+    return show.call(this, text, ...rest);
+  };
+  try {
+    await withPdf(async (browser) => {
+      type("G");
+      await SpecialPowers.spawn(browser, [], () => {});
+      Assert.ok(!shown(), "no panel");
+      Assert.deepEqual(said, [], "and no notice: the user asked for nothing");
+      Assert.equal(mode(), "normal", "normal mode");
+    }, NO_OUTLINE);
+  } finally {
+    notice.show = show;
+  }
+  await SpecialPowers.popPrefEnv();
 });

@@ -33,9 +33,11 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
  * @property {{ toolbar?: "shown" | "hidden",
- *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting }} [ui]
- *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md) and its Bookmarks Toolbar
- *   (docs/specs/bookmarks-toolbar-hidden.md)
+ *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting,
+ *   pdf_outline?: "shown" | "hidden" }} [ui]
+ *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md), its Bookmarks Toolbar
+ *   (docs/specs/bookmarks-toolbar-hidden.md) and Vimma's outline beside a PDF
+ *   (docs/specs/pdf-mode.md decision 19)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
@@ -494,7 +496,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   bookmarks: { root: /** @type {const} */ ("workspace") },
   panel: { numbers: /** @type {const} */ ("absolute") },
   private: { placement: /** @type {const} */ ("swap") },
-  ui: { toolbar: /** @type {const} */ ("shown") },
+  ui: { toolbar: /** @type {const} */ ("shown"), pdf_outline: /** @type {const} */ ("shown") },
   updates: { check: true },
   // docs/specs/vimma-mcp.md, decision 26. No `enabled`: left out, `:mcp on|off` decides.
   mcp: {
@@ -622,6 +624,9 @@ export function formatDefaultsToml() {
     '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
     "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",
     '# bookmarks_toolbar = "shown"',
+    '# Vimma\'s outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or',
+    '# "hidden" until you press Tab.',
+    `pdf_outline = ${tomlString(DEFAULT_CONFIG.ui?.pdf_outline ?? "shown")}`,
     "",
     "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
     "# names only the update channel and the platform. false stops every check.",

@@ -19,8 +19,9 @@ What works today, each with the section that explains it:
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
 - **[PDFs with zathura's keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`,
-  `-`, `a`, `s`), two pages side by side, the outline on `Tab` with a filter, marks, presentation
-  on `F5`, and `page 3/12` with the match count in the status bar.
+  `-`, `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
+  marks, presentation on `F5`, `page 3/12` with the match count in the status bar, and the
+  viewer in your theme.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
   `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
@@ -707,8 +708,15 @@ the field and use its own selection.
 PDFs open in Firefox's own viewer, pdf.js, Mozilla's PDF reader, and Vimma drives it with the
 keys of zathura, the keyboard-driven document viewer, so a paper or a manual reads the same in the
 browser as in your viewer. pdf.js keeps rendering, forms, printing and accessibility; Vimma adds
-the keys, a page count in the status bar and an outline panel. Pages are shown in the document's
-own colours.
+the keys, a page count in the status bar and an outline panel, and gives the viewer's toolbar,
+menus and the space around the pages your theme's colours, light or dark. Pages are shown in the
+document's own colours.
+
+A PDF with an outline opens with it shown on the left, the entry for the page you are on
+selected as you move; your keys stay with the document, so `J` and `/` work at once. pdf.js's
+own sidebar and its button do not show: Vimma's outline takes its place. To open PDFs without
+the outline, put `[ui] pdf_outline = "hidden"` in [config.toml](#configtoml); `Tab` still opens
+it.
 
 Vimma's normal-mode keys work in the PDF viewer as on any page (`j`, `k`, `h`, `l`, `ctrl+d`,
 `ctrl+u`, `/`, `n`, `N`, `f`, `v`, `:`, `t`, `x`, `gt`, `ctrl+o`, `ctrl+i` and the prefix layer),
@@ -727,13 +735,14 @@ except these, which take their zathura meaning there:
 - **Layout.** `d` shows two pages side by side, with the first page alone as in a printed book;
   `D` toggles whether the first page stands alone. `w` shows one page at a time. `r` rotates the
   pages 90° clockwise, with a count.
-- **Outline.** `Tab` opens the document's outline (its table of contents) in a panel on the left
-  of the window, in your theme, with the entry for the current page selected; the badge says
-  `INDEX`. `j` / `k` (and the arrow keys) move, `l` / `zo` expand and `h` / `zc` collapse an
+- **Outline.** `Tab` moves into the document's outline (its table of contents), in a panel on
+  the left of the window in your theme, opening it if it is not shown, with the entry for the
+  current page selected; the badge says `INDEX`. `j` / `k` (and the arrow keys) move, `l` / `zo` expand and `h` / `zc` collapse an
   entry, `zO` / `zC` expand / collapse an entry with everything under it, `L` / `zR` and `H` /
   `zM` expand / collapse them all, `gg` / `G` go to the first / last entry and `ctrl+d` /
-  `ctrl+u` move half a panel. `Enter` or `space` goes to the entry and closes the outline; `Tab`,
-  `Esc`, `ctrl+[` or `q` closes it where you were. `/` filters the outline as you type, best match
+  `ctrl+u` move half a panel. `Enter` or `space` goes to the entry and gives your keys back to
+  the document (an outline shown as the PDF opened stays shown; one `Tab` opened closes); `Tab`,
+  `Esc`, `ctrl+[` or `q` closes it where you were, and it stays closed for that document. `/` filters the outline as you type, best match
   first, each entry shown under the titles of the entries above it; `Enter` goes to the entry and
   `Esc` returns to the whole outline. A PDF without an outline says `no outline in this PDF`.
 - **Marks.** `m` and a letter or digit marks where you are (the page, the place on it and the
@@ -944,7 +953,8 @@ are on the same surface as Vimma's side panel, with the theme's text, edge and f
 search box, the open panel's button in the launcher and the lists' scrollbars included), and
 an open sidebar recolours with the rest of the window. So do Firefox's other surfaces: the find
 bar, the menu bar (`F10`) and every menu, the dialogs a page opens (`alert`, `confirm`,
-`prompt`), the print settings, and Firefox's own pages: Settings and its dialogs, Add-ons,
+`prompt`), the print settings, the [PDF viewer](#pdf-viewer)'s toolbar, menus and the space
+around its pages, and Firefox's own pages: Settings and its dialogs, Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
 `about:profiles` and `about:processes`. Their accent (the selected category, checkboxes, main
 buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and
@@ -3766,19 +3776,20 @@ notices are in `vimma-ctl-licenses/` next to it (`/usr/lib/vimma/vimma-ctl-licen
 
 Vimma's own preferences today:
 
-| Preference                 | Default                                | What it does                                                                                                                                                                            |
-| -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vimma.ui.tabstrip.hidden` | `true`                                 | Hides Firefox's tab strip (horizontal, and the vertical tab list). Set `false` to show it again; it applies at once, no restart.                                                        |
-| `vimma.ui.toolbar.hidden`  | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
-| `vimma.debug.keys`         | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
-| `vimma.startpage.newtab`   | `true`                                 | New tabs open Vimma's start page (see [The start page](#the-start-page)). Set `false` for Firefox's new tab page; it applies at once, no restart.                                       |
-| `vimma.control.enabled`    | `false`                                | Turns on the control socket for `vimma-ctl` and scripts (see [Scripting with vimma-ctl](#scripting-with-vimma-ctl)). Applies at once, no restart.                                       |
-| `vimma.theme.source`       | `omarchy`                              | `omarchy` follows your Omarchy theme where Omarchy is installed (see [Colours](#colours-and-themes)); `builtin` forces `[theme] name`'s palette. Applies at once.                       |
-| `vimma.theme.appearance`   | `system`                               | What `:theme` sets: the built-in palette `dark`, `light` or as the system is (see [Colours](#colours-and-themes)). `[theme] appearance` in `config.toml` wins over it. Applies at once. |
-| `vimma.theme.omarchyPath`  | `~/.local/state/omarchy/current/theme` | The Omarchy theme directory to read `colors.toml` and `light.mode` from. Applies at once.                                                                                               |
-| `vimma.theme.omarchyHook`  | `true`                                 | Installs the Omarchy theme-set hook for instant theme changes (see [Colours](#colours-and-themes)). `false` removes Vimma's unedited hook at once.                                      |
-| `vimma.config.path`        | unset                                  | A config file to read instead of `$XDG_CONFIG_HOME/vimma/config.toml`. Applies at once.                                                                                                 |
-| `vimma.config.pollMs`      | `2000`                                 | How often Vimma checks `config.toml` for a change, in milliseconds. Applies at once.                                                                                                    |
+| Preference                    | Default                                | What it does                                                                                                                                                                            |
+| ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vimma.ui.tabstrip.hidden`    | `true`                                 | Hides Firefox's tab strip (horizontal, and the vertical tab list). Set `false` to show it again; it applies at once, no restart.                                                        |
+| `vimma.ui.toolbar.hidden`     | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
+| `vimma.ui.pdf_outline.hidden` | `false`                                | Opens PDFs without their outline shown ([PDF viewer](#pdf-viewer)); `Tab` still opens it. `[ui] pdf_outline` sets it at startup. Applies to the next PDF.                               |
+| `vimma.debug.keys`            | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
+| `vimma.startpage.newtab`      | `true`                                 | New tabs open Vimma's start page (see [The start page](#the-start-page)). Set `false` for Firefox's new tab page; it applies at once, no restart.                                       |
+| `vimma.control.enabled`       | `false`                                | Turns on the control socket for `vimma-ctl` and scripts (see [Scripting with vimma-ctl](#scripting-with-vimma-ctl)). Applies at once, no restart.                                       |
+| `vimma.theme.source`          | `omarchy`                              | `omarchy` follows your Omarchy theme where Omarchy is installed (see [Colours](#colours-and-themes)); `builtin` forces `[theme] name`'s palette. Applies at once.                       |
+| `vimma.theme.appearance`      | `system`                               | What `:theme` sets: the built-in palette `dark`, `light` or as the system is (see [Colours](#colours-and-themes)). `[theme] appearance` in `config.toml` wins over it. Applies at once. |
+| `vimma.theme.omarchyPath`     | `~/.local/state/omarchy/current/theme` | The Omarchy theme directory to read `colors.toml` and `light.mode` from. Applies at once.                                                                                               |
+| `vimma.theme.omarchyHook`     | `true`                                 | Installs the Omarchy theme-set hook for instant theme changes (see [Colours](#colours-and-themes)). `false` removes Vimma's unedited hook at once.                                      |
+| `vimma.config.path`           | unset                                  | A config file to read instead of `$XDG_CONFIG_HOME/vimma/config.toml`. Applies at once.                                                                                                 |
+| `vimma.config.pollMs`         | `2000`                                 | How often Vimma checks `config.toml` for a change, in milliseconds. Applies at once.                                                                                                    |
 
 ## config.toml
 
@@ -3854,7 +3865,9 @@ accent = "#ff9e64"
   default, or `"hidden"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
   startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] bookmarks_toolbar`
   (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
-  Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
+  Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[ui] pdf_outline`
+  (`"shown"`, the default, or `"hidden"`: the [PDF viewer](#pdf-viewer)'s outline when a PDF
+  opens; applied at startup and when the line changes); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
 - **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
   `[bookmarks]`, `[panel]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,

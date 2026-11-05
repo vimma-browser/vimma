@@ -230,8 +230,10 @@ export const VimmaActors = {
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
           dragstart: { capture: true, createActor: false },
-          // pdf.js's viewer, once its pages are laid out (docs/specs/pdf-mode.md decision 2):
-          // a chrome-only event, which only pdf.js sends.
+          // pdf.js's viewer, once it has a document and once its pages are laid out
+          // (docs/specs/pdf-mode.md decisions 2 and 20): chrome-only events, which only pdf.js
+          // sends. The first lets the viewer take the theme before its pages are drawn.
+          documentloaded: {},
           pagesloaded: {},
         },
       },

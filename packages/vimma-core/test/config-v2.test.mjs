@@ -607,8 +607,8 @@ describe("[private] placement", () => {
 // docs/specs/toolbar-toggle.md, decision 3: [ui] toolbar, a schema-2 table.
 describe("[ui] toolbar", () => {
   test('defaults to "shown"', () => {
-    expect(ok(v2()).ui).toEqual({ toolbar: "shown", bookmarksToolbar: null });
-    expect(DEFAULT_CONFIG.ui).toEqual({ toolbar: "shown" });
+    expect(ok(v2()).ui).toEqual({ toolbar: "shown", bookmarksToolbar: null, pdfOutline: "shown" });
+    expect(DEFAULT_CONFIG.ui).toEqual({ toolbar: "shown", pdf_outline: "shown" });
     expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n)*toolbar = "shown"$/m);
   });
 
@@ -644,6 +644,32 @@ describe("[ui] toolbar", () => {
   });
 });
 
+// docs/specs/pdf-mode.md decision 19: [ui] pdf_outline, Vimma's outline beside a PDF that has one.
+describe("[ui] pdf_outline", () => {
+  test('defaults to "shown", written in the template', () => {
+    expect(ok(v2()).ui.pdfOutline).toBe("shown");
+    expect(formatDefaultsToml()).toMatch(/^\[ui\]\n(#.*\n|\w+ = .*\n)*pdf_outline = "shown"$/m);
+  });
+
+  test.each([["shown"], ["hidden"]])('pdf_outline = "%s" is accepted', (v) => {
+    expect(ok(v2("[ui]", `pdf_outline = "${v}"`)).ui.pdfOutline).toBe(v);
+  });
+
+  test("any other value is an error, with the nearest one when it is close", () => {
+    expect(errors(v2("[ui]", 'pdf_outline = "hiden"'))).toEqual([
+      {
+        line: 3,
+        path: "ui.pdf_outline",
+        message: 'must be "shown" or "hidden"',
+        suggestion: "hidden",
+      },
+    ]);
+    expect(errors(v2("[ui]", "pdf_outline = false"))).toEqual([
+      { line: 3, path: "ui.pdf_outline", message: "expected a string, got a boolean" },
+    ]);
+  });
+});
+
 // docs/specs/bookmarks-toolbar-hidden.md, decision 3: [ui] bookmarks_toolbar, unset by default.
 describe("[ui] bookmarks_toolbar", () => {
   test("left out, the config has none: Firefox's pref decides; the template only comments it", () => {
@@ -657,6 +683,7 @@ describe("[ui] bookmarks_toolbar", () => {
     expect(ok(v2("[ui]", `bookmarks_toolbar = "${v}"`)).ui).toEqual({
       toolbar: "shown",
       bookmarksToolbar: v,
+      pdfOutline: "shown",
     });
   });
 

@@ -33,6 +33,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
+/** pdf.js's surfaces in the theme's tokens, and its sidebar hidden (decisions 18 and 20). */
+export const PDF_SHEET = "chrome://browser/skin/vimma/firefox-pdf.css";
+
+/** The largest token sheet the child takes (V12); ThemeHost's is a few KiB. */
+export const PDF_THEME_MAX = 64 * 1024;
+
 /** At most one state message per this many milliseconds (V5). */
 export const PDF_STATE_MS = 100;
 
@@ -181,6 +187,8 @@ export class PdfView {
   #find = { current: 0, total: 0 };
   /** @type {[string, Function][]} */
   #listeners = [];
+  /** The token sheet loaded into the viewer, as a data: URI; "" before the first. */
+  #themeUri = "";
 
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
@@ -704,6 +712,29 @@ export class PdfView {
       answer(0);
     }
     return undefined;
+  }
+
+  /**
+   * The viewer's look (decisions 18 and 20, V12): `css`, the theme's token sheet from the parent,
+   * and PDF_SHEET, as author sheets of the viewer's document, which its CSP does not apply to.
+   * CSS only: nothing runs in the viewer and nothing goes into pdf.js. A new token sheet loads
+   * before the old one goes, so no frame is drawn without tokens.
+   * @param {unknown} css
+   */
+  setTheme(css) {
+    if (typeof css !== "string" || !css || css.length > PDF_THEME_MAX) return;
+    const uri = `data:text/css;charset=utf-8,${encodeURIComponent(css)}`;
+    if (uri === this.#themeUri) return;
+    try {
+      const utils = this.#win.windowUtils;
+      if (!this.#themeUri) utils.loadSheetUsingURIString(PDF_SHEET, utils.AUTHOR_SHEET);
+      utils.loadSheetUsingURIString(uri, utils.AUTHOR_SHEET);
+      if (this.#themeUri) utils.removeSheetUsingURIString(this.#themeUri, utils.AUTHOR_SHEET);
+      this.#themeUri = uri;
+    } catch (e) {
+      // the document went away
+      console.warn("vimma: the PDF viewer's theme was not applied", e);
+    }
   }
 
   /** Whether pdf.js shows its presentation mode (decision 15). */

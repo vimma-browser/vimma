@@ -3479,7 +3479,9 @@ which Firefox's site information panel shows already, and stores nothing of its 
 Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
 page label and find count to show them in the status bar, chooses the PDF viewer's key
 bindings, sends the viewer the page, zoom, layout and presentation operations those keys run,
-reads the document's outline into a chrome panel on the user's `Tab`, keeps marks (positions in
+reads the document's outline into a chrome panel (once when a PDF opens in the selected tab, and
+on the user's `Tab`), gives the viewer's own toolbar, find bar and menus the theme's colours
+through two style sheets, keeps marks (positions in
 a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. Spec:
 [pdf-mode](specs/pdf-mode.md).
 
@@ -3532,7 +3534,8 @@ bindings, so it is accepted here.
   integer, checked by `parsePdfOp` in the parent before sending and again in the child before the
   adapter touches pdf.js; `go` (a mark) also carries a position, exactly four bounded numbers
   (`parsePdfPosition`), which is also how the parent checks the position the viewer reports when a
-  mark is set. No script, CSS text, markup or object **may** go into the viewer. `F` asks for an
+  mark is set. No script, markup or object **may** go into the viewer, and no CSS text other than
+  the theme's token sheet under V12. `F` asks for an
   internal link's page by the hint's generation and index only, and the parent keeps the answer only
   when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
   strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
@@ -3547,12 +3550,16 @@ bindings, so it is accepted here.
   [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js),
   [`pdf marks`](../packages/vimma-core/test/pdf.test.mjs),
   [`marks`](../tests/browser/browser_vimma_pdf_marks.js)
-- V8. The adapter **must** read the outline only for the user's `Tab` in the PDF viewer (the
-  `outline` operation), and send only each entry's title, level, page number, kind, collapsed flag
+- V8. The adapter **must** read the outline only when the parent asks (the `outline` operation):
+  for the user's `Tab` in the PDF viewer, and once per document when the viewer reports its first
+  state in the selected tab with `[ui] pdf_outline` shown (pdf-mode decision 19). An outline read
+  that way is shown without focus, so it takes no key; it is not shown over another panel or
+  under a picker. The adapter **must** send only each entry's title, level, page number, kind, collapsed flag
   and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and stops at
   5,000 entries and a depth of 32. The parent **must** take an outline message only from the top
-  viewer's current actor after asking that document for it (opening the panel only if no other key
-  was pressed, the tab is still selected and at most 2 s passed), and **must** parse it with
+  viewer's current actor after asking that document for it (for `Tab`, opening the panel only if no
+  other key was pressed, the tab is still selected and at most 2 s passed; when the PDF opened,
+  only if the tab is still selected and in normal mode), and **must** parse it with
   `parsePdfOutline`, which drops the whole message for more than 5,000 entries, a level deeper than
   32 or more than one step below the previous entry's, a title over 512 characters, a URL over
   8,192, a page outside the document, an unknown kind or an unknown field, and strips control and
@@ -3568,6 +3575,8 @@ bindings, so it is accepted here.
   only when it parses as a URL, as the URL parser writes it, without control or format
   characters, and never followed.
   [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`the_outline_is_shown_when_a_pdf_with_one_opens`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`pdf_outline_hidden_keeps_it_closed`](../tests/browser/browser_vimma_pdf_outline.js),
   [`an outline outside its bounds is dropped`](../packages/vimma-core/test/pdfoutline.test.mjs),
   [`each_kind_of_entry`](../tests/browser/browser_vimma_pdf_outline.js),
   [`outlineUrlAllowed`](../packages/vimma-core/test/pdfoutline.test.mjs),
@@ -3579,8 +3588,10 @@ bindings, so it is accepted here.
   [`presentation_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_keys.js),
   [`presentation`](../tests/browser/browser_vimma_pdf_keys.js)
 
-- V10. Vimma **must not** write any `pdfjs.*` pref other than the default
-  `pdfjs.featuresNotificationImpressionLimit = 0` (`firefox-branding.js`), and never one that
+- V10. Vimma **must not** write any `pdfjs.*` pref other than the defaults
+  `pdfjs.featuresNotificationImpressionLimit = 0` and `pdfjs.sidebarViewOnLoad = 0`
+  (`firefox-branding.js`; the second only stops pdf.js opening its sidebar by itself), and never
+  one that
   changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
   [`pdf_mode_writes_no_pdfjs_prefs`](../tests/browser/browser_vimma_pdf_status.js)
 
@@ -3594,3 +3605,18 @@ bindings, so it is accepted here.
   [`another_pdf_in_the_same_viewer_drops_the_outline`](../tests/browser/browser_vimma_pdf_outline.js),
   [`a_read_under_way_does_not_outlive_its_document`](../tests/browser/browser_vimma_pdf_outline.js),
   [`private_marks_go_with_the_private_windows`](../tests/browser/browser_vimma_pdf_marks.js)
+
+- V12. The viewer's look (pdf-mode decisions 18 and 20) **must** be CSS only: the child loads, with
+  `windowUtils.loadSheetUsingURIString` as author sheets of the viewer's top document (after V1's
+  check), the fixed `chrome://browser/skin/vimma/firefox-pdf.css` and a `data:text/css` sheet of
+  the theme's tokens; it runs nothing in the viewer, passes pdf.js nothing and reads nothing back.
+  The parent **must** send the token sheet only to the actor of the top viewer's current window
+  global (V2's test), on that actor's request or on a theme change, and only the stylesheet
+  `ThemeHost` built from validated colours (core `themeStylesheet`); the child takes only a string
+  of at most 64 KiB. Accepted: script in a compromised viewer can read the theme's colours from its
+  own computed style; they are the colours of the user's desktop theme, which any page shown under
+  `prefers-color-scheme` already narrows down, and no web page can read the viewer's document
+  (another principal).
+  [`the_viewer_follows_the_theme`](../tests/browser/browser_vimma_pdf_look.js),
+  [`pdfjs_sidebar_stays_closed`](../tests/browser/browser_vimma_pdf_look.js),
+  [`the_theme_reaches_only_the_viewer`](../tests/browser/browser_vimma_pdf_look.js)

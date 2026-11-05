@@ -15,6 +15,7 @@ import {
 } from "../core/pdf.mjs";
 import { outlineUrlAllowed, parsePdfOutline } from "../core/pdfoutline.mjs";
 import { isPdfJsPrincipal } from "../actors/pdf-view.mjs";
+import { ThemeHost } from "../ui/theme-host.mjs";
 
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -76,6 +77,29 @@ function viewerGlobal(browser) {
   const scheme = wg.documentURI?.scheme ?? "";
   return ["http", "https", "file"].includes(scheme) ? wg : null;
 }
+
+/**
+ * The viewers' actors that took the token sheet, to send it again on a theme change (V12).
+ * @type {Set<any>}
+ */
+const themed = new Set();
+
+/** A theme change: each viewer still showing its document gets the new token sheet. */
+function pushTheme() {
+  for (const actor of themed) {
+    const browser = actor.browsingContext?.embedderElement;
+    if (!browser || viewerGlobal(browser) !== actor.manager) {
+      themed.delete(actor);
+      continue;
+    }
+    try {
+      actor.sendAsyncMessage("Vimma:PdfTheme", { css: ThemeHost.css });
+    } catch {
+      themed.delete(actor);
+    }
+  }
+}
+Services.obs.addObserver(pushTheme, "vimma-theme-changed");
 
 /** @param {PdfState} a @param {PdfState} b */
 const sameState = (a, b) =>
@@ -277,6 +301,40 @@ export const PdfOps = {
   subscribe(fn) {
     listeners.add(fn);
     return () => listeners.delete(fn);
+  },
+
+  /**
+   * What tells `browser`'s document apart from the next one it shows: its window global and the
+   * viewer's count of the PDFs it opened; null unless it is the viewer with a state.
+   * @param {any} browser
+   * @returns {string | null}
+   */
+  documentKey(browser) {
+    const wg = viewerGlobal(browser);
+    const state = this.state(browser);
+    return wg && state ? `${wg.innerWindowId}:${state.doc}` : null;
+  },
+
+  /**
+   * The token sheet for a VimmaParent's `Vimma:PdfTheme` (decision 20, V12): only for the actor
+   * of the top viewer's current window global, which then gets every later theme change too.
+   * @param {any} actor  the VimmaParent
+   * @returns {string | null}
+   */
+  theme(actor) {
+    const bc = actor.browsingContext;
+    if (!bc || bc.parent) return null;
+    if (viewerGlobal(bc.embedderElement) !== actor.manager) return null;
+    themed.add(actor);
+    return ThemeHost.css;
+  },
+
+  /**
+   * A VimmaParent went with its document: no more theme changes for it.
+   * @param {any} actor
+   */
+  dropActor(actor) {
+    themed.delete(actor);
   },
 
   /**

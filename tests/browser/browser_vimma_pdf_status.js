@@ -341,6 +341,12 @@ add_task(async function pdf_mode_writes_no_pdfjs_prefs() {
     0,
     "the features notification has no impressions to show",
   );
+  // Decision 18: pdf.js's sidebar opens on no view by itself (Vimma's outline is the outline).
+  Assert.equal(
+    Services.prefs.getIntPref("pdfjs.sidebarViewOnLoad"),
+    0,
+    "pdf.js's sidebar opens on no view by itself",
+  );
   const before = Services.prefs
     .getChildList("pdfjs.")
     .filter((name) => Services.prefs.prefHasUserValue(name));
