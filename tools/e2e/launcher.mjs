@@ -654,10 +654,135 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
 }
 
 /**
+ * A private D-Bus session bus for one browser, so the D-Bus remote that a second `vimma` (the
+ * `external` step's vimma-open) forwards its command line over reaches the browser under test,
+ * never the developer's own Vimma.
+ * @typedef {{ address: string, stop: () => Promise<void> }} Bus
+ */
+
+/**
+ * A session bus configuration with no service directories, so nothing is activated on it (a
+ * portal or the accessibility bus would otherwise start under the harness).
+ * @param {string} socket
+ */
+export function sessionBusConfig(socket) {
+  return `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:path=${socket}</listen>
+  <auth>EXTERNAL</auth>
+  <!-- dbus's own session.conf policy; without its eavesdrop lines the remote's call is not
+       delivered. The socket sits in the profile's 0700 folder. -->
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+`;
+}
+
+/**
+ * Starts dbus-daemon on a socket in `dir` and waits for the address it prints.
+ * @param {string} dir
+ * @param {{ bin?: string, timeoutMs?: number }} [options]
+ * @returns {Promise<Bus>}
+ */
+export async function startSessionBus(dir, { bin = "dbus-daemon", timeoutMs = 10_000 } = {}) {
+  const config = join(dir, ".e2e-bus.conf");
+  writeFileSync(config, sessionBusConfig(join(dir, ".e2e-bus")));
+  const child = spawn(
+    bin,
+    [`--config-file=${config}`, "--nofork", "--nopidfile", "--print-address=1"],
+    {
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+    },
+  );
+  let out = "";
+  let err = "";
+  try {
+    const address = await new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`dbus-daemon gave no address: ${err}`)),
+        timeoutMs,
+      );
+      child.on("error", (e) => {
+        clearTimeout(timer);
+        reject(new Error(`cannot start ${bin} (package dbus): ${e.message}`));
+      });
+      child.stderr?.on("data", (d) => (err += d));
+      child.stdout?.on("data", (d) => {
+        out += d;
+        const end = out.indexOf("\n");
+        if (end > 0) {
+          clearTimeout(timer);
+          resolve(out.slice(0, end).trim());
+        }
+      });
+      child.on("exit", (code) => {
+        clearTimeout(timer);
+        reject(new Error(`dbus-daemon exited (${code}): ${err}`));
+      });
+    });
+    return {
+      address: /** @type {string} */ (address),
+      stop: () => killTree(child, { graceMs: 1000 }),
+    };
+  } catch (e) {
+    await killTree(child, { graceMs: 1000 });
+    throw e;
+  }
+}
+
+/**
+ * The `vimma` an `external` step's vimma-open runs (VIMMA_BIN): the build on the profile under
+ * test, so the forwarded command line reaches that browser.
+ * @param {string} binary
+ * @param {string} profile
+ */
+export function externalWrapper(binary, profile) {
+  const q = (/** @type {string} */ s) => `'${s.replaceAll("'", `'\\''`)}'`;
+  return `#!/bin/sh\nexec ${q(binary)} -profile ${q(profile)} "$@"\n`;
+}
+
+/** The launcher the packages install as `vimma-open`. */
+export const VIMMA_OPEN = join(REPO, "tools/package/vimma-open.sh");
+
+/**
+ * Runs vimma-open with `args` in `env`, as another program does; it hands the link off and
+ * returns at once, so a non-zero exit or a hang is a failure.
+ * @param {readonly string[]} args
+ * @param {{ env: Record<string, string>, timeoutMs?: number, signal?: AbortSignal }} options
+ * @returns {Promise<void>}
+ */
+export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("/bin/sh", [VIMMA_OPEN, ...args], {
+      env,
+      stdio: ["ignore", "ignore", "pipe"],
+      timeout: timeoutMs,
+      ...(signal ? { signal } : {}),
+    });
+    let err = "";
+    child.stderr?.on("data", (d) => (err += d));
+    child.on("error", reject);
+    child.on("exit", (code, sig) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`vimma-open ended with ${code ?? sig}: ${err.trim()}`)),
+    );
+  });
+}
+
+/**
  * @typedef {{
  *   profile: string,
  *   child: import("node:child_process").ChildProcess,
  *   display: Display | null,
+ *   env: () => Record<string, string>,
  *   discovery: { protocol: number, port: number, token: string, pid: number },
  *   stderrTail: () => string,
  *   loadFailure: () => string | null,
@@ -698,6 +823,7 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  *   runtimeRoot?: string,
  *   prefs?: Record<string, boolean | number | string | null>,
  *   keep?: boolean,
+ *   sessionBus?: boolean,
  *   args?: readonly string[],
  *   discoveryTimeoutMs?: number,
  *   graceMs?: number,
@@ -722,6 +848,7 @@ export async function launch({
   runtimeRoot,
   prefs = {},
   keep = false,
+  sessionBus = false,
   args = [],
   discoveryTimeoutMs = DEFAULT_DISCOVERY_TIMEOUT_MS,
   graceMs = 5000,
@@ -737,6 +864,11 @@ export async function launch({
   let displayStarting = null;
   /** @type {import("node:child_process").ChildProcess | null} */
   let child = null;
+  /** @type {Bus | null} */
+  let bus = null;
+  /** The browser's environment at its last start, for programs that talk to it. */
+  /** @type {Record<string, string>} */
+  let lastEnv = {};
   const cancel = new AbortController();
   const profile = createProfile(tmpRoot, prefs);
   const home = join(profile, ".e2e-home");
@@ -767,6 +899,7 @@ export async function launch({
       // stop whatever it started. startXvfb removes its fbdir itself when it fails.
       const started = await displayStarting?.catch(() => null);
       if (started) await started.stop();
+      if (bus) await bus.stop();
       if (keep) log(`kept profile ${profile}${runDir ? ` and run folder ${runDir}` : ""}`);
       else {
         rmSync(profile, { recursive: true, force: true });
@@ -799,6 +932,8 @@ export async function launch({
       }
       env.XDG_RUNTIME_DIR = runDir;
     }
+    if (bus) env.DBUS_SESSION_BUS_ADDRESS = bus.address;
+    lastEnv = env;
     const spawned = spawn(build.binary, browserArgs(profile, window, { url, extra: args }), {
       env,
       detached: true,
@@ -841,6 +976,7 @@ export async function launch({
       displayStarting = startXvfb({ ...window, bin: xvfbBin, signal: cancel.signal, env: xvfbEnv });
       display = await displayStarting;
     }
+    if (sessionBus && !tearingDown) bus = await startSessionBus(profile);
     const stop = cancelled();
     if (stop) throw stop;
     const first = await start("about:blank");
@@ -850,6 +986,7 @@ export async function launch({
       profile,
       child: first.spawned,
       display,
+      env: () => ({ ...lastEnv }),
       discovery: first.discovery,
       stderrTail,
       loadFailure: () => loadFailure,

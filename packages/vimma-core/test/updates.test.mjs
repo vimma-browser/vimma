@@ -478,6 +478,39 @@ describe("parseManifest", () => {
     expect(parseManifest(open)).toEqual({ ok: false, reason: "manifest: a comment is not closed" });
   });
 
+  test("attributes are read in one scan, whatever whitespace separates them", () => {
+    const spaced = manifest().replace(
+      ' vimmaTarget="',
+      `\n\t${"\t".repeat(200_000)} vimmaTarget="`,
+    );
+    expect(parseManifest(spaced)).toMatchObject({ ok: true, manifest: { channel: "vimma" } });
+    const started = performance.now();
+    for (const body of [
+      manifest().replace("<updates ", `<updates ${"\t".repeat(200_000)}!`),
+      manifest().replace("<updates ", `<updates ${"\t a".repeat(100_000)} `),
+      manifest().replace("<updates ", `<updates a${"a".repeat(200_000)} `),
+      manifest().replace("<updates ", `<updates a="${"b".repeat(200_000)}`),
+    ]) {
+      expect(parseManifest(body)).toEqual({
+        ok: false,
+        reason: "manifest: <updates> has malformed attributes",
+      });
+    }
+    expect(performance.now() - started).toBeLessThan(2000);
+    for (const bad of [
+      manifest().replace('" vimmaTarget', '"vimmaTarget'),
+      manifest().replace('vimmaTarget="', 'vimmaTarget = "'),
+      manifest().replace('vimmaChannel="vimma"', 'vimmaChannel="vi<mma"'),
+      manifest().replace('vimmaChannel="vimma"', "vimmaChannel='vimma'"),
+      manifest().replace('vimmaChannel="vimma"', 'vimmaChannel="vimma'),
+      manifest().replace("vimmaChannel=", "1vimmaChannel="),
+    ]) {
+      expect(parseManifest(bad).ok).toBe(false);
+    }
+    const selfClosing = manifest({ update: null }).replace(">\n</updates>", " \t/>");
+    expect(parseManifest(selfClosing)).toMatchObject({ ok: true, manifest: { update: null } });
+  });
+
   test.each([
     ["not XML", "hello\n"],
     ["two updates", manifest().replace("</updates>", '<update appVersion="1"></update></updates>')],

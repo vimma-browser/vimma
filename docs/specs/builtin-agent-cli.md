@@ -10,7 +10,8 @@ and `ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mc
 `docs/limits.md` · Upstream patches: none · ADR: an amendment to
 [ADR-023](../adr/023-in-browser-model-client.md) (C1). No new dependency.
 
-Issue: [#609](https://github.com/vimma-browser/vimma/issues/609)
+Issue: [#609](https://github.com/vimma-browser/vimma/issues/609); Gemini CLI:
+[#726](https://github.com/vimma-browser/vimma/issues/726)
 
 Builds on [builtin-agent](builtin-agent.md) (the chat window, conversations, budgets and the
 conversation grant), [vimma-mcp](vimma-mcp.md) (the agent workspace, the gate, the control
@@ -335,9 +336,115 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
   `--allowed-mcp-server-names`, `--policy`, `-m`. The bundle's `JsonStreamEventType` has `init`,
   `message`, `tool_use`, `tool_result`, `error` and `result`. No option to keep no session files
   was found.
+  - Run (issue #726) against a scripted Gemini API server on 127.0.0.1
+    (`GOOGLE_GEMINI_BASE_URL`, a made-up `GEMINI_API_KEY`, `security.auth.selectedType`
+    `gemini-api-key`, a throwaway `HOME` and XDG folders, in a network namespace that has only
+    loopback), with one-tool MCP servers and the task on stdin. A headless run needs a trusted
+    working directory, else it exits with 55; `--skip-trust` trusts it but does not load the
+    folder's own `.gemini/settings.json`, while `GEMINI_CLI_TRUST_WORKSPACE=true` in the
+    environment does both.
+  - Output with `-o stream-json`, one JSON object a line, each with `type` and `timestamp`:
+    `init` with `session_id` and `model` (`auto`, the router, unless `-m` names one), and no
+    version, tool list or MCP server status; `message` with `role` `user` (the task as given)
+    or `assistant`, whose `content` is a piece of the reply (`delta: true`); `tool_use` with
+    `tool_name`, `tool_id` and `parameters`; `tool_result` with `tool_id`, `status` (`success`
+    or `error`), `output`, and `error` (`type`, `message`); `error` with `severity` and
+    `message`; and `result` with `status` (`success` or `error`, with `error.type` and
+    `error.message`) and `stats`. `stats` has `input_tokens`, `output_tokens`,
+    `total_tokens`, `cached`, `duration_ms`, `tool_calls` and the same counts per model,
+    including the router's own request and the last turn, and no cost. A refused key (401) gave
+    a `result` with `status` `error` and the API's message after the `init`, and exit 145.
+  - The task is read from stdin to its end (at most 8 MiB, and only if it starts within
+    500 ms), so there is no live input for added instructions (Behaviour 10). `--acp` speaks
+    the Agent Client Protocol on stdio instead, a different protocol from the stream above.
+  - MCP servers come from the settings files (`mcpServers`, merged per server name, a later
+    file's entry replacing the whole earlier one) and from extensions. With the run's server in
+    `.gemini/settings.json` of the working directory and `--allowed-mcp-server-names` naming
+    it, a server of the user's settings was never started, and the user's entry of the same
+    name (with its own `cwd` and `includeTools`) was replaced whole. The ticket can stay out of
+    the arguments: the server received it from that entry's `env`, and Gemini CLI's own
+    environment never held it. A server that took 1.5 s to start had its tool in the first
+    request to the model. A tool of the run's server reaches the model as
+    `mcp_<server>_<tool>`, and only when its entry has `trust: true` or a policy allows it.
+    A server whose command did not exist was not reported: the run went on without its tools
+    and ended with `success`.
+  - In a headless run with the default approval mode, the model was offered only tools that
+    need no confirmation (`list_directory`, `read_file`, `grep_search`, `glob`,
+    `google_web_search`, `invoke_agent`, `enter_plan_mode`, `update_topic`); a call to
+    `run_shell_command` came back as a `tool_result` with the error type
+    `tool_not_registered`. The user's policy files decide which others are allowed.
+  - Every run wrote its whole conversation, the task, each tool call and its result, and the
+    reply, to `~/.gemini/tmp/<project>/chats/session-<time>-<id>.jsonl`, and added the
+    working directory to `~/.gemini/projects.json`. No option or setting turns the recording
+    off. `general.sessionRetention` deletes old sessions only of the project a run starts in,
+    and each run's working directory is a new project, so they are never deleted.
+    `GEMINI_CLI_HOME` moves the whole `~/.gemini` folder, the Google login
+    (`oauth_creds.json`) and the user's settings and policies included.
+  - Where a run is recorded (the bundle's `Storage` and `ProjectRegistry`, and a run against
+    the scripted server): `projects.json` maps the working directory, as the process sees it,
+    to a project name made from its last component (`vimma-agent-cli-3`, with `-1`, `-2` added
+    on a clash); `tmp/<project>/` and `history/<project>/` each hold a `.project_root` file
+    naming that directory, and `tmp/<project>/chats/` the session files. The registry is
+    written under proper-lockfile's lock, a `projects.json.lock` folder beside it, and replaced
+    by a rename. `GEMINI_CLI_HOME`, else the home folder, holds `.gemini`.
+  - A refused key also wrote two error reports, `gemini-client-error-*.json` with the request's
+    whole conversation, to the system's temporary folder (`os.tmpdir()`, so `TMPDIR`), readable
+    by every user (0644).
+  - An extension (`~/.gemini/extensions/<name>/gemini-extension.json`) with a server of the
+    run's name and another one: with `--allowed-mcp-server-names` the other one never started,
+    but Vimma's server was started twice; with `-e none` as well, once.
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.
+  - Run (issue #727) against a scripted OpenAI-compatible chat-completions server on 127.0.0.1
+    (a provider of the `@ai-sdk/openai-compatible` kind with a made-up key, a throwaway `HOME`
+    and XDG folders, in a network namespace that has only loopback), with a one-tool MCP server
+    named `vimma` and the task on stdin. `run` reads stdin to its end before it starts
+    (`text(process.stdin)` in its bundle), so it has no live input for added instructions
+    (Behaviour 10). Without `--standalone`, `run` hands the task to opencode's background
+    service (`opencode service`), which keeps the configuration and environment it started
+    with, so a run's own MCP configuration does not reach it; `--standalone` starts a private
+    server for the run (`opencode serve --stdio --port 0`).
+  - Output with `--format json`, one JSON object a line, each with `type`, `timestamp`,
+    `sessionID` and `part`: `step_start`; `tool_use`, once per finished call, with `part.tool`
+    and `part.state` (`status` `completed` or `error`, `input`, `output` or `error`);
+    `step_finish` with `part.tokens` (`input`, `output`, `reasoning`, `cache.read`,
+    `cache.write`) and `part.cost`; `text` with `part.text`; `reasoning` only with
+    `--thinking`; and `error` with `error.type` and `error.message` (a refused key:
+    `provider.auth`, `Incorrect API key provided`, exit 1).
+    No event names the model, the version or the run's tools, so the header cannot list its own
+    tools (C7). In every recorded run, the last step, the one that writes the reply, had no
+    `step_start` or `step_finish`, so its tokens and cost are not reported (C10, C13).
+  - MCP tools are reached only through `execute` ("Code Mode"): a tool that runs JavaScript,
+    with `fetch`, calling `tools.<server>.<tool>`. A call to Vimma's server is an `execute`
+    `tool_use` whose `metadata.metadata.toolCalls` names `vimma.vimma_tabs`. The catalog of MCP
+    tools is built when a step starts: with a server that took 1.5 s to start, the first step
+    listed none of Vimma's tools and its `execute` call returned
+    `Unknown tool 'vimma.vimma_tabs'`; the tools arrived in a later step as a `<system-update>`
+    message. Setting `mcp.timeout.catalog` did not change that.
+  - A run merges a system folder (`/etc/opencode`), the global folder
+    (`$XDG_CONFIG_HOME/opencode`, replaced by `OPENCODE_CONFIG_DIR` when set), the file
+    `OPENCODE_CONFIG` names, project files in and above the working directory, and
+    `OPENCODE_CONFIG_CONTENT`. A server of the global configuration stayed in the run with
+    `"enabled": false` under its name in `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT` (the log
+    says "omitted enabled-only legacy MCP entry"); a whole entry under the same name with
+    `"enabled": false` turned it off, so turning a server off needs its name. `opencode mcp list`
+    has no `--standalone` and asks the background service, so the names cannot be listed without
+    starting or using that service, and Vimma would otherwise have to read every source above
+    itself. A `permissions` rule denying `*.*` and allowing `vimma.*` left the other server's
+    tools in the catalog. No option leaves the configured servers out, as Claude Code's
+    `--strict-mcp-config` does. The ticket can stay out of the arguments: `OPENCODE_CONFIG`
+    names a file whose server entry carries it in `environment`, and the server received it.
+  - Sessions and the logins `opencode auth login` stores are in one SQLite database,
+    `$XDG_DATA_HOME/opencode/opencode.db` (`OPENCODE_DB` names another). With
+    `OPENCODE_DB=:memory:` a run kept no database file, but a stored key (added with
+    `opencode auth import`) was no longer sent, while a key in the configuration was; with the
+    file, the run's session stayed in it. A shell command's output stayed under
+    `$XDG_DATA_HOME/opencode/shell/` either way.
+  - Without `--auto`, a permission request is refused ("This non-interactive run cannot ask the
+    user for permission"); under the default permissions a `shell` call (`ls`) ran without one.
+    A configuration file that does not parse is skipped with a warning in opencode's log, and
+    the run goes on with the rest, its default provider included.
 
 ## Design
 
@@ -483,6 +590,32 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
    the CLI's session between tasks (`exec resume`, `--resume`), because it needs the session
    files above; an `env` key in `config.toml`, because a CLI's login is the CLI's matter and
    variables such as `LD_PRELOAD` would run code (F3).
+
+   (Since changed: Gemini CLI, which cannot be asked, is supported with what it records removed
+   by Vimma, because the window then keeps no conversation on disk once a task ends, as with the
+   other CLIs, and the user keeps Gemini CLI's own login, which moving its folder with
+   `GEMINI_CLI_HOME` would hide. When a run ends, a stop included, Vimma removes each project
+   folder in `~/.gemini/tmp` and `~/.gemini/history` whose `.project_root` names the run's folder,
+   and the run's entry in `~/.gemini/projects.json`, under Gemini CLI's own lock, waited for and
+   never broken. A project is Vimma's only when its path is a run folder's name
+   (`vimma-agent-cli`, `vimma-agent-cli-<n>`) directly in a folder runs are made in, because the
+   user's own Gemini CLI projects and sessions must never be touched. The remaining gap: from
+   the run's start to its end the conversation is in Gemini CLI's folder, and a crash, a kill or
+   a power cut leaves it there. Each run folder holds the process id of the Vimma that runs it,
+   so that at the next start Vimma knows a folder a crash left: one whose process is gone (on
+   Linux, through `/proc`), one its own process id marks while no run of this Vimma's uses it,
+   or one older than any run lasts (`max_minutes`' longest, a day, and an hour more, the only
+   rule where no process can be asked about, as on macOS). It removes such a folder with what
+   Gemini CLI recorded of its run, and the records of every run of its own whose folder is
+   gone, while a run still going, in this Vimma or another, is left alone. A registry that is
+   a link (a dotfile manager's) is not edited, because Gemini CLI locks and writes the file it
+   leads to and a rename would replace the link; its entries stay, the folders still go. Gemini CLI's `TMPDIR` is the run's folder, because its error reports hold
+   the conversation and would otherwise stay in `/tmp`, readable by other users. Rejected:
+   keeping Gemini CLI off until it can be asked, because its users would wait on an upstream
+   change; stating in the window that its files are kept, because they would never be removed;
+   `GEMINI_CLI_HOME` in the run's folder, because it hides the user's login, settings and
+   policies. Issue #726.)
+
 6. **An empty working directory per run** (C6, Behaviour 7). Each run's `workdir` is a new 0700
    directory, removed when the run ends, so that the CLI loads no project's instruction files,
    hooks or settings from wherever Vimma was started, and its file tools start in a place that
@@ -595,6 +728,38 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     list, version arguments, argument builder, MCP configuration, input line and stream parser
     (with its usage, cost and own tools), because the window, the conversations and the runner
     read every per-CLI fact from that entry, and a unit test checks each entry for all of them.
+
+    (Since changed: opencode 2.0.32 was run against a scripted server and is still not offered,
+    because it cannot meet C5 and C7 as they stand. It keeps no session only with an in-memory
+    database, which also hides the logins `opencode auth login` stores. The MCP servers of its
+    configuration can be turned off only by name, and only its background service lists the
+    names. Its MCP tools reach the model only through Code Mode, and not in a step that starts
+    before Vimma's server has connected. Research, "opencode 2.0.32"; issue #727.)
+
+    (Since changed: Gemini CLI 0.66.0 was run against a scripted server and is still not
+    offered, because it cannot meet C5. Every headless run keeps its whole conversation, tool
+    results included, in a session file under `~/.gemini/tmp`, no setting turns that off, and
+    moving its folder elsewhere also hides its login. It can meet C1, C3 and C7's single server:
+    a settings file in the run's working directory gives it Vimma's server with the ticket in
+    the server's `env`, and `--allowed-mcp-server-names` keeps every other server from
+    starting. Like Codex, it has no live input and reports no tool list and no cost; it
+    reports tokens. Research, "Gemini CLI 0.66.0"; issue #726.)
+
+    (Since changed: Gemini CLI is offered, from 0.66.0, with Vimma removing what it records of
+    each run (C5's note). Its entry runs `gemini` with `-o stream-json`,
+    `--allowed-mcp-server-names vimma_chat` and `-e none`, and `-m` for the provider's model,
+    headless because its input is a pipe; Vimma's server is `vimma_chat` in the run folder's
+    `.gemini/settings.json`, with the ticket in the server's `env` and `trust: true`, since a
+    headless run asks nobody;
+    `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder and loads the file.
+    Extensions are off, because they bring servers, tools and context of their own and made
+    Vimma's server start twice. A reply's pieces are joined; a tool it did not offer or its
+    policy refused is shown refused; a tool of another MCP server that ran ends the run, while a
+    call to a name never offered does not, because the model may guess one. A server that does
+    not start is not in its stream, so such a run goes on without the browser's tools; the guide
+    and `docs/limits.md` say so. Like Codex it has no live input (Behaviour 10 queues), no tool
+    list and no cost. Issue #726.)
+
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the
     task's end line keeps it as `done · ≈ $0.41 (claude-code estimate)`, because it is the only

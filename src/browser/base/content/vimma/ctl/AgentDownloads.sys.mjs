@@ -927,7 +927,10 @@ const downloadOverride = (base) => ({
       notice(`agent downloads are never opened by Vimma: they are in ${displayDir(dir, home())}`);
       return Promise.reject(new Error("vimma: agent downloads are never opened"));
     }
-    return base.launchDownload(download, options);
+    // `super`, not `base.`: Firefox's launchDownload calls `this.launchFile` and
+    // `this.confirmLaunchExecutable`, which must reach every override of the combined
+    // integration, those registered after this one included.
+    return super.launchDownload(download, options);
   },
 });
 
@@ -1034,6 +1037,13 @@ export const AgentDownloads = {
   },
 
   readLink,
+
+  /**
+   * Whether a download is an agent download (M11): the downloads picker refuses to open, retry,
+   * unblock or follow one with the same test `launchDownload` uses (docs/specs/downloads.md,
+   * decision 8).
+   */
+  isAgentDownload,
 
   /** Once per app (AgentPages.init): the hooks stay for the session. */
   init() {

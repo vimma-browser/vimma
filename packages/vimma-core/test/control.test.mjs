@@ -307,7 +307,7 @@ describe("validateMessage: state", () => {
       tabs: [{ id: 1, url: null, title: null, selected: "yes" }, "x"],
     };
     expect(errorsOf(ok(broken), { command: "state" })).toEqual([
-      "result.mode must be one of normal, insert, visual, command, hint, element, help, panel, resize",
+      "result.mode must be one of normal, insert, visual, command, hint, element, help, panel, resize, index",
       "result.pending must be a string or null",
       "result.workspace must be a string or null",
       "result.tabs[0].id must be a string",
@@ -316,6 +316,22 @@ describe("validateMessage: state", () => {
       "result.tabs[0].selected must be a boolean",
       "result.tabs[1] must be an object",
       "result.panes must be present (null before split view)",
+    ]);
+  });
+
+  test("splits, when present, is a list of numbered splits (multiple-splits)", () => {
+    const one = { number: 2, shown: true, focus: "1", zoomed: false, root: {} };
+    expect(errorsOf(ok({ ...state, splits: [] }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, splits: [one] }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, splits: {} }), { command: "state" })).toEqual([
+      "result.splits must be an array",
+    ]);
+    const bad = [1, { ...one, number: 0 }, { ...one, number: 1.5 }, { ...one, shown: "yes" }];
+    expect(errorsOf(ok({ ...state, splits: bad }), { command: "state" })).toEqual([
+      "result.splits[0] must be an object",
+      "result.splits[1].number must be an integer from 1 to 9",
+      "result.splits[2].number must be an integer from 1 to 9",
+      "result.splits[3].shown must be a boolean",
     ]);
   });
 

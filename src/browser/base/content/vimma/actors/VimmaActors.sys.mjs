@@ -6,7 +6,9 @@
 // docs/specs/m1-actor-insert-scroll.md). The host talks to content only through here.
 
 import {
+  HINT_AGENT_FRAMES_MS,
   HINT_REPLY_MAX_TARGETS,
+  HINT_TOP_TIMEOUT_MS,
   hintCollectReason,
   parseBlockReply,
   parseHintReply,
@@ -14,6 +16,8 @@ import {
 import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
+import { INSERT_ENTER } from "../core/editable.mjs";
+import { pressEnterLater } from "./enter-key.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -77,16 +81,6 @@ const lastReasons = new WeakMap();
 /** How long a subframe may take to answer (ms) before its targets are left out. */
 const FRAME_TIMEOUT_PREF = "vimma.hints.frameTimeoutMs";
 const FRAME_TIMEOUT_DEFAULT = 150;
-/** The top frame gets longer: without it there are no hints at all. */
-const TOP_TIMEOUT_MS = 2000;
-/**
- * An agent's collection (docs/specs/mcp-drive.md D12, mcp-forms.md F2): every frame answers
- * within this of its start. No user waits on labels there, and an agent's tab is in the
- * background, whose frames' processes may be busy or just started: at the user's 150 ms, a
- * frame of another site would be left out of the list without a word. The calls give up after
- * 5 s, so the frames that answered are still listed then.
- */
-const AGENT_FRAMES_MS = 4000;
 
 /** At most this many targets in all frames (each frame: core HINT_REPLY_MAX_TARGETS). */
 const MAX_HINTS = HINT_REPLY_MAX_TARGETS;
@@ -238,6 +232,11 @@ export const VimmaActors = {
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
           dragstart: { capture: true, createActor: false },
+          // pdf.js's viewer, once it has a document and once its pages are laid out
+          // (docs/specs/pdf-mode.md decisions 2 and 20): chrome-only events, which only pdf.js
+          // sends. The first lets the viewer take the theme before its pages are drawn.
+          documentloaded: {},
+          pagesloaded: {},
         },
       },
       allFrames: true,
@@ -295,11 +294,27 @@ export const VimmaActors = {
 
   /**
    * Runs a text-field command (ctrl+w, ctrl+u, ctrl+h; docs/specs/key-handling-batch.md § 2)
-   * in the focused frame, on its focused text field, if any.
+   * in the focused frame, on its focused text field, if any. INSERT_ENTER (ctrl+j, ctrl+m) is
+   * an Enter pressed here in the parent, which Firefox routes to the page's focused element as
+   * it does a keyboard's.
    * @param {any} browser XULBrowserElement
-   * @param {string} command  one of core INSERT_EDIT_COMMANDS
+   * @param {string} command  one of core INSERT_EDIT_COMMANDS, or INSERT_ENTER
    */
   edit(browser, command) {
+    if (command === INSERT_ENTER) {
+      // The frame focused now: a page that moves focus (into another frame) in the time before
+      // the Enter gets none, rather than an Enter where the user did not type.
+      const frame = Services.focus.focusedContentBrowsingContext;
+      const win = browser.ownerDocument?.defaultView;
+      if (!win || !frame) return;
+      pressEnterLater(
+        win,
+        () =>
+          Services.focus.focusedElement === browser &&
+          Services.focus.focusedContentBrowsingContext === frame,
+      );
+      return;
+    }
     actorFor(framesFor(browser)[0])?.sendAsyncMessage("Vimma:Edit", { command });
   },
 
@@ -373,18 +388,20 @@ export const VimmaActors = {
     liveGen.set(key, gen);
     const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
-    const agentDeadline = Date.now() + AGENT_FRAMES_MS;
+    const agentDeadline = Date.now() + HINT_AGENT_FRAMES_MS;
     /** How long the frame at `depth` may take, from now. @param {number} depth */
     const timeoutAt = (depth) => {
       if (agent) return Math.max(0, agentDeadline - Date.now());
-      return depth === 0 ? TOP_TIMEOUT_MS : frameTimeout;
+      return depth === 0 ? HINT_TOP_TIMEOUT_MS : frameTimeout;
     };
     /** Each frame at most once, whatever its embedder reports. */
     const visited = new Set();
     const linksOnly =
       (agent && !elements) ||
       action === "hint.follow_new_tab" ||
-      action === "hint.follow_new_tab_fg";
+      action === "hint.follow_new_tab_fg" ||
+      action === "hint.show_target" ||
+      action === "hint.copy_target";
     const blocks = !agent && action === "hint.element";
     const texts = agent && !elements;
     /** @type {HintTarget[]} */

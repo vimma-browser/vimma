@@ -32,6 +32,21 @@ if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*){2,}$/.test(APP_ID)) {
  */
 export const RUNTIME_VERSION = "25.08";
 
+/**
+ * The metainfo's screenshots, the default first, from `docs/assets/screenshots/`. Flathub asks
+ * for screenshot URLs that never change and mirrors the images when it builds, so each release's
+ * metainfo links them at that release's tag (`vX.Y.Z`, as the tarball URL), which never moves. A
+ * commit hash would not do: the squash merge gives the images a commit that is not known before
+ * they merge. To replace one, commit the new file; the next release's metainfo shows it.
+ */
+export const SCREENSHOTS = Object.freeze([
+  { file: "hints.png", caption: "Link hints: type the letters to follow a link" },
+  { file: "split.png", caption: "Two pages side by side in split panes" },
+  { file: "panel.png", caption: "The side panel lists the tabs of the workspace" },
+  { file: "grep.png", caption: "Live grep searches the text of the open tabs" },
+  { file: "help.png", caption: "Every key binding, in an overlay you can filter" },
+]);
+
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -234,6 +249,14 @@ export function metainfo({ version, date }) {
     <control>keyboard</control>
     <control>pointing</control>
   </supports>
+  <screenshots>
+${SCREENSHOTS.map(
+  ({ file, caption }, i) => `    <screenshot${i === 0 ? ' type="default"' : ""}>
+      <caption>${caption}</caption>
+      <image>https://raw.githubusercontent.com/${REPO}/v${version}/docs/assets/screenshots/${file}</image>
+    </screenshot>`,
+).join("\n")}
+  </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
     <release version="${version}" date="${date}">

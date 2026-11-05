@@ -120,6 +120,8 @@ describe("parseCommandLine: plan §2 commands", () => {
     [":open example.com", run("open", "page.open", { text: "example.com" })],
     ["  :  open   example.com  ", run("open", "page.open", { text: "example.com" })],
     [":TABNEW", run("tabnew", "tab.new")],
+    // docs/specs/downloads.md decision 2.
+    [":downloads", run("downloads", "downloads.picker")],
   ])("%j", (text, expected) => {
     expect(parseCommandLine(text)).toEqual(expected);
   });
@@ -548,5 +550,40 @@ describe(":agent (docs/specs/builtin-agent.md Behaviour 14)", () => {
     expect(words).not.toContain("agent");
     expect(words).not.toContain("agent_command");
     expect(completeCommandLine(":agen").candidates.map((c) => c.value)).toContain("agent");
+  });
+
+  test("a hidden command that is also an action's name runs that action (:downloads)", () => {
+    // `downloads` is the picker's command and the Library action's name (docs/specs/downloads.md).
+    const hidden = ["downloads.picker"];
+    expect(parseCommandLine(":downloads", { hidden })).toEqual(
+      run("downloads", "browser.downloads"),
+    );
+    const listed = completeCommandLine(":downloads", { hidden }).candidates;
+    expect(listed.map((c) => [c.value, c.kind])).toEqual([["downloads", "action"]]);
+    expect(
+      completeCommandLine(":downloads")
+        .candidates.slice(0, 2)
+        .map((c) => c.kind),
+    ).toEqual(["command", "action"]);
+  });
+});
+
+describe(":{n} (docs/specs/pdf-mode.md Behaviour 2)", () => {
+  test("a number goes to that page of the PDF", () => {
+    expect(parseCommandLine(":12")).toEqual({
+      kind: "run",
+      command: "12",
+      action: { id: "pdf.first_page", count: 12 },
+    });
+    expect(parseCommandLine("3")).toMatchObject({ action: { id: "pdf.first_page", count: 3 } });
+  });
+
+  test("zero, text after it or the PDF mode hidden is not a page", () => {
+    expect(parseCommandLine(":0")).toMatchObject({ kind: "error" });
+    expect(parseCommandLine(":12 x")).toMatchObject({ kind: "error" });
+    expect(parseCommandLine(":12", { hidden: ["pdf.first_page"] })).toMatchObject({
+      kind: "error",
+      error: { code: "unknown-command" },
+    });
   });
 });

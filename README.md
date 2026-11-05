@@ -20,8 +20,11 @@ and workspaces, and your hands never leave the keyboard.
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
   `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
   its label, then `y` (or `v` to adjust it first).
+- **PDFs with zathura's keys:** `J`/`K` and `12G` by page, zoom and fit, the outline on `Tab`,
+  marks and presentation mode in Firefox's own PDF viewer, with the page count in the status bar.
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
-  `w` to switch workspace. If your fingers know tmux, they already know Vimma.
+  `w` to switch workspace. A workspace keeps several splits, one shown at a time, and `]s` steps
+  between them. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
@@ -30,12 +33,13 @@ and workspaces, and your hands never leave the keyboard.
   first, and one answer (`a`) lets an agent work through its task until it quits. There
   they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
   and fill forms by hint label (never a password or payment card field), see a page as a
-  screenshot, read its errors, and show you a page when they want you to look at it. Sending a
-  form and paying are checkpoints, asked every time under any grant: the question shows what the
-  form sends, or the button, the site and the total the page states.
+  screenshot, read its errors, and show you a page when they want you to look at it. Paying and
+  sending a form with text or personal details are checkpoints, asked every time under any
+  grant: the question shows what the form sends, or the button, the site and the total the page
+  states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
   step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
-  Claude Code or Codex you already have, on its own login and plan. It works only in the agent
+  Claude Code, Codex or Gemini CLI you already have, on its own login and plan. It works only in the agent
   workspace, through the same tools and checkpoints as an MCP agent; several conversations can
   run at once, and they are kept, encrypted, without the page text they read.
 
@@ -104,7 +108,7 @@ later check a signed update file every 12 hours and show a newer release in the 
 AppImage, from the first release that includes its self-update, then replaces its own file with
 the newer release once its size and SHA-512 match the signed file, and the next start runs it.
 The other packages notify only; installing the update is up to you. Vimma's chat window runs
-Claude Code from 0.1.13, and Codex, on their own login
+Claude Code from 0.1.13, and Codex and Gemini CLI, on their own login
 ([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)).
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>

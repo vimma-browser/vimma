@@ -171,6 +171,22 @@
       padding: 0;
     }
   }
+
+  /* A split's rows (docs/specs/multiple-splits.md decision 10): a 3 px stripe in the split's
+     colour inside the mark bar, and its label (S2) dim under the marks, so the split is told by
+     more than colour. */
+  & .vimma-panel-row[data-split] {
+    box-shadow: inset 3px 0 0 var(--vimma-row-split);
+  }
+
+  & .vimma-panel-split {
+    grid-column: 4;
+    grid-row: 2;
+    justify-self: end;
+    font-family: var(--vimma-font, monospace);
+    font-size: 0.85em;
+    color: var(--vimma-fg-dim, GrayText);
+  }
 }
 
 /* The bookmarks panel (docs/specs/bookmarks.md): a tree, indented by depth (--vimma-depth). */
@@ -223,7 +239,7 @@
     & code {
       padding: 0 0.3ch;
       border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-      border-radius: 3px;
+      border-radius: var(--vimma-radius, 0);
       color: var(--vimma-text-accent, AccentColor);
       font: inherit;
     }
@@ -236,6 +252,63 @@
   }
 
   & .vimma-bookmarks-filter {
+    flex-basis: 100%;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 0.15rem 0.35rem;
+    border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
+    background: var(--vimma-bg, Field);
+    color: var(--vimma-fg, FieldText);
+    font: inherit;
+
+    &:focus-visible {
+      outline: 2px solid var(--vimma-focus, AccentColor);
+      outline-offset: -1px;
+    }
+
+    &[hidden] {
+      display: none;
+    }
+  }
+}
+
+/* The PDF viewer's outline (ui/pdf-outline.mjs, docs/specs/pdf-mode.md decision 10): a tree like
+   the bookmarks panel's, each entry's page at the end, the filter's matches marked as in the
+   pickers. Theme tokens only, so it follows the Vimma and Omarchy themes. */
+#vimma-outline {
+  & .vimma-panel-row {
+    grid-template-columns: 1.5ch minmax(0, 1fr) auto;
+    padding-inline-start: calc(0.75rem + var(--vimma-depth, 0) * 1.25ch);
+  }
+
+  & .vimma-outline-twisty {
+    color: var(--vimma-text-accent, AccentColor);
+  }
+
+  /* The entry's page, at the end of its row; in the filter the titles above it go under the
+     title instead, as a bookmark's folder path does. */
+  & .vimma-outline-page {
+    grid-column: 3;
+    grid-row: 1;
+    padding-inline-start: 1ch;
+    color: var(--vimma-fg-dim, GrayText);
+    font-variant-numeric: tabular-nums;
+  }
+
+  & mark {
+    background: none;
+    color: var(--vimma-text-accent, AccentColor);
+    font-weight: bold;
+  }
+
+  & .vimma-outline-more {
+    padding: 0.15rem 0.75rem;
+    font-size: 0.85em;
+    color: var(--vimma-fg-dim, GrayText);
+  }
+
+  & .vimma-outline-filter {
     flex-basis: 100%;
     box-sizing: border-box;
     width: 100%;

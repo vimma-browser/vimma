@@ -86,11 +86,13 @@ Two checks keep a status from drifting away from the work.
   whenever an issue is closed or reopened, and when `docs/specs/` changes on `main`. It reports a
   draft or accepted spec whose issues are all closed, an implemented spec with an open issue, an
   open issue whose `spec:draft` or `spec:accepted` label differs from the spec, and an `Issue:`
-  number that is not an issue. The report is one issue labelled `spec-status`, updated on each
-  run and closed when nothing is left. Fix it in the spec (status or `Issue:` line) or on the
-  issue. The check cannot run in pull request CI, because a status drifts when an issue closes,
-  which no pull request sees; and it cannot fix the spec itself, because `main` takes changes
-  only through pull requests.
+  number that is not an issue. A spec put on hold keeps its `draft` or `accepted` status, and its
+  issue is closed as not planned with the `on-hold` label; the check does not report it, because
+  the work is parked rather than built, and reopening the issue resumes it. The report is one
+  issue labelled `spec-status`, updated on each run and closed when nothing is left. Fix it in
+  the spec (status or `Issue:` line) or on the issue. The check cannot run in pull request CI,
+  because a status drifts when an issue closes, which no pull request sees; and it cannot fix
+  the spec itself, because `main` takes changes only through pull requests.
 
 ### The feature's issue
 

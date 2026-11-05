@@ -27,11 +27,14 @@ export class HelpOverlay {
    * @param {() => readonly { chord: string, id: string, label: string }[]} [firefoxOn]  the
    *   Firefox keys `[firefox] enable` keeps on, read at each open: Firefox adds keys late
    *   (DevTools), so the list can change without a new keymap
+   * @param {() => readonly string[]} [hidden]  action names not listed now: an unfinished
+   *   feature's, while its pref is off (CONTRIBUTING.md, "Unfinished features")
    */
-  constructor(win, keymap, runnable, firefoxOn = () => []) {
+  constructor(win, keymap, runnable, firefoxOn = () => [], hidden = () => []) {
     this.win = win;
     this.keymap = keymap;
     this.firefoxOn = firefoxOn;
+    this.hidden = hidden;
     /** @type {string} the Firefox rows the dialog was built with, to rebuild when they change */
     this.firefoxBuilt = "";
     /** @type {BindingRow[]} */
@@ -125,7 +128,12 @@ export class HelpOverlay {
   applyFilter() {
     const dialog = /** @type {HTMLDialogElement} */ (this.dialog);
     const query = /** @type {HTMLInputElement} */ (this.input).value;
-    const shown = new Set(filterBindings(this.rows, query).map((r) => r.name));
+    const hidden = this.hidden();
+    const shown = new Set(
+      filterBindings(this.rows, query)
+        .map((r) => r.name)
+        .filter((name) => !hidden.includes(name)),
+    );
     for (const section of dialog.querySelectorAll("section")) {
       let any = false;
       for (const row of section.querySelectorAll("[data-action]")) {

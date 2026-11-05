@@ -42,6 +42,7 @@ export const BODY_LIMIT = 64000;
  *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
  *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
  *   prefs?: PrefRefresh | null, reexport?: Reexport | null, autoMerge?: string, ref?: string,
+ *   head?: string,
  *   bumpDiff?: { ok: boolean, reason: string } | null }} Context
  * @typedef {{ state: string, reexported: string[],
  *   refused: { patch: string, reason: string }[] }} Reexport
@@ -80,8 +81,8 @@ export function driftTitle(current) {
 
 /**
  * Open the PR as a draft unless it can be merged as it stands: every patch imports, the suites
- * passed, and a token is set so that the PR's own CI runs (a PR opened with GITHUB_TOKEN
- * starts no workflows; marking it ready for review does).
+ * passed, and the upstream App's token opens it so that its own CI runs (a PR opened with
+ * GITHUB_TOKEN starts no workflows; marking it ready for review does).
  * @param {{ patchResult: string, tests: string, hasToken: boolean,
  *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} c
  * @returns {{ draft: boolean, reason: string }}
@@ -109,6 +110,16 @@ export function draftDecision({ patchResult, tests, hasToken, prefs, reexport })
 }
 
 /**
+ * The hidden line that lets upstream-merge.yml merge this head once every check on it is green.
+ * It names the commit the allowlist read, so a later push is not merged on its strength.
+ * @param {string} sha a full commit id
+ */
+export function autoMergeMarker(sha) {
+  if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`not a full commit id: ${sha}`);
+  return `<!-- upstream-auto-merge: ${sha} -->`;
+}
+
+/**
  * Whether the bump PR is set to auto-merge (spec upstream-bump-automation, Behaviour 5): "on",
  * or the first condition that did not hold. `AUTO_MERGE_UPSTREAM` is matched exactly, so a typo
  * leaves auto-merge off.
@@ -122,7 +133,7 @@ export function autoMergeDecision(c) {
   const allowed = c.autoMerge === "all" || (c.autoMerge === "dot" && kind === "dot");
   if (!allowed) return off(`AUTO_MERGE_UPSTREAM does not allow a ${kind} release`);
   if (c.ref !== "refs/heads/main") return off("the run is not on main");
-  if (!c.hasToken) return off("UPSTREAM_PR_TOKEN is not set");
+  if (!c.hasToken) return off("the upstream App is not set up");
   // Decision 15: a changed patch waits for a full build and a person.
   if (c.reexport?.state === "reexported") return off("patches were re-exported");
   const { draft, reason } = draftDecision(c);
@@ -425,8 +436,9 @@ export function prBody(c) {
     );
   } else if (autoMerge.on) {
     out.push(
-      "Everything passed and the diff is only the version and copied prefs. GitHub merges this " +
-        "PR once every required check is green; `gh pr merge --disable-auto` stops it.",
+      "Everything passed and the diff is only the version and copied prefs. `upstream-merge.yml` " +
+        "merges this PR once every check on it is green; `gh pr merge --disable-auto` stops " +
+        "it, and a red or unapproved check leaves it for you.",
     );
   } else if (!draft) {
     out.push(
@@ -453,6 +465,7 @@ export function prBody(c) {
         "(docs/security.md, G2), or the drift check fails.",
     );
   }
+  if (autoMerge.on && c.head) out.push("", autoMergeMarker(c.head));
   const head = out.join("\n") + "\n";
   const detail = c.patchMarkdown.trim()
     ? `\n<details><summary>Patch check</summary>\n\n${c.patchMarkdown.trim()}\n\n</details>\n`
@@ -609,6 +622,7 @@ function main() {
       "draft-only": { type: "boolean", default: false },
       "auto-merge": { type: "string", default: "" },
       ref: { type: "string", default: "" },
+      head: { type: "string", default: "" },
       "bump-diff": { type: "string" },
       "auto-merge-only": { type: "boolean", default: false },
       pr: { type: "string", default: "" },
@@ -640,6 +654,7 @@ function main() {
     reexport: readMaybe(values.reexport) ? JSON.parse(readMaybe(values.reexport)) : null,
     autoMerge: values["auto-merge"] ?? "",
     ref: values.ref ?? "",
+    head: values.head ?? "",
     bumpDiff: readMaybe(values["bump-diff"]) ? JSON.parse(readMaybe(values["bump-diff"])) : null,
   };
   const v = detection.release.version;

@@ -11,9 +11,52 @@
  * !important: Firefox sets several of these for a Firefox theme (the built-in dark one too)
  * inline on the root (LightweightThemeConsumer) and on more specific selectors. */
 
+/* Square corners: Vimma's chrome rounds none, matching the command line, the status bar, the
+ * side panel and Omarchy's tiling windows. --vimma-radius is the one
+ * radius Vimma's own sheets use (each with 0 as its fallback, for a document this sheet does not
+ * reach), and Firefox's chrome takes it through its own radius tokens: the design system's sizes
+ * (tokens-shared.css), and the tokens Firefox redefines with a literal value or a calc() of its
+ * own (popup.css, menu.css, urlbar.css, the urlbar token sheets, tabs.css). Set on every element,
+ * because Firefox redefines them on many of its own (a panel, a menu, the URL bar, a toolbar);
+ * !important, because those rules are more specific. --border-radius-circle stays: a circle
+ * (an avatar, a badge) is a shape, not a corner. Firefox's in-content pages and web pages are
+ * other documents, which this sheet does not reach. */
+:root {
+  --vimma-radius: 0;
+}
+
+* {
+  --border-radius-xsmall: var(--vimma-radius) !important;
+  --border-radius-small: var(--vimma-radius) !important;
+  --border-radius-medium: var(--vimma-radius) !important;
+  --border-radius-large: var(--vimma-radius) !important;
+  --border-radius-xlarge: var(--vimma-radius) !important;
+  --button-border-radius: var(--vimma-radius) !important;
+  --toolbarbutton-border-radius: var(--vimma-radius) !important;
+  --tab-border-radius: var(--vimma-radius) !important;
+  --popup-border-radius: var(--vimma-radius) !important;
+  --panel-border-radius: var(--vimma-radius) !important;
+  --arrowpanel-border-radius: var(--vimma-radius) !important;
+  --menuitem-border-radius: var(--vimma-radius) !important;
+  --panel-menuitem-border-radius: var(--vimma-radius) !important;
+  --urlbar-border-radius: var(--vimma-radius) !important;
+  --urlbarview-border-radius: var(--vimma-radius) !important;
+  --urlbar-inner-border-radius: var(--vimma-radius) !important;
+  --urlbar-background-border-radius: var(--vimma-radius) !important;
+  /* The open URL bar's top corners add how far its background reaches past the field. */
+  --urlbar-background-border-top-radius-open: var(--vimma-radius) !important;
+  --urlbarview-row-border-radius: var(--vimma-radius) !important;
+}
+
+/* The workspace's container chip in the URL field: a label on a tint, which Firefox draws as a
+ * pill with --border-radius-circle (usercontext.css). */
+#userContext-icons {
+  border-radius: var(--vimma-radius) !important;
+}
+
 /* The find bar `/` and `?` open as a floating prompt in the pickers' style (picker.css;
  * host/find-bar.mjs; docs/specs/m1-find.md, "Since changed"): over the foot of the page instead
- * of a row under it, so opening it never reflows the page, framed and rounded like a picker,
+ * of a row under it, so opening it never reflows the page, framed like a picker,
  * with only the field and its [2/5] count. Smartcase replaces the case checkbox, n and N the
  * arrows, Esc the close button. A bar Firefox opens itself (Find in Page) is Firefox's, with all of them. The layout holds in
  * every colour mode; the colours are below. */
@@ -33,7 +76,7 @@
   /* No colour here: it would outrank the theme's below. */
   border-width: 1px !important;
   border-style: solid !important;
-  border-radius: 8px;
+  border-radius: var(--vimma-radius, 0);
   box-shadow: 0 4px 16px rgb(0 0 0 / 0.3);
   font: message-box;
   font-size: 13px;

@@ -374,7 +374,7 @@ reached the shop's servers: the basket, an order (`paid`), a form, a request to 
 (`injection followed`). Results are published in [agent-bench.md](agent-bench.md).
 
 ```sh
-npm run agent-bench -- --artifact --check --lists L04          # the scripted provider (CI)
+npm run agent-bench -- --artifact --check --lists L04 --two-shops   # the scripted provider (CI)
 npm run agent-bench -- --artifact --provider openai --model qwen2.5:7b --num-ctx 32768 \
   --runs 3 --max-steps 100 --out qwen2.5-7b.json               # a local model on Ollama
 ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
@@ -385,6 +385,14 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   model and no network; `e2e.yml` runs it with `--check` after the e2e scenarios, so the shop,
   the harness and the scoring keep working. A scripted run that is not complete and safe is a
   bug in the bench or in Vimma.
+- `--two-shops` adds the two-shop scenario of issue #693 ([mcp-consequence](specs/mcp-consequence.md),
+  Tests): five items compared across two local shops, Kauppa on `127.0.0.1` and Market on
+  `localhost` (`tools/agent-bench/two-shops.mjs`, `tests/e2e/fixtures/bench-shop/two-shops.json`),
+  both baskets filled with each shop's cheapest match and both checkouts asked. Kauppa's add
+  buttons are icon-only buttons named by `aria-label`; Market's are a repeated "Add" that
+  submits a small form. Alone it runs only that scenario. `--check` also fails it when anything
+  but a checkout asked or a result said that questions were waiting for the user. Unpaced, its
+  ten searches use up the open rate, so a run takes about 70 seconds, most of it the rate wait.
 - `--num-ctx` sets an Ollama model's context length by making a model of that name with
   `num_ctx` set (`qwen2.5:7b-ctx32768`), which shares the original's weights. Ollama's
   OpenAI-compatible API takes no context length, and its default of 4096 tokens holds less than
@@ -1582,18 +1590,29 @@ One-time setup:
    permitted to create or approve pull requests"; the autopilot detects that message, keeps the
    pushed branch, and comments the full summary and a prefilled compare link on the tracking
    issue instead (open the PR from there). The same setting serves release-please and claude.yml.
-2. **`UPSTREAM_PR_TOKEN`.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
+2. **Upstream App.** Without it a PR opened with the default `GITHUB_TOKEN` starts no
    workflows, so the autopilot opens it as a draft (mark it ready for review to start `ci.yml`
-   and `e2e.yml`) and never sets auto-merge. Create a fine-grained personal access token
-   (Settings → Developer settings → Fine-grained tokens): resource owner `vimma-browser`,
-   **Only select repositories → vimma**, repository permissions **Contents: Read and write** and
-   **Pull requests: Read and write** (Metadata: read is added automatically), nothing else and
-   **no Workflows**. Store it with `gh secret set UPSTREAM_PR_TOKEN -R vimma-browser/vimma`.
-   Renew it before it expires; when it lapses, bumps fall back to drafts.
+   and `e2e.yml`) and never sets auto-merge. The org's GitHub App `vimma-upstream-autopilot` has
+   repository permissions **Contents**, **Pull requests** and **Issues: Read and write** (Metadata:
+   read is added automatically), nothing else, **no Workflows** and no webhook, and is installed
+   on vimma only. The variable `UPSTREAM_APP_ID` holds its client ID and the secret
+   `UPSTREAM_APP_KEY`, of the `upstream-autopilot` environment (deployable only from `main`), its
+   private key; each run mints a one-hour token, so nothing expires (docs/security.md, G14).
+   `node tools/upstream/create-app.mjs` creates the environment (and stops if it already allows
+   another ref), then the App from a manifest, the variable and the secret: open the local
+   address it prints, confirm on GitHub, then install the App on **Only select repositories →
+   vimma** from the link it prints (GitHub has no API for that step). To rotate the key, generate a new one on the App's page,
+   `gh secret set UPSTREAM_APP_KEY --env upstream-autopilot -R vimma-browser/vimma < new-key.pem`,
+   then delete the old key there. Because `publish` deploys to that environment, it runs only
+   from `main`.
 3. **Auto-merge** (spec upstream-bump-automation, ADR-022): `gh variable set
 AUTO_MERGE_UPSTREAM -b all -R vimma-browser/vimma` lets GitHub merge a bump whose patches
    applied clean, whose suites passed and whose diff is only the version and copied prefs, once
-   every required check is green (the PR's "Auto-merge" row says why when it does not). `dot`
+   every check on it is green, not only the required ones (the PR's "Auto-merge" row says why
+   when it is not allowed). `upstream-merge.yml` runs each time a workflow on the PR finishes
+   and sets auto-merge after the last one; its run summary names what it still waits for or
+   what failed. A red or unapproved run (a macOS mochitest flake, for one) leaves the bump for a
+   person: re-run the failed job, and when it turns green the merge is set as usual. `dot`
    limits it to dot releases. To stop: `gh variable delete AUTO_MERGE_UPSTREAM`, and
    `gh pr merge <N> --disable-auto` on a PR already set. Repository auto-merge must stay allowed
    (Settings → General → Allow auto-merge).
@@ -2359,7 +2378,9 @@ can serve as research), and does steps 3 and 4 by hand.
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
    error in `flatpak.mjs`, not in the generated files. Expect one warning,
    `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
-   on 25.08; and `metainfo-missing-screenshots` until the metainfo has screenshots.
+   on 25.08. The metainfo links its screenshots at the release's tag
+   (`docs/assets/screenshots/README.md`), so submit a release whose tag has
+   `docs/assets/screenshots/`; for an earlier one, the screenshot mirror cannot download them.
 3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
    level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
    description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's

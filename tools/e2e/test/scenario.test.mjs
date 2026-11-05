@@ -179,6 +179,25 @@ describe("validateScenario", () => {
     expect(validateScenario(scenario(over), undefined).join("\n")).toMatch(message);
   });
 
+  // docs/specs/app-routes.md, "Tests": the packaged vimma-open, run like another program.
+  it("accepts the external step: vimma-open's arguments", () => {
+    expect(
+      validateScenario(
+        scenario({ steps: [{ external: ["--from", "teams", "fixture:article.html"] }] }),
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [[{ external: [] }], /step 1: external/],
+    [[{ external: "fixture:article.html" }], /step 1: external/],
+    [[{ external: ["a", 3] }], /step 1: external/],
+    [[{ external: ["a\nb"] }], /step 1: external/],
+  ])("rejects external steps %o", (steps, message) => {
+    expect(validateScenario(scenario({ steps }), undefined).join("\n")).toMatch(message);
+  });
+
   it("wants the file named after the scenario", () => {
     expect(validateScenario(scenario({}), "m0-other.json").join("\n")).toMatch(/file name/);
   });
@@ -379,9 +398,21 @@ describe("runSteps", () => {
         mcpSend: (/** @type {any} */ spec) =>
           void calls.push(`mcp ${spec.method} ${JSON.stringify(spec.params ?? {})} as ${spec.as}`),
         mcpResult: async (/** @type {string} */ name) => replies[name],
+        external: async (/** @type {string[]} */ args) =>
+          void calls.push(`external ${args.join(" ")}`),
       },
     };
   };
+
+  it("external runs vimma-open with the step's arguments through the session", async () => {
+    const { ctl } = fakeCtl([{ mode: "normal" }]);
+    const fake = fakeControl();
+    await runSteps(
+      scenario({ steps: [{ external: ["--from", "teams", "fixture:article.html"] }] }),
+      { ctl, control: fake.control, screenshot: async () => {} },
+    );
+    expect(fake.calls).toEqual(["external --from teams fixture:article.html"]);
+  });
 
   it("after hold, keys, state and open go through the held connection", async () => {
     const { ctl, calls } = fakeCtl([{ mode: "normal" }]);

@@ -234,8 +234,13 @@ const ENTITIES = /** @type {Record<string, string>} */ ({
   apos: "'",
 });
 
+const SPACE = /\s/;
+const NAME_START = /[A-Za-z]/;
+const NAME_CHAR = /[A-Za-z0-9]/;
+
 /**
- * Attributes of one start tag, `name="value"` only, each name once.
+ * Attributes of one start tag, `name="value"` only, each name once. Read by one scan of the
+ * text (no backtracking regular expression), like startTags and withoutComments.
  * @param {string} text  what follows the tag name
  * @returns {Map<string, string> | null}
  */
@@ -243,10 +248,21 @@ function attributes(text) {
   const map = new Map();
   let rest = text.trimEnd();
   if (rest.endsWith("/")) rest = rest.slice(0, -1).trimEnd();
-  const re = /\s+([A-Za-z][A-Za-z0-9]*)="([^"<]*)"/gy;
-  let end = 0;
-  for (let m = re.exec(rest); m; m = re.exec(rest)) {
-    const [, name = "", raw = ""] = m;
+  let at = 0;
+  while (at < rest.length) {
+    const spaceAt = at;
+    while (SPACE.test(rest[at] ?? "")) at++;
+    if (at === spaceAt || !NAME_START.test(rest[at] ?? "")) return null;
+    const nameAt = at;
+    do at++;
+    while (NAME_CHAR.test(rest[at] ?? ""));
+    const name = rest.slice(nameAt, at);
+    if (!rest.startsWith('="', at)) return null;
+    const close = rest.indexOf('"', at + 2);
+    if (close < 0) return null;
+    const raw = rest.slice(at + 2, close);
+    if (raw.includes("<")) return null;
+    at = close + 1;
     if (map.has(name)) return null;
     // Only the five predefined entities; no character references, no stray ampersand.
     if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(raw)) return null;
@@ -254,9 +270,8 @@ function attributes(text) {
       name,
       raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => ENTITIES[e] ?? ""),
     );
-    end = re.lastIndex;
   }
-  return end === rest.length ? map : null;
+  return map;
 }
 
 /**

@@ -15,6 +15,10 @@ import {
   xulKeyChord,
 } from "../src/firefox-keys.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
+import { insertEditCommand } from "../src/editable.mjs";
+
+/** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
+const TEXT_FIELD = new Set(["insert", "command", "help"]);
 import { getAction } from "../src/actions.mjs";
 
 describe("xulKeyChord", () => {
@@ -284,7 +288,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     ["f7", "caret_browsing"],
   ])("%s runs %s by default, after the page", (chord, action) => {
     expect(keymap.trie("normal").children.get(chord)?.action?.name).toBe(action);
-    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(action);
+    // In a text field ctrl+j and ctrl+m are Enter (key-handling-batch § 2), the field's key.
+    expect(keymap.trie("insert").children.get(chord)?.action?.name).toBe(
+      insertEditCommand(chord) ? undefined : action,
+    );
     expect(pageFirst(chord)).toBe(true);
   });
 
@@ -295,7 +302,8 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     expect(pageFirst("shift+esc")).toBe(true);
   });
 
-  test("the only unbound c keys are the conditional ones, ' and the alt tap", () => {
+  // ' was one of them until the PDF viewer bound it to its marks (docs/specs/pdf-mode.md).
+  test("the only unbound c keys are the conditional ones and the alt tap", () => {
     const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
     expect(left).toEqual([
       "ctrl+f7",
@@ -305,7 +313,6 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       "ctrl+meta+f7",
       "alt+meta+f7",
       "ctrl+alt+meta+f7",
-      "'",
     ]);
     expect(getAction("devtools_dom")).toBeDefined();
     expect(keymap.trie("normal").children.get("ctrl+shift+w")?.action?.name).toBe("close_window");
@@ -317,7 +324,12 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode)).children.get(r.chord);
+        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
         expect(node?.children.size, `${r.chord} in ${mode} is a whole binding`).toBe(0);
       }
@@ -420,10 +432,11 @@ describe("bound means off (decision 2)", () => {
     for (const chord of ["ctrl+t", "ctrl+b", "ctrl+w", "alt+left", "ctrl+[", "esc", "f12"]) {
       expect(bound.has(chord), chord).toBe(true);
     }
-    for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b"]) {
+    // ' is bound in the PDF viewer only (marks); its Firefox key is off by its pref anyway.
+    for (const chord of ["ctrl+f", "ctrl+j", "f7", "ctrl+shift+b", "'"]) {
       expect(bound.has(chord), chord).toBe(true);
     }
-    for (const chord of ["'", "alt+f", "alt+h"]) {
+    for (const chord of ["alt+f", "alt+h"]) {
       expect(bound.has(chord), chord).toBe(false);
     }
   });
@@ -597,7 +610,12 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode)).children.get(r.chord);
+        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
+        if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
+          expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
       }
     }

@@ -985,6 +985,27 @@ function checkStateResult(result, errors) {
     if (selected > 1) errors.push("result.tabs must have at most one selected tab");
   }
   if (!("panes" in result)) errors.push("result.panes must be present (null before split view)");
+  // Every split of the workspace (docs/specs/multiple-splits.md, "Control protocol"): optional,
+  // so a client works with a Vimma that predates it.
+  if ("splits" in result) checkSplits(result.splits, errors);
+}
+
+/** @param {unknown} splits @param {string[]} errors */
+function checkSplits(splits, errors) {
+  if (!Array.isArray(splits)) {
+    errors.push("result.splits must be an array");
+    return;
+  }
+  splits.forEach((x, i) => {
+    if (!isObject(x)) {
+      errors.push(`result.splits[${i}] must be an object`);
+      return;
+    }
+    if (!isInt(x.number, 1, 9)) {
+      errors.push(`result.splits[${i}].number must be an integer from 1 to 9`);
+    }
+    if (typeof x.shown !== "boolean") errors.push(`result.splits[${i}].shown must be a boolean`);
+  });
 }
 
 /** @param {unknown} result @param {string | undefined} command @param {string[]} errors */

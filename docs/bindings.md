@@ -40,35 +40,38 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Panes
 
-| Action                                       | Config name              | Bindings                                                 |
-| -------------------------------------------- | ------------------------ | -------------------------------------------------------- |
-| Split right                                  | `split_vertical`         | `ctrl+b v`                                               |
-| Split down                                   | `split_horizontal`       | `ctrl+b -`                                               |
-| Focus pane to the left                       | `focus_pane_left`        | `ctrl+b h`, `ctrl+w h`                                   |
-| Focus pane below                             | `focus_pane_down`        | `ctrl+b j`, `ctrl+w j`                                   |
-| Focus pane above                             | `focus_pane_up`          | `ctrl+b k`, `ctrl+w k`                                   |
-| Focus pane to the right                      | `focus_pane_right`       | `ctrl+b l`, `ctrl+w l`                                   |
-| Swap with pane to the left                   | `swap_pane_left`         | `ctrl+b shift+h`, `ctrl+w H`                             |
-| Swap with pane below                         | `swap_pane_down`         | `ctrl+b shift+j`, `ctrl+w J`                             |
-| Swap with pane above                         | `swap_pane_up`           | `ctrl+b shift+k`, `ctrl+w K`                             |
-| Swap with pane to the right                  | `swap_pane_right`        | `ctrl+b shift+l`, `ctrl+w L`                             |
-| Zoom pane                                    | `zoom`                   | `ctrl+b z`, `ctrl+w o`                                   |
-| Close pane; the last pane closes the tab     | `close_pane`             | `ctrl+b x`                                               |
-| Resize mode                                  | `resize_mode`            | `ctrl+b r`                                               |
-| Leave resize mode                            | `resize_exit`            | `esc [resize]`, `enter [resize]`, `q [resize]`           |
-| Make pane narrower                           | `resize_narrower`        | `ctrl+w <`, `h [resize]`, `left [resize]`, `< [resize]`  |
-| Make pane wider                              | `resize_wider`           | `ctrl+w >`, `l [resize]`, `right [resize]`, `> [resize]` |
-| Make pane taller                             | `resize_taller`          | `ctrl+w +`, `j [resize]`, `down [resize]`, `+ [resize]`  |
-| Make pane shorter                            | `resize_shorter`         | `ctrl+w -`, `k [resize]`, `up [resize]`, `- [resize]`    |
-| New pane, along the longer side              | `new_pane`               | `ctrl+b enter`                                           |
-| Next layout                                  | `next_layout`            | `ctrl+b space`                                           |
-| Apply a layout preset by name (:layout name) | `select_layout`          | —                                                        |
-| Layout: all side by side                     | `layout_even_horizontal` | —                                                        |
-| Layout: all stacked                          | `layout_even_vertical`   | —                                                        |
-| Layout: main pane left, rest stacked         | `layout_main_vertical`   | —                                                        |
-| Layout: main pane on top, rest below         | `layout_main_horizontal` | —                                                        |
-| Layout: a grid                               | `layout_tiled`           | —                                                        |
-| Layout: a spiral (dwindle)                   | `layout_dwindle`         | —                                                        |
+| Action                                           | Config name              | Bindings                                                 |
+| ------------------------------------------------ | ------------------------ | -------------------------------------------------------- |
+| Split right                                      | `split_vertical`         | `ctrl+b v`                                               |
+| Split down                                       | `split_horizontal`       | `ctrl+b -`                                               |
+| Focus pane to the left                           | `focus_pane_left`        | `ctrl+b h`, `ctrl+w h`                                   |
+| Focus pane below                                 | `focus_pane_down`        | `ctrl+b j`, `ctrl+w j`                                   |
+| Focus pane above                                 | `focus_pane_up`          | `ctrl+b k`, `ctrl+w k`                                   |
+| Focus pane to the right                          | `focus_pane_right`       | `ctrl+b l`, `ctrl+w l`                                   |
+| Swap with pane to the left                       | `swap_pane_left`         | `ctrl+b shift+h`, `ctrl+w H`                             |
+| Swap with pane below                             | `swap_pane_down`         | `ctrl+b shift+j`, `ctrl+w J`                             |
+| Swap with pane above                             | `swap_pane_up`           | `ctrl+b shift+k`, `ctrl+w K`                             |
+| Swap with pane to the right                      | `swap_pane_right`        | `ctrl+b shift+l`, `ctrl+w L`                             |
+| Zoom pane                                        | `zoom`                   | `ctrl+b z`, `ctrl+w o`                                   |
+| Close pane; the last pane closes the tab         | `close_pane`             | `ctrl+b x`                                               |
+| Resize mode                                      | `resize_mode`            | `ctrl+b r`                                               |
+| Leave resize mode                                | `resize_exit`            | `esc [resize]`, `enter [resize]`, `q [resize]`           |
+| Make pane narrower                               | `resize_narrower`        | `ctrl+w <`, `h [resize]`, `left [resize]`, `< [resize]`  |
+| Make pane wider                                  | `resize_wider`           | `ctrl+w >`, `l [resize]`, `right [resize]`, `> [resize]` |
+| Make pane taller                                 | `resize_taller`          | `ctrl+w +`, `j [resize]`, `down [resize]`, `+ [resize]`  |
+| Make pane shorter                                | `resize_shorter`         | `ctrl+w -`, `k [resize]`, `up [resize]`, `- [resize]`    |
+| New pane, along the longer side                  | `new_pane`               | `ctrl+b enter`                                           |
+| Next layout                                      | `next_layout`            | `ctrl+b space`                                           |
+| Apply a layout preset by name (:layout name)     | `select_layout`          | —                                                        |
+| Layout: all side by side                         | `layout_even_horizontal` | —                                                        |
+| Layout: all stacked                              | `layout_even_vertical`   | —                                                        |
+| Layout: main pane left, rest stacked             | `layout_main_vertical`   | —                                                        |
+| Layout: main pane on top, rest below             | `layout_main_horizontal` | —                                                        |
+| Layout: a grid                                   | `layout_tiled`           | —                                                        |
+| Layout: a spiral (dwindle)                       | `layout_dwindle`         | —                                                        |
+| Split picker: show one of the workspace's splits | `split_picker`           | `ctrl+b shift+s`                                         |
+| Show the next split                              | `next_split`             | `]s`                                                     |
+| Show the previous split                          | `previous_split`         | `[s`                                                     |
 
 ## Workspaces
 
@@ -105,7 +108,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Scroll to bottom                                      | `scroll_bottom`    | `G`                                               |
 | Go back                                               | `history_back`     | `alt+left`, `H`, `ctrl+o`, `ctrl+[`               |
 | Go forward                                            | `history_forward`  | `alt+right`, `L`, `ctrl+i`, `ctrl+]`              |
-| Reload page                                           | `reload`           | `f5`, `ctrl+r`, `r`                               |
+| Reload page                                           | `reload`           | `f5`, `ctrl+r`, `r`, `R [pdf]`                    |
 | Open a URL or search in this tab                      | `open_url`         | —                                                 |
 | Go up a level in the URL path                         | `url_up`           | `gu`                                              |
 | Go to the site's root                                 | `url_root`         | `gU`                                              |
@@ -113,52 +116,53 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Page
 
-| Action                                             | Config name          | Bindings |
-| -------------------------------------------------- | -------------------- | -------- |
-| Copy the page's URL                                | `yank_url`           | `yy`     |
-| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`      |
-| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`      |
-| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`     |
-| View the page's source in a new tab                | `view_source`        | `gf`     |
+| Action                                             | Config name          | Bindings        |
+| -------------------------------------------------- | -------------------- | --------------- |
+| Copy the page's URL                                | `yank_url`           | `yy`, `Y [pdf]` |
+| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`             |
+| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`             |
+| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`            |
+| View the page's source in a new tab                | `view_source`        | `gf`            |
 
 ## Browser
 
-| Action                                            | Config name                | Bindings                  |
-| ------------------------------------------------- | -------------------------- | ------------------------- |
-| New window                                        | `new_window`               | `ctrl+n`                  |
-| Close the window                                  | `close_window`             | `ctrl+shift+w`            |
-| Reopen the last closed window                     | `restore_window`           | `ctrl+shift+n`            |
-| Quit (asks first)                                 | `quit`                     | `ctrl+q`                  |
-| Check for a newer Vimma                           | `check_updates`            | —                         |
-| Restart Vimma; an installed update applies        | `restart`                  | —                         |
-| Reload, bypassing the cache                       | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
-| Stop loading the page                             | `stop_loading`             | `esc`                     |
-| Run a Firefox command or key by its id (:firefox) | `firefox_command`          | —                         |
-| Go to the home page                               | `go_home`                  | `alt+home`                |
-| Zoom the page in                                  | `page_zoom_in`             | `ctrl+plus`, `ctrl+=`     |
-| Zoom the page out                                 | `page_zoom_out`            | `ctrl+minus`, `ctrl+_`    |
-| Reset the page's zoom                             | `page_zoom_reset`          | `ctrl+0`                  |
-| Full screen, or leave it                          | `toggle_fullscreen`        | `f11`                     |
-| Save the page                                     | `save_page`                | `ctrl+s`                  |
-| Print the page                                    | `print_page`               | `ctrl+p`                  |
-| Downloads (the Library)                           | `downloads`                | `ctrl+shift+y`            |
-| Add-ons manager (about:addons)                    | `addons_manager`           | `ctrl+shift+f`            |
-| History (the Library)                             | `history_library`          | `ctrl+shift+h`            |
-| Bookmarks (the Library)                           | `bookmarks_library`        | `ctrl+shift+o`            |
-| Mute or unmute the tab                            | `mute_tab`                 | `ctrl+m`                  |
-| Picture-in-Picture                                | `picture_in_picture`       | `ctrl+}`                  |
-| Reader View                                       | `reader_view`              | `ctrl+alt+r`              |
-| Take a screenshot                                 | `screenshot`               | `ctrl+shift+s`            |
-| Clear recent history                              | `clear_history`            | `ctrl+shift+delete`       |
-| Web search (the address bar's search)             | `web_search`               | `ctrl+j`                  |
-| Process manager (about:processes)                 | `about_processes`          | `shift+esc`               |
-| Bookmark all tabs                                 | `bookmark_all_tabs`        | `ctrl+shift+d`            |
-| Show / hide the bookmarks toolbar                 | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
-| Firefox sidebar: AI chatbot                       | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
-| Firefox sidebar: tabs from other devices          | `open_tabs_sidebar`        | `ctrl+alt+u`              |
-| Show / hide Firefox's sidebar                     | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
-| Switch a text field's direction                   | `switch_text_direction`    | `ctrl+shift+x`            |
-| Caret browsing (asks first)                       | `caret_browsing`           | `f7`                      |
+| Action                                                       | Config name                | Bindings                  |
+| ------------------------------------------------------------ | -------------------------- | ------------------------- |
+| New window                                                   | `new_window`               | `ctrl+n`                  |
+| Close the window                                             | `close_window`             | `ctrl+shift+w`            |
+| Reopen the last closed window                                | `restore_window`           | `ctrl+shift+n`            |
+| Quit (asks first)                                            | `quit`                     | `ctrl+q`                  |
+| Check for a newer Vimma                                      | `check_updates`            | —                         |
+| Restart Vimma; an installed update applies                   | `restart`                  | —                         |
+| Reload, bypassing the cache                                  | `reload_hard`              | `ctrl+f5`, `ctrl+shift+r` |
+| Stop loading the page                                        | `stop_loading`             | `esc`                     |
+| Run a Firefox command or key by its id (:firefox)            | `firefox_command`          | —                         |
+| Go to the home page                                          | `go_home`                  | `alt+home`                |
+| Zoom the page in                                             | `page_zoom_in`             | `ctrl+plus`, `ctrl+=`     |
+| Zoom the page out                                            | `page_zoom_out`            | `ctrl+minus`, `ctrl+_`    |
+| Reset the page's zoom                                        | `page_zoom_reset`          | `ctrl+0`                  |
+| Full screen, or leave it                                     | `toggle_fullscreen`        | `f11`                     |
+| Save the page                                                | `save_page`                | `ctrl+s`                  |
+| Print the page                                               | `print_page`               | `ctrl+p`                  |
+| Downloads (the Library)                                      | `downloads`                | `ctrl+shift+y`            |
+| Downloads picker: open, show in folder, pause, retry, remove | `downloads_picker`         | `ctrl+b d`                |
+| Add-ons manager (about:addons)                               | `addons_manager`           | `ctrl+shift+f`            |
+| History (the Library)                                        | `history_library`          | `ctrl+shift+h`            |
+| Bookmarks (the Library)                                      | `bookmarks_library`        | `ctrl+shift+o`            |
+| Mute or unmute the tab                                       | `mute_tab`                 | `ctrl+m`                  |
+| Picture-in-Picture                                           | `picture_in_picture`       | `ctrl+}`                  |
+| Reader View                                                  | `reader_view`              | `ctrl+alt+r`              |
+| Take a screenshot                                            | `screenshot`               | `ctrl+shift+s`            |
+| Clear recent history                                         | `clear_history`            | `ctrl+shift+delete`       |
+| Web search (the address bar's search)                        | `web_search`               | `ctrl+j`                  |
+| Process manager (about:processes)                            | `about_processes`          | `shift+esc`               |
+| Bookmark all tabs                                            | `bookmark_all_tabs`        | `ctrl+shift+d`            |
+| Show / hide the bookmarks toolbar                            | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
+| Firefox sidebar: AI chatbot                                  | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
+| Firefox sidebar: tabs from other devices                     | `open_tabs_sidebar`        | `ctrl+alt+u`              |
+| Show / hide Firefox's sidebar                                | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
+| Switch a text field's direction                              | `switch_text_direction`    | `ctrl+shift+x`            |
+| Caret browsing (asks first)                                  | `caret_browsing`           | `f7`                      |
 
 ## Developer tools
 
@@ -186,6 +190,8 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Follow link in new tab                        | `follow_link_new_tab`    | `gF`               |
 | Follow link in new tab and switch to it       | `follow_link_new_tab_fg` | —                  |
 | Focus a text block: v selects it, y copies it | `focus_element`          | `F`, `F [element]` |
+| Show a link's target without following it     | `show_link_target`       | `F [pdf]`          |
+| Copy a link's target                          | `copy_link_target`       | `c [pdf]`          |
 | Leave hint mode                               | `hint_cancel`            | `esc [hint]`       |
 
 ## Element focus
@@ -343,6 +349,51 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | --------------------------------------------------- | -------------- | -------- |
 | Blocked pop-ups: open one, allow the site, settings | `popup_picker` | —        |
 
+## PDF viewer
+
+| Action                                                        | Config name            | Bindings                                      |
+| ------------------------------------------------------------- | ---------------------- | --------------------------------------------- |
+| Next page (with a count: that many pages)                     | `pdf_next_page`        | `J [pdf]`                                     |
+| Previous page (with a count: that many pages)                 | `pdf_previous_page`    | `K [pdf]`                                     |
+| First page; with a count, that page (12gg, :12)               | `pdf_first_page`       | `gg [pdf]`                                    |
+| Last page; with a count, that page (12G)                      | `pdf_last_page`        | `G [pdf]`                                     |
+| Top of the current page                                       | `pdf_page_top`         | `H [pdf]`, `P [pdf]`                          |
+| Bottom of the current page                                    | `pdf_page_bottom`      | `L [pdf]`                                     |
+| Scroll a screen down                                          | `pdf_screen_down`      | `ctrl+f [pdf]`                                |
+| Zoom in by 10 % (with a count: that many steps)               | `pdf_zoom_in`          | `+ [pdf]`, `zi [pdf]`, `zI [pdf]`             |
+| Zoom out by 10 % (with a count: that many steps)              | `pdf_zoom_out`         | `- [pdf]`, `zo [pdf]`, `zO [pdf]`             |
+| Zoom to 100 %; with a count, that percent (150=)              | `pdf_zoom_set`         | `= [pdf]`, `zz [pdf]`, `zZ [pdf]`, `z0 [pdf]` |
+| Fit the whole page, also after a resize                       | `pdf_fit_page`         | `a [pdf]`                                     |
+| Fit the page's width, also after a resize                     | `pdf_fit_width`        | `s [pdf]`                                     |
+| Two pages side by side, or one                                | `pdf_dual_page`        | `d [pdf]`                                     |
+| Two pages: the first alone, or paired                         | `pdf_first_page_alone` | `D [pdf]`                                     |
+| One page at a time, or scrolling                              | `pdf_single_page`      | `w [pdf]`                                     |
+| Rotate the pages 90 degrees clockwise (with a count: n times) | `pdf_rotate`           | `r [pdf]`                                     |
+| Presentation mode, or leave it                                | `pdf_presentation`     | `f5 [pdf]`                                    |
+| Open the outline (table of contents) in a panel               | `pdf_outline`          | `tab [pdf]`                                   |
+| Set a mark here: m and a letter or digit                      | `pdf_mark_set`         | `m [pdf]`                                     |
+| Go back to a mark: ' and its letter or digit                  | `pdf_mark_go`          | `' [pdf]`                                     |
+
+## PDF outline
+
+| Action                                                       | Config name              | Bindings                                                    |
+| ------------------------------------------------------------ | ------------------------ | ----------------------------------------------------------- |
+| Outline: next entry                                          | `index_down`             | `j [index]`, `down [index]`                                 |
+| Outline: previous entry                                      | `index_up`               | `k [index]`, `up [index]`                                   |
+| Outline: expand the entry                                    | `index_expand`           | `l [index]`, `zo [index]`                                   |
+| Outline: collapse the entry, or go to its parent             | `index_collapse`         | `h [index]`, `zc [index]`                                   |
+| Outline: expand the entry and all under it                   | `index_expand_subtree`   | `zO [index]`                                                |
+| Outline: collapse the entry and all under it                 | `index_collapse_subtree` | `zC [index]`                                                |
+| Outline: expand every entry                                  | `index_expand_all`       | `L [index]`, `zR [index]`                                   |
+| Outline: collapse every entry                                | `index_collapse_all`     | `H [index]`, `zM [index]`                                   |
+| Outline: first entry                                         | `index_first`            | `gg [index]`                                                |
+| Outline: last entry                                          | `index_last`             | `G [index]`                                                 |
+| Outline: down half the entries shown                         | `index_half_down`        | `ctrl+d [index]`                                            |
+| Outline: up half the entries shown                           | `index_half_up`          | `ctrl+u [index]`                                            |
+| Outline: go to the entry and close the outline               | `index_follow`           | `enter [index]`, `space [index]`                            |
+| Outline: close it (in the filter: back to the whole outline) | `index_close`            | `tab [index]`, `esc [index]`, `ctrl+[ [index]`, `q [index]` |
+| Outline: filter the entries by their titles                  | `index_filter`           | `/ [index]`                                                 |
+
 ## On macOS
 
 Option types characters on a Mac, so the defaults that are `alt` chords on Linux are Firefox's
@@ -379,7 +430,7 @@ unchanged.
 | `ctrl+l`              | focus the address bar                          | `focus_urlbar`, page first                  |
 | `alt+d`               | focus the address bar                          | `focus_urlbar`, page first                  |
 | `ctrl+k`              | web search                                     | Vimma's own key                             |
-| `ctrl+j`              | web search                                     | `web_search`, page first                    |
+| `ctrl+j`              | web search                                     | `web_search`, page first; Enter in a field  |
 | `ctrl+shift+y`        | Library: downloads                             | `downloads`, page first                     |
 | `ctrl+shift+f`        | add-ons manager                                | `addons_manager`, page first                |
 | `ctrl+o`              | open a file                                    | `history_back` (normal mode)                |
@@ -387,7 +438,7 @@ unchanged.
 | `ctrl+p`              | print                                          | `print_page`, page first                    |
 | `ctrl+w`              | close tab                                      | Vimma's own key                             |
 | `ctrl+shift+w`        | close window                                   | `close_window`                              |
-| `ctrl+m`              | mute the tab                                   | `mute_tab`, page first                      |
+| `ctrl+m`              | mute the tab                                   | `mute_tab`, page first; Enter in a field    |
 | `ctrl+z`              | undo in a field                                | unchanged                                   |
 | `ctrl+shift+z`        | redo in a field                                | unchanged                                   |
 | `ctrl+x`              | cut                                            | unchanged                                   |
@@ -498,7 +549,7 @@ unchanged.
 | `alt+t`               | open a menu                                    | unchanged                                   |
 | `alt+h`               | open a menu                                    | unchanged                                   |
 | `alt+p`               | open the Profiles menu                         | unchanged                                   |
-| `'`                   | quick find, links only                         | unbound                                     |
+| `'`                   | quick find, links only                         | `pdf_mark_go` (normal mode)                 |
 | `/`                   | quick find                                     | `find_forward` (normal mode)                |
 | `f10`                 | the menu bar                                   | unchanged                                   |
 | `shift+f10`           | the context menu                               | unchanged                                   |

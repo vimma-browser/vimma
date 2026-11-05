@@ -16,7 +16,7 @@
 
 import { planWorkspaceSwitch } from "../core/switchplan.mjs";
 import { canWrite, readSnapshot, toSnapshot } from "../core/snapshot.mjs";
-import { closePane, leaves, showView } from "../core/panes.mjs";
+import { closePane, leaves } from "../core/panes.mjs";
 import {
   activeWorkspace,
   addWorkspace,
@@ -24,6 +24,7 @@ import {
   createWorkspaces,
   deleteWorkspace,
   findWorkspace,
+  splitsOf,
   lastWorkspace,
   leaveSkipped,
   moveTab,
@@ -44,6 +45,7 @@ import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 
 /** @import { Workspaces, WorkspaceRef, WorkspaceState } from "../core/workspaces.mjs" */
 /** @import { Panes, PaneNode } from "../core/panes.mjs" */
+/** @import { NumberedSplit, Splits } from "../core/splits.mjs" */
 /** @import { TabInfo } from "../core/switchplan.mjs" */
 /** @import { TabLabels } from "../core/tablabels.mjs" */
 
@@ -157,6 +159,40 @@ function mapTree(panes, fn) {
       ? { ...n, tab: /** @type {string} */ (fn(n.tab)) }
       : { ...n, children: n.children.map(walk) };
   return leaves(tree).length >= 2 ? { ...tree, root: walk(tree.root) } : null;
+}
+
+/**
+ * Workspace `w` with its splits (docs/specs/multiple-splits.md decision 15) in uuids, for core's
+ * snapshot, which writes them as `splits` and `shown` and derives `panes` from them as an older
+ * Vimma reads it. A split loses the panes whose tab is gone or in another workspace, and ends
+ * below two. The selected tab is the shown split's focused pane's, else the tab shown alone.
+ * @param {WorkspaceState} w
+ * @param {Splits} splits  PaneView's, in panel ids
+ * @param {(panel: string) => string | undefined} uuid
+ * @returns {WorkspaceState}
+ */
+function withSplits(w, splits, uuid) {
+  /** @type {NumberedSplit[]} */
+  const list = [];
+  for (const x of splits.splits) {
+    const tree = mapTree(x, (panel) => {
+      const id = uuid(panel);
+      return id && w.tabs.includes(id) ? id : undefined;
+    });
+    if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+  }
+  const kept = (/** @type {number | null} */ n) =>
+    n !== null && list.some((x) => x.number === n) ? n : null;
+  const shown = kept(splits.shown);
+  const showing = list.find((x) => x.number === shown);
+  const focus = showing && leaves(showing).find((l) => l.pane === showing.focus)?.tab;
+  return {
+    ...w,
+    splits: Object.freeze(list),
+    shown,
+    last: kept(splits.last),
+    ...(focus ? { activeTab: focus } : {}),
+  };
 }
 
 /**
@@ -538,6 +574,8 @@ export class WindowWorkspacesImpl {
   /** @param {Event} e */
   handleEvent(e) {
     if (this.#win.closed) return;
+    // Before the restore check: openURI's tab for a routed link comes in the routing's task.
+    if (e.type === "TabOpen") lazy.WorkspaceRouter.adoptTab(e.target);
     switch (e.type) {
       case "SSWindowRestoring":
       case "SSWindowStateBusy":
@@ -562,7 +600,11 @@ export class WindowWorkspacesImpl {
         return;
       case "SSWindowStateReady":
         this.#endPending();
-        if (this.#started) this.#reconcile();
+        // A switch that selects a lazy tab makes SessionStore restore it inside the switch
+        // (insertBrowser, then #restoreTab), which can send this before the switch has selected
+        // that tab: a rebuild then would read the old selection and switch back. Run it after.
+        if (this.#started && this.#switching) this.#win.queueMicrotask(() => this.#reconcile());
+        else if (this.#started) this.#reconcile();
         return;
       case "SSWindowClosing":
         this.#save();
@@ -632,9 +674,12 @@ export class WindowWorkspacesImpl {
       /** @type {any} */ location,
       /** @type {number} */ flags,
     ) => {
-      if (!webProgress?.isTopLevel || !this.#model || this.#pending) return;
+      if (!webProgress?.isTopLevel) return;
       if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
       const tab = /** @type {Tab | null} */ (this.#gBrowser.getTabForBrowser(browser));
+      // Also during a restore: a tab that leaves its host then must not keep its app names.
+      if (tab) lazy.WorkspaceRouter.noteLocation(tab, location.spec);
+      if (!this.#model || this.#pending) return;
       if (tab?.selected) this.#hint(tab, location);
     },
   };
@@ -648,7 +693,7 @@ export class WindowWorkspacesImpl {
    */
   #hint(tab, location = tab.linkedBrowser?.currentURI) {
     if (tab.pinned || !location) return;
-    const hit = lazy.WorkspaceRouter.match(location.spec, null);
+    const hit = lazy.WorkspaceRouter.matchTab(tab, location.spec);
     if (!hit || hit.workspace.userContextId === tab.userContextId) {
       this.#hinted.delete(tab);
       return;
@@ -917,18 +962,31 @@ export class WindowWorkspacesImpl {
   #restorePanes(saved, model) {
     const view = PaneViews.get(this.#win);
     if (!view) return false;
-    /** @type {Map<string, Panes>} */
+    /** @type {Map<string, Splits>} */
     const trees = new Map();
     for (const w of saved.workspaces) {
       const ours = findWorkspace(model, { id: w.id });
-      if (!w.panes || !ours) continue;
-      const tree = mapTree(w.panes, (id) => {
+      if (!ours) continue;
+      const panel = (/** @type {string} */ id) => {
         const tab = this.#tab(id);
         if (!tab || !ours.tabs.includes(id)) return undefined;
         if (!tab.linkedPanel) this.#gBrowser.insertBrowser(tab);
         return tab.linkedPanel ?? undefined;
-      });
-      if (tree) trees.set(w.id, tree);
+      };
+      // Every split with its number, which one shows and which showed last
+      // (docs/specs/multiple-splits.md behaviour 10).
+      const own = splitsOf(w);
+      /** @type {NumberedSplit[]} */
+      const list = [];
+      for (const x of own.splits) {
+        const tree = mapTree(x, panel);
+        if (tree) list.push(Object.freeze({ ...tree, number: x.number }));
+      }
+      const kept = (/** @type {number | null} */ n) =>
+        n !== null && list.some((x) => x.number === n) ? n : null;
+      if (list.length) {
+        trees.set(w.id, { splits: list, shown: kept(own.shown), last: kept(own.last) });
+      }
     }
     view.restore(trees, model.active);
     return true;
@@ -1292,21 +1350,8 @@ export class WindowWorkspacesImpl {
     };
     /** @type {WorkspaceState[]} */
     const workspaces = model.workspaces.map((w) => {
-      const panes = w.id === model.active ? view.panes : view.parked(w.id);
-      const tree =
-        panes &&
-        mapTree(panes, (p) => {
-          const id = uuid(p);
-          return id && w.tabs.includes(id) ? id : undefined;
-        });
-      if (!tree) return w;
-      // A hidden view keeps the tab shown alone as the selected one; core's snapshot writes it
-      // as `alone` (docs/specs/side-panel-unsplit.md decision 24).
-      const alone = tree.hidden && w.activeTab && !leaves(tree).some((l) => l.tab === w.activeTab);
-      if (alone) return { ...w, panes: tree };
-      const shown = showView(tree);
-      const focus = leaves(tree).find((l) => l.pane === tree.focus)?.tab;
-      return focus ? { ...w, panes: shown, activeTab: focus } : w;
+      const splits = w.id === model.active ? view.splits : view.parkedSplits(w.id);
+      return withSplits(w, splits, uuid);
     });
     return { ...model, workspaces };
   }

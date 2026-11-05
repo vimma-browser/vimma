@@ -18,7 +18,9 @@ step. Spec [upstream-bump-automation](../specs/upstream-bump-automation.md) desi
   set, the PR is not a draft, every patch applied clean or with an offset, Mozilla's artifacts
   existed, the suites passed, and `tools/upstream/bump-diff.mjs` finds only the version and the
   copied pref lines changed.
-- The `main` ruleset's required checks still decide the merge.
+- The `main` ruleset's required checks still decide the merge. (Since changed: auto-merge is set
+  by `upstream-merge.yml` only once every workflow run on the PR's head is green, so checks the
+  ruleset does not require, such as the macOS mochitests, hold the merge too.)
 - A bump that changes patches (re-exported, or failing and fixed later) never auto-merges.
 
 This amends [ADR-015](015-upstream-autopilot.md)'s "a person merges every bump", because the required
@@ -30,4 +32,5 @@ version-only bump that is not already checked.
 - A green dot or major bump reaches `main` without a person once the variable is set.
 - A defect in the autopilot that touches any other line or file cannot merge without a person.
 - The fine-grained `UPSTREAM_PR_TOKEN` is a credential to renew; when it lapses, bumps fall back
-  to drafts that a person marks ready.
+  to drafts that a person marks ready. (Since changed: the GitHub App `vimma-upstream-autopilot`
+  replaces the token, so nothing expires; without the App, bumps open as drafts.)

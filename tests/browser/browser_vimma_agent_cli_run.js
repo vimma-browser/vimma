@@ -217,7 +217,7 @@ addTidyTask(async function test_setup_lists_only_found_clis_and_stores_the_path(
     Assert.deepEqual(await AgentCli.find(), [], "none found, none listed");
     Assert.equal(
       AgentCli.noneFound(),
-      "no agent CLI found on PATH (looked for claude, codex); install one and log in to it first",
+      "no agent CLI found on PATH (looked for claude, codex, gemini); install one and log in to it first",
       "and setup says which names it looked for",
     );
   } finally {
@@ -280,7 +280,10 @@ async function pickFoundCli() {
   EventUtils.sendString("agent model");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(
-    () => chatRows().some((r) => r.textContent.includes("add: agent CLI (Claude Code, Codex)")),
+    () =>
+      chatRows().some((r) =>
+        r.textContent.includes("add: agent CLI (Claude Code, Codex, Gemini CLI)"),
+      ),
     "the picker offers an agent CLI",
   );
   const at = chatRows().findIndex((r) => r.textContent.includes("add: agent CLI"));

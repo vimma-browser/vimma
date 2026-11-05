@@ -166,6 +166,8 @@ export const COMMANDS = Object.freeze([
   }),
   // docs/specs/popup-blocked.md
   cmd("popups", "none", "popups.picker", "Blocked pop-ups picker"),
+  // docs/specs/downloads.md decision 2.
+  cmd("downloads", "none", "downloads.picker", "Downloads picker"),
   // docs/specs/vimma-mcp.md: local AI agents and the agent workspace (on, off, revoke, forget);
   // log: docs/specs/mcp-drive.md D14.
   cmd(
@@ -247,14 +249,20 @@ for (const c of COMMANDS) for (const w of [c.name, ...c.aliases]) byWord.set(w, 
 /** Config names of actions, once each (aliases are left out of completion). */
 const ACTION_NAMES = [...new Set(ACTIONS.map((a) => a.name))];
 
-/** The action id each word runs: a command's (and its text action), or an action name's. */
-/** @type {Map<string, string[]>} */
-const WORD_IDS = new Map([
-  ...[...byWord].map(([w, c]) => /** @type {[string, string[]]} */ ([w, idsOf(c)])),
-  ...ACTION_NAMES.map(
-    (n) => /** @type {[string, string[]]} */ ([n, [resolveActionName(n)?.id ?? ""]]),
-  ),
-]);
+/**
+ * The action ids a word runs as a command (and its text action), or as an action's name. A word
+ * can be both: `:downloads` is the downloads picker's command and the Library action's name.
+ * @param {string} word @param {"command" | "action"} kind
+ * @returns {string[]}
+ */
+function wordIds(word, kind) {
+  if (kind === "action") {
+    const id = ACTION_NAMES.includes(word) ? resolveActionName(word)?.id : undefined;
+    return id ? [id] : [];
+  }
+  const c = byWord.get(word);
+  return c ? idsOf(c) : [];
+}
 
 /** @param {CommandDef} c */
 function idsOf(c) {
@@ -262,12 +270,23 @@ function idsOf(c) {
 }
 
 /**
- * Whether `word` runs one of the `hidden` action ids: an unfinished feature's, while its pref
- * is off (CONTRIBUTING.md, "Unfinished features": no command of it shows).
+ * Whether `word`, as a command or as an action's name (`kind`), runs one of the `hidden`
+ * action ids: an unfinished feature's, while its pref is off (CONTRIBUTING.md, "Unfinished
+ * features": no command of it shows). Without a kind, whether every meaning of it is hidden.
  * @param {string} word @param {readonly string[]} hidden
+ * @param {"command" | "action"} [kind]
+ * @returns {boolean}
  */
-const isHidden = (word, hidden) =>
-  hidden.length > 0 && (WORD_IDS.get(word) ?? []).some((id) => hidden.includes(id));
+const isHidden = (word, hidden, kind) => {
+  if (!hidden.length) return false;
+  if (!kind) {
+    const kinds = /** @type {const} */ (["command", "action"]).filter(
+      (k) => wordIds(word, k).length > 0,
+    );
+    return kinds.length > 0 && kinds.every((k) => isHidden(word, hidden, k));
+  }
+  return wordIds(word, kind).some((id) => hidden.includes(id));
+};
 
 /**
  * A free-text argument: the rest of the line, trimmed, unquoted only when one pair of quotes
@@ -309,6 +328,9 @@ const runResult = (command, action, text) =>
     ...(text ? { text } : {}),
   });
 
+/** The action `:{n}` runs, with n as its count. */
+const PAGE_ACTION = "pdf.first_page";
+
 /** Every word a user can type, for suggestions. */
 const ALL_WORDS = [...byWord.keys(), ...ACTION_NAMES];
 /**
@@ -343,7 +365,13 @@ export function parseCommandLine(line, { hidden = [] } = {}) {
   const raw = /** @type {string} */ (m[2]).trim();
   const text = unwrap(raw);
 
-  let command = isHidden(word, hidden) ? undefined : byWord.get(word);
+  // `:12` goes to page 12 of the PDF (docs/specs/pdf-mode.md Behaviour 2), as Vim's `:12` goes
+  // to a line; the host says so outside the PDF viewer.
+  if (/^[1-9]\d{0,5}$/.test(word) && !hidden.includes(PAGE_ACTION)) {
+    if (raw) return unexpected(word);
+    return runResult(word, { id: PAGE_ACTION, count: Number(word) });
+  }
+  let command = isHidden(word, hidden, "command") ? undefined : byWord.get(word);
   if (!command) {
     const found = resolveActionName(word);
     const def = found && !hidden.includes(found.id) ? found : undefined;
@@ -559,7 +587,7 @@ export function completeCommandLine(line, { limit = 20, args = {}, hidden = [] }
   /** @type {Array<{ c: Candidate, span: number, start: number, i: number }>} */
   const loose = [];
   CANDIDATES.forEach((c, i) => {
-    if (isHidden(c.value, hidden)) return;
+    if (isHidden(c.value, hidden, c.kind === "action" ? "action" : "command")) return;
     if (c.value === word) exact.push(c);
     else if (c.value.startsWith(word)) prefix.push(c);
     else {

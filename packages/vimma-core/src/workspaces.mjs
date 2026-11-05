@@ -18,14 +18,21 @@ import {
   setPaneTab,
   split,
 } from "./panes.mjs";
+import { removeSplitTab, splitsFromPanes } from "./splits.mjs";
 
 /** @import { Panes } from "./panes.mjs" */
 /** @import { SplitDirection, SplitOptions } from "./panes.mjs" */
 /** @import { Leaf } from "./panes.mjs" */
+/** @import { NumberedSplit, Splits } from "./splits.mjs" */
 /**
+ * `splits`, `shown` and `last` (docs/specs/multiple-splits.md decision 1, `Splits`) are the
+ * workspace's splits once its host keeps several; without them, `panes` is the workspace's one
+ * tree, read as splits by `splitsOf`. `panes` stays the view as before, which an older snapshot
+ * reader understands (decision 15).
  * @typedef {{ readonly id: string, readonly name: string, readonly container: string,
  *   readonly tabs: readonly string[], readonly activeTab: string | null,
- *   readonly panes: Panes | null }} WorkspaceState
+ *   readonly panes: Panes | null, readonly splits?: readonly NumberedSplit[],
+ *   readonly shown?: number | null, readonly last?: number | null }} WorkspaceState
  */
 /**
  * `next` mints workspace ids (`w<next>`). A workspace's index is its 1-based position.
@@ -235,6 +242,16 @@ export function activeWorkspace(s) {
  */
 export function findWorkspace(s, ref) {
   return s.workspaces[indexOf(s, ref)];
+}
+
+/**
+ * A workspace's splits: its own list, or its one tree read as split 1 (`splitsFromPanes`).
+ * @param {WorkspaceState} w
+ * @returns {Splits}
+ */
+export function splitsOf(w) {
+  if (w.splits === undefined) return splitsFromPanes(w.panes);
+  return Object.freeze({ splits: w.splits, shown: w.shown ?? null, last: w.last ?? null });
 }
 
 /**
@@ -503,7 +520,11 @@ export function closeTab(s, tabId) {
   const w = /** @type {WorkspaceState} */ (s.workspaces[i]);
   const at = w.tabs.indexOf(tabId);
   const tabs = w.tabs.filter((t) => t !== tabId);
-  if (!tabs.length) return replaceWs(s, i, updateWs(w, { tabs, activeTab: null, panes: null }));
+  // A split never names a closed tab (docs/specs/multiple-splits.md decision 2).
+  const kept = w.splits === undefined ? {} : removeSplitTab(splitsOf(w), tabId);
+  if (!tabs.length) {
+    return replaceWs(s, i, updateWs(w, { ...kept, tabs, activeTab: null, panes: null }));
+  }
   let panes = /** @type {Panes} */ (w.panes);
   let activeTab = /** @type {string} */ (w.activeTab);
   const pane = paneOfTab(panes, tabId);
@@ -519,7 +540,7 @@ export function closeTab(s, tabId) {
     const hidden = order.find((t) => !shown.has(t));
     panes = hidden ? setPaneTab(panes, pane, hidden) : closePane(panes, pane);
   }
-  return replaceWs(s, i, updateWs(w, { tabs, activeTab, panes }));
+  return replaceWs(s, i, updateWs(w, { ...kept, tabs, activeTab, panes }));
 }
 
 /**

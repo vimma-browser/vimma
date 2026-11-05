@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_edit_keys.js: ctrl+j and ctrl+m as Enter. A form whose submit
+     and Enter keydowns are logged with isTrusted, a textarea, a contenteditable and an input
+     that takes ctrl+j itself, as a web terminal does. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma enter keys</title>
+  </head>
+  <body>
+    <form id="form" action="about:blank">
+      <input id="text" name="q" />
+    </form>
+    <textarea id="area"></textarea>
+    <div id="ce" contenteditable="true"></div>
+    <input id="term" />
+    <script>
+      window.log = [];
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") log.push(`Enter:${e.isTrusted}:${e.ctrlKey}`);
+      });
+      document.getElementById("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        log.push(`submit:${e.isTrusted}`);
+      });
+      document.getElementById("term").addEventListener("keydown", (e) => {
+        if (e.ctrlKey && e.key === "j") {
+          e.preventDefault();
+          log.push("term:ctrl+j");
+        }
+      });
+    </script>
+  </body>
+</html>

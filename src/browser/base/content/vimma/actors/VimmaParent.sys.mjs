@@ -9,6 +9,7 @@
 import { parseDescriptor } from "../core/editable.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { VimmaActors } from "./VimmaActors.sys.mjs";
+import { PdfOps } from "../host/pdf-ops.mjs";
 
 const TRIGGERS = new Set(["focusin", "recheck"]);
 const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click"]);
@@ -32,6 +33,20 @@ export class VimmaParent extends JSWindowActorParent {
         this.manager,
         msg.data?.gen,
       );
+      return;
+    }
+    if (msg.name === "Vimma:PdfState") {
+      // PdfOps takes it only from the top viewer's current document (security.md section 20).
+      PdfOps.onState(this, msg.data);
+      return;
+    }
+    if (msg.name === "Vimma:PdfTheme") {
+      // The token sheet, only for the top viewer's current document (V12); null for any other.
+      return PdfOps.theme(this);
+    }
+    if (msg.name === "Vimma:PdfOutline") {
+      // Taken only after the user's Tab, from the same actor, and parsed (V8).
+      PdfOps.onOutline(this, msg.data);
       return;
     }
     if (msg.name === "Vimma:AgentSkipped") {
@@ -78,6 +93,7 @@ export class VimmaParent extends JSWindowActorParent {
   }
 
   didDestroy() {
+    PdfOps.dropActor(this);
     // The document went away (a navigation, a closed tab): element focus in it ends.
     try {
       VimmaHost.onFrameGone(this.manager);

@@ -57,13 +57,17 @@
       "license": "Apache-2.0 AND LGPL-3.0-or-later",
       "reason": "libvips (LGPL-3.0-or-later) prebuilt for sharp, used unmodified and dynamically loaded; dev-only build tool that resizes our logos, never shipped; via @zen-browser/surfer > sharp"
     },
+    "@isaacs/nonrecursive-glob-match@1.0.3": {
+      "license": "BlueOak-1.0.0",
+      "reason": "Blue Oak Model License, permissive; dev-only, via minimatch (eslint and @stryker-mutator/core)"
+    },
     "caniuse-lite@1.0.30001819": {
       "license": "CC-BY-4.0",
       "reason": "browser-support data under an attribution-only licence; dev-only and never shipped, via @stryker-mutator/core > instrumenter > @babel/core > browserslist"
     },
-    "minimatch@10.2.6": {
+    "minimatch@11.0.4": {
       "license": "BlueOak-1.0.0",
-      "reason": "Blue Oak Model License, permissive; dev-only, via eslint"
+      "reason": "Blue Oak Model License, permissive; dev-only, via eslint and @stryker-mutator/core"
     },
     "os-shim@0.1.3": {
       "license": null,

@@ -13,10 +13,17 @@ import { DEFAULT_CONFIG, WORKSPACE_DEFAULTS, formatConfigTemplate } from "./defa
 import { INSERT_SITE_MODES } from "./editable.mjs";
 import { DEFAULT_HINT_CHARS, hintLabels } from "./hints.mjs";
 import { KeymapError, compileKeymap } from "./keymap.mjs";
-import { MODES, isMode } from "./modes.mjs";
+import { MODES, isKeymapTable } from "./modes.mjs";
 import { PANES_MAX_DEFAULT, PANES_MAX_LIMIT } from "./panes.mjs";
+import { MAX_SPLITS_DEFAULT, MAX_SPLITS_LIMIT } from "./splits.mjs";
 import { MAIN_SIZE_DEFAULT } from "./layouts.mjs";
-import { APPEARANCES, BUILTIN_THEMES, PALETTE_KEYS, isHexColor, normalizeHex } from "./theme.mjs";
+import {
+  APPEARANCES,
+  BUILTIN_THEMES,
+  THEME_COLOR_KEYS,
+  isHexColor,
+  normalizeHex,
+} from "./theme.mjs";
 import { resolveRoutes, validateRoutes } from "./routes.mjs";
 import { formatPath, locateKeys, parsePath, parseToml, setTomlKeys, tomlLiteral } from "./toml.mjs";
 import { canonicalChord, isShortcutChord } from "./firefox-keys.mjs";
@@ -71,20 +78,24 @@ import { hasControl } from "./strings.mjs";
  * @property {Record<string, string[]>} unbind
  * @property {Workspace[]} workspaces                     file order = workspace order
  * @property {ThemeConfig} theme
- * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number }} panes
- *   `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6), docs/specs/tiling-layouts.md
+ * @property {{ max: number, layout: "dwindle" | "manual", mainSize: number, maxSplits: number }}
+ *   panes `[panes]` (schema 2); `mainSize` is `main_size` as a share (0.6),
+ *   docs/specs/tiling-layouts.md; `maxSplits` is `max_splits`, docs/specs/multiple-splits.md
  * @property {string} hintChars                          `[modal] hint_chars` (schema 2)
  * @property {InsertSiteRule[]} sites                    `[sites."<host>"]` in file order (schema 2)
  * @property {Route[]} routes                            `[[routes]]` in file order (schema 2)
+ * @property {{ defaultWorkspace: string | null }} routing  `[routing]` (schema 2), app-routes
  * @property {FirefoxKeySetting} firefox                 `[firefox]`, chords canonical (schema 2)
  * @property {boolean} insertEditing                     `[modal] insert_editing` (schema 2)
  * @property {{ root: BookmarksRoot }} bookmarks          `[bookmarks]` (schema 2)
  * @property {{ numbers: PanelNumbers }} panel            `[panel]` (schema 2), side-panel-counts
  * @property {{ placement: PrivatePlacement }} private    `[private]` (schema 2), private-swap
  * @property {McpConfig} mcp                             `[mcp]` (schema 2), docs/specs/vimma-mcp.md
- * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null }} ui
+ * @property {{ toolbar: ToolbarSetting, bookmarksToolbar: BookmarksToolbarSetting | null,
+ *   pdfOutline: ToolbarSetting }} ui
  *   `[ui]` (schema 2): toolbar-toggle; `bookmarksToolbar` is null when unset
- *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides)
+ *   (docs/specs/bookmarks-toolbar-hidden.md decision 3: Firefox's pref decides); `pdfOutline`,
+ *   whether the PDF viewer opens with Vimma's outline shown (docs/specs/pdf-mode.md decision 19)
  * @property {ResolvedSearch | null} search              `[search]` (schema 2), null without it;
  *   docs/specs/search-engines.md
  * @property {{ check: boolean }} updates                `[updates]` (schema 2),
@@ -205,6 +216,7 @@ const TOP_KEYS = [
   "panes",
   "sites",
   "routes",
+  "routing",
   "firefox",
   "bookmarks",
   "private",
@@ -220,7 +232,7 @@ const WORKSPACE_KEYS = ["color", "icon", "home", "autofill"];
 const THEME_KEYS = ["source", "name", "appearance", "font", "colors"];
 const THEME_NAMES = Object.keys(BUILTIN_THEMES);
 const THEME_SOURCES = ["omarchy", "file"];
-const PANES_KEYS = ["max", "layout", "main_size"];
+const PANES_KEYS = ["max", "layout", "main_size", "max_splits"];
 /** `[panes] layout` (docs/specs/tiling-layouts.md): where a pane opened without a direction goes. */
 export const PANES_LAYOUT_MODES = Object.freeze(["dwindle", "manual"]);
 /** `[panes] main_size` bounds, in percent. */
@@ -236,6 +248,7 @@ const SCHEMA_2_KEYS = [
   "sites",
   "modal.hint_chars",
   "routes",
+  "routing",
   "firefox",
   "modal.insert_editing",
   "bookmarks",
@@ -251,6 +264,8 @@ const SCHEMA_2_KEYS = [
 ];
 /** `[bookmarks]` (docs/specs/bookmarks.md, decision 2). */
 const BOOKMARKS_KEYS = ["root"];
+/** `[routing]` (docs/specs/app-routes.md, decision 16). */
+const ROUTING_KEYS = ["default_workspace"];
 /** `[panel]` (docs/specs/side-panel-counts.md, decision 6). */
 const PANEL_KEYS = ["numbers"];
 /** `[private] placement` (docs/specs/private-swap.md, decision 1). */
@@ -262,7 +277,7 @@ const PRIVATE_KEYS = ["placement"];
 export const TOOLBAR_SETTINGS = Object.freeze(
   /** @type {ToolbarSetting[]} */ (["shown", "hidden"]),
 );
-const UI_KEYS = ["toolbar", "bookmarks_toolbar"];
+const UI_KEYS = ["toolbar", "bookmarks_toolbar", "pdf_outline"];
 /** Firefox's words for the bookmarks toolbar's states, and the Vimma word each means. */
 const FIREFOX_VISIBILITY_WORDS = Object.freeze({ always: "shown", never: "hidden" });
 /** `[updates]` (docs/specs/m6a-updater.md, Security and privacy, "Off"). */
@@ -484,10 +499,10 @@ function validate(raw, declared, warnings = []) {
       } else if (key === "insert_editing") {
         if (gated(path)) continue;
         if (typeof v !== "boolean") typeError(path, v, "a boolean");
-      } else if (isMode(key)) {
+      } else if (isKeymapTable(key)) {
         table(path, v);
       } else {
-        unknownKey(path, key, [...MODES, ...MODAL_KEYS]);
+        unknownKey(path, key, [...MODES, "pdf", ...MODAL_KEYS]);
       }
     }
   }
@@ -532,8 +547,9 @@ function validate(raw, declared, warnings = []) {
 
   if (isTable(raw.unbind)) {
     for (const [mode, v] of Object.entries(raw.unbind)) {
-      if (!isMode(mode)) fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, MODES));
-      else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
+      if (!isKeymapTable(mode)) {
+        fail(["unbind", mode], `unknown mode "${mode}"`, closest(mode, [...MODES, "pdf"]));
+      } else if (!Array.isArray(v)) typeError(["unbind", mode], v, "a list of key strings");
     }
   }
 
@@ -591,6 +607,11 @@ function validate(raw, declared, warnings = []) {
         else if (v < BigInt(MAIN_SIZE_MIN) || v > BigInt(MAIN_SIZE_MAX)) {
           fail(path, `must be an integer between ${MAIN_SIZE_MIN} and ${MAIN_SIZE_MAX} (percent)`);
         }
+      } else if (key === "max_splits") {
+        if (typeof v !== "bigint") typeError(path, v, "an integer");
+        else if (v < 1n || v > BigInt(MAX_SPLITS_LIMIT)) {
+          fail(path, `must be an integer between 1 and ${MAX_SPLITS_LIMIT}`);
+        }
       } else if (key !== "max") unknownKey(path, key, PANES_KEYS);
       else if (typeof v !== "bigint") typeError(path, v, "an integer");
       else if (v < 1n || v > BigInt(PANES_MAX_LIMIT)) {
@@ -607,6 +628,17 @@ function validate(raw, declared, warnings = []) {
       else if (!BOOKMARKS_ROOTS.includes(/** @type {BookmarksRoot} */ (v))) {
         fail(path, 'must be "workspace", "toolbar" or "all"', closest(v, BOOKMARKS_ROOTS));
       }
+    }
+  }
+
+  if (declared >= 2 && isTable(raw.routing)) {
+    for (const [key, v] of Object.entries(raw.routing)) {
+      const path = ["routing", key];
+      if (!ROUTING_KEYS.includes(key)) unknownKey(path, key, ROUTING_KEYS);
+      else if (typeof v !== "string") typeError(path, v, "a string");
+      else if ([...v].length < 1 || [...v].length > MAX_WORKSPACE_NAME) {
+        fail(path, `workspace name must be 1 to ${MAX_WORKSPACE_NAME} characters`);
+      } else if (hasControl(v)) fail(path, "workspace name must not contain control characters");
     }
   }
 
@@ -729,8 +761,8 @@ function validate(raw, declared, warnings = []) {
         if (!table(path, v)) continue;
         for (const [name, c] of Object.entries(v)) {
           const at = [...path, name];
-          if (!PALETTE_KEYS.includes(name)) {
-            fail(at, `unknown colour key "${name}"`, closest(name, PALETTE_KEYS));
+          if (!THEME_COLOR_KEYS.includes(name)) {
+            fail(at, `unknown colour key "${name}"`, closest(name, THEME_COLOR_KEYS));
           } else if (name === "mode") {
             if (c !== "dark" && c !== "light") fail(at, `must be "dark" or "light"`);
           } else if (!isHexColor(c)) {
@@ -945,7 +977,9 @@ function validateCliProvider(
     } else if (key === "cli") {
       if (typeof v !== "string") typeError(path, v, "a string");
       else if (!CLI_IDS.includes(v)) {
-        const ids = CLI_IDS.map((c) => `"${c}"`).join(" or ");
+        const quoted = CLI_IDS.map((c) => `"${c}"`);
+        const ids =
+          quoted.length > 1 ? `${quoted.slice(0, -1).join(", ")} or ${quoted.at(-1)}` : quoted[0];
         const suggestion = closest(v, [...CLI_IDS]);
         warnings.push({
           path,
@@ -1142,6 +1176,10 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       max: user.panes?.max ?? PANES_MAX_DEFAULT,
       layout: user.panes?.layout ?? "dwindle",
       mainSize: (user.panes?.main_size ?? MAIN_SIZE_DEFAULT * 100) / 100,
+      // Not in defaults.mjs' UserConfig yet: the key joins defaults.toml when several splits
+      // ship (docs/specs/multiple-splits.md, Delivery 6).
+      maxSplits:
+        /** @type {{ max_splits?: number }} */ (user.panes ?? {}).max_splits ?? MAX_SPLITS_DEFAULT,
     },
     hintChars: /** @type {string | undefined} */ (user.modal?.hint_chars) ?? DEFAULT_HINT_CHARS,
     sites: (siteOrder ?? Object.keys(user.sites ?? {})).map((match) => ({
@@ -1149,6 +1187,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
       insert: /** @type {NonNullable<UserConfig["sites"]>} */ (user.sites)[match]?.insert ?? "auto",
     })),
     routes: resolveRoutes(/** @type {Record<string, string>[]} */ (user.routes ?? [])),
+    routing: { defaultWorkspace: user.routing?.default_workspace ?? null },
     firefox: resolveFirefox(user.firefox),
     insertEditing: /** @type {boolean | undefined} */ (user.modal?.insert_editing) ?? true,
     bookmarks: { root: user.bookmarks?.root ?? "workspace" },
@@ -1158,6 +1197,7 @@ export function mergeWithDefaults(user, workspaceOrder, siteOrder) {
     ui: {
       toolbar: user.ui?.toolbar ?? "shown",
       bookmarksToolbar: user.ui?.bookmarks_toolbar ?? null,
+      pdfOutline: user.ui?.pdf_outline ?? "shown",
     },
     search: resolveSearch(user.search),
     updates: { check: user.updates?.check ?? true },

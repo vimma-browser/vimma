@@ -13,7 +13,7 @@
   overflow: auto;
   padding: 0 0 0.75rem;
   border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-  border-radius: 8px;
+  border-radius: var(--vimma-radius, 0);
   background: var(--vimma-bg-dark, Canvas);
   color: var(--vimma-fg, CanvasText);
   font: message-box;
@@ -89,6 +89,36 @@
 
   &#vimma-mcp-log .vimma-picker-row {
     grid-template-columns: 8ch 1fr max-content;
+  }
+
+  /* The downloads picker (docs/specs/downloads.md): the state word first, then the file, then
+     its size or progress, host, end time and workspace. */
+  &#vimma-downloads-picker {
+    width: min(64rem, calc(100vw - 4rem));
+  }
+
+  &#vimma-downloads-picker .vimma-picker-row {
+    grid-template-columns: 9ch minmax(0, 1fr) minmax(0, 28rem);
+  }
+
+  /* The split picker (docs/specs/multiple-splits.md decision 12): a swatch in the split's colour
+     before its label, which says the same for readers who cannot tell the colours apart. */
+  &#vimma-split-picker .vimma-picker-row {
+    grid-template-columns: 5ch minmax(0, 1fr) max-content;
+  }
+
+  & .vimma-picker-swatched .vimma-picker-index::before {
+    content: "";
+    display: inline-block;
+    width: 0.7em;
+    height: 0.7em;
+    margin-inline-end: 0.5ch;
+    border-radius: 2px;
+    background: var(--vimma-picker-swatch);
+  }
+
+  & .vimma-picker-problem .vimma-picker-index {
+    color: var(--vimma-text-error, var(--vimma-text-accent, AccentColor));
   }
 
   & .vimma-picker-index {

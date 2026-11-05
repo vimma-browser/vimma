@@ -23,9 +23,11 @@ import {
   createProfile,
   crashBrowser,
   displayMode,
+  externalWrapper,
   findBuild,
   launch,
   quitBrowser,
+  startSessionBus,
   userJs,
   waitForDiscovery,
   waitForSessionSaved,
@@ -81,14 +83,30 @@ const alive = (pid) => {
 
 describe("alive", () => {
   it("counts an exited process that no one has reaped yet (a zombie) as gone", async () => {
-    // The exec'd sleep never waits for the backgrounded one, which stays a zombie for 5 s.
-    const parent = spawn("sh", ["-c", "sleep 0 & echo $!; exec sleep 5"], {
+    // The exec'd sleep never waits for the backgrounded one, so once that child dies it stays a
+    // zombie. It must die only after the exec: a shell that is still running reaps a child the
+    // moment it exits (bash does, from its SIGCHLD handler), and then there is never a zombie.
+    // A child that exited by itself (`sleep 0`) lost that race on a loaded machine.
+    const parent = spawn("sh", ["-c", "sleep 30 & echo $!; exec sleep 30"], {
       stdio: ["ignore", "pipe", "ignore"],
     });
-    cleanups.push(async () => void parent.kill("SIGKILL"));
     const zombie = Number(
       await new Promise((resolve) => parent.stdout.once("data", (d) => resolve(String(d).trim()))),
     );
+    cleanups.push(async () => {
+      parent.kill("SIGKILL");
+      try {
+        process.kill(zombie, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    });
+    /** @param {number} pid */
+    const command = (pid) =>
+      execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    for (let i = 0; i < 200 && !/sleep$/.test(command(/** @type {number} */ (parent.pid))); i++)
+      await sleep(25);
+    process.kill(zombie, "SIGKILL");
     for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
     expect(psState(zombie)).toMatch(/^Z/);
     expect(() => process.kill(zombie, 0)).not.toThrow();
@@ -905,5 +923,52 @@ describe("quitBrowser (ctrl+q first, so the discovery file is removed)", () => {
     child.exit();
     expect(await quitBrowser({ ctl, child, timeoutMs: 100 })).toBe(true);
     expect(ctl.sent).toEqual([]);
+  });
+});
+
+// docs/specs/app-routes.md, "Tests": the `external` step runs vimma-open against the browser
+// under test, over a session bus of the harness's own.
+describe("external step", () => {
+  it("the wrapper runs the build on the scenario's profile, quoting both paths", () => {
+    const dir = mkdtempSync(join(tmpdir(), "e2e-wrapper-"));
+    try {
+      const fake = join(dir, "it's vimma");
+      writeFileSync(fake, '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n');
+      chmodSync(fake, 0o755);
+      const wrapper = join(dir, "wrapper");
+      writeFileSync(wrapper, externalWrapper(fake, "/tmp/a profile's dir"));
+      const out = execFileSync("/bin/sh", [wrapper, "-vimma-from", "teams", "https://a/"], {
+        encoding: "utf8",
+      });
+      expect(out.split("\n")).toEqual([
+        "-profile",
+        "/tmp/a profile's dir",
+        "-vimma-from",
+        "teams",
+        "https://a/",
+        "",
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const dbus = (() => {
+    try {
+      return execFileSync("/bin/sh", ["-c", "command -v dbus-daemon"], { encoding: "utf8" });
+    } catch {
+      return "";
+    }
+  })();
+  it.skipIf(!dbus)("starts a private session bus and stops it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "e2e-bus-"));
+    try {
+      const bus = await startSessionBus(dir);
+      expect(bus.address).toMatch(/^unix:path=.*\.e2e-bus/);
+      expect(existsSync(join(dir, ".e2e-bus"))).toBe(true);
+      await bus.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

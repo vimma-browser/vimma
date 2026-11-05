@@ -120,6 +120,9 @@ pref("vimma.ui.tabstrip.hidden", true);
 // Firefox's navigation toolbar (spec toolbar-toggle): shown by default. ctrl+b u, :toolbar and
 // config.toml's [ui] toolbar set it for every window, live.
 pref("vimma.ui.toolbar.hidden", false);
+// Vimma's outline beside a PDF that has one (pdf-mode decision 19): shown when the PDF opens.
+// config.toml's [ui] pdf_outline sets it at startup and when the line changes.
+pref("vimma.ui.pdf_outline.hidden", false);
 
 // Downloads (issue #677): a profile's first download opens Firefox's downloads panel when it
 // ends, whatever the download asked for (DownloadsCommon.sys.mjs, _notifyDownloadEvent), so a PDF
@@ -192,3 +195,19 @@ pref("accessibility.typeaheadfind.manual", false);
 // the start page too; the bookmarks panel (ctrl+b shift+b) is the way in. A default, not
 // locked: View > Toolbars, ctrl+shift+b, :bookmarkstoolbar and [ui] bookmarks_toolbar change it.
 pref("browser.toolbars.bookmarks.visibility", "never");
+
+// The PDF viewer's "PDFs just got easier" bar covers the top of a document; it is the only part of
+// Firefox's PDF promotion that interrupts reading, so it gets no impressions. about:pdf and its
+// menu entries stay (docs/specs/pdf-mode.md decision 17). The budget is shared with about:pdf.
+pref("pdfjs.featuresNotificationImpressionLimit", 0);
+// pdf.js opens its sidebar on no view by itself (a PDF's /PageMode, the view last used): Vimma's
+// outline panel is the outline, and firefox-pdf.css hides pdf.js's sidebar (pdf-mode decision 18).
+pref("pdfjs.sidebarViewOnLoad", 0);
+
+// Unfinished: the downloads picker and the status bar's downloads segment
+// (docs/specs/downloads.md), delivered over several pull requests (CONTRIBUTING.md, "Unfinished
+// features").
+pref("vimma.feature.downloads", false);
+
+// Unfinished: several splits per workspace (docs/specs/multiple-splits.md), delivered over several
+// pull requests (CONTRIBUTING.md, "Unfinished features").

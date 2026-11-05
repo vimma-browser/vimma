@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { commitlint } from "../../commitlint/test/repo-commitlint.mjs";
 import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from "../detect.mjs";
 import {
   BODY_LIMIT,
@@ -11,6 +12,7 @@ import {
   betaIssues,
   branchName,
   autoMergeDecision,
+  autoMergeMarker,
   conflictLines,
   draftDecision,
   driftBody,
@@ -308,7 +310,7 @@ describe("autopilot body", () => {
     expect(securityRelease.release.advisories.map((x) => x.id)).toEqual(["MFSA 2026-105"]);
   });
 
-  it("the PR title passes commitlint with zero, one and three advisories", () => {
+  it("the PR title passes commitlint with zero, one and three advisories", async () => {
     const a = (/** @type {string} */ id) => ({ id, url: "", severity: "high" });
     const titles = [
       prTitle("157.0.2", []),
@@ -317,12 +319,8 @@ describe("autopilot body", () => {
     ];
     for (const title of titles) {
       // The squash commit: the title with GitHub's PR number, then the PR body.
-      const run = spawnSync("npx", ["--no-install", "commitlint"], {
-        cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-        input: `${title} (#200)\n\nBumps Firefox.\n`,
-        encoding: "utf8",
-      });
-      expect(run.status, title + run.stdout + run.stderr).toBe(0);
+      const run = await commitlint(`${title} (#200)\n\nBumps Firefox.\n`);
+      expect(run.status, title + run.output).toBe(0);
     }
   });
 
@@ -738,7 +736,7 @@ describe("the bump PR and auto-merge", () => {
   it("names the first condition that did not hold", () => {
     const off = (/** @type {object} */ over) => autoMergeDecision(context({ ...green, ...over }));
     expect(off({ ref: "refs/heads/x" }).reason).toBe("off: the run is not on main");
-    expect(off({ hasToken: false }).reason).toBe("off: UPSTREAM_PR_TOKEN is not set");
+    expect(off({ hasToken: false }).reason).toBe("off: the upstream App is not set up");
     expect(off({ tests: "failure" }).reason).toBe(
       "off: the PR is a draft (the suites did not pass)",
     );
@@ -764,10 +762,14 @@ describe("the bump PR and auto-merge", () => {
     );
   });
 
-  it("the PR body has an Auto-merge row and says GitHub merges it", () => {
-    const body = prBody(context(green));
+  it("the PR body has an Auto-merge row and says it merges once every check is green", () => {
+    const head = "c".repeat(40);
+    const body = prBody(context({ ...green, head }));
     expect(body).toContain("| Auto-merge | on |");
-    expect(body).toContain("GitHub merges this PR once every required check is green");
+    expect(body).toContain("merges this PR once every check on it is green");
+    expect(body).toContain(autoMergeMarker(head));
+    expect(prBody(context({ ...green, head, autoMerge: "" }))).not.toContain("upstream-auto-merge");
+    expect(prBody(context(green))).not.toContain("upstream-auto-merge");
     expect(prBody(context({ ...green, autoMerge: "" }))).toContain(
       "| Auto-merge | off: AUTO_MERGE_UPSTREAM does not allow a dot release |",
     );

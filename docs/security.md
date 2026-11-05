@@ -85,8 +85,10 @@ only the agent workspace, and every request asks you first (§12).
 - S9. `state` **must** be read-only: it changes no tab, selection, mode or workspace, and never
   gives an unloaded tab its browser. In a private window it **never** reports a tab's URL or
   title; it keeps each tab's id, place, selection, pinning and whether its page is still loading,
-  and the pane structure.
+  and the pane structure of every split (`panes` and `splits`, tab ids and places only).
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
+  [`test_state_splits`](../tests/browser/browser_vimma_control.js),
+  [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js)
@@ -165,10 +167,14 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
 - R3. A private window is **never** routed and gets no container.
   [`private_windows_are_never_routed`](../tests/browser/browser_vimma_workspace_routes.js),
   [`private_windows_are_untouched`](../tests/browser/browser_vimma_workspace_routing.js)
-- R4. The app hint (`-vimma-from`, `VIMMA_FROM`) **must** only select a workspace that a rule in
-  config.toml names and that exists; anything but a short lower-case token never matches.
+- R4. The names (`-vimma-from`, `VIMMA_FROM`) are at most eight tokens of at most 64 characters
+  each, and **must** only select a workspace that a rule in config.toml names and that exists;
+  a name that is not a token once lower-cased is dropped. Spec: [app-routes](specs/app-routes.md).
   [`a hint that is not a token never matches`](../packages/vimma-core/test/routes.test.mjs),
-  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs)
+  [`a rule naming a workspace that does not exist is skipped`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList keeps at most eight names, drops non-tokens, keeps the rest`](../packages/vimma-core/test/routes.test.mjs),
+  [`parseAppList returns only tokens, at most eight, never two equal neighbours`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
+  [`an_app_list_with_a_bad_name_routes_by_the_rest`](../tests/browser/browser_vimma_workspace_routes.js)
 - R5. `VIMMA_FROM` **must** be read once and cleared, so it never reaches a later window or a
   process Vimma starts.
   [`a_new_windows_first_tab_is_routed_with_the_startup_app`](../tests/browser/browser_vimma_workspace_routes.js)
@@ -177,6 +183,30 @@ Sends a URL to the workspace (container, so cookies) that a `[[routes]]` rule na
   (`github.com@evil`, a path, query or fragment, `\`, `%2e`, the ideographic full stop).
   [`a domain rule never matches a URL whose host is outside its domain`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs),
   [`a domain rule matches its own host and subdomains, however written`](../packages/vimma-core/test/fuzz/routes.fuzz.test.mjs)
+- R8. A rule naming the agent workspace **never** applies to a link from another program (the
+  next rule does), and when its `app` equals one of the link's names, no rule with `app` applies
+  to that link, so a prompt-injected agent CLI's link cannot reach the terminal's sign-in rules.
+  [`a_rule_after_one_naming_the_agent_workspace_applies`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an_agent_cli_link_skips_every_app_rule_after_an_agent_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule`](../tests/browser/browser_vimma_agent_outside_opens.js),
+  [`an agent workspace rule drops every name: claude,zsh,ghostty never reaches the ghostty rule`](../packages/vimma-core/test/routes.test.mjs),
+  [`the agent cut applies below the first rule without app too`](../packages/vimma-core/test/routes.test.mjs)
+- R9. `[routing] default_workspace` applies **only** to links from other programs that no rule
+  matches (a remote command line, or a window opened for one), never to what you type, never to
+  the agent workspace, and never in a private window.
+  [`the_default_workspace_never_applies_to_the_url_bar`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_cold_start_link_with_no_rule_opens_in_the_default_workspace`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`the_default_workspace_never_applies_in_a_private_window`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`a_default_workspace_naming_the_agent_workspace_is_passed_over`](../tests/browser/browser_vimma_agent_outside_opens.js)
+- R10. The names of the last link from another program, and of each tab an app rule placed, are
+  kept **in memory only**, are shown only in about:vimma and **never** with the link's URL, and
+  the `:bug` report keeps only the rule count, because they tell which programs you run. A
+  tab's names apply only while it stays on the host it was opened on: once its own navigation
+  leaves that host, it is matched as any page is (R2).
+  [`about_vimma_shows_the_last_names_without_the_url`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`an_app_routed_tab_is_not_hinted_back_by_a_domain_rule`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`route_move_keeps_an_app_routed_tab_until_it_leaves_the_host`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`an_app_routed_tabs_names_never_pick_the_agent_workspace`](../tests/browser/browser_vimma_agent_outside_opens.js)
 
 ## 3. Workspace deletion and containers (`workspaces/WorkspaceStore.sys.mjs`)
 
@@ -300,10 +330,11 @@ Allowed without a question, as in about:addons: enable, disable, and private-win
 Vimma's status bar, pickers, side panel and overlays run with full browser privileges and show
 text that pages, add-ons and bookmarks choose.
 
-- C1. Page titles, add-on names and bookmark titles **must** be set as text (`textContent`),
-  **never** parsed as HTML.
+- C1. Page titles, add-on names, bookmark titles and the downloads picker's file names, hosts,
+  verdicts and paths (D1) **must** be set as text (`textContent`), **never** parsed as HTML.
   [`page_titles_with_html_stay_text`](../tests/browser/browser_vimma_security_invariants.js),
   [`names_with_html_are_text`](../tests/browser/browser_vimma_addons.js),
+  [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
   [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
@@ -324,7 +355,15 @@ text that pages, add-ons and bookmarks choose.
   chat window; its `--version` is the only other call, with that fixed argument, while setup
   lists what a search of `PATH` found, and, for a CLI that has no flag to leave out its other
   MCP servers (Codex), one fixed listing of them (`codex mcp list --json`) right before the
-  run, from the same checked path, with no shell and no standard input. Chrome code **never** calls
+  run, from the same checked path, with no shell and no standard input. Opening a download or
+  showing it in its folder hands a file to the OS too: chrome code **must** ask Firefox for it
+  only through `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
+  `host/download-ops.mjs`, and only on a key the user pressed in the downloads picker (§21), so
+  Firefox's executable prompt and Vimma's agent-download rule (M12, the `launchDownload`
+  override) are always on the way; it **never** calls `nsIFile.launch`, `nsIFile.reveal`,
+  `DownloadUIHelper.loadFileIn`, `launchFile`, the external protocol service or
+  `DownloadIntegration.launchDownload` itself, but the agent override's delegation to Firefox's
+  own. Chrome code **never** calls
   native code, with one exception: the owner and mode of a file, read through js-ctypes for
   clamd's socket (M13) and for the agent CLI's checks (M55: the program, `vimma-ctl`, the run
   folder and every folder above each), read with `statx(2)` from `libc.so.6` on Linux and `lstat(2)` from
@@ -341,7 +380,10 @@ text that pages, add-ons and bookmarks choose.
   [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs)
+  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs),
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs),
+  [`test_enter_and_o_open_through_launchDownload`](../tests/browser/browser_vimma_downloads.js),
+  [`test_an_executable_asks_firefoxs_prompt_first`](../tests/browser/browser_vimma_downloads.js)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
   - The status bar **must** always show the selected page's real address with its registrable
@@ -433,6 +475,38 @@ text that pages, add-ons and bookmarks choose.
     [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
     [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
     [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
+  - Firefox's dialogs over a tab or the window (`commonDialog.xhtml`: leave page, a page's
+    `alert`, `confirm` and `prompt`, a sign-in; docs/specs/firefox-dialogs.md) take `y` (the
+    main button) and `n` (the button `Esc` runs) under the same wait: from the later of the
+    moment the dialog's frame loaded and the last key typed in it, plus
+    `security.notification_enable_delay`; a key before then, or held, is swallowed and answers
+    nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
+    buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
+    hand; the wait is what keeps that typing from answering it.
+    [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+    [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
+    open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
+    under the same wait: `y` opens another application, so a page that follows a link under a
+    typing hand must not get that typing as an answer. The wait for every one of these dialogs
+    starts again when `SubDialog` shows the frame (`dialogopen`), so it counts only time on
+    screen. `y` **also** waits for Firefox's own guard where Firefox applies it (the permission
+    question always; the application list when the permission question was skipped), the main
+    button it keeps disabled until the dialog's window has had focus for
+    `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
+    button is disabled. Only `SubDialog` frames (`.dialogFrame`) are taken. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
+    field, so the keys answer from it, and the box's state is the user's, never changed by them.
+    [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
+    [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
+  - The download question (`unknownContentType.xhtml`, a window of its own opened over the
+    browser window) takes the same keys under the same wait, from the window's `load` and again
+    each time it becomes the active window: `y`
+    presses OK, which saves the file or opens it with an application, so it **also** waits for
+    the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
+    Only a window whose opener is the browser window and whose document is the download question
+    is taken; its keys are read in that window, never from a page.
+    [`download_n_cancels_y_saves`](../tests/browser/browser_vimma_dialog_keys.js)
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
@@ -441,10 +515,14 @@ text that pages, add-ons and bookmarks choose.
 
 The hook (`omarchy/vimma-theme-reload.sh`) runs when you change your Omarchy theme. Vimma
 writes it into `~/.config/omarchy/hooks/theme-set.d/`. `vimma-open` (`tools/package/`) is the
-desktop entry's launcher (`vimma-open %u`): it finds which app opened a link, for routing.
+desktop entry's launcher (`vimma-open %u`) and the command `BROWSER=vimma-open` runs: it names
+the programs that opened a link, nearest first, for routing (spec
+[app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to `vimma` in its own
+session.
 
 **Reach:** the hook gets the theme name, which comes from a theme anyone can publish.
-`vimma-open` gets a URL from any local app, and reads `/proc` for the app's name.
+`vimma-open` gets a URL and its arguments from any local program, reads `/proc` for the names
+of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
 
 - O1. The hook **must** only ask running Vimmas to reload their theme (D-Bus, else
   `vimma-ctl reload-theme`) and **never** start a Vimma.
@@ -459,19 +537,43 @@ desktop entry's launcher (`vimma-open %u`): it finds which app opened a link, fo
 - O5. `vimma-open` **never** passes a single argument that starts with `-`, so a crafted link
   cannot become a browser flag (`-profile`, `--remote-debugging-port`).
   [`refuses a single argument that is a flag: %u must never smuggle one in`](../tools/package/test/vimma-open.test.mjs)
-- O6. The app name **must** be a lower-case token of at most 32 characters, and an inherited
-  `VIMMA_FROM` is **never** passed on.
-  [`never passes a name that is not a simple token`](../tools/package/test/vimma-open.test.mjs),
+- O6. The names **must** be at most eight lower-case tokens of at most 64 characters each,
+  separated by commas (the seven nearest and the farthest); a name that is not a token is
+  passed over, never passed on, so a child that renames itself cannot hide an agent CLI's name
+  above it (R8), and an inherited `VIMMA_FROM` is **never** passed on. `TERM_PROGRAM` is added
+  only when the walk could not see the terminal (it passed a name that is not a token, or hit
+  the 32-step limit), so a job an agent CLI left behind, reparented to pid 1, does not take the
+  terminal's name.
+  [`never passes a name that is not a simple token, and keeps the names before it`](../tools/package/test/vimma-open.test.mjs),
   [`refuses a name with a newline in it`](../tools/package/test/vimma-open.test.mjs),
-  [`never passes a VIMMA_FROM it did not set`](../tools/package/test/vimma-open.test.mjs)
+  [`never passes a VIMMA_FROM it did not set`](../tools/package/test/vimma-open.test.mjs),
+  [`keeps the seven nearest names and the farthest past eight`](../tools/package/test/vimma-open.test.mjs),
+  [`a_detached_child_under_an_agent_cli_gets_no_TERM_PROGRAM_name`](../tools/package/test/vimma-open.test.mjs),
+  [`stops at the compositor without naming it`](../tools/package/test/vimma-open.test.mjs),
+  [`a name that is not a token never hides the names beyond it`](../tools/package/test/vimma-open.test.mjs)
 - O7. A theme's `colors.toml` (anyone can publish a theme) **must** give only `#rrggbb` colours
   and one CSS rule, and be read in bounded time however deep or large it is.
   [`parseOmarchyColors never throws; a palette has every key, as #rrggbb or a mode`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
   [`any theme file and any accepted font give CSS that tokensToCss accepts`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs),
   [`a hostile theme file is read in bounded time: deep, huge, many keys`](../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs)
+- O8. `--from` **must** take exactly one app token and one URL that does not start with `-`
+  (else exit 64): it names a program, never a workspace, so the choice stays with config.toml.
+  [`--from refuses a name that is not a token`](../tools/package/test/vimma-open.test.mjs),
+  [`--from refuses a URL that is a flag`](../tools/package/test/vimma-open.test.mjs),
+  [`--from names the app and skips the walk`](../tools/package/test/vimma-open.test.mjs)
+- O9. `vimma-open` **never** runs a command of a multiplexer it passes (`tmux`, `herdr`,
+  `zellij`): asking a server for its client would run your tmux hooks on every link, and could
+  name the wrong terminal. Its server ends the list instead.
+  [`never runs tmux or herdr`](../tools/package/test/vimma-open.test.mjs),
+  [`a daemonised tmux server ends the list at tmux, whatever its clients`](../tools/package/test/vimma-open.test.mjs)
 
-Allowed: two or more arguments pass through unchanged; a local app that runs `vimma-open` with
-its own flags could run `vimma` with them directly.
+Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
+runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
+also name itself as any program, by `--from`, by the name of its executable or by a chain it
+forges (a renamed, detached process): the names are a hint that only selects a workspace a rule
+already routes to (R4), the boundary §11 accepts for programs running as you. For the same
+reason `VIMMA_BIN`, `VIMMA_OPEN_PROC` and `VIMMA_OPEN_PPID`, which the tests use, are honoured:
+they give the caller no more than `--from`, and what they point at comes out only as token names.
 [`passes anything but one URL through unchanged`](../tools/package/test/vimma-open.test.mjs)
 
 ## 8. `config.toml` (`config/ConfigHost.sys.mjs`)
@@ -710,14 +812,25 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`asks the API nothing while the variable is off or outside main`](../tools/release/test/security-release.test.mjs),
   [`fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`](../tools/release/test/security-release.test.mjs)
 
-- G13. An upstream bump PR **must** be set to auto-merge only by `publish` run on `main`, only
+- G13. An upstream bump PR **must** be allowed to auto-merge only by `publish` run on `main`, only
   when `AUTO_MERGE_UPSTREAM` allows its release kind, only for a non-draft PR whose every patch
   applied clean or with an offset and whose diff changes nothing but `version.version` in
-  `surfer.json` and the copied pref lines, and only pinned to the head commit that diff was read
-  from. GitHub's auto-merge then waits for every required check of the `main` ruleset (spec
-  [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022).
+  `surfer.json` and the copied pref lines, and only for the head commit that diff was read from,
+  which `publish` records in a hidden marker in the PR body. `upstream-merge.yml`, run from
+  `main` (`workflow_run`) each time a workflow on the PR completes, **must** set auto-merge only
+  on a PR opened by the App from a branch of this repository, at the marked head, and only once
+  every workflow run the PR started on that head finished green or skipped and no check on it
+  failed: the macOS mochitests and package checks that the ruleset does not require hold the
+  merge too. GitHub's auto-merge then still waits for every required check of the `main` ruleset
+  (spec [upstream-bump-automation](specs/upstream-bump-automation.md), ADR-022). The marker
+  grants nothing on its own: a person who can edit the body can already merge.
   [`auto-merge only with the variable, the token, a ready PR and the allowlist`](../tools/test/upstream-workflow.test.mjs),
-  [`auto-merge uses --match-head-commit and the bump's subject`](../tools/test/upstream-workflow.test.mjs),
+  [`publish never sets auto-merge: upstream-merge.yml does, once every check is green`](../tools/test/upstream-workflow.test.mjs),
+  [`reads every run and check of the head, and merges that head only, with the bump's subject`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`runs when any workflow a pull request starts completes, and on nothing else`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`acts only on this repository's upstream branches, with the App set up`](../tools/test/upstream-merge-workflow.test.mjs),
+  [`refuses a failed, cancelled, timed-out or unapproved run or check`](../tools/upstream/test/merge-ready.test.mjs),
+  [`only for the App's own non-draft PR at the head the autopilot allowed`](../tools/upstream/test/merge-ready.test.mjs),
   [`the allowlist reads the branch as pushed`](../tools/test/upstream-workflow.test.mjs),
   [`rebuild disables auto-merge before the push`](../tools/test/upstream-workflow.test.mjs),
   [`dot allows dot releases only; unset or anything else allows none`](../tools/upstream/test/autopilot.test.mjs),
@@ -727,10 +840,20 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
   [`refuses a re-exported patch`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a new, deleted, renamed or mode-changed file`](../tools/upstream/test/bump-diff.test.mjs),
   [`refuses a file header it does not recognise instead of folding it into the last file`](../tools/upstream/test/bump-diff.test.mjs)
-- G14. `UPSTREAM_PR_TOKEN` **must** reach only the `publish` job. It is fine-grained: this
-  repository only, Contents and Pull requests read and write, no Workflows, so it cannot change a
-  workflow file. Without it, bumps open as drafts and are never set to auto-merge.
-  [`the token reaches only publish`](../tools/test/upstream-workflow.test.mjs),
+- G14. The private key of the org's GitHub App `vimma-upstream-autopilot`, the secret
+  `UPSTREAM_APP_KEY` of the `upstream-autopilot` environment, **must** reach only the `publish`
+  job and `upstream-merge.yml`'s `merge` job (which mints a token with Contents and Pull requests
+  write only, and runs main's code), and that environment's only deployment policy is the branch `main`, so a workflow edited
+  on another branch cannot read it. Each run mints a one-hour token for this repository alone with
+  Contents, Pull requests and Issues read and write and no Workflows, so it cannot change a
+  workflow file. Without the App (the variable `UPSTREAM_APP_ID` unset), bumps open as drafts with
+  `GITHUB_TOKEN` and are never set to auto-merge. A leaked key could open pull requests and set
+  auto-merge on any that pass the required checks; revoke it on the App's page.
+  [`the App's key reaches only publish, which deploys to upstream-autopilot`](../tools/test/upstream-workflow.test.mjs),
+  [`mints the App token for this repository alone, before the checkout`](../tools/test/upstream-workflow.test.mjs),
+  [`publish pushes and opens the PR with the App token, else GITHUB_TOKEN`](../tools/test/upstream-workflow.test.mjs),
+  [`asks for contents, pull requests and issues, and nothing else`](../tools/upstream/test/create-app.test.mjs),
+  [`names every deployment policy other than the branch main`](../tools/upstream/test/create-app.test.mjs),
   [`grants nothing by default and each job only what it needs`](../tools/test/upstream-workflow.test.mjs)
 - G15. The `patch-issue` job (patches that do not apply) **must** use only `GITHUB_TOKEN` with
   `contents: read` and `issues: write`, check out without persisted credentials, and pass the
@@ -805,9 +928,10 @@ workspace. What limits it: the agent workspace's container holds none of your ot
 (vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
 under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
 (M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
-with a shell can send what it read over its own network without Vimma anyway. A form submission,
-a step that may pay, a show, a dangerous or unscanned download and a page's own download still
-ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
+with a shell can send what it read over its own network without Vimma anyway. A step that may pay,
+a form submission that sends text, personal details, a secret or a file
+([mcp-consequence](specs/mcp-consequence.md)), a show, a dangerous or unscanned download and a
+page's own download still ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
 makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
 spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
 (`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
@@ -822,7 +946,8 @@ submission: it gives no new reach, since any URL could already be opened under a
 is under the same rules as every other open (M6, the open rate of M3, the notice and the
 `:mcp log` row of M23). It skips only the form question; the words of the search are what the
 agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
-page, a search included, is still a form submission and asked every time (M28).
+page, a search included, is still a form submission under M28, asked whenever it sends what was
+typed.
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
@@ -1374,11 +1499,40 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
-  **must** ask every time, also under any grant, with only `y` and `n`, naming
+  **must** ask every time without a grant, and under a grant when it is consequential
+  ([mcp-consequence](specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
+  a password, payment card, one-time-code or file field, an identity field (an autocomplete
+  name of a person's name, contact, address, birth date, username or organisation, one form
+  autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
+  marks every field), or free text (a textarea or a text-like input other than `type=search`
+  whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
+  value so digits of other scripts or forms never pass); or a form whose fields the page did
+  not say in time, that sends more fields than the question lists, or one of whose values is
+  longer than the child reads of it. It asks with only `y` and `n`, naming
   the form's method, destination and each field it sends by name and value (hidden fields
   counted, a file field by its name), **never** a password, payment card or one-time-code
   field's value, only its name and `•••`, or the number of fields when the page did not say in
-  time; its yes **never** makes or ends a grant, and its `x` is a plain no; so **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
+  time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
+  submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
+  row naming its method and destination (M23), and the guard below lets that one submission
+  through as after a yes. Because another call (a fill) may change the form between that
+  judgement and the click, the child judges the form again just before it presses the button,
+  after the page's handlers of the pressing ran, and skips the click when it no longer passes
+  (no longer harmless, or, under an allowance, sending a secret or file). Under a grant, the question of a consequential submission that is not
+  a payment step and sends no password, card, one-time-code or file field also takes `a`
+  (mcp-consequence K5): it allows that submission and every later click of the same connection
+  whose tab's site (registrable domain), form method, destination (scheme, host, port and path)
+  and pressed button's text are the same, checked again on each click against the payment and
+  secret rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
+  conversation's stop, the connection's close; an allowance is held in memory and never kept
+  for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
+  step. An allowance covers later submissions whatever text or personal details they send,
+  which no question shows. Not covered: a page's own script that copies typed text into hidden
+  fields before a harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17);
+  a form that sends only the page's own values runs unasked under a grant whatever it does on
+  the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
+  only the payment signals of M33 add a question there; a short number typed into a plain text
+  field (a quantity, but also a three-digit code) is not free text. So **must** a fill that submits (`vimma_fill` with `submit`, through a submit button's
   label or the form's default submission), under a grant too, naming the same and
   the fields it fills, only through a submit button of the filled fields' own form or that
   form's default submission, and it is not sent when the page put back a value the question
@@ -1428,6 +1582,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   not http or https, and data a button's script sends with `fetch`, also from a cancelled
   submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_basket_form_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_message_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_allows_that_button_on_that_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`test_a_is_not_offered_on_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`free text, an identity field, a secret or a file makes it consequential`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`an allowance ends with the grant: its end, revoke, endGrant`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_a_message_cut_or_written_late_still_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
+  [`a value cut to fit, digits in other scripts or forms, or a long number is free text`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
   [`test_page_script_submit_after_a_click_is_cancelled`](../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submission_the_page_makes_after_a_click_is_still_cancelled`](../tests/browser/browser_vimma_mcp_waits.js),
   [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../tests/browser/browser_vimma_mcp_waits.js),
@@ -1674,8 +1836,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_console_under_a_grant_notice_log_and_rate`](../tests/browser/browser_vimma_mcp_console.js),
   [`vimma_console: the tab in the question, the page in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M33. A payment step (mcp-checkpoints C6) **must** ask under any grant, with only `y` and `n`
-  (`x` is a plain no), and its yes **never** makes, lengthens or ends a grant; its no denies that
-  step only. A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
+  (`x` is a plain no; `a` is no answer there and an allowance of M28 **never** covers it), and
+  its yes **never** makes, lengthens or ends a grant; its no denies that step only. The pay
+  phrases only add questions (mcp-consequence K6). A payment step is a `vimma_activate` click, a `vimma_fill` that submits, or a
   `vimma_keys` follow, `gu`, `gU`, `H` or `L`, in an agent tab whose page shows a payment card
   field in any frame (a `cc-*` autocomplete name or form autofill's card heuristics; a frame
   whose check fails or that does not answer within 5 s counts as one, a frame that navigates
@@ -2078,6 +2241,20 @@ own process, not a process group.
   asdf, volta) runs the real tool from the manager's own install folder and configuration, which
   Vimma does not check (a group-writable `MISE_DATA_DIR`, for example). A run **must** end, and
   revoke its ticket, when the CLI's work is done even if a child of it keeps its output open.
+  A CLI that records its runs **must** be asked not to (`--no-session-persistence`,
+  `--ephemeral`); Gemini CLI, which cannot be asked, **must** have what it recorded of a run
+  removed when the run ends, a stop included: the project folders in its `tmp/` and `history/`
+  whose `.project_root` marker names the run's folder (its session files, the whole
+  conversation with the page text, among them) and the registry entry in `projects.json`,
+  edited under Gemini CLI's own lock, which is waited for and never broken. At each start Vimma
+  **must** remove the same of every run of its own whose folder is gone, and of every run folder
+  a crash left, with the folder: one whose marked process is gone (Linux), that its own
+  process id marks while unused, or older than a day and an hour; a registry that is a link
+  is not edited. A project is Vimma's only when its path is a run folder's name directly in a
+  folder runs are made in, so no project of the user's is ever touched. Gemini CLI's `TMPDIR` is the run's
+  folder, since its error reports hold the conversation. Between a run's start and its end,
+  and after a crash until the next start, the conversation is on disk in Gemini CLI's folder
+  (`docs/limits.md`).
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_path_checks_refuse_a_file_others_can_write`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_a_shim_runs_as_the_cli_it_is_named_after`](../tests/browser/browser_vimma_agent_cli_run.js),
@@ -2102,14 +2279,33 @@ own process, not a process group.
   [`a cli provider's model is refused by the rule its run uses`](../packages/vimma-core/test/config-agent.test.mjs),
   [`test_setup_asks_the_clis_model_and_saves_it`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`the environment is Vimma's, minus the variables Vimma and Firefox set`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs)
+  [`anything else is refused, with the reason`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini's arguments are the fixture`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`test_setup_finds_gemini_with_its_version`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_task_on_stdin_fixed_arguments_and_the_folders_settings`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_gemini_keeps_nothing_of_the_run_after_it`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_stopped_run_keeps_nothing_either`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_rejected_key_is_the_runs_error_and_its_report_goes`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_leftovers_of_runs_a_crash_ended_go_at_the_next_start`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_run_folder_a_crash_left_goes_with_its_records`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_linked_registry_is_left_a_link`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`test_a_lock_gemini_holds_is_waited_for_not_broken`](../tests/browser/browser_vimma_agent_cli_gemini.js),
+  [`only a run folder of vimma's is one of its runs`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`the registry keeps every other project, and names the runs' folders`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a slug that is not a plain folder name is never a folder to remove`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M56. The ticket **must** reach the CLI's `vimma-ctl mcp` only through the MCP configuration's
-  `env`, in a file that is 0600 in that 0700 folder and removed with it, or, for a CLI whose
+  `env`, in a file that is 0600 in that 0700 folder (for Gemini CLI, `.gemini/settings.json`
+  there, in a 0700 `.gemini` folder, which it reads from its working directory once
+  `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder) and removed with it,
+  or, for a CLI whose
   servers are arguments (Codex), through the CLI's own environment, passed to the server by
   name (`env_vars`) and set empty for the CLI's own shell commands
   (`shell_environment_policy.set`, which keeps the user's policy); **never** through a
   command line. The CLI **must** be given no MCP server but Vimma's, so that it reaches pages
-  only through the gate: `--strict-mcp-config`, or for Codex each server its own list names
+  only through the gate: `--strict-mcp-config`; for Gemini CLI `--allowed-mcp-server-names`
+  naming its server alone (`vimma_chat`, whose entry in the run folder's settings replaces a
+  user's entry of that name whole), its extensions off (`-e none`), and a tool of any other MCP
+  server that ran ending the run; or for Codex each server its own list names
   turned off by name, its apps, plugins and a skill's MCP server installs off with
   `--disable` (which fails on a feature name the version does not know), its server named apart from any the user may
   have (`vimma_chat`, whose name in the list refuses the run, as does a name that is not
@@ -2140,7 +2336,10 @@ own process, not a process group.
   [`test_ticket_by_name_in_codexs_environment_never_an_argument`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_every_other_server_of_codexs_configuration_is_off`](../tests/browser/browser_vimma_agent_cli_codex.js),
   [`test_a_server_named_as_vimmas_refuses_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
-  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_a_call_to_a_server_not_vimmas_ends_the_run`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`vimma's server is in the run folder's settings file, the ticket in its env`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`gemini trusts the run folder from its environment, and keeps its reports there`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a tool of another mcp server that ran ends the run; one never offered does not`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M57. A CLI's steps in the browser **must** be the conversation's: asked and granted as its
   own (the `Enter` grant covers them, checkpoints and `vimma_show` still ask), and shown from the
   gate's record, never from the CLI's account of them. A CLI's output **must** be rendered as
@@ -2154,7 +2353,9 @@ own process, not a process group.
   [`each gate event of the conversation is a step, asked or run under the grant`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`an own-tool line is marked, muted, and says when the cli's settings refused it`](../packages/vimma-core/test/agent-chat.test.mjs),
   [`mcp tool calls of vimma's server are not transcript steps`](../packages/vimma-core/test/agent-cli.test.mjs),
-  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js)
+  [`test_codexs_own_commands_and_files_are_its_own_lines`](../tests/browser/browser_vimma_agent_cli_codex.js),
+  [`a recorded gemini stream maps to replies, own-tool lines and usage`](../packages/vimma-core/test/agent-cli.test.mjs),
+  [`a step its policy refuses is marked refused`](../packages/vimma-core/test/agent-cli.test.mjs)
 - M58. A CLI's own shell, file and web tools are **outside** Vimma's gate (above). Before a
   conversation's first task with a CLI (and after a provider change), the window **must** say
   where page text goes and that those tools are not confined, and send nothing without a `y`;
@@ -2199,7 +2400,7 @@ own process, not a process group.
   [`test_stop_closes_the_connection_before_the_signal`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 
-## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`)
+## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus
 reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
@@ -2234,6 +2435,20 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`after_esc_a_page_refocusing_its_field_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
   [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
+- K5. Vim's text-field keys ([key-handling-batch](specs/key-handling-batch.md) § 2) **must**
+  act only on a key the user pressed, in insert mode or in a focused chrome field, and in a page
+  only after the page left the key alone. `ctrl+j` and `ctrl+m` press a trusted `Enter` from the
+  parent (`actors/enter-key.mjs`, a `TextInputProcessor`), which Firefox routes to the focused
+  element as a keyboard's `Enter`: it carries no modifier, it is pressed only while the same
+  chrome field, or the same `<browser>` and frame, still has focus, a page's reply acts only on
+  the `<browser>` it came from (a late reply never edits the tab or pane focused since), and no
+  message from a content process can ask for it. The content actor's `Vimma:Edit` **must** run only the three editor commands
+  (`INSERT_EDIT_COMMANDS`), never Enter. A compromised content process that claims insert mode
+  (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself.
+  [`Enter is no editor command: the content actor never takes it`](../packages/vimma-core/test/editable.test.mjs),
+  [`a_page_that_takes_ctrl_j_keeps_it`](../tests/browser/browser_vimma_edit_keys.js),
+  [`a_late_reply_presses_no_enter_in_another_tab`](../tests/browser/browser_vimma_edit_keys.js),
+  [`ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter`](../tests/browser/browser_vimma_edit_keys.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
@@ -3453,3 +3668,218 @@ which Firefox's site information panel shows already, and stores nothing of its 
   the picker's ops, and the agent's keys are the spec's fixed list.
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
   [`the whitelist is the spec's table`](../packages/vimma-core/test/agent-keys.test.mjs)
+
+## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
+
+Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
+page label and find count to show them in the status bar, chooses the PDF viewer's key
+bindings, sends the viewer the page, zoom, layout and presentation operations those keys run,
+reads the document's outline into a chrome panel (once when a PDF opens in the selected tab, and
+on the user's `Tab`), gives the viewer's own toolbar, find bar and menus the theme's colours
+through two style sheets, keeps marks (positions in
+a document) in the parent's memory, and shows or copies a link's target on `F` and `c`. Spec:
+[pdf-mode](specs/pdf-mode.md).
+
+**Reach:** the PDF being viewed, through pdf.js, which a malformed PDF may compromise (pdf.js
+parses untrusted files, and CVE-2024-4367 let a PDF run script in the viewer); web pages, which
+can define `PDFViewerApplication` or frame a PDF. A compromised viewer is treated as a hostile
+page that also controls every pdf.js function and event the adapter touches. A compromised
+content process can claim pdf.js's principal for its top document, as it can claim any
+principal; that gives it no more than in-bounds status text and the user's own `[modal.pdf]`
+bindings, so it is accepted here.
+
+- V1. The adapter **must** waive Xrays only in a top-level document whose principal passes
+  `schemeIs("resource")` and `originNoSuffix === "resource://pdf.js"`, Firefox's own test
+  (`nsContentUtils::IsPDFJS`), so that it holds in every container; never on the content type,
+  the URL or the presence of `window.PDFViewerApplication`.
+  [`a_page_that_defines_PDFViewerApplication_gets_no_pdf_keys`](../tests/browser/browser_vimma_pdf_status.js),
+  [`pdf_keys_work_in_a_workspace_container`](../tests/browser/browser_vimma_pdf_status.js)
+- V2. The parent **must** decide the `pdf` keymap context from the top `WindowGlobalParent`'s
+  `documentPrincipal` with the same test, and **must** accept state only from the actor of that
+  window global; a pdf.js document in a frame or `<embed>` **must not** set the context or
+  report state. A document that only inherits pdf.js's principal (an `about:blank`, `blob:` or
+  `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
+  or `file` document URI, which the viewer keeps from the PDF it shows.
+  [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays made
+  with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a mark's `XYZ` destination,
+  an internal link's explicit destination read from its fragment), or an outline entry's target
+  that pdf.js itself gave it (V8); no chrome object **may** be passed in.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
+- V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
+  fields they need; the child **must** keep only values whose `typeof` is `number`, `boolean` or
+  `string` before `sendAsyncMessage`, and **must not** `await` a value returned by pdf.js. An
+  asynchronous result (the outline, the named destinations, the page of a link's named
+  destination) **must** come back only through a
+  `Cu.exportFunction` callback passed to the promise's own `then` seen through Xrays, so that a
+  viewer's object with a `then` of its own is never called; the result is read by the same rules.
+  [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js),
+  [`a_hostile_outline_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_outline.js)
+- V5. Bursts of pdf.js callbacks and of chrome-only events (`pagesloaded`, which the viewer can
+  fire at will through `FirefoxCom.request("dispatchGlobalEvent")`) **must** be coalesced to at
+  most one state message per 100 ms per document.
+  [`a_flood_of_pagesloaded_is_coalesced`](../tests/browser/browser_vimma_pdf_status.js)
+- V6. The parent **must** parse every state record with `parsePdfState`, which bounds every
+  number, drops a page label over 32 characters and strips control and Unicode format characters
+  (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
+  status bar **must** draw it as text.
+  [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
+  [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
+- V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded
+  integer, checked by `parsePdfOp` in the parent before sending and again in the child before the
+  adapter touches pdf.js; `go` (a mark) also carries a position, exactly four bounded numbers
+  (`parsePdfPosition`), which is also how the parent checks the position the viewer reports when a
+  mark is set. No script, markup or object **may** go into the viewer, and no CSS text other than
+  the theme's token sheet under V12. `F` asks for an
+  internal link's page by the hint's generation and index only, and the parent keeps the answer only
+  when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
+  strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
+  Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
+  presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
+  and fall back to scrolling when the adapter applied none.
+  Accepted: in the PDF viewer `ctrl+o` and `ctrl+i` step to a neighbouring entry of the same
+  document without Firefox's user-interaction check (decision 9), so a compromised viewer that
+  pushes many same-document entries makes them step through each; a count (`9ctrl+o`) or the
+  toolbar's back button still leaves, so it is a nuisance, not a trap.
+  [`the parent sends only operations and numbers`](../packages/vimma-core/test/pdf.test.mjs),
+  [`the_parent_sends_only_operations_and_numbers`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`pdf marks`](../packages/vimma-core/test/pdf.test.mjs),
+  [`marks`](../tests/browser/browser_vimma_pdf_marks.js)
+- V8. The adapter **must** read the outline only when the parent asks (the `outline` operation):
+  for the user's `Tab` in the PDF viewer, and once per document when the viewer reports its first
+  state in the selected tab with `[ui] pdf_outline` shown (pdf-mode decision 19). That read is
+  keyed by the top window global, never by the viewer's own count of documents, so a viewer cannot
+  have it read or shown again by claiming a new document. An outline read that way is shown
+  without focus, so it takes no key, only in normal mode, and never over another panel or under a
+  picker. Accepted: a PDF's outline titles (at most 512 characters each) show in a chrome panel
+  without a key press, under the panel's visible `Outline` heading, as page titles show in tabs. The adapter **must** send only each entry's title, level, page number, kind, collapsed flag
+  and, for a URL entry, its URL, never a destination; it cuts titles to 512 characters and stops at
+  5,000 entries and a depth of 32. The parent **must** take an outline message only from the top
+  viewer's current actor after asking that document for it (for `Tab`, opening the panel only if no
+  other key was pressed, the tab is still selected and at most 2 s passed; when the PDF opened,
+  only if the tab is still selected and in normal mode), and **must** parse it with
+  `parsePdfOutline`, which drops the whole message for more than 5,000 entries, a level deeper than
+  32 or more than one step below the previous entry's, a title over 512 characters, a URL over
+  8,192, a page outside the document, an unknown kind or an unknown field, and strips control and
+  format characters (Cc, Cf) from titles. `Enter` names an entry by its index (V7); its destination,
+  named action or layer change stays in the child, which hands pdf.js back its own object; a named
+  action is followed only when it is one of pdf.js's navigation actions (not `Print` or `SaveAs`).
+  The outline panel **must** set titles with `textContent` (§6, C1). A URL entry is opened in the
+  tab only when it is `http` or `https` (`outlineUrlAllowed`), after `checkLoadURIWithPrincipal`
+  against the viewer's principal, which triggers the load, with no referrer and no fixup, as a link
+  chosen with `f` loads; never with the system principal, which would make it look typed and could
+  route it to another workspace (§2). pdf.js already gives a `javascript:` link no URL, so such an
+  entry follows nothing. A link target from `F` or `c` is shown in the notice or copied as text
+  only when it parses as a URL, as the URL parser writes it, without control or format
+  characters, and never followed.
+  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`the_outline_is_shown_when_a_pdf_with_one_opens`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`pdf_outline_hidden_keeps_it_closed`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`an outline outside its bounds is dropped`](../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`each_kind_of_entry`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`outlineUrlAllowed`](../packages/vimma-core/test/pdfoutline.test.mjs),
+  [`links`](../tests/browser/browser_vimma_pdf_marks.js)
+- V9. Presentation mode **may** go full screen without user activation, as Firefox allows the
+  pdf.js principal (`dom/base/Element.cpp`); Vimma **must** request it only for the user's own
+  key in the PDF viewer, so it adds no spoofing surface: a page cannot reach it, the content
+  process cannot ask the parent for it, and Firefox's full-screen warning still shows.
+  [`presentation_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_keys.js),
+  [`presentation`](../tests/browser/browser_vimma_pdf_keys.js)
+
+- V10. Vimma **must not** write any `pdfjs.*` pref other than the defaults
+  `pdfjs.featuresNotificationImpressionLimit = 0` and `pdfjs.sidebarViewOnLoad = 0`
+  (`firefox-branding.js`; the second only stops pdf.js opening its sidebar by itself), and never
+  one that
+  changes scripting, fetching or sandboxing (`pdfjs.enableScripting`, `pdfjs.disabled`).
+  [`pdf_mode_writes_no_pdfjs_prefs`](../tests/browser/browser_vimma_pdf_status.js)
+
+- V11. The parsed outline **must** stay in the parent's memory, for the tab's current document
+  only, and **must** be dropped when the tab navigates or closes, or pdf.js opens another PDF in
+  the same viewer (the state message counts the documents the viewer opened); the panel closes
+  with it. Marks **must** stay in the parent's memory too, by document URL without its
+  fragment, at most 1,000 documents; a private window's marks are kept apart and dropped when
+  the last private window closes. Neither is ever written.
+  [`the_outline_is_read_only_on_the_users_key`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`another_pdf_in_the_same_viewer_drops_the_outline`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`a_read_under_way_does_not_outlive_its_document`](../tests/browser/browser_vimma_pdf_outline.js),
+  [`private_marks_go_with_the_private_windows`](../tests/browser/browser_vimma_pdf_marks.js)
+
+- V12. The viewer's look (pdf-mode decisions 18 and 20) **must** be CSS only: the child loads, with
+  `windowUtils.loadSheetUsingURIString` as author sheets of the viewer's top document (after V1's
+  check), the fixed `chrome://browser/skin/vimma/firefox-pdf.css` and a `data:text/css` sheet of
+  the theme's tokens; it runs nothing in the viewer, passes pdf.js nothing and reads nothing back.
+  The parent **must** send the token sheet only to the actor of the top viewer's current window
+  global (V2's test), on that actor's request or on a theme change, and only the stylesheet
+  `ThemeHost` built from validated colours (core `themeStylesheet`); the child takes only a string
+  of at most 64 KiB. Accepted: script in a compromised viewer can read the theme's colours from its
+  own computed style; they are the colours of the user's desktop theme, which any page shown under
+  `prefers-color-scheme` already narrows down, and no web page can read the viewer's document
+  (another principal).
+  [`the_viewer_follows_the_theme`](../tests/browser/browser_vimma_pdf_look.js),
+  [`pdfjs_sidebar_stays_closed`](../tests/browser/browser_vimma_pdf_look.js),
+  [`the_theme_reaches_only_the_viewer`](../tests/browser/browser_vimma_pdf_look.js)
+
+## 21. Downloads picker (`host/download-ops.mjs`)
+
+`ctrl+b d` (or `:downloads`) opens a picker over the window's downloads, where one key opens a
+file, opens it in the system's app, shows it in its folder, copies its link or path, opens the
+page it came from, pauses, resumes, cancels or retries a download, removes it from the list,
+deletes its file, or opens Firefox's full downloads view. It lists files on your disk and
+hands them to the OS, so these rules keep it to Firefox's own download code and out of an
+agent's reach. Spec: [downloads](specs/downloads.md).
+
+**Reach:** only you, with `ctrl+b d`, `:downloads` or a key you bind. No control-socket or MCP
+command reaches it, and an agent's keys are a fixed list without it (S7, M16). A `full`-role
+connection holds your token and can press `ctrl+b d` as your keyboard can (§1). It shows what
+Firefox's panel and Library show already, and stores nothing of its own. File names and
+referring pages are chosen by the sites the files came from.
+
+- D1. A row's file name, host, verdict and path **must** be set as text (C1), and a row **must**
+  show the host a download came from, **never** its URL, so a token in a download link is not on
+  screen; a download with no file path is named by its URL's last path segment or host. `y`
+  copies the full link only on request.
+  [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
+  [`a row shows the host, never the URL`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a download with no file path is named by its URL's last segment, never the URL`](../packages/vimma-core/test/downloads.test.mjs)
+- D2. A private window **must** list only its own private session's downloads, and a normal
+  window **never** a private one; the status bar's segment counts the same way. A private
+  download is gone with its session, as in Firefox.
+  [`test_a_private_window_lists_only_private_downloads`](../tests/browser/browser_vimma_downloads.js),
+  [`test_a_private_window_counts_only_its_private_downloads`](../tests/browser/browser_vimma_downloads.js)
+- D4. An agent download (M11's test: its container, its tab's container, or a path in the
+  quarantine folder) **must never** be opened, opened in the system's app, retried, allowed or
+  followed to its referring page from the picker, because its file is admitted only under M12
+  and its page was chosen by the agent; `o` is refused twice, by the picker and by M12's
+  `launchDownload` override. Showing it in its folder, copying its link or path and removing it
+  stay. A history entry with no file path is **never** retried from the picker either, because
+  without its folder it cannot be told apart from an agent download. For any download, `u`
+  **must** open only an `http:` or `https:` page, never a script,
+  `data:` or `file:` address a page chose as its referrer, and **must** open it in the
+  download's own container (the window's non-agent one for a history entry), **never** the agent
+  workspace's, even with that workspace on screen: the full referrer may carry a token.
+  [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
+  [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
+  [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
+  [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),
+  [`the keys that apply follow isCommandEnabled for each state`](../packages/vimma-core/test/downloads.test.mjs)
+- D5. `shift+d` (delete the file) and `c` (cancel, which removes the partial data) **must** ask
+  `y/N` first, and the picker **must** close before the question shows, because an open picker
+  takes every key first and a `y` meant for the question would otherwise reach it. A yes **must**
+  act only on the download asked about: if it left the list, changed state, or its file moved or
+  went before the answer, nothing is done and the notice says so. Both run through Firefox's own
+  commands (`Download.cancel` and `removePartialData`, `DownloadsCommon.deleteDownloadFiles`);
+  `d` removes only the list and history entry, keeps the file, and does not ask, as in Firefox.
+  [`test_cancel_asks_and_removes_the_partial_file`](../tests/browser/browser_vimma_downloads.js),
+  [`test_D_asks_and_deletes_the_file`](../tests/browser/browser_vimma_downloads.js),
+  [`test_the_y_answer_goes_to_the_question_never_to_the_picker`](../tests/browser/browser_vimma_downloads.js),
+  [`test_an_answer_does_nothing_if_the_download_changed`](../tests/browser/browser_vimma_downloads.js),
+  [`shift+d and c need a y/N; d does not`](../packages/vimma-core/test/downloads.test.mjs),
+  [`a yes stands only for the download asked about (docs/security.md D5)`](../packages/vimma-core/test/downloads.test.mjs)
+- D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not
+  one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
+  `ctl/` or `agent/` module imports the picker's ops.
+  [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../packages/vimma-core/test/agent-keys.test.mjs),
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs)
+
+D3 (blocked downloads, released only through Firefox's dialog) comes with the `!` key it
+governs.

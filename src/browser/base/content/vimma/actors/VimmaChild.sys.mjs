@@ -17,8 +17,10 @@ import {
   scriptErrorSource,
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
+import { isConsequential, mayAllowHere, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { quietVerdict } from "../core/agent-wait.mjs";
-import { collectTargets, linkText } from "./hint-collect.mjs";
+import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
+import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
 import {
   actTargetOf,
   cardFieldShown,
@@ -38,6 +40,7 @@ import { BlockFocus } from "./block.mjs";
 import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
+import { PdfView } from "./pdf-view.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -132,6 +135,14 @@ function canScroll(el, vertical) {
 const SEARCH_LIMIT = 10000;
 /** A search that found nothing is not repeated for this long (holding j). */
 const SEARCH_BACKOFF_MS = 1000;
+/** How often, in ms, a collection waiting for its page's first size looks again (#sized). */
+const SIZE_POLL_MS = 25;
+
+/** Whether the frame has been given a viewport size. @param {Window} win */
+function hasSize(win) {
+  const { vw, vh } = viewportSize(win);
+  return vw > 0 && vh > 0;
+}
 
 /**
  * The parent element, stepping out of a shadow root to its host.
@@ -193,6 +204,20 @@ export class VimmaChild extends JSWindowActorChild {
    */
   static _beforeSubmitCheckForTests = null;
 
+  /**
+   * Test-only (browser_vimma_mcp_follow.js): how many hint collections in this process wait for
+   * their page's first size now (#sized), so that a test can act during the wait.
+   */
+  static _sizeWaitsForTests = 0;
+
+  /**
+   * Test-only (browser_vimma_mcp_follow.js): how often, in ms, a collection waiting for its
+   * page's size looks again, instead of SIZE_POLL_MS, so that a test can order two collections.
+   * Read only in automation (`Cu.isInAutomation`); null otherwise.
+   * @type {number | null}
+   */
+  static _sizePollMsForTests = null;
+
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
@@ -237,6 +262,8 @@ export class VimmaChild extends JSWindowActorChild {
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
   #block = new BlockFocus();
+  /** @type {PdfView | null} the pdf.js viewer's adapter, in its top document only */
+  #pdf = null;
   /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
@@ -294,6 +321,8 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   didDestroy() {
+    this.#pdf?.destroy();
+    this.#pdf = null;
     this.#grepEnd();
     this.#block.destroy();
     try {
@@ -302,6 +331,32 @@ export class VimmaChild extends JSWindowActorChild {
       // the document is gone with its selection
     }
     this.#watched = null;
+  }
+
+  /**
+   * The adapter's state or outline message; its timer can fire while the document goes away.
+   * @param {object} data
+   * @param {string} [name]
+   */
+  #sendPdf(data, name = "Vimma:PdfState") {
+    try {
+      this.sendAsyncMessage(name, data);
+    } catch {
+      // the actor is being destroyed: the next document reports for itself
+    }
+  }
+
+  /**
+   * The theme's token sheet for the viewer (docs/specs/pdf-mode.md decision 20; security.md
+   * section 20, V12): the parent answers only the top viewer's current actor.
+   */
+  #askTheme() {
+    this.sendQuery("Vimma:PdfTheme").then(
+      (css) => this.#pdf?.setTheme(css),
+      () => {
+        // the actor went with its document
+      },
+    );
   }
 
   /** Listens to this document's selection (again, if the PresShell replaced it). */
@@ -373,6 +428,20 @@ export class VimmaChild extends JSWindowActorChild {
       }
       case "dragstart":
         this.#dragging = true;
+        return;
+      case "documentloaded":
+      case "pagesloaded":
+        // Only pdf.js's own events (chrome-only, trusted); PdfView.attach checks the principal.
+        if (!event.isTrusted) return;
+        if (this.#pdf) this.#pdf.schedule();
+        else {
+          this.#pdf = PdfView.attach(
+            this,
+            (state) => this.#sendPdf(state),
+            (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
+          );
+          if (this.#pdf) this.#askTheme();
+        }
     }
   }
 
@@ -520,7 +589,29 @@ export class VimmaChild extends JSWindowActorChild {
   receiveMessage(msg) {
     switch (msg.name) {
       case "Vimma:Scroll":
+        // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
+        if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
         return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:PdfTheme":
+        // A theme change (V12): the token sheet again.
+        this.#pdf?.setTheme(msg.data?.css);
+        return undefined;
+      case "Vimma:PdfOp":
+        // An operation name and a number (docs/security.md section 20, V7), checked again by
+        // the adapter; only the top-level viewer has one.
+        this.#pdf?.run(msg.data);
+        return undefined;
+      case "Vimma:PdfWhere":
+        // Where the view is, for a mark (docs/specs/pdf-mode.md decision 11).
+        return this.#pdf?.position() ?? null;
+      case "Vimma:PdfLinkPage": {
+        // `F` on an internal link of the last hints (decision 16): the page it goes to.
+        const { gen, id } = msg.data ?? {};
+        if (!this.#pdf || !isIndex(gen) || !isIndex(id) || gen !== this.#hints.gen) return 0;
+        const el = this.#hints.els[id]?.deref();
+        const pdf = this.#pdf;
+        return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
+      }
       case "Vimma:ScrollFraction": {
         // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
         // scrolls, as a fraction of how far it can go.
@@ -715,22 +806,30 @@ export class VimmaChild extends JSWindowActorChild {
    * (`texts`, docs/specs/mcp-drive.md D12) gets each link's text too; an agent's
    * `vimma_elements` (`elements`, docs/specs/mcp-forms.md F2-F6) gets every kind, disabled
    * controls included, each described, with the frame's forms, and keeps its elements apart from
-   * the user's (F4).
+   * the user's (F4). A top frame without a size yet is given time to get one first (#sized).
    * @param {{ gen: number, linksOnly: boolean, blocks?: boolean, texts?: boolean,
    *   elements?: boolean }} data
    */
-  #collectHints(data) {
+  async #collectHints(data) {
     const gen = data?.gen;
     const win = this.contentWindow;
     if (!isIndex(gen) || !win) return null;
-    const t0 = ChromeUtils.now();
     const elements = data.elements === true;
+    const texts = data.texts === true && !elements;
+    if (!this.browsingContext?.parent && !hasSize(win)) {
+      if (!(await this.#sized(win))) return null;
+      // Collections that wait can end out of order. Generations only grow, so a stored newer
+      // generation means a newer collection of the same kind answered meanwhile; the elements it
+      // stored are the ones the parent acts on, and they stay.
+      const stored = elements ? this.#agentEls : texts ? null : this.#hints;
+      if (stored && stored.gen > gen) return null;
+    }
+    const t0 = ChromeUtils.now();
     const { targets, frames } = collectTargets(win, {
       linksOnly: data.linksOnly === true && !elements,
       blocks: data.blocks === true && !elements,
       disabled: elements,
     });
-    const texts = data.texts === true && !elements;
     // An agent's collection is never followed through the user's targets: the user's targets of
     // this frame stay as they were, and an agent's elements are kept apart.
     if (elements) this.#agentEls = { gen, els: targets.map((t) => new WeakRef(t.el)) };
@@ -751,6 +850,39 @@ export class VimmaChild extends JSWindowActorChild {
       ms: ChromeUtils.now() - t0,
       ...(described ? { forms: described.forms } : {}),
     };
+  }
+
+  /**
+   * Waits, at most HINT_SIZE_WAIT_MS, for this top frame's viewport to have a size; false when
+   * its document went away meanwhile. The parent sends a tab its size after a layout of its
+   * <browser>, and on a busy chrome (its refresh driver waiting on a slow compositor) that can
+   * come after the page loaded: a fresh hidden tab can be complete at 0 by 0, where no element is
+   * on screen, and an agent's `f` there listed no link (#605). Out of time, the page is collected
+   * as it is.
+   * @param {Window} win
+   */
+  async #sized(win) {
+    const doc = win.document;
+    const until = ChromeUtils.now() + HINT_SIZE_WAIT_MS;
+    const test = Cu.isInAutomation ? VimmaChild._sizePollMsForTests : null;
+    const poll = test ?? SIZE_POLL_MS;
+    VimmaChild._sizeWaitsForTests++;
+    try {
+      while (!hasSize(win) && ChromeUtils.now() < until) {
+        // A chrome timer: a hidden tab's page timers are held to one a second.
+        await new Promise((resolve) => lazy.setTimeout(resolve, poll));
+        try {
+          if (!(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc) {
+            return false;
+          }
+        } catch {
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      VimmaChild._sizeWaitsForTests--;
+    }
   }
 
   /**
@@ -1130,6 +1262,14 @@ export class VimmaChild extends JSWindowActorChild {
     if (!!now.submit !== !!named) return false;
     if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
       return false;
+    }
+    // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
+    // click; another call (a fill) may have changed it since, so it is judged again here, just
+    // before it is pressed, and skipped when it no longer passes.
+    if (now.submit && named.check) {
+      const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
+      if (named.check === "harmless" && isConsequential(step)) return false;
+      if (named.check === "allowed" && !mayAllowHere(step)) return false;
     }
     return (now.href ?? null) === (asked.href ?? null);
   }

@@ -12,6 +12,8 @@
 // For the built-in agent's CLI mode (docs/specs/builtin-agent-cli.md, "e2e"): `programs` names
 // files in the checkout the browser finds on its PATH under a given name, a pref value
 // `checkout:<path>` is that path in the checkout, and `type` types a text into the focused input.
+// For app routes (docs/specs/app-routes.md, "Tests"): `external` runs the packaged vimma-open
+// with the given arguments, as another program does, against the browser under test.
 // Names carry the milestone (m<N>-…) or, for regression tests, the issue (issue-<N>-…).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -25,7 +27,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   "agent-result"?: { of: string, expect: unknown }, ctl?: { run: string[], as: string },
  *   "ctl-result"?: { of: string, expect: unknown }, mcp?: McpSend,
  *   "mcp-result"?: { of: string, expect: unknown }, "wait-for-profile-file"?: string,
- *   type?: string,
+ *   type?: string, external?: string[],
  * }} Step
  * @typedef {{ method: string, params?: Record<string, unknown>, as?: string }} McpSend
  * @typedef {{ send: string, args?: Record<string, unknown>, as: string, client?: string }}
@@ -40,6 +42,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   ctlResult: (name: string) => Promise<{ exitCode: number | null, stderr: string }>,
  *   mcpSend: (spec: McpSend) => void,
  *   mcpResult: (name: string) => Promise<unknown>,
+ *   external?: (args: string[]) => Promise<void>,
  * }} Control
  * @typedef {{
  *   name: string, description: string, issue?: number, pending?: string,
@@ -76,6 +79,7 @@ export const STEP_KINDS = Object.freeze([
   "mcp-result",
   "wait-for-profile-file",
   "type",
+  "external",
 ]);
 /** Steps that wait for something and so take `timeoutSeconds`. */
 const WAITS = ["wait-for-state", "wait-for-profile-file"];
@@ -233,6 +237,16 @@ export function validateScenario(s, fileName) {
     }
     if (kind === "type" && (typeof value !== "string" || value === "" || hasControlChar(value))) {
       errors.push(`${at}: type needs a non-empty text without control characters`);
+    }
+    if (
+      kind === "external" &&
+      !(
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((a) => typeof a === "string" && !hasControlChar(a))
+      )
+    ) {
+      errors.push(`${at}: external is vimma-open's arguments, a non-empty array of strings`);
     }
     if ((kind === "wait-for-state" || kind === "assert-state") && !isObject(value)) {
       errors.push(`${at}: ${kind} needs an object to match against state`);
@@ -484,6 +498,10 @@ export async function runSteps(
         const ended = await needControl("ctl-result").ctlResult(of);
         const mismatches = matchState(expect, ended, of);
         if (mismatches.length) throw new Error(mismatches.join("; "));
+      } else if (step.external !== undefined) {
+        const run = needControl("external").external;
+        if (!run) throw new Error("this session cannot run vimma-open");
+        await run(step.external);
       } else if (step.open !== undefined) await ctl.open(step.open);
       else if (step.keys !== undefined) await ctl.sendKeys(step.keys);
       else if (step.type !== undefined) {

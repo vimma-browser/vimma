@@ -530,6 +530,9 @@ tested by `browser_vimma_pane_workspaces.js` (3 tasks).
 - **Undone, with a notice** (`WindowWorkspaces`' notify, the status-bar toast): a wrapper whose
   tabs are in different workspaces (m3 decision 14; `plan.unsplit`'s `console.warn` is gone) and
   a second split in a workspace that has one (shown or parked). Tabs stay where they are.
+  (Since changed: a workspace keeps several splits, made from the side panel's marks; a second
+  split from Firefox's own commands is still undone, and the notice reads `split undone: mark
+tabs in ctrl+b b for another split`; [multiple-splits](multiple-splits.md), decision 18.)
 - **The shown tree's wrapper changed outside Vimma:** dissolved (Firefox's "separate tabs"), the
   panes close and the selected tab stays; a tab taken out closes its pane; a tab added joins on
   the right (core `split`, so within `[panes] max`; another workspace's is dropped by reconcile).

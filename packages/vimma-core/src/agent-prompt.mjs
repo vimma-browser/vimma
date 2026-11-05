@@ -45,7 +45,9 @@ const MAX_COUNT_DIGITS = 4;
  *   for names and titles (<bdi>), `ltr` for URLs; `warn`: a checkpoint's glyph and verb, in the
  *   theme's warning colour (docs/specs/mcp-checkpoints.md C3)
  * @typedef {{ kind: "once" } | { kind: "deny" } | { kind: "mute" }
- *   | { kind: "grant", minutes: number | null }} PromptAnswer
+ *   | { kind: "grant", minutes: number | null }
+ *   | { kind: "here" }} PromptAnswer  `here`: `a` on a form checkpoint that offers it
+ *   (docs/specs/mcp-consequence.md K5)
  */
 
 /** Control characters, line breaks and bidi overrides become spaces: one line, read as is. */
@@ -141,10 +143,11 @@ export const isPage = (q) => q.tool === DOWNLOAD_TOOL && q.label?.client === PAG
 
 /**
  * What a grant leaves asked that a task meets on its way, the checkpoints, as the grant's notice
- * says it the moment the grant is made (docs/specs/mcp-checkpoints.md Behaviour 8). The
+ * says it the moment the grant is made (docs/specs/mcp-checkpoints.md Behaviour 8): paying, and
+ * a form that sends text or personal details (docs/specs/mcp-consequence.md Behaviour 5). The
  * question's hint leaves it out, so that a usual question fits one line.
  */
-export const STILL_ASKS = "sending a form or paying still asks";
+export const STILL_ASKS = "paying and sending text or personal details still ask";
 
 /**
  * A checkpoint's glyph in place of the agent glyph (docs/specs/mcp-checkpoints.md C3): used
@@ -321,7 +324,13 @@ function checkpointLine(q, who) {
   }
   // Issue #584: its yes also returns the page's element list after the step.
   if (w.elements === true) parts.push({ text: ", then vimma_elements" });
-  return { parts, hint: pay ? "y pay · n stop" : "y send it · n stop" };
+  // mcp-consequence K5: under a grant a form that may be allowed for it offers `a`; paying never.
+  const hint = pay
+    ? "y pay · n stop"
+    : w.here
+      ? "y send it · a always here · n stop"
+      : "y send it · n stop";
+  return { parts, hint };
 }
 
 /**
@@ -492,14 +501,16 @@ export function questionLine(q, { grantMinutes, agentWorkspace = AGENT_WORKSPACE
  * one file: `y`, `a` and counts do nothing there.
  * @param {{ count: string }} state  the digits typed so far
  * @param {string} key  core formatKey of the keydown
- * @param {{ full?: boolean, noGrant?: boolean, dangerous?: boolean }} [options]
+ * `here`: a form checkpoint that offers `a` for the rest of the grant (mcp-consequence K5); a
+ * count before it means nothing there.
+ * @param {{ full?: boolean, noGrant?: boolean, dangerous?: boolean, here?: boolean }} [options]
  * @returns {{ kind: "answer", answer: PromptAnswer } | { kind: "count", count: string }
  *   | { kind: "ignore" }}
  */
 export function promptKey(
   { count },
   key,
-  { full = false, noGrant = false, dangerous = false } = {},
+  { full = false, noGrant = false, dangerous = false, here = false } = {},
 ) {
   /** @param {PromptAnswer} answer */
   const say = (answer) => ({ kind: /** @type {const} */ ("answer"), answer });
@@ -508,6 +519,7 @@ export function promptKey(
   if (key === "x") return say(plain ? { kind: "deny" } : { kind: "mute" });
   if (dangerous) return key === "!" ? say({ kind: "once" }) : { kind: "ignore" };
   if (key === "y" || key === "Y" || key === "shift+y") return say({ kind: "once" });
+  if (here && !full && key === "a") return say({ kind: "here" });
   if (plain) return { kind: "ignore" };
   if (key === "a") return say({ kind: "grant", minutes: count ? Number(count) : null });
   if (/^[0-9]$/.test(key)) {
@@ -578,7 +590,7 @@ export function stepText(q) {
                 : q.tool === "vimma_elements"
                   ? `listed the buttons and fields of "${cutTitle(w.title)}"`
                   : q.tool === "vimma_activate"
-                    ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"`
+                    ? `clicked ${clean(w.kind)} "${cutTitle(w.text)}" in "${cutTitle(w.title)}"${sentTo(w)}`
                     : q.tool === "vimma_fill"
                       ? `filled ${fieldCount(w.fields)} in "${cutTitle(w.title)}"`
                       : q.tool === "vimma_screenshot"
@@ -591,6 +603,17 @@ export function stepText(q) {
   const listed = w.elements === true ? " and listed the buttons and fields after it" : "";
   return `${did}${listed}`;
 }
+
+/**
+ * Where a form a click sent under a grant went (docs/specs/mcp-consequence.md Behaviour 1).
+ * @param {Record<string, any>} w
+ */
+const sentTo = (w) =>
+  w.submit && typeof w.submit === "object"
+    ? ` and sent the form to ${clean(w.submit.method).toUpperCase()} ${
+        clean(w.submit.host) || displayUrl(clean(w.submit.action))
+      }`
+    : "";
 
 /**
  * A checkpoint as the built-in agent's transcript keeps it once asked
@@ -653,12 +676,15 @@ const paySite = (pay) => `${clean(pay.site)}${clean(pay.top) ? ` (in ${clean(pay
 /**
  * The notice after a checkpoint's yes (docs/specs/mcp-checkpoints.md Behaviour 6): what the user
  * allowed, where the form goes or where the payment is made. It shows at the answer, before the
- * step runs, so it says what was allowed, not what happened.
- * @param {Asked} q
+ * step runs, so it says what was allowed, not what happened. `here`: the answer was `a`, which
+ * allows that button on that site for the rest of the grant (mcp-consequence Behaviour 4).
+ * @param {Asked} q @param {boolean} [here]
  */
-export function checkpointNotice(q) {
+export function checkpointNotice(q, here = false) {
   const w = q.what ?? {};
   if (w.pay) return `allowed payment on ${paySite(w.pay)}`;
+  if (here && w.here)
+    return `allowed "${cutTitle(w.text)}" on ${clean(w.here.site)} for this grant`;
   const to = clean(w.submit?.host) || displayUrl(clean(w.submit?.action));
   return `allowed sending the form to ${to}`;
 }
@@ -708,6 +734,7 @@ const OUTCOMES = Object.freeze({
   followed: "followed a link",
   "checkpoint-yes": "allowed (checkpoint)",
   "checkpoint-no": "denied (checkpoint)",
+  "checkpoint-here": "allowed (checkpoint, for the grant)",
   failed: "failed",
 });
 

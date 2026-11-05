@@ -21,6 +21,9 @@ const { WindowWorkspaces, WINDOW_KEY } = ChromeUtils.importESModule(
 const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
+const { PaneViews } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/split/PaneView.mjs",
+);
 const { validateMessage, PRIVATE_WORKSPACE_ID } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
@@ -516,6 +519,66 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
     normal.tabs.every((t) => typeof t.url === "string"),
     "and keeps its urls",
   );
+});
+
+// docs/specs/multiple-splits.md: the private workspace keeps several splits too, and
+// `state.splits` names their tabs by id and place only (security.md S9).
+add_task(async function the_private_workspace_keeps_two_splits_and_state_names_no_page() {
+  const [priv] = privateWindows();
+  await SimpleTest.promiseFocus(priv);
+  const view = PaneViews.get(priv);
+  const tabs = [];
+  for (const q of ["ps1", "ps2", "ps3", "ps4", "ps5"]) {
+    const t = BrowserTestUtils.addTab(priv.gBrowser, `${PAGE}&${q}`);
+    await BrowserTestUtils.browserLoaded(t.linkedBrowser);
+    tabs.push(t);
+  }
+  const [a, b, c, d, lone] = tabs;
+  Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
+  priv.gBrowser.selectedTab = lone;
+  Assert.ok(view.showTabs([c, d], c).ok, "S2: c | d, made on a lone tab");
+  await until(() => view.splits.shown === 2, "S2 shows");
+  priv.gBrowser.selectedTab = b;
+  await until(() => view.splits.shown === 1, "picking b shows S1");
+  Assert.deepEqual(
+    view.splits.splits.map((x) => x.number),
+    [1, 2],
+    "both splits are kept",
+  );
+
+  const result = VimmaControl._commands.state();
+  Assert.equal(result.splits.length, 2, "state lists both");
+  // Only these fields, and every string a tab id from `tabs`: no room for a url or a title.
+  const keys = new Set();
+  const strings = [];
+  const walk = (/** @type {any} */ n) => {
+    for (const [k, v] of Object.entries(n)) {
+      keys.add(k);
+      if (typeof v === "string") strings.push(v);
+      else if (v && typeof v === "object") walk(v);
+    }
+  };
+  for (const x of result.splits) walk(x);
+  Assert.deepEqual(
+    [...keys].filter((k) => !/^\d+$/.test(k)).sort(),
+    ["axis", "children", "focus", "index", "number", "ratios", "root", "shown", "tab", "zoomed"],
+    "splits carry structure only",
+  );
+  const ids = new Set(result.tabs.map((t) => t.id));
+  Assert.ok(
+    strings.every((s) => ids.has(s) || s === "x" || s === "y"),
+    "and no string but tab ids and axes: no url or title",
+  );
+  const v = validateMessage(
+    { type: "response", id: 1, ok: true, result },
+    { kind: "response", command: "state" },
+  );
+  Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+  for (const t of tabs) BrowserTestUtils.removeTab(t);
+  await until(() => !view.panes, "no split left");
+  await SpecialPowers.popPrefEnv();
+  Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
+  await SimpleTest.promiseFocus(window);
 });
 
 // A private tab's url and title are withheld, so `loading` is what tells a script (the e2e

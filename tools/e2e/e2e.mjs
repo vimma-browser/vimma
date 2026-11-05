@@ -44,9 +44,11 @@ import {
   DISCOVERY_FILE,
   crashBrowser,
   displayMode,
+  externalWrapper,
   findBuild,
   launch,
   quitBrowser,
+  runVimmaOpen,
   unpackTarball,
   waitForSessionSaved,
 } from "./launcher.mjs";
@@ -178,6 +180,8 @@ async function main() {
         keep: values.keep,
         prefs,
         programs,
+        // The D-Bus remote vimma-open forwards over needs a session bus (Linux only).
+        sessionBus: scenario.steps.some((s) => s.external !== undefined),
         discoveryTimeoutMs,
         signal,
         // registered before the browser starts, so SIGINT during the launch cleans it up
@@ -291,6 +295,16 @@ async function main() {
         mcpSend: (/** @type {any} */ spec) =>
           sessions.mcpSend({ ...spec, ...(spec.params ? { params: fixtures(spec.params) } : {}) }),
         mcpResult: (/** @type {string} */ name) => sessions.mcpResult(name),
+        // vimma-open run as another program runs it; its `vimma` is the build on this profile.
+        external: async (/** @type {string[]} */ args) => {
+          const wrapper = join(session.profile, ".e2e-vimma");
+          const binary = /** @type {import("./launcher.mjs").Build} */ (build).binary;
+          writeFileSync(wrapper, externalWrapper(binary, session.profile), { mode: 0o700 });
+          await runVimmaOpen(
+            args.map((a) => fixtureUrl(a, pages?.base ?? null)),
+            { env: { ...session.env(), VIMMA_BIN: wrapper }, signal },
+          );
+        },
       };
       /** `fixture:` URLs anywhere in an mcp step's params. @param {unknown} v @returns {any} */
       const fixtures = (v) => {

@@ -100,6 +100,10 @@ group("Panes", [
   ["layout_main_horizontal", "pane.layout_main_horizontal", "Layout: main pane on top, rest below"],
   ["layout_tiled", "pane.layout_tiled", "Layout: a grid"],
   ["layout_dwindle", "pane.layout_dwindle", "Layout: a spiral (dwindle)"],
+  // docs/specs/multiple-splits.md decision 13: several splits per workspace.
+  ["split_picker", "pane.split_picker", "Split picker: show one of the workspace's splits"],
+  ["next_split", "pane.next_split", "Show the next split"],
+  ["previous_split", "pane.previous_split", "Show the previous split"],
 ]);
 
 group("Workspaces", [
@@ -197,6 +201,12 @@ group("Browser", [
   ["save_page", "page.save", "Save the page"],
   ["print_page", "page.print", "Print the page"],
   ["downloads", "browser.downloads", "Downloads (the Library)"],
+  // docs/specs/downloads.md decision 2.
+  [
+    "downloads_picker",
+    "downloads.picker",
+    "Downloads picker: open, show in folder, pause, retry, remove",
+  ],
   ["addons_manager", "browser.addons", "Add-ons manager (about:addons)"],
   ["history_library", "browser.history", "History (the Library)"],
   ["bookmarks_library", "browser.bookmarks", "Bookmarks (the Library)"],
@@ -239,6 +249,9 @@ group("Hints", [
   ["follow_link_new_tab", "hint.follow_new_tab", "Follow link in new tab"],
   ["follow_link_new_tab_fg", "hint.follow_new_tab_fg", "Follow link in new tab and switch to it"],
   ["focus_element", "hint.element", "Focus a text block: v selects it, y copies it"],
+  // docs/specs/pdf-mode.md decision 16: zathura's F and c, bound in the PDF viewer.
+  ["show_link_target", "hint.show_target", "Show a link's target without following it"],
+  ["copy_link_target", "hint.copy_target", "Copy a link's target"],
   ["hint_cancel", "hint.cancel", "Leave hint mode"],
 ]);
 
@@ -409,6 +422,59 @@ group("Site", [
 // docs/specs/popup-blocked.md: the pop-up blocked bar's options, from the keyboard.
 group("Pop-ups", [
   ["popup_picker", "popups.picker", "Blocked pop-ups: open one, allow the site, settings"],
+]);
+
+// docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, bound in [modal.pdf].
+group("PDF viewer", [
+  ["pdf_next_page", "pdf.next_page", "Next page (with a count: that many pages)"],
+  ["pdf_previous_page", "pdf.previous_page", "Previous page (with a count: that many pages)"],
+  ["pdf_first_page", "pdf.first_page", "First page; with a count, that page (12gg, :12)"],
+  ["pdf_last_page", "pdf.last_page", "Last page; with a count, that page (12G)"],
+  ["pdf_page_top", "pdf.page_top", "Top of the current page"],
+  ["pdf_page_bottom", "pdf.page_bottom", "Bottom of the current page"],
+  ["pdf_screen_down", "pdf.screen_down", "Scroll a screen down"],
+  ["pdf_zoom_in", "pdf.zoom_in", "Zoom in by 10 % (with a count: that many steps)"],
+  ["pdf_zoom_out", "pdf.zoom_out", "Zoom out by 10 % (with a count: that many steps)"],
+  ["pdf_zoom_set", "pdf.zoom_set", "Zoom to 100 %; with a count, that percent (150=)"],
+  ["pdf_fit_page", "pdf.fit_page", "Fit the whole page, also after a resize"],
+  ["pdf_fit_width", "pdf.fit_width", "Fit the page's width, also after a resize"],
+  ["pdf_dual_page", "pdf.dual_page", "Two pages side by side, or one"],
+  ["pdf_first_page_alone", "pdf.first_page_alone", "Two pages: the first alone, or paired"],
+  ["pdf_single_page", "pdf.single_page", "One page at a time, or scrolling"],
+  ["pdf_rotate", "pdf.rotate", "Rotate the pages 90 degrees clockwise (with a count: n times)"],
+  ["pdf_presentation", "pdf.presentation", "Presentation mode, or leave it"],
+  ["pdf_outline", "pdf.outline", "Open the outline (table of contents) in a panel"],
+  // Decision 11: marks in memory, per document.
+  ["pdf_mark_set", "pdf.mark_set", "Set a mark here: m and a letter or digit", { takesChar: true }],
+  [
+    "pdf_mark_go",
+    "pdf.mark_go",
+    "Go back to a mark: ' and its letter or digit",
+    { takesChar: true },
+  ],
+]);
+
+// docs/specs/pdf-mode.md decision 10: the outline panel's `index` mode, zathura's index keys.
+group("PDF outline", [
+  ["index_down", "index.down", "Outline: next entry"],
+  ["index_up", "index.up", "Outline: previous entry"],
+  ["index_expand", "index.expand", "Outline: expand the entry"],
+  ["index_collapse", "index.collapse", "Outline: collapse the entry, or go to its parent"],
+  ["index_expand_subtree", "index.expand_subtree", "Outline: expand the entry and all under it"],
+  [
+    "index_collapse_subtree",
+    "index.collapse_subtree",
+    "Outline: collapse the entry and all under it",
+  ],
+  ["index_expand_all", "index.expand_all", "Outline: expand every entry"],
+  ["index_collapse_all", "index.collapse_all", "Outline: collapse every entry"],
+  ["index_first", "index.first", "Outline: first entry"],
+  ["index_last", "index.last", "Outline: last entry"],
+  ["index_half_down", "index.half_down", "Outline: down half the entries shown"],
+  ["index_half_up", "index.half_up", "Outline: up half the entries shown"],
+  ["index_follow", "index.follow", "Outline: go to the entry and close the outline"],
+  ["index_close", "index.close", "Outline: close it (in the filter: back to the whole outline)"],
+  ["index_filter", "index.filter", "Outline: filter the entries by their titles"],
 ]);
 
 /** @type {readonly ActionDef[]} */

@@ -238,7 +238,9 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
     flag. The session snapshot writes `panes.hidden: true` and the workspace's `alone` (the tab
     shown alone). `activeTab` stays the focused pane's tab, so an older Vimma reading the file
     restores the split shown instead of failing; this Vimma restores the view hidden with `alone`
-    selected.
+    selected. (Since changed: a workspace keeps several splits, and the snapshot writes them all
+    in `splits` with `shown`, keeping `panes` and `activeTab` for an older Vimma;
+    [multiple-splits](multiple-splits.md), decision 15.)
 25. **The side panel's `Enter`** (replaces the first version's 3 "one marked: that tab is shown
     alone" and 12 where they differ). It applies the mark changes, then goes to the highlighted
     row:
@@ -260,17 +262,30 @@ Decisions 1–11 follow the goal above. Decisions 12–19 are the answers to the
     panel".)
 
 26. **The panel and a hidden view.** The panel lists a hidden view's tabs marked, as a shown one's,
-    and the header says `split: 3 panes (hidden)` while the marks match it.
+    and the header says `split: 3 panes (hidden)` while the marks match it. (Since changed: on a
+    tab shown alone nothing starts marked, because marks there start a new split; the header
+    still says `split: 3 panes (hidden)` with one split and `3 splits (none shown)` with several;
+    [multiple-splits](multiple-splits.md), decision 9 and behaviour 6.)
 27. **The status bar** shows `split 3 hidden` where `pane n/m` would be, while the workspace has a
-    hidden view (dim, cut first when space is short).
+    hidden view (dim, cut first when space is short). (Since changed: with several splits it shows
+    `3 splits hidden`, and `S2 pane 1/3` while one shows; [multiple-splits](multiple-splits.md),
+    decision 14.)
 28. **`vimma-ctl state`** gives `panes.hidden: true` for a hidden view (`false` otherwise; the
-    control protocol spec says so).
+    control protocol spec says so). (Since changed: `state.splits` lists every split of the
+    workspace; `panes` keeps this meaning; [multiple-splits](multiple-splits.md), "Control
+    protocol".)
 29. **Pane keys while a view is hidden** act on the tab shown alone as on a single pane: the
     `<C-w>` family is not runnable (so `ctrl+w` passes to Firefox), `ctrl+b x` / `:q` close the
     tab, `ctrl+b space` says "only one pane". `ctrl+b v` / `-` / `enter` are refused with "the
     split is hidden: go to one of its tabs first", so a second split never replaces the hidden
     one. Splitting the shown tab and dropping or merging the hidden view was rejected:
     refusing loses nothing.
+    (Since changed: the refusal reads "the split is hidden: select one of its tabs (ctrl+b b) to
+    go back" and stays until the next key;
+    [multiple-splits](multiple-splits.md), decision 4.) (Since changed again: it names the split
+    and the keys back, "split S2 is hidden: ]s or ctrl+b S to go back, or mark tabs in ctrl+b b
+    for a new split", and a second split is made from the side panel's marks;
+    [multiple-splits](multiple-splits.md), decisions 4 and 5.)
 
 ### Behaviour changes (option B)
 

@@ -92,7 +92,7 @@ function lastToolText(messages) {
  * @param {any[]} messages
  * @returns {Array<{ text: string, upTo: any[] }>}
  */
-function lastTurnResults(messages) {
+export function lastTurnResults(messages) {
   /** @type {Array<{ text: string, upTo: any[] }>} */
   const out = [];
   for (let i = messages.length - 1; i >= 0 && messages[i].role === "tool"; i--)
@@ -101,9 +101,14 @@ function lastTurnResults(messages) {
 }
 
 /**
- * The first button whose text matches, from an element list: one JSON object a line. With
- * `labels`, only one of those.
- * @param {string} text @param {RegExp} match @param {Set<string>} [labels]
+ * @typedef {RegExp | ((el: Record<string, any>) => boolean)} ButtonMatch  a button's text, or a
+ *   test of the whole element line
+ */
+
+/**
+ * The first button that matches, from an element list: one JSON object a line. With `labels`,
+ * only one of those.
+ * @param {string} text @param {ButtonMatch} match @param {Set<string>} [labels]
  */
 function buttonIn(text, match, labels) {
   for (const line of text.split("\n")) {
@@ -111,7 +116,9 @@ function buttonIn(text, match, labels) {
     try {
       const el = JSON.parse(line);
       if (labels && !labels.has(String(el.label))) continue;
-      if (el.kind === "button" && match.test(String(el.text ?? ""))) return String(el.label);
+      if (el.kind !== "button") continue;
+      if (typeof match === "function" ? match(el) : match.test(String(el.text ?? "")))
+        return String(el.label);
     } catch {
       // not an element line
     }
@@ -123,11 +130,11 @@ function buttonIn(text, match, labels) {
 const REPEATED = /^\(\d+ elements? as in your last list of this site: ([a-z, ]+)\)$/m;
 
 /**
- * The label of the first button whose text matches in the newest list: written in it, or left
- * out as in an earlier list of the site, whose line the newest of the earlier results gives.
- * @param {string} text @param {RegExp} match @param {any[]} [messages]
+ * The label of the first button that matches in the newest list: written in it, or left out as
+ * in an earlier list of the site, whose line the newest of the earlier results gives.
+ * @param {string} text @param {ButtonMatch} match @param {any[]} [messages]
  */
-function findLabel(text, match, messages = []) {
+export function findLabel(text, match, messages = []) {
   const found = buttonIn(text, match);
   const repeated = REPEATED.exec(text);
   if (found || !repeated) return found;

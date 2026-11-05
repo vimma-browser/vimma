@@ -3,7 +3,19 @@
   "generated": "Generated from packages/vimma-core/src/actions.mjs and defaults.mjs by npm run gen-docs; do not edit.",
   "prefix": "ctrl+b",
   "legend": "prefix = ctrl+b",
-  "modes": ["normal", "insert", "visual", "command", "hint", "element", "help", "panel", "resize"],
+  "modes": [
+    "normal",
+    "insert",
+    "visual",
+    "command",
+    "hint",
+    "element",
+    "help",
+    "panel",
+    "resize",
+    "index",
+    "pdf"
+  ],
   "groups": [
     {
       "name": "Help",
@@ -648,6 +660,36 @@
           "name": "layout_dwindle",
           "description": "Layout: a spiral (dwindle)",
           "keys": []
+        },
+        {
+          "name": "split_picker",
+          "description": "Split picker: show one of the workspace's splits",
+          "keys": [
+            {
+              "keys": "ctrl+b shift+s",
+              "chords": ["ctrl+b", "shift+s"]
+            }
+          ]
+        },
+        {
+          "name": "next_split",
+          "description": "Show the next split",
+          "keys": [
+            {
+              "keys": "]s",
+              "chords": ["]s"]
+            }
+          ]
+        },
+        {
+          "name": "previous_split",
+          "description": "Show the previous split",
+          "keys": [
+            {
+              "keys": "[s",
+              "chords": ["[s"]
+            }
+          ]
         }
       ]
     },
@@ -981,6 +1023,11 @@
             {
               "keys": "r",
               "chords": ["r"]
+            },
+            {
+              "keys": "R",
+              "chords": ["R"],
+              "mode": "pdf"
             }
           ]
         },
@@ -1049,6 +1096,11 @@
             {
               "keys": "yy",
               "chords": ["yy"]
+            },
+            {
+              "keys": "Y",
+              "chords": ["Y"],
+              "mode": "pdf"
             }
           ]
         },
@@ -1261,6 +1313,16 @@
             {
               "keys": "ctrl+shift+y",
               "chords": ["ctrl+shift+y"]
+            }
+          ]
+        },
+        {
+          "name": "downloads_picker",
+          "description": "Downloads picker: open, show in folder, pause, retry, remove",
+          "keys": [
+            {
+              "keys": "ctrl+b d",
+              "chords": ["ctrl+b", "d"]
             }
           ]
         },
@@ -1610,6 +1672,28 @@
               "keys": "F",
               "chords": ["F"],
               "mode": "element"
+            }
+          ]
+        },
+        {
+          "name": "show_link_target",
+          "description": "Show a link's target without following it",
+          "keys": [
+            {
+              "keys": "F",
+              "chords": ["F"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "copy_link_target",
+          "description": "Copy a link's target",
+          "keys": [
+            {
+              "keys": "c",
+              "chords": ["c"],
+              "mode": "pdf"
             }
           ]
         },
@@ -2677,6 +2761,491 @@
           "name": "popup_picker",
           "description": "Blocked pop-ups: open one, allow the site, settings",
           "keys": []
+        }
+      ]
+    },
+    {
+      "name": "PDF viewer",
+      "actions": [
+        {
+          "name": "pdf_next_page",
+          "description": "Next page (with a count: that many pages)",
+          "keys": [
+            {
+              "keys": "J",
+              "chords": ["J"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_previous_page",
+          "description": "Previous page (with a count: that many pages)",
+          "keys": [
+            {
+              "keys": "K",
+              "chords": ["K"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_first_page",
+          "description": "First page; with a count, that page (12gg, :12)",
+          "keys": [
+            {
+              "keys": "gg",
+              "chords": ["gg"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_last_page",
+          "description": "Last page; with a count, that page (12G)",
+          "keys": [
+            {
+              "keys": "G",
+              "chords": ["G"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_page_top",
+          "description": "Top of the current page",
+          "keys": [
+            {
+              "keys": "H",
+              "chords": ["H"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "P",
+              "chords": ["P"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_page_bottom",
+          "description": "Bottom of the current page",
+          "keys": [
+            {
+              "keys": "L",
+              "chords": ["L"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_screen_down",
+          "description": "Scroll a screen down",
+          "keys": [
+            {
+              "keys": "ctrl+f",
+              "chords": ["ctrl+f"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_zoom_in",
+          "description": "Zoom in by 10 % (with a count: that many steps)",
+          "keys": [
+            {
+              "keys": "+",
+              "chords": ["+"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zi",
+              "chords": ["zi"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zI",
+              "chords": ["zI"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_zoom_out",
+          "description": "Zoom out by 10 % (with a count: that many steps)",
+          "keys": [
+            {
+              "keys": "-",
+              "chords": ["-"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zo",
+              "chords": ["zo"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zO",
+              "chords": ["zO"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_zoom_set",
+          "description": "Zoom to 100 %; with a count, that percent (150=)",
+          "keys": [
+            {
+              "keys": "=",
+              "chords": ["="],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zz",
+              "chords": ["zz"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "zZ",
+              "chords": ["zZ"],
+              "mode": "pdf"
+            },
+            {
+              "keys": "z0",
+              "chords": ["z0"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_fit_page",
+          "description": "Fit the whole page, also after a resize",
+          "keys": [
+            {
+              "keys": "a",
+              "chords": ["a"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_fit_width",
+          "description": "Fit the page's width, also after a resize",
+          "keys": [
+            {
+              "keys": "s",
+              "chords": ["s"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_dual_page",
+          "description": "Two pages side by side, or one",
+          "keys": [
+            {
+              "keys": "d",
+              "chords": ["d"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_first_page_alone",
+          "description": "Two pages: the first alone, or paired",
+          "keys": [
+            {
+              "keys": "D",
+              "chords": ["D"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_single_page",
+          "description": "One page at a time, or scrolling",
+          "keys": [
+            {
+              "keys": "w",
+              "chords": ["w"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_rotate",
+          "description": "Rotate the pages 90 degrees clockwise (with a count: n times)",
+          "keys": [
+            {
+              "keys": "r",
+              "chords": ["r"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_presentation",
+          "description": "Presentation mode, or leave it",
+          "keys": [
+            {
+              "keys": "f5",
+              "chords": ["f5"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_outline",
+          "description": "Open the outline (table of contents) in a panel",
+          "keys": [
+            {
+              "keys": "tab",
+              "chords": ["tab"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_mark_set",
+          "description": "Set a mark here: m and a letter or digit",
+          "keys": [
+            {
+              "keys": "m",
+              "chords": ["m"],
+              "mode": "pdf"
+            }
+          ]
+        },
+        {
+          "name": "pdf_mark_go",
+          "description": "Go back to a mark: ' and its letter or digit",
+          "keys": [
+            {
+              "keys": "'",
+              "chords": ["'"],
+              "mode": "pdf"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "PDF outline",
+      "actions": [
+        {
+          "name": "index_down",
+          "description": "Outline: next entry",
+          "keys": [
+            {
+              "keys": "j",
+              "chords": ["j"],
+              "mode": "index"
+            },
+            {
+              "keys": "down",
+              "chords": ["down"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_up",
+          "description": "Outline: previous entry",
+          "keys": [
+            {
+              "keys": "k",
+              "chords": ["k"],
+              "mode": "index"
+            },
+            {
+              "keys": "up",
+              "chords": ["up"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand",
+          "description": "Outline: expand the entry",
+          "keys": [
+            {
+              "keys": "l",
+              "chords": ["l"],
+              "mode": "index"
+            },
+            {
+              "keys": "zo",
+              "chords": ["zo"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse",
+          "description": "Outline: collapse the entry, or go to its parent",
+          "keys": [
+            {
+              "keys": "h",
+              "chords": ["h"],
+              "mode": "index"
+            },
+            {
+              "keys": "zc",
+              "chords": ["zc"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand_subtree",
+          "description": "Outline: expand the entry and all under it",
+          "keys": [
+            {
+              "keys": "zO",
+              "chords": ["zO"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse_subtree",
+          "description": "Outline: collapse the entry and all under it",
+          "keys": [
+            {
+              "keys": "zC",
+              "chords": ["zC"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_expand_all",
+          "description": "Outline: expand every entry",
+          "keys": [
+            {
+              "keys": "L",
+              "chords": ["L"],
+              "mode": "index"
+            },
+            {
+              "keys": "zR",
+              "chords": ["zR"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_collapse_all",
+          "description": "Outline: collapse every entry",
+          "keys": [
+            {
+              "keys": "H",
+              "chords": ["H"],
+              "mode": "index"
+            },
+            {
+              "keys": "zM",
+              "chords": ["zM"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_first",
+          "description": "Outline: first entry",
+          "keys": [
+            {
+              "keys": "gg",
+              "chords": ["gg"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_last",
+          "description": "Outline: last entry",
+          "keys": [
+            {
+              "keys": "G",
+              "chords": ["G"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_half_down",
+          "description": "Outline: down half the entries shown",
+          "keys": [
+            {
+              "keys": "ctrl+d",
+              "chords": ["ctrl+d"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_half_up",
+          "description": "Outline: up half the entries shown",
+          "keys": [
+            {
+              "keys": "ctrl+u",
+              "chords": ["ctrl+u"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_follow",
+          "description": "Outline: go to the entry and close the outline",
+          "keys": [
+            {
+              "keys": "enter",
+              "chords": ["enter"],
+              "mode": "index"
+            },
+            {
+              "keys": "space",
+              "chords": ["space"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_close",
+          "description": "Outline: close it (in the filter: back to the whole outline)",
+          "keys": [
+            {
+              "keys": "tab",
+              "chords": ["tab"],
+              "mode": "index"
+            },
+            {
+              "keys": "esc",
+              "chords": ["esc"],
+              "mode": "index"
+            },
+            {
+              "keys": "ctrl+[",
+              "chords": ["ctrl+["],
+              "mode": "index"
+            },
+            {
+              "keys": "q",
+              "chords": ["q"],
+              "mode": "index"
+            }
+          ]
+        },
+        {
+          "name": "index_filter",
+          "description": "Outline: filter the entries by their titles",
+          "keys": [
+            {
+              "keys": "/",
+              "chords": ["/"],
+              "mode": "index"
+            }
+          ]
         }
       ]
     }

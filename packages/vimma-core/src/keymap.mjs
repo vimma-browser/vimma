@@ -9,6 +9,7 @@
 import { resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "./defaults.mjs";
+import { insertEditCommand } from "./editable.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
   KeyNotationError,
@@ -18,7 +19,7 @@ import {
   parseBinding,
   parseKey,
 } from "./keys.mjs";
-import { MODES, isMode } from "./modes.mjs";
+import { MODES, isKeymapTable } from "./modes.mjs";
 import { formatPath } from "./toml.mjs";
 
 /** @import { Chord } from "./keys.mjs" */
@@ -26,6 +27,24 @@ import { formatPath } from "./toml.mjs";
 /** @import { ActionDef } from "./actions.mjs" */
 /** @import { Mode } from "./modes.mjs" */
 /** @import { UserConfig } from "./defaults.mjs" */
+/** @import { Context } from "./modes.mjs" */
+
+/**
+ * A trie the keymap builds: one per mode, and `pdf` for normal mode in the pdf context
+ * (docs/adr/024-keymap-contexts.md).
+ * @typedef {Mode | "pdf"} KeymapTarget
+ */
+
+/** @type {readonly KeymapTarget[]} */
+const TARGETS = Object.freeze([...MODES, "pdf"]);
+
+/**
+ * The modes whose keys type into a text field: a page's field or the address bar, the `:` line,
+ * the help overlay's filter. Vim's text-field keys there are the field's before a default
+ * [keys] binding (docs/specs/key-handling-batch.md § 2).
+ * @type {readonly KeymapTarget[]}
+ */
+const TEXT_FIELD_MODES = Object.freeze(["insert", "command", "help"]);
 
 /**
  * @typedef {object} TrieNode
@@ -42,7 +61,7 @@ import { formatPath } from "./toml.mjs";
  * @property {Chord[]} chords
  * @property {string[]} labels
  * @property {"keys" | "modal"} layer
- * @property {Set<Mode>} modes
+ * @property {Set<KeymapTarget>} modes  the modes it is bound in, and `pdf` for normal mode's pdf context
  * @property {boolean} user       written in the user's config, not a default
  */
 
@@ -125,6 +144,13 @@ function asList(v, path) {
 }
 
 /**
+ * @param {Mode} mode
+ * @param {Context} context
+ * @returns {KeymapTarget}
+ */
+const target = (mode, context) => (mode === "normal" && context === "pdf" ? "pdf" : mode);
+
+/**
  * @param {UserConfig} [user]
  * @param {{ mac?: boolean }} [options]  macOS's default keys (defaults.mjs MAC_KEYS) and inventory
  */
@@ -194,8 +220,8 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       // A leader binding works in the side panel too: `<leader>n` closes what it opened
       // (m3-workspaces 6). The panel takes plain keys itself, so a leader there types nothing.
       const leader = !!first && "special" in first && first.special === "leader";
-      /** @type {Mode[]} */
-      const modes = global ? [...MODES] : leader ? ["normal", "panel"] : ["normal"];
+      /** @type {KeymapTarget[]} */
+      const modes = global ? [...TARGETS] : leader ? ["normal", "panel", "pdf"] : ["normal", "pdf"];
       const { chords, labels } = concretise(els);
       entries.push({
         text,
@@ -213,15 +239,15 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
   // [modal.<mode>] layer: user entries are merged over default entries per sequence.
   for (const key of Object.keys(userModal)) {
     if (["leader", "timeout_ms", "hint_chars", "insert_editing"].includes(key)) continue;
-    if (!isMode(key)) {
+    if (!isKeymapTable(key)) {
       throw new KeymapError(
         `unknown mode "${key}"`,
         formatPath(["modal", key]),
-        MODES.find((m) => m[0] === key[0]),
+        TARGETS.find((m) => m[0] === key[0]),
       );
     }
   }
-  for (const mode of MODES) {
+  for (const mode of TARGETS) {
     /** @type {Map<string, Entry>} */
     const bySeq = new Map();
     const tables = [
@@ -236,6 +262,10 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
           ? commandOrThrow(value, path, commandDefs)
           : resolveOrThrow(value, path);
         const { chords, labels } = concretise(notation(() => parseBinding(text), path));
+        // The prefix layer must work in every mode and context (pdf-mode decision 5).
+        if (mode === "pdf" && chords[0] && formatKey(chords[0]) === formatKey(prefix)) {
+          throw new KeymapError("[modal.pdf] cannot bind the prefix", path);
+        }
         const seq = chords.map(formatKey).join(" ");
         const prev = bySeq.get(seq);
         if (isUser) {
@@ -251,27 +281,60 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
           chords,
           labels,
           layer: "modal",
-          modes: new Set([mode]),
+          // Normal mode's bindings are the pdf context's too, under [modal.pdf].
+          modes: new Set(mode === "normal" ? ["normal", "pdf"] : [mode]),
           user: isUser,
         });
       }
     }
     for (const e of bySeq.values()) {
-      // A modal binding shadows a [keys] binding with the same sequence in its mode.
-      for (const k of entries) if (k.layer === "keys" && k.seq === e.seq) k.modes.delete(mode);
+      // A modal binding shadows a [keys] binding with the same sequence in its mode; normal's
+      // shadows it in the pdf context too, and [modal.pdf] shadows normal's there.
+      for (const k of entries) {
+        if (k.seq !== e.seq) continue;
+        if (mode === "pdf") k.modes.delete("pdf");
+        else if (k.layer === "keys") for (const m of e.modes) k.modes.delete(m);
+      }
       entries.push(e);
+    }
+  }
+
+  // Vim's text-field keys (docs/specs/key-handling-batch.md § 2, decision on ctrl+j and ctrl+m):
+  // a default [keys] binding on one, such as ctrl+m (mute_tab) and ctrl+j (web_search), which
+  // carry Firefox's meaning, is not bound in the modes that type into a text field, so the key
+  // is the field's there, as in Vim. A binding the user added stays and wins, as for ctrl+w; one
+  // that repeats the default (a config.toml copied from defaults.toml) is still the default.
+  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
+  if (insertEditing !== false) {
+    /** @type {Set<string>} action name and sequence of each default [keys] binding */
+    const defaults = new Set();
+    for (const [name, value] of Object.entries(defKeys)) {
+      if (name === "prefix") continue;
+      for (const text of asList(value, formatPath(["keys", name]))) {
+        const { chords } = concretise(notation(() => parseBinding(text), name));
+        defaults.add(`${name} ${chords.map(formatKey).join(" ")}`);
+      }
+    }
+    for (const e of entries) {
+      if (e.layer !== "keys" || !e.chords[0]) continue;
+      if (e.user && !defaults.has(`${e.action.name} ${e.seq}`)) continue;
+      if (!insertEditCommand(formatKey(e.chords[0]), { mac })) continue;
+      for (const m of TEXT_FIELD_MODES) e.modes.delete(m);
     }
   }
 
   // [unbind]
   for (const [mode, list] of Object.entries(user.unbind ?? {})) {
     const path = formatPath(["unbind", mode]);
-    if (!isMode(mode)) throw new KeymapError(`unknown mode "${mode}"`, path);
+    if (!isKeymapTable(mode)) throw new KeymapError(`unknown mode "${mode}"`, path);
     asList(list, path).forEach((text, i) => {
       const els = notation(() => parseBinding(text), formatPath(["unbind", mode, i]));
       const seq = concretise(els).chords.map(formatKey).join(" ");
       for (const e of entries) {
-        if (e.seq === seq && e.modes.delete(mode)) overridden.add(e.action.name);
+        if (e.seq !== seq || !e.modes.delete(mode)) continue;
+        // Unbound in normal mode is unbound in its pdf context too.
+        if (mode === "normal") e.modes.delete("pdf");
+        overridden.add(e.action.name);
       }
     });
   }
@@ -301,12 +364,12 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     }
   });
 
-  // Build one trie per mode; detect conflicts within a mode.
+  // Build one trie per mode and one for the pdf context; detect conflicts within each.
   /** @type {Record<string, TrieNode>} */
   const tries = {};
   /** @type {Record<string, Entry[]>} */
   const perMode = {};
-  for (const mode of MODES) {
+  for (const mode of TARGETS) {
     /** @type {Map<string, Entry>} */
     const seen = new Map();
     for (const e of entries) {
@@ -314,7 +377,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       const prev = seen.get(e.seq);
       if (prev && prev.action !== e.action) {
         throw new KeymapError(
-          `"${e.text}" is already bound to ${prev.action.name} in ${mode} mode`,
+          `"${e.text}" is already bound to ${prev.action.name} in ${mode === "pdf" ? "the pdf context" : `${mode} mode`}`,
           `keys.${e.action.name}`,
         );
       }
@@ -349,7 +412,7 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     const out = [];
     for (const e of entries) {
       if (e.action.name !== name || e.modes.size === 0) continue;
-      const mode = /** @type {Mode} */ ([...e.modes][0]);
+      const mode = /** @type {KeymapTarget} */ ([...e.modes][0]);
       const keys = show(e.text);
       const text = e.layer === "modal" && mode !== "normal" ? `${keys} [${mode}]` : keys;
       if (!out.includes(text)) out.push(text);
@@ -361,11 +424,21 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
     prefix,
     leader,
     timeoutMs,
-    /** @param {Mode} mode */
-    trie: (mode) => /** @type {TrieNode} */ (tries[mode]),
-    /** @param {Mode} mode */
-    sequences: (mode) =>
-      /** @type {Entry[]} */ (perMode[mode]).map((e) => ({ seq: e.seq, name: e.action.name })),
+    /**
+     * The trie a key is looked up in: the mode's, or the pdf context's in normal mode.
+     * @param {Mode} mode
+     * @param {Context} [context]
+     */
+    trie: (mode, context = "page") => /** @type {TrieNode} */ (tries[target(mode, context)]),
+    /**
+     * @param {Mode} mode
+     * @param {Context} [context]
+     */
+    sequences: (mode, context = "page") =>
+      /** @type {Entry[]} */ (perMode[target(mode, context)]).map((e) => ({
+        seq: e.seq,
+        name: e.action.name,
+      })),
     /**
      * Binding texts as written in config. Modal bindings outside normal mode carry their mode.
      * @param {string} name

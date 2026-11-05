@@ -1,0 +1,24 @@
+# issue-635-app-routes: two workspaces, a rule for the program `teams` and one for the fixture
+# server's host, which a link from any other program matches.
+schema = 2
+
+# The first workspace, shown at the start.
+[workspaces.home]
+color = "green"
+icon = "tree"
+
+[workspaces.work]
+color = "blue"
+icon = "briefcase"
+
+[workspaces.admin]
+color = "red"
+icon = "fence"
+
+[[routes]]
+app = "teams"
+workspace = "work"
+
+[[routes]]
+domain = "127.0.0.1"
+workspace = "admin"
