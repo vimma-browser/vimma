@@ -3,11 +3,14 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- The promo video: the page link hints lead to (http://handbook.example/panes.html), where
-     the video then searches for "pane" with /. -->
+     the video scrolls, searches for "pane" with / and opens the link marked
+     data-promo="target" in a background tab with gF. With #probe the page titles itself with
+     that link's hint label (probe.js); a `z` then loads the clean page. -->
 <html lang="en">
   <meta charset="utf-8" />
   <title>Panes, the tmux way · Handbook</title>
   <link rel="stylesheet" href="promo.css" />
+  <script type="module" src="probe.js"></script>
   <header class="site">
     <a class="brand" href="modal-browsing.html">handbook.example</a>
     <a href="modal-browsing.html#notes">Notes</a>
@@ -21,7 +24,9 @@
     <p>
       A pane is a page that shares the window. Split once and the docs sit next to the code review;
       split again and the dashboard joins them. Each pane keeps its own mode, its own scroll
-      position and its own history.
+      position and its own history. The
+      <a data-promo="target" href="modal-browsing.html#layouts">layout cheat sheet</a> lists every
+      split on one page.
     </p>
     <p>
       The prefix does the work: <code>ctrl+b v</code> splits right, <code>ctrl+b -</code> splits
@@ -35,6 +40,35 @@
     </p>
     <p>
       Close a pane and its tab stays; zoom a pane and the others wait, exactly where you left them.
+    </p>
+    <h2>Layouts that build themselves</h2>
+    <p>
+      tmux names its layouts, and so does the browser: even rows, even columns, a main pane with the
+      rest stacked beside it, and a tiled grid. One key cycles through them, so the pane you read
+      stays where your eyes are while the others make room.
+    </p>
+    <p>
+      A dwindle spiral splits the longer side each time. Four pages fit a laptop screen without a
+      single drag, and a fifth halves the smallest pane rather than the one you are reading.
+    </p>
+    <h2>Moving between panes</h2>
+    <p>
+      The same four keys that move the cursor in the editor move the focus between panes. The
+      focused pane wears the theme's accent on its border, so you always know which page the next
+      key goes to.
+    </p>
+    <p>
+      Resizing is a mode of its own: enter it, tap a direction until the split feels right, and
+      leave it again. Nothing to aim at, no border to grab.
+    </p>
+    <h2>When a pane is done</h2>
+    <p>
+      Closing a pane never closes its tab. The page goes back to the tab list, scrolled where you
+      left it, and the remaining panes grow to fill the space.
+    </p>
+    <p>
+      Break a pane out into a tab of its own, or bring a tab back in as a pane: the layout is a
+      tree, and a tree is easy to rearrange from the keyboard.
     </p>
   </main>
 </html>

@@ -9,7 +9,42 @@ export const HOSTS = Object.freeze({
   wiki: "http://wiki.example/",
   notes: "http://notes.example/",
   tracker: "http://tracker.example/",
+  /** the agent bench's stand-in shop (tools/agent-bench/shop.mjs), for the agent shot */
+  shop: "http://shop.example/",
 });
+
+/**
+ * A vimma-core module as the fixture server serves it next to probe.js: the server serves
+ * `.js` as a script and nothing as `.mjs`, so each relative `./name.mjs` import becomes
+ * `./name.js`. `imports` names those modules, which the recorder serves the same way.
+ * @param {string} text
+ * @returns {{ text: string, imports: string[] }}
+ */
+export function servedModule(text) {
+  /** @type {string[]} */
+  const imports = [];
+  const out = text.replace(/(from\s+["']\.\/)([\w-]+)\.mjs(["'])/g, (_, head, name, tail) => {
+    imports.push(name);
+    return `${head}${name}.js${tail}`;
+  });
+  return { text: out, imports };
+}
+
+/**
+ * Where the recorder's proxy sends a request: the server `routes` names for its host (the shop,
+ * the scripted model), else the fixture pages. A proxy gets an absolute URL; a request sent
+ * straight to it has only a path, and its Host header names the host.
+ * @param {string} url the request line's target
+ * @param {string} host the Host header
+ * @param {Record<string, string>} routes host (with any port) → origin of its server
+ * @param {string} fallback origin of the fixture pages
+ * @returns {{ origin: string, path: string }}
+ */
+export function proxyRoute(url, host, routes, fallback) {
+  const parsed = new URL(url, `http://${host || "localhost"}`);
+  const origin = Object.hasOwn(routes, parsed.host) ? routes[parsed.host] : fallback;
+  return { origin: /** @type {string} */ (origin), path: `${parsed.pathname}${parsed.search}` };
+}
 
 /**
  * @param {string} text e.g. "1920x1080"
@@ -91,15 +126,20 @@ export function promoPrefs({ port, themeDir, configPath, scale }) {
  * "dark" pins the built-in palette's dark variant, whatever light or dark the system reports;
  * and `[ui] toolbar` when given: "hidden" records the page up to the window's top edge, with
  * only the status bar around it. Without `name` the build's default built-in shows. `schema = 2`: `[theme] name` is a
- * schema-2 key.
+ * schema-2 key. With `agent`, the chat window's provider: one OpenAI-compatible endpoint on this
+ * machine, as a user lists a local server, and the default for new conversations.
  * @param {{ source: "file" | "omarchy", name: string | null, appearance?: "dark" | "light",
- *   toolbar?: "hidden" | "shown" }} options
+ *   toolbar?: "hidden" | "shown", agent?: { endpoint: string, model: string } }} options
  */
-export function promoConfig({ source, name, appearance, toolbar }) {
+export function promoConfig({ source, name, appearance, toolbar, agent }) {
   const lines = ["schema = 2", "", "[theme]", `source = "${source}"`];
   if (name) lines.push(`name = "${name}"`);
   if (appearance) lines.push(`appearance = "${appearance}"`);
   if (toolbar) lines.push("", "[ui]", `toolbar = "${toolbar}"`);
+  if (agent) {
+    lines.push("", "[agent]", 'default = "local"', "", "[[agent.providers]]", 'name = "local"');
+    lines.push('kind = "openai"', `endpoint = "${agent.endpoint}"`, `model = "${agent.model}"`);
+  }
   return `${lines.join("\n")}\n`;
 }
 

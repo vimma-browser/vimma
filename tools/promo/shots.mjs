@@ -4,10 +4,12 @@
 // that let a viewer follow (a multiple of --pace). `theme` is the shot's `[theme] source`:
 // "file" (the default) shows the built-in palette, "omarchy" the recorder's temp theme
 // directory, which starts empty, so the built-in palette shows there too until a shot sets one.
+import { PROMO_TASK } from "./agent.mjs";
 import { HOSTS } from "./promo.mjs";
 
 const ARTICLE = `${HOSTS.handbook}modal-browsing.html`;
 const ARTICLE_TITLE = "Leave the mouse in the drawer · Handbook";
+const PANES = `${HOSTS.handbook}panes.html`;
 const PANES_TITLE = "Panes, the tmux way · Handbook";
 const NEWS = `${HOSTS.news}front.html`;
 const NEWS_TITLE = "Front page · news.example";
@@ -24,19 +26,11 @@ const INCIDENT_TITLE = "INC-1187 Checkout slow after deploy · Tracker";
 const STANDUP = `${HOSTS.notes}standup.html`;
 const STANDUP_TITLE = "Standup, Tuesday · Notes";
 const START_URL = "chrome://browser/content/vimma/start/start.html";
-const ADDONS = "about:addons";
-const ADDONS_TITLE = "Add-ons Manager";
-/**
- * The hint label of "Themes" in about:addons' sidebar, on the extensions view of a profile with
- * none installed (promoPrefs opens it there): in reading order the skip link, the search box,
- * its button, the gear, Extensions, then Themes. The page is Firefox's and takes no probe
- * script, so this is checked by eye: a test recording's stills must show Themes followed.
- */
-const ADDONS_THEMES_LABEL = "h";
+const SETTINGS = "about:preferences";
 
 /** @typedef {import("./record.mjs").Director} Director */
-/** @typedef {{ name: string, theme?: "file" | "omarchy", setup: (d: Director) => Promise<void>,
- *   run: (d: Director) => Promise<void> }} Shot */
+/** @typedef {{ name: string, theme?: "file" | "omarchy", agent?: boolean,
+ *   setup: (d: Director) => Promise<void>, run: (d: Director) => Promise<void> }} Shot */
 
 /** @param {any} s */
 const selected = (s) => s.tabs.find((/** @type {any} */ t) => t.selected);
@@ -172,67 +166,62 @@ async function teamTabs(d, { closed }) {
   );
 }
 
-/** @type {Shot} j/k, link hints with two letters, / find with a match count */
+/**
+ * @type {Shot} the hook, link hints over the article and a label typed; then on the followed
+ * page j/k/d, / find with its match count, and gF opening a link in a background tab
+ */
 const keys = {
   name: "keys",
   async setup(d) {
-    const probe = await d.probeHintLabel(ARTICLE);
-    d.labels.target = probe.label;
-    d.points.target = { x: probe.x, y: probe.y };
+    const article = await d.probeHintLabel(ARTICLE);
+    d.labels.target = article.label;
+    d.points.target = { x: article.x, y: article.y };
+    const panes = await d.probeHintLabel(PANES);
+    d.labels.background = panes.label;
+    d.points.background = { x: panes.x, y: panes.y };
     await only(d, ARTICLE, ARTICLE_TITLE);
   },
   async run(d) {
-    await d.hold(1.2);
-    d.mark("scroll");
-    for (let i = 0; i < 3; i++) await d.key("j", 0.5);
-    await d.key("k", 0.5);
-    // back to the top, where the probe worked out the label
-    await d.key("g g", 1.0);
+    await d.hold(0.6);
     d.mark("hints");
     await d.key("f", 0);
     await d.until((s) => s.mode === "hint", "hint mode");
-    await d.hold(2.0);
+    await d.hold(2.6);
     const label = d.labels.target ?? "";
-    for (const c of label.slice(0, -1)) await d.key(c, 1.1);
+    for (const c of label.slice(0, -1)) await d.key(c, 1.0);
     await d.key(label.slice(-1), 0);
     await d.until(
       (s) => selected(s)?.title === PANES_TITLE && s.mode === "normal",
       "the hinted link followed",
     );
-    await d.hold(1.2);
+    await d.hold(1.8);
+    d.mark("scroll");
+    await d.key("j", 0.4);
+    await d.key("j", 0.4);
+    await d.key("d", 0.9);
+    await d.key("k", 0.5);
     d.mark("find");
     await d.key("/", 0);
     await d.until((s) => s.mode === "command", "the find bar");
-    await d.hold(0.4);
-    await d.type("pane", 0.35);
-    await d.hold(1.4);
+    await d.hold(0.3);
+    await d.type("pane", 0.3);
+    await d.hold(1.0);
     await d.key("enter", 0);
     await d.until((s) => s.mode === "normal", "find closed");
-    await d.hold(0.6);
-    await d.key("n", 1.4);
-  },
-};
-
-/** @type {Shot} link hints on about:addons, a page no extension may touch */
-const addons = {
-  name: "addons",
-  async setup(d) {
-    // no dry run of the label: about:addons opens on the view it last showed, and on Themes the
-    // same label is the Light/Dark switch, which would change the browser's colour scheme
-    await only(d, ADDONS, ADDONS_TITLE);
-  },
-  async run(d) {
-    await d.hold(1.4);
-    d.mark("hints");
-    await d.key("f", 0);
-    await d.until((s) => s.mode === "hint", "hint mode");
-    await d.hold(2.2);
-    await d.key(ADDONS_THEMES_LABEL, 0);
+    await d.key("n", 0.9);
+    d.mark("background");
+    // back at the top, where the probe worked out gF's label
+    await d.key("g g", 0.6);
+    await d.key("g F", 0);
+    await d.until((s) => s.mode === "hint", "gF's hints");
+    await d.hold(1.0);
+    const bg = d.labels.background ?? "";
+    for (const c of bg) await d.key(c, 0.5);
     await d.until(
-      (s) => s.mode === "normal" && selected(s)?.url === ADDONS,
-      "Themes followed on about:addons",
+      (s) => s.tabs.length === 2 && selected(s)?.title === PANES_TITLE && s.mode === "normal",
+      "a second tab, in the background",
     );
-    await d.hold(2.4);
+    await d.hold(1.4);
   },
 };
 
@@ -243,7 +232,7 @@ const tiling = {
     await only(d, ARTICLE, ARTICLE_TITLE);
   },
   async run(d) {
-    await d.hold(1.2);
+    await d.hold(0.8);
     d.mark("split");
     for (let n = 2; n <= 4; n++) {
       await d.prefix("enter");
@@ -251,19 +240,18 @@ const tiling = {
         (s) => paneCount(s) === n && selected(s)?.url === START_URL,
         `${n} panes, the new one on the start page`,
       );
-      await d.hold(0.8);
+      await d.hold(0.6);
     }
-    await d.hold(0.3);
     d.mark("layouts");
     // even-horizontal, even-vertical, main-vertical, main-horizontal, tiled
     for (let i = 0; i < 5; i++) {
       const before = shape(await d.state());
       await d.prefix("space");
       await d.until((s) => shape(s) !== before, "the next layout preset");
-      await d.hold(i === 4 ? 0 : 0.9);
+      await d.hold(i === 4 ? 0 : 0.6);
     }
     await d.until(isGrid, "the tiled preset: a 2x2 grid");
-    await d.hold(2.0);
+    await d.hold(1.4);
   },
 };
 
@@ -280,27 +268,30 @@ const marks = {
     await d.until((s) => s.tabs[0].selected && s.mode === "normal", "the first tab selected");
   },
   async run(d) {
-    await d.hold(1.2);
+    await d.hold(0.6);
     await d.prefix("b");
     await d.until((s) => s.mode === "panel", "the side panel");
-    await d.hold(1.2);
+    await d.hold(0.7);
     d.mark("mark");
     // marks the runbook, skips the checklist, marks the incident and the standup notes; space
     // leaves the highlight on the row it marks, so j moves to the next one
+    await d.key("space", 0.5);
+    await d.key("j", 0.3);
+    await d.key("j", 0.5);
+    await d.key("space", 0.5);
+    await d.key("j", 0.5);
     await d.key("space", 0.8);
-    await d.key("j", 0.4);
-    await d.key("j", 0.8);
-    await d.key("space", 0.8);
-    await d.key("j", 0.8);
-    await d.key("space", 1.2);
     d.mark("together");
     await d.key("enter", 0);
     await d.until((s) => paneCount(s) === 3 && s.mode === "normal", "three panes");
-    await d.hold(2.6);
+    await d.hold(2.0);
   },
 };
 
-/** @type {Shot} ctrl+^ flips between two workspaces, signed in differently in each */
+/**
+ * @type {Shot} ctrl+^ flips between two workspaces, signed in differently in each; then a beat
+ * of the private workspace, and back
+ */
 const flip = {
   name: "flip",
   async setup(d) {
@@ -318,23 +309,33 @@ const flip = {
     );
   },
   async run(d) {
-    await d.hold(1.6);
+    await d.hold(1.0);
     for (const [ws, who] of [
       ["work", "work"],
       ["main", "personal"],
-      ["work", "work"],
     ]) {
       await d.key("ctrl+^", 0);
       await d.until(
         (s) => s.workspace === ws && selected(s)?.title === inbox(who),
         `the ${who} inbox`,
       );
-      await d.hold(1.8);
+      await d.hold(1.6);
     }
+    d.mark("private");
+    await d.prefix("shift+p");
+    await d.until((s) => s.private === true, "the private workspace", 20_000);
+    await d.hold(1.6);
+    d.mark("back");
+    await d.prefix("shift+p");
+    await d.until((s) => !s.private && s.workspace === "main", "back in main");
+    await d.hold(1.0);
   },
 };
 
-/** @type {Shot} the built-in palette, an Omarchy theme set live, and back */
+/**
+ * @type {Shot} the built-in palette, then two Omarchy themes set live, over the article and
+ * Firefox's Settings
+ */
 const theme = {
   name: "theme",
   theme: "omarchy",
@@ -345,62 +346,56 @@ const theme = {
       (s) => s.panes?.root?.children?.length === 2 && selected(s)?.url === START_URL,
       "a split with the start page on the right",
     );
-    // the new pane's address bar has focus: Esc twice puts it back in the page (normal mode)
     await d.send("esc");
     await d.send("esc");
-    await d.until((s) => s.mode === "normal", "focus back in the start page");
+    await d.until((s) => s.mode === "normal", "focus in the start page");
+    await d.send(
+      `: ${[..."open "]
+        .concat([...SETTINGS])
+        .map((c) => (c === " " ? "space" : c))
+        .join(" ")} enter`,
+    );
+    await d.until((s) => selected(s)?.title === "Settings", "Settings loaded");
+    // Settings focuses its search field: Esc puts the keys back in normal mode
+    await d.send("esc");
+    await d.until((s) => s.mode === "normal", "normal mode in Settings");
   },
   async run(d) {
+    await d.hold(1.4);
+    await d.theme("gruvbox");
     await d.hold(2.0);
     await d.theme("rose-pine");
-    await d.hold(2.8);
-    await d.builtinTheme();
-    await d.hold(2.4);
+    await d.hold(2.2);
   },
 };
 
-/**
- * @type {Shot} tab search: every workspace's tabs and the recently closed ones; a tab in another
- * workspace, then a closed one reopened
- */
+/** @type {Shot} tab search: every workspace's tabs and the recently closed; one reopened */
 const tabs = {
   name: "tabs",
   async setup(d) {
     await teamTabs(d, { closed: true });
   },
   async run(d) {
-    await d.hold(1.2);
+    await d.hold(0.8);
     d.mark("search");
     await d.key("b", 0);
     await d.until((s) => s.mode === "help", "tab search");
-    await d.hold(2.6);
-    await d.type("post", 0.4);
-    await d.hold(1.4);
-    await d.key("enter", 0);
-    await d.until(
-      (s) => s.workspace === "reading" && selected(s)?.title === POSTMORTEM_TITLE,
-      "the postmortem, in the reading workspace",
-    );
-    await d.hold(1.8);
+    await d.hold(1.6);
     d.mark("closed");
-    await d.key("b", 0);
-    await d.until((s) => s.mode === "help", "tab search again");
-    await d.hold(0.8);
-    await d.type("drill", 0.4);
-    await d.hold(1.4);
+    await d.type("drill", 0.3);
+    await d.hold(1.0);
     await d.key("enter", 0);
     await d.until(
       (s) => s.mode === "normal" && selected(s)?.title === DRILL_TITLE,
       "the closed drill page reopened",
     );
-    await d.hold(2.0);
+    await d.hold(1.4);
   },
 };
 
 /**
- * @type {Shot} live grep: "rollback" across the workspace's tabs, ctrl+s widening the scope to
- * the window, ctrl+p and the preview, Enter to that match, ]q on to the next results, in other
- * tabs
+ * @type {Shot} live grep: "rollback" across the tabs, ctrl+s widening the scope to the window,
+ * ctrl+p and the preview, Enter to that match
  */
 const grep = {
   name: "grep",
@@ -408,49 +403,60 @@ const grep = {
     await teamTabs(d, { closed: false });
   },
   async run(d) {
-    await d.hold(1.2);
+    await d.hold(0.8);
     d.mark("grep");
-    await d.key("ctrl+b", 0.7);
-    await d.key("f", 0.3);
+    await d.key("ctrl+b", 0.5);
+    await d.key("f", 0.25);
     await d.key("g", 0);
     await d.until((s) => s.mode === "help", "live grep");
-    await d.hold(1.0);
-    await d.type("rollback", 0.3);
-    await d.hold(2.6);
+    await d.hold(0.6);
+    await d.type("rollback", 0.22);
+    await d.hold(1.2);
+    // widen the scope from this workspace to the window: every open tab, the reading
+    // workspace's too
     d.mark("scope");
-    await d.key("ctrl+s", 2.6);
+    await d.key("ctrl+s", 1.6);
     d.mark("browse");
-    await d.key("ctrl+p", 0.9);
-    await d.key("ctrl+p", 1.6);
+    await d.key("ctrl+p", 0.8);
+    await d.key("ctrl+p", 1.3);
     d.mark("jump");
     await d.key("enter", 0);
     await d.until(
       (s) => s.mode === "normal" && selected(s)?.title === CHECKLIST_TITLE,
       "the selected match, in the release checklist",
     );
-    await d.hold(1.8);
-    d.mark("next");
-    await d.key("] q", 1.8);
-    await d.key("] q", 2.0);
+    await d.hold(1.6);
   },
 };
 
-/** @type {Shot} ctrl+b shift+p: the private workspace, and back */
-const privateWorkspace = {
-  name: "private",
+/**
+ * @type {Shot} Vimma's own agent: ctrl+b i, a shopping task sent with Enter (a grant for the
+ * task), the agent's steps in the agent workspace while the user's page stays as it was, then
+ * the payment checkpoint, answered n
+ */
+const agent = {
+  name: "agent",
+  agent: true,
   async setup(d) {
-    await only(d, ARTICLE, ARTICLE_TITLE);
+    await only(d, NEWS, NEWS_TITLE);
   },
   async run(d) {
-    await d.hold(1.2);
-    d.mark("private");
-    await d.prefix("shift+p");
-    await d.until((s) => s.private === true, "the private workspace", 20_000);
+    await d.hold(0.8);
+    d.mark("chat");
+    await d.prefix("i");
+    await d.until((s) => s.mode === "insert", "the chat window's input");
+    await d.hold(0.8);
+    await d.typeText(PROMO_TASK, 0.18);
+    await d.hold(0.6);
+    d.mark("send");
+    await d.key("enter", 0);
+    await d.agentPaying();
+    d.mark("checkpoint");
+    await d.hold(3.2);
+    d.mark("answer");
+    await d.key("n", 0);
+    await d.agentDone();
     await d.hold(2.6);
-    d.mark("back");
-    await d.prefix("shift+p");
-    await d.until((s) => !s.private && s.workspace === "main", "back in main");
-    await d.hold(1.6);
   },
 };
 
@@ -461,26 +467,15 @@ const help = {
     await only(d, ARTICLE, ARTICLE_TITLE);
   },
   async run(d) {
-    await d.hold(1.0);
+    await d.hold(0.6);
     await d.prefix("?");
     await d.until((s) => s.mode === "help", "the bindings overlay");
-    await d.hold(1.2);
-    await d.key("/", 0.5);
-    await d.type("pane", 0.35);
-    await d.hold(2.2);
+    await d.hold(0.8);
+    await d.key("/", 0.4);
+    await d.type("pane", 0.3);
+    await d.hold(1.8);
   },
 };
 
 /** @type {readonly Shot[]} in storyboard order */
-export const SHOTS = Object.freeze([
-  keys,
-  addons,
-  flip,
-  privateWorkspace,
-  tiling,
-  marks,
-  tabs,
-  grep,
-  theme,
-  help,
-]);
+export const SHOTS = Object.freeze([keys, tiling, flip, marks, tabs, grep, agent, theme, help]);
