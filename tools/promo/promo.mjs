@@ -11,6 +11,8 @@ export const HOSTS = Object.freeze({
   tracker: "http://tracker.example/",
   /** the agent bench's stand-in shop (tools/agent-bench/shop.mjs), for the agent shot */
   shop: "http://shop.example/",
+  /** the default search engine's host; nothing in a shot searches it */
+  search: "http://search.example/",
 });
 
 /**
@@ -127,15 +129,22 @@ export function promoPrefs({ port, themeDir, configPath, scale }) {
  * and `[ui] toolbar` when given: "hidden" records the page up to the window's top edge, with
  * only the status bar around it. Without `name` the build's default built-in shows. `schema = 2`: `[theme] name` is a
  * schema-2 key. With `agent`, the chat window's provider: one OpenAI-compatible endpoint on this
- * machine, as a user lists a local server, and the default for new conversations.
+ * machine, as a user lists a local server, and the default for new conversations. With
+ * `search`, a fixture search URL as the default engine: an engine made from a URL is not one of
+ * Firefox's own, so the address bar's placeholder names no search company.
  * @param {{ source: "file" | "omarchy", name: string | null, appearance?: "dark" | "light",
- *   toolbar?: "hidden" | "shown", agent?: { endpoint: string, model: string } }} options
+ *   toolbar?: "hidden" | "shown", agent?: { endpoint: string, model: string },
+ *   search?: boolean }} options
  */
-export function promoConfig({ source, name, appearance, toolbar, agent }) {
+export function promoConfig({ source, name, appearance, toolbar, agent, search }) {
   const lines = ["schema = 2", "", "[theme]", `source = "${source}"`];
   if (name) lines.push(`name = "${name}"`);
   if (appearance) lines.push(`appearance = "${appearance}"`);
   if (toolbar) lines.push("", "[ui]", `toolbar = "${toolbar}"`);
+  if (search) {
+    lines.push("", "[search]", 'default = "@s"', "", "[search.aliases]");
+    lines.push(`s = "${HOSTS.search}?q=%s"`);
+  }
   if (agent) {
     lines.push("", "[agent]", 'default = "local"', "", "[[agent.providers]]", 'name = "local"');
     lines.push('kind = "openai"', `endpoint = "${agent.endpoint}"`, `model = "${agent.model}"`);

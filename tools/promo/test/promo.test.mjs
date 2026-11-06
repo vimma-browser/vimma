@@ -109,6 +109,14 @@ describe("promoConfig", () => {
     );
     expect(parseConfig(text).errors).toEqual([]);
   });
+  it("makes the fixture search the default engine when asked, so no engine's name shows", () => {
+    const text = promoConfig({ source: "file", name: "vimma", search: true });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[search]\ndefault = "@s"\n\n' +
+        '[search.aliases]\ns = "http://search.example/?q=%s"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+  });
   it("leaves the name out for a build without it: its default built-in shows", () => {
     expect(promoConfig({ source: "omarchy", name: null })).toBe(
       'schema = 2\n\n[theme]\nsource = "omarchy"\n',

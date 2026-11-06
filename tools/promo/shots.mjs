@@ -26,7 +26,7 @@ const INCIDENT_TITLE = "INC-1187 Checkout slow after deploy · Tracker";
 const STANDUP = `${HOSTS.notes}standup.html`;
 const STANDUP_TITLE = "Standup, Tuesday · Notes";
 const START_URL = "chrome://browser/content/vimma/start/start.html";
-const SETTINGS = "about:preferences";
+const SETTINGS = "about:preferences#appearance";
 
 /** @typedef {import("./record.mjs").Director} Director */
 /** @typedef {{ name: string, theme?: "file" | "omarchy", agent?: boolean,

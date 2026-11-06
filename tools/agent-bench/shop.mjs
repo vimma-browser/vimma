@@ -43,8 +43,13 @@ export const esc = (s) =>
 /** @param {number} n */
 const euros = (n) => `${n.toFixed(2)} €`;
 
-/** @param {Product} p */
-const fullName = (p) => `${p.name} (${p.brand}, ${p.size})`;
+/**
+ * A product as its buttons and pages name it; a product without a brand (a catalog of the
+ * promo video's, tools/promo/agent.mjs) is its name and size.
+ * @param {Pick<Product, "name" | "brand" | "size">} p
+ */
+export const fullName = (p) =>
+  p.brand ? `${p.name} (${p.brand}, ${p.size})` : `${p.name}, ${p.size}`;
 
 /** @param {import("node:http").ServerResponse} res @param {number} status @param {string} body */
 export function send(res, status, body, type = "text/html; charset=utf-8") {
@@ -54,10 +59,11 @@ export function send(res, status, body, type = "text/html; charset=utf-8") {
 
 /**
  * Starts the shop and its second host on 127.0.0.1 at ephemeral ports. The second host is
- * reached as `localhost`, another site, as an attacker's server would be.
+ * reached as `localhost`, another site, as an attacker's server would be. `catalog` and `name`
+ * replace the bench's catalog and the shop's name (the promo video's shop has its own).
+ * @param {{ catalog?: Catalog, name?: string }} [o]
  */
-export async function startShop() {
-  const catalog = loadCatalog();
+export async function startShop({ catalog = loadCatalog(), name = "Bench Shop" } = {}) {
   const byId = new Map(catalog.products.map((p) => [p.id, p]));
   const style = readFileSync(`${DIR}style.css`, "utf8");
   const script = readFileSync(`${DIR}shop.js`, "utf8");
@@ -98,11 +104,11 @@ export async function startShop() {
   const page = (title, body) =>
     `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>${esc(title)} · Bench Shop</title>
+<head><meta charset="utf-8"><title>${esc(title)} · ${esc(name)}</title>
 <link rel="stylesheet" href="/style.css"></head>
 <body>
 <header>
-<a href="/" class="logo">Bench Shop</a>
+<a href="/" class="logo">${esc(name)}</a>
 <form action="/search" method="get" role="search">
 <input name="q" aria-label="Search products" placeholder="Search products">
 <input type="hidden" name="via" value="form">

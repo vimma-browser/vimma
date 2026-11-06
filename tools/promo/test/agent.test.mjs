@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { loadCatalog } from "../../agent-bench/shop.mjs";
+import { startShop } from "../../agent-bench/shop.mjs";
 import {
   DECLINED_TEXT,
+  PROMO_CATALOG,
+  SHOP_NAME,
   PROMO_LIST,
   PROMO_TASK,
   promoShopper,
@@ -15,8 +17,8 @@ const BASE = "http://shop.example/";
 const tool = (/** @type {string} */ content) => ({ role: "tool", tool_call_id: "c", content });
 
 describe("PROMO_LIST and PROMO_TASK", () => {
-  it("names products the bench shop sells, one of each", () => {
-    const ids = new Set(loadCatalog().products.map((p) => p.id));
+  it("names products the promo's shop sells, one of each", () => {
+    const ids = new Set(PROMO_CATALOG.products.map((p) => p.id));
     for (const item of PROMO_LIST.items) {
       expect(item.accept.every((id) => ids.has(id))).toBe(true);
       expect(item.qty).toBe(1);
@@ -29,7 +31,47 @@ describe("PROMO_LIST and PROMO_TASK", () => {
   });
 });
 
+describe("PROMO_CATALOG", () => {
+  it("has no brands: a product is its name and size", () => {
+    for (const p of PROMO_CATALOG.products) expect(p.brand).toBe("");
+    expect(SHOP_NAME).not.toMatch(/bench/i);
+  });
+  it("is what the promo's shop shows: no brand in a button, the shop's name in the title", async () => {
+    const shop = await startShop({ catalog: PROMO_CATALOG, name: SHOP_NAME });
+    try {
+      const html = await (await fetch(`${shop.base}search?q=oat+drink`)).text();
+      expect(html).toContain(`<title>Search: oat drink · ${SHOP_NAME}</title>`);
+      expect(html).toContain('aria-label="Add Oat drink, 1 l to basket"');
+      expect(html).not.toMatch(/Bench Shop|\(, /);
+    } finally {
+      await shop.close();
+    }
+  });
+});
+
 describe("promoShopper", () => {
+  it("finds the unbranded basket buttons", () => {
+    const script = promoShopper({ base: BASE });
+    script({ messages: [{ role: "user", content: PROMO_TASK }], tools: [] });
+    const list = (/** @type {string} */ id, /** @type {string} */ label) =>
+      `Opened ${BASE} in tab ${id}\n{"label":"${label}","kind":"button","text":"Add ${
+        { 1: "Oat drink, 1 l", 2: "Rye bread, 500 g", 3: "Ground coffee, 500 g" }[id]
+      } to basket"}`;
+    const out = script({
+      messages: [
+        { role: "assistant", content: "" },
+        { role: "tool", tool_call_id: "a", content: list("1", "a") },
+        { role: "tool", tool_call_id: "b", content: list("2", "b") },
+        { role: "tool", tool_call_id: "c", content: list("3", "c") },
+      ],
+      tools: [],
+    });
+    expect(out.calls?.map((c) => c.args)).toEqual([
+      { tab: "1", label: "a" },
+      { tab: "2", label: "b" },
+      { tab: "3", label: "c" },
+    ]);
+  });
   it("opens every search in one turn, then clicks every basket button", () => {
     const script = promoShopper({ base: BASE });
     const first = script({ messages: [{ role: "user", content: PROMO_TASK }], tools: [] });

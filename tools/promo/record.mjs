@@ -7,7 +7,8 @@
  * HTTP proxy: no real website and no network. Colours: Vimma's built-in palette, set by a temp
  * config.toml (`[theme] source = "file"`, and `name = "vimma"` when the build knows the key), so
  * the recording machine's Omarchy theme never shows; the theme shot sets its Omarchy themes from
- * tools/promo/themes. The agent shot also runs the agent bench's stand-in shop (as
+ * tools/promo/themes. The agent shot also runs the agent bench's stand-in shop, with
+ * its own unbranded catalog and name (as
  * shop.example, through the same proxy) and its scripted shopper behind a local
  * OpenAI-compatible endpoint (--model-port, default 8800), which config.toml lists as the chat
  * window's provider. The video itself is composited elsewhere
@@ -50,7 +51,14 @@ import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
 import { startPageServer } from "../e2e/pages.mjs";
 import { startShop } from "../agent-bench/shop.mjs";
-import { MODEL, promoShopper, startModelServer, textKeys } from "./agent.mjs";
+import {
+  MODEL,
+  PROMO_CATALOG,
+  SHOP_NAME,
+  promoShopper,
+  startModelServer,
+  textKeys,
+} from "./agent.mjs";
 import { READ_PATH_PREF, devPrefs } from "../start.mjs";
 import {
   HOSTS,
@@ -514,6 +522,7 @@ export class Director {
         name: this.themeName,
         appearance: this.appearance,
         toolbar: this.toolbar,
+        search: true,
       }),
     );
     this.mark("theme:builtin");
@@ -645,7 +654,7 @@ async function main() {
       /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[] | null} */
       let agentReplies = null;
       if (shot.agent) {
-        const shop = await startShop();
+        const shop = await startShop({ catalog: PROMO_CATALOG, name: SHOP_NAME });
         const shopHost = new URL(HOSTS.shop).host;
         routes[shopHost] = new URL(shop.base).origin;
         const model = await startModelServer({
@@ -665,7 +674,14 @@ async function main() {
       }
       writeConfig(
         configPath,
-        promoConfig({ source: shot.theme ?? "file", name: themeName, appearance, toolbar, agent }),
+        promoConfig({
+          source: shot.theme ?? "file",
+          name: themeName,
+          appearance,
+          toolbar,
+          agent,
+          search: true,
+        }),
       );
       /** @type {() => Promise<void>} */
       let teardown = async () => {};

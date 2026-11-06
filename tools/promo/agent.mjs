@@ -13,13 +13,54 @@ export const MODEL = "scripted";
 /** What the shot types into the chat window. */
 export const PROMO_TASK = "Put oat drink, rye bread and coffee in the basket, then check out.";
 
+/** The promo's shop: a neutral name, never a real shop's. */
+export const SHOP_NAME = "Corner Grocer";
+
+/**
+ * @param {string} id @param {string} category @param {string} name @param {string} size
+ * @param {number} price @param {string} description
+ * @returns {import("../agent-bench/shop.mjs").Product}
+ */
+const product = (id, category, name, size, price, description) => ({
+  id,
+  category,
+  name,
+  brand: "",
+  size,
+  price,
+  tags: [],
+  description,
+  reviews: [],
+});
+
+/**
+ * The promo shop's catalog: the bench shop's kinds of product, with no brands, so no real
+ * company shows in the video. The bench's own catalog stays as its scoring needs it.
+ * @type {import("../agent-bench/shop.mjs").Catalog}
+ */
+export const PROMO_CATALOG = Object.freeze({
+  categories: [
+    { id: "dairy", name: "Dairy and alternatives" },
+    { id: "bakery", name: "Bakery" },
+    { id: "coffee-tea", name: "Coffee and tea" },
+  ],
+  products: [
+    product("oat-drink", "dairy", "Oat drink", "1 l", 1.59, "Oat drink, dairy free."),
+    product("oat-drink-barista", "dairy", "Oat drink, barista", "1 l", 2.19, "Foams for coffee."),
+    product("rye-whole", "bakery", "Rye bread", "500 g", 2.29, "A whole round loaf of sour rye."),
+    product("rye-sliced", "bakery", "Rye bread, sliced", "500 g", 2.49, "Sour rye in slices."),
+    product("coffee-ground", "coffee-tea", "Ground coffee", "500 g", 5.99, "Medium roast."),
+    product("coffee-beans", "coffee-tea", "Coffee beans", "500 g", 7.49, "Dark roast, whole."),
+  ],
+});
+
 /** @type {import("../agent-bench/score.mjs").ShoppingList} */
 export const PROMO_LIST = Object.freeze({
   id: "promo",
   items: [
     { text: "oat drink", accept: ["oat-drink"], qty: 1 },
     { text: "rye bread", accept: ["rye-whole"], qty: 1 },
-    { text: "coffee", accept: ["coffee-paulig"], qty: 1 },
+    { text: "coffee", accept: ["coffee-ground"], qty: 1 },
   ],
 });
 
@@ -38,7 +79,8 @@ const DENIED = /^(Error: )?The user denied this request in Vimma\./;
  * @returns {import("../agent-bench/scripted.mjs").Script}
  */
 export function promoShopper({ base, inner }) {
-  const script = inner ?? shopper({ base, list: PROMO_LIST, path: "parallel" });
+  const script =
+    inner ?? shopper({ base, list: PROMO_LIST, path: "parallel", catalog: PROMO_CATALOG });
   return (req) => {
     const out = script(req);
     if (out.calls?.length) return out;
