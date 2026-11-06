@@ -2,6 +2,7 @@
 // update host, the test-signed manifest and MAR, and the installs they update.
 import { afterEach, describe, expect, it } from "vitest";
 import { generateKeyPairSync, webcrypto } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { request } from "node:https";
 import {
   existsSync,
@@ -387,5 +388,46 @@ describe("the local update host", () => {
       ["/nope.mar", false],
     ]);
     expect(host.marRequests()).toBe(4);
+  });
+
+  // OpenSSL 1.1.1's stock openssl.cnf (Homebrew's openssl@1.1, first on the macOS runners'
+  // PATH) has `req` add its v3_ca section to a self-signed certificate. 1.1.1 and LibreSSL put
+  // -addext's extensions in beside it rather than in its place, so the CA carried Basic
+  // Constraints twice, which OpenSSL 3 and NSS refuse as an issuer: "unable to verify the first
+  // certificate".
+  it("makes the same certificates whatever openssl.cnf the machine has", async () => {
+    const dir = tmp();
+    const conf = join(dir, "openssl.cnf");
+    writeFileSync(
+      conf,
+      "[ req ]\ndistinguished_name = dn\nx509_extensions = v3_ca\nreq_extensions = v3_req\n" +
+        "[ dn ]\n" +
+        "[ v3_ca ]\nsubjectKeyIdentifier = hash\nauthorityKeyIdentifier = keyid:always,issuer\n" +
+        "basicConstraints = critical,CA:true\nnsComment = from the machine's openssl.cnf\n" +
+        "[ v3_req ]\nbasicConstraints = CA:FALSE\nnsComment = from the machine's openssl.cnf\n",
+    );
+    const saved = process.env.OPENSSL_CONF;
+    process.env.OPENSSL_CONF = conf;
+    let cert;
+    try {
+      cert = hostCertificate(dir);
+    } finally {
+      if (saved === undefined) delete process.env.OPENSSL_CONF;
+      else process.env.OPENSSL_CONF = saved;
+    }
+    for (const pem of [cert.ca, cert.cert]) {
+      const text = execFileSync("openssl", ["x509", "-noout", "-text"], {
+        input: pem,
+        encoding: "utf8",
+        env: { ...process.env, OPENSSL_CONF: conf },
+      });
+      const names = [...text.matchAll(/^ {12}(X509v3 [^:]+|Netscape Comment):/gm)].map((m) => m[1]);
+      expect(names, "each extension once").toEqual([...new Set(names)]);
+      expect(names).not.toContain("Netscape Comment");
+    }
+    const host = await startUpdateHost(cert);
+    closers.push(() => host.close());
+    host.serve("<updates/>\n");
+    expect((await get(`${host.origin}/update.xml`, cert.ca)).status).toBe(200);
   });
 });
