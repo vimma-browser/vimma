@@ -382,6 +382,34 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
   });
 });
 
+// pdf.js learns where its view is from a scroll handler that waits for the viewer's next
+// animation frame, and a zoom keeps that recorded place: a zoom right after a page key, before
+// the frame, went back to the page the view had left. The viewer's refresh driver is held here
+// so the frame cannot come between the keys, as on a loaded machine.
+add_task(async function a_zoom_right_after_a_page_key_keeps_the_new_page() {
+  await withPdf(async (browser) => {
+    for (const [keys, want] of [
+      ["3J", 4],
+      ["G", 6],
+    ]) {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+      try {
+        type(keys);
+        await until(browser, { page: want }, `${keys} moves the view`);
+        type("150=");
+        await until(browser, { scale: 1.5 }, "150= zooms before the viewer's next frame");
+      } finally {
+        await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+      }
+      await until(browser, { page: want }, `the zoom after ${keys} stays on page ${want}`);
+      type("=");
+      await until(browser, { scale: 1 }, "back to 100 %");
+      type("gg");
+      await until(browser, { page: 1 }, "gg goes back to the first page");
+    }
+  });
+});
+
 add_task(async function jumps() {
   await withPdf(async (browser) => {
     type("4G");
