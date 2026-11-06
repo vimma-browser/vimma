@@ -2,10 +2,14 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.16](https://github.com/vimma-browser/vimma/compare/v0.1.15...v0.1.16) (2026-11-06)
+## [Unreleased]
+
+## [0.1.16](https://github.com/vimma-browser/vimma/compare/v0.1.15...v0.1.16) · Firefox 159.0.1 (2026-11-06)
 
 
 ### Added
+
+- PDF mode: in Firefox's PDF viewer, zathura's keys go by page (`J`, `K`, `12G`, `:12`), zoom and fit (`+`, `-`, `=`, `a`, `s`), lay out pages (`d`, `D`, `w`, `r`), set and return to marks (`m`, `'`), show or copy a link's target (`F`, `c`) and start presentation mode (`F5`); `Tab` opens the document's outline in a themed panel with zathura's index keys and a fuzzy filter, and the status bar shows `page 3/12` and the match count of a search. Every key can be changed under `[modal.pdf]` and `[modal.index]` in `config.toml`. The new e2e scenario `issue-487-pdf-mode` and its baseline `pdf-outline` show the outline panel open on page 3 of a four-page PDF.
 
 * **agent:** gemini cli as a provider of the chat window ([#763](https://github.com/vimma-browser/vimma/issues/763)) ([9cf9002](https://github.com/vimma-browser/vimma/commit/9cf9002276fa8530c18ece55d29735ed06e705ad)), closes [#726](https://github.com/vimma-browser/vimma/issues/726)
 * **core:** downloads rows, keys and status segment ([#781](https://github.com/vimma-browser/vimma/issues/781)) ([19da2fc](https://github.com/vimma-browser/vimma/commit/19da2fcfadd4cb238a785071f4dc844750839639))
@@ -67,12 +71,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **updates:** read manifest attributes in one scan ([#783](https://github.com/vimma-browser/vimma/issues/783)) ([69016a3](https://github.com/vimma-browser/vimma/commit/69016a30e95d1dc156ead2e45183aa359adc8edc))
 * **urlbar:** own pages first, capped at four, and headed vimma, not firefox suggest ([#823](https://github.com/vimma-browser/vimma/issues/823)) ([21eb853](https://github.com/vimma-browser/vimma/commit/21eb8539632ff746e8e118c08954c0effa867782)), closes [#822](https://github.com/vimma-browser/vimma/issues/822)
 * **urlbar:** tab skips the row menu, so search suggestions are five keys away ([#830](https://github.com/vimma-browser/vimma/issues/830)) ([d6ee79b](https://github.com/vimma-browser/vimma/commit/d6ee79b4781b8407e3b67e66134479fa22237c11))
-
-## [Unreleased]
-
-### Added
-
-- PDF mode: in Firefox's PDF viewer, zathura's keys go by page (`J`, `K`, `12G`, `:12`), zoom and fit (`+`, `-`, `=`, `a`, `s`), lay out pages (`d`, `D`, `w`, `r`), set and return to marks (`m`, `'`), show or copy a link's target (`F`, `c`) and start presentation mode (`F5`); `Tab` opens the document's outline in a themed panel with zathura's index keys and a fuzzy filter, and the status bar shows `page 3/12` and the match count of a search. Every key can be changed under `[modal.pdf]` and `[modal.index]` in `config.toml`. The new e2e scenario `issue-487-pdf-mode` and its baseline `pdf-outline` show the outline panel open on page 3 of a four-page PDF.
 
 ## [0.1.15](https://github.com/vimma-browser/vimma/compare/v0.1.14...v0.1.15) · Firefox 159.0.1 (2026-11-04)
 
