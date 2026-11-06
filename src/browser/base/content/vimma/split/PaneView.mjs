@@ -110,6 +110,7 @@ export const PANE_VIEW_EVENTS = Object.freeze([
   "TabSplitViewActivate",
   "TabSelect",
   ...SPLIT_EVENTS,
+  "visibilitychange",
 ]);
 
 /**
@@ -249,6 +250,13 @@ export class PaneView {
     // SplitViewCreated; its wrapper fires SplitViewTabChange on any membership change (session
     // restore builds wrappers without SplitViewCreated) and SplitViewRemoved once dissolved.
     for (const type of SPLIT_EVENTS) win.addEventListener(type, this);
+    // Tabbrowser's on_visibilitychange (a document listener, so it runs before this window one)
+    // wakes every split browser when no async tab switcher exists, and does not look at the
+    // event's target: an in-process page (the start page, chrome://) that a zoom or a hidden view
+    // just put to sleep bubbles its own visibilitychange up to it, and so does the window being
+    // shown again. Putting those panes back to sleep in the same dispatch means no paint sees
+    // them awake, and their next visibility update finds no change, so no new event follows.
+    win.addEventListener("visibilitychange", this);
   }
 
   destroy() {
@@ -262,6 +270,7 @@ export class PaneView {
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
     else if (e.type === "TabSelect") this.#onTabSelect(/** @type {CustomEvent} */ (e));
+    else if (e.type === "visibilitychange") this.#keepAsleep();
     // TabSplitViewDeactivate is not listened to: the old wrapper's arrives late after a rebuild
     // and lists the kept members too (sub-spec 1), so it carries nothing to act on.
     else if (e.type === "TabSplitViewActivate" && !this.#reconciling) this.#schedule();
@@ -1101,6 +1110,22 @@ export class PaneView {
     // the same way (tabbox.js suspendSplitViewPanels: the panels keep their split-view class).
     /** @type {any} */ (gBrowserOf(this.#win)).tabpanels?.suspendSplitViewPanels?.(tabs);
     for (const t of tabs) if (t.linkedBrowser) t.linkedBrowser.docShellIsActive = false;
+  }
+
+  /**
+   * Puts back to sleep the panes the current tree keeps inactive, a zoom's zoomed-away panes or
+   * a hidden view's, after Firefox woke them; never wakes anything (reconcile does that).
+   */
+  #keepAsleep() {
+    const panes = this.#panes;
+    if (!panes || this.#reconciling) return;
+    const hidden = isHiddenView(panes);
+    for (const leaf of leaves(panes)) {
+      if (!hidden && (!panes.zoom || leaf.pane === panes.zoom)) continue;
+      const t = this.#tab(leaf.tab);
+      if (t?.linkedBrowser?.docShellIsActive && !t.selected)
+        t.linkedBrowser.docShellIsActive = false;
+    }
   }
 
   /** @param {Tab} tab */
