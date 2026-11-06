@@ -461,10 +461,11 @@ and copy mode ends. `Esc` is then Firefox's: the first closes the suggestions li
 (with the address unchanged) puts focus back in the page, in normal mode. In insert mode `I` is
 a capital I typed into the field, as in Vim; press `Esc` first.
 
-**The pages you know come first in the address bar's list.** As you type, the first row
-searches or visits what you typed, as in Firefox. Under it, headed Vimma, come your open tabs,
-bookmarks and history that match, and after them, headed with the engine's name, your search
-engine's suggestions. One `tab` or `down` reaches the first page. For Firefox's order, with the
+**Your own pages come first in the address bar's list.** As you type, the first row
+searches or visits what you typed, as in Firefox. Under it, headed Vimma, come up to four of
+your open tabs, bookmarks and history that match, and after them, headed with the engine's
+name, your search engine's suggestions, so they are a few keys away. One `tab` or `down`
+reaches the first page. When the engine has no suggestions, your pages fill the list. For Firefox's order, with the
 search suggestions first, tick "Show search suggestions before browsing history in address bar results"
 in Settings > Search.
 

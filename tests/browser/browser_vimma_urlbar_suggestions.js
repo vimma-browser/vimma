@@ -27,7 +27,9 @@ const SUGGEST =
   getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
   "file_vimma_urlbar_suggest.sjs";
 /** Pages the profile knows: history, a bookmark and an open tab, all matching WORD. */
-const VISITED = ["https://example.com/vimmabird-1", "https://example.com/vimmabird-2"];
+const VISITED = Array.from({ length: 8 }, (_, i) => `https://example.com/vimmabird-${i + 1}`);
+/** The most pages listed while the engine has suggestions to show after them. */
+const PAGES_MAX = 4;
 const BOOKMARKED = "https://example.com/vimmabird-bookmark";
 const OPEN = "https://example.org/?vimmabird";
 
@@ -117,4 +119,27 @@ add_task(async function no_group_is_headed_firefox() {
     .filter(Boolean);
   info(`group labels: ${JSON.stringify(labels)}`);
   for (const label of labels) Assert.ok(!/Firefox/.test(label), `"${label}" names no Firefox`);
+});
+
+add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
+  const rows = await typed();
+  const pages = rows.filter(isPage);
+  const suggestions = rows.filter((r) => isSuggestion(r) && r.suggestion);
+  Assert.equal(pages.length, PAGES_MAX, "ten pages match, and the list shows four of them");
+  Assert.equal(suggestions.length, 5, "the rest of the list is the engine's suggestions");
+  Assert.equal(rows.length, 10, "the list keeps Firefox's length (browser.urlbar.maxRichResults)");
+  let presses = 0;
+  while (!gURLBar.view.selectedResult?.payload.suggestion && presses < 30) {
+    EventUtils.synthesizeKey("KEY_Tab");
+    presses++;
+  }
+  info(`tab presses from the input to the first suggestion: ${presses}`);
+  // Each page row is two stops: the row and its result-menu button
+  // (browser.urlbar.resultMenu.keyboardAccessible, Firefox's default).
+  Assert.lessOrEqual(presses, 2 * PAGES_MAX, "the suggestions start after the capped pages");
+  Assert.equal(
+    gURLBar.view.selectedResult.payload.suggestion,
+    `${WORD} one`,
+    "tab reaches the first suggestion",
+  );
 });

@@ -1,0 +1,18 @@
+diff --git a/browser/components/urlbar/UrlbarPrefs.sys.mjs b/browser/components/urlbar/UrlbarPrefs.sys.mjs
+index e044c8a6dfceb9028a0ac7b309df1d2f583cb8e1..ae65875e33ec108025329b0caabe400c9d3ddd0b 100644
+--- a/browser/components/urlbar/UrlbarPrefs.sys.mjs
++++ b/browser/components/urlbar/UrlbarPrefs.sys.mjs
+@@ -1032,6 +1032,13 @@ function makeDefaultResultGroups({
+   }
+   mainGroup.children[0].flex = 2;
+   mainGroup.children[1].flex = 1;
++  // Vimma (issue #822): with the pages first, they get 4 of the 9 rows under the
++  // heuristic and the search suggestions 5, so the suggestions stay a few keys
++  // away. Flex: either side still fills the rows the other leaves empty.
++  if (!showSearchSuggestionsFirst) {
++    mainGroup.children[0].flex = 4;
++    mainGroup.children[1].flex = 5;
++  }
+   rootGroup.children.push(mainGroup);
+ 
+   return rootGroup;

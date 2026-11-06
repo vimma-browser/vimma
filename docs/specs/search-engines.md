@@ -207,12 +207,16 @@ running it, not recalled.
     (`browser.search.suggest.enabled`), unchanged. `:open` completion is local (decision 11)
     and never fetches suggestions. An `http://` template is accepted (a SearXNG on the LAN) but
     `about:vimma` marks it "queries sent unencrypted".
-    (Since changed, issue #822: the address bar lists the matching open tabs, bookmarks and
-    history before the engine's suggestions, `browser.urlbar.showSearchSuggestionsFirst` false
-    in `firefox-branding.js`, because Firefox's order put the pages after the suggestions (and
-    `tab` also stops on each row's menu button), so reaching a known page took many presses of
-    `tab`, while the first row already searches what was typed. The setting stays the user's,
-    in Settings > Search. The pages' group is headed Vimma instead of "Firefox Suggest"
+    (Since changed, issue #822: own pages first, because a Vimma user revisits their own pages
+    more than they search; capped so search suggestions stay a few keys away. The address bar
+    lists the matching open tabs, bookmarks and history before the engine's suggestions
+    (`browser.urlbar.showSearchSuggestionsFirst` false in `firefox-branding.js`); Firefox's
+    order put them after the suggestions, and `tab` stops on each row and on its menu button,
+    so reaching a known page took many presses. With the pages first they get 4 of the 9 rows
+    under the first one and the suggestions 5 (`UrlbarPrefs-sys-mjs.patch`, flex 4:5 instead of
+    Firefox's 2:1), so the first suggestion is at most 8 presses of `tab` away; either side
+    still fills the rows the other leaves empty, and the list keeps Firefox's 10 rows. The
+    order stays the user's, in Settings > Search. The pages' group is headed Vimma instead of "Firefox Suggest"
     (`browser-ftl.patch`, ADR-003), so the list does not name Firefox; Settings keeps "Firefox
     Suggest" where it names Mozilla's service. Test: `browser_vimma_urlbar_suggestions.js`.)
 11. **Completion.** `ARGUMENT_KINDS` gains `open` and `tabnew` with names from
