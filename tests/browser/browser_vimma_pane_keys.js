@@ -211,6 +211,25 @@ add_task(async function z_zooms_and_unzooms_and_focus_keys_keep_zoomed_away_pane
   await reset();
 });
 
+// The zoomed-away pane shows the start page, an in-process document: its visibilitychange
+// bubbles into the chrome document, where Tabbrowser's on_visibilitychange wakes every split
+// browser whenever no async tab switcher exists (#605). Waiting out the switcher that ctrl+b h
+// made is what a slow machine does by accident.
+add_task(async function z_keeps_an_in_process_zoomed_away_pane_asleep_with_no_tab_switcher() {
+  const a = await openPage("a");
+  const b = await split("v");
+  prefix("h");
+  await assertFocused(a, "back on a");
+  await until(() => !gBrowser._switcher, "ctrl+b h's tab switcher is gone");
+  prefix("z");
+  await nextFrame();
+  await TestUtils.waitForTick();
+  Assert.equal(view().panes.zoom, view().panes.focus, "ctrl+b z zooms the focused pane");
+  Assert.ok(a.linkedBrowser.docShellIsActive, "the zoomed pane is live");
+  Assert.ok(!b.linkedBrowser.docShellIsActive, "the zoomed-away start page stays asleep");
+  await reset();
+});
+
 add_task(async function x_closes_the_pane_then_the_last_pane_closes_the_tab() {
   const a = await openPage("a");
   const b = await split("v");
