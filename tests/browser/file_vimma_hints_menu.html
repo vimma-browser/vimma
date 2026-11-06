@@ -112,9 +112,15 @@
       );
       // A modal menu: the page under it takes no pointer events while it is open.
       document.body.style.pointerEvents = "none";
-      const account = document.getElementById("account").getBoundingClientRect();
+      // Placed above its trigger, and placed again when the viewport changes, as Floating UI's
+      // autoUpdate does: a new tab's page can run this before it has a viewport size (#605).
       const popper = document.getElementById("popper");
-      popper.style.transform = `translate(${account.left}px, ${account.top - popper.offsetHeight - 4}px)`;
+      function place() {
+        const account = document.getElementById("account").getBoundingClientRect();
+        popper.style.transform = `translate(${account.left}px, ${account.top - popper.offsetHeight - 4}px)`;
+      }
+      place();
+      window.addEventListener("resize", place);
       for (const id of ["settings", "language", "learn", "logout"]) {
         document.getElementById(id).addEventListener("click", () => {
           window.clicked = id;
