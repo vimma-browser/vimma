@@ -502,6 +502,26 @@ describe("launch and teardown (fake browser)", () => {
     expect(seen.argv).toContain("-no-remote");
   });
 
+  // The update scenarios trust their host's CA in the profile before the browser opens it.
+  it("lets the caller change the profile before the browser first starts on it", async () => {
+    /** @type {string[]} */
+    const seen = [];
+    const session = await start(
+      {},
+      {
+        onProfile: (/** @type {string} */ p) => {
+          seen.push(p);
+          writeFileSync(join(p, "cert9.db"), "before");
+        },
+      },
+    );
+    cleanups.push(() => session.teardown());
+    expect(seen).toEqual([session.profile]);
+    const browser = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(browser.argv).toContain(session.profile);
+    expect(readFileSync(join(session.profile, "cert9.db"), "utf8")).toBe("before");
+  });
+
   it("the spawned browser sees the scrubbed env, with HOME and TMPDIR inside the profile", async () => {
     const session = await start(
       {},

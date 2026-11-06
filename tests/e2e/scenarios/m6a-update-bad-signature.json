@@ -1,0 +1,32 @@
+{
+  "name": "m6a-update-bad-signature",
+  "description": "The bad-signature cases of M6a exit test 1 (docs/specs/m6a-updater.md, Tests, e2e), on an install of a VIMMA_UPDATES=1 tarball with the updater it ships (Vimma's certificates): a manifest signed by a key the build does not pin is refused before any download, and a manifest signed by the run's test key that offers a MAR signed with Mozilla's test key mycert is downloaded but refused by the updater (error 19), so the install stays on N.",
+  "timeoutSeconds": 180,
+  "update": { "updater": "shipped" },
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:long.html" },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [{}, { "title": "long top navigate", "selected": true }]
+      }
+    },
+
+    { "serve-update": { "offer": "n1", "key": "unknown" } },
+    { "keys": ": u p d a t e enter" },
+    {
+      "wait-for-state": {
+        "update": { "installType": "tarball", "outcome": "refused", "offer": null, "stage": "none" }
+      },
+      "timeoutSeconds": 30
+    },
+    { "wait-for-install": { "buildId": "n", "marRequests": 0, "updateError": null } },
+
+    { "serve-update": { "offer": "n1" } },
+    { "keys": ": u p d a t e enter" },
+    { "wait-for-install": { "updateError": 19 }, "timeoutSeconds": 90 },
+    { "wait-for-install": { "buildId": "n", "marker": false } },
+    { "wait-for-state": { "update": { "stage": "none" } } }
+  ]
+}

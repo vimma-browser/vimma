@@ -831,8 +831,10 @@ export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
  *   signal?: AbortSignal,
  *   onSpawn?: (child: import("node:child_process").ChildProcess) => void,
  *   onTeardown?: (teardown: () => Promise<void>) => void,
+ *   onProfile?: (profile: string) => void,
  *   log?: (line: string) => void,
- * }} options
+ * }} options  `onProfile` changes the new profile before the browser first starts on it (the
+ *   update scenarios trust their host's CA in it)
  * @returns {Promise<Session>}
  */
 export async function launch({
@@ -856,6 +858,7 @@ export async function launch({
   signal,
   onSpawn = () => {},
   onTeardown = () => {},
+  onProfile = () => {},
   log = () => {},
 }) {
   /** @type {Display | null} */
@@ -972,6 +975,7 @@ export async function launch({
   if (signal?.aborted) onAbort();
   signal?.addEventListener("abort", onAbort, { once: true });
   try {
+    onProfile(profile);
     if (xvfb && !tearingDown) {
       displayStarting = startXvfb({ ...window, bin: xvfbBin, signal: cancel.signal, env: xvfbEnv });
       display = await displayStarting;

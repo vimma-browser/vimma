@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PRs 1 to 4 implemented, the nightly's signed MAR and manifest waiting for public nightly releases (decision 23); sub-PR 5, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4 and sub-PR 5's e2e scenarios implemented; the nightly's signed MAR and manifest wait for public nightly releases and the security rehearsal for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -1131,6 +1131,30 @@ Written first and seen to fail.
   6. **bad signature**: the **shipped** `updater` (Vimma's certificates) given the
      `mycert`-signed MAR → `failed: 19`; the Vimma verifier given an XML signed by an unknown key →
      no download.
+
+  (Since changed: two scenarios, `m6a-update-n-to-n1` (steps 1 to 5) and
+  `m6a-update-bad-signature` (step 6), because step 6 needs an install that keeps the shipped
+  `updater`. They run locally with `npm run e2e -- --updater <objdir>` on a `VIMMA_UPDATES=1` build
+  after `./mach package`, and are pending in every other run, because no pull-request job has such
+  a build, the nightly is off until public nightly releases (decision 23), and decision 23 names
+  exit test 1 a local test. N is the objdir's tarball; the host is https on 127.0.0.1, because the
+  manifest and the browser accept only an https MAR URL, with a CA made for the run that only the
+  scenario's profile trusts. The MAR is built by `tools/update/mar.mjs`, as the release's is,
+  instead of `./mach repackage mar`, and signed with `mycert`'s key, exported from libmar's test
+  database. The browser runs with `XUL_APP_FILE` naming the install's `browser/application.ini`,
+  because Firefox's binary carries its application.ini compiled in and reads a file only when told
+  to; so N+1's build ID, and the local update URL, are what it runs with. The updater applies the
+  update by `execv` in the browser's own process, so a plain `restart` follows it. The checks read
+  the control `state.update`, the install's application.ini and the profile's compatibility.ini
+  (the build that last ran), N+1's marker and the error code at the end of the updater's own
+  `updates/last-update.log`, because Firefox's updates.xml records no failure for an update tried
+  after one was applied in the same install. The status bar's notice is not compared with a
+  screenshot, because its text carries the version: `browser_vimma_update_notice.js` covers it.
+  Firefox's own background connections that crash a browser run with
+  `MOZ_DISABLE_NONLOCAL_CONNECTIONS` (the address bar's speculative connection, the media plugin
+  check at aus5.mozilla.org) are turned off in the scenario's profile; docs/runbook.md, "Updater
+  scenarios".)
+
 - **Security rehearsal (M6a exit test 2; runs after the release gate lifts, decision 23)**: with
   `AUTO_MERGE_UPSTREAM=all` (spec upstream-bump-automation), `AUTO_SECURITY_RELEASE=true` (spec
   firefox-versions) and a real Firefox security release whose patches apply as they are, the
@@ -1235,6 +1259,8 @@ tested:
    (Since changed: delivered as §7's note on `mar-sign` says; the nightly's signed MAR, its manifest
    and the rolling `nightly` release come with public nightly releases, decision 23.)
 5. **e2e and the security rehearsal**: the scenarios above; the M6a gate.
+   (Since changed: the e2e scenarios landed on their own; the rehearsal waits for the release gate,
+   decision 23.)
 
 ## Open questions
 

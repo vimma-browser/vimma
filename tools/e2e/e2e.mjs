@@ -16,12 +16,18 @@
  *   npm run e2e -- --update-baselines            # rewrite baselines: needs a changelog line
  *   npm run e2e -- --run-pending                 # also run scenarios marked pending
  *   npm run e2e -- --report-json out.json        # also write the results as JSON (Beta canary)
+ *   npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update
+ *                                                # the updater's scenarios (VIMMA_UPDATES=1)
  *
  * A scenario's `restart` step quits with ctrl+q ("quit") or SIGKILLs the browser once its
  * session is saved ("kill", a crash), and relaunches on the same profile; its
  * `prefs` override the profile's (null: the build's default; `checkout:<path>`: that path in the
  * checkout). Its `programs` are files in the checkout the browser finds on its PATH by name, and
  * the profile names the vimma-ctl found here for the built-in agent's CLI mode.
+ *
+ * A scenario with `update` (docs/specs/m6a-updater.md, "Tests", e2e) runs only with --updater,
+ * the objdir of a VIMMA_UPDATES=1 build after `./mach package`: each gets its own install of that
+ * tarball, updated from a local host (update-host.mjs). Without --updater it is reported pending.
  *
  * Exit 0 when nothing failed (pending scenarios are reported, not passed), 1 on failures,
  * 2 on usage errors.
@@ -56,8 +62,12 @@ import { fixtureText, fixtureUrl, startPageServer } from "./pages.mjs";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.mjs";
 import { loadScenarios, scenarioLaunch } from "./scenario.mjs";
 import { capture, checkBaseline } from "./screenshot.mjs";
+import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
+/** Why an update scenario does not run without --updater. */
+const NEEDS_UPDATER =
+  "needs a VIMMA_UPDATES=1 build: --updater <objdir> after ./mach package (docs/runbook.md)";
 
 const OPTIONS = /** @type {const} */ ({
   filter: { type: "string" },
@@ -76,6 +86,7 @@ const OPTIONS = /** @type {const} */ ({
   baselines: { type: "string", default: join(REPO, "tests/e2e/baselines") },
   out: { type: "string", default: join(REPO, "e2e-output") },
   "report-json": { type: "string" },
+  updater: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
 });
 
@@ -115,8 +126,13 @@ async function main() {
     return usage(/** @type {Error} */ (e).message);
   }
 
-  const scenarios = loadScenarios(values.scenarios, { filter: values.filter });
+  const scenarios = loadScenarios(values.scenarios, { filter: values.filter }).map((s) =>
+    s.update && !values.updater ? { ...s, pending: s.pending ?? NEEDS_UPDATER } : s,
+  );
   const runnable = scenarios.filter((s) => values["run-pending"] || !s.pending);
+  if (values.updater && process.platform !== "linux") {
+    return usage("--updater: Firefox's updater is built for Linux tarballs only");
+  }
 
   /** @type {Array<() => Promise<void>>} */
   const cleanups = [];
@@ -140,7 +156,7 @@ async function main() {
     let build = null;
     /** @type {string} */
     let ctlBin = "";
-    if (runnable.length) {
+    if (runnable.some((s) => !s.update)) {
       if (values.tarball) {
         const dir = mkdtempSync(join(tmpdir(), "vimma-e2e-build-"));
         cleanups.push(async () => rmSync(dir, { recursive: true, force: true }));
@@ -148,10 +164,37 @@ async function main() {
       } else {
         build = findBuild({ build: values.build, artifact: values.artifact, env: process.env });
       }
+    }
+    if (runnable.length) {
       ctlBin = findVimmaCtl({ flag: values["vimma-ctl"], env: process.env });
       // In-process: it dies with the CLI, so a signal needs no cleanup for it.
       pages = await startPageServer(join(REPO, "tests/e2e/fixtures"));
-      console.log(`build: ${build.binary}\nvimma-ctl: ${ctlBin}`);
+      console.log(`build: ${build?.binary ?? "none"}\nvimma-ctl: ${ctlBin}`);
+    }
+    /** @type {Promise<import("./update-host.mjs").UpdateRun> | null} the update scenarios' */
+    let updateRun = null;
+    const updateWork = () => {
+      const work = mkdtempSync(join(tmpdir(), "vimma-e2e-update-"));
+      cleanups.push(async () => rmSync(work, { recursive: true, force: true }));
+      return work;
+    };
+    const startUpdateRun = () => {
+      const objdir = resolve(/** @type {string} */ (values.updater));
+      const work = updateWork();
+      const run = prepareUpdateRun({
+        objdir,
+        engine: join(REPO, "engine"),
+        work,
+        log: (line) => console.log(`        ${line}`),
+      });
+      cleanups.push(async () => (await run.catch(() => null))?.close());
+      return run;
+    };
+    // Made before the first scenario starts, so the MAR builds (minutes: xz) do not count
+    // against any scenario's timeout or the suite's budget.
+    if (runnable.some((s) => s.update)) {
+      console.log("update run: preparing N, N+1 and the downgrade build");
+      await (updateRun = startUpdateRun());
     }
     if (runnable.length && mode === "headless") console.log("headless: screenshots are skipped");
 
@@ -173,8 +216,24 @@ async function main() {
         root: REPO,
         vimmaCtl: ctlBin ? resolve(ctlBin) : null,
       });
+      /** @type {import("./update-host.mjs").UpdateRun | null} */
+      let run = null;
+      /** @type {import("./launcher.mjs").Build} */
+      let sessionBuild = /** @type {import("./launcher.mjs").Build} */ (build);
+      let install = "";
+      if (scenario.update) {
+        run = await (updateRun ??= startUpdateRun());
+        install = run.newInstall(scenario.update.updater, join(updateWork(), "vimma"));
+        // The updater replaces the install's files and execs the browser again in the same
+        // process (nsUpdateDriver.cpp, updater.cpp: execv on Linux), so the harness keeps its pid
+        // and the environment carries over.
+        sessionBuild = { binary: join(install, "vimma"), env: updateEnv(install) };
+        Object.assign(prefs, updatePrefs(run.testKey, `${run.host.origin}/update.xml`));
+      }
+      const caFile = run?.caFile;
       const session = await launch({
-        build: /** @type {import("./launcher.mjs").Build} */ (build),
+        build: sessionBuild,
+        onProfile: caFile ? (p) => trustCa(p, caFile) : undefined,
         xvfb: mode === "xvfb",
         headless: mode === "headless",
         keep: values.keep,
@@ -207,7 +266,10 @@ async function main() {
       const quitThenTeardown = async () => {
         /** @type {string | null} */
         let problem = null;
-        if (!signal.aborted) {
+        // A browser that died on its own (MOZ_CRASH ends in SIGSEGV) says why on stderr only.
+        const died = session.child.signalCode;
+        if (died) problem = `the browser died (${died}); its last output:\n${session.stderrTail()}`;
+        if (!signal.aborted && !died) {
           const clean = await quitBrowser({ ctl, child: session.child });
           if (!clean) console.log("        ctrl+q did not quit the browser; signalling it");
           else if (existsSync(join(session.profile, DISCOVERY_FILE)))
@@ -298,7 +360,7 @@ async function main() {
         // vimma-open run as another program runs it; its `vimma` is the build on this profile.
         external: async (/** @type {string[]} */ args) => {
           const wrapper = join(session.profile, ".e2e-vimma");
-          const binary = /** @type {import("./launcher.mjs").Build} */ (build).binary;
+          const binary = sessionBuild.binary;
           writeFileSync(wrapper, externalWrapper(binary, session.profile), { mode: 0o700 });
           await runVimmaOpen(
             args.map((a) => fixtureUrl(a, pages?.base ?? null)),
@@ -324,11 +386,26 @@ async function main() {
           throw new Error("vimma-ctl mcp wrote something other than MCP messages on stdout");
         }
       };
+      const since = run?.host.marRequests() ?? 0;
+      const update = run
+        ? {
+            serve: async (/** @type {import("./scenario.mjs").UpdateServe} */ spec) =>
+              /** @type {import("./update-host.mjs").UpdateRun} */ (run).serve(spec),
+            install: async () =>
+              installState({
+                install,
+                profile: session.profile,
+                run: /** @type {import("./update-host.mjs").UpdateRun} */ (run),
+                since,
+              }),
+          }
+        : undefined;
       return {
         ctl: stepCtl,
         screenshot,
         restart,
         control,
+        update,
         profile: session.profile,
         text: (/** @type {string} */ t) => fixtureText(t, pages?.base ?? null),
         teardown: teardownAll,
