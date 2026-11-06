@@ -261,6 +261,19 @@ macOS, "show X in place of Y" is one synchronous step in the parent process:
 
 X is shown before Y is hidden, at the same frame, so nothing behind them shows through.
 
+(Since changed: before step 3 Vimma forces X's browsing context active
+(`browsingContext.forceAppWindowActive`), and before step 5 it flushes X's layout; it lets the
+force go when macOS first reports X's occlusion changed after step 5, or when X is hidden or
+closes, and never touches a force that Picture-in-Picture already set. Reason: ordered out, a
+window is fully occluded, so its browsing context is inactive (`AppWindow::OcclusionStateChanged`,
+`CanonicalBrowsingContext::RecomputeAppWindowVisibility`): its resize waits
+(`PresShell::ShouldDelayResize`) and its compositor is paused until macOS reports it visible,
+some frames after it is ordered in, so a window shown at another size than it was hidden at drew
+its old-size contents for those frames
+([#773](https://github.com/vimma-browser/vimma/issues/773)). The mochitest deactivates each hidden
+window as macOS does and checks that the shown window is active and laid out at its new size when
+it is shown.)
+
 ### Decisions
 
 1. **Swap in place on macOS by native window visibility.** Vimma hides the normal window with
