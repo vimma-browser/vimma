@@ -594,3 +594,39 @@ describe("workspace keys like Vim's buffer keys", () => {
     expect(last(feed(d, "normal", "g b"))).toEqual(alternate);
   });
 });
+
+// Key-to-action is gated at 10 % against the bench baseline (docs/runbook.md "Bench baseline"):
+// the trie and the mode and context checks are per mode and context, not per key.
+describe("dispatcher hot path", () => {
+  test("the trie is looked up when the mode or context changes, not on every key", () => {
+    const keymap = compileKeymap();
+    /** @type {string[]} */
+    const lookups = [];
+    const d = createDispatcher({
+      ...keymap,
+      trie: (mode, context) => {
+        lookups.push(`${mode}/${context ?? "page"}`);
+        return keymap.trie(mode, context);
+      },
+    });
+    feed(d, "normal", "j g t 5 j ctrl+b c");
+    expect(lookups).toEqual(["normal/page"]);
+    feed(d, "insert", "ctrl+b c");
+    d.dispatch("normal", parseKey("j"), "pdf");
+    d.dispatch("normal", parseKey("j"), "pdf");
+    expect(lookups).toEqual(["normal/page", "insert/page", "normal/pdf"]);
+  });
+
+  test("an unknown mode or context is rejected after a valid key too", () => {
+    const d = make();
+    feed(d, "normal", "j");
+    expect(() => d.dispatch(/** @type {any} */ ("bogus"), parseKey("j"))).toThrow(/unknown mode/);
+    expect(() => d.dispatch("normal", parseKey("j"), /** @type {any} */ ("nope"))).toThrow(
+      /unknown context/,
+    );
+    expect(d.dispatch("normal", parseKey("j"))).toEqual({
+      kind: "action",
+      action: { id: "scroll.down" },
+    });
+  });
+});
