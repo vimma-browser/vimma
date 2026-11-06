@@ -174,6 +174,49 @@ add_task(async function marks() {
   });
 });
 
+// pdf.js renders a page over several animation frames, and goToDestination focuses the page's
+// text layer once it has rendered, which scrolls the page back into view. A key that moves on
+// before that render (`'a` then `G` while the viewer is busy, as on a slow machine) must not be
+// undone by it.
+add_task(async function a_key_right_after_a_mark_is_not_undone_by_its_page_rendering() {
+  await withPdf(async (browser) => {
+    type("3G");
+    await until(browser, { page: 3 }, "3G");
+    const marked = await view(browser);
+    type("ma");
+    type("150=");
+    await until(browser, { scale: 1.5 }, "150=");
+    type("G");
+    await until(browser, { page: 6 }, "G");
+    // Page 3 at the mark's zoom renders only once the viewer's frames run again.
+    const rendered = BrowserTestUtils.waitForContentEvent(
+      browser,
+      "textlayerrendered",
+      false,
+      (e) => e.detail?.pageNumber === 3,
+      true,
+    );
+    await SpecialPowers.spawn(browser, [], () => content.windowUtils.advanceTimeAndRefresh(0));
+    let last;
+    try {
+      type("'a");
+      await until(browser, { page: 3, scale: marked.scale }, "'a");
+      await jump(browser, "G", 6, "G before page 3 has rendered");
+      last = await view(browser);
+    } finally {
+      await SpecialPowers.spawn(browser, [], () => content.windowUtils.restoreNormalRefresh());
+    }
+    await rendered;
+    // The scroll position, which a focus moves at once; pdf.js updates its page a frame later.
+    const at = await view(browser);
+    Assert.equal(
+      at.scrollTop,
+      last.scrollTop,
+      `page 3's rendering leaves the view on the last page: ${JSON.stringify(at)}`,
+    );
+  });
+});
+
 add_task(async function marks_are_kept_per_document() {
   await withPdf(async (browser) => {
     type("4G");

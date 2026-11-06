@@ -84,6 +84,9 @@ export const PDFJS_CONTRACT = Object.freeze({
   "pdfViewer._location.left": "number",
   "pdfViewer._location.top": "number",
   "pdfDocument.getDestination": "function",
+  // A mark goes to its place as goToDestination does, without its focus (decision 11).
+  "pdfHistory.push": "function",
+  "pdfViewer.scrollPageIntoView": "function",
 });
 
 /**
@@ -275,8 +278,9 @@ export class PdfView {
 
   /**
    * Runs one operation from the parent (V7): a name from PDF_OPS and an integer, checked again
-   * here. Only primitives go into pdf.js, so nothing needs Cu.cloneInto (V3); pdf.js's return
-   * values are not used, and nothing it returns is awaited (V4).
+   * here. Only primitives go into pdf.js, and a mark's destination and the arguments that go with
+   * it are cloned into the viewer (V3); pdf.js's return values are not used, and nothing it
+   * returns is awaited (V4).
    * @param {unknown} raw
    * @returns {boolean} whether it reached pdf.js
    */
@@ -377,14 +381,28 @@ export class PdfView {
         case "follow":
           return this.#follow(n);
         case "go": {
-          // A mark (decision 11): an XYZ destination on its page, through goToDestination,
-          // which records the jump in the history first (decision 9). The array is cloned into
-          // the viewer (V3); the promise goToDestination returns is not used (V4).
+          // A mark (decision 11): an XYZ destination on its page, the jump recorded in the
+          // history first (decision 9), as goToDestination does. Not through goToDestination,
+          // which also focuses the page's text layer once it has rendered: on a busy viewer that
+          // comes after the next key (`'a` then `G`) and scrolls the view back to the mark.
+          // Everything is cloned into the viewer (V3).
           const at = msg.at;
           if (!at || !live(pages) || at.page > pages) return false;
           const dest = [at.page - 1, { name: "XYZ" }, at.left, at.top, at.scale];
+          const history = app.pdfHistory;
           this.#settle();
-          app.pdfLinkService.goToDestination(Cu.cloneInto(dest, this.#win));
+          history?.pushCurrentPosition();
+          history?.push(
+            Cu.cloneInto({ namedDest: null, explicitDest: dest, pageNumber: at.page }, this.#win),
+          );
+          // A mark comes back at its zoom (decision 11), whatever pdfjs.ignoreDestinationZoom
+          // says for a link.
+          viewer.scrollPageIntoView(
+            Cu.cloneInto(
+              { pageNumber: at.page, destArray: dest, ignoreDestinationZoom: false },
+              this.#win,
+            ),
+          );
           return true;
         }
         case "presentation":

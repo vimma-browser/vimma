@@ -535,7 +535,13 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     live with its windows and go when it closes. zathura saves marks and its jump list per file;
     Vimma does not, because saving them would keep a list of the PDFs read in the profile, a
     history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF at its
-    page. Rejected: marks saved per PDF URL in the profile, for that reason.
+    page. Rejected: marks saved per PDF URL in the profile, for that reason. (Since changed: `'x`
+    records the history entry and scrolls to the destination itself, with
+    `pdfHistory.pushCurrentPosition`, `pdfHistory.push` and `pdfViewer.scrollPageIntoView`, as
+    `goToDestination` does, because `goToDestination` also focuses the page's text layer once it
+    has rendered, and on a busy viewer that focus came after the next key and scrolled the view
+    back to the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set,
+    which is meant for a document's links.)
 12. **Pages are shown as the document draws them.** Vimma does not recolour PDF pages: it adds no
     filter or style to the viewer and sets no `pdfjs.*` colour pref, and `ctrl+r` keeps its
     meaning, reload (decision 5). Reason: a document's colours are its content (figures,

@@ -3829,9 +3829,10 @@ bindings, so it is accepted here.
   `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
   or `file` document URI, which the viewer keeps from the PDF it shows.
   [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
-- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays made
-  with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a mark's `XYZ` destination,
-  an internal link's explicit destination read from its fragment), or an outline entry's target
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays and
+  objects of primitives made with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a
+  mark's `XYZ` destination and the history and scroll arguments that go with it, an internal
+  link's explicit destination read from its fragment), or an outline entry's target
   that pdf.js itself gave it (V8); no chrome object **may** be passed in.
   [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
@@ -3861,7 +3862,7 @@ bindings, so it is accepted here.
   the theme's token sheet under V12. `F` asks for an
   internal link's page by the hint's generation and index only, and the parent keeps the answer only
   when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
-  strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
+  strings (`page-fit`, `page-width`, a mark's `XYZ`, cloned under V3), and measures the page for `H`, `L`, `P` and `ctrl+f` through
   Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
   presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
   and fall back to scrolling when the adapter applied none.
