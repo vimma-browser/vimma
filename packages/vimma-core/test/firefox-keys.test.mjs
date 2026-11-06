@@ -12,6 +12,7 @@ import {
   firefoxShortcuts,
   pageFirst,
   planFirefoxKeys,
+  planMenuKeys,
   xulKeyChord,
 } from "../src/firefox-keys.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
@@ -686,5 +687,57 @@ describe("macOS: the guide's [firefox] enable example", () => {
     ]) {
       expect(enable.filter((/** @type {string} */ c) => bound.has(c))).toEqual([]);
     }
+  });
+});
+
+// docs/specs/macos-build.md decision 22: on macOS a menu item copies its <key>'s chord into the
+// native menu bar whatever the key's `disabled` says, so a menu item of a key that is off loses
+// its `key` attribute until the key is on again.
+describe("planMenuKeys (macOS menu items of the keys that are off)", () => {
+  /** @param {string | null} key @param {string | null} [stripped] */
+  const item = (key, stripped = null) => ({ key, stripped });
+
+  test("a menu item of a key that is off loses its key, and remembers it", () => {
+    const newTab = item("key_newNavigatorTab");
+    const quit = item("key_quitApplication");
+    expect(planMenuKeys([newTab, quit], new Set(["key_newNavigatorTab"]))).toEqual([
+      { item: newTab, key: null, stripped: "key_newNavigatorTab" },
+    ]);
+  });
+
+  test("every menu item of the key is stripped (the menu bar's and a context menu's)", () => {
+    const a = item("key_gotoHistory");
+    const b = item("key_gotoHistory");
+    expect(planMenuKeys([a, b], new Set(["key_gotoHistory"])).map((t) => t.item)).toEqual([a, b]);
+  });
+
+  test("a key turned back on gives its menu items their key back, exactly", () => {
+    const close = item(null, "key_close");
+    expect(planMenuKeys([close], new Set())).toEqual([
+      { item: close, key: "key_close", stripped: null },
+    ]);
+  });
+
+  test("what is already as planned is left alone", () => {
+    expect(
+      planMenuKeys(
+        [item(null, "key_close"), item("key_find"), item(null, null)],
+        new Set(["key_close"]),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a key Firefox set again on a stripped item is the one that counts", () => {
+    // DevTools and others set `key` themselves: the attribute present wins over the remembered.
+    const on = item("key_find", "key_close");
+    const off = item("key_close", "key_find");
+    expect(planMenuKeys([on, off], new Set(["key_close"]))).toEqual([
+      { item: on, key: "key_find", stripped: null },
+      { item: off, key: null, stripped: "key_close" },
+    ]);
+  });
+
+  test("an empty key is not a key", () => {
+    expect(planMenuKeys([item("")], new Set([""]))).toEqual([]);
   });
 });

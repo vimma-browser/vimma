@@ -1,8 +1,6 @@
 # Spec: macos-build
 
-Status: implemented, except the leftover in
-[#613](https://github.com/vimma-browser/vimma/issues/613) (sub-PR 5's native menu bar check) ·
-Area: `configs/macos/mozconfig`,
+Status: implemented · Area: `configs/macos/mozconfig`,
 `configs/macos/entitlements/` (new), `tools/package/macos-dmg.sh` (new),
 `tools/package/macos-dmg-unpack.sh`, `macos-sign-app.sh`, `macos-dmg-pack.sh` and
 `macos-developer-id-check.sh` (new),
@@ -17,7 +15,8 @@ Area: `configs/macos/mozconfig`,
 Issues: [#238](https://github.com/vimma-browser/vimma/issues/238),
 [#385](https://github.com/vimma-browser/vimma/issues/385),
 [#386](https://github.com/vimma-browser/vimma/issues/386),
-[#612](https://github.com/vimma-browser/vimma/issues/612)
+[#612](https://github.com/vimma-browser/vimma/issues/612),
+[#613](https://github.com/vimma-browser/vimma/issues/613)
 
 Engine paths are relative to `engine/` and were checked against Firefox 158.0. Surfer paths
 (`S/`) are relative to `node_modules/@zen-browser/surfer`, version 1.14.9. Zen Browser
@@ -486,7 +485,20 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     (`EventStateManager::PostHandleKeyboardEvent` returns early on
     `nsEventStatus_eConsumeNoDefault`, `EventStateManager.cpp:3985`). The engine source reads so; it
     is not yet confirmed in a running windowed build, which headless tests cannot show, and is part
-    of sub-PR 5's hand check of the native menu bar. Rejected: a macOS chord column in every row,
+    of sub-PR 5's hand check of the native menu bar. (Since changed: the hand check in
+    [#613](https://github.com/vimma-browser/vimma/issues/613) confirmed it on 0.1.14: `cmd+t`,
+    `cmd+w`, `cmd+n` and `cmd+j` ran their menu items in every mode, and only `cmd+r`, with no menu
+    item, was off. On macOS firefox-keys now takes the `key` attribute off every menu item that
+    names a `<key>` it turns off, remembered in `vimma-key`, and puts it back when the key is on
+    again or firefox-keys stops (core `planMenuKeys`), because `nsMenuItemX` observes the
+    attribute and clears the item's key equivalent when it goes (`nsMenuItemX.mm:548` in Firefox
+    159.0.1), while the item stays usable by mouse. Disabling the `<command>` instead was rejected, because it greys
+    the item and the toolbar and context-menu entries that share the command. Linux and Windows
+    are unchanged, because there the attribute only draws the shortcut beside the label and
+    nothing runs from it. The hidden window's menu bar and other windows (the Library) keep their
+    keys, because VimmaHost runs only in browser windows, and with no browser window open the
+    menu bar's `cmd+n` is the one key that opens one; `docs/guide.md`, "On macOS the alt keys are
+    cmd keys".) Rejected: a macOS chord column in every row,
     because the keymap, `pageFirst` and the docs would each have to pick a column while only the
     host and the coverage test differ by platform; and a hand-written second table, because its 149
     rows would be kept in step with Linux's 140 by hand, where 77 rows change their chord, 12 go and
@@ -868,7 +880,9 @@ full build.
    (decisions 29 and 30, #385 and #386); the Option/alt behaviour in `docs/guide.md` ("On macOS the
    alt keys are cmd keys", decision 31). The native menu bar check (whether a `<key>` that is off
    still runs from its menu item in a windowed build) is a hand check not yet run, follow-up work
-   outside this spec in [#613](https://github.com/vimma-browser/vimma/issues/613).
+   outside this spec in [#613](https://github.com/vimma-browser/vimma/issues/613). (Since
+   changed: checked and fixed with [#613](https://github.com/vimma-browser/vimma/issues/613);
+   decision 22.)
 6. **`build(macos): a dmg in every release`** (built). The four macOS jobs in `release.yml` behind
    `MACOS_RELEASE_ENABLED` (decision 12): the cross build with the Safe Browsing key, the
    `macos-15` smoke check against the tag, cosign, and an add-only upload. The guide's macOS
