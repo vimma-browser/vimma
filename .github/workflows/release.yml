@@ -581,12 +581,14 @@ jobs:
           sudo apt-get update -q
           sudo apt-get install -y -q libnss3-tools
           chmod 755 mar-tools/signmar
-          db=$(mktemp -d)
-          certutil -N -d "sql:$db" --empty-password
-          certutil -A -n primary -t ,, -i configs/updater/primary.der -d "sql:$db"
-          certutil -A -n secondary -t ,, -i configs/updater/secondary.der -d "sql:$db"
-          LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n primary -v "mar-signed/$MAR"
-          LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n secondary -v "mar-signed/$MAR"
+          # A database per slot: both slots hold the same certificate until the cold secondary
+          # exists (spec decision 39), and NSS keeps one nickname per certificate in a database.
+          for slot in primary secondary; do
+            db=$(mktemp -d)
+            certutil -N -d "sql:$db" --empty-password
+            certutil -A -n "$slot" -t ,, -i "configs/updater/$slot.der" -d "sql:$db"
+            LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n "$slot" -v "mar-signed/$MAR"
+          done
           echo "signmar: $MAR verifies under primary.der and secondary.der"
 
       # Both MARs come from package; this ties the signed one to the release tarball that

@@ -201,8 +201,16 @@ describe("release.yml: the updater and the complete MAR", () => {
     expect(run).toContain(
       'node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"',
     );
-    expect(run).toMatch(/mar-tools\/signmar -d "sql:\$db" -n primary -v "mar-signed\/\$MAR"/);
-    expect(run).toMatch(/mar-tools\/signmar -d "sql:\$db" -n secondary -v "mar-signed\/\$MAR"/);
+    // One NSS database per slot: until the cold secondary exists both slots hold the same
+    // certificate (decision 39), and NSS keeps one nickname per certificate in a database, so
+    // a second nickname for it in the same one is not found.
+    expect(run).toContain("for slot in primary secondary; do\n  db=$(mktemp -d)\n");
+    expect(run).toContain(
+      'certutil -A -n "$slot" -t ,, -i "configs/updater/$slot.der" -d "sql:$db"',
+    );
+    expect(run).toContain(
+      'LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n "$slot" -v "mar-signed/$MAR"',
+    );
     expect(run.indexOf("same-content")).toBeLessThan(run.indexOf("signmar -d"));
     expect(block).toContain("name: release-mar\n");
   });
