@@ -5,6 +5,13 @@
   "update": { "updater": "shipped" },
   "steps": [
     { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "fixture:long.html" },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [{}, { "title": "long top navigate", "selected": true }]
+      }
+    },
 
     { "serve-update": { "offer": "n1", "key": "unknown" } },
     { "keys": ": u p d a t e enter" },

@@ -62,23 +62,12 @@ import { fixtureText, fixtureUrl, startPageServer } from "./pages.mjs";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.mjs";
 import { loadScenarios, scenarioLaunch } from "./scenario.mjs";
 import { capture, checkBaseline } from "./screenshot.mjs";
-import { installState, prepareUpdateRun, trustCa } from "./update-host.mjs";
+import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 /** Why an update scenario does not run without --updater. */
 const NEEDS_UPDATER =
   "needs a VIMMA_UPDATES=1 build: --updater <objdir> after ./mach package (docs/runbook.md)";
-/**
- * The prefs an update scenario's browser needs: automation, so the run's manifest key is pinned
- * (vimma.update.testKeys) and MOZ_DISABLE_NONLOCAL_CONNECTIONS keeps it on 127.0.0.1, and
- * Firefox's updater on, which the harness's profile turns off for every other scenario.
- * @param {{ id: string, slot: string, spki: string }} key
- */
-const updatePrefs = (key) => ({
-  "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer": true,
-  "vimma.update.testKeys": JSON.stringify([key]),
-  "app.update.disabledForTesting": false,
-});
 
 const OPTIONS = /** @type {const} */ ({
   filter: { type: "string" },
@@ -201,6 +190,12 @@ async function main() {
       cleanups.push(async () => (await run.catch(() => null))?.close());
       return run;
     };
+    // Made before the first scenario starts, so the MAR builds (minutes: xz) do not count
+    // against any scenario's timeout or the suite's budget.
+    if (runnable.some((s) => s.update)) {
+      console.log("update run: preparing N, N+1 and the downgrade build");
+      await (updateRun = startUpdateRun());
+    }
     if (runnable.length && mode === "headless") console.log("headless: screenshots are skipped");
 
     /** @type {string[]} */
@@ -230,12 +225,10 @@ async function main() {
         run = await (updateRun ??= startUpdateRun());
         install = run.newInstall(scenario.update.updater, join(updateWork(), "vimma"));
         // The updater replaces the install's files and execs the browser again in the same
-        // process (nsUpdateDriver.cpp, updater.cpp: execv on Linux), so the harness keeps its pid.
-        sessionBuild = {
-          binary: join(install, "vimma"),
-          env: { MOZ_DISABLE_NONLOCAL_CONNECTIONS: "1" },
-        };
-        Object.assign(prefs, updatePrefs(run.testKey));
+        // process (nsUpdateDriver.cpp, updater.cpp: execv on Linux), so the harness keeps its pid
+        // and the environment carries over.
+        sessionBuild = { binary: join(install, "vimma"), env: updateEnv(install) };
+        Object.assign(prefs, updatePrefs(run.testKey, `${run.host.origin}/update.xml`));
       }
       const caFile = run?.caFile;
       const session = await launch({
@@ -273,7 +266,10 @@ async function main() {
       const quitThenTeardown = async () => {
         /** @type {string | null} */
         let problem = null;
-        if (!signal.aborted) {
+        // A browser that died on its own (MOZ_CRASH ends in SIGSEGV) says why on stderr only.
+        const died = session.child.signalCode;
+        if (died) problem = `the browser died (${died}); its last output:\n${session.stderrTail()}`;
+        if (!signal.aborted && !died) {
           const clean = await quitBrowser({ ctl, child: session.child });
           if (!clean) console.log("        ctrl+q did not quit the browser; signalling it");
           else if (existsSync(join(session.profile, DISCOVERY_FILE)))

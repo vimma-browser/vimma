@@ -293,12 +293,21 @@ pins only in automation (`vimma.update.testKeys` with `MOZ_DISABLE_NONLOCAL_CONN
 the automation pref). `m6a-update-n-to-n1`'s install carries `updater-xpcshell` (Mozilla's test
 updater, which trusts `mycert`) as `updater`; `m6a-update-bad-signature`'s keeps the shipped one,
 which must refuse the `mycert` MAR (error 19). Nothing reaches `updates.vimma.dev`, and the real
-update key is never used. The updater applies the update by `execv` in the browser's own process,
-so a `restart` step follows it with nothing extra. `serve-update` picks the manifest
-(`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`); `wait-for-install`
-waits on which build the install holds and the profile last ran (`compatibility.ini`), N+1's
-marker, the updater's `errorCode` in the install's `updates.xml` and the MAR requests the host
-saw.
+update key is never used. The browser runs with `XUL_APP_FILE` naming the install's
+`browser/application.ini` (Firefox's binary otherwise uses the copy compiled into it), so the
+local URL and, after the update, N+1's build ID are what it runs with. With
+`MOZ_DISABLE_NONLOCAL_CONNECTIONS` any connection off 127.0.0.1 crashes the browser ("FATAL
+ERROR: Non-local network connections are disabled", in the failure's teardown output); the
+scenario profile turns off the ones Firefox makes on its own (`updatePrefs` in
+`tools/e2e/update-host.mjs`), and a scenario types `:update` only once a page has focus, since
+in the address bar it is a search. The updater applies the update by `execv` in the browser's
+own process, so a `restart` step follows it with nothing extra. `serve-update` picks the
+manifest (`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`);
+`wait-for-install` waits on which build the install holds and the profile last ran
+(`compatibility.ini`), N+1's marker, the error code the updater's last run ended with
+(`updates/last-update.log`) and the MAR requests the host saw. Measured 2026-11-06 (Firefox
+159.0.1, 16 threads): the preparation takes about 2.5 minutes (two MARs, xz), the two scenarios
+about 10 s.
 
 **Baselines.** Screenshots are compared with `tests/e2e/baselines/<name>.png`; more than 0.5 % of
 differing pixels fails, and the actual and diff images land in `e2e-output/`. To change a

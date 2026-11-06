@@ -33,6 +33,14 @@
         "panes": { "zoomed": false, "root": { "axis": "x", "children": [{}, {}] } }
       }
     },
+    { "keys": "ctrl+b (" },
+    {
+      "wait-for-state": {
+        "workspace": "main",
+        "mode": "normal",
+        "tabs": [{}, { "title": "long middle navigate", "selected": true }]
+      }
+    },
 
     { "serve-update": { "offer": "n1" } },
     { "keys": ": u p d a t e enter" },
@@ -54,21 +62,29 @@
     { "wait-for-install": { "buildId": "n1", "marker": true }, "timeoutSeconds": 60 },
     {
       "wait-for-state": {
+        "workspace": "main",
+        "tabs": [{}, { "title": "long middle back_forward", "selected": true }],
+        "panes": null
+      },
+      "timeoutSeconds": 30
+    },
+    { "keys": "ctrl+b )" },
+    {
+      "wait-for-state": {
         "workspace": "work",
         "tabs": [{}, { "title": "cookie ws=work" }, {}],
         "panes": { "zoomed": false, "root": { "axis": "x", "children": [{}, {}] } }
-      },
-      "timeoutSeconds": 30
+      }
     },
     { "keys": "ctrl+b (" },
     {
       "wait-for-state": {
         "workspace": "main",
+        "mode": "normal",
         "tabs": [{}, { "title": "long middle back_forward", "selected": true }],
-        "panes": null
+        "update": { "stage": "none" }
       }
     },
-    { "wait-for-state": { "update": { "stage": "none" } } },
 
     { "serve-update": { "offer": "n" } },
     { "keys": ": u p d a t e enter" },

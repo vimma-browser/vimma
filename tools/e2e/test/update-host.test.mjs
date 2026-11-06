@@ -29,7 +29,8 @@ import {
   signManifest,
   signMar,
   startUpdateHost,
-  updateError,
+  updateEnv,
+  updaterError,
 } from "../update-host.mjs";
 import {
   judgeManifest,
@@ -197,19 +198,23 @@ describe("the test-signed MAR", () => {
   });
 });
 
-describe("updates.xml", () => {
-  it("gives the error code of the newest update the updater gave up on", () => {
-    const xml =
-      '<?xml version="1.0"?><updates xmlns="http://www.mozilla.org/2005/app-update">' +
-      '<update appVersion="159.0.1" buildID="20261106090300" errorCode="23" state="failed">' +
-      '<patch type="complete" state="failed"/></update>' +
-      '<update buildID="20261106090100" errorCode="19" state="failed"/></updates>';
-    expect(updateError(xml)).toEqual({ buildId: "20261106090300", errorCode: 23 });
-    expect(updateError('<updates xmlns="x"/>')).toBeNull();
-    expect(updateError('<updates><update buildID="1" state="succeeded"/></updates>')).toEqual({
-      buildId: "1",
-      errorCode: null,
-    });
+describe("the updater's log", () => {
+  const LOG = (/** @type {string} */ status) =>
+    "2026-11-06 03:15:15+0000: gInvocation=UpdaterInvocation::First\n" +
+    "2026-11-06 03:15:15+0000: Writing status to file: applying\n" +
+    "2026-11-06 03:15:15+0000: Performing a staged update\n" +
+    `2026-11-06 03:15:15+0000: Writing status to file: ${status}\n\n` +
+    `2026-11-06 03:15:15+0000: ${status}\n` +
+    "2026-11-06 03:15:15+0000: calling QuitProgressUI\n";
+
+  it("gives the error code the updater's last run ended with, or null", () => {
+    expect(updaterError(LOG("failed: 23"))).toBe(23);
+    expect(updaterError(LOG("failed: 19"))).toBe(19);
+    expect(updaterError(LOG("applied"))).toBeNull();
+    expect(updaterError(LOG("succeeded"))).toBeNull();
+    expect(updaterError("")).toBeNull();
+    // the last status counts: a run that failed, then one that applied
+    expect(updaterError(`${LOG("failed: 19")}${LOG("applied")}`)).toBeNull();
   });
 });
 
@@ -217,7 +222,7 @@ describe("the installs", () => {
   /** @param {string} root */
   function fakeInstall(root) {
     const dir = join(root, "vimma");
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(join(dir, "browser"), { recursive: true });
     writeFileSync(join(dir, "application.ini"), INI);
     writeFileSync(join(dir, "updater"), "shipped updater", { mode: 0o755 });
     writeFileSync(join(dir, "vimma"), "#!/bin/sh\n", { mode: 0o755 });
@@ -236,6 +241,14 @@ describe("the installs", () => {
     expect(iniValue(readFileSync(join(test, "application.ini"), "utf8"), "AppUpdate", "URL")).toBe(
       url,
     );
+    // the browser reads browser/application.ini (XUL_APP_FILE): the same text
+    expect(readFileSync(join(test, "browser/application.ini"), "utf8")).toBe(
+      readFileSync(join(test, "application.ini"), "utf8"),
+    );
+    expect(updateEnv(test)).toEqual({
+      MOZ_DISABLE_NONLOCAL_CONNECTIONS: "1",
+      XUL_APP_FILE: join(test, "browser/application.ini"),
+    });
     const shipped = installTree({ from: src, to: join(root, "b"), url, testUpdater: null });
     expect(readFileSync(join(shipped, "updater"), "utf8")).toBe("shipped updater");
     // the source tree is left as it was
@@ -249,6 +262,7 @@ describe("the installs", () => {
     const ini = readFileSync(join(next, "application.ini"), "utf8");
     expect(iniValue(ini, "App", "BuildID")).toBe("20261106090100");
     expect(iniValue(ini, "App", "Version")).toBe("159.0.1");
+    expect(readFileSync(join(next, "browser/application.ini"), "utf8")).toBe(ini);
     expect(readFileSync(join(next, "vimma-e2e-update-marker"), "utf8")).toBe("20261106090100\n");
     const old = nextTree({
       from: src,
@@ -292,9 +306,10 @@ describe("what wait-for-install reads", () => {
       setIni(INI, "App", "BuildID", "20261106090100"),
     );
     writeFileSync(join(install, "vimma-e2e-update-marker"), "");
+    mkdirSync(join(install, "updates"));
     writeFileSync(
-      join(install, "updates.xml"),
-      '<updates><update buildID="20261106090200" errorCode="23" state="failed"/></updates>',
+      join(install, "updates/last-update.log"),
+      "2026-11-06 03:15:15+0000: Writing status to file: failed: 23\n",
     );
     mars = 5;
     expect(installState({ install, profile, run, since: 1 })).toEqual({

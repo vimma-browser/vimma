@@ -196,18 +196,35 @@ export function signMar(buf, privateKey) {
 }
 
 /**
- * The newest update in the install's updates.xml (Firefox's update history, newest first): its
- * build ID and the updater's error code, when it failed with one.
- * @param {string} xml
- * @returns {{ buildId: string | null, errorCode: number | null } | null}
+ * The error code the updater's last run ended with (`failed: <code>`), or null when it ended
+ * otherwise or never ran: the last status line of `updates/last-update.log`, which the updater
+ * itself writes in the install. Firefox's own record of a failed update (updates.xml) is not
+ * written in every case: after an update was applied in the same install, a later failed one
+ * left none.
+ * @param {string} log
  */
-export function updateError(xml) {
-  const tag = /<update\s([^>]*)>/.exec(xml) ?? /<update\s([^>]*)\/>/.exec(xml);
-  if (!tag) return null;
-  const attr = (/** @type {string} */ name) =>
-    new RegExp(`\\s${name}="([^"]*)"`).exec(` ${tag[1]}`)?.[1] ?? null;
-  const code = attr("errorCode");
-  return { buildId: attr("buildID"), errorCode: code === null ? null : Number(code) };
+export function updaterError(log) {
+  const statuses = [...log.matchAll(/Writing status to file: (.+)$/gm)];
+  const last = statuses.at(-1)?.[1]?.trim() ?? "";
+  const m = /^failed: (\d+)$/.exec(last);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Where the browser reads its application.ini from in the scenarios (updateEnv): beside the
+ * browser's own files, the directory Firefox takes as the application's when XUL_APP_FILE
+ * names the file (an artifact build's dist/bin/browser/application.ini).
+ */
+const APP_INI = "browser/application.ini";
+
+/**
+ * Writes application.ini where the package has it and where the scenarios' browser reads it
+ * (APP_INI), so both say the same and a MAR of the tree carries both.
+ * @param {string} dir @param {string} text
+ */
+function writeIni(dir, text) {
+  writeFileSync(join(dir, "application.ini"), text);
+  writeFileSync(join(dir, APP_INI), text);
 }
 
 /**
@@ -220,7 +237,7 @@ export function updateError(xml) {
 export function installTree({ from, to, url, testUpdater }) {
   cpSync(from, to, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
   const ini = join(to, "application.ini");
-  writeFileSync(ini, setIni(readFileSync(ini, "utf8"), "AppUpdate", "URL", url));
+  writeIni(to, setIni(readFileSync(ini, "utf8"), "AppUpdate", "URL", url));
   if (testUpdater) {
     const mode = statSync(join(to, "updater")).mode & 0o777;
     copyFileSync(testUpdater, join(to, "updater"));
@@ -241,7 +258,7 @@ export function nextTree({ from, to, buildId, appVersion }) {
   const ini = join(to, "application.ini");
   let text = setIni(readFileSync(ini, "utf8"), "App", "BuildID", buildId);
   if (appVersion) text = setIni(text, "App", "Version", appVersion);
-  writeFileSync(ini, text);
+  writeIni(to, text);
   writeFileSync(join(to, MARKER), `${buildId}\n`);
   return to;
 }
@@ -397,6 +414,42 @@ export function fileDigest(file) {
   const data = readFileSync(file);
   return { size: data.length, sha512: createHash("sha512").update(data).digest("hex") };
 }
+
+/**
+ * The prefs an update scenario's browser needs: automation, so the run's manifest key is pinned
+ * (vimma.update.testKeys), with MOZ_DISABLE_NONLOCAL_CONNECTIONS, which crashes the browser on
+ * any connection off 127.0.0.1; so the speculative connections Firefox makes on its own (a
+ * focused address bar connects to the search engine) are off, as in Mozilla's test profiles
+ * (testing/profiles/unittest-required/user.js). And Firefox's updater on, which the harness's
+ * profile turns off for every other scenario.
+ * @param {{ id: string, slot: string, spki: string }} key
+ */
+export const updatePrefs = (key, url) => ({
+  "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer": true,
+  "vimma.update.url": url,
+  "vimma.update.testKeys": JSON.stringify([key]),
+  "app.update.disabledForTesting": false,
+  "browser.urlbar.speculativeConnect.enabled": false,
+  "network.http.speculative-parallel-limit": 0,
+  "network.predictor.enabled": false,
+  "browser.search.suggest.enabled": false,
+  // Firefox's update timer also checks for media plugins (GMPs) at aus5.mozilla.org.
+  "media.gmp-manager.updateEnabled": false,
+  "media.gmp-manager.url.override": "data:text/plain,",
+});
+
+/**
+ * The environment an update scenario's browser runs in. Firefox's binary carries its
+ * application.ini compiled in (browser/app/nsBrowserApp.cpp) and reads a file only when
+ * XUL_APP_FILE names it, as the artifact build does; so the install's file (APP_INI), with the
+ * local update URL, and after the update N+1's build ID, is what the browser runs with. The updater
+ * execs the browser in the same process, so the variables reach N+1 too.
+ * @param {string} install
+ */
+export const updateEnv = (install) => ({
+  MOZ_DISABLE_NONLOCAL_CONNECTIONS: "1",
+  XUL_APP_FILE: join(install, APP_INI),
+});
 
 /** Where Mozilla's tree keeps libmar's test NSS database, which holds `mycert` and its key. */
 const MYCERT_DB = "modules/libmar/tests/unit/data";
@@ -576,8 +629,8 @@ function serialNow() {
 
 /**
  * What a `wait-for-install` step compares: which build the install holds and the profile last
- * ran (n, n1, or null when they differ or are neither), N+1's marker, the updater's error code
- * in updates.xml, and the MAR requests the host saw since `since`.
+ * ran (n, n1, or null when they differ or are neither), N+1's marker, the error code the
+ * updater's last run ended with, and the MAR requests the host saw since `since`.
  * @param {{ install: string, profile: string, run: UpdateRun, since: number }} o
  * @returns {import("./scenario.mjs").InstallState}
  */
@@ -590,7 +643,7 @@ export function installState({ install, profile, run, since }) {
   return {
     buildId: installed === ran ? name(installed) : null,
     marker: existsSync(join(install, MARKER)),
-    updateError: updateError(read(join(install, "updates.xml")))?.errorCode ?? null,
+    updateError: updaterError(read(join(install, "updates/last-update.log"))),
     marRequests: run.host.marRequests() - since,
   };
 }
