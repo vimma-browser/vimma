@@ -193,6 +193,9 @@ both against the principle that `Esc` always gets the user out
    (also into the field the page already focused, or on an element that takes no focus), `Tab`
    or any other key the page gets, `i`, `gi`, a hint on a field. A new top document ends it too. A second `Esc`, in normal mode, reaches the page first
    ([firefox-keys](firefox-keys.md) decision 6), so a dialog that closes on `Esc` closes.
+   (Since changed: when the page leaves that `Esc` alone, Vimma also blurs the page's focused
+   element and holds the tab in normal as after the first `Esc`; [m1-core-logic](m1-core-logic.md),
+   § Esc.)
 7. **A report sent before `Esc` does not undo it.** A focus report that a document sent before
    the `Esc`'s blur reached it, or that a frame sent for focus the user moved before the `Esc`
    (a `Tab` into a cross-origin frame), does not enter insert after that `Esc`.

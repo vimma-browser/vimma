@@ -495,3 +495,66 @@ add_task(async function after_esc_tab_into_a_cross_origin_frame_enters_insert() 
     );
   }, TAB_FRAME);
 });
+
+/**
+ * Whether `#id` has focus and draws its keyboard focus ring.
+ * @param {XULBrowserElement} browser
+ * @param {string} id
+ */
+function focusVisible(browser, id) {
+  return SpecialPowers.spawn(browser, [id], (i) => {
+    const el = content.document.getElementById(i);
+    return content.document.activeElement === el && el.matches(":focus-visible");
+  });
+}
+
+// Esc in normal mode clears the page's focus, so the ring Tab drew goes away (m1-core-logic,
+// § Esc).
+add_task(async function esc_in_normal_mode_blurs_what_tab_focused() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "editor");
+    await waitForMode(browser, "insert");
+    await leaveInsert(browser);
+    EventUtils.synthesizeKey("KEY_Tab");
+    await waitForActive(browser, "button");
+    Assert.equal(VimmaHost._browserMode(browser), "normal", "a focused button stays in normal");
+    Assert.ok(await focusVisible(browser, "button"), "Tab draws the button's focus ring");
+
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(
+      () =>
+        SpecialPowers.spawn(browser, [], () => {
+          const doc = content.document;
+          return doc.activeElement === doc.body && !doc.querySelector(":focus-visible");
+        }),
+      "Esc leaves nothing focused in the page",
+    );
+    Assert.ok((await pageKeys(browser)).includes("Escape"), "the page still had the Esc");
+    Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is in normal");
+  });
+});
+
+// A page that takes Esc itself (preventDefault, as a menu that closes on Esc) keeps its focus.
+add_task(async function esc_the_page_takes_keeps_its_focus() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "editor");
+    await waitForMode(browser, "insert");
+    await leaveInsert(browser);
+    await SpecialPowers.spawn(browser, [], () => {
+      content.document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") e.preventDefault();
+      });
+    });
+    EventUtils.synthesizeKey("KEY_Tab");
+    await waitForActive(browser, "button");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(
+      async () => (await pageKeys(browser)).includes("Escape"),
+      "the page had the Esc",
+    );
+    // Every message the parent sent after the page's reply has reached the page.
+    await SpecialPowers.spawn(browser, [], () => {});
+    await SpecialPowers.spawn(browser, [], () => {});
+    Assert.equal(await activeId(browser), "button", "the button keeps focus");
+  });
+});
