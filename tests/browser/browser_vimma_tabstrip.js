@@ -268,6 +268,17 @@ add_task(async function customize_mode_shows_the_strip() {
 });
 
 add_task(async function vertical_tabs_are_hidden_too() {
+  // The sizes below are read as soon as verticalMode is true, before any chrome refresh tick:
+  // pausing the refresh driver makes that deterministic. A rule keyed on a media query that
+  // only updates on the next tick (-moz-pref() is an early runner) would still show the tabs.
+  const utils = window.windowUtils;
+  utils.advanceTimeAndRefresh(0);
+  let paused = true;
+  const resume = () => {
+    if (paused) utils.restoreNormalRefresh();
+    paused = false;
+  };
+  registerCleanupFunction(resume);
   await SpecialPowers.pushPrefEnv({
     set: [
       ["sidebar.revamp", true],
@@ -281,6 +292,7 @@ add_task(async function vertical_tabs_are_hidden_too() {
   Assert.ok(!hasSize($("vertical-tabs")), "vertical tab list has no size");
   Assert.ok(!hasSize($("tabbrowser-tabs")), "tabs have no size");
   Assert.ok(hasSize($("urlbar")), "URL bar visible with vertical tabs");
+  resume();
 
   await setPref(false);
   await TestUtils.waitForCondition(() => hasSize($("tabbrowser-tabs")), "vertical tabs back");
