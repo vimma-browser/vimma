@@ -231,6 +231,69 @@ add_task(async function selecting_a_tab_of_a_split_shows_that_split_whole() {
   Assert.equal(gBrowser.selectedTab, tab("d"), "focus on d's pane");
 });
 
+/**
+ * Runs `fn` while the layers the async tab switcher waits for are held back, then hands them
+ * over late, as a slow compositor does (#605): the switcher is still loading the tab selected
+ * first when the next one is selected.
+ * @param {() => Promise<void>} fn
+ */
+async function withLayersLate(fn) {
+  /** @type {Element[]} */
+  const held = [];
+  const hold = (/** @type {Event} */ e) => {
+    e.stopImmediatePropagation();
+    held.push(/** @type {Element} */ (e.originalTarget));
+  };
+  window.addEventListener("MozLayerTreeReady", hold, true);
+  try {
+    await fn();
+  } finally {
+    window.removeEventListener("MozLayerTreeReady", hold, true);
+  }
+  for (const browser of held) {
+    gBrowser._switcher?.handleEvent({ type: "MozLayerTreeReady", originalTarget: browser });
+  }
+}
+
+/** The switch is done, and `t`'s page is the one painting. */
+async function assertShown(t, name) {
+  await until(() => !gBrowser._switcher, `the switch to ${name} is done`);
+  Assert.ok(t.linkedBrowser.docShellIsActive, `${name}'s page is live`);
+  Assert.ok(t.linkedBrowser.renderLayers, `${name}'s page is painted`);
+}
+
+add_task(async function a_lone_tab_picked_while_a_split_still_loads_is_shown() {
+  await pick(tab("b"));
+  await until(() => splitsOf().shown === 1, "S1 shows");
+  await until(() => !gBrowser._switcher, "the switch to b is done");
+  await withLayersLate(async () => {
+    gBrowser.selectedTab = tab("d");
+    await until(() => splitsOf().shown === 2, "picking d shows S2");
+    Assert.equal(gBrowser._switcher?.loadingTab, tab("d"), "d's page is still loading");
+    gBrowser.selectedTab = tab("f");
+    await until(() => splitsOf().shown === null, "f shows alone");
+  });
+  await assertShown(tab("f"), "f");
+  Assert.ok(!tab("c").linkedBrowser.docShellIsActive, "S2's pages sleep: c");
+  Assert.ok(!tab("d").linkedBrowser.docShellIsActive, "and d");
+});
+
+add_task(async function a_split_picked_while_another_still_loads_is_shown() {
+  await withLayersLate(async () => {
+    gBrowser.selectedTab = tab("b");
+    await until(() => splitsOf().shown === 1, "picking b shows S1");
+    Assert.equal(gBrowser._switcher?.loadingTab, tab("b"), "b's page is still loading");
+    gBrowser.selectedTab = tab("d");
+    await until(() => splitsOf().shown === 2, "picking d shows S2");
+  });
+  await assertShown(tab("d"), "d");
+  await until(() => tab("c").linkedBrowser.docShellIsActive, "S2's other page is live");
+  await until(
+    () => !tab("a").linkedBrowser.docShellIsActive && !tab("b").linkedBrowser.docShellIsActive,
+    "S1's pages sleep",
+  );
+});
+
 add_task(async function a_lone_tab_hides_both_and_splitting_it_names_the_split() {
   await pick(tab("f"));
   Assert.equal(splitsOf().shown, null, "no split shows");
