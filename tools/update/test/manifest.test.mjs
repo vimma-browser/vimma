@@ -4,7 +4,7 @@
 // generated here; nothing is fetched. A run with VIMMA_UPDATE_ASSETS=<dir> (a release's
 // tarball, AppImage, .deb and SHA256SUMS, downloaded by hand) also builds, signs and verifies a
 // manifest for those real files.
-import { describe, expect, it, beforeAll } from "vitest";
+import { describe, expect, it, beforeAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, privateEncrypt, constants } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -940,6 +940,68 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
       });
     };
     expect(() => dmgInfo(dmg, hdiutil)).toThrow(/hdiutil: attach failed/);
+  });
+
+  /**
+   * An hdiutil whose attach mounts an app with `ini` (none when null) and whose detach fails.
+   * @param {string | null} ini
+   */
+  const failingDetach = (ini) => {
+    /** @type {string[]} */
+    const mounts = [];
+    /** @param {string[]} args */
+    const hdiutil = (args) => {
+      if (args[0] === "attach") {
+        const mount = args[args.indexOf("-mountpoint") + 1];
+        mounts.push(mount);
+        if (ini !== null) {
+          const res = join(mount, "Vimma.app", "Contents", "Resources");
+          mkdirSync(res, { recursive: true });
+          writeFileSync(join(res, "application.ini"), ini);
+        }
+        return "";
+      }
+      const stderr = "hdiutil: detach failed - Resource busy\n";
+      throw Object.assign(new Error(`Command failed: hdiutil ${args.join(" ")}\n${stderr}`), {
+        status: 16,
+        stderr,
+      });
+    };
+    return { hdiutil, mounts };
+  };
+
+  // The read has already succeeded when detach runs, and update-publish.yml's runner is thrown
+  // away after the job, so a volume left mounted there costs nothing (#715).
+  it("returns what it read when the detach fails, logging hdiutil's reason", () => {
+    const dir = tempDir("vimma-dmg-");
+    const dmg = join(dir, "v.dmg");
+    writeFileSync(dmg, "");
+    const { hdiutil, mounts } = failingDetach(
+      "[App]\nName=Vimma\nVersion=158.0\nBuildID=20261019132138\n",
+    );
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(dmgInfo(dmg, hdiutil)).toEqual({ appVersion: "158.0", buildId: "20261019132138" });
+      expect(log).toHaveBeenCalledWith(expect.stringMatching(/hdiutil: detach failed/));
+      expect(log).toHaveBeenCalledWith(expect.stringContaining(mounts[0]));
+    } finally {
+      log.mockRestore();
+    }
+    // the mount point stays: removing it could reach into the volume still mounted there
+    expect(existsSync(mounts[0])).toBe(true);
+  });
+
+  it("throws the read's error, not the detach's, when both fail", () => {
+    const dir = tempDir("vimma-dmg-");
+    const dmg = join(dir, "v.dmg");
+    writeFileSync(dmg, "");
+    const { hdiutil } = failingDetach(null);
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => dmgInfo(dmg, hdiutil)).toThrow(/ENOENT.*application\.ini/);
+    } finally {
+      log.mockRestore();
+    }
   });
 });
 

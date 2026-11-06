@@ -20,6 +20,7 @@ import { startedUp } from "./private-swap.mjs";
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   VimmaHost: "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+  PictureInPicture: "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs",
 });
 
 /** What a failed swap says, once (decision 9). */
@@ -36,6 +37,8 @@ let forced = false;
 /** Tests: each visibility write, since the getter always returns true (Research). */
 /** @type {{ win: Window, visible: boolean }[] | null} */
 let spy = null;
+/** Tests: whether a window is fully occluded, since headless never is. */
+let occludedOf = (/** @type {Window} */ win) => /** @type {any} */ (win).isFullyOccluded;
 /** @type {Set<string>} each console line once a session */
 const logged = new Set();
 
@@ -106,6 +109,49 @@ function windowOf(id) {
   return win && !win.closed ? win : null;
 }
 
+/** @type {Map<Window, () => void>} the windows a swap keeps active, and how each lets go */
+const held = new Map();
+
+/**
+ * Keeps `win` active from before a swap moves it until macOS reports it on screen (#773).
+ * Ordered out, a window is fully occluded, which makes its browsing context inactive
+ * (AppWindow::OcclusionStateChanged): a resize then waits (PresShell::ShouldDelayResize) and
+ * its compositor is paused (CanonicalBrowsingContext::RecomputeAppWindowVisibility). macOS
+ * reports it visible only some frames after it is ordered in, so until then it showed the
+ * contents of the size it was hidden at. Active, it lays out at its new size before it is shown
+ * and paints as soon as it is on screen.
+ * @param {Window} win
+ */
+function holdActive(win) {
+  const bc = /** @type {any} */ (win).browsingContext;
+  // Picture-in-Picture forces its window active too: a force already set is never undone here.
+  if (held.has(win) || bc.forceAppWindowActive) return;
+  bc.forceAppWindowActive = true;
+  // setVisible lets go at once of a window shown while not occluded, so a window still held
+  // after it is ordered in is marked occluded, and the first change of its occlusion state is
+  // macOS reporting it on screen.
+  const onChange = () => letGo(win);
+  win.addEventListener("occlusionstatechange", onChange);
+  held.set(win, () => {
+    win.removeEventListener("occlusionstatechange", onChange);
+    // Picture-in-Picture may have forced it active meanwhile, for a video it plays.
+    if (win.closed || lazy.PictureInPicture.originatingWinWeakMap.get(win) > 0) return;
+    try {
+      bc.forceAppWindowActive = false;
+    } catch (e) {
+      // A browsing context being torn down: nothing left to keep active.
+      console.warn("vimma: native swap: letting go of a window", e);
+    }
+  });
+}
+
+/** @param {Window} win */
+function letGo(win) {
+  const release = held.get(win);
+  held.delete(win);
+  release?.();
+}
+
 /**
  * Shows or hides `win`'s native window, as Firefox's SessionStore and Tabbrowser do
  * (nsIBaseWindow.visibility, Research).
@@ -115,8 +161,14 @@ function windowOf(id) {
 function setVisible(win, visible) {
   const base = /** @type {any} */ (win).docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
   base.visibility = visible;
-  if (visible) hidden.delete(win);
-  else hidden.add(win);
+  if (visible) {
+    hidden.delete(win);
+    // Never occluded (headless, or a window macOS had not marked yet): nothing to wait for.
+    if (!occludedOf(win)) letGo(win);
+  } else {
+    hidden.add(win);
+    letGo(win);
+  }
   spy?.push({ win, visible });
 }
 
@@ -266,10 +318,13 @@ function showInPlace(op) {
   const others = [x, ...(y && !y.closed ? [y] : [])];
   try {
     for (const w of others) suppress(w, true);
+    holdActive(x);
     if (plan.restoreFirst) /** @type {any} */ (x).restore();
     x.moveTo(plan.frame.x, plan.frame.y);
     x.resizeTo(plan.frame.width, plan.frame.height);
     if (plan.zoom) /** @type {any} */ (x).maximize();
+    // Laid out at the new size before it is shown: its first paint on screen needs no reflow.
+    /** @type {any} */ (x).windowUtils.flushLayoutWithoutThrottledAnimations();
     // X first, at Y's frame, so nothing behind them shows through.
     setVisible(x, true);
     if (y && !y.closed) setVisible(y, false);
@@ -348,7 +403,10 @@ function onTabOpen(win) {
 function onUnload(win) {
   windows.delete(win);
   const id = ids.get(win);
-  if (!id) return;
+  if (!id) {
+    letGo(win);
+    return;
+  }
   if (pair && (pair.normal === id || pair.private === id)) {
     // Its frame now, if it still has one, else the last one known.
     try {
@@ -359,6 +417,8 @@ function onUnload(win) {
     }
     step({ type: "closing", window: id });
   }
+  // After the hidden window is shown: nothing that lets go of this one can keep that from it.
+  letGo(win);
   byId.delete(id);
 }
 
@@ -515,9 +575,17 @@ export const NativeSwap = {
    * Tests only: forget the pair and every hidden window (showing them), select this backend
    * (`force`) or not, and record visibility writes in `log`.
    * @param {{ force?: boolean, log?: { win: Window, visible: boolean }[] | null,
-   *   configured?: boolean, shuttingDown?: () => boolean }} [options]
+   *   configured?: boolean, shuttingDown?: () => boolean,
+   *   occluded?: (win: Window) => boolean }} [options]
    */
-  _resetForTests({ force = false, log = null, configured: read = true, shuttingDown } = {}) {
+  _resetForTests({
+    force = false,
+    log = null,
+    configured: read = true,
+    shuttingDown,
+    occluded = (win) => /** @type {any} */ (win).isFullyOccluded,
+  } = {}) {
+    occludedOf = occluded;
     quitting = shuttingDown ?? (() => /** @type {any} */ (Services).startup.shuttingDown);
     revealAll();
     forced = force;

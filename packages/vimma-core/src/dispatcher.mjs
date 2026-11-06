@@ -54,6 +54,8 @@ export function createDispatcher(keymap) {
   let mode = null;
   /** @type {Context} */
   let context = "page";
+  /** @type {TrieNode | null} the trie of `mode` in `context`, null until the first key */
+  let root = null;
   /** @type {TrieNode | null} */
   let node = null; // non-null while a sequence is pending
   /** @type {string[]} */
@@ -92,13 +94,16 @@ export function createDispatcher(keymap) {
    * @returns {DispatchResult}
    */
   function dispatch(m, chord, c = "page") {
-    if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
-    if (!isContext(c)) throw new Error(`unknown context "${c}"`);
-    // A sequence started under one set of bindings never finishes under another.
-    if (m !== mode || c !== context) {
+    // Checked and looked up only when the mode or context changes: `mode` and `context` only ever
+    // hold checked values, and this runs on every key, which the bench gates (docs/runbook.md).
+    if (root === null || m !== mode || c !== context) {
+      if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
+      if (!isContext(c)) throw new Error(`unknown context "${c}"`);
+      // A sequence started under one set of bindings never finishes under another.
       reset();
       mode = m;
       context = c;
+      root = keymap.trie(m, c);
     }
     const busy = node !== null || count !== "" || wantsChar !== null;
     const isEsc = chord.key === "esc" && !chord.ctrl && !chord.alt && !chord.meta && !chord.shift;
@@ -115,7 +120,6 @@ export function createDispatcher(keymap) {
       }
       return emit(wantsChar, char);
     }
-    const root = keymap.trie(m, c);
     const key = formatKey(chord);
 
     if (
