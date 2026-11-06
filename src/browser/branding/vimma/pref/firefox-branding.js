@@ -164,6 +164,11 @@ pref("vimma.theme.omarchyHook", true);
 // at 4 of the 9 rows so the suggestions stay a few keys away. Settings > Search ("Show search
 // suggestions before browsing history") turns Firefox's order back on.
 pref("browser.urlbar.showSearchSuggestionsFirst", false);
+// `tab` moves row to row and skips each row's "…" result-menu button, so the first search
+// suggestion is one stop per page row away instead of two. The menu stays on the mouse and on
+// right-click; shift+delete still removes the selected history row. The menu's own "Skip this menu
+// when using the tab key" item turns the stop back on.
+pref("browser.urlbar.resultMenu.keyboardAccessible", false);
 
 // Find (spec m1-find): Vim's smartcase for `/` and Firefox's own find bar alike. 2 is the find
 // bar's "auto" mode: a query with a capital letter matches case, an all lower-case one does not.

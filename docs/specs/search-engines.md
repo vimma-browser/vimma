@@ -219,6 +219,13 @@ running it, not recalled.
     order stays the user's, in Settings > Search. The pages' group is headed Vimma instead of "Firefox Suggest"
     (`browser-ftl.patch`, ADR-003), so the list does not name Firefox; Settings keeps "Firefox
     Suggest" where it names Mozilla's service. Test: `browser_vimma_urlbar_suggestions.js`.)
+    (Since changed, issue #822: `tab` skips each row's "…" result-menu button
+    (`browser.urlbar.resultMenu.keyboardAccessible` false in `firefox-branding.js`), because
+    Vimma is keyboard-first and the row menu is rarely needed; the first suggestion goes from 8
+    presses of `tab` to 5, one per page row and then the suggestion. The menu stays on the mouse
+    and right-click, `shift+delete` still removes the selected history row, and the menu's
+    "Skip this menu when using the tab key" item turns the stop back on. Test:
+    `browser_vimma_urlbar_suggestions.js`.)
 11. **Completion.** `ARGUMENT_KINDS` gains `open` and `tabnew` with names from
     `args.search`: the host passes every alias starting with `@` (Vimma's and Firefox's, from
     `UrlbarSearchUtils.tokenAliasEngines()`) with its engine's name as the description. It
