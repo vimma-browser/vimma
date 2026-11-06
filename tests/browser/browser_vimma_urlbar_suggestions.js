@@ -34,8 +34,21 @@ const BOOKMARKED = "https://example.com/vimmabird-bookmark";
 const OPEN = "https://example.org/?vimmabird";
 
 let openTab;
+let bookmark;
 
 add_task(async function setup() {
+  // Registered before the engine, so it runs first (cleanup runs in order): suggestions are off
+  // again before removing the engine makes Firefox's default (Google in CI) the default.
+  registerCleanupFunction(async () => {
+    await closeList();
+    await SpecialPowers.popPrefEnv();
+    BrowserTestUtils.removeTab(openTab);
+    await PlacesUtils.bookmarks.remove(bookmark);
+    await PlacesUtils.history.clear();
+  });
+  // The test profile turns suggestions off so that no test reaches the network
+  // (testing/profiles/unittest-required/user.js); a release profile has them on.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.urlbar.suggest.searches", true]] });
   await SearchTestUtils.installSearchExtension(
     {
       name: ENGINE,
@@ -46,27 +59,17 @@ add_task(async function setup() {
     },
     { setAsDefault: true },
   );
-  // The test profile turns suggestions off so that no test reaches the network
-  // (testing/profiles/unittest-required/user.js); a release profile has them on.
-  await SpecialPowers.pushPrefEnv({ set: [["browser.urlbar.suggest.searches", true]] });
   await PlacesUtils.history.clear();
   await PlacesTestUtils.addVisits(
     VISITED.map((uri, i) => ({ uri, title: `${WORD} page ${i + 1}` })),
   );
-  const bookmark = await PlacesUtils.bookmarks.insert({
+  bookmark = await PlacesUtils.bookmarks.insert({
     parentGuid: PlacesUtils.bookmarks.unfiledGuid,
     url: BOOKMARKED,
     title: `${WORD} bookmark`,
   });
   openTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, OPEN);
   gBrowser.selectedTab = gBrowser.tabs[0];
-  registerCleanupFunction(async () => {
-    BrowserTestUtils.removeTab(openTab);
-    await PlacesUtils.bookmarks.remove(bookmark);
-    await PlacesUtils.history.clear();
-    await SpecialPowers.popPrefEnv();
-    await UrlbarTestUtils.promisePopupClose(window);
-  });
 });
 
 /** The rows the drop-down shows for WORD, in order: { type, url, suggestion, heuristic }. */
@@ -82,6 +85,16 @@ async function typed() {
   }
   info(`rows: ${JSON.stringify(rows)}`);
   return rows;
+}
+
+/**
+ * Closes the list and puts the address back. A selected suggestion leaves its text in the
+ * field; left there, a later query would fetch suggestions from whatever engine is the default
+ * once this file's engine is removed (in CI, Google: a non-local connection).
+ */
+async function closeList() {
+  if (gURLBar.view.isOpen) await UrlbarTestUtils.promisePopupClose(window);
+  gURLBar.handleRevert();
 }
 
 const isPage = (r) =>
@@ -107,6 +120,7 @@ add_task(async function pages_come_before_search_suggestions() {
     () => first.getAttribute("label") === `${ENGINE} suggestions`,
     "the suggestions, after the pages, are headed with the engine's name",
   );
+  await closeList();
 });
 
 add_task(async function no_group_is_headed_firefox() {
@@ -119,6 +133,7 @@ add_task(async function no_group_is_headed_firefox() {
     .filter(Boolean);
   info(`group labels: ${JSON.stringify(labels)}`);
   for (const label of labels) Assert.ok(!/Firefox/.test(label), `"${label}" names no Firefox`);
+  await closeList();
 });
 
 add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
@@ -142,4 +157,5 @@ add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
     `${WORD} one`,
     "tab reaches the first suggestion",
   );
+  await closeList();
 });
