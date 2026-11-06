@@ -1,0 +1,120 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+// Spec: docs/specs/search-engines.md, decision 10 (since changed, issue #822)
+
+"use strict";
+
+const { SearchTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/SearchTestUtils.sys.mjs",
+);
+const { UrlbarTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/UrlbarTestUtils.sys.mjs",
+);
+const { PlacesTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/PlacesTestUtils.sys.mjs",
+);
+const { UrlbarShared } = ChromeUtils.importESModule(
+  "chrome://browser/content/urlbar/UrlbarShared.mjs",
+);
+SearchTestUtils.init(this);
+UrlbarTestUtils.init(this);
+
+const WORD = "vimmabird";
+const ENGINE = "Vimma Suggest Test";
+const SUGGEST =
+  getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
+  "file_vimma_urlbar_suggest.sjs";
+/** Pages the profile knows: history, a bookmark and an open tab, all matching WORD. */
+const VISITED = ["https://example.com/vimmabird-1", "https://example.com/vimmabird-2"];
+const BOOKMARKED = "https://example.com/vimmabird-bookmark";
+const OPEN = "https://example.org/?vimmabird";
+
+let openTab;
+
+add_task(async function setup() {
+  await SearchTestUtils.installSearchExtension(
+    {
+      name: ENGINE,
+      search_url: "https://example.com/",
+      search_url_get_params: "s={searchTerms}",
+      suggest_url: SUGGEST,
+      suggest_url_get_params: "q={searchTerms}",
+    },
+    { setAsDefault: true },
+  );
+  // The test profile turns suggestions off so that no test reaches the network
+  // (testing/profiles/unittest-required/user.js); a release profile has them on.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.urlbar.suggest.searches", true]] });
+  await PlacesUtils.history.clear();
+  await PlacesTestUtils.addVisits(
+    VISITED.map((uri, i) => ({ uri, title: `${WORD} page ${i + 1}` })),
+  );
+  const bookmark = await PlacesUtils.bookmarks.insert({
+    parentGuid: PlacesUtils.bookmarks.unfiledGuid,
+    url: BOOKMARKED,
+    title: `${WORD} bookmark`,
+  });
+  openTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, OPEN);
+  gBrowser.selectedTab = gBrowser.tabs[0];
+  registerCleanupFunction(async () => {
+    BrowserTestUtils.removeTab(openTab);
+    await PlacesUtils.bookmarks.remove(bookmark);
+    await PlacesUtils.history.clear();
+    await SpecialPowers.popPrefEnv();
+    await UrlbarTestUtils.promisePopupClose(window);
+  });
+});
+
+/** The rows the drop-down shows for WORD, in order: { type, url, suggestion, heuristic }. */
+async function typed() {
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({ window, value: WORD });
+  const rows = [];
+  for (let i = 0; i < UrlbarTestUtils.getResultCount(window); i++) {
+    const { type, url, heuristic, searchParams } = await UrlbarTestUtils.getDetailsOfResultAt(
+      window,
+      i,
+    );
+    rows.push({ type, url, heuristic, suggestion: searchParams?.suggestion, index: i });
+  }
+  info(`rows: ${JSON.stringify(rows)}`);
+  return rows;
+}
+
+const isPage = (r) =>
+  !r.heuristic &&
+  (r.type === UrlbarShared.RESULT_TYPE.URL || r.type === UrlbarShared.RESULT_TYPE.TAB_SWITCH);
+const isSuggestion = (r) => !r.heuristic && r.type === UrlbarShared.RESULT_TYPE.SEARCH;
+
+add_task(async function pages_come_before_search_suggestions() {
+  const rows = await typed();
+  const pages = rows.filter(isPage);
+  const suggestions = rows.filter((r) => isSuggestion(r) && r.suggestion);
+  Assert.ok(rows[0].heuristic, "the first row searches or visits what was typed");
+  Assert.greaterOrEqual(pages.length, 3, "history, the bookmark and the open tab are listed");
+  Assert.greaterOrEqual(suggestions.length, 1, "the engine's suggestions are listed");
+  Assert.equal(pages[0].index, 1, "one tab from the input reaches the first page");
+  Assert.less(
+    pages.at(-1).index,
+    suggestions[0].index,
+    "every page comes before the first search suggestion",
+  );
+  const first = UrlbarTestUtils.getRowAt(window, suggestions[0].index);
+  await TestUtils.waitForCondition(
+    () => first.getAttribute("label") === `${ENGINE} suggestions`,
+    "the suggestions, after the pages, are headed with the engine's name",
+  );
+});
+
+add_task(async function no_group_is_headed_firefox() {
+  const rows = await typed();
+  const pages = UrlbarTestUtils.getRowAt(window, rows.find(isPage).index);
+  await TestUtils.waitForCondition(() => pages.hasAttribute("label"), "the pages get a heading");
+  Assert.equal(pages.getAttribute("label"), "Vimma", "the pages are headed with Vimma's name");
+  const labels = rows
+    .map((r) => UrlbarTestUtils.getRowAt(window, r.index).getAttribute("label"))
+    .filter(Boolean);
+  info(`group labels: ${JSON.stringify(labels)}`);
+  for (const label of labels) Assert.ok(!/Firefox/.test(label), `"${label}" names no Firefox`);
+});

@@ -492,3 +492,6 @@ support-files = ["file_vimma_outline.pdf", "file_vimma_outline_kinds.pdf", "file
 support-files = ["file_vimma_outline.pdf"]
 
 ["browser_vimma_site_permissions.js"]
+
+["browser_vimma_urlbar_suggestions.js"]
+support-files = ["file_vimma_urlbar_suggest.sjs"]

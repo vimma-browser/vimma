@@ -207,6 +207,14 @@ running it, not recalled.
     (`browser.search.suggest.enabled`), unchanged. `:open` completion is local (decision 11)
     and never fetches suggestions. An `http://` template is accepted (a SearXNG on the LAN) but
     `about:vimma` marks it "queries sent unencrypted".
+    (Since changed, issue #822: the address bar lists the matching open tabs, bookmarks and
+    history before the engine's suggestions, `browser.urlbar.showSearchSuggestionsFirst` false
+    in `firefox-branding.js`, because Firefox's order put the pages after the suggestions (and
+    `tab` also stops on each row's menu button), so reaching a known page took many presses of
+    `tab`, while the first row already searches what was typed. The setting stays the user's,
+    in Settings > Search. The pages' group is headed Vimma instead of "Firefox Suggest"
+    (`browser-ftl.patch`, ADR-003), so the list does not name Firefox; Settings keeps "Firefox
+    Suggest" where it names Mozilla's service. Test: `browser_vimma_urlbar_suggestions.js`.)
 11. **Completion.** `ARGUMENT_KINDS` gains `open` and `tabnew` with names from
     `args.search`: the host passes every alias starting with `@` (Vimma's and Firefox's, from
     `UrlbarSearchUtils.tokenAliasEngines()`) with its engine's name as the description. It

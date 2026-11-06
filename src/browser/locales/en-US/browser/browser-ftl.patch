@@ -1,0 +1,13 @@
+diff --git a/browser/locales/en-US/browser/browser.ftl b/browser/locales/en-US/browser/browser.ftl
+index 66fb01708cd0a159256eee815eccb5c85ef4192e..97d64346a04632787603c62eadcb5c892e35fdc2 100644
+--- a/browser/locales/en-US/browser/browser.ftl
++++ b/browser/locales/en-US/browser/browser.ftl
+@@ -953,7 +953,7 @@ urlbar-view-context-menu-skip-menu-with-tab = Skip this menu when using the tab
+ # A label shown above the "Firefox Suggest" (bookmarks/history) group in the
+ # urlbar results.
+ urlbar-group-firefox-suggest =
+-  .label = { -firefox-suggest-brand-name }
++  .label = { -brand-short-name }
+ 
+ # A label shown above the search suggestions group in the urlbar results. It
+ # should use sentence case.
