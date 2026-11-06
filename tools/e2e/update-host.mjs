@@ -38,6 +38,7 @@ import {
 import { createServer } from "node:https";
 import { join } from "node:path";
 import {
+  RELEASES_URL,
   base64Encode,
   signatureComment,
   signedBytes as manifestBytes,
@@ -177,9 +178,13 @@ export function localManifest({ serial, offer, mar }) {
       assets: { tarball: NO_PACKAGE, appimage: NO_PACKAGE, deb: NO_PACKAGE, rpm: NO_PACKAGE },
     },
   });
-  const released = new RegExp(`URL="[^"]*/${marName(offer.displayVersion).replace(/\./g, "\\.")}"`);
-  if (!released.test(body)) throw new Error("manifest.mjs wrote no <patch> URL to replace");
-  return body.replace(released, `URL="${mar.url}"`);
+  const v = offer.displayVersion;
+  // The release's MAR URL exactly as manifest.mjs writes it (marUrl there), as a plain string.
+  const released = `URL="${RELEASES_URL}/download/v${v}/${marName(v)}"`;
+  if (body.split(released).length !== 2) {
+    throw new Error("manifest.mjs wrote no single <patch> URL to replace");
+  }
+  return body.split(released).join(`URL="${mar.url}"`);
 }
 
 /**
