@@ -14,11 +14,13 @@
 /** @import { Panes } from "./panes.mjs" */
 /** @import { PaneNode } from "./panes.mjs" */
 /** @import { TabLabels, TabLabelWarning } from "./tablabels.mjs" */
+/** @import { NumberedSplit, Splits } from "./splits.mjs" */
 /** @typedef {(raw: any) => any} SnapshotMigration a step from schema n to n + 1 */
 
 import { MIN_RATIO } from "./panes.mjs";
 import { isLayoutName } from "./layouts.mjs";
-import { isWorkspaceId } from "./workspaces.mjs";
+import { isWorkspaceId, splitsOf } from "./workspaces.mjs";
+import { MAX_SPLITS_LIMIT } from "./splits.mjs";
 import { pruneTabLabels, readTabLabels, writeTabLabels } from "./tablabels.mjs";
 
 export const SCHEMA_VERSION = 1;
@@ -91,7 +93,9 @@ function checkNext(next, ids, prefix, path) {
  * Plain JSON for persistence. `tabLabels` (tab renames, spec m2-core-logic) is written as the
  * optional `tabLabels` field, only for tabs that are still open and only when there are any, so
  * a snapshot without renames is plain v1. The alternate workspace (`ctrl+^`) is the optional
- * `alternate` field, likewise only when there is one.
+ * `alternate` field, likewise only when there is one. A workspace that keeps a list of splits
+ * writes it as `splits` and `shown` (docs/specs/multiple-splits.md decision 15), and `panes` as
+ * an older Vimma reads it: the shown split, else the split shown last as a hidden view.
  * @param {Workspaces} s
  * @param {{ tabLabels?: TabLabels }} [options]
  */
@@ -109,25 +113,43 @@ export function toSnapshot(s, { tabLabels } = {}) {
     active: s.active,
     next: s.next,
     workspaces: s.workspaces.map((w) => {
+      const own = w.splits === undefined ? null : splitsOf(w);
+      const view = own?.splits.length ? olderView(own) : w.panes;
       // A hidden view (side-panel-unsplit decision 24): the file keeps activeTab on the focused
       // pane's tab, so an older Vimma restores the split shown; `alone` is the tab shown alone.
       const alone =
-        w.panes?.hidden && w.activeTab !== null && !hasTab(w.panes, w.activeTab)
-          ? w.activeTab
-          : null;
+        view?.hidden && w.activeTab !== null && !hasTab(view, w.activeTab) ? w.activeTab : null;
       return {
         id: w.id,
         name: w.name,
         container: w.container,
         tabs: w.tabs.slice(),
-        activeTab: alone && w.panes ? findTab(w.panes.root, w.panes.focus) : w.activeTab,
-        panes: w.panes && JSON.parse(JSON.stringify(w.panes)),
+        activeTab: alone && view ? findTab(view.root, view.focus) : w.activeTab,
+        panes: view && JSON.parse(JSON.stringify(view)),
         ...(alone ? { alone } : {}),
+        ...(own ? { splits: JSON.parse(JSON.stringify(own.splits)), shown: own.shown } : {}),
       };
     }),
     ...(s.alternate !== undefined ? { alternate: s.alternate } : {}),
     ...(labels ? { tabLabels: labels } : {}),
   };
+}
+
+/**
+ * The one tree an older Vimma reads from a list of splits: the shown split, else the split shown
+ * last (else the first) as a hidden view, without its number.
+ * @param {Splits} own  at least one split
+ * @returns {Panes}
+ */
+function olderView(own) {
+  const pick =
+    own.splits.find((x) => x.number === (own.shown ?? own.last)) ??
+    /** @type {NumberedSplit} */ (own.splits[0]);
+  /** @type {Record<string, unknown>} */
+  const tree = { ...pick };
+  delete tree.number;
+  if (own.shown === null) tree.hidden = true;
+  return /** @type {Panes} */ (/** @type {unknown} */ (tree));
 }
 
 /**
@@ -266,6 +288,43 @@ function readPanes(raw, path, tabs) {
 }
 
 /**
+ * A workspace's `splits`, read leniently (docs/specs/multiple-splits.md decision 15): an entry
+ * that is malformed, has fewer than two panes, a number outside 1 to MAX_SPLITS_LIMIT or one
+ * already read, or a tab of an earlier entry is dropped, so a damaged file never puts one tab in
+ * two splits and never fails the restore. Not an array: no splits.
+ * @param {unknown} raw
+ * @param {string} path
+ * @param {Set<string>} tabs  the workspace's
+ * @returns {readonly NumberedSplit[]}
+ */
+function readSplits(raw, path, tabs) {
+  if (!Array.isArray(raw)) return Object.freeze([]);
+  /** @type {NumberedSplit[]} */
+  const out = [];
+  const taken = new Set();
+  raw.forEach((entry, i) => {
+    if (!isObject(entry)) return;
+    const n = entry.number;
+    if (!Number.isInteger(n) || n < 1 || n > MAX_SPLITS_LIMIT) return;
+    if (out.some((x) => x.number === n)) return;
+    let panes;
+    try {
+      panes = readPanes(entry, `${path}[${i}]`, tabs);
+    } catch (e) {
+      if (e instanceof SnapshotError) return;
+      throw e;
+    }
+    if (panes.root.type !== "split") return;
+    const tree = panes;
+    const shown = [...tabs].filter((t) => hasTab(tree, t));
+    if (shown.some((t) => taken.has(t))) return;
+    for (const t of shown) taken.add(t);
+    out.push(Object.freeze({ ...panes, number: n }));
+  });
+  return Object.freeze(out.sort((a, b) => a.number - b.number));
+}
+
+/**
  * Whether a tree shows `tabId` in one of its panes.
  * @param {Panes} panes
  * @param {string | null} tabId
@@ -359,6 +418,17 @@ export function readSnapshot(input, { migrations } = {}) {
       panes = Object.freeze({ ...panes, hidden: /** @type {const} */ (true) });
       activeTab = w.alone;
     }
+    // Several splits (multiple-splits decision 15). Which one shows, and which showed last, come
+    // from activeTab and alone, the fields an older Vimma keeps up to date too, so a file it
+    // rewrote never names a shown split that is not on screen; `shown` is written for readers.
+    /** @type {Partial<Splits>} */
+    let own = {};
+    if (w.splits !== undefined) {
+      const splits = readSplits(w.splits, `${at}.splits`, new Set(w.tabs));
+      const of = (/** @type {unknown} */ tab) => splits.find((x) => hasTab(x, String(tab)));
+      const shown = of(activeTab)?.number ?? null;
+      own = { splits, shown, last: shown ?? of(w.activeTab)?.number ?? null };
+    }
     return Object.freeze({
       id: w.id,
       name: w.name,
@@ -366,6 +436,7 @@ export function readSnapshot(input, { migrations } = {}) {
       tabs: Object.freeze(w.tabs.slice()),
       activeTab,
       panes,
+      ...own,
     });
   });
   if (!ids.has(doc.active)) fail("active", "must name a workspace");

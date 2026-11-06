@@ -278,3 +278,34 @@ describe("the built-in agent's window (docs/specs/builtin-agent.md B13)", () => 
     expect(compileKeymap().bindingsFor("agent_chat")).toEqual(["prefix+i"]);
   });
 });
+
+describe("the downloads picker (docs/specs/downloads.md decision 2)", () => {
+  test("downloads_picker is downloads.picker, in Browser, on prefix+d", () => {
+    expect(getAction("downloads_picker")).toMatchObject({
+      id: "downloads.picker",
+      group: "Browser",
+    });
+    expect(compileKeymap().bindingsFor("downloads_picker")).toEqual(["prefix+d"]);
+    // ctrl+shift+y keeps Firefox's meaning, the Library (firefox-keys).
+    expect(compileKeymap().bindingsFor("downloads")).toEqual(["ctrl+shift+y"]);
+  });
+});
+
+describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4 to 6)", () => {
+  test("split_picker, next_split and previous_split are pane actions", () => {
+    for (const [name, id] of [
+      ["split_picker", "pane.split_picker"],
+      ["next_split", "pane.next_split"],
+      ["previous_split", "pane.previous_split"],
+    ]) {
+      expect(getAction(name)).toMatchObject({ id, group: "Panes" });
+    }
+  });
+
+  test("ctrl+b S opens the split picker; ]s and [s step between splits", () => {
+    const keymap = compileKeymap();
+    expect(keymap.bindingsFor("split_picker")).toEqual(["prefix+shift+s"]);
+    expect(keymap.bindingsFor("next_split")).toEqual(["]s"]);
+    expect(keymap.bindingsFor("previous_split")).toEqual(["[s"]);
+  });
+});

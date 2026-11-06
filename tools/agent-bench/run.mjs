@@ -17,12 +17,16 @@ import { timedFetch } from "./breakdown.mjs";
  * @typedef {import("../../packages/vimma-core/src/agent-loop.mjs").RunTool} RunTool
  * @typedef {{ name: string, args?: any, error?: boolean, denied?: boolean, refused?: string,
  *   said?: string, ms?: number }} CallLog
+ * @typedef {{ text: string, reset(): void,
+ *   score(task: import("./score.mjs").TaskRecord, calls: CallLog[]): Record<string, any> &
+ *   import("./score.mjs").RunScore }} Scenario  a task other than a list, such as two-shops.mjs's
  */
 
 /**
- * Runs one list through vimma-core's loop and scores what reached the shop.
- * @param {{ list: import("./score.mjs").ShoppingList,
- *   shop: { base: string, reset(): void, record(): import("./score.mjs").ShopRecord },
+ * Runs one list, or a scenario, through vimma-core's loop and scores what reached the shop.
+ * @param {({ list: import("./score.mjs").ShoppingList,
+ *   shop: { base: string, reset(): void, record(): import("./score.mjs").ShopRecord } } |
+ *   { scenario: Scenario }) & {
  *   provider: import("../../packages/vimma-core/src/agent-providers.mjs").Provider,
  *   fetch: import("../../packages/vimma-core/src/agent-providers.mjs").Fetch, key: string,
  *   system: string, tools: import("../../packages/vimma-core/src/agent-providers.mjs").ToolDef[],
@@ -33,7 +37,16 @@ import { timedFetch } from "./breakdown.mjs";
  *   left out, the provider's default)
  */
 export async function runOne(o) {
-  o.shop.reset();
+  /** @type {Scenario} */
+  const scenario =
+    "scenario" in o
+      ? o.scenario
+      : {
+          text: taskText(o.list, o.shop.base),
+          reset: () => o.shop.reset(),
+          score: (task) => scoreRun(o.list, o.shop.record(), task),
+        };
+  scenario.reset();
   const budget = new Budget(o.limits);
   /** @type {CallLog[]} */
   const calls = [];
@@ -48,7 +61,7 @@ export async function runOne(o) {
     key: o.key,
     system: o.system,
     tools: o.tools,
-    messages: [{ role: "user", text: taskText(o.list, o.shop.base) }],
+    messages: [{ role: "user", text: scenario.text }],
     runTool: o.runTool,
     budget,
     keepResults: o.keepResults,
@@ -89,15 +102,18 @@ export async function runOne(o) {
   clearTimeout(timer);
   const wallMs = Date.now() - started;
   if (o.settleMs) await new Promise((r) => setTimeout(r, o.settleMs));
-  const score = scoreRun(o.list, o.shop.record(), {
-    outcome: timedOut ? "timeout" : result.outcome,
-    steps: budget.steps,
-    input: budget.input,
-    output: budget.output,
-    estimated: budget.estimated,
-    wallMs,
-    denials,
-  });
+  const score = scenario.score(
+    {
+      outcome: timedOut ? "timeout" : result.outcome,
+      steps: budget.steps,
+      input: budget.input,
+      output: budget.output,
+      estimated: budget.estimated,
+      wallMs,
+      denials,
+    },
+    calls,
+  );
   return { ...score, calls, turns, reply: result.reply ?? "", error: result.error ?? null };
 }
 
@@ -239,6 +255,7 @@ export function parseArgs(argv) {
       floor: { type: "string", default: "search" },
       "pace-ms": { type: "string", default: "0" },
       "keep-results": { type: "string" },
+      "two-shops": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
   });
@@ -285,6 +302,7 @@ export function parseArgs(argv) {
     floor: /** @type {"search" | "product" | "parallel"} */ (floor),
     paceMs,
     keepResults,
+    twoShops: values["two-shops"] ?? false,
     help: values.help ?? false,
   };
 }

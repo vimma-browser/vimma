@@ -39,6 +39,7 @@ close_pane = ["prefix+x"]
 resize_mode = ["prefix+r"]
 new_pane = ["prefix+enter"]
 next_layout = ["prefix+space"]
+split_picker = ["prefix+shift+s"]
 next_workspace = ["prefix+)"]
 previous_workspace = ["prefix+("]
 last_workspace = ["prefix+^", "prefix+ctrl+6"]
@@ -106,6 +107,7 @@ agent_prompt = ["prefix+shift+a"]
 agent_chat = ["prefix+i"]
 copy_mode = ["prefix+["]
 addon_picker = ["prefix+e"]
+downloads_picker = ["prefix+d"]
 # On macOS these default to Firefox's macOS keys instead, since Option types characters:
 # select_tab_1 = ["prefix+1", "meta+1"]
 # select_tab_2 = ["prefix+2", "meta+2"]
@@ -125,7 +127,8 @@ leader = " "
 timeout_ms = 800
 # Hint labels are made of these characters, the first ones most often.
 hint_chars = "asdfghjkl"
-# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character.
+# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character,
+# and ctrl+j and ctrl+m are Enter.
 insert_editing = true
 
 [modal.normal]
@@ -171,6 +174,8 @@ insert_editing = true
 "[w" = "workspace.previous"
 "]q" = "grep.next"
 "[q" = "grep.previous"
+"]s" = "pane.next_split"
+"[s" = "pane.previous_split"
 "yy" = "page.yank_url"
 "p" = "page.open_clipboard"
 "P" = "page.open_clipboard_new_tab"
@@ -197,10 +202,6 @@ insert_editing = true
 "K" = "pdf.previous_page"
 "gg" = "pdf.first_page"
 "G" = "pdf.last_page"
-"H" = "pdf.page_top"
-"P" = "pdf.page_top"
-"L" = "pdf.page_bottom"
-"<C-f>" = "pdf.screen_down"
 "+" = "pdf.zoom_in"
 "zi" = "pdf.zoom_in"
 "zI" = "pdf.zoom_in"
@@ -213,18 +214,23 @@ insert_editing = true
 "z0" = "pdf.zoom_set"
 "a" = "pdf.fit_page"
 "s" = "pdf.fit_width"
-"d" = "pdf.dual_page"
 "D" = "pdf.first_page_alone"
 "w" = "pdf.single_page"
-"r" = "pdf.rotate"
 "R" = "page.reload"
 "Y" = "page.yank_url"
-"<F5>" = "pdf.presentation"
 "<Tab>" = "pdf.outline"
 "m" = "pdf.mark_set"
 "'" = "pdf.mark_go"
-"F" = "hint.show_target"
 "c" = "hint.copy_target"
+# zathura's keys over Vimma's in the PDF viewer, for those who want them:
+# "d" = "pdf.dual_page"
+# "r" = "pdf.rotate"
+# "H" = "pdf.page_top"
+# "L" = "pdf.page_bottom"
+# "P" = "pdf.page_top"
+# "F" = "hint.show_target"
+# "<C-f>" = "pdf.screen_down"
+# "<F5>" = "pdf.presentation"
 
 [modal.insert]
 "<Esc>" = "mode.normal"
@@ -422,6 +428,9 @@ toolbar = "shown"
 # "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,
 # ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.
 # bookmarks_toolbar = "shown"
+# Vimma's outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or
+# "hidden" until you press Tab.
+pdf_outline = "shown"
 
 # Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request
 # names only the update channel and the platform. false stops every check.
@@ -454,11 +463,17 @@ clamav_max_age_days = 7
 # [sites."docs.google.com"]
 # insert = "always"
 
-# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the app
-# that opened it (vimma-open). The first matching rule wins. None by default.
+# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the
+# programs that opened it (vimma-open). The first matching rule wins, except that among the
+# app rules above it, the one naming the nearest program wins. None by default.
 # [[routes]]
 # domain = "github.com"
 # workspace = "work"
+
+# Where a link from another program opens when no rule matches. Left out, it opens where
+# Firefox guesses from your open tabs, else in the window's workspace.
+# [routing]
+# default_workspace = "work"
 
 # Search engines. default: an installed engine's name (as in Settings > Search), or
 # "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar

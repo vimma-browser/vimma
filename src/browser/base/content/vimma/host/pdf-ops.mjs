@@ -14,7 +14,8 @@ import {
   pdfDocumentKey,
 } from "../core/pdf.mjs";
 import { outlineUrlAllowed, parsePdfOutline } from "../core/pdfoutline.mjs";
-import { PDF_FEATURE_PREF, isPdfJsPrincipal } from "../actors/pdf-view.mjs";
+import { isPdfJsPrincipal } from "../actors/pdf-view.mjs";
+import { ThemeHost } from "../ui/theme-host.mjs";
 
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -77,6 +78,29 @@ function viewerGlobal(browser) {
   return ["http", "https", "file"].includes(scheme) ? wg : null;
 }
 
+/**
+ * The viewers' actors that took the token sheet, to send it again on a theme change (V12).
+ * @type {Set<any>}
+ */
+const themed = new Set();
+
+/** A theme change: each viewer still showing its document gets the new token sheet. */
+function pushTheme() {
+  for (const actor of themed) {
+    const browser = actor.browsingContext?.embedderElement;
+    if (!browser || viewerGlobal(browser) !== actor.manager) {
+      themed.delete(actor);
+      continue;
+    }
+    try {
+      actor.sendAsyncMessage("Vimma:PdfTheme", { css: ThemeHost.css });
+    } catch {
+      themed.delete(actor);
+    }
+  }
+}
+Services.obs.addObserver(pushTheme, "vimma-theme-changed");
+
 /** @param {PdfState} a @param {PdfState} b */
 const sameState = (a, b) =>
   a.page === b.page &&
@@ -87,11 +111,6 @@ const sameState = (a, b) =>
   a.doc === b.doc;
 
 export const PdfOps = {
-  /** Whether the PDF mode is on (CONTRIBUTING.md, "Unfinished features"). */
-  enabled() {
-    return Services.prefs.getBoolPref(PDF_FEATURE_PREF, false);
-  },
-
   /**
    * The keymap context for `browser`: `pdf` while its top document is the pdf.js viewer
    * (ADR-024). Never from a report of the child, and never for a viewer in a frame (V2).
@@ -99,7 +118,7 @@ export const PdfOps = {
    * @returns {Context}
    */
   context(browser) {
-    return this.enabled() && viewerGlobal(browser) ? "pdf" : "page";
+    return viewerGlobal(browser) ? "pdf" : "page";
   },
 
   /**
@@ -108,7 +127,6 @@ export const PdfOps = {
    * @returns {PdfState | null}
    */
   state(browser) {
-    if (!this.enabled()) return null;
     const wg = viewerGlobal(browser);
     const entry = wg && states.get(browser);
     return entry && entry.windowId === wg.innerWindowId ? entry.state : null;
@@ -122,7 +140,6 @@ export const PdfOps = {
    * @param {unknown} data
    */
   onState(actor, data) {
-    if (!this.enabled()) return;
     const bc = actor.browsingContext;
     if (!bc || bc.parent) return;
     const browser = bc.embedderElement;
@@ -159,7 +176,7 @@ export const PdfOps = {
    * @returns {boolean} false when `browser` does not show the PDF viewer
    */
   run(browser, op, n = 0) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const msg = parsePdfOp({ op, n });
     if (!wg || !msg) return false;
     try {
@@ -202,7 +219,7 @@ export const PdfOps = {
    * @returns {Promise<boolean>} false when nothing was kept
    */
   async setMark(browser, c) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const key = wg && pdfDocumentKey(wg.documentURI.spec);
     if (!wg || !key || !isPdfMarkChar(c)) return false;
     /** @type {unknown} */
@@ -232,7 +249,7 @@ export const PdfOps = {
    * @returns {"went" | "none" | "not-pdf"}
    */
   goToMark(browser, c) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const key = wg && pdfDocumentKey(wg.documentURI.spec);
     if (!wg || !key) return "not-pdf";
     const all = marksFor(browser);
@@ -260,7 +277,7 @@ export const PdfOps = {
    * @returns {Promise<number>}
    */
   async linkPage(browser, target) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const pages = this.state(browser)?.pages ?? 0;
     if (!wg || target.wg !== wg || target.bc !== browser.browsingContext) return 0;
     /** @type {unknown} */
@@ -287,13 +304,48 @@ export const PdfOps = {
   },
 
   /**
+   * What tells `browser`'s document apart from the next one it shows: its window global, from
+   * the parent's own view, never the viewer's count of the PDFs it opened, which a compromised
+   * viewer could raise to have its outline read and shown again (V8). Null unless it is the
+   * viewer with a state.
+   * @param {any} browser
+   * @returns {string | null}
+   */
+  documentKey(browser) {
+    const wg = viewerGlobal(browser);
+    return wg && this.state(browser) ? String(wg.innerWindowId) : null;
+  },
+
+  /**
+   * The token sheet for a VimmaParent's `Vimma:PdfTheme` (decision 20, V12): only for the actor
+   * of the top viewer's current window global, which then gets every later theme change too.
+   * @param {any} actor  the VimmaParent
+   * @returns {string | null}
+   */
+  theme(actor) {
+    const bc = actor.browsingContext;
+    if (!bc || bc.parent) return null;
+    if (viewerGlobal(bc.embedderElement) !== actor.manager) return null;
+    themed.add(actor);
+    return ThemeHost.css;
+  },
+
+  /**
+   * A VimmaParent went with its document: no more theme changes for it.
+   * @param {any} actor
+   */
+  dropActor(actor) {
+    themed.delete(actor);
+  },
+
+  /**
    * The outline of `browser`'s current document, once read, or null. An outline of a document
    * the tab has left is dropped here (V11).
    * @param {any} browser
    * @returns {PdfOutline | null}
    */
   outline(browser) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const entry = outlines.get(browser);
     if (entry && entry.windowId === wg?.innerWindowId) return entry.outline;
     outlines.delete(browser);
@@ -320,7 +372,7 @@ export const PdfOps = {
    * @returns {boolean} false when refused
    */
   openUrl(browser, url) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     const parsed = outlineUrlAllowed(url) ? URL.parse(url) : null;
     if (!wg || !parsed) return false;
     const principal = wg.documentPrincipal;
@@ -346,7 +398,7 @@ export const PdfOps = {
    * @returns {boolean} false when `browser` does not show the PDF viewer
    */
   askOutline(browser) {
-    const wg = this.enabled() ? viewerGlobal(browser) : null;
+    const wg = viewerGlobal(browser);
     if (!wg) return false;
     asked.set(browser, wg.innerWindowId);
     return this.run(browser, "outline");
@@ -361,7 +413,6 @@ export const PdfOps = {
    * @param {unknown} data
    */
   onOutline(actor, data) {
-    if (!this.enabled()) return;
     const bc = actor.browsingContext;
     if (!bc || bc.parent) return;
     const browser = bc.embedderElement;
@@ -435,31 +486,6 @@ const PDF_ACTIONS = Object.freeze({
   "pdf.rotate": ["rotate"],
   "pdf.presentation": ["presentation"],
 });
-
-/** The action ids that exist only while the PDF mode is on (the command line hides the rest). */
-export const PDF_ACTION_IDS = Object.freeze([
-  ...Object.keys(PDF_ACTIONS),
-  "pdf.outline",
-  "pdf.mark_set",
-  "pdf.mark_go",
-  ...[
-    "down",
-    "up",
-    "expand",
-    "collapse",
-    "expand_subtree",
-    "collapse_subtree",
-    "expand_all",
-    "collapse_all",
-    "first",
-    "last",
-    "half_down",
-    "half_up",
-    "follow",
-    "close",
-    "filter",
-  ].map((op) => `index.${op}`),
-]);
 
 /**
  * The host's runners for the PDF viewer's actions.

@@ -9,6 +9,7 @@
 import { resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "./defaults.mjs";
+import { insertEditCommand } from "./editable.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
   KeyNotationError,
@@ -36,6 +37,14 @@ import { formatPath } from "./toml.mjs";
 
 /** @type {readonly KeymapTarget[]} */
 const TARGETS = Object.freeze([...MODES, "pdf"]);
+
+/**
+ * The modes whose keys type into a text field: a page's field or the address bar, the `:` line,
+ * the help overlay's filter. Vim's text-field keys there are the field's before a default
+ * [keys] binding (docs/specs/key-handling-batch.md § 2).
+ * @type {readonly KeymapTarget[]}
+ */
+const TEXT_FIELD_MODES = Object.freeze(["insert", "command", "help"]);
 
 /**
  * @typedef {object} TrieNode
@@ -287,6 +296,30 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         else if (k.layer === "keys") for (const m of e.modes) k.modes.delete(m);
       }
       entries.push(e);
+    }
+  }
+
+  // Vim's text-field keys (docs/specs/key-handling-batch.md § 2, decision on ctrl+j and ctrl+m):
+  // a default [keys] binding on one, such as ctrl+m (mute_tab) and ctrl+j (web_search), which
+  // carry Firefox's meaning, is not bound in the modes that type into a text field, so the key
+  // is the field's there, as in Vim. A binding the user added stays and wins, as for ctrl+w; one
+  // that repeats the default (a config.toml copied from defaults.toml) is still the default.
+  const insertEditing = userModal.insert_editing ?? defModal.insert_editing;
+  if (insertEditing !== false) {
+    /** @type {Set<string>} action name and sequence of each default [keys] binding */
+    const defaults = new Set();
+    for (const [name, value] of Object.entries(defKeys)) {
+      if (name === "prefix") continue;
+      for (const text of asList(value, formatPath(["keys", name]))) {
+        const { chords } = concretise(notation(() => parseBinding(text), name));
+        defaults.add(`${name} ${chords.map(formatKey).join(" ")}`);
+      }
+    }
+    for (const e of entries) {
+      if (e.layer !== "keys" || !e.chords[0]) continue;
+      if (e.user && !defaults.has(`${e.action.name} ${e.seq}`)) continue;
+      if (!insertEditCommand(formatKey(e.chords[0]), { mac })) continue;
+      for (const m of TEXT_FIELD_MODES) e.modes.delete(m);
     }
   }
 

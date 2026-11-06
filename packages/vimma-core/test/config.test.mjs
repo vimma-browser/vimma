@@ -108,6 +108,7 @@ describe("parseConfig: valid input", () => {
         "[theme.colors]",
         'accent = "#ABC"',
         'mode = "light"',
+        'split_9 = "#F80"',
       ),
     );
     expect(r.errors).toEqual([]);
@@ -115,7 +116,7 @@ describe("parseConfig: valid input", () => {
       source: "file",
       name: "vimma",
       font: "CaskaydiaMono Nerd Font",
-      colors: { accent: "#aabbcc", mode: "light" },
+      colors: { accent: "#aabbcc", mode: "light", split_9: "#ff8800" },
     });
   });
 
@@ -347,6 +348,9 @@ describe("parseConfig: errors carry line numbers", () => {
     ['acent = "#ffffff"', "theme.colors.acent", /unknown colour/, "accent"],
     ['accent = "blue"', "theme.colors.accent", /hex colour/, undefined],
     ['mode = "dim"', "theme.colors.mode", /"dark" or "light"/, undefined],
+    // docs/specs/multiple-splits.md decision 11.
+    ['split_3 = "orange"', "theme.colors.split_3", /hex colour/, undefined],
+    ['split_10 = "#ffffff"', "theme.colors.split_10", /unknown colour/, "split_1"],
   ])("[theme.colors] %s is an error", (line, path, msg, suggestion) => {
     const e = oneError(toml("[theme.colors]", line));
     expect(e).toMatchObject({ line: 2, path });
@@ -383,10 +387,11 @@ describe("mergeWithDefaults", () => {
       unbind: {},
       workspaces: [],
       theme: { source: "omarchy", name: "vimma", font: "monospace", colors: {} },
-      panes: { max: 8, layout: "dwindle", mainSize: 0.6 },
+      panes: { max: 8, layout: "dwindle", mainSize: 0.6, maxSplits: 9 },
       hintChars: "asdfghjkl",
       sites: [],
       routes: [],
+      routing: { defaultWorkspace: null },
       firefox: {
         disable: "all",
         enable: [],
@@ -406,7 +411,7 @@ describe("mergeWithDefaults", () => {
         downloadMaxMb: 200,
         clamavMaxAgeDays: 7,
       },
-      ui: { toolbar: "shown", bookmarksToolbar: null },
+      ui: { toolbar: "shown", bookmarksToolbar: null, pdfOutline: "shown" },
       updates: { check: true },
       search: null,
       agent: {

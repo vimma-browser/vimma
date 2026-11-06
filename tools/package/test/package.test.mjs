@@ -339,10 +339,23 @@ describe("AppRun", () => {
     writeFileSync(join(dir, "AppRun"), script, { mode: 0o755 });
     copyFileSync(LAUNCHER, join(dir, "usr/lib/vimma/vimma-open"));
     chmodSync(join(dir, "usr/lib/vimma/vimma-open"), 0o755);
-    writeFileSync(join(dir, "usr/lib/vimma/vimma"), '#!/bin/sh\necho "$@"\n', { mode: 0o755 });
+    // vimma-open hands a link off in its own session (app-routes, decision 9), with no output:
+    // the fake vimma writes its arguments to a file, renamed in place once written.
+    const out = join(dir, "out");
+    writeFileSync(
+      join(dir, "usr/lib/vimma/vimma"),
+      `#!/bin/sh\necho "$@" > "${out}.tmp"\nmv "${out}.tmp" "${out}"\n`,
+      { mode: 0o755 },
+    );
     const env = { PATH: process.env.PATH ?? "", VIMMA_OPEN_PPID: "1" };
-    const run = (/** @type {string[]} */ args) =>
+    const run = (/** @type {string[]} */ args) => {
+      rmSync(out, { force: true });
       execFileSync(join(dir, "AppRun"), args, { env, encoding: "utf8" });
+      for (let i = 0; i < 200 && !existsSync(out); i++) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+      }
+      return readFileSync(out, "utf8");
+    };
     expect(run(["--private-window"])).toBe("--private-window\n");
     expect(run(["--new-window"])).toBe("--new-window\n");
     expect(run(["https://example.com/"])).toBe("https://example.com/\n");

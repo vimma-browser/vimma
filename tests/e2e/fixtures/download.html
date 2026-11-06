@@ -1,0 +1,19 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- downloads picker (docs/specs/downloads.md): a page that downloads download-report.txt as it
+     loads, then titles itself "downloaded", so a scenario waits for the click before it looks. -->
+<meta charset="utf-8" />
+<title>download</title>
+<style>
+  html {
+    height: 100%;
+    background: #e8e8e8;
+  }
+</style>
+<a id="file" href="download-report.txt" download="report.txt"></a>
+<script>
+  document.getElementById("file").click();
+  document.title = "downloaded";
+</script>

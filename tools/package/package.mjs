@@ -45,8 +45,9 @@ const DESCRIPTION =
   "Keyboard-first web browser built on Firefox, with Neovim-style modes and a tmux-style prefix keymap";
 
 /**
- * vimma-open, the desktop entry's launcher: it names the app that opened a link for `[[routes]]`
- * rules (spec workspace-routing). Installed as `vimma-open` next to the `vimma` binary.
+ * vimma-open, the desktop entry's launcher and `BROWSER=vimma-open`'s command: it names the
+ * programs that opened a link for `[[routes]]` rules (specs workspace-routing and app-routes).
+ * Installed as `vimma-open` next to the `vimma` binary.
  */
 export const LAUNCHER = fileURLToPath(new URL("vimma-open.sh", import.meta.url));
 const LAUNCHER_NAME = `${APP}-open`;
@@ -832,7 +833,7 @@ export const gnuTar = () =>
  * @param {string} extract the directory holding `vimma/`
  * @param {string} to
  */
-function packTarball(extract, to) {
+export function packTarball(extract, to) {
   const owner = gnuTar()
     ? ["--sort=name", "--owner=0", "--group=0", "--numeric-owner"]
     : ["--uid", "0", "--gid", "0", "--numeric-owner"];

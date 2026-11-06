@@ -56,7 +56,7 @@ body {
 button {
   font: inherit;
   padding: 0.55rem 1.3rem;
-  border-radius: 6px;
+  border-radius: var(--vimma-radius, 0);
   border: 1px solid var(--vimma-muted, #3b4252);
   background: transparent;
   color: var(--vimma-fg, #c2d6d3);
@@ -130,7 +130,7 @@ h1 {
   gap: 0.6rem;
   padding: 0.4rem 0.8rem;
   border: 1px solid var(--vimma-muted, #3b4252);
-  border-radius: 6px;
+  border-radius: var(--vimma-radius, 0);
 }
 
 .search:focus-within {
@@ -163,7 +163,7 @@ h1 {
   gap: 0.6rem;
   align-items: baseline;
   padding: 0.6rem 0.8rem;
-  border-radius: 6px;
+  border-radius: var(--vimma-radius, 0);
   border-inline-start: 3px solid transparent;
 }
 

@@ -31,6 +31,8 @@ import { formatPath, locateKeys, parseToml } from "./toml.mjs";
  *   far enough to reach MIN_FOCUS_CONTRAST on every FOCUS_SURFACE_TOKENS
  * @property {boolean} [badge]    a status-bar badge: `from`, unless an earlier badge already
  *   has that colour (badgeColors)
+ * @property {string} [override]  the `[theme.colors]` key that sets this token alone (`split_N`),
+ *   over `from`; adjusted like `from` would be
  * @property {string} description
  */
 
@@ -289,6 +291,28 @@ export const BADGES = Object.freeze(Object.keys(BADGE_COLORS));
  */
 export const MIN_BADGE_DISTANCE = 10;
 
+/**
+ * The palette keys of split colours 1 to 9 (docs/specs/multiple-splits.md decision 11), so every
+ * theme supplies them from its own palette. `red` is left out: Vimma uses it for errors.
+ */
+export const SPLIT_COLOR_KEYS = Object.freeze([
+  "blue",
+  "green",
+  "magenta",
+  "yellow",
+  "cyan",
+  "orange",
+  "bright_blue",
+  "bright_green",
+  "bright_magenta",
+]);
+
+/** `[theme.colors]` keys that set one split's colour: `split_1` to `split_9`. */
+export const SPLIT_OVERRIDE_KEYS = Object.freeze(SPLIT_COLOR_KEYS.map((_, i) => `split_${i + 1}`));
+
+/** Every key `[theme.colors]` accepts: the palette's, then the split overrides. */
+export const THEME_COLOR_KEYS = Object.freeze([...PALETTE_KEYS, ...SPLIT_OVERRIDE_KEYS]);
+
 const ANSI = ["red", "yellow", "orange", "green", "cyan", "blue", "magenta", "brown"];
 const BRIGHT = ["red", "yellow", "green", "cyan", "blue", "magenta"];
 
@@ -373,6 +397,15 @@ export const THEME_TOKENS = Object.freeze([
     from: `bright_${c}`,
     readable: true,
     description: `bright ${c} text, readable on every surface`,
+  })),
+  // A split's stripe in the side panel and swatch in the picker (multiple-splits decision 11): a
+  // non-text indicator, so 3:1 on every surface as the focus ring is.
+  ...SPLIT_COLOR_KEYS.map((from, i) => ({
+    name: `--vimma-split-${i + 1}`,
+    from,
+    focus: true,
+    override: SPLIT_OVERRIDE_KEYS[i],
+    description: `split ${i + 1}'s colour, at 3:1 on every surface`,
   })),
 ]);
 
@@ -658,15 +691,18 @@ function textOn(bg, palette) {
  * @param {Palette} palette  complete: every PALETTE_KEYS entry
  * @param {string} font
  * @param {Readonly<Record<string, string>>} [roles]  token → palette key, over THEME_TOKENS' from
+ * @param {Readonly<Record<string, string>>} [overrides]  validated `split_N` colours, by key
  * @returns {Tokens}
  */
-function paletteToTokens(palette, font, roles = {}) {
+function paletteToTokens(palette, font, roles = {}, overrides = {}) {
   /** @type {Tokens} */
   const tokens = {};
   const badges = badgeColors(palette);
   for (const t of THEME_TOKENS) {
     const from = Object.hasOwn(roles, t.name) ? roles[t.name] : t.from;
-    if (t.badge) tokens[t.name] = /** @type {string} */ (badges[t.name]);
+    if (t.override && Object.hasOwn(overrides, t.override)) {
+      tokens[t.name] = /** @type {string} */ (overrides[t.override]);
+    } else if (t.badge) tokens[t.name] = /** @type {string} */ (badges[t.name]);
     else if (t.textOn) tokens[t.name] = textOn(/** @type {string} */ (tokens[t.textOn]), palette);
     else if (from) tokens[t.name] = /** @type {string} */ (palette[from]);
     else tokens[t.name] = cssFontFamily(font);
@@ -857,11 +893,17 @@ export function resolveTheme({ theme, omarchy = null, omarchyLightMode = false, 
   }
   /** @type {Palette} */
   const palette = { ...base };
+  /** @type {Record<string, string>} */
+  const overrides = {};
   // Validated again here: these values become CSS, and callers other than parseConfig exist.
   for (const [key, v] of Object.entries(theme.colors)) {
     const path = formatPath(["theme", "colors", key]);
-    if (!PALETTE_KEYS.includes(key)) {
+    if (!THEME_COLOR_KEYS.includes(key)) {
       errors.push({ path, message: `unknown colour key "${key}"` });
+    } else if (SPLIT_OVERRIDE_KEYS.includes(key)) {
+      if (isHexColor(v)) overrides[key] = normalizeHex(v);
+      else
+        errors.push({ path, message: `must be a hex colour like "#7aa2f7", got ${describe(v)}` });
     } else if (key === "mode") {
       if (v === "dark" || v === "light") palette.mode = v;
       else errors.push({ path, message: `must be "dark" or "light", got ${describe(v)}` });
@@ -872,7 +914,7 @@ export function resolveTheme({ theme, omarchy = null, omarchyLightMode = false, 
     }
   }
   const roles = fromBuiltin ? BUILTIN_ROLES[name] : undefined;
-  const tokens = paletteToTokens(palette, theme.font, roles);
+  const tokens = paletteToTokens(palette, theme.font, roles, overrides);
   for (const [fg, bg] of CONTRAST_PAIRS) {
     const ratio = contrastRatio(
       /** @type {string} */ (tokens[/** @type {string} */ (fg)]),

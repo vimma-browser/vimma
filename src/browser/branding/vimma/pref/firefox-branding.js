@@ -120,6 +120,9 @@ pref("vimma.ui.tabstrip.hidden", true);
 // Firefox's navigation toolbar (spec toolbar-toggle): shown by default. ctrl+b u, :toolbar and
 // config.toml's [ui] toolbar set it for every window, live.
 pref("vimma.ui.toolbar.hidden", false);
+// Vimma's outline beside a PDF that has one (pdf-mode decision 19): shown when the PDF opens.
+// config.toml's [ui] pdf_outline sets it at startup and when the line changes.
+pref("vimma.ui.pdf_outline.hidden", false);
 
 // Downloads (issue #677): a profile's first download opens Firefox's downloads panel when it
 // ends, whatever the download asked for (DownloadsCommon.sys.mjs, _notifyDownloadEvent), so a PDF
@@ -127,6 +130,12 @@ pref("vimma.ui.toolbar.hidden", false);
 // download behaves as every later one: the start of a burst still opens the panel, unless the
 // download opens in a tab of its own (vimma/services/ViewedDownloads.sys.mjs).
 pref("browser.download.panel.shown", true);
+// Downloads (docs/specs/downloads.md decision 10): the start of a burst no longer opens the panel,
+// which brought the hidden toolbar over the page; the status bar's `↓` segment says a download
+// started, ended, failed or was blocked. A download blocked as it is added (an `Insecure` one) or as
+// spam still opens the panel, as Firefox's warning (an `error` event opens it whatever this pref
+// says); one blocked after its transfer shows as `↓ blocked`.
+pref("browser.download.alwaysOpenPanel", false);
 
 // Vimma's update check (spec m6a-updater): on by default; false, or [updates] check = false in
 // config.toml, stops every request. The URL may use only %BUILD_TARGET% and %CHANNEL%, so a
@@ -197,7 +206,6 @@ pref("browser.toolbars.bookmarks.visibility", "never");
 // Firefox's PDF promotion that interrupts reading, so it gets no impressions. about:pdf and its
 // menu entries stay (docs/specs/pdf-mode.md decision 17). The budget is shared with about:pdf.
 pref("pdfjs.featuresNotificationImpressionLimit", 0);
-
-// Unfinished: the PDF viewer's zathura keys and status (docs/specs/pdf-mode.md), delivered over
-// several pull requests (CONTRIBUTING.md, "Unfinished features").
-pref("vimma.feature.pdf_mode", false);
+// pdf.js opens its sidebar on no view by itself (a PDF's /PageMode, the view last used): Vimma's
+// outline panel is the outline, and firefox-pdf.css hides pdf.js's sidebar (pdf-mode decision 18).
+pref("pdfjs.sidebarViewOnLoad", 0);

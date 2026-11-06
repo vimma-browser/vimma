@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 3), docs/security.md section 20 (V7, V9): zathura's
+// Spec: docs/specs/pdf-mode.md (delivery PR 3, decision 21), docs/security.md section 20 (V7, V9): zathura's
 // page, zoom and layout keys in the PDF viewer, presentation mode, and jumps.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
@@ -23,9 +23,12 @@ const PDF = ROOT + "file_vimma_outline.pdf";
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({
     set: [
-      ["vimma.feature.pdf_mode", true],
       // Instant scrolling: the positions below are read right after a key.
       ["general.smoothScroll", false],
+      // The outline shown beside a PDF (pdf-mode decision 19) narrows the viewer as it opens,
+      // which pdf.js answers with a relayout of its own; these tests read positions and pages
+      // right after keys pressed as the PDF opens. browser_vimma_pdf_outline.js covers it.
+      ["vimma.ui.pdf_outline.hidden", true],
     ],
   });
 });
@@ -127,6 +130,17 @@ async function until(browser, want, what) {
 /** @param {string} keys  typed one key at a time, as EventUtils.sendString does */
 const type = (keys) => EventUtils.sendString(keys);
 
+/**
+ * Runs `:name` from the command line and waits for normal mode again.
+ * @param {XULBrowserElement} browser
+ * @param {string} name
+ */
+async function command(browser, name) {
+  type(`:${name}`);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await focusNormal(browser);
+}
+
 add_task(async function pages() {
   await withPdf(async (browser) => {
     type("J");
@@ -150,24 +164,64 @@ add_task(async function pages() {
     EventUtils.synthesizeKey("KEY_Enter");
     await until(browser, { page: 3 }, ":3 goes to page 3");
     await focusNormal(browser);
-    // H / L / P: the current page's top or bottom at the view's.
-    type("L");
-    await until(browser, { pageBottom: (b) => Math.abs(b) <= 1 }, "L: the page's bottom");
+    // zathura's H / L / P are commands (decision 21): the current page's top or bottom.
+    await command(browser, "pdf_page_bottom");
+    await until(browser, { pageBottom: (b) => Math.abs(b) <= 1 }, ":pdf_page_bottom");
     const page = (await view(browser)).page;
-    type("H");
-    await until(browser, { page, pageTop: (t) => Math.abs(t) <= 1 }, "H: the page's top");
-    EventUtils.synthesizeKey("j");
-    await until(browser, { pageTop: (t) => t < -1 }, "j scrolls off the page's top");
-    type("P");
-    await until(browser, { page, pageTop: (t) => Math.abs(t) <= 1 }, "P snaps to the page");
+    await command(browser, "pdf_page_top");
+    await until(browser, { page, pageTop: (t) => Math.abs(t) <= 1 }, ":pdf_page_top");
+  });
+});
+
+// Decision 21: Vimma's keys mean in the PDF viewer what they mean on every page, and zathura's
+// meanings for them are commands.
+add_task(async function vimmas_keys_keep_their_meaning_in_the_pdf_viewer() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "https://example.com/");
+  const browser = tab.linkedBrowser;
+  try {
+    await loadPdf(browser, PDF);
+    await TestUtils.waitForCondition(() => segment("page").startsWith("page"), "the page");
+    await focusNormal(browser);
     const before = await view(browser);
-    EventUtils.synthesizeKey("f", { ctrlKey: true });
+    type("d");
     await until(
       browser,
-      { scrollTop: (y) => Math.abs(y - before.scrollTop - before.height) <= 1 },
-      "ctrl+f scrolls a screen down",
+      { scrollTop: (y) => y > before.scrollTop && y < before.scrollTop + before.height },
+      "d scrolls half a screen down",
     );
-  });
+    Assert.equal((await view(browser)).spread, 0, "d leaves the layout alone");
+    EventUtils.synthesizeKey("f", { ctrlKey: true });
+    await TestUtils.waitForCondition(
+      () => gBrowser.getCachedFindBar()?.hidden === false,
+      "ctrl+f opens find",
+    );
+    EventUtils.synthesizeKey("KEY_Escape");
+    await focusNormal(browser);
+    for (const key of ["r", "KEY_F5"]) {
+      const reloaded = BrowserTestUtils.waitForContentEvent(
+        browser,
+        "textlayerrendered",
+        false,
+        null,
+        true,
+      );
+      if (key.startsWith("KEY_")) EventUtils.synthesizeKey(key);
+      else type(key);
+      await reloaded;
+      const after = await view(browser);
+      Assert.equal(after.rotation, 0, `${key} reloads, and rotates nothing`);
+      Assert.equal(after.presenting, false, `${key} starts no presentation`);
+      await TestUtils.waitForCondition(() => segment("page").startsWith("page"), "the page");
+      await focusNormal(browser);
+    }
+    type("H");
+    await TestUtils.waitForCondition(
+      () => browser.currentURI.spec === "https://example.com/",
+      "H goes back in history",
+    );
+  } finally {
+    BrowserTestUtils.removeTab(tab);
+  }
 });
 
 add_task(async function zoom_and_fit() {
@@ -210,25 +264,31 @@ add_task(async function zoom_and_fit() {
 add_task(async function layout() {
   await withPdf(async (browser) => {
     // pdf.js's SpreadMode NONE 0, ODD 1, EVEN 2; ScrollMode VERTICAL 0, PAGE 3.
-    type("d");
-    await until(browser, { spread: 2 }, "d shows two pages, the first alone");
+    // zathura's d and r are :dual and :rotate (decision 21).
+    await command(browser, "dual");
+    await until(browser, { spread: 2 }, ":dual shows two pages, the first alone");
     type("D");
     await until(browser, { spread: 1 }, "D pairs the first page");
-    type("d");
-    await until(browser, { spread: 0 }, "d goes back to one page");
-    type("d");
-    await until(browser, { spread: 1 }, "d comes back to the last spread");
-    type("d");
+    await command(browser, "dual");
+    await until(browser, { spread: 0 }, ":dual goes back to one page");
+    await command(browser, "dual");
+    await until(browser, { spread: 1 }, ":dual comes back to the last spread");
+    await command(browser, "dual");
     await until(browser, { spread: 0 }, "one page again");
+    type("D");
+    await until(browser, { spread: 2 }, "D from one page shows two");
+    await command(browser, "dual");
+    await until(browser, { spread: 0 }, "and :dual one again");
     type("w");
     await until(browser, { scroll: 3 }, "w shows one page at a time");
     type("w");
     await until(browser, { scroll: 0 }, "w goes back to scrolling");
-    type("r");
-    await until(browser, { rotation: 90 }, "r rotates 90 degrees");
-    type("2r");
-    await until(browser, { rotation: 270 }, "2r rotates twice");
-    type("r");
+    await command(browser, "rotate");
+    await until(browser, { rotation: 90 }, ":rotate rotates 90 degrees");
+    await command(browser, "rotate");
+    await command(browser, "rotate");
+    await until(browser, { rotation: 270 }, "twice more");
+    await command(browser, "rotate");
     await until(browser, { rotation: 0 }, "and round");
   });
 });
@@ -236,8 +296,10 @@ add_task(async function layout() {
 add_task(async function presentation() {
   await withPdf(async (browser) => {
     const full = BrowserTestUtils.waitForEvent(window, "fullscreen");
-    EventUtils.synthesizeKey("KEY_F5");
-    await until(browser, { presenting: true }, "F5 starts the presentation");
+    // zathura's F5 is :present (decision 21); F5 reloads, as on every page.
+    type(":present");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await until(browser, { presenting: true }, ":present starts the presentation");
     await full;
     await TestUtils.waitForCondition(
       () => document.getElementById("fullscreen-warning")?.hasAttribute("onscreen"),
@@ -248,8 +310,8 @@ add_task(async function presentation() {
     await until(browser, { page: page + 1 }, "j turns the page");
     EventUtils.synthesizeKey("k");
     await until(browser, { page }, "k turns it back");
-    EventUtils.synthesizeKey("KEY_F5");
-    await until(browser, { presenting: false }, "F5 leaves the presentation");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await until(browser, { presenting: false }, "Esc leaves the presentation");
     await TestUtils.waitForCondition(() => !window.fullScreen, "and the full screen");
   });
 });
@@ -286,7 +348,7 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
     try {
       type("3J");
       type("150=");
-      type("r");
+      await command(browser, "rotate");
       await until(browser, { page: 4, scale: 1.5, rotation: 90 }, "the keys ran");
     } finally {
       actor.sendAsyncMessage = orig;

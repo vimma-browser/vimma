@@ -1,0 +1,137 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Firefox's PDF viewer (pdf.js) in the theme's colours (docs/specs/pdf-mode.md decisions 18 and
+ * 20; docs/security.md section 20, V12). Loaded by actors/pdf-view.mjs into the viewer's document
+ * as an author sheet, with the token sheet ThemeHost builds; the viewer's own CSP does not apply
+ * to such sheets. In Firefox pdf.js finds with the browser's find bar (firefox-chrome.css). CSS only: it changes no markup and runs nothing.
+ * pdf.js draws its toolbar, menus and dialogs from its own custom properties on :root
+ * (viewer.css), which with Firefox's Nova look read Firefox's design-system tokens
+ * (tokens-brand.css, imported by viewer.css): both are pointed at Vimma's, laid out as the window
+ * is: bars and menus on --vimma-bg-dark, the gutter around the pages and fields on --vimma-bg,
+ * borders --vimma-muted, the accent the normal-mode badge's pair. The pages themselves are the
+ * document's (decision 12). The colour scheme follows the theme, so a token left alone takes its
+ * own light or dark value. Under prefers-contrast and forced colours pdf.js's own high-contrast
+ * colours stay.
+ * !important: pdf.js sets several of these again inside @media -moz-pref() blocks, which come
+ * later in its sheet than this one is ordered. */
+
+/* pdf.js's sidebar (thumbnails, outline, attachments, layers) and its toggle: Vimma's outline
+ * panel is the outline (decision 18). The pref pdfjs.sidebarViewOnLoad = 0 keeps pdf.js from
+ * opening it; a #pagemode= link or F4 may still, so the pages keep their place regardless. */
+#viewsManagerToggleButton,
+#viewsManager {
+  display: none !important;
+}
+
+#outerContainer.viewsManagerOpen #viewerContainer {
+  inset-inline-start: 0 !important;
+}
+
+@media not ((prefers-contrast) or (forced-colors)) {
+  :root {
+    color-scheme: var(--vimma-color-scheme) !important;
+
+    /* Firefox's design-system tokens, as firefox-pages.css sets them. */
+    --background-color-canvas: var(--vimma-bg) !important;
+    --background-color-box: var(--vimma-bg-dark) !important;
+    --background-color-box-info: var(--vimma-bg) !important;
+    --text-color: var(--vimma-fg) !important;
+    --text-color-deemphasized: var(--vimma-fg-dim) !important;
+    --icon-color: var(--vimma-fg) !important;
+    --toolbarbutton-icon-fill: var(--vimma-fg) !important;
+    --toolbar-background-color: var(--vimma-bg-dark) !important;
+    --toolbarbutton-background-color-hover: color-mix(
+      in srgb,
+      var(--vimma-fg) 17%,
+      transparent
+    ) !important;
+    --toolbarbutton-background-color-active: var(--vimma-selection) !important;
+    --border-color: var(--vimma-muted) !important;
+    --border-color-deemphasized: var(--vimma-muted) !important;
+    --border-color-interactive: var(--vimma-muted) !important;
+    --border-color-interactive-hover: var(--vimma-fg-dim) !important;
+    --focus-outline-color: var(--vimma-focus) !important;
+    --link-color: var(--vimma-text-accent) !important;
+    --link-color-hover: var(--vimma-text-accent) !important;
+    --link-color-active: var(--vimma-text-accent) !important;
+    --color-accent-primary: var(--vimma-mode-normal) !important;
+    --color-accent-primary-hover: color-mix(
+      in srgb,
+      var(--vimma-mode-normal) 85%,
+      var(--vimma-mode-normal-fg)
+    ) !important;
+    --color-accent-primary-active: color-mix(
+      in srgb,
+      var(--vimma-mode-normal) 70%,
+      var(--vimma-mode-normal-fg)
+    ) !important;
+    --button-background-color: var(--vimma-bg) !important;
+    --button-background-color-hover: color-mix(
+      in srgb,
+      var(--vimma-fg) 17%,
+      var(--vimma-bg)
+    ) !important;
+    --button-background-color-active: var(--vimma-selection) !important;
+    --button-border-color: var(--vimma-muted) !important;
+    --button-text-color: var(--vimma-fg) !important;
+    --button-text-color-hover: var(--vimma-fg) !important;
+    --button-text-color-active: var(--vimma-fg) !important;
+    --button-background-color-primary: var(--vimma-mode-normal) !important;
+    --button-text-color-primary: var(--vimma-mode-normal-fg) !important;
+    /* A menu's active item, as Vimma's menus (firefox-chrome.css). */
+    --button-background-color-menu-hover: var(--vimma-selection) !important;
+    --button-text-color-menu-hover: var(--vimma-fg-bright) !important;
+    --button-background-color-menu-active: var(--vimma-selection) !important;
+    --button-text-color-menu-active: var(--vimma-fg-bright) !important;
+
+    /* pdf.js's own: the toolbar and its buttons, fields, the find bar and menus (doorhangers),
+     * the zoom drop-down, the gutter around the pages and the loading bar. */
+    --main-color: var(--vimma-fg) !important;
+    --body-bg-color: var(--vimma-bg) !important;
+    --toolbar-bg-color: var(--vimma-bg-dark) !important;
+    --sidebar-toolbar-bg-color: var(--vimma-bg-dark) !important;
+    --toolbar-border-color: var(--vimma-muted) !important;
+    --toolbar-icon-bg-color: var(--vimma-fg) !important;
+    --toolbar-icon-hover-bg-color: var(--vimma-fg-bright) !important;
+    --toggled-btn-color: var(--vimma-fg-bright) !important;
+    --toggled-btn-text-color: var(--vimma-fg-bright) !important;
+    --toggled-btn-bg-color: var(--vimma-selection) !important;
+    --toggled-hover-active-btn-color: var(--vimma-selection) !important;
+    --dropdown-btn-bg-color: var(--vimma-bg) !important;
+    --dropdown-btn-border: 1px solid var(--vimma-muted) !important;
+    --separator-color: var(--vimma-muted) !important;
+    --field-color: var(--vimma-fg) !important;
+    --field-bg-color: var(--vimma-bg) !important;
+    --field-border-color: var(--vimma-muted) !important;
+    --doorhanger-bg-color: var(--vimma-bg-dark) !important;
+    --doorhanger-border-color: var(--vimma-muted) !important;
+    --doorhanger-hover-color: var(--vimma-fg-bright) !important;
+    --doorhanger-separator-color: var(--vimma-muted) !important;
+    --progressBar-color: var(--vimma-mode-normal) !important;
+    --progressBar-bg-color: var(--vimma-bg-dark) !important;
+    --progressBar-blend-color: var(--vimma-selection) !important;
+    --menu-bg: var(--vimma-bg-dark) !important;
+    --menu-text-color: var(--vimma-fg) !important;
+    --menu-border-color: var(--vimma-muted) !important;
+    --menuitem-hover-bg: var(--vimma-selection) !important;
+    --menuitem-text-hover-fg: var(--vimma-fg-bright) !important;
+    --menuitem-active-bg: var(--vimma-selection) !important;
+    --menuitem-text-active-fg: var(--vimma-fg-bright) !important;
+    --dialog-bg-color: var(--vimma-bg-dark) !important;
+    --dialog-border-color: var(--vimma-muted) !important;
+    --text-primary-color: var(--vimma-fg) !important;
+    --text-secondary-color: var(--vimma-fg-dim) !important;
+    --input-text-bg-color: var(--vimma-bg) !important;
+    --input-text-fg-color: var(--vimma-fg) !important;
+    --focus-ring-color: var(--vimma-focus) !important;
+    --link-fg-color: var(--vimma-text-accent) !important;
+    --link-hover-fg-color: var(--vimma-text-accent) !important;
+    --scrollbar-color: var(--vimma-muted) !important;
+    --scrollbar-bg-color: var(--vimma-bg) !important;
+
+    scrollbar-color: var(--vimma-muted) var(--vimma-bg) !important;
+    accent-color: var(--vimma-mode-normal) !important;
+  }
+}

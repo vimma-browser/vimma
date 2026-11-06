@@ -27,9 +27,25 @@ the [user guide](guide.md); planned work is on the
   `ctrl+i`, `ctrl+k`, `ctrl+b`) are off; the guide lists
   [where each one is now](guide.md#firefoxs-shortcuts-on-vims-keys).
 
-## Find
+## PDF viewer
 
-- In the PDF viewer, `/`, `n` and `N` work, but the status bar shows no match count.
+- Marks (`m`, `'`) and the jump list inside a PDF last until Vimma quits; they are not saved
+  across restarts as zathura saves them.
+- `ctrl+b` is Vimma's prefix in the PDF viewer too, so zathura's full-screen-up `ctrl+b` is not
+  there: `shift+space` scrolls a screen up.
+- Pages keep the document's colours: there is no recolouring for a dark theme, as zathura's
+  `ctrl+r` gives (`ctrl+r` reloads).
+- No SyncTeX: neither forward search from an editor nor `ctrl`+click back to the source.
+- pdf.js's sidebar does not show, so its page thumbnails and its attachments and layers views
+  are not reachable; Vimma's outline (`Tab`) is the outline, and an attachment entry in it is not
+  opened.
+- While a PDF is still downloading, the viewer's toolbar shows Firefox's colours; it takes the
+  theme once pdf.js has the document.
+- A PDF opened from a `blob:` or `data:` address (a site's in-page "open PDF" button often
+  makes one) has Vimma's prefix keys but none of the PDF keys, the page count or the outline;
+  download it and open the file.
+- A PDF that a page shows inside itself (in a frame, `<embed>` or `<object>`) keeps the page's
+  keys; open the PDF in its own tab.
 
 ## Copy mode
 
@@ -67,7 +83,11 @@ the [user guide](guide.md); planned work is on the
   and click the key icon to save the password.
 - [Routing rules](guide.md#routing-which-workspace-a-link-opens-in) do not move a page's own
   navigation or the links a page opens. App rules do not recognise links from Flatpak or other
-  sandboxed apps, or from apps started through systemd (`uwsm app`).
+  sandboxed apps, from apps that open links through the desktop portal (Ghostty's link clicks
+  on Linux), from apps started through systemd (`uwsm app`), or from a program that has exited
+  before its link arrives. Behind a tmux, zellij or detached herdr server, the names end at the
+  multiplexer: a rule for the terminal behind it does not match. On macOS, app rules do not
+  apply yet.
 
 ## Bookmarks
 
@@ -153,10 +173,19 @@ the [user guide](guide.md); planned work is on the
   passwords are: by a primary password if one is set, otherwise readable by anything that can
   read the profile.
 - The window does not open in a private window.
-- The window runs Claude Code and Codex (checked with Claude Code 2.1.303 and Codex 0.163.0);
-  Gemini CLI and opencode are not offered yet: Gemini CLI 0.66.0 keeps every run's
-  conversation in a file of its own folder, with no setting to stop it, and opencode 2.0.32
-  cannot be limited to Vimma's tools alone.
+- The window runs Claude Code, Codex and Gemini CLI (checked with Claude Code 2.1.303, Codex
+  0.163.0 and Gemini CLI 0.66.0); opencode is not offered: opencode 2.0.32 cannot be limited to
+  Vimma's tools alone.
+- Gemini CLI saves each task's conversation, page text included, in its own folder
+  (`~/.gemini/tmp`), with no setting to stop it. Vimma deletes it when the task ends, but until
+  then it is on disk, unencrypted, and a crash or a power cut leaves it there until the next
+  start of Vimma (on macOS, which Vimma cannot ask whether a process is gone, until a start a
+  day after the task). A `projects.json` that is a link is not edited: Vimma's tasks stay
+  listed in it, without their folders. Vimma relies on Gemini CLI's own layout of that folder (0.66.0): a version that
+  saves elsewhere keeps its files until Vimma knows of it.
+- Gemini CLI does not report an MCP server that did not start: a task whose `vimma-ctl` failed
+  runs without the browser's tools, and no message says why. It reports neither its tools nor a
+  cost, and cannot take a message during a task, as Codex.
 - Codex reports neither its tools nor its sandbox, so the window says only that its tools are
   `as its configuration allows`, and it reports no refusal of its own commands, so a command its
   sandbox stopped still shows as run. It reports no cost.

@@ -33,6 +33,7 @@ import {
   validateMessage,
   CHALLENGE_CONTEXT,
   TICKET_CONTEXT,
+  controlUpdateState,
 } from "../core/control.mjs";
 import { isCtlVersion } from "../core/ctl-version.mjs";
 import { parseKey } from "../core/keys.mjs";
@@ -41,6 +42,7 @@ import { PaneViews } from "../split/PaneView.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
+import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
 import { AgentError, forgetAgentConnection, runAgentCommand } from "./agent-commands.mjs";
 
@@ -294,6 +296,38 @@ function pressChords(win, chords) {
 function paneState(win, visible) {
   const panes = PaneViews.get(win)?.panes;
   if (!panes) return null;
+  const { root, focus, zoomed } = treeState(win, visible, panes);
+  // docs/specs/side-panel-unsplit.md decision 28: a split kept as a hidden view.
+  return { focus, zoomed, hidden: panes.hidden === true, root };
+}
+
+/**
+ * `state.splits`: every split of the window's workspace in number order, each with the shape of
+ * `panes` and `number` and `shown` in place of `hidden` (docs/specs/multiple-splits.md, "Control
+ * protocol"), as `{ splits }` to spread into the result; `{}` without a PaneView, so the key is
+ * absent. Tab ids and places only: a private window's entry names no URL or title.
+ * @param {any} win
+ * @param {any[]} visible gBrowser.visibleTabs
+ */
+function splitsState(win, visible) {
+  const view = PaneViews.get(win);
+  if (!view) return {};
+  const { splits, shown } = view.splits;
+  return {
+    splits: splits.map((x) => {
+      const { root, focus, zoomed } = treeState(win, visible, x);
+      return { number: x.number, shown: x.number === shown, focus, zoomed, root };
+    }),
+  };
+}
+
+/**
+ * One pane tree with state's tab ids (see paneState).
+ * @param {any} win
+ * @param {any[]} visible
+ * @param {import("../core/panes.mjs").Panes} panes
+ */
+function treeState(win, visible, panes) {
   const tabOf = (/** @type {string} */ panel) =>
     win.gBrowser.tabs.find((/** @type {any} */ t) => t.linkedPanel === panel);
   const idOf = (/** @type {any} */ tab) => (tab ? String(tab.linkedBrowser.browserId) : null);
@@ -311,8 +345,6 @@ function paneState(win, visible) {
   return {
     focus: idOf(tabOf(focused(panes.root)?.tab)),
     zoomed: panes.zoom !== null,
-    // docs/specs/side-panel-unsplit.md decision 28: a split kept as a hidden view.
-    hidden: panes.hidden === true,
     root: node(panes.root),
   };
 }
@@ -367,6 +399,10 @@ const COMMANDS = {
         loading: tabLoading(win, tab),
       })),
       panes: paneState(win, visible),
+      ...splitsState(win, visible),
+      // The update check (docs/specs/m6a-updater.md, decision 41): the full role's only, as all
+      // of `state`; the agent role never reaches `state` (security.md S12).
+      update: controlUpdateState(VimmaUpdates.status(), VimmaUpdates.installType),
     };
   },
 

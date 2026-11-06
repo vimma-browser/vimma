@@ -33,6 +33,7 @@ import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
+import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { Find } from "./find.mjs";
 import { copyModeRunners } from "./copy-mode.mjs";
 import { ElementFocus } from "./element-focus.mjs";
@@ -45,10 +46,12 @@ import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
 import { ThemeHost } from "../ui/theme-host.mjs";
 import {
   AddonPicker,
+  DownloadPicker,
   GotoPicker,
   MCP_LOG,
   PermissionPicker,
   PopupPicker,
+  SplitPicker,
   WorkspacePicker,
 } from "../ui/picker.mjs";
 import { RenamePrompt } from "../ui/rename-prompt.mjs";
@@ -88,13 +91,17 @@ import {
   newPane,
   resizePane,
   showAlone,
+  showSplit,
   showTabs,
   shownSplit,
   splitPane,
+  splitPickerRows,
+  splitStatus,
+  stepSplits,
   swapPane,
   zoomPane,
 } from "./pane-ops.mjs";
-import { PaneViews } from "../split/PaneView.mjs";
+import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
 import { leaves } from "../core/panes.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
@@ -157,7 +164,7 @@ import {
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { NOT_PDF, PDF_ACTION_IDS, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { NOT_PDF, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 
 const lazy = /** @type {any} */ ({});
@@ -248,6 +255,10 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {AddonPicker} addonPicker  the prefix+e overlay (docs/specs/addon-manager.md)
  * @property {PermissionPicker} permissionPicker  `:site` (docs/specs/site-permissions.md)
  * @property {PopupPicker} popups  the `:popups` overlay (docs/specs/popup-blocked.md)
+ * @property {SplitPicker} splitPicker  the workspace's splits (docs/specs/multiple-splits.md)
+ * @property {DownloadWatch} downloads  the status bar's `↓` segment (docs/specs/downloads.md)
+ * @property {DownloadPicker} downloadPicker  the prefix+d overlay (docs/specs/downloads.md)
+ * @property {DownloadRows} downloadRows  the picker's rows while it is open
  * @property {GrepSession} grep  prefix+f g, `:grep`, `]q`/`[q` (docs/specs/live-grep.md)
  * @property {RenamePrompt} rename  the prefix+shift+t prompt (m2-picker-rename)
  * @property {AgentPrompt} agentPrompt  the agent question line (docs/specs/vimma-mcp.md)
@@ -304,13 +315,15 @@ function vimmaSurfaceOpen(s) {
     s.addonPicker.isOpen ||
     s.permissionPicker.isOpen ||
     s.popups.isOpen ||
+    s.splitPicker.isOpen ||
+    s.downloadPicker.isOpen ||
     s.mcpLog.isOpen ||
     s.grep.isOpen ||
     s.cmdline.isOpen ||
     s.rename.isOpen ||
     s.panel.isOpen ||
     s.bookmarks.isOpen ||
-    s.outline.isOpen ||
+    s.outline.isActive ||
     s.agentChat.focused ||
     s.find.typing
   );
@@ -351,14 +364,15 @@ function openOrSay(s, text, where) {
 }
 
 /**
- * Runs a pane op (pane-ops.mjs) and shows its refusal, if any, as the notice.
+ * Runs a pane op (pane-ops.mjs) and shows its refusal, if any, as the notice. The hidden-split
+ * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
  * @param {(win: Window, action: Action) => string | null} op
  * @returns {(state: WindowState, action: Action) => void}
  */
 function paneRunner(op) {
   return (s, a) => {
     const refused = op(s.win, a);
-    if (refused) s.notice.show(refused);
+    if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
     VimmaHost._emit(s);
   };
 }
@@ -501,8 +515,46 @@ function dropOutlineAsk(s) {
 
 /** What Tab says in a PDF without an outline (docs/specs/pdf-mode.md Behaviour 5). */
 export const NO_OUTLINE = "no outline in this PDF";
-/** What following an attachment entry says (decision 10). */
-export const OUTLINE_ATTACHMENT = "open attachments from pdf.js's sidebar (F4)";
+/** What following an attachment entry says (decisions 10 and 18: pdf.js's sidebar is hidden). */
+export const OUTLINE_ATTACHMENT = "the PDF viewer does not open attachments";
+
+/** `[ui] pdf_outline = "hidden"` (docs/specs/pdf-mode.md decision 19), applied by ConfigHost. */
+export const PDF_OUTLINE_PREF = "vimma.ui.pdf_outline.hidden";
+/**
+ * Per tab, the document (PdfOps.documentKey) whose outline the host asked for to show beside it,
+ * and the one whose outline the user closed: it stays hidden until the tab shows another.
+ * @type {WeakMap<object, string>}
+ */
+const outlineAsked = new WeakMap();
+/** @type {WeakMap<object, string>} */
+const outlineHidden = new WeakMap();
+
+/**
+ * Shows the selected tab's PDF outline beside the document, without the keys (decision 19):
+ * when `[ui] pdf_outline` is "shown", the user has not closed it for this document, the window is
+ * in normal mode and no other panel or Vimma surface is open. The outline is asked for once per
+ * document (V8); its answer comes back here through the outline subscription. Called again when
+ * focus moves, so a PDF opened from the address bar shows it once focus reaches the page.
+ * @param {WindowState} s
+ */
+function showOutlineBeside(s) {
+  if (Services.prefs.getBoolPref(PDF_OUTLINE_PREF, false)) return;
+  const browser = /** @type {any} */ (s.win).gBrowser?.selectedBrowser;
+  const key = browser && PdfOps.documentKey(browser);
+  if (!key || s.outline.isOpen || outlineHidden.get(browser) === key) return;
+  if (vimmaSurfaceOpen(s) || s.agentChat.isOpen) return;
+  if (VimmaHost._mode(s) !== "normal") return;
+  const outline = PdfOps.outline(browser);
+  if (outline) {
+    if (outline.entries.length) {
+      s.outline.open(browser, outline, PdfOps.state(browser)?.page ?? 1, false);
+    }
+    return;
+  }
+  if (outlineAsked.get(browser) === key) return;
+  outlineAsked.set(browser, key);
+  PdfOps.askOutline(browser);
+}
 
 /**
  * Tab in the PDF viewer: the outline read once per document (V8), then shown at once; the
@@ -511,11 +563,16 @@ export const OUTLINE_ATTACHMENT = "open attachments from pdf.js's sidebar (F4)";
  */
 function openOutline(s) {
   s.notice.hide();
-  if (s.outline.isOpen) {
-    s.outline.close();
+  if (s.outline.isActive) {
+    s.outline.hide();
     return;
   }
   const browser = VimmaHost._selectedBrowser(s);
+  if (s.outline.isOpen && s.outline.browser === browser) {
+    // Shown beside the document (decision 19): Tab gives it the keys.
+    s.outline.focus();
+    return;
+  }
   const outline = PdfOps.outline(browser);
   if (outline) {
     showOutline(s, browser, outline);
@@ -833,6 +890,15 @@ export const RUNNERS = Object.freeze({
   "pane.resize_wider": paneRunner(resizePane),
   "pane.resize_taller": paneRunner(resizePane),
   "pane.resize_shorter": paneRunner(resizePane),
+  // docs/specs/multiple-splits.md behaviours 7 and 8.
+  "pane.split_picker": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    const rows = splitPickerRows(s.win);
+    if ("refused" in rows) s.notice.show(rows.refused);
+    else s.splitPicker.open();
+  },
+  "pane.next_split": paneRunner(stepSplits),
+  "pane.previous_split": paneRunner(stepSplits),
   // docs/specs/tiling-layouts.md: dwindle's new pane, tmux's presets; the notice names the preset.
   "pane.new": paneRunner(newPane),
   "pane.next_layout": layoutRunner,
@@ -1077,6 +1143,13 @@ export const RUNNERS = Object.freeze({
   "popups.picker": (/** @type {WindowState} */ s) => {
     s.notice.hide();
     s.popups.open();
+  },
+  // docs/specs/downloads.md: prefix+d / :downloads.
+  "downloads.picker": (/** @type {WindowState} */ s) => {
+    s.notice.hide();
+    // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
+    s.downloads.clearEnd();
+    s.downloadPicker.open();
   },
   "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
     if (!text) s.cmdline.open("addon ");
@@ -1407,6 +1480,7 @@ function paneStatus(win) {
     count: order.length,
     // A split kept as a hidden view (docs/specs/side-panel-unsplit.md decision 27).
     ...(panes.hidden ? { hidden: true } : {}),
+    ...splitStatus(win),
   };
 }
 
@@ -1489,9 +1563,19 @@ export const VimmaHost = {
         state.addonPicker.close({ tabChanged: true });
         state.permissionPicker.close({ tabChanged: true });
         state.popups.close({ tabChanged: true });
+        state.splitPicker.close({ tabChanged: true });
+        state.downloadPicker.close({ tabChanged: true });
         state.mcpLog.close({ tabChanged: true });
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
+        // The outline belongs to its tab's document; the new tab's PDF shows its own.
+        if (
+          state.outline.isOpen &&
+          state.outline.browser !== /** @type {any} */ (win).gBrowser?.selectedBrowser
+        ) {
+          state.outline.close();
+        }
+        showOutlineBeside(state);
       },
       dispatcher: createDispatcher(keymap),
       help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
@@ -1505,8 +1589,6 @@ export const VimmaHost = {
           workspace: workspaceNames(win),
           search: SearchHost.completions,
         }),
-        // An unfinished feature's commands exist only with its pref on (`:12`, `:pdf_rotate`).
-        hidden: () => (PdfOps.enabled() ? [] : PDF_ACTION_IDS),
       }),
       tabStrip: null,
       toolbar: null,
@@ -1611,6 +1693,34 @@ export const VimmaHost = {
           if (notice) state.notice.show(notice, { error: true });
         },
       }),
+      downloads: new DownloadWatch(
+        win,
+        () => this._emit(state),
+        (text) => state.statusBar?.announce(text),
+      ),
+      downloadRows: new DownloadRows(win, (rows) => state.downloadPicker.update(rows)),
+      downloadPicker: new DownloadPicker(win, {
+        load: () => state.downloadRows.open(),
+        select: () => {},
+        download: (key, id) =>
+          downloadPickerKey(win, state.downloadRows, key, id, {
+            say: (text, error) => state.notice.show(text, { error: !!error }),
+            close: () => state.downloadPicker.close(),
+            ask: (question, yes) => state.rename.ask(question, yes),
+          }),
+        closed: () => state.downloadRows.close(),
+      }),
+      splitPicker: new SplitPicker(win, {
+        items: () => {
+          const rows = splitPickerRows(win);
+          return "items" in rows ? rows.items : [];
+        },
+        activeId: () => PaneViews.get(win)?.splits.shown?.toString() ?? null,
+        select: (id) => {
+          showSplit(win, Number(id));
+          this._emit(state);
+        },
+      }),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
         refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
@@ -1639,12 +1749,25 @@ export const VimmaHost = {
         if (state.outline.isOpen && state.outline.browser === browser && !PdfOps.outline(browser)) {
           state.outline.close();
         }
+        if (state.outline.browser === browser) {
+          state.outline.followPage(PdfOps.state(browser)?.page ?? 1);
+        }
+        if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+          showOutlineBeside(state);
+        }
         this._emit(state);
       }),
       // The outline Tab asked for: shown if its tab is still the selected one.
       outlineFor: null,
       stopOutline: PdfOps.subscribeOutline((browser, outline) => {
-        if (browser !== state.outlineFor?.browser) return;
+        if (browser !== state.outlineFor?.browser) {
+          // The outline asked for as the PDF opened (decision 19): shown if it still may be.
+          if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+            showOutlineBeside(state);
+            this._emit(state);
+          }
+          return;
+        }
         dropOutlineAsk(state);
         // Only into the state Tab was pressed in: its tab selected, in normal mode or with a panel
         // in the slot, which the outline replaces; never under a picker, prompt or the help.
@@ -1663,6 +1786,7 @@ export const VimmaHost = {
       onFocus: () => {
         AgentUi.onFocusChange(win);
         UpdateUi.onFocusChange(win);
+        showOutlineBeside(state);
       },
       panel: new SidePanel(win, {
         // A private window lists its tabs as the private workspace (private-workspace 6).
@@ -1715,6 +1839,10 @@ export const VimmaHost = {
           if (effect.type === "follow") followOutline(state, browser, effect.index);
         },
         left: (browser) => PdfOps.forget(browser),
+        hidden: (browser) => {
+          const key = PdfOps.documentKey(browser);
+          if (key) outlineHidden.set(browser, key);
+        },
       }),
       bookmarks: new BookmarksPanel(win, {
         load: () => loadTree(win),
@@ -1914,6 +2042,10 @@ export const VimmaHost = {
     state.permissionPicker.destroy();
     forgetSitePermissions(win);
     state.popups.destroy();
+    state.splitPicker.destroy();
+    state.downloads.destroy();
+    state.downloadPicker.destroy();
+    state.downloadRows.close();
     state.mcpLog.destroy();
     state.grep.destroy();
     state.rename.destroy();
@@ -1949,7 +2081,8 @@ export const VimmaHost = {
    *   update?: import("../core/updates.mjs").UpdateNotice | null,
    *   element?: import("../core/statusbar.mjs").ElementStatus | null,
    *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
-   *   pdf?: import("../core/pdf.mjs").PdfState | null }}
+   *   pdf?: import("../core/pdf.mjs").PdfState | null,
+   *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }}
    */
   status(win) {
     const state = states.get(win);
@@ -1982,6 +2115,8 @@ export const VimmaHost = {
         : null,
       // docs/specs/popup-blocked.md: `pop-up blocked · y allow · n block · Esc close`.
       popups: popupStatus(win, state.promptKeys?.popupHint() ?? null),
+      // docs/specs/downloads.md decision 9: `↓ 42%`, `↓ 3 · 42%`, `↓ paused`.
+      downloads: state.downloads.segment(),
     };
   },
 
@@ -2217,11 +2352,12 @@ export const VimmaHost = {
     if (state.help.isOpen || state.picker.isOpen || state.wsPicker.isOpen) return "help";
     if (state.addonPicker.isOpen || state.mcpLog.isOpen || state.grep.isOpen) return "help";
     if (state.permissionPicker.isOpen) return "help";
-    if (state.popups.isOpen) return "help";
+    if (state.popups.isOpen || state.downloadPicker.isOpen) return "help";
+    if (state.splitPicker.isOpen) return "help";
     if (state.cmdline.isOpen) return "command";
     // A prompt over a panel (the bookmarks' add, rename, a y/N) types: keys are its input's.
     if (state.rename.isOpen) return "insert";
-    if (state.outline.isOpen) return "index";
+    if (state.outline.isActive) return "index";
     if (state.panel.isOpen || state.bookmarks.isOpen) return "panel";
     // Resize mode ends by itself when the window is down to one pane (a tab closed meanwhile).
     if (state.resize && !hasPanes(state.win)) state.resize = false;
@@ -2283,6 +2419,9 @@ export const VimmaHost = {
     // A key the page has had, back for chrome's shortcuts (requestReplyFromRemoteContent): it
     // was dispatched once already, before the page.
     if (/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) return;
+    // A notice shown until the next key goes on any key but a bare modifier, before the key's
+    // own action can show another (docs/specs/multiple-splits.md, decision 4).
+    if (chordFromEvent(e)) state.notice.keyPressed();
     // The agent question takes its keys first, and only while it shows (vimma-mcp 13-14).
     if (AgentUi.onKey(win, e)) {
       this._emit(state);
@@ -2341,6 +2480,8 @@ export const VimmaHost = {
       state.addonPicker,
       state.permissionPicker,
       state.popups,
+      state.splitPicker,
+      state.downloadPicker,
       state.mcpLog,
       state.grep,
     ].find((p) => p.isOpen);
@@ -2648,6 +2789,10 @@ export const VimmaHost = {
     const command = chord && this._editCommand(state, chord);
     const browser = this._contentBrowser(state);
     if (!command || !browser || this._mode(state) !== "insert") return;
+    // A late reply (a busy page) must not edit, or press Enter in, the tab or pane focused since:
+    // Firefox dispatches it on the <browser> the key went to (BrowserParent::RecvReplyKeyEvent).
+    const remote = /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent;
+    if (remote && e.target !== browser) return;
     e.preventDefault();
     VimmaActors.edit(browser, command);
   },

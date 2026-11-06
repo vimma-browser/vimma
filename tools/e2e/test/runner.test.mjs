@@ -54,6 +54,25 @@ describe("runScenarios", () => {
     expect(exitCode(results)).toBe(1);
   });
 
+  // A browser that crashed fails the step first; why it crashed comes from the teardown.
+  it("adds a teardown's error to a failed step's, keeping the step's first", async () => {
+    const results = await runScenarios([scn("m0-crash")], {
+      startSession: async () => ({
+        ctl: {
+          state: async () => ({ mode: "help" }),
+          sendKeys: async () => {},
+          open: async () => "2",
+        },
+        screenshot: async () => {},
+        teardown: async () => {
+          throw new Error("the browser died (SIGSEGV)");
+        },
+      }),
+    });
+    expect(results[0]?.status).toBe("fail");
+    expect(results[0]?.error).toMatch(/^step 1 \(assert-state\)[^]*\nteardown: the browser died/);
+  });
+
   it("hands the session's profile to the steps (wait-for-profile-file)", async () => {
     const profile = tempDir("vimma-e2e-runner-");
     writeFileSync(join(profile, "search.json.mozlz4"), "");

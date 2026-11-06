@@ -76,7 +76,8 @@ const styled = new WeakSet();
  *   update?: import("../core/updates.mjs").UpdateNotice | null,
  *   element?: import("../core/statusbar.mjs").ElementStatus | null,
  *   hint?: import("../core/statusbar.mjs").HintStatus | null, popups?: string | null,
- *   pdf?: import("../core/pdf.mjs").PdfState | null }} status
+ *   pdf?: import("../core/pdf.mjs").PdfState | null,
+ *   downloads?: import("../core/downloads.mjs").DownloadSegment | null }} status
  * @property {(fn: () => void) => () => void} subscribe  host state changes; returns unsubscribe
  * @property {(tab: Element) => string | null} [labelFor]  a user's tab rename (tab rename spec)
  */
@@ -159,6 +160,15 @@ export class StatusBar {
     }
     this.bar?.remove();
     this.bar = this.left = this.right = this.live = this.probe = null;
+  }
+
+  /**
+   * Say `text` once in the bar's polite live region: a download that finished, failed or was
+   * blocked (docs/specs/downloads.md, Behaviour 13).
+   * @param {string} text
+   */
+  announce(text) {
+    if (this.live) this.live.textContent = text;
   }
 
   /** Mark dirty; one render per frame however many triggers fire. */
@@ -286,6 +296,7 @@ export class StatusBar {
       hint: status.hint ?? null,
       popups: status.popups ?? null,
       pdf: status.pdf ?? null,
+      downloads: status.downloads ?? null,
     };
     // docs/specs/toolbar-toggle.md decision 12: the hidden toolbar's cues; shown, none.
     const root = this.win.document.documentElement;
@@ -343,7 +354,19 @@ export class StatusBar {
     const span = /** @type {HTMLElement} */ (this.win.document.createElementNS(HTML_NS, "span"));
     span.className = "vimma-sb-segment";
     span.dataset.segment = s.id;
-    span.textContent = s.text;
+    if (s.label) {
+      // A glyph is never the only carrier (m7-a11y): the shown text is hidden from assistive
+      // technology and the words are read in its place.
+      const seen = this.win.document.createElementNS(HTML_NS, "span");
+      seen.setAttribute("aria-hidden", "true");
+      seen.textContent = s.text;
+      const spoken = this.win.document.createElementNS(HTML_NS, "span");
+      spoken.className = "vimma-sb-sr";
+      spoken.textContent = s.label;
+      span.append(seen, spoken);
+    } else {
+      span.textContent = s.text;
+    }
     span.style.color = `var(${s.fg})`;
     if (s.bg) {
       span.classList.add("vimma-sb-badge");

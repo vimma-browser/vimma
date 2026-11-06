@@ -1,7 +1,7 @@
 # Spec: flatpak
 
-Status: accepted (sub-PR 1 and sub-PR 2's install type implemented; the rest of sub-PR 2, the
-Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
+Status: accepted (sub-PR 1, and sub-PR 2's install type, guide, limits and metainfo screenshots
+implemented; the rest of sub-PR 2, the Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
 (new), `tools/package/flatpak-smoke.sh` (new), `.github/workflows/flatpak.yml` (new),
 `docs/runbook.md`, `docs/security.md` · Upstream patches: none · ADR: none
 

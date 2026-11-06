@@ -127,7 +127,7 @@ describe("chrome code", () => {
     const text = readFileSync(join(ROOT, CLI), "utf8");
     expect(text.match(/Subprocess\.call\(/g)).toHaveLength(2);
     expect(text).toMatch(
-      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*\.\.\.cli\.env\(\{ ticket: issued\.ticket, port: issued\.port \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
+      /const run = \{ mcpConfig: file, vimmaCtl: ctl\.path, dir, model: o\.provider\.model, others \};\s*proc = await lazy\.Subprocess\.call\(\{\s*command: checked\.path,\s*arguments: cli\.args\(run\),\s*(\/\/[^\n]*\n\s*)*environment: \{\s*\.\.\.cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*...cli\.env\(\{ ticket: issued\.ticket, port: issued\.port, dir \}\),\s*\},\s*workdir: dir,\s*stderr: "pipe",\s*\}\)/,
     );
     expect(text).toMatch(
       /lazy\.Subprocess\.call\(\{\s*command: path,\s*arguments: \[\.\.\.args\],\s*environment: cliEnvironment\(lazy\.Subprocess\.getEnvironment\(\)\),\s*workdir,\s*stderr: "pipe",\s*\}\)/,
@@ -253,6 +253,39 @@ describe("chrome code", () => {
     expect(text.match(/const symbol = [^;]*;/g)).toEqual([
       "const symbol = LSTAT[/** @type {keyof typeof LSTAT} */ (arch)];",
     ]);
+  });
+
+  // security.md C2 and D4 (docs/specs/downloads.md decision 5): a download's file reaches the OS
+  // only through Firefox's DownloadsCommon.openDownload and Download.showContainingDirectory,
+  // from the downloads picker's ops, so Firefox's executable prompt and Vimma's agent rule
+  // (AgentDownloads' launchDownload) are always on the way; no control, MCP or agent code can
+  // reach those ops (D6).
+  test("opens and reveals downloads only through Firefox's Download, from download-ops", () => {
+    const OPS = "src/browser/base/content/vimma/host/download-ops.mjs";
+    const AGENT = "src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs";
+    const TOOLBAR = "src/browser/base/content/vimma/ui/toolbar.mjs";
+    const all = hits(
+      /\.launch\(|\.reveal\(|launchFile\(|gExternalProtocolService|openDownload\(|showDownloadedFile\(|showDirectory\(|launchDownload\(|loadFileIn\(|launchWithFile\(|showContainingDirectory\(/,
+    );
+    const at = (/** @type {string} */ h) => h.replace(/:\d+:/, ":");
+    expect(all.filter((h) => !h.startsWith(`${OPS}:`)).map(at)).toEqual([
+      // The agent rule's override and its delegation to Firefox's own launchDownload (M12).
+      `${AGENT}: launchDownload(download, options) {`,
+      `${AGENT}: return super.launchDownload(download, options);`,
+      // The toolbar's own method, not nsIFile.reveal.
+      `${TOOLBAR}: this.reveal(shown);`,
+    ]);
+    const text = readFileSync(join(ROOT, OPS), "utf8");
+    expect(
+      all.filter((h) => h.startsWith(`${OPS}:`)).map((h) => at(h).slice(OPS.length + 2)),
+    ).toEqual(["await download.showContainingDirectory();", "lazy.DownloadsCommon.openDownload("]);
+    // Each runs in the key handler only: one call each.
+    expect(text.match(/openDownload\(/g)).toHaveLength(1);
+    expect(text.match(/showContainingDirectory\(/g)).toHaveLength(1);
+    const reach = sources().filter(
+      ({ path, text: t }) => /\/vimma\/(ctl|agent)\//.test(path) && /download-ops/.test(t),
+    );
+    expect(reach.map((s) => s.path)).toEqual([]);
   });
 
   // Only the setup page's summary installs, through Firefox's AMO path (security.md A1).

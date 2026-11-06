@@ -36,6 +36,19 @@ describe("driftFindings", () => {
     ]);
   });
 
+  test("a spec on hold: its closed issues are labelled on-hold, so it is not reported", () => {
+    const issues = new Map([issue(1, "closed", ["on-hold", "spec:draft"]), issue(2, "closed")]);
+    expect(
+      driftFindings(
+        [
+          { file: "a.md", status: "draft", issues: [1] },
+          { file: "b.md", status: "accepted", issues: [1, 2] },
+        ],
+        issues,
+      ),
+    ).toEqual([]);
+  });
+
   test("an implemented spec with an open issue", () => {
     const issues = new Map([issue(1, "closed"), issue(2, "open")]);
     expect(

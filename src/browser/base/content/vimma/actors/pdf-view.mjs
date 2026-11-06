@@ -33,8 +33,11 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** The pref an unfinished feature sits behind (CONTRIBUTING.md, "Unfinished features"). */
-export const PDF_FEATURE_PREF = "vimma.feature.pdf_mode";
+/** pdf.js's surfaces in the theme's tokens, and its sidebar hidden (decisions 18 and 20). */
+export const PDF_SHEET = "chrome://browser/skin/vimma/firefox-pdf.css";
+
+/** The largest token sheet the child takes (V12); ThemeHost's is a few KiB. */
+export const PDF_THEME_MAX = 64 * 1024;
 
 /** At most one state message per this many milliseconds (V5). */
 export const PDF_STATE_MS = 100;
@@ -184,17 +187,19 @@ export class PdfView {
   #find = { current: 0, total: 0 };
   /** @type {[string, Function][]} */
   #listeners = [];
+  /** The token sheet loaded into the viewer, as a data: URI; "" before the first. */
+  #themeUri = "";
+  /** PDF_SHEET is loaded (once). */
+  #sheetLoaded = false;
 
   /**
-   * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer or
-   * the feature is off.
+   * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
    * @param {any} actor   the VimmaChild
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} [sendOutline]
    * @returns {PdfView | null}
    */
   static attach(actor, send, sendOutline = () => {}) {
-    if (!Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return null;
     // Top level only: a PDF in a web page's frame keeps the page's keys (V2).
     if (actor.browsingContext.parent) return null;
     const doc = actor.document;
@@ -377,7 +382,7 @@ export class PdfView {
           return true;
         }
         case "presentation":
-          // Only for the user's own key (V9): the parent sends it for a key in the PDF viewer.
+          // Only for the user's own key or :present (V9), which the parent sends in the PDF viewer.
           // A viewer that claims presentation without being full screen gets nothing to exit.
           if (this.presenting()) {
             if (this.#doc.fullscreenElement) this.#doc.exitFullscreen().catch(() => {});
@@ -711,6 +716,32 @@ export class PdfView {
     return undefined;
   }
 
+  /**
+   * The viewer's look (decisions 18 and 20, V12): `css`, the theme's token sheet from the parent,
+   * and PDF_SHEET, as author sheets of the viewer's document, which its CSP does not apply to.
+   * CSS only: nothing runs in the viewer and nothing goes into pdf.js. A new token sheet loads
+   * before the old one goes, so no frame is drawn without tokens.
+   * @param {unknown} css
+   */
+  setTheme(css) {
+    if (typeof css !== "string" || !css || css.length > PDF_THEME_MAX) return;
+    const uri = `data:text/css;charset=utf-8,${encodeURIComponent(css)}`;
+    if (uri === this.#themeUri) return;
+    try {
+      const utils = this.#win.windowUtils;
+      if (!this.#sheetLoaded) {
+        utils.loadSheetUsingURIString(PDF_SHEET, utils.AUTHOR_SHEET);
+        this.#sheetLoaded = true;
+      }
+      utils.loadSheetUsingURIString(uri, utils.AUTHOR_SHEET);
+      if (this.#themeUri) utils.removeSheetUsingURIString(this.#themeUri, utils.AUTHOR_SHEET);
+      this.#themeUri = uri;
+    } catch (e) {
+      // the document went away
+      console.warn("vimma: the PDF viewer's theme was not applied", e);
+    }
+  }
+
   /** Whether pdf.js shows its presentation mode (decision 15). */
   presenting() {
     try {
@@ -778,8 +809,7 @@ export class PdfView {
 
   /** Sends the state once the burst it is part of is over (V5). */
   schedule() {
-    // The pref turned off after attaching: send nothing (the parent drops it anyway).
-    if (this.#timer || !Services.prefs.getBoolPref(PDF_FEATURE_PREF, false)) return;
+    if (this.#timer) return;
     this.#timer = lazy.setTimeout(() => {
       this.#timer = null;
       this.#send(this.read());

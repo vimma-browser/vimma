@@ -49,6 +49,7 @@ import { AgentGate } from "./AgentGate.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { ConnId } from "../core/agent.mjs" */
+import { allowanceKey, isConsequential, mayAllowHere } from "../core/agent-checkpoint.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -331,12 +332,13 @@ function agentPrincipal(/** @type {number} */ userContextId) {
  * `agent-cancel` with the request's id `rid` can withdraw it (decision 17: MCP's
  * notifications/cancelled); the connection's `state.cancels` keeps the way to, until answered.
  * With `until`, the question is withdrawn then (a step of a call that must end by then);
- * `always`: asked even under a grant, and never granted (mcp-drive D4).
+ * `always`: asked even under a grant, and never granted (mcp-drive D4); `covered`: a form the
+ * grant runs all the same (docs/specs/mcp-consequence.md K1, K5).
  * @param {ConnId} conn @param {string} command @param {object} what
  * @param {AgentConn} state @param {number | undefined} rid @param {number} [until]
- * @param {boolean} [always]
+ * @param {boolean} [always] @param {true | string} [covered]
  */
-async function ask(conn, command, what, state, rid, until, always = false) {
+async function ask(conn, command, what, state, rid, until, always = false, covered = undefined) {
   const tool = /** @type {Record<string, string>} */ (AGENT_TOOLS)[command];
   /** @type {any} */
   let timer = null;
@@ -347,6 +349,7 @@ async function ask(conn, command, what, state, rid, until, always = false) {
   try {
     const outcome = await AgentGate.request(conn, /** @type {string} */ (tool), what, {
       always,
+      ...(covered === undefined ? {} : { covered }),
       onCancel,
     });
     if (!outcome.allow) throw denied(outcome.reason);
@@ -356,6 +359,34 @@ async function ask(conn, command, what, state, rid, until, always = false) {
     if (timer !== null) lazy.clearTimeout(timer);
   }
 }
+
+/**
+ * The site of the page in `tab`, its registrable domain, or its host when it has none
+ * (mcp-drive D18): what an allowance of `a` is for (docs/specs/mcp-consequence.md K5).
+ * @param {Tab} tab
+ */
+function siteOfTab(tab) {
+  const uri = tab.linkedBrowser.currentURI;
+  try {
+    return /** @type {any} */ (Services.eTLD).getBaseDomain(uri);
+  } catch {
+    try {
+      return String(uri?.asciiHost ?? "");
+    } catch {
+      return "";
+    }
+  }
+}
+
+/**
+ * What a submission sends, without the child's `text` and `identity` marks
+ * (docs/specs/mcp-consequence.md K2), which decide whether it asks but are not shown.
+ * @param {import("../core/agent-checkpoint.mjs").SentFields} sent
+ */
+const unmarked = (sent) => ({
+  ...sent,
+  fields: sent.fields.map(({ text, identity, ...f }) => (void text, void identity, f)),
+});
 
 /** Whether the page in `tab` is loading no document now. @param {Tab} tab */
 const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
@@ -1342,18 +1373,42 @@ const COMMANDS = {
     // mcp-checkpoints C6: a click that may pay; Behaviour 4: what a submission sends.
     const pay = await AgentAct.payment(browser, { target: found.target, text: element.text });
     const sent = submit ? await AgentAct.sent(found.target, "click") : null;
+    // mcp-consequence K1-K5: under a grant a form that pays nothing and sends no text, personal
+    // details, secret or file runs unasked; `a` on the question of one that may be allowed makes
+    // its button on this site run so for the rest of the grant.
+    /** @type {true | string | undefined} */
+    let covered;
+    /** @type {{ site: string, key: string } | null} */
+    let here = null;
+    if (submit && element.submit && !pay) {
+      const step = { pay: false, sent };
+      const site = siteOfTab(asked.tab);
+      const key = mayAllowHere(step)
+        ? allowanceKey({
+            site,
+            method: element.submit.method,
+            action: element.submit.action,
+            text: element.text ?? "",
+          })
+        : null;
+      if (key) here = { site: wf(site), key };
+      covered = isConsequential(step) ? (key ?? undefined) : true;
+    }
+    const granted = AgentGate.grants().some((g) => g.conn === conn);
     const what = {
       ...base,
       kind: element.kind,
       text: wf(element.text ?? ""),
       detail: wf(actDetail(label, element)),
       ...(submit ? { submit } : {}),
-      ...(sent ? { sent } : {}),
+      // The marks of K2 decided whether it asks; the question and the log show what it sends.
+      ...(sent ? { sent: unmarked(sent) } : {}),
       ...(pay ? { pay } : {}),
+      ...(here && granted ? { here } : {}),
     };
     // F15, mcp-checkpoints C1: a submission or a payment asks every time, also under a grant,
-    // and its yes neither makes nor ends a grant.
-    await ask(conn, "agent-activate", what, state, rid, undefined, !!submit || !!pay);
+    // and its yes neither makes nor ends a grant, but for a form the grant covers (above).
+    await ask(conn, "agent-activate", what, state, rid, undefined, !!submit || !!pay, covered);
     let found2;
     try {
       found2 = stillAsAsked(agent, id, what.url, conn);
@@ -1366,7 +1421,13 @@ const COMMANDS = {
       AgentAct.activate(tab.linkedBrowser, found.target, {
         // The child clicks only if the element still submits there, and lets only that through.
         submit: element.submit
-          ? { method: element.submit.method, action: element.submit.action }
+          ? {
+              method: element.submit.method,
+              action: element.submit.action,
+              // mcp-consequence K1, K5: what the child checks again just before the press.
+              ...(covered === true ? { check: "harmless" } : {}),
+              ...(typeof covered === "string" ? { check: "allowed" } : {}),
+            }
           : null,
         href: element.href ?? null,
         inUse: () => inUse(tab.linkedBrowser),

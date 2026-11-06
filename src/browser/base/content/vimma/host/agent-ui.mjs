@@ -301,6 +301,9 @@ function onGate(event) {
     ) {
       // mcp-checkpoints Behaviour 6: where the form went, or where the payment was made.
       w.notice(checkpointNotice(event.question));
+    } else if (event.kind === "answered" && event.answer === "here") {
+      // mcp-consequence Behaviour 4: that button on that site, for the rest of the grant.
+      w.notice(checkpointNotice(event.question, true));
     } else if (event.kind === "answered" && event.answer === "deny") {
       w.notice(deniedNotice(event.question, "user"));
     } else if (event.kind === "answered" && event.answer === "mute") {
@@ -396,6 +399,11 @@ export const AgentUi = {
       full: q.tool === FULL_CONTROL,
       noGrant: noGrant(q),
       dangerous: !!(/** @type {any} */ (q.what)?.danger),
+      // mcp-consequence K5: a form checkpoint under a grant may offer `a`; a payment never.
+      here:
+        isCheckpoint(q) &&
+        !!(/** @type {any} */ (q.what)?.here) &&
+        !(/** @type {any} */ (q.what)?.pay),
     });
     if (result.kind === "count") {
       current.count = result.count;

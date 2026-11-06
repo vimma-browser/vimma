@@ -9,6 +9,7 @@ import {
   panelKey,
   refreshPanel,
   rowNumber,
+  rowSplitName,
 } from "../src/sidepanel.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { createDispatcher } from "../src/dispatcher.mjs";
@@ -73,6 +74,7 @@ describe("openPanel", () => {
         foreign: false,
         playing: false,
         pinned: false,
+        split: null,
       },
       {
         tabId: "t3",
@@ -83,6 +85,7 @@ describe("openPanel", () => {
         foreign: false,
         playing: true,
         pinned: false,
+        split: null,
       },
       {
         tabId: "t4",
@@ -93,6 +96,7 @@ describe("openPanel", () => {
         foreign: true,
         playing: false,
         pinned: false,
+        split: null,
       },
     ]);
   });
@@ -897,5 +901,77 @@ describe("a split in the panel", () => {
     expect(next.marked).toEqual(["t1", "t7"]);
     expect(next.paneFocus).toBe("t7");
     expect(refreshPanel(s, two, info5).marked).toEqual([]);
+  });
+});
+
+describe("several splits in the panel (multiple-splits)", () => {
+  const six = {
+    ...model,
+    workspaces: model.workspaces.map((w) =>
+      w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4", "t5", "t6", "t7"], activeTab: "t7" } : w,
+    ),
+  };
+  /** @type {Record<string, PanelTabInfo>} */
+  const more = { ...tabs, t5: { title: "Docs" }, t6: { title: "Chat" }, t7: { title: "News" } };
+  const info6 = (/** @type {string} */ id) => more[id];
+  /** S1: t2 t3; S2: t4 t5 t6; t7 in no split. */
+  const splits = [
+    { number: 1, tabs: ["t3", "t2"] },
+    { number: 2, tabs: ["t4", "t5", "t6"] },
+  ];
+  const SPACE = { id: "panel.mark" };
+  const J = { id: "panel.down" };
+  const ENTER = { id: "panel.open" };
+
+  test("each row carries its split's number, and its accessible name says it", () => {
+    const s = openPanel(six, info6, { splits, shownSplit: null });
+    expect(s.rows.map((r) => r.split)).toEqual([1, 1, 2, 2, 2, null]);
+    expect(s.rows.map(rowSplitName)).toEqual([
+      ", split 1",
+      ", split 1",
+      ", split 2",
+      ", split 2",
+      ", split 2",
+      "",
+    ]);
+    expect(openPanel(six, info6).rows.every((r) => r.split === null)).toBe(true);
+  });
+
+  test("the shown split's header names it and counts the splits", () => {
+    const s = openPanel(six, info6, {
+      panes: ["t4", "t5", "t6"],
+      paneFocus: "t5",
+      splits: [...splits, { number: 3, tabs: ["t7", "t1"] }],
+      shownSplit: 2,
+    });
+    expect(s.marked).toEqual(["t4", "t5", "t6"]);
+    expect(markSummary(s)).toBe("S2: 3 panes · 3 splits");
+    const { state } = press(s, [{ id: "panel.first" }, J, J, SPACE]);
+    expect(markSummary(state)).toBe("S2: 3 → 2 · 3 splits");
+  });
+
+  test("with one split the header reads as before", () => {
+    const s = openPanel(six, info6, {
+      panes: ["t3", "t2"],
+      paneFocus: "t2",
+      splits: [{ number: 1, tabs: ["t3", "t2"] }],
+      shownSplit: 1,
+    });
+    expect(markSummary(s)).toBe("split: 2 panes");
+    const lone = openPanel(six, info6, {
+      splits: [{ number: 2, tabs: ["t4", "t5", "t6"] }],
+      shownSplit: null,
+    });
+    expect(lone.marked).toEqual([]);
+    expect(markSummary(lone)).toBe("split: 3 panes (hidden)");
+  });
+
+  test("on a lone tab nothing starts marked, and two marks make a new split", () => {
+    const s = openPanel(six, info6, { splits, shownSplit: null });
+    expect(s.marked).toEqual([]);
+    expect(markSummary(s)).toBe("2 splits (none shown)");
+    const { state, effect } = press(s, [{ id: "panel.first" }, SPACE, J, J, J, J, SPACE, ENTER]);
+    expect(markSummary(state)).toBe("2 marked · 2 splits (none shown)");
+    expect(effect).toEqual({ type: "together", ids: ["t2", "t6"], focus: "t6" });
   });
 });

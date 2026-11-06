@@ -1,0 +1,162 @@
+{
+  "name": "issue-682-multiple-splits",
+  "issue": 682,
+  "description": "docs/specs/multiple-splits.md, keyboard only: ctrl+b v makes split S1 (a and a new tab); ctrl+b 1 shows the start tab alone and hides S1; two pages opened there show alone too; in the side panel 4G space j space Enter marks them into split S2, shown at once while S1 stays hidden; the side panel then shows each split's stripe in its colour and its label (multiple-splits-panel.png, stock theme); ]s shows S1 again with its focused pane, [s goes back to S2. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "timeoutSeconds": 90,
+  "steps": [
+    {
+      "wait-for-state": {
+        "workspace": "main"
+      },
+      "timeoutSeconds": 20
+    },
+    {
+      "open": "fixture:pane.html#a"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {
+            "title": "a 1280",
+            "selected": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b v"
+    },
+    {
+      "wait-for-state": {
+        "splits": [
+          {
+            "number": 1,
+            "shown": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b 1"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {
+            "selected": true
+          },
+          {},
+          {}
+        ],
+        "splits": [
+          {
+            "number": 1,
+            "shown": false
+          }
+        ]
+      }
+    },
+    {
+      "open": "fixture:pane.html#c"
+    },
+    {
+      "open": "fixture:pane.html#d"
+    },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          {},
+          {
+            "title": "c 1280"
+          },
+          {
+            "title": "d 1280",
+            "selected": true
+          }
+        ],
+        "splits": [
+          {
+            "number": 1,
+            "shown": false
+          }
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b b"
+    },
+    {
+      "sleep": 0.5
+    },
+    {
+      "keys": "4 G space j space enter"
+    },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "splits": [
+          {
+            "number": 1,
+            "shown": false
+          },
+          {
+            "number": 2,
+            "shown": true
+          }
+        ]
+      }
+    },
+    {
+      "keys": "ctrl+b b"
+    },
+    {
+      "sleep": 1
+    },
+    {
+      "screenshot": "multiple-splits-panel"
+    },
+    {
+      "keys": "esc"
+    },
+    {
+      "sleep": 0.5
+    },
+    {
+      "keys": "] s"
+    },
+    {
+      "wait-for-state": {
+        "splits": [
+          {
+            "number": 1,
+            "shown": true
+          },
+          {
+            "number": 2,
+            "shown": false
+          }
+        ]
+      }
+    },
+    {
+      "keys": "[ s"
+    },
+    {
+      "wait-for-state": {
+        "splits": [
+          {
+            "number": 1,
+            "shown": false
+          },
+          {
+            "number": 2,
+            "shown": true
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 # Spec: agent-modules
 
-Status: draft · Area: `packages/vimma-core/src/` (new `modules.mjs`: `module.toml` parser and
+Status: draft (on hold until the built-in agent has settled) · Area:
+`packages/vimma-core/src/` (new `modules.mjs`: `module.toml` parser and
 validator, the generated manifest and background script, the permission words, the version
 model; new `module-requests.mjs`; `keymap.mjs` and `dispatcher.mjs` for the module layer and
 `module.run`; `config.mjs` for `[modules]`; `control.mjs` for the `sandbox` role; `actions.mjs`

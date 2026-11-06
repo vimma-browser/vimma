@@ -17,6 +17,7 @@ import {
   scriptErrorSource,
 } from "../core/agent-act.mjs";
 import { cutTo } from "../core/agent-keys.mjs";
+import { isConsequential, mayAllowHere, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { quietVerdict } from "../core/agent-wait.mjs";
 import { HINT_SIZE_WAIT_MS } from "../core/hints.mjs";
 import { collectTargets, linkText, viewportSize } from "./hint-collect.mjs";
@@ -345,6 +346,19 @@ export class VimmaChild extends JSWindowActorChild {
     }
   }
 
+  /**
+   * The theme's token sheet for the viewer (docs/specs/pdf-mode.md decision 20; security.md
+   * section 20, V12): the parent answers only the top viewer's current actor.
+   */
+  #askTheme() {
+    this.sendQuery("Vimma:PdfTheme").then(
+      (css) => this.#pdf?.setTheme(css),
+      () => {
+        // the actor went with its document
+      },
+    );
+  }
+
   /** Listens to this document's selection (again, if the PresShell replaced it). */
   #watchSelection() {
     const sel = this.contentWindow?.getSelection() ?? null;
@@ -415,8 +429,9 @@ export class VimmaChild extends JSWindowActorChild {
       case "dragstart":
         this.#dragging = true;
         return;
+      case "documentloaded":
       case "pagesloaded":
-        // Only pdf.js's own event (chrome-only, trusted); PdfView.attach checks the principal.
+        // Only pdf.js's own events (chrome-only, trusted); PdfView.attach checks the principal.
         if (!event.isTrusted) return;
         if (this.#pdf) this.#pdf.schedule();
         else {
@@ -425,6 +440,7 @@ export class VimmaChild extends JSWindowActorChild {
             (state) => this.#sendPdf(state),
             (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
           );
+          if (this.#pdf) this.#askTheme();
         }
     }
   }
@@ -576,6 +592,10 @@ export class VimmaChild extends JSWindowActorChild {
         // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
         if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
         return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+      case "Vimma:PdfTheme":
+        // A theme change (V12): the token sheet again.
+        this.#pdf?.setTheme(msg.data?.css);
+        return undefined;
       case "Vimma:PdfOp":
         // An operation name and a number (docs/security.md section 20, V7), checked again by
         // the adapter; only the top-level viewer has one.
@@ -1242,6 +1262,14 @@ export class VimmaChild extends JSWindowActorChild {
     if (!!now.submit !== !!named) return false;
     if (now.submit && (now.submit.method !== named.method || now.submit.action !== named.action)) {
       return false;
+    }
+    // mcp-consequence K1, K5: a form a grant runs unasked was judged by what it sent before the
+    // click; another call (a fill) may have changed it since, so it is judged again here, just
+    // before it is pressed, and skipped when it no longer passes.
+    if (now.submit && named.check) {
+      const step = { pay: false, sent: parseSentFields(sentFieldsOf(el, "click", new Set())) };
+      if (named.check === "harmless" && isConsequential(step)) return false;
+      if (named.check === "allowed" && !mayAllowHere(step)) return false;
     }
     return (now.href ?? null) === (asked.href ?? null);
   }

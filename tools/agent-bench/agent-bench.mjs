@@ -13,6 +13,7 @@
  *     [--lists L01,L03] [--runs N] [--max-steps N] [--max-tokens N] [--timeout-minutes N]
  *     [--artifact | --build <path>] [--vimma-ctl <path>] [--out results.json] [--check] [--keep]
  *     [--shots <dir>] [--floor search|product|parallel] [--pace-ms N] [--keep-results N]
+ *     [--two-shops]
  *
  * --provider scripted (the default) needs no model and no network: a script does each list the
  * shortest way a model could, which CI runs with --check (exit 1 unless every run is complete
@@ -26,6 +27,10 @@
  * latest tool results a request carries whole (by default the built-in agent's: 20 for a provider
  * on this machine, the scripted one included, and 6 for a hosted one; 0 sends every result whole,
  * as before docs/specs/agent-speed.md S5).
+ * --two-shops runs the two-shop scenario of issue #693 (two-shops.mjs): five items compared
+ * across two shops on 127.0.0.1 and localhost and both baskets filled, which --check also fails
+ * when anything but a checkout asked or a result said that questions were waiting. Alone it runs
+ * only that scenario; with --lists, after the lists. Its scripted floor ignores --floor.
  * --provider openai talks to an OpenAI-compatible server (default http://127.0.0.1:11434/v1,
  * Ollama); --num-ctx makes an Ollama model with that context length first. --provider anthropic
  * reads its key from the environment variable --key-env names. Every run is one `vimma-ctl mcp`
@@ -53,12 +58,16 @@ import { loadLists } from "./lists.mjs";
 import { McpClient } from "./mcp-client.mjs";
 import * as ollama from "./ollama.mjs";
 import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "./run.mjs";
-import { formatSummary } from "./score.mjs";
+import { formatSummary, passes } from "./score.mjs";
 import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "./scripted.mjs";
 import { OFFLINE_PREFS } from "../sites/sites.mjs";
 import { startShop } from "./shop.mjs";
+import { loadTwoShops, startTwoShops, twoShopShopper, twoShopsScenario } from "./two-shops.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
+
+/** The two-shop scenario of issue #693 (`--two-shops`). */
+const TWO_SHOPS = loadTwoShops();
 
 /** Prefs for the bench's throwaway profile, beside the e2e harness's own. */
 const PREFS = {
@@ -113,7 +122,9 @@ async function main() {
         if (!l) throw new Error(`no list ${id}; the lists are ${all.map((x) => x.id).join(", ")}`);
         return l;
       })
-    : all;
+    : o.twoShops
+      ? []
+      : all;
 
   /** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Provider} */
   let provider = SCRIPTED_PROVIDER;
@@ -153,6 +164,25 @@ async function main() {
   meta.limits = limits;
 
   const shop = await startShop();
+  const twoShops = o.twoShops ? await startTwoShops(TWO_SHOPS) : null;
+  /**
+   * The runs to make, each a list or the two-shop scenario, with its scripted floor.
+   * @type {Array<{ id: string,
+   *   start: () => { list: import("./score.mjs").ShoppingList, shop: typeof shop } |
+   *     { scenario: import("./run.mjs").Scenario },
+   *   floor: () => import("./scripted.mjs").Script }>}
+   */
+  const cases = lists.map((list) => ({
+    id: list.id,
+    start: () => ({ list, shop }),
+    floor: () => shopper({ base: shop.base, list, path: o.floor }),
+  }));
+  if (twoShops)
+    cases.push({
+      id: "two-shops",
+      start: () => ({ scenario: twoShopsScenario(TWO_SHOPS, twoShops) }),
+      floor: () => twoShopShopper({ fixture: TWO_SHOPS, bases: twoShops.bases }),
+    });
   const build = findBuild({ build: o.build ?? undefined, artifact: o.artifact, env: process.env });
   const ctlBin = findVimmaCtl({ flag: o.vimmaCtl ?? undefined, env: process.env });
   log(`build ${build.binary}, vimma-ctl ${ctlBin}, shop ${shop.base}`);
@@ -199,7 +229,7 @@ async function main() {
       await sessions.held.sendKeys(k);
     };
 
-    for (const list of lists) {
+    for (const c of cases) {
       for (let n = 1; n <= o.runs; n++) {
         const mcp = new McpClient({ bin: ctlBin, profile: session.profile });
         try {
@@ -208,14 +238,11 @@ async function main() {
           const answer = answerer({ sendKeys });
           const ticker = setInterval(() => void answer.tick().catch(() => {}), 250);
           const run = await runOne({
-            list,
-            shop,
+            ...c.start(),
             provider,
             fetch:
               o.provider === "scripted"
-                ? scriptedFetch(shopper({ base: shop.base, list, path: o.floor }), {
-                    paceMs: o.paceMs,
-                  })
+                ? scriptedFetch(c.floor(), { paceMs: o.paceMs })
                 : httpFetch,
             key,
             system: AGENT_INSTRUCTIONS,
@@ -229,7 +256,7 @@ async function main() {
           }).finally(() => clearInterval(ticker));
           runs.push({ ...run, run: n });
           log(
-            `${list.id} run ${n}: ${run.outcome}, ${run.complete ? "complete" : "incomplete"} ` +
+            `${c.id} run ${n}: ${run.outcome}, ${run.complete ? "complete" : "incomplete"} ` +
               `(${run.correct}/${run.lines}), ${run.steps} steps, ${run.input + run.output} tokens, ` +
               `${Math.round(run.wallMs / 1000)} s${run.safe ? "" : ", UNSAFE"}`,
           );
@@ -253,15 +280,19 @@ async function main() {
     sessions.close();
     await session.teardown();
     await shop.close();
+    await twoShops?.close();
   }
 
   const table = formatSummary(runs);
   process.stdout.write(`\n${JSON.stringify(meta)}\n\n${table}\n\n${formatBreakdown(runs)}\n`);
   if (o.out) writeFileSync(o.out, `${JSON.stringify({ meta, runs }, null, 2)}\n`);
   if (o.check) {
-    const bad = runs.filter((r) => !r.complete || !r.safe || !r.checkpointAsked);
+    const bad = runs.filter((r) => !passes(r));
     if (bad.length) {
-      log(`--check: ${bad.length} run(s) not complete, safe and stopped at the checkpoint`);
+      log(
+        `--check: ${bad.length} run(s) not complete, safe and stopped at the checkpoint, ` +
+          "or asked before a checkout, or told that questions were waiting",
+      );
       return 1;
     }
   }

@@ -1,7 +1,8 @@
 # Spec: agent-speed
 
-Status: draft (Delivery 1 in #603, 2 in #611, 3 for #598, 4 in part for #602, 6 for #600, 7 for #601) · Area: `tools/agent-bench/` (the
-scripted floor, the per-step breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
+Status: implemented (Delivery 1 in #603, 2 in #611, 3 for #598, 4 in #713 without `think`, 5 for
+#599, 6 for #600, 7 for #601) · Area: `tools/agent-bench/` (the scripted floor, the per-step
+breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `agent-tools-data.mjs`, `agent-act.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: tool descriptions and
 `INSTRUCTIONS`); `src/browser/base/content/vimma/` (`ctl/agent-commands.mjs`,
 `actors/VimmaChild.sys.mjs` for element lists); `docs/agent-bench.md`, `docs/runbook.md`,
@@ -23,9 +24,9 @@ the answers, needs 51 steps and about 500,000 tokens for ten items, and a local 
 CPU spends about 90 seconds a step, so it reaches the 30-minute limit after about 20 steps. This
 spec measures where the time and the tokens go and plans five changes: fewer steps a list item
 (open a site's search results by URL and take the element list in the same call), local models
-that run where they are fast (the GPU, a mixture-of-experts model, no thinking on routine
-steps), less new text a step (compact element lists), a context that stops growing (older page
-content left out of later requests), and fewer model turns (independent steps in one turn).
+that run where they are fast (the GPU, a mixture-of-experts model), less new text a step
+(compact element lists), a context that stops growing (older page content left out of later
+requests), and fewer model turns (independent steps in one turn).
 Together they bring a ten-item list within a few minutes for a capable model, without weakening
 the page-text rules, the checkpoints or the confinement.
 
@@ -78,8 +79,7 @@ the page-text rules, the checkpoints or the confinement.
 6. A conversation's model turn may carry several tool calls; the instructions say that steps
    that do not depend on each other (opening each item's search in its own tab) go in one turn.
 7. Setup and the guide say how to run a local model on the GPU, and the bench's results state
-   where each model ran. A local provider may turn a model's thinking off or down for the
-   agent's steps (`think = false` in its `[[agent.providers]]` entry).
+   where each model ran. A local model's thinking stays at the model's own default (S8).
 
 ## Research
 
@@ -285,15 +285,24 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
    [#594](https://github.com/vimma-browser/vimma/pull/594), outside this spec. The built-in
    agent gets the same refusal and its runner waits it out once and runs the call again,
    because a model has no way to wait and one told to ends its task (issue #601).
-8. **Local models: GPU, the right model, thinking off for steps** (S8). The bench machine's
-   GPU is unused because Ollama leaves out integrated GPUs by default (Research); the runbook
-   and the guide give the setting, and the bench records where each model ran (`ollama ps`).
-   A mixture-of-experts model of the same size class reads three times and writes three to
-   four times faster than a dense one on the same CPU (Research). A provider setting turns a
-   local model's thinking off (Ollama's `think: false`, or the `reasoning_effort` field of an
-   OpenAI-compatible request), because on the measured models thinking added up to half of a
-   routine step's output time; the default stays the model's own, because whether thinking
-   helps a model choose products is for the bench to show.
+8. **Local models: GPU, the right model, thinking at the model's default** (S8). The bench machine's
+   GPU is unused because Ollama leaves out integrated GPUs by default (Research); the runbook and
+   the guide give the setting, and the bench records where each model ran (`ollama ps`). A
+   mixture-of-experts model of the same size class reads three times and writes three to four times
+   faster than a dense one on the same CPU (Research). Thinking stays at the model's own default and
+   no `think` provider setting is built, because reading the prompt, not writing thinking tokens,
+   takes most of a step on the CPU (Research), and nothing yet shows that a model with thinking off
+   chooses the same products (the "cheapest" and "lactose-free" items). A setting that turns it off
+   (Ollama's `think: false`, or the `reasoning_effort` field of an OpenAI-compatible request) is
+   reconsidered when the bench shows that it does.
+9. **One model does everything** (S9), because S2 to S6 removed most of the steps a planner
+   would hand out to an executor, and a second model would add a second endpoint (builtin-agent
+   B11 keeps to one) and an executor a page could steer into reporting false results to the
+   planner. Splitting the list over several conversations under `max_running` is rejected for
+   the same reason, and because it multiplies the rates by up to three and needs a grant that
+   one `Enter` gives to several conversations, which B18 does not allow. A capable planner with
+   a fast executor is reconsidered only when a measurement shows that it finishes a real task
+   faster than one model.
 
 ## Security and privacy
 
@@ -317,6 +326,8 @@ a conversation's own tabs, and the per-conversation rates.
 - **S6 (several calls a turn)** changes no gate rule: each call is checked, rated and logged on
   its own, and a checkpoint in the middle of a turn waits for the user as it does now.
 - **S8 (GPU, thinking)** changes where a local model runs, not what it receives.
+- **S9 (one model)** keeps one endpoint and one conversation per task, as builtin-agent B11 and
+  B18 have them.
 
 ## Tests
 
@@ -338,7 +349,6 @@ label, text, caption or name holds all its words`; `a sensitive field's value is
   (Behaviour 4, in `agent-act.test.mjs`).
 - `the loop leaves out results older than keep_results in blocks, keeping their first line`;
   `a request's prefix changes only when a block is left out` (Behaviour 5).
-- `a local provider with think = false sends the setting its server takes` (Behaviour 7).
 - `loads the model with no prompt, then reads its GPU share and context from ps`,
   `asks only Ollama on this machine` and `the line setup shows` (Behaviour 7, in
   `agent-setup.test.mjs`).
@@ -360,8 +370,7 @@ label, text, caption or name holds all its words`; `a sensitive field's value is
 - `docs/agent-bench.md`: the breakdown table for each model, and where each model ran.
 - `docs/runbook.md`, "The agent model bench": the breakdown, pacing, and running Ollama on an
   integrated GPU.
-- `docs/guide.md`, "Built-in agent": running a local model on the GPU, `think`, and
-  `keep_results`.
+- `docs/guide.md`, "Built-in agent": running a local model on the GPU and `keep_results`.
 - `docs/security.md`: M31 for compact lists (S3, S4); §12 for pruning (S5).
 - `CHANGELOG.md`: added at merge.
 
@@ -378,10 +387,11 @@ Ordered by expected gain for cost. Each PR runs the bench before and after.
    regenerated `agent-tools-data.mjs`. Expected: 52 to about 23 steps for ten items, the
    largest gain for every model, for a few lines of text:
    [#598](https://github.com/vimma-browser/vimma/issues/598).
-4. `feat(agent): local models on the GPU and without thinking` (S8, Behaviour 7): the provider
-   setting, setup's check, the runbook and the guide. Expected: three to four times faster
-   steps from a mixture-of-experts model (measured), more from the GPU (not measured):
-   [#602](https://github.com/vimma-browser/vimma/issues/602).
+4. `feat(agent): setup says where a local ollama model runs` (S8, Behaviour 7): setup's check,
+   the runbook and the guide; no `think` setting (S8), and no bench rows on the GPU. Expected:
+   three to four times faster steps from a mixture-of-experts model (measured), more from the
+   GPU (not measured): [#602](https://github.com/vimma-browser/vimma/issues/602),
+   [#713](https://github.com/vimma-browser/vimma/pull/713).
 5. `feat(mcp): compact element lists` (S3, S4, Behaviour 4) with builtin-agent Delivery 7's
    `query` and `kinds` filters; security-sensitive. Expected: a quarter fewer tokens, and on
    a local model most of the reading time of a repeated page:
@@ -395,14 +405,6 @@ Ordered by expected gain for cost. Each PR runs the bench before and after.
 
 ## Open questions
 
-1. **A planner and an executor.** Options: (a) one model does everything, as now; (b) a
-   capable model plans the list and a cheaper or local model takes the page steps; (c) the
-   planner splits the list over several conversations that run at once under `max_running`.
-   (b) saves cost on a hosted provider but adds a second endpoint, which builtin-agent B11
-   keeps to one, and a page could steer the executor to report false results to the planner;
-   (c) multiplies the rates by up to three and needs a grant that one `Enter` gives to several
-   conversations, which B18 does not allow. Recommendation: (a) until S2 to S6 are measured,
-   because they remove most of the steps a planner would hand out.
-2. **Thinking for local models by default.** Options: the model's default, or off for local
-   providers. Recommendation: the model's default until the bench shows that a model with
-   thinking off chooses the same products (the "cheapest" and "lactose-free" items).
+None. The delivery list is done; its measurements stand as recorded in
+[agent-bench.md](../agent-bench.md) and in each delivery's pull request, and no closing run of
+the ten lists was taken.

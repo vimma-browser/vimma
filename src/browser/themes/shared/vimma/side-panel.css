@@ -171,6 +171,22 @@
       padding: 0;
     }
   }
+
+  /* A split's rows (docs/specs/multiple-splits.md decision 10): a 3 px stripe in the split's
+     colour inside the mark bar, and its label (S2) dim under the marks, so the split is told by
+     more than colour. */
+  & .vimma-panel-row[data-split] {
+    box-shadow: inset 3px 0 0 var(--vimma-row-split);
+  }
+
+  & .vimma-panel-split {
+    grid-column: 4;
+    grid-row: 2;
+    justify-self: end;
+    font-family: var(--vimma-font, monospace);
+    font-size: 0.85em;
+    color: var(--vimma-fg-dim, GrayText);
+  }
 }
 
 /* The bookmarks panel (docs/specs/bookmarks.md): a tree, indented by depth (--vimma-depth). */
@@ -223,7 +239,7 @@
     & code {
       padding: 0 0.3ch;
       border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-      border-radius: 3px;
+      border-radius: var(--vimma-radius, 0);
       color: var(--vimma-text-accent, AccentColor);
       font: inherit;
     }

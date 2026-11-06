@@ -358,3 +358,42 @@ describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
     expect(at(km, "meta+[")).toBe("history_back");
   });
 });
+
+// docs/specs/key-handling-batch.md § 2: ctrl+j and ctrl+m are Enter in a text field, as in Vim.
+describe("text-field keys before default [keys] bindings", () => {
+  /** @param {any} km @param {string} mode @param {string} key */
+  const at = (km, mode, key) => km.trie(mode).children.get(key)?.action?.name;
+
+  test("ctrl+j and ctrl+m are unbound where keys type into a field, bound elsewhere", () => {
+    const km = compileKeymap();
+    for (const mode of ["insert", "command", "help"]) {
+      expect(at(km, mode, "ctrl+j"), mode).toBeUndefined();
+      expect(at(km, mode, "ctrl+m"), mode).toBeUndefined();
+    }
+    for (const mode of ["normal", "panel", "pdf"]) {
+      expect(at(km, mode, "ctrl+j"), mode).toBe("web_search");
+      expect(at(km, mode, "ctrl+m"), mode).toBe("mute_tab");
+    }
+  });
+
+  test("other default chords stay bound in insert mode", () => {
+    expect(at(compileKeymap(), "insert", "ctrl+l")).toBe("focus_urlbar");
+  });
+
+  test("insert_editing = false keeps the bindings in every mode", () => {
+    const km = compileKeymap({ modal: { insert_editing: false } });
+    expect(at(km, "insert", "ctrl+j")).toBe("web_search");
+    expect(at(km, "command", "ctrl+m")).toBe("mute_tab");
+  });
+
+  test("a binding the user added wins in insert mode; one repeating the default does not", () => {
+    const keys = compileKeymap({ keys: { reload: "ctrl+m", mute_tab: "alt+m" } });
+    expect(at(keys, "insert", "ctrl+m")).toBe("reload");
+    const copied = compileKeymap({ keys: { mute_tab: ["ctrl+m"], web_search: "<C-j>" } });
+    expect(at(copied, "insert", "ctrl+m")).toBeUndefined();
+    expect(at(copied, "insert", "ctrl+j")).toBeUndefined();
+    expect(at(copied, "normal", "ctrl+m")).toBe("mute_tab");
+    const modal = compileKeymap({ modal: { insert: { "<C-j>": "web_search" } } });
+    expect(at(modal, "insert", "ctrl+j")).toBe("web_search");
+  });
+});

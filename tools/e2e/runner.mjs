@@ -13,6 +13,7 @@ import { runSteps } from "./scenario.mjs";
  *   control?: import("./scenario.mjs").Control,
  *   profile?: string,
  *   text?: (text: string) => string,
+ *   update?: import("./scenario.mjs").UpdateControl,
  *   teardown: () => Promise<void>,
  * }} Session
  */
@@ -126,6 +127,7 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
       control: s.control,
       profile: s.profile,
       text: s.text,
+      update: s.update,
       pollMs,
       signal: controller.signal,
     });
@@ -168,13 +170,12 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
     try {
       await teardown(s);
     } catch (e) {
-      if (result.status === "pass") {
-        result = {
-          ...result,
-          status: "fail",
-          error: `teardown: ${/** @type {Error} */ (e).message}`,
-        };
-      }
+      const why = `teardown: ${/** @type {Error} */ (e).message}`;
+      // A failed step's own message stays first; the teardown's (a crash's output) follows it.
+      result =
+        result.status === "pass"
+          ? { ...result, status: "fail", error: why }
+          : { ...result, error: `${result.error ?? result.status}\n${why}` };
     }
   }
   return result;

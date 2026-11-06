@@ -133,6 +133,20 @@ function renderUpdates(u) {
     const attrs = failed ? { id: "update-appimage", class: "error" } : { id: "update-appimage" };
     rows.push(["AppImage", el("span", attrs, text)]);
   }
+  // A tarball that Firefox's updater updates (m6a-updater §3): how far it got with the offer.
+  if (u.firefox) {
+    const { stage, canApply } = u.firefox;
+    const text = !canApply
+      ? "cannot apply here: Vimma cannot write its install directory"
+      : stage === "staged"
+        ? "downloaded: applies at the next start"
+        : stage === "pending"
+          ? "downloading the update"
+          : u.offer
+            ? "Firefox's updater: not downloaded yet"
+            : "Firefox's updater";
+    rows.push(["Updater", el("span", { id: "update-firefox" }, text)]);
+  }
   rows.push(
     ["Manifest serial", u.serial ?? "-"],
     ["Signed by", u.key ? `${u.key.id} (${u.key.slot} key)` : "-"],
@@ -331,6 +345,22 @@ function render(d) {
           (t.target === t.workspace ? "." : "; :route move moves it there.");
     tabLine.push(el("p", { id: "route-tab" }, `The tab :route was typed in: ${text}`));
   }
+  // The programs only, never the link's URL (docs/specs/app-routes.md, decision 15).
+  const last = routes.last;
+  const lastTarget = !last
+    ? ""
+    : last.by === "rule"
+      ? `rule ${last.rule} (${last.workspace})`
+      : last.by === "default"
+        ? `[routing] default_workspace (${last.workspace})`
+        : "no rule: Firefox's container guess, then the window's workspace";
+  const AGENT_MARK = "never for links from other apps: the agent workspace";
+  const dw = routes.defaultWorkspace;
+  const dwText = !dw
+    ? "not set: Firefox's container guess, then the window's workspace"
+    : dw.state === "in force"
+      ? dw.name
+      : `${dw.name} (${dw.state === "agent" ? AGENT_MARK : dw.state})`;
   fill(
     "routes",
     ...tabLine,
@@ -360,16 +390,35 @@ function render(d) {
                 el("td", {}, String(r.index)),
                 el("td", {}, r.match),
                 el("td", {}, r.workspace),
-                el("td", {}, r.skipped ?? "in force"),
+                el(
+                  "td",
+                  {},
+                  r.skipped ??
+                    (r.agent
+                      ? AGENT_MARK
+                      : r.shadowedBy !== null
+                        ? `shadowed by rule ${r.shadowedBy}`
+                        : "in force"),
+                ),
               ),
             ),
           ),
         )
       : el("p", { class: "muted" }, "No [[routes]] in config.toml."),
+    el("p", { id: "route-default" }, `[routing] default_workspace: ${dwText}`),
+    el(
+      "p",
+      { id: "route-last" },
+      last
+        ? `Last link from another app: ${last.names.join(", ") || "no program named"} → ${lastTarget}`
+        : "No link from another app since Vimma started.",
+    ),
     el(
       "p",
       { class: "muted" },
-      "The first matching rule, top to bottom, wins. :route add [workspace] adds one for a site.",
+      "The first matching rule, top to bottom, wins; for a link from another app, of the rules " +
+        "with app above the first other match, the one naming the nearest program. " +
+        ":route add [workspace] adds one for a site.",
     ),
   );
 

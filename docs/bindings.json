@@ -660,6 +660,36 @@
           "name": "layout_dwindle",
           "description": "Layout: a spiral (dwindle)",
           "keys": []
+        },
+        {
+          "name": "split_picker",
+          "description": "Split picker: show one of the workspace's splits",
+          "keys": [
+            {
+              "keys": "ctrl+b shift+s",
+              "chords": ["ctrl+b", "shift+s"]
+            }
+          ]
+        },
+        {
+          "name": "next_split",
+          "description": "Show the next split",
+          "keys": [
+            {
+              "keys": "]s",
+              "chords": ["]s"]
+            }
+          ]
+        },
+        {
+          "name": "previous_split",
+          "description": "Show the previous split",
+          "keys": [
+            {
+              "keys": "[s",
+              "chords": ["[s"]
+            }
+          ]
         }
       ]
     },
@@ -1287,6 +1317,16 @@
           ]
         },
         {
+          "name": "downloads_picker",
+          "description": "Downloads picker: open, show in folder, pause, retry, remove",
+          "keys": [
+            {
+              "keys": "ctrl+b d",
+              "chords": ["ctrl+b", "d"]
+            }
+          ]
+        },
+        {
           "name": "addons_manager",
           "description": "Add-ons manager (about:addons)",
           "keys": [
@@ -1638,13 +1678,7 @@
         {
           "name": "show_link_target",
           "description": "Show a link's target without following it",
-          "keys": [
-            {
-              "keys": "F",
-              "chords": ["F"],
-              "mode": "pdf"
-            }
-          ]
+          "keys": []
         },
         {
           "name": "copy_link_target",
@@ -2774,40 +2808,17 @@
         {
           "name": "pdf_page_top",
           "description": "Top of the current page",
-          "keys": [
-            {
-              "keys": "H",
-              "chords": ["H"],
-              "mode": "pdf"
-            },
-            {
-              "keys": "P",
-              "chords": ["P"],
-              "mode": "pdf"
-            }
-          ]
+          "keys": []
         },
         {
           "name": "pdf_page_bottom",
           "description": "Bottom of the current page",
-          "keys": [
-            {
-              "keys": "L",
-              "chords": ["L"],
-              "mode": "pdf"
-            }
-          ]
+          "keys": []
         },
         {
           "name": "pdf_screen_down",
           "description": "Scroll a screen down",
-          "keys": [
-            {
-              "keys": "ctrl+f",
-              "chords": ["ctrl+f"],
-              "mode": "pdf"
-            }
-          ]
+          "keys": []
         },
         {
           "name": "pdf_zoom_in",
@@ -2901,14 +2912,8 @@
         },
         {
           "name": "pdf_dual_page",
-          "description": "Two pages side by side, or one",
-          "keys": [
-            {
-              "keys": "d",
-              "chords": ["d"],
-              "mode": "pdf"
-            }
-          ]
+          "description": "Two pages side by side, or one (:dual)",
+          "keys": []
         },
         {
           "name": "pdf_first_page_alone",
@@ -2934,25 +2939,13 @@
         },
         {
           "name": "pdf_rotate",
-          "description": "Rotate the pages 90 degrees clockwise (with a count: n times)",
-          "keys": [
-            {
-              "keys": "r",
-              "chords": ["r"],
-              "mode": "pdf"
-            }
-          ]
+          "description": "Rotate the pages 90 degrees clockwise (:rotate; a count: n times)",
+          "keys": []
         },
         {
           "name": "pdf_presentation",
-          "description": "Presentation mode, or leave it",
-          "keys": [
-            {
-              "keys": "f5",
-              "chords": ["f5"],
-              "mode": "pdf"
-            }
-          ]
+          "description": "Presentation mode, or leave it (:present)",
+          "keys": []
         },
         {
           "name": "pdf_outline",

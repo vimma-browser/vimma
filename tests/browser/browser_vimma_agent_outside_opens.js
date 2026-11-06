@@ -220,6 +220,165 @@ add_task(async function a_route_rule_naming_the_agent_workspace_is_not_followed_
   }
 });
 
+/**
+ * A link from another program, `vimma -vimma-from <names> <url>`, while oo-home was used last.
+ * @param {string} names
+ * @param {string} url
+ */
+async function fromPrograms(names, url) {
+  const opened = nextTab();
+  const cmdLine = Cu.createCommandLine(
+    ["-vimma-from", names, url],
+    null,
+    Ci.nsICommandLine.STATE_REMOTE_AUTO,
+  );
+  runHandlers(cmdLine);
+  return opened;
+}
+
+// docs/specs/app-routes.md, decision 5.
+add_task(async function a_rule_after_one_naming_the_agent_workspace_applies() {
+  const other = WorkspaceStore.addWorkspace({ name: "oo-other", color: "red", icon: "fence" });
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([
+      { domain: "example.com", workspace: agent().name },
+      { domain: "example.com", workspace: "oo-other" },
+    ]),
+  );
+  try {
+    await inAgentAfterHome();
+    const tab = await fromPrograms("slack", LOGIN);
+    Assert.equal(tab.userContextId, other.userContextId, "the next rule applies: oo-other");
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    tidy();
+    await WorkspaceStore.deleteWorkspace(other.id, { confirmed: true });
+  }
+});
+
+add_task(async function an_agent_cli_link_skips_every_app_rule_after_an_agent_rule() {
+  const admin = WorkspaceStore.addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([
+      { app: "claude", workspace: agent().name },
+      { app: "ghostty", domain: "example.com", workspace: "oo-admin" },
+    ]),
+  );
+  try {
+    await inAgentAfterHome();
+    const tab = await fromPrograms("claude,zsh,ghostty", LOGIN);
+    Assert.notEqual(tab.userContextId, admin.userContextId, "never the terminal's oo-admin");
+    Assert.notEqual(tab.userContextId, agent().userContextId, "never the agent's container");
+    const user = await fromPrograms("python3,zsh,ghostty", LOGIN);
+    Assert.equal(user.userContextId, admin.userContextId, "your own CLI's link: oo-admin");
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    tidy();
+    await WorkspaceStore.deleteWorkspace(admin.id, { confirmed: true });
+  }
+});
+
+add_task(
+  async function a_child_named_after_the_terminal_under_an_agent_cli_never_reaches_the_terminals_rule() {
+    const admin = WorkspaceStore.addWorkspace({ name: "oo-admin", color: "red", icon: "fence" });
+    WorkspaceRouter.setRoutes(
+      resolveRoutes([
+        { app: "ghostty", workspace: "oo-admin" },
+        { app: "claude", workspace: agent().name },
+      ]),
+    );
+    try {
+      await inAgentAfterHome();
+      const tab = await fromPrograms("ghostty,claude,zsh,ghostty", LOGIN);
+      Assert.notEqual(tab.userContextId, admin.userContextId, "never oo-admin");
+      Assert.equal(tab.userContextId, home.userContextId, "the last workspace used: oo-home");
+    } finally {
+      WorkspaceRouter.setRoutes([]);
+      tidy();
+      await WorkspaceStore.deleteWorkspace(admin.id, { confirmed: true });
+    }
+  },
+);
+
+add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed_over() {
+  WorkspaceRouter.setDefaultWorkspace(agent().name);
+  try {
+    await inAgentAfterHome();
+    const tab = await fromPrograms("slack", LOGIN);
+    Assert.equal(tab.userContextId, home.userContextId, "never the agent's: oo-home");
+  } finally {
+    WorkspaceRouter.setDefaultWorkspace(null);
+    tidy();
+  }
+});
+
+// docs/specs/app-routes.md, decision 14 (docs/security.md R10): a tab's recorded names never
+// pick a rule naming the agent workspace, for the hint, :route move or about:vimma.
+add_task(async function an_app_routed_tabs_names_never_pick_the_agent_workspace() {
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([{ app: "testapp", domain: "example.com", workspace: "oo-home" }]),
+  );
+  try {
+    await inAgentAfterHome();
+    const tab = await fromPrograms("testapp", LOGIN);
+    Assert.equal(tab.userContextId, home.userContextId, "the app rule places it in oo-home");
+    await until(
+      () => WorkspaceRouter.matchTab(tab)?.workspace.name === "oo-home",
+      "the tab keeps its names on its host",
+    );
+    WorkspaceRouter.setRoutes(
+      resolveRoutes([
+        { app: "testapp", workspace: agent().name },
+        { app: "testapp", domain: "example.com", workspace: "oo-home" },
+      ]),
+    );
+    Assert.notEqual(
+      WorkspaceRouter.matchTab(tab)?.workspace.name,
+      agent().name,
+      "a rule naming the agent workspace is never chosen with the tab's names",
+    );
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    tidy();
+  }
+});
+
+// docs/specs/app-routes.md, decision 15.
+add_task(async function about_vimma_marks_an_agent_rule_and_an_agent_default() {
+  WorkspaceRouter.setRoutes(
+    resolveRoutes([
+      { app: "claude", workspace: agent().name },
+      { domain: "example.com", workspace: "oo-home" },
+    ]),
+  );
+  WorkspaceRouter.setDefaultWorkspace(agent().name);
+  try {
+    const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
+    await until(
+      () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
+      "about:vimma rendered",
+    );
+    const doc = about.linkedBrowser.contentDocument;
+    const states = [...doc.querySelectorAll("#routes tbody tr td:last-child")].map(
+      (td) => td.textContent,
+    );
+    Assert.deepEqual(
+      states,
+      ["never for links from other apps: the agent workspace", "in force"],
+      "the agent rule is marked",
+    );
+    Assert.stringContains(
+      doc.getElementById("route-default").textContent,
+      "never for links from other apps: the agent workspace",
+      "and so is a default workspace naming it",
+    );
+  } finally {
+    WorkspaceRouter.setRoutes([]);
+    WorkspaceRouter.setDefaultWorkspace(null);
+    tidy();
+  }
+});
+
 add_task(async function a_tab_sent_from_another_device_skips_the_agent_container() {
   await inAgentAfterHome();
   const opened = nextTab();

@@ -179,6 +179,25 @@ describe("validateScenario", () => {
     expect(validateScenario(scenario(over), undefined).join("\n")).toMatch(message);
   });
 
+  // docs/specs/app-routes.md, "Tests": the packaged vimma-open, run like another program.
+  it("accepts the external step: vimma-open's arguments", () => {
+    expect(
+      validateScenario(
+        scenario({ steps: [{ external: ["--from", "teams", "fixture:article.html"] }] }),
+        undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [[{ external: [] }], /step 1: external/],
+    [[{ external: "fixture:article.html" }], /step 1: external/],
+    [[{ external: ["a", 3] }], /step 1: external/],
+    [[{ external: ["a\nb"] }], /step 1: external/],
+  ])("rejects external steps %o", (steps, message) => {
+    expect(validateScenario(scenario({ steps }), undefined).join("\n")).toMatch(message);
+  });
+
   it("wants the file named after the scenario", () => {
     expect(validateScenario(scenario({}), "m0-other.json").join("\n")).toMatch(/file name/);
   });
@@ -379,9 +398,21 @@ describe("runSteps", () => {
         mcpSend: (/** @type {any} */ spec) =>
           void calls.push(`mcp ${spec.method} ${JSON.stringify(spec.params ?? {})} as ${spec.as}`),
         mcpResult: async (/** @type {string} */ name) => replies[name],
+        external: async (/** @type {string[]} */ args) =>
+          void calls.push(`external ${args.join(" ")}`),
       },
     };
   };
+
+  it("external runs vimma-open with the step's arguments through the session", async () => {
+    const { ctl } = fakeCtl([{ mode: "normal" }]);
+    const fake = fakeControl();
+    await runSteps(
+      scenario({ steps: [{ external: ["--from", "teams", "fixture:article.html"] }] }),
+      { ctl, control: fake.control, screenshot: async () => {} },
+    );
+    expect(fake.calls).toEqual(["external --from teams fixture:article.html"]);
+  });
 
   it("after hold, keys, state and open go through the held connection", async () => {
     const { ctl, calls } = fakeCtl([{ mode: "normal" }]);
@@ -611,5 +642,103 @@ describe("runSteps", () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow(/aborted/);
+  });
+});
+
+describe("update scenarios (m6a-updater, e2e)", () => {
+  const update = (/** @type {object} */ over) =>
+    scenario({ name: "m6a-sample", update: { updater: "test" }, ...over });
+  const ctl = { state: async () => ({}), sendKeys: async () => {}, open: async () => "1" };
+
+  it("validates the update field and its two steps", () => {
+    expect(
+      validateScenario(
+        update({
+          steps: [
+            { "serve-update": { offer: "n1" } },
+            { "serve-update": { offer: "older-firefox", key: "test" } },
+            { "serve-update": { offer: "n1", key: "unknown" } },
+            { "serve-update": { offer: "none" } },
+            { "wait-for-install": { buildId: "n1", marker: true }, timeoutSeconds: 60 },
+            { "wait-for-install": { updateError: 23, marRequests: 0 } },
+            { "wait-for-install": { updateError: null } },
+          ],
+        }),
+      ),
+    ).toEqual([]);
+    const bad = (/** @type {object} */ over) => validateScenario(update(over)).join("; ");
+    expect(bad({ update: { updater: "mine" } })).toMatch(/update: updater is test or shipped/);
+    expect(bad({ update: { updater: "test", extra: 1 } })).toMatch(/update: unknown field extra/);
+    expect(bad({ steps: [{ "serve-update": { offer: "n2" } }] })).toMatch(
+      /step 1: serve-update: offer is one of n1, n, older-firefox, none/,
+    );
+    expect(bad({ steps: [{ "serve-update": { offer: "n1", key: "real" } }] })).toMatch(
+      /step 1: serve-update: key is test or unknown/,
+    );
+    expect(bad({ steps: [{ "wait-for-install": {} }] })).toMatch(
+      /step 1: wait-for-install needs one or more of buildId, marker, updateError, marRequests/,
+    );
+    expect(bad({ steps: [{ "wait-for-install": { buildId: "n3" } }] })).toMatch(
+      /step 1: wait-for-install: buildId is n or n1/,
+    );
+    expect(bad({ steps: [{ "wait-for-install": { updateError: "19" } }] })).toMatch(
+      /step 1: wait-for-install: updateError is an error code or null/,
+    );
+    expect(bad({ steps: [{ "wait-for-install": { marRequests: -1 } }] })).toMatch(
+      /step 1: wait-for-install: marRequests is a count/,
+    );
+    // the update steps need an install the scenario updates
+    expect(
+      validateScenario(scenario({ steps: [{ "serve-update": { offer: "n1" } }] })).join("; "),
+    ).toMatch(/step 1: serve-update needs the scenario's "update" field/);
+  });
+
+  it("serve-update hands the offer to the session, wait-for-install waits for the install", async () => {
+    /** @type {string[]} */
+    const calls = [];
+    let reads = 0;
+    const install = async () => {
+      reads++;
+      return reads < 3
+        ? { buildId: "n", marker: false, updateError: null, marRequests: 0 }
+        : { buildId: "n1", marker: true, updateError: null, marRequests: 2 };
+    };
+    await runSteps(
+      update({
+        steps: [
+          { "serve-update": { offer: "n1" } },
+          { "wait-for-install": { buildId: "n1", marker: true, updateError: null } },
+        ],
+      }),
+      {
+        ctl,
+        screenshot: async () => {},
+        update: { serve: async (s) => void calls.push(JSON.stringify(s)), install },
+        pollMs: 1,
+      },
+    );
+    expect(calls).toEqual(['{"offer":"n1"}']);
+    expect(reads).toBe(3);
+  });
+
+  it("wait-for-install times out naming what differs", async () => {
+    const install = async () => ({ buildId: "n", marker: false, updateError: 23, marRequests: 1 });
+    await expect(
+      runSteps(
+        update({ steps: [{ "wait-for-install": { updateError: 19 }, timeoutSeconds: 0.05 }] }),
+        { ctl, screenshot: async () => {}, update: { serve: async () => {}, install }, pollMs: 1 },
+      ),
+    ).rejects.toThrow(
+      /step 1 \(wait-for-install\): not reached in 0\.05 s: install\.updateError: expected 19, got 23/,
+    );
+  });
+
+  it("the update steps fail on a session without an update host", async () => {
+    await expect(
+      runSteps(update({ steps: [{ "serve-update": { offer: "n1" } }] }), {
+        ctl,
+        screenshot: async () => {},
+      }),
+    ).rejects.toThrow(/step 1 \(serve-update\): this session has no update host/);
   });
 });

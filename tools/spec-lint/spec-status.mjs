@@ -6,7 +6,8 @@
 // Spec statuses against their GitHub issues (docs/specs/README.md, "Keeping statuses
 // current"). A spec names its issues on an `Issue:` line; this reports:
 // - a draft or accepted spec whose issues are all closed (it was built: set `implemented`, or
-//   link the issue that tracks the rest);
+//   link the issue that tracks the rest), unless one of them is labelled `on-hold` (the work was
+//   parked, not finished, and the spec keeps its status until the issue is reopened);
 // - an implemented spec with an open issue;
 // - an open issue whose `spec:draft` / `spec:accepted` label does not match the spec;
 // - a linked number that is not an issue.
@@ -61,7 +62,8 @@ export function driftFindings(specs, issues) {
     }
     const open = known.filter((n) => issues.get(n)?.state === "open");
     const closed = known.filter((n) => issues.get(n)?.state === "closed");
-    if (status && LIVE.has(status) && known.length > 0 && open.length === 0)
+    const onHold = closed.some((n) => issues.get(n)?.labels.includes("on-hold"));
+    if (status && LIVE.has(status) && known.length > 0 && open.length === 0 && !onHold)
       found.push({
         file,
         message:
