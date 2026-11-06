@@ -465,7 +465,11 @@ a capital I typed into the field, as in Vim; press `Esc` first.
 searches or visits what you typed, as in Firefox. Under it, headed Vimma, come up to four of
 your open tabs, bookmarks and history that match, and after them, headed with the engine's
 name, your search engine's suggestions, so they are a few keys away. One `tab` or `down`
-reaches the first page. When the engine has no suggestions, your pages fill the list. For Firefox's order, with the
+reaches the first page, and each `tab` moves one row: it skips the row's "…" menu, so the first
+suggestion is five presses away. The menu is still there for the mouse and right-click, and
+`shift+delete` removes the selected page from your history. To have `tab` stop on the menu again,
+untick "Skip this menu when using the tab key" in that menu. When the engine has no suggestions,
+your pages fill the list. For Firefox's order, with the
 search suggestions first, tick "Show search suggestions before browsing history in address bar results"
 in Settings > Search.
 

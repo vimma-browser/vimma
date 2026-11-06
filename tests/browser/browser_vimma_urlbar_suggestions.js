@@ -144,14 +144,26 @@ add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
   Assert.equal(suggestions.length, 5, "the rest of the list is the engine's suggestions");
   Assert.equal(rows.length, 10, "the list keeps Firefox's length (browser.urlbar.maxRichResults)");
   let presses = 0;
+  const stops = [];
   while (!gURLBar.view.selectedResult?.payload.suggestion && presses < 30) {
     EventUtils.synthesizeKey("KEY_Tab");
     presses++;
+    stops.push(gURLBar.view.selectedElement?.className ?? "none");
   }
-  info(`tab presses from the input to the first suggestion: ${presses}`);
-  // Each page row is two stops: the row and its result-menu button
-  // (browser.urlbar.resultMenu.keyboardAccessible, Firefox's default).
-  Assert.lessOrEqual(presses, 2 * PAGES_MAX, "the suggestions start after the capped pages");
+  info(`tab presses from the input to the first suggestion: ${presses}, stops: ${stops}`);
+  // One stop per page row, then the suggestion: tab skips each row's result-menu button
+  // (browser.urlbar.resultMenu.keyboardAccessible false in firefox-branding.js), which made
+  // three of the four page rows two stops each (the open tab's row has no menu).
+  Assert.deepEqual(
+    stops.filter((s) => s.includes("urlbarView-button-menu")),
+    [],
+    "tab never stops on a row's result-menu button",
+  );
+  Assert.equal(
+    presses,
+    PAGES_MAX + 1,
+    "the first suggestion is five presses of tab away: one per page, then the suggestion",
+  );
   Assert.equal(
     gURLBar.view.selectedResult.payload.suggestion,
     `${WORD} one`,
