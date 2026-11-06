@@ -702,6 +702,47 @@ add_task(async function every_entry_of_an_open_dropdown_menu_gets_a_label() {
   });
 });
 
+// A new selected tab's page can be loaded before the parent lays out its <browser> (#762), so a
+// menu placed at load time is placed in a 0 by 0 viewport. The page must place it again once the
+// viewport has its size, as Floating UI does, or the entries sit above the viewport (#605).
+// Pausing the chrome refresh driver holds that layout back, as a busy macOS runner did.
+add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
+  const utils = window.windowUtils;
+  registerCleanupFunction(() => utils.restoreNormalRefresh());
+  utils.advanceTimeAndRefresh(0);
+  const tab = gBrowser.addTab(MENU, {
+    triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+  });
+  gBrowser.selectedTab = tab;
+  const browser = tab.linkedBrowser;
+  try {
+    await BrowserTestUtils.browserLoaded(browser, false, MENU);
+    const size = await SpecialPowers.spawn(browser, [], () => content.innerHeight);
+    Assert.equal(size, 0, "the page loaded before the parent sized it");
+  } finally {
+    utils.restoreNormalRefresh();
+  }
+  try {
+    await TestUtils.waitForCondition(
+      () => SpecialPowers.spawn(browser, [], () => content.innerHeight > 0),
+      "the page gets its size",
+    );
+    await SpecialPowers.spawn(browser, [], async () => {
+      const menu = content.document.getElementById("menu");
+      await Promise.all(menu.getAnimations().map((a) => a.finished));
+    });
+    await focusContent(browser);
+    await waitForMode(browser, "normal");
+    const hints = await startHints();
+    const at = await pageCentres(browser, MENU_ENTRIES);
+    for (const id of MENU_ENTRIES) Assert.ok(labelAt(hints, at[id]), `${id} has a label`);
+    Assert.equal(hints.hints.length, MENU_ENTRIES.length, "one label per entry");
+  } finally {
+    if (VimmaHost._hints(window)) EventUtils.synthesizeKey("KEY_Escape");
+    BrowserTestUtils.removeTab(tab);
+  }
+});
+
 add_task(async function a_label_clicks_a_menu_entry_with_only_a_listener() {
   await withMenu(async (browser) => {
     const hints = await startHints();
