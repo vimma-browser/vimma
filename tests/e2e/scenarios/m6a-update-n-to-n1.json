@@ -1,0 +1,85 @@
+{
+  "name": "m6a-update-n-to-n1",
+  "description": "M6a exit test 1 (docs/specs/m6a-updater.md, Tests, e2e): an install of a VIMMA_UPDATES=1 tarball (N) carrying Mozilla's test updater, its update URL a local host. Two workspaces, a split and a scrolled page; :update finds N+1 in a manifest signed by the run's test key, Firefox downloads and stages its mycert-signed MAR; ctrl+q and a start apply it, and the browser comes back on N+1 (application.ini and compatibility.ini, the MAR's marker file) with the workspaces, tabs, split and scroll position. Then the downgrade cases: N's build ID offered again under a newer serial is no update, and a MAR of an older Firefox is refused by the updater (error 23) and leaves N+1 in place.",
+  "timeoutSeconds": 240,
+  "update": { "updater": "test" },
+  "prefs": { "browser.startup.page": null },
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "wait-for-install": { "buildId": "n", "marker": false, "updateError": null } },
+    { "open": "fixture:long.html#a" },
+    {
+      "wait-for-state": { "tabs": [{}, { "title": "long top navigate", "selected": true }] }
+    },
+    { "keys": "j j j" },
+    { "wait-for-state": { "tabs": [{}, { "title": "long middle navigate" }] } },
+
+    { "keys": "ctrl+b shift+n" },
+    { "wait-for-state": { "mode": "command" } },
+    { "keys": "w o r k enter" },
+    { "wait-for-state": { "workspace": "work", "tabs": [{ "selected": true }] } },
+    { "open": "fixture:cookie.html#work" },
+    {
+      "wait-for-state": {
+        "workspace": "work",
+        "tabs": [{}, { "title": "cookie ws=work", "selected": true }]
+      }
+    },
+    { "keys": "ctrl+b v" },
+    {
+      "wait-for-state": {
+        "workspace": "work",
+        "tabs": [{}, {}, {}],
+        "panes": { "zoomed": false, "root": { "axis": "x", "children": [{}, {}] } }
+      }
+    },
+
+    { "serve-update": { "offer": "n1" } },
+    { "keys": ": u p d a t e enter" },
+    {
+      "wait-for-state": {
+        "update": {
+          "enabled": true,
+          "installType": "tarball",
+          "outcome": "offer",
+          "stage": "staged"
+        }
+      },
+      "timeoutSeconds": 90
+    },
+    { "wait-for-install": { "buildId": "n", "marker": false, "updateError": null } },
+
+    { "restart": "quit" },
+
+    { "wait-for-install": { "buildId": "n1", "marker": true }, "timeoutSeconds": 60 },
+    {
+      "wait-for-state": {
+        "workspace": "work",
+        "tabs": [{}, { "title": "cookie ws=work" }, {}],
+        "panes": { "zoomed": false, "root": { "axis": "x", "children": [{}, {}] } }
+      },
+      "timeoutSeconds": 30
+    },
+    { "keys": "ctrl+b (" },
+    {
+      "wait-for-state": {
+        "workspace": "main",
+        "tabs": [{}, { "title": "long middle back_forward", "selected": true }],
+        "panes": null
+      }
+    },
+    { "wait-for-state": { "update": { "stage": "none" } } },
+
+    { "serve-update": { "offer": "n" } },
+    { "keys": ": u p d a t e enter" },
+    {
+      "wait-for-state": { "update": { "outcome": "current", "offer": null, "stage": "none" } },
+      "timeoutSeconds": 30
+    },
+
+    { "serve-update": { "offer": "older-firefox" } },
+    { "keys": ": u p d a t e enter" },
+    { "wait-for-install": { "updateError": 23 }, "timeoutSeconds": 90 },
+    { "wait-for-install": { "buildId": "n1", "marker": true } }
+  ]
+}

@@ -13,6 +13,7 @@ import { runSteps } from "./scenario.mjs";
  *   control?: import("./scenario.mjs").Control,
  *   profile?: string,
  *   text?: (text: string) => string,
+ *   update?: import("./scenario.mjs").UpdateControl,
  *   teardown: () => Promise<void>,
  * }} Session
  */
@@ -126,6 +127,7 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
       control: s.control,
       profile: s.profile,
       text: s.text,
+      update: s.update,
       pollMs,
       signal: controller.signal,
     });

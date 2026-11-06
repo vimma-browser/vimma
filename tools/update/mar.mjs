@@ -285,7 +285,26 @@ export function buildMar({ tarball, tools, channel, out }) {
     execFileSync("tar", ["-xJf", tarball, "-C", tree]);
     const tops = readdirSync(tree);
     need(tops.length === 1, `the tarball has ${tops.length} top-level entries, not one`);
-    const dir = join(tree, /** @type {string} */ (tops[0]));
+    return buildMarFromDir({
+      dir: join(tree, /** @type {string} */ (tops[0])),
+      tools,
+      channel,
+      out,
+    });
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The same from an unpacked tree (`vimma/`), which the e2e's update scenarios change before
+ * they make it a MAR (tools/e2e/update-host.mjs).
+ * @param {{ dir: string, tools: string, channel: string, out: string }} o
+ */
+export function buildMarFromDir({ dir, tools, channel, out }) {
+  need(CHANNELS.includes(channel), `channel ${channel} is not ${CHANNELS.join(" or ")}`);
+  const work = mkdtempSync(join(tmpdir(), "vimma-mar-"));
+  try {
     const version = appVersion(readFileSync(join(dir, "application.ini"), "utf8"));
     const unsigned = join(work, "unsigned.mar");
     execFileSync(join(tools, "make_full_update.sh"), ["-q", unsigned, dir], {

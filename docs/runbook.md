@@ -234,6 +234,7 @@ npm run e2e -- --xvfb --keep                     # own Xvfb on a desktop; keep t
 npm run e2e -- --run-pending --filter m0         # run a pending scenario anyway (to watch it fail)
 MOZ_HEADLESS=1 npm run e2e -- --artifact --filter m3   # no Xvfb at hand: headless, no screenshots
 npm run e2e -- --headless --filter m0-happy-path       # MOZ_HEADLESS=1; screenshot steps skipped
+npm run e2e -- --updater <objdir> --filter m6a-update  # the updater's scenarios (below)
 npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl /Volumes/Vimma/Vimma.app/Contents/MacOS/vimma-ctl
 ```
 
@@ -269,6 +270,35 @@ Wayland or locale; `HOME` and `TMPDIR` inside the temp profile) and the profile 
 hard: a scenario's deadline kills its launch and any running `vimma-ctl`. The whole suite has a
 5-minute budget (`--budget SECS`).
 Exit 0: nothing failed (pending is not failure, nor a pass); 1: a failure; 2: usage.
+
+**Updater scenarios** (`m6a-update-n-to-n1`, `m6a-update-bad-signature`; spec m6a-updater,
+"Tests", e2e, M6a exit test 1). They need a full `VIMMA_UPDATES=1` build packaged with
+`./mach package`, which no pull-request job has, so they run locally and are reported pending
+elsewhere ("needs a VIMMA_UPDATES=1 build"). Linux only; they also need `openssl` and NSS's
+`certutil` and `pk12util` (`nss` on Arch, `libnss3-tools` on Ubuntu). Start from a build whose
+updater has Vimma's certificates (`VIMMA_UPDATES=1 npx surfer build`, then
+`(cd engine && ./mach package)`):
+
+```sh
+npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update --xvfb --budget 900
+```
+
+The harness unpacks the tarball (N), points its `[AppUpdate] URL` at a host on `127.0.0.1` with
+https (a CA made for the run, trusted only in each scenario's profile with `certutil`), makes N+1
+(a build ID 60 s later and a marker file) and a downgrade build (later still, Firefox 100.0),
+builds their complete MARs with `tools/update/mar.mjs` and signs them with libmar's test key
+`mycert` (exported from `engine/modules/libmar/tests/unit/data` with `pk12util`). Manifests come
+from `tools/update/manifest.mjs`, signed with an RSA key generated for the run, which the browser
+pins only in automation (`vimma.update.testKeys` with `MOZ_DISABLE_NONLOCAL_CONNECTIONS=1` and
+the automation pref). `m6a-update-n-to-n1`'s install carries `updater-xpcshell` (Mozilla's test
+updater, which trusts `mycert`) as `updater`; `m6a-update-bad-signature`'s keeps the shipped one,
+which must refuse the `mycert` MAR (error 19). Nothing reaches `updates.vimma.dev`, and the real
+update key is never used. The updater applies the update by `execv` in the browser's own process,
+so a `restart` step follows it with nothing extra. `serve-update` picks the manifest
+(`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`); `wait-for-install`
+waits on which build the install holds and the profile last ran (`compatibility.ini`), N+1's
+marker, the updater's `errorCode` in the install's `updates.xml` and the MAR requests the host
+saw.
 
 **Baselines.** Screenshots are compared with `tests/e2e/baselines/<name>.png`; more than 0.5 % of
 differing pixels fails, and the actual and diff images land in `e2e-output/`. To change a
