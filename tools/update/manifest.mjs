@@ -381,8 +381,19 @@ export function dmgInfo(dmg, hdiutil = runHdiutil) {
       readFileSync(join(mount, "Vimma.app/Contents/Resources/application.ini"), "utf8"),
     );
   } finally {
-    hdiutil(["detach", mount]);
-    rmdirSync(mount);
+    // A failed detach is logged, not thrown: the read is done, and update-publish.yml's runner is
+    // thrown away after the job, so a volume left mounted there costs nothing (#715). Thrown, it
+    // would also replace a failed read's own error.
+    let detached = false;
+    try {
+      hdiutil(["detach", mount]);
+      detached = true;
+    } catch (e) {
+      console.error(
+        `manifest: ${mount} left mounted: ${e instanceof Error ? e.message.trim() : String(e)}`,
+      );
+    }
+    if (detached) rmdirSync(mount);
   }
 }
 
