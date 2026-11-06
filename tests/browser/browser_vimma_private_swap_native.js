@@ -306,6 +306,63 @@ add_task(async function a_window_shown_at_another_size_is_active_and_laid_out_wh
   }
 });
 
+add_task(async function a_shown_window_is_held_active_until_macos_reports_it_and_no_longer() {
+  // #773. The force lasts from the swap until macOS reports the shown window on screen (its first
+  // occlusionstatechange), and never past it. Headless has no occlusion, so the test reports each
+  // window occluded when it is shown, as macOS does, and sends the event macOS would.
+  const { PictureInPicture } = ChromeUtils.importESModule(
+    "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs",
+  );
+  await teardown();
+  log = [];
+  let occluded = true;
+  NativeSwap._resetForTests({ force: true, log, occluded: () => occluded });
+  await place(window, FRAME);
+  /** @param {Window} w */
+  const forced = (w) => /** @type {any} */ (w).browsingContext.forceAppWindowActive;
+  /** @param {Window} w */
+  const reported = (w) => w.dispatchEvent(new w.Event("occlusionstatechange"));
+  let priv;
+  try {
+    priv = await enter();
+    Assert.ok(forced(priv), "entering: the private window is held active until macOS reports it");
+    Assert.ok(!forced(window), "the hidden normal window is not held");
+    reported(priv);
+    Assert.ok(!forced(priv), "and let go when macOS reports it");
+    await leave(priv);
+    Assert.ok(forced(window), "leaving: the normal window is held");
+    priv = await enter();
+    Assert.ok(!forced(window), "hidden again before macOS reported it: let go");
+    // Picture-in-Picture forces its originating window active: a force already set stays.
+    await leave(priv);
+    reported(window);
+    window.browsingContext.forceAppWindowActive = true;
+    priv = await enter();
+    await leave(priv);
+    reported(window);
+    Assert.ok(forced(window), "a force set before the swap is left as it was");
+    window.browsingContext.forceAppWindowActive = false;
+    // Picture-in-Picture opened while the swap held the window: its force stays.
+    priv = await enter();
+    PictureInPicture.originatingWinWeakMap.set(priv, 1);
+    reported(priv);
+    Assert.ok(forced(priv), "a force Picture-in-Picture took meanwhile is left as it was");
+    PictureInPicture.originatingWinWeakMap.delete(priv);
+    priv.browsingContext.forceAppWindowActive = false;
+    // Never occluded (headless): let go at once.
+    await leave(priv);
+    occluded = false;
+    priv = await enter();
+    Assert.ok(!forced(priv), "shown and not occluded: not held");
+  } finally {
+    for (const w of [window, priv]) {
+      if (!w || w.closed) continue;
+      PictureInPicture.originatingWinWeakMap.delete(w);
+      /** @type {any} */ (w).browsingContext.forceAppWindowActive = false;
+    }
+  }
+});
+
 add_task(async function closing_the_private_window_any_way_brings_normal_back_first() {
   for (const how of ["ctrl+shift+w", "close()", "ctrl+b shift+d"]) {
     await start();
