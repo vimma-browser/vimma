@@ -13,10 +13,12 @@
     visibility: collapse;
   }
 
-  /* Vertical tabs: the tab list in the sidebar launcher. Its tool buttons stay. */
-  @media -moz-pref("sidebar.verticalTabs") {
-    #vertical-tabs {
-      display: none;
-    }
+  /* Vertical tabs: the tab list in the sidebar launcher. Its tool buttons stay. Keyed on the
+   * `visible` attribute that SidebarController.toggleTabstrip sets together with the tabs'
+   * vertical orient (browser-sidebar.js), not on -moz-pref("sidebar.verticalTabs"): a pref media
+   * query is re-evaluated only at the next refresh tick (nsPresContext::ThemeChanged runs as an
+   * early runner), so the list would show for a frame after switching to vertical tabs. */
+  #vertical-tabs[visible] {
+    display: none;
   }
 }
