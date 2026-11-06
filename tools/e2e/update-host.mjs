@@ -271,6 +271,12 @@ export function nextTree({ from, to, buildId, appVersion }) {
 /**
  * A CA for the run and a certificate for 127.0.0.1 it signs (openssl). Only the scenario's
  * profile trusts the CA (trustCa).
+ *
+ * Every extension comes from openssl.cnf written here (`-config`), never from the machine's own
+ * config: OpenSSL 1.1.1's stock one (Homebrew's openssl@1.1, first on the macOS runners' PATH)
+ * adds its v3_ca section to a self-signed certificate, and 1.1.1 and LibreSSL add -addext's
+ * extensions beside it instead of in its place, so the CA carried Basic Constraints twice and
+ * OpenSSL 3 and NSS refused it as an issuer.
  * @param {string} dir
  * @returns {{ ca: string, caFile: string, cert: string, key: string }}
  */
@@ -278,33 +284,45 @@ export function hostCertificate(dir) {
   const f = (/** @type {string} */ n) => join(dir, n);
   const run = (/** @type {string[]} */ args) =>
     execFileSync("openssl", args, { stdio: ["ignore", "ignore", "pipe"] });
+  writeFileSync(
+    f("openssl.cnf"),
+    [
+      "[ req ]",
+      "distinguished_name = dn",
+      "x509_extensions = ca",
+      "[ dn ]",
+      "[ ca ]",
+      "basicConstraints = critical,CA:TRUE",
+      "keyUsage = critical,keyCertSign,cRLSign",
+      "subjectKeyIdentifier = hash",
+      "[ host ]",
+      "basicConstraints = critical,CA:FALSE",
+      "keyUsage = critical,digitalSignature,keyEncipherment",
+      "extendedKeyUsage = serverAuth",
+      "subjectAltName = IP:127.0.0.1",
+      "subjectKeyIdentifier = hash",
+      "authorityKeyIdentifier = keyid",
+      "",
+    ].join("\n"),
+  );
+  const config = ["-config", f("openssl.cnf")];
   run(
-    ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", f("ca.key"), "-out"]
-      .concat([f("ca.pem"), "-days", "2", "-subj", "/CN=Vimma e2e update host CA"])
-      .concat(["-addext", "basicConstraints=critical,CA:TRUE"])
-      .concat(["-addext", "keyUsage=critical,keyCertSign,cRLSign"]),
+    ["req", ...config, "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", f("ca.key")]
+      .concat(["-out", f("ca.pem"), "-days", "2", "-sha256"])
+      .concat(["-subj", "/CN=Vimma e2e update host CA"]),
   );
   run(
-    [
-      "req",
-      "-newkey",
-      "rsa:2048",
-      "-nodes",
-      "-keyout",
-      f("host.key"),
+    ["req", ...config, "-newkey", "rsa:2048", "-nodes", "-keyout", f("host.key")].concat([
       "-out",
       f("host.csr"),
-    ].concat(["-subj", "/CN=127.0.0.1"]),
-  );
-  writeFileSync(
-    f("host.ext"),
-    "basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n" +
-      "extendedKeyUsage=serverAuth\nsubjectAltName=IP:127.0.0.1\n",
+      "-subj",
+      "/CN=127.0.0.1",
+    ]),
   );
   run(
     ["x509", "-req", "-in", f("host.csr"), "-CA", f("ca.pem"), "-CAkey", f("ca.key")]
       .concat(["-CAcreateserial", "-out", f("host.pem"), "-days", "2", "-sha256"])
-      .concat(["-extfile", f("host.ext")]),
+      .concat(["-extfile", f("openssl.cnf"), "-extensions", "host"]),
   );
   return {
     ca: readFileSync(f("ca.pem"), "utf8"),

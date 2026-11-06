@@ -323,19 +323,25 @@ export class PdfView {
           el?.scrollBy({ top: el.clientHeight * (n || 1), behavior: "instant" });
           return true;
         }
+        // A zoom keeps the place pdf.js last recorded, which can be a frame old: settled first,
+        // a zoom right after a page key (`3J150=`) stays on the new page.
         case "zoom": {
           const scale = num(() => viewer.currentScale);
           if (!live(scale)) return false;
+          this.#settle();
           viewer.currentScale = pdfZoomStep(scale, n || 1);
           return true;
         }
         case "scale":
+          this.#settle();
           viewer.currentScale = pdfZoomPercent(n);
           return true;
         case "fit_page":
+          this.#settle();
           viewer.currentScaleValue = "page-fit";
           return true;
         case "fit_width":
+          this.#settle();
           viewer.currentScaleValue = "page-width";
           return true;
         case "dual":
@@ -620,11 +626,12 @@ export class PdfView {
   }
 
   /**
-   * Brings pdf.js's record of the view up to date before a jump. pdf.js updates it on the
-   * animation frame after a scroll, and its history records where a jump starts from that
+   * Brings pdf.js's record of the view up to date before a jump or a zoom. pdf.js updates it on
+   * the animation frame after a scroll, and its history records where a jump starts from that
    * record: a jump a moment after another (`G` then `'a`), or right after the document loaded,
    * would record a stale start or none, and ctrl+o would come back to the wrong place
-   * (decision 9).
+   * (decision 9). A zoom scrolls back to that record, so a stale one undid the page key before
+   * it.
    */
   #settle() {
     try {
