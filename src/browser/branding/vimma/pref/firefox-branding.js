@@ -158,6 +158,13 @@ pref("vimma.control.enabled", false);
 // (no socket). false removes Vimma's own unedited copy, live; an edited hook is never touched.
 pref("vimma.theme.omarchyHook", true);
 
+// Address bar (spec search-engines, decision 10, since changed): your own pages (open tabs,
+// bookmarks, history) come right after the first row, before the engine's search suggestions,
+// because you revisit your own pages more than you search; UrlbarPrefs-sys-mjs.patch caps them
+// at 4 of the 9 rows so the suggestions stay a few keys away. Settings > Search ("Show search
+// suggestions before browsing history") turns Firefox's order back on.
+pref("browser.urlbar.showSearchSuggestionsFirst", false);
+
 // Find (spec m1-find): Vim's smartcase for `/` and Firefox's own find bar alike. 2 is the find
 // bar's "auto" mode: a query with a capital letter matches case, an all lower-case one does not.
 pref("accessibility.typeaheadfind.casesensitive", 2);
