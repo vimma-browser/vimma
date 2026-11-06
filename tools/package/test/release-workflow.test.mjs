@@ -69,6 +69,8 @@ describe("release.yml", () => {
       "build",
       "ctl",
       "package",
+      "mar-sign",
+      "mar",
       "sign",
       "publish",
       "macos-ctl",
@@ -93,11 +95,17 @@ describe("release.yml", () => {
     expect(cond).not.toContain("event_name");
   });
 
+  // mar-sign's token is minted in update-publish.yml's job of that name, which it calls, for the
+  // update key (spec m6a-updater §7); the caller grants it.
   it("only the sign jobs mint an OIDC token, only the publish jobs write contents", () => {
     for (const [id, block] of all) {
-      expect(block.includes("id-token: write"), id).toBe(["sign", "macos-sign"].includes(id));
+      expect(block.includes("id-token: write"), id).toBe(
+        ["mar-sign", "sign", "macos-sign"].includes(id),
+      );
       expect(block.includes("contents: write"), id).toBe(["publish", "macos-publish"].includes(id));
-      expect(block.includes("actions: write"), id).toBe(id === "macos-tap");
+      // mar-sign's is a ceiling for the workflow it calls, whose start job never runs in a call
+      // (pipeline-workflows.test.mjs).
+      expect(block.includes("actions: write"), id).toBe(["macos-tap", "mar-sign"].includes(id));
     }
     expect(text).toMatch(/^permissions: \{\}$/m);
   });
@@ -153,7 +161,7 @@ describe("release.yml", () => {
     expect(all.get("package")).toContain("ref: ${{ needs.build.outputs.sha }}");
     expect(text).not.toContain("ref: refs/tags/");
     const publish = all.get("publish") ?? "";
-    expect(publish).toMatch(/^ {4}needs: \[build, package, sign\]$/m);
+    expect(publish).toMatch(/^ {4}needs: \[build, package, mar, sign\]$/m);
     expect(publish).toContain("SHA: ${{ needs.build.outputs.sha }}");
     expect(runOf(publish, "Upload to the GitHub Release")).toContain(
       '[ "$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)" = "$SHA" ]',
@@ -969,6 +977,8 @@ esac
         "build",
         "ctl",
         "package",
+        "mar-sign",
+        "mar",
         "sign",
         "publish",
         "macos-ctl",

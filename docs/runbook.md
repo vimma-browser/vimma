@@ -1996,17 +1996,18 @@ inside that workflow's run, holding back release-please on every push to `main` 
 and would hand the caller job every permission of every release job at once. A dispatch is the
 same call as the manual re-run, so one path is exercised every time.
 
-| Asset                             | What                                                            |
-| --------------------------------- | --------------------------------------------------------------- |
-| `vimma-X.Y.Z-linux-x86_64.tar.xz` | `./mach package`'s tarball, renamed (one `vimma/` directory)    |
-| `vimma-X.Y.Z-x86_64.AppImage`     | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)    |
-| `vimma_X.Y.Z_amd64.deb`           | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons         |
-| `vimma-X.Y.Z-1.x86_64.rpm`        | the same layout as the `.deb`, for Fedora and openSUSE          |
-| `vimma-X.Y.Z.cdx.json`            | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                   |
-| `PKGBUILD`                        | `vimma-bin` for Arch Linux; its only source is the tarball      |
-| `SRCINFO`                         | its `.SRCINFO` (GitHub renames an asset with a leading period)  |
-| `SHA256SUMS`                      | checksums of the seven files above                              |
-| `*.sigstore.json`                 | cosign keyless bundles, one per file above (when signing is on) |
+| Asset                                   | What                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `vimma-X.Y.Z-linux-x86_64.tar.xz`       | `./mach package`'s tarball, renamed (one `vimma/` directory)                                                                    |
+| `vimma-X.Y.Z-x86_64.AppImage`           | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)                                                                    |
+| `vimma_X.Y.Z_amd64.deb`                 | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons                                                                         |
+| `vimma-X.Y.Z-1.x86_64.rpm`              | the same layout as the `.deb`, for Fedora and openSUSE                                                                          |
+| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                                                                                   |
+| `PKGBUILD`                              | `vimma-bin` for Arch Linux; its only source is the tarball                                                                      |
+| `SRCINFO`                               | its `.SRCINFO` (GitHub renames an asset with a leading period)                                                                  |
+| `vimma-X.Y.Z-linux-x86_64.complete.mar` | the complete MAR Firefox's updater applies to a tarball install, signed with the update key (while `UPDATES_ENABLED` is `true`) |
+| `SHA256SUMS`                            | checksums of the files above                                                                                                    |
+| `*.sigstore.json`                       | cosign keyless bundles, one per file above (when signing is on)                                                                 |
 
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
 `vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
@@ -2019,8 +2020,14 @@ the release tarball repacked with them; adds `vimma-ctl` to the SBOM and checks 
 CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm` with
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
-container with `tools/package/arch-smoke.sh`) → `sign` (only job with
-`id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
+container with `tools/package/arch-smoke.sh`; checks the release tarball's updater with
+`tools/update/check-build.mjs`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
+from it with a zeroed signature placeholder, `tools/update/mar.mjs build`) → `mar-sign` (calls
+`update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
+"Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
+from package's only in its signature, verifies under `configs/updater/` with `mar.mjs` and with
+the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign`, the only
+jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
 `failure`. `homebrew.yml`, on publish: `start` (`actions: write` only; starts `main`'s copy for
@@ -2403,7 +2410,8 @@ manifest and shows nothing). These steps need the maintainer's accounts; do them
 All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
 signs and publishes a manifest for every published release; nothing is published while the
 repository variable `UPDATES_ENABLED` is not `true`. It is `true`, so update notices are on for
-every install of 0.1.2 or later (0.1.1 pins no key and never shows one).
+every install of 0.1.2 or later (0.1.1 pins no key and never shows one). Step 8, the MAR that
+`release.yml` signs through the same workflow, needs no setup of its own.
 
 **1. The manifest repository** (decision 18): it holds only manifests.
 
@@ -2680,9 +2688,13 @@ gh api $R/environments/update-signing/deployment-branch-policies --jq '.branch_p
 
 # b. In force: Google Cloud also checks that the token comes from update-publish.yml on main,
 #    so no other workflow or branch can sign even with the environment. This replaces the
-#    provider's whole condition: a later workflow that signs (for example MAR signing in
-#    release.yml) needs its own job_workflow_ref added with ||. Keep the attribute mapping
-#    from step 3, which maps attribute.job_workflow_ref next to attribute.repository.
+#    provider's whole condition. release.yml's MAR signing needs nothing here: it calls
+#    update-publish.yml, and a called job's token names the called file (step 8). A workflow
+#    that signs in a job of its own would need its job_workflow_ref added with ||. Keep the
+#    attribute mapping from step 3, which maps attribute.job_workflow_ref next to
+#    attribute.repository. Never drop the repository clause, nor the IAM member's subject with
+#    the repository's ID: a workflow in any repository can call update-publish.yml@main, and
+#    its token then names update-publish.yml at refs/heads/main as well.
 gcloud iam workload-identity-pools providers update-oidc vimma --location global \
   --workload-identity-pool github --attribute-condition "assertion.repository == 'vimma-browser/vimma' && assertion.job_workflow_ref == 'vimma-browser/vimma/.github/workflows/update-publish.yml@refs/heads/main'"
 
@@ -2757,6 +2769,54 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 - Turning `UPDATES_ENABLED` off stops new manifests but leaves the published one in place, and
   with it off no run pushes; to withdraw the offer too, run `-f offer=nothing` first, then
   delete the variable.
+
+**8. Signing MARs** (spec §7, sub-PR 4). Tarball installs from a release built with Firefox's
+updater update through a complete MAR, `vimma-X.Y.Z-linux-x86_64.complete.mar`, a release
+asset like the others. `release.yml` builds every Linux release with the updater
+(`VIMMA_UPDATES=1`) and checks the release tarball with `tools/update/check-build.mjs`; while
+`UPDATES_ENABLED` is `true` it also builds and ships the MAR:
+
+- `package` (no secret) builds the MAR from the release tarball with the build's host `mar` and
+  Mozilla's `make_full_update.sh`, as `./mach repackage mar` does, and gives it a signature block
+  whose one 512-byte SHA-384 signature is zero (`tools/update/mar.mjs build`). `signmar -s`
+  signs only with a key held in an NSS database, which the KMS key never is.
+- `mar-sign` calls `update-publish.yml`, whose `mar-sign` job (environment `update-signing`,
+  `id-token: write` only, no repository code) checks with the shell that the file is the tag's
+  MAR for the channel `vimma` with that one zeroed placeholder, has KMS sign the SHA-384
+  DigestInfo of every other byte, checks the signature with openssl against KMS's key and writes
+  it in. A called job's OIDC token names the called file, `update-publish.yml` at
+  `refs/heads/main`, so the Workload Identity condition from step 7b admits it unchanged, and
+  `update-signing` admits it because the run is on `main`. Nothing in Google Cloud or the
+  environments changes for it. The calling job lists every permission `update-publish.yml`'s
+  jobs ask for, because GitHub refuses a call otherwise, even for jobs that are skipped; it is a
+  ceiling, and in a call only `mar-sign` runs.
+- `mar` (no secret) checks that the signed MAR differs from package's only in the signature,
+  that it installs exactly the release tarball's files (extracted with the build's `mar` and
+  compared with `diff -r`),
+  that it verifies under `configs/updater/primary.der` and `secondary.der` with `mar.mjs` and
+  with the build's `signmar` (Mozilla's own check), and that its channel is `vimma` and its
+  version Firefox's; then it adds the MAR to `SHA256SUMS`, which `sign` signs with cosign and
+  `publish` uploads with the other files. While `UPDATES_ENABLED` is `true`, `sign` and
+  `publish` wait for it, and a `mar-sign` that failed or was skipped fails `mar`, which stops the
+  release before upload and opens the `release-failure` issue; re-run the failed jobs.
+
+`update-publish.yml` then offers the MAR (`<patch>`) when the published release's
+`SHA256SUMS` lists it, so releases from before keep their manifests as they were. To check a
+release's MAR by hand, with `signmar` from a `VIMMA_UPDATES=1` build (`dist/bin/signmar`):
+
+```sh
+db=$(mktemp -d) && certutil -N -d "sql:$db" --empty-password
+certutil -A -n primary -t ,, -i configs/updater/primary.der -d "sql:$db"
+LD_LIBRARY_PATH=<objdir>/dist/bin <objdir>/dist/bin/signmar -d "sql:$db" -n primary -v vimma-X.Y.Z-linux-x86_64.complete.mar
+node tools/update/mar.mjs verify --mar vimma-X.Y.Z-linux-x86_64.complete.mar \
+  --cert configs/updater/primary.der --channel vimma
+```
+
+The nightly is built with the updater too, set to its own update channel `vimma-nightly`
+(`tools/update/channel.mjs`) and checked with `check-build.mjs`; it builds its MAR as a check of
+the release's MAR step and keeps it nowhere. Nightly MARs are signed and offered only once
+public nightly releases start (spec decision 23); that pull request adds `nightly.yml` as a
+caller of `mar-sign`, and its manifest under `…/vimma-nightly/update.xml`.
 
 ### vimma.dev's keys (`site-dispatch.yml`, spec site-keys-mirror)
 
