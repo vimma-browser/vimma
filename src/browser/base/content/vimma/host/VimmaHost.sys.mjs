@@ -11,6 +11,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { createDispatcher } from "../core/dispatcher.mjs";
+import { resolveEscape } from "../core/escape.mjs";
 import {
   insertEditCommand,
   insertModeAfterFocus,
@@ -1297,6 +1298,18 @@ function elementOf(browser) {
 }
 
 /**
+ * Takes focus out of `browser`'s focused frame (Esc), and holds the tab in normal mode against
+ * a focus the page's script makes next (insert-focus behaviour 6).
+ * @param {any} browser
+ */
+function blurPage(browser) {
+  escapeHold.set(browser, topWindowId(browser));
+  const blur = VimmaActors.blur(browser);
+  if (blur) lastBlur.set(browser, blur);
+  else lastBlur.delete(browser);
+}
+
+/**
  * Actions on the focused page (m1-actor-insert-scroll). Runnable only while a content browser
  * with our actor has focus; elsewhere (the URL bar) they count as not runnable, so Esc there
  * still reaches Firefox. Every runnable id is a key of RUNNERS or CONTENT_RUNNERS; whether one
@@ -1322,10 +1335,7 @@ export const CONTENT_RUNNERS = Object.freeze({
     // Esc in copy mode: the frame drops its selection and caret first.
     if (browserModes.get(b) === "visual") VimmaActors.caret(b, "exit");
     setBrowserMode(b, "normal");
-    escapeHold.set(b, topWindowId(b));
-    const blur = VimmaActors.blur(b);
-    if (blur) lastBlur.set(b, blur);
-    else lastBlur.delete(b);
+    blurPage(b);
   },
   "hint.follow": (b, a) => VimmaHost._startHints(b, a),
   "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
@@ -2679,7 +2689,7 @@ export const VimmaHost = {
       const pending = key && state.pageFirst.reply(key, e.timeStamp);
       if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
-      this._run(state, pending.result);
+      this._runAfterPage(state, key, pending);
       this._emit(state);
       return;
     }
@@ -2728,8 +2738,25 @@ export const VimmaHost = {
     const pending = key && state.pageFirst.settle(key);
     if (e.defaultPrevented || !pending) return;
     e.preventDefault();
-    this._run(state, pending.result);
+    this._runAfterPage(state, key, pending);
     this._emit(state);
+  },
+
+  /**
+   * Runs a page-first binding the page left alone. Esc in normal mode first takes the page's
+   * focus away (escape.mjs `blur`), so a link or button that Tab focused loses its focus ring;
+   * a page that takes Esc itself (a menu closing) keeps its focus.
+   * @param {WindowState} state
+   * @param {string} key
+   * @param {{ result: DispatchResult, mode: Mode }} pending
+   */
+  _runAfterPage(state, key, pending) {
+    const escape = key === "esc" ? resolveEscape({ mode: pending.mode }) : null;
+    if (escape?.kind === "action" && escape.blur) {
+      const browser = this._focusedBrowser(state.win);
+      if (browser) blurPage(browser);
+    }
+    this._run(state, pending.result);
   },
 
   /**

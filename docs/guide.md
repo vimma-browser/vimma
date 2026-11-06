@@ -442,6 +442,10 @@ normal. After `Esc`, a page cannot put you back in insert on its own: a dialog t
 back into its field leaves the tab in normal, and you return to typing with `i`, a click into
 the field or `Tab`.
 
+In normal mode, `Esc` also takes focus off whatever `Tab` or a click left focused in the page,
+such as a link or a button, so its focus ring goes away. The page has that `Esc` first: a menu
+or dialog that closes on `Esc` closes, and one that handles the key itself keeps its focus.
+
 Clicking into a page that is editable as a whole (a `designMode` document, such as some rich
 text editors' frames) also enters insert.
 

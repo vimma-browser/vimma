@@ -296,6 +296,15 @@ that follows is a `recheck`, which never re-enters insert (§ Insert detection, 
 the default keymap's `<Esc>` binding for that mode, so this table and `defaults.mjs` cannot
 drift. A user who rebinds `<Esc>` in a mode gets the dispatcher's answer first.
 
+(Since changed: `normal` also carries `blur: true`. Once the page has had `Esc` and left it
+alone, the host blurs the page's focused element before `page.stop`, so a link or button that
+`Tab` or a click focused loses its focus ring, because a focus the user is done with should go
+with the key that clears everything else, as it does in insert. A page that takes `Esc` itself
+(`preventDefault`, as a menu that closes and returns focus to its button) keeps its focus,
+because the key was the page's. The blur holds the tab in normal mode as Esc in insert does
+([insert-focus](insert-focus.md) behaviour 6). Rejected: blurring on keydown before the page,
+because the page's own `Esc` handler would then find its focus gone.)
+
 ## Tests (write first)
 
 `editable.test.mjs`, `hints.test.mjs`, `cmdline.test.mjs`, `escape.test.mjs`; table-driven with

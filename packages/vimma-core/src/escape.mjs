@@ -42,13 +42,15 @@ export function resolveEscape({ mode, pending = false, previous = "normal" }) {
   for (const m of [mode, previous]) if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
   if (pending) return Object.freeze({ kind: "cancel", mode });
   // Firefox's stop, once the page has had Esc and left it alone (docs/specs/firefox-keys.md
-  // decisions 6 and 7).
+  // decisions 6 and 7). The blur takes away the focus a Tab or a click left on a link or button,
+  // and its ring, as Esc in insert takes it out of a field (m1-core-logic.md, § Esc).
   if (mode === "normal") {
     return Object.freeze({
       kind: "action",
       action: Object.freeze({ id: "page.stop" }),
       mode,
       afterPage: true,
+      blur: true,
     });
   }
   const exit = EXITS[mode];

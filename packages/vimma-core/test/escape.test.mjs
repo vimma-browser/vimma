@@ -15,7 +15,7 @@ describe("resolveEscape (plan §2)", () => {
     ["hint", action("hint.cancel", "normal")],
     ["help", action("help.close", "normal")],
     ["panel", action("panel.close", "normal")],
-    ["normal", action("page.stop", "normal", { afterPage: true })],
+    ["normal", action("page.stop", "normal", { afterPage: true, blur: true })],
   ])("Given %s with nothing pending, then %o", (mode, expected) => {
     expect(resolveEscape({ mode })).toEqual(expected);
     expect(resolveEscape({ mode, pending: false })).toEqual(expected);
