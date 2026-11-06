@@ -325,6 +325,39 @@ add_task(async function a_split_picked_while_another_still_loads_is_shown() {
   );
 });
 
+add_task(async function a_lone_tab_picked_before_a_split_paints_ends_the_switch() {
+  await pick(tab("b"));
+  await until(() => splitsOf().shown === 1, "S1 shows");
+  await until(() => !gBrowser._switcher, "the switch to b is done");
+  await layersCleared([tab("c"), tab("d")], "S2");
+  const number = (name) => gBrowser.visibleTabs.indexOf(tab(name)) + 1;
+  for (const name of ["d", "f"]) {
+    Assert.ok(number(name) >= 1 && number(name) <= 8, `${name} has a tab number for ctrl+b N`);
+  }
+  await until(() => tab("b").linkedBrowser.docShellIsActive, "b's page is shown");
+  await focusContent(tab("b").linkedBrowser);
+  // ctrl+b N to d, then to f, with no refresh tick between them, as keys queued behind a busy
+  // main thread arrive: S2's panels are hidden again before they are ever laid out, so d,
+  // which the switcher is loading, never paints.
+  prefix(String(number("d")));
+  Assert.equal(gBrowser.selectedTab, tab("d"), "ctrl+b N picks d");
+  Assert.equal(splitsOf().shown, 2, "which shows S2");
+  Assert.equal(gBrowser._switcher?.loadingTab, tab("d"), "the switcher loads d");
+  prefix(String(number("f")));
+  Assert.equal(gBrowser.selectedTab, tab("f"), "ctrl+b N picks f");
+  Assert.equal(splitsOf().shown, null, "f shows alone");
+
+  await assertShown(tab("f"), "f");
+  Assert.ok(!tab("d").linkedBrowser.docShellIsActive, "S2's page d sleeps");
+  Assert.ok(!tab("d").linkedBrowser.renderLayers, "and paints nothing");
+  await openPanel();
+  EventUtils.synthesizeKey("KEY_Escape", {});
+  await until(() => !isOpen(), "keys reach Vimma on f");
+
+  await pick(tab("e"));
+  await assertShown(tab("e"), "e");
+});
+
 add_task(async function a_lone_tab_hides_both_and_splitting_it_names_the_split() {
   await pick(tab("f"));
   Assert.equal(splitsOf().shown, null, "no split shows");

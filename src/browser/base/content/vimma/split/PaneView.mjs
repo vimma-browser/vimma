@@ -109,7 +109,6 @@ export const PANE_VIEW_EVENTS = Object.freeze([
   "TabClose",
   "TabSplitViewActivate",
   "TabSelect",
-  "TabSwitchDone",
   ...SPLIT_EVENTS,
   "visibilitychange",
 ]);
@@ -181,9 +180,6 @@ export class PaneView {
   #resize = null;
   #reconciling = false;
   #scheduled = false;
-  /** Tabs to put to sleep once the async tab switcher has done loading them (#asleep). */
-  /** @type {Set<Tab>} */
-  #afterSwitch = new Set();
   /** @type {Set<Tab>} tabs whose panel carries our geometry */
   #laidOut = new Set();
   /**
@@ -254,8 +250,6 @@ export class PaneView {
     // SplitViewCreated; its wrapper fires SplitViewTabChange on any membership change (session
     // restore builds wrappers without SplitViewCreated) and SplitViewRemoved once dissolved.
     for (const type of SPLIT_EVENTS) win.addEventListener(type, this);
-    // The async tab switcher's finish(): the pages it was loading may now sleep (#asleep).
-    win.addEventListener("TabSwitchDone", this);
     // Tabbrowser's on_visibilitychange (a document listener, so it runs before this window one)
     // wakes every split browser when no async tab switcher exists, and does not look at the
     // event's target: an in-process page (the start page, chrome://) that a zoom or a hidden view
@@ -276,7 +270,6 @@ export class PaneView {
     if (e.type === "TabOpen") this.#onTabOpen(/** @type {Tab} */ (e.target));
     else if (e.type === "TabClose") this.#onTabClose(/** @type {Tab} */ (e.target));
     else if (e.type === "TabSelect") this.#onTabSelect(/** @type {CustomEvent} */ (e));
-    else if (e.type === "TabSwitchDone") this.#onSwitchDone();
     else if (e.type === "visibilitychange") this.#keepAsleep();
     // TabSplitViewDeactivate is not listened to: the old wrapper's arrives late after a rebuild
     // and lists the kept members too (sub-spec 1), so it carries nothing to act on.
@@ -1120,35 +1113,39 @@ export class PaneView {
   }
 
   /**
-   * Makes the tabs' docshells inactive, except one the async tab switcher is still loading: its
-   * layers cleared mid-load end the switch (onLayersCleared marks it unloaded, postActions then
-   * finds nothing pending and calls finish()) before the switcher loads the tab now selected, so
-   * that tab stays inactive and blank. Such a tab sleeps on TabSwitchDone instead.
+   * Makes the tabs' docshells inactive. A tab the async tab switcher is still loading goes
+   * through the switcher instead: its panel is hidden now, so it may never paint, and the
+   * switcher counts it as pending until its layers come or are cleared, so it would never
+   * finish (no TabSwitchDone, the page left active, commandDispatcher locked). Turning its
+   * docshell off by hand clears no layers it never had, and clearing layers it has while it is
+   * the switcher's loadingTab ends the switch before the selected tab is loaded, leaving that one
+   * blank (#605).
    * @param {Tab[]} tabs
    */
   #asleep(tabs) {
-    const switcher = /** @type {any} */ (gBrowserOf(this.#win))._switcher;
     for (const t of tabs) {
       if (!t.linkedBrowser || t.selected) continue;
-      if (switcher?.loadingTab === t) this.#afterSwitch.add(t);
-      else t.linkedBrowser.docShellIsActive = false;
+      if (!this.#unloadLoading(t)) t.linkedBrowser.docShellIsActive = false;
     }
   }
 
-  /** The switch is done: a tab #asleep left to it sleeps unless it is shown again by now. */
-  #onSwitchDone() {
-    if (!this.#afterSwitch.size) return;
-    const tabs = [...this.#afterSwitch];
-    this.#afterSwitch.clear();
-    const panes = this.#panes;
-    const live = new Set(
-      panes && !isHiddenView(panes)
-        ? leaves(panes)
-            .filter((l) => !panes.zoom || l.pane === panes.zoom)
-            .map((l) => l.tab)
-        : [],
-    );
-    this.#asleep(tabs.filter((t) => !t.closing && !live.has(t.linkedPanel)));
+  /**
+   * Unloads `t` the switcher's way if the switcher is loading it (AsyncTabSwitcher.sys.mjs): `t`
+   * goes to STATE_UNLOADING, as unloadNonRequiredTabs sends a loaded tab, which turns its
+   * docshell off and counts it unloaded once it has no layers; a load of `t` still timed then
+   * ends as its loadTimeout ends it, whose postActions loads the requested tab and finishes the
+   * switch when nothing else is pending. Not while the switcher handles an event of its own: it
+   * would put the loadTimeout off to a timer after the state change, and its postActions would
+   * then find its loadingTab no longer loading. Returns whether it did.
+   * @param {Tab} t
+   */
+  #unloadLoading(t) {
+    const switcher = /** @type {any} */ (gBrowserOf(this.#win))._switcher;
+    if (!switcher || switcher._processing) return false;
+    if (switcher.tabState?.get(t) !== switcher.STATE_LOADING) return false;
+    switcher.setTabState(t, switcher.STATE_UNLOADING);
+    if (switcher.loadingTab === t) switcher.handleEvent({ type: "loadTimeout" });
+    return true;
   }
 
   /**
