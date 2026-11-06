@@ -278,8 +278,9 @@ export class PdfView {
 
   /**
    * Runs one operation from the parent (V7): a name from PDF_OPS and an integer, checked again
-   * here. Only primitives go into pdf.js, so nothing needs Cu.cloneInto (V3); pdf.js's return
-   * values are not used, and nothing it returns is awaited (V4).
+   * here. Only primitives go into pdf.js, and a mark's destination and the arguments that go with
+   * it are cloned into the viewer (V3); pdf.js's return values are not used, and nothing it
+   * returns is awaited (V4).
    * @param {unknown} raw
    * @returns {boolean} whether it reached pdf.js
    */
@@ -390,12 +391,17 @@ export class PdfView {
           const dest = [at.page - 1, { name: "XYZ" }, at.left, at.top, at.scale];
           const history = app.pdfHistory;
           this.#settle();
-          history.pushCurrentPosition();
-          history.push(
+          history?.pushCurrentPosition();
+          history?.push(
             Cu.cloneInto({ namedDest: null, explicitDest: dest, pageNumber: at.page }, this.#win),
           );
+          // A mark comes back at its zoom (decision 11), whatever pdfjs.ignoreDestinationZoom
+          // says for a link.
           viewer.scrollPageIntoView(
-            Cu.cloneInto({ pageNumber: at.page, destArray: dest }, this.#win),
+            Cu.cloneInto(
+              { pageNumber: at.page, destArray: dest, ignoreDestinationZoom: false },
+              this.#win,
+            ),
           );
           return true;
         }

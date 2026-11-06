@@ -3862,7 +3862,7 @@ bindings, so it is accepted here.
   the theme's token sheet under V12. `F` asks for an
   internal link's page by the hint's generation and index only, and the parent keeps the answer only
   when it is a page of the document. The adapter passes pdf.js only those numbers and its own fixed
-  strings (`page-fit`, `page-width`), and measures the page for `H`, `L`, `P` and `ctrl+f` through
+  strings (`page-fit`, `page-width`, a mark's `XYZ`, cloned under V3), and measures the page for `H`, `L`, `P` and `ctrl+f` through
   Xrays (the viewer's container and page elements), so none of the viewer's script runs for it. In
   presentation mode the scroll keys (`Vimma:Scroll`) turn pages through the same checked operations,
   and fall back to scrolling when the adapter applied none.

@@ -540,7 +540,8 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     `pdfHistory.pushCurrentPosition`, `pdfHistory.push` and `pdfViewer.scrollPageIntoView`, as
     `goToDestination` does, because `goToDestination` also focuses the page's text layer once it
     has rendered, and on a busy viewer that focus came after the next key and scrolled the view
-    back to the mark.)
+    back to the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set,
+    which is meant for a document's links.)
 12. **Pages are shown as the document draws them.** Vimma does not recolour PDF pages: it adds no
     filter or style to the viewer and sets no `pdfjs.*` colour pref, and `ctrl+r` keeps its
     meaning, reload (decision 5). Reason: a document's colours are its content (figures,
