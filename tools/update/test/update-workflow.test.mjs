@@ -259,7 +259,11 @@ describe("update-publish.yml", () => {
       expect(cond).toContain(GUARD);
       expect(cond).toContain("(vars.UPDATES_ENABLED == 'true' || inputs.dry_run)");
       // In release.yml's call, event_name is the caller's workflow_dispatch: never a manifest.
-      expect(cond).toMatch(/ && !inputs\.mar$/);
+      // workflow_ref is the caller's in a call, so it tells a call from a run of this file even
+      // when a call passes an empty `mar`.
+      expect(cond).toMatch(
+        / && !inputs\.mar && startsWith\(github\.workflow_ref, 'vimma-browser\/vimma\/\.github\/workflows\/update-publish\.yml@'\)$/,
+      );
     },
   );
 
@@ -273,7 +277,9 @@ describe("update-publish.yml", () => {
         "github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' && " +
         "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'",
     );
-    expect(condition(job("failure"))).toContain("!inputs.mar");
+    expect(condition(job("failure"))).toContain(
+      "!inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')",
+    );
     const callers = readdirSync(new URL("../../../.github/workflows/", import.meta.url)).filter(
       (f) =>
         readFileSync(new URL(`../../../.github/workflows/${f}`, import.meta.url), "utf8").includes(
@@ -326,7 +332,8 @@ describe("update-publish.yml", () => {
     // `mar`) signs for its own run, so it has a group of its own and never waits behind, or
     // replaces, a manifest run; a manifest run's group is the same as before the call existed.
     expect(text).toContain(
-      "\nconcurrency:\n  group: ${{ inputs.mar && format('update-publish-mar-{0}', github.run_id) || " +
+      "\nconcurrency:\n  group: ${{ !startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@') && " +
+        "format('update-publish-call-{0}', github.run_id) || " +
         "format('update-publish-{0}-{1}', github.event_name, inputs.target || 'linux') }}\n" +
         "  cancel-in-progress: false\n",
     );
@@ -817,6 +824,12 @@ esac
     ["an unsigned MAR (no placeholder)", () => fixture(), {}],
     ["a MAR already signed", () => changed((b) => (b.fill(7, 28, 540), b)), {}],
     ["another channel", () => changed((b) => (b.write("vimmb", 552, "latin1"), b)), {}],
+    ["a channel with a space", () => changed((b) => (b.write("vi ma", 552, "latin1"), b)), {}],
+    [
+      "a product information block too short for its channel",
+      () => changed((b) => (b.writeUInt32BE(10, 544), b)),
+      {},
+    ],
     ["no MAR at all", () => Buffer.from("XAR1".padEnd(1000, "x")), {}],
     [
       "a size field that is not the file's",

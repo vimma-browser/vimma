@@ -2692,7 +2692,9 @@ gh api $R/environments/update-signing/deployment-branch-policies --jq '.branch_p
 #    update-publish.yml, and a called job's token names the called file (step 8). A workflow
 #    that signs in a job of its own would need its job_workflow_ref added with ||. Keep the
 #    attribute mapping from step 3, which maps attribute.job_workflow_ref next to
-#    attribute.repository.
+#    attribute.repository. Never drop the repository clause, nor the IAM member's subject with
+#    the repository's ID: a workflow in any repository can call update-publish.yml@main, and
+#    its token then names update-publish.yml at refs/heads/main as well.
 gcloud iam workload-identity-pools providers update-oidc vimma --location global \
   --workload-identity-pool github --attribute-condition "assertion.repository == 'vimma-browser/vimma' && assertion.job_workflow_ref == 'vimma-browser/vimma/.github/workflows/update-publish.yml@refs/heads/main'"
 
@@ -2789,6 +2791,8 @@ asset like the others. `release.yml` builds every Linux release with the updater
   jobs ask for, because GitHub refuses a call otherwise, even for jobs that are skipped; it is a
   ceiling, and in a call only `mar-sign` runs.
 - `mar` (no secret) checks that the signed MAR differs from package's only in the signature,
+  that it installs exactly the release tarball's files (extracted with the build's `mar` and
+  compared with `diff -r`),
   that it verifies under `configs/updater/primary.der` and `secondary.der` with `mar.mjs` and
   with the build's `signmar` (Mozilla's own check), and that its channel is `vimma` and its
   version Firefox's; then it adds the MAR to `SHA256SUMS`, which `sign` signs with cosign and

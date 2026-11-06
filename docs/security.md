@@ -3515,51 +3515,58 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../packages/vimma-core/test/updates.test.mjs)
 
 - UP14. A complete MAR is **only** signed by `update-publish.yml`'s `mar-sign` job, which
-  `release.yml` run from `main` calls (`workflow_call`), and **only** for that release's own MAR
-  on the release channel. A called job is the called file's job, so its OIDC token names
-  `update-publish.yml` at `refs/heads/main`: the Workload Identity condition on
-  `job_workflow_ref` (UP7) admits no new workflow, and the key is reached by no job of
-  `release.yml` itself. The job refuses to run unless its caller is `release.yml` at
-  `refs/heads/main` (`github.workflow_ref`) and `UPDATES_ENABLED` is `true`, uses the
-  `update-signing` environment (deployment branch `main` alone), holds only `id-token: write`
-  and runs no repository code. `release.yml`'s calling job allows the union of what
-  `update-publish.yml`'s jobs ask for (`actions: write`, `contents: read`,
-  `pull-requests: read`, `issues: write`, `id-token: write`), because GitHub refuses a call
-  whose jobs, skipped ones included, ask for more than the caller allows; that is a ceiling, and
-  in a call no job but `mar-sign` runs (`start` needs the release event, the others no `mar`
-  input). Before Cloud KMS signs anything it checks with the shell alone
-  that the file is named as the caller's tag's MAR, that its size field is its size, that it has
-  exactly one signature entry, 512 bytes of RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), all
-  zero, and that its product information block names the channel `vimma`. It signs every byte
-  but that placeholder, bytes that start with `MAR1`, while a manifest's signed bytes start with
-  `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass
-  as a manifest's or back. It checks KMS's signature with openssl and writes in only the
-  signature bytes. The MAR is built in `package`, a job with no secret, from the release tarball
-  with the build's own host `mar` and Mozilla's `make_full_update.sh`
+  `release.yml` run from `main` calls (`workflow_call`), and **only** for that release's own MAR on
+  the release channel. A called job is the called file's job, so its OIDC token names
+  `update-publish.yml` at `refs/heads/main`: the Workload Identity condition on `job_workflow_ref`
+  (UP7) admits no new workflow, and the key is reached by no job of `release.yml` itself. The job
+  refuses to run unless its caller is `release.yml` at `refs/heads/main` (`github.workflow_ref`) and
+  `UPDATES_ENABLED` is `true`, uses the `update-signing` environment (deployment branch `main`
+  alone), holds only `id-token: write` and runs no repository code. `release.yml`'s calling job
+  allows the union of what `update-publish.yml`'s jobs ask for (`actions: write`, `contents: read`,
+  `pull-requests: read`, `issues: write`, `id-token: write`), because GitHub refuses a call whose
+  jobs, skipped ones included, ask for more than the caller allows; that is a ceiling, and in a call
+  no job but `mar-sign` runs (`start` needs the release event, the others no `mar` input). Before
+  Cloud KMS signs anything it checks with the shell alone that the file is named as the caller's
+  tag's MAR, that its size field is its size, that it has exactly one signature entry, 512 bytes of
+  RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), all zero, and that its product information block names
+  the channel `vimma`. It signs every byte but that placeholder, bytes that start with `MAR1`, while
+  a manifest's signed bytes start with `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass as a manifest's or back. It checks KMS's signature with openssl
+  and writes in only the signature bytes. The MAR is built in `package`, a job with no secret, from
+  the release tarball with the build's own host `mar` and Mozilla's `make_full_update.sh`
   (`tools/update/mar.mjs build`). Then `mar`, a job with no secret and a read-only token, checks
   that the signed MAR differs from the one `package` built only in its signature bytes, that the
   signature verifies under the committed certificates with `mar.mjs` and with Mozilla's `signmar`
-  (the updater's own verification code, from this release's build), and that its channel and
-  product version are the release's; only then does `SHA256SUMS` list it, so cosign signs it
+  (the updater's own verification code, from this release's build), that its channel is the release
+  channel and its product version the build's Firefox version, and that it installs exactly the
+  release tarball's files, byte for byte; only then does `SHA256SUMS` list it, so cosign signs it
   with the other assets and `publish` uploads it. While `UPDATES_ENABLED` is `true`, `sign` and
   `publish` **never** run unless `mar` succeeded, so a release never ships without the MAR its
-  manifest offers, and `mar` fails when `mar-sign` did not succeed, skipped included, so the
-  release run fails and opens the `release-failure` issue rather than uploading nothing. The manifest offers a MAR (`<patch>`) **only** when the release's
-  cosign-signed `SHA256SUMS` lists it, with its size and SHA-512 and at the release's own
-  download URL; the manifest's signing job refuses a `<patch>` at any other URL, a second one,
-  or one in the macOS manifest, and the publish job downloads the MAR again and checks it
-  against the signed manifest. The nightly builds its MAR with the same step, as a check, and
+  manifest offers, and `mar` fails when the calling job did not succeed or left no signed MAR (a
+  call whose `mar-sign` job was skipped ends as success with no artifact), so the release run fails
+  and opens the `release-failure` issue rather than uploading nothing. In a call, the manifest's
+  jobs need `update-publish.yml` to be the run's own workflow (`github.workflow_ref`, the caller's
+  in a call), and a call has a concurrency group of its own. The manifest offers a MAR (`<patch>`)
+  **only** when the release's cosign-signed `SHA256SUMS` lists it, with its size and SHA-512 and at
+  the release's own download URL; the manifest's signing job refuses a `<patch>` at any other URL, a
+  second one, or one in the macOS manifest, and the publish job downloads the MAR again and checks
+  it against the signed manifest. The nightly builds its MAR with the same step, as a check, and
   neither signs nor keeps it until public nightly releases ([m6a-updater](specs/m6a-updater.md),
   decision 23).
-  **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox
-  with the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as
-  it can produce a malicious tarball that cosign signs; it cannot copy the key out, and every
-  signature is in Cloud KMS's audit log. A signed MAR is kept 7 days as a workflow artifact of
-  the release run, which any signed-in GitHub user can download before the release is
-  published; an install applies it only when a manifest signed by the same key offers it.
-  **⚠ setting:** as UP7, the `update-signing` environment's branch rule and the Workload
-  Identity condition keep other branches and workflows from the key; `github.workflow_ref` only
-  keeps another workflow on `main` from calling `mar-sign`.
+  **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox with
+  the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as it can
+  produce a malicious tarball that cosign signs; it cannot copy the key out, and every signature is
+  in Cloud KMS's audit log. A signed MAR is kept 7 days as a workflow artifact of the release run,
+  which any signed-in GitHub user can download before the release is published; an install applies
+  it only when a manifest signed by the same key offers it. Firefox's updater refuses a MAR only
+  when its Firefox version is older, so a signed MAR of an older Vimma on the same Firefox would
+  apply; what keeps installs from it is the manifest's serial and downgrade rules (UP2) and its
+  SHA-512 pin of the offered MAR.
+  **⚠ setting:** as UP7, the `update-signing` environment's branch rule and the Workload Identity
+  condition keep other branches and workflows from the key; `github.workflow_ref` only keeps another
+  workflow on `main` from calling `mar-sign`. Since any repository's workflow can call
+  `update-publish.yml@main` and its token then names that file too, the condition's
+  `assertion.repository` clause and the IAM member's subject, which names the repository by its ID,
+  **must** never be dropped.
   [`is called by release.yml alone, with the MAR's name, and signs only there`](../tools/update/test/update-workflow.test.mjs),
   [`only sign and mar-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
   [`the signing job %s runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),

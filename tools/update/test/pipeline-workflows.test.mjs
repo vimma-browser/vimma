@@ -134,7 +134,9 @@ describe("release.yml: the updater and the complete MAR", () => {
   it("mar-sign calls update-publish.yml, the one workflow the key signs for", () => {
     const block = job("mar-sign");
     expect(block).toMatch(/^ {4}needs: package$/m);
-    expect(condition(block)).toBe(`${GUARD} && vars.UPDATES_ENABLED == 'true'`);
+    expect(condition(block)).toBe(
+      `${GUARD} && vars.UPDATES_ENABLED == 'true' && needs.package.outputs.mar != ''`,
+    );
     expect(permissionsOf(block)[0]).toBe("id-token: write");
     expect(block).toMatch(/^ {4}uses: \.\/\.github\/workflows\/update-publish\.yml$/m);
     expect(block).toMatch(/^ {4}with:\n {6}mar: \$\{\{ needs\.package\.outputs\.mar \}\}$/m);
@@ -191,6 +193,8 @@ describe("release.yml: the updater and the complete MAR", () => {
     expect(block).not.toMatch(/environment:|secrets\.|id-token/);
     expect(block).toContain("ref: ${{ needs.build.outputs.sha }}");
     const run = runOf(block, "Check the signed MAR");
+    expect(run).toContain('[ "$MAR" = "vimma-${TAG#v}-linux-x86_64.complete.mar" ]');
+    expect(run).toContain('[ -f "mar-signed/$MAR" ]');
     expect(run).toContain(
       'node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"',
     );
@@ -201,6 +205,21 @@ describe("release.yml: the updater and the complete MAR", () => {
     expect(run).toMatch(/mar-tools\/signmar -d "sql:\$db" -n secondary -v "mar-signed\/\$MAR"/);
     expect(run.indexOf("same-content")).toBeLessThan(run.indexOf("signmar -d"));
     expect(block).toContain("name: release-mar\n");
+  });
+
+  // Both MARs come from package; this compares the signed one with the release tarball that
+  // SHA256SUMS lists, so a package step that changed the MAR alone cannot get it signed and
+  // shipped.
+  it("mar checks that the signed MAR installs exactly the release tarball's files", () => {
+    const run = runOf(job("mar"), "The MAR installs the release tarball's files");
+    expect(run).toContain('(cd "$from_mar" && "$root/mar-tools/mar" -x "$root/mar-signed/$MAR")');
+    expect(run).toContain("xz -dc");
+    expect(run).toContain('tar -xJf "dist/vimma-${TAG#v}-linux-x86_64.tar.xz"');
+    expect(run).toContain('diff -r --no-dereference "$from_mar" "$from_tarball/vimma"');
+    const block = job("mar");
+    expect(block.indexOf("- name: The MAR installs the release tarball's files")).toBeLessThan(
+      block.indexOf("- name: Add the MAR to SHA256SUMS"),
+    );
   });
 
   it("lists the MAR in SHA256SUMS, sorted by name as package.mjs writes it", () => {

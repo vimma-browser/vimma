@@ -500,7 +500,8 @@ jobs:
     needs: package
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
-      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true'
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      needs.package.outputs.mar != ''
     permissions:
       id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's mar-sign job
       actions: write # ceiling only: update-publish.yml's start, which never runs in a call
@@ -516,8 +517,9 @@ jobs:
   # (tools/update/mar.mjs, and Mozilla's signmar, the check the updater itself runs); its
   # channel is the release's and its version Firefox's. Then SHA256SUMS lists it.
   #
-  # It runs whenever package succeeded, so a mar-sign that was skipped (its job's conditions in
-  # update-publish.yml) fails here, loudly, rather than leaving a release that uploads nothing.
+  # It runs whenever package succeeded, so a mar-sign that was skipped or failed fails here,
+  # loudly, rather than leaving a release that uploads nothing. A call whose own mar-sign job was
+  # skipped ends as success but leaves no mar-signed artifact, which stops this job too.
   mar:
     needs: [build, package, mar-sign]
     if: >-
@@ -568,8 +570,9 @@ jobs:
 
       - name: Check the signed MAR
         run: |
-          echo "$MAR" | grep -Eqx "vimma-${TAG#v}-linux-x86_64\.complete\.mar" \
+          [ "$MAR" = "vimma-${TAG#v}-linux-x86_64.complete.mar" ] \
             || { echo "::error::'$MAR' is not $TAG's complete MAR"; exit 1; }
+          [ -f "mar-signed/$MAR" ] || { echo "::error::mar-sign left no signed MAR"; exit 1; }
           node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
           firefox=$(node -p 'require("./surfer.json").version.version')
           node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma --product-version "$firefox"
@@ -585,6 +588,26 @@ jobs:
           LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n primary -v "mar-signed/$MAR"
           LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n secondary -v "mar-signed/$MAR"
           echo "signmar: $MAR verifies under primary.der and secondary.der"
+
+      # Both MARs come from package; this ties the signed one to the release tarball that
+      # SHA256SUMS lists: every file it installs, with the same bytes, and nothing else (but
+      # make_full_update.sh's own updatev3.manifest).
+      - name: The MAR installs the release tarball's files
+        run: |
+          chmod 755 mar-tools/mar
+          from_mar=$(mktemp -d)
+          from_tarball=$(mktemp -d)
+          root=$PWD
+          (cd "$from_mar" && "$root/mar-tools/mar" -x "$root/mar-signed/$MAR")
+          find "$from_mar" -type f -print0 | while IFS= read -r -d '' f; do
+            xz -dc "$f" > "$f.plain" && mv "$f.plain" "$f"
+          done
+          rm "$from_mar/updatev3.manifest"
+          tar -xJf "dist/vimma-${TAG#v}-linux-x86_64.tar.xz" -C "$from_tarball"
+          # Directories with no file in them hold nothing a MAR could carry.
+          find "$from_tarball" -type d -empty -delete
+          diff -r --no-dereference "$from_mar" "$from_tarball/vimma"
+          echo "$MAR installs the $(find "$from_mar" -type f | wc -l) files of the release tarball"
 
       # The sums file package.mjs wrote, with the MAR's line, in its order (by name).
       - name: Add the MAR to SHA256SUMS
