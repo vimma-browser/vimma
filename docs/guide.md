@@ -18,10 +18,15 @@ What works today, each with the section that explains it:
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
+- **[PDFs with zathura's keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`,
+  `-`, `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
+  marks, presentation with `:present`, `page 3/12` with the match count in the status bar, and
+  the viewer in your theme. Vimma's own keys keep their meaning there.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
   found and renamed with [tab search](#tab-search-and-tab-rename)); up to 8 split panes (`v`, `-`,
-  `h/j/k/l`, `z` zoom, swap, resize); tiling [layouts](#layouts) (`enter` dwindle, `space`
-  cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
+  `h/j/k/l`, `z` zoom, swap, resize); [several splits](#several-splits) in a workspace, one shown
+  at a time (`]s` / `[s` to step, `ctrl+b S` to pick); tiling [layouts](#layouts) (`enter`
+  dwindle, `space` cycles tmux's presets); `ctrl+b ?` lists every binding, searchable.
 - **[Workspaces](#workspaces):** each one a container with its own logins and cookies, kept
   with its tabs and split layout across restarts; `ctrl+^` goes back to the last one; a
   [private workspace](#private-workspace) (`ctrl+b shift+p`); a [side panel](#side-panel)
@@ -33,6 +38,11 @@ What works today, each with the section that explains it:
 - **[Search engines](#search-engines)** and `@aliases` from `config.toml`, such as `@gh vimma`.
 - **[Hide the toolbar](#hiding-the-toolbar)** with `ctrl+b u`: the page reaches the top of the
   window, and the address bar comes back when you need it.
+- **[Downloads from the keyboard](#downloads):** `ctrl+b d` lists them with live progress, and
+  one key opens a file, shows it in its folder, pauses, retries, removes or deletes it, or allows
+  a blocked one through Firefox's own warning; the status bar shows `↓ 42%` while they run and
+  `↓ done`, `↓ failed` or `↓ blocked` after, so Firefox's downloads panel no longer drops the
+  toolbar over the page.
 - **[Theming](#colours-and-themes):** the bars, Firefox's toolbar, menus, dialogs and settings
   pages, pickers, hints, start page and sidebar follow your desktop theme and change with it, or
   take your own colours.
@@ -42,8 +52,9 @@ What works today, each with the section that explains it:
   for a security release), a short message announces each new version once, a security release
   asks once per session whether to show the update command, and `:update` shows the exact
   commands for how you installed it. The AppImage replaces its own file with a newer release
-  checked against the signed update file, and runs it from the next start; once a security
-  release is in place it asks once per session to restart, and `:restart` restarts into it.
+  checked against the signed update file, and runs it from the next start; a tarball built with
+  Firefox's updater installs a signed update at its next start. Once a security release is in
+  place it asks once per session to restart, and `:restart` restarts into it.
 - **Firefox underneath** ([privacy defaults](#privacy-defaults)): the same user agent and
   [add-on](#add-ons) compatibility as Firefox; no studies, sponsored content or telemetry
   uploads; Safe Browsing on; a site's permissions shown and changed from the keyboard with
@@ -124,7 +135,9 @@ install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
 tarball over the old one. From 0.1.2 on, Vimma tells you when a new release is out and shows the
 command for your install ([Updates](#updates)); Vimma 0.1.1 never does, so update it this way once.
 An AppImage from a release that includes the self-update replaces its own file when a newer
-release is out; the next start runs it.
+release is out; the next start runs it. A tarball from a release built with Firefox's updater
+(its release lists `vimma-X.Y.Z-linux-x86_64.complete.mar`) updates itself the same way, through
+Firefox's updater ([Updates](#updates)).
 
 **Building from source.** Follow [CONTRIBUTING.md](../CONTRIBUTING.md#build-and-run): `npm ci`,
 `npx surfer download`, `npx surfer bootstrap`, `npm run import`, `npx surfer build`. The first
@@ -451,12 +464,19 @@ a capital I typed into the field, as in Vim; press `Esc` first.
 **Text fields have Vim's editing keys.** In insert mode, and in the address bar, the `:` line, the
 find bar and the panels' filters, `ctrl+w` deletes the word before the caret, `ctrl+u`
 everything before it on the line, and `ctrl+h` one character, as `Backspace`. They are the
-text field's own delete commands, so `ctrl+z` undoes them. A page that handles one of these keys
-itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vimma edits only when the page
-left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls, `ctrl+w h` moves
-between panes). `[modal] insert_editing = false` in `config.toml` turns them off; Firefox's own
-actions on those keys stay off either way. On macOS, `ctrl+h` is already a backspace in text
-fields, so Vimma adds nothing there.
+text field's own delete commands, so `ctrl+z` undoes them. `ctrl+j` and `ctrl+m` are `Enter`, as
+in Vim, so your hands stay on the home row: a new line in a text area, the form sent from a
+one-line field, the address loaded from the address bar, the command run from the `:` line
+(everywhere above but the side panel's filters). The page sees a real `Enter`, so a chat box
+that sends on `Enter` sends. A page that handles one of
+these keys itself (a web terminal, an editor with its own `ctrl+w`) keeps it: Vimma acts only
+when the page left the key alone. In normal mode the keys stay Vimma's (`ctrl+u` scrolls,
+`ctrl+w h` moves between panes, `ctrl+m` mutes the tab, `ctrl+j` is the web search). A
+`[modal.insert]` binding of yours on one of these keys wins; so does a `[keys]` binding of yours
+that is not the default. `[modal] insert_editing = false` in `config.toml` turns them off (then
+`ctrl+m` and `ctrl+j` mute and search in text fields too); Firefox's own actions on those keys
+stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
+nothing there.
 
 **`Esc` in a text field is Vimma's.** It leaves insert, so the page does not see that `Esc`: a
 site's own `Esc` (closing an autocomplete list or a dialog) does not fire from the field. Press
@@ -509,6 +529,9 @@ Firefox's `browser.tabs.loadInBackground` setting changes neither: the key you t
 `config.toml` that binds `F = "hint.follow_new_tab"` under `[modal.normal]` keeps background-tab
 hints on `F`.)
 
+In the [PDF viewer](#pdf-viewer) `f` labels the PDF's links, `c` copies a link's target and
+`:show_link_target` shows it, instead of following it.
+
 The labels are drawn by the browser, over the page, not inside it: the page cannot see them,
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
 maps, games) have nothing to label.
@@ -549,7 +572,7 @@ click leaves element focus.
   `y` copies its text anyway and the notice says so; `v` shows no highlight there.
 - **Frames.** Blocks in frames get labels too. `y` copies from a frame without moving focus into
   it; `v` moves focus into the frame, where copy mode then runs. `+` stops at the frame's edge.
-- **PDFs.** The PDF viewer has lines, not paragraphs: element focus says
+- **PDFs.** The [PDF viewer](#pdf-viewer) has lines, not paragraphs: `F` there says
   `no text blocks here (PDF: use v)`, and [copy mode](#copy-mode) copies from a PDF.
 
 Element focus is `F` in normal mode and `:focus_element` on the command line; bind
@@ -563,7 +586,7 @@ page, above the status bar, because that is where Vim types a search and where t
 shows it, and it leaves the top of the page, where a match usually lands, uncovered. It takes the style of Vimma's pickers and your theme, opens empty, and searches as you
 type, in frames from other sites, inside web components and in the PDF viewer too. Opening it
 does not move the page. Matches are highlighted as in Firefox, and the prompt counts them as `[2/5]`, as the status
-bar does. The search starts at the top of what you see (or at the selection, if it
+bar does, in a PDF too. The search starts at the top of what you see (or at the selection, if it
 is on screen), as Vim's starts at the cursor.
 
 - **Case:** smart case. An all lower-case search ignores case (`word` finds `Word`); one capital
@@ -695,6 +718,86 @@ The page gets none of these keys, nor any other plain key while copy mode is on;
 works once the frame has focus (click it first). Text inside a text field is not reachable: focus
 the field and use its own selection.
 
+### PDF viewer
+
+PDFs open in Firefox's own viewer, pdf.js, Mozilla's PDF reader, and Vimma drives it with the
+keys of zathura, the keyboard-driven document viewer, so a paper or a manual reads the same in the
+browser as in your viewer. pdf.js keeps rendering, forms, printing and accessibility; Vimma adds
+the keys, a page count in the status bar and an outline panel, and gives the viewer's toolbar,
+menus and the space around the pages your theme's colours, light or dark. Pages are shown in the
+document's own colours.
+
+A PDF with an outline opens with it shown on the left, the entry for the page you are on
+selected as you move; your keys stay with the document, so `J` and `/` work at once. pdf.js's
+own sidebar and its button do not show: Vimma's outline takes its place. To open PDFs without
+the outline, put `[ui] pdf_outline = "hidden"` in [config.toml](#configtoml); `Tab` still opens
+it.
+
+Every Vimma key does in the PDF viewer what it does on any page, so your hands need not know
+which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
+and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. The
+viewer adds zathura's keys only on the keys Vimma leaves free, and zathura's other keys are
+commands:
+
+- **Pages.** `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
+  page and `G` to the last; with a count, to that page (`12G`, `12gg`), counted from 1 whatever
+  the page labels say. `:12` on the command line goes to page 12 too. `:pdf_page_top` and
+  `:pdf_page_bottom` go to the top / bottom of the current page. `space` and `shift+space` scroll
+  a screen down and up, and `Home` / `End` go to the first / last page, as in pdf.js.
+- **Zoom.** `+`, `zi`, `zI` zoom in and `-`, `zo`, `zO` zoom out by 10 % per step, with a count
+  (`2+`). `=`, `zz`, `zZ` and `z0` set 100 %, and a count sets that percent (`150=`). `a` fits the
+  whole page and `s` the page's width, and the fit follows window and pane resizes until you zoom
+  by hand.
+- **Layout.** `:dual` shows two pages side by side, with the first page alone as in a printed
+  book, and again goes back to one; `D` toggles whether the first page stands alone. `w` shows
+  one page at a time. `:rotate` rotates the pages 90° clockwise.
+- **Outline.** `Tab` moves into the document's outline (its table of contents), in a panel on
+  the left of the window in your theme, opening it if it is not shown, with the entry for the
+  current page selected; the badge says `INDEX`. `j` / `k` (and the arrow keys) move, `l` / `zo` expand and `h` / `zc` collapse an
+  entry, `zO` / `zC` expand / collapse an entry with everything under it, `L` / `zR` and `H` /
+  `zM` expand / collapse them all, `gg` / `G` go to the first / last entry and `ctrl+d` /
+  `ctrl+u` move half a panel. `Enter` or `space` goes to the entry and gives your keys back to
+  the document (an outline shown as the PDF opened stays shown; one `Tab` opened closes); `Tab`,
+  `Esc`, `ctrl+[` or `q` closes it where you were, and it stays closed for that document. `/` filters the outline as you type, best match
+  first, each entry shown under the titles of the entries above it; `Enter` goes to the entry and
+  `Esc` returns to the whole outline. A PDF without an outline says `no outline in this PDF`.
+- **Marks.** `m` and a letter or digit marks where you are (the page, the place on it and the
+  zoom); `'` and the same character takes you back. Marks belong to the document (its address
+  without the `#` part), so two tabs of one PDF share them. They last until Vimma quits, are
+  never written to disk, and a private window's go when it closes. An unset mark says
+  `no mark 'a'`.
+- **Jumps.** `ctrl+o` / `ctrl+i` walk back and forward through your jumps inside the PDF (a link,
+  a page jump, a search hit, a mark, an outline entry) before they leave the PDF for the page
+  before it, as Vim's jump list does.
+- **Links.** `f` labels the links on screen and follows the one you pick. `c` labels them and
+  copies the chosen link's target, and `:show_link_target` shows it in a notice without
+  following it.
+- **Presentation.** `:present` starts pdf.js's presentation mode: full screen, one page at a
+  time, fitted to the screen. There `j`, `J`, `space` and the arrow keys go forward a page and
+  `k`, `K` and `shift+space` back; `Esc` leaves it. `F11` is Vimma's full screen, as everywhere.
+- **Files.** `r`, `R`, `F5` and `ctrl+r` reload the PDF, `ctrl+p` prints it, `ctrl+s` saves it,
+  and `yy` and `Y` copy its address.
+
+Form fields in a PDF are text fields like any other: focusing one is insert mode, and `Esc`
+leaves it. `/` finds in the PDF with the match count in the status bar, and the status bar shows
+the page as `page 3/12`, or `page iv (4/120)` when the page has a label that is not its number.
+
+A PDF that a web page shows inside itself (in a frame, `<embed>` or `<object>`) keeps the page's
+keys; open it in its own tab for these. Some of zathura's keys stay Vimma's: `ctrl+b` is the
+prefix, not a screen up (`shift+space` scrolls up a screen); `t` opens a tab; `q` does not close
+the tab (`x` and `:q` do); `ctrl+n` opens a window rather than hiding the status bar; and
+`alt+left` / `alt+right` go back and forward rather than a page. `ctrl+r` reloads rather than
+recolouring the pages. Marks and the jump list are not kept across restarts, `o` does not open a
+file (`:open` with a `file://` address does), and there is no SyncTeX.
+
+Every one of these keys can be changed in [config.toml](#configtoml): `[modal.pdf]` holds the
+PDF viewer's normal-mode keys, over `[modal.normal]`, and `[modal.index]` the outline's. `[unbind]
+pdf = ["D"]` takes `D` off in the PDF viewer only. To have zathura's `d`, `r`, `H`, `L`, `P`,
+`F`, `ctrl+f` and `F5` in the PDF viewer instead of Vimma's, uncomment the zathura block under
+`[modal.pdf]` in the file `:config` writes (or copy it from `defaults.toml`). `ctrl+b ?`
+lists them under `[pdf]` and `[index]`, and [bindings.md](bindings.md#pdf-viewer) has their
+config names.
+
 ## Status bar
 
 The status bar is the window's last line, and it is always there, so you never lose track of
@@ -705,7 +808,7 @@ with `F11` keeps it. From the left:
   focus (or after `i`), `COMMAND` while you type a `:` command or a `/` search, `HELP` while
   the `ctrl+b ?` overlay or tab search is open, `HINT` while link hints are up
   (with `gF`, followed by the choice of tab, `sd background · sD go there`, which follows what you
-  type), `VISUAL` in copy mode. Each mode keeps a colour of its own: when a theme gives two modes the
+  type), `VISUAL` in copy mode, `INDEX` while a PDF's outline is open. Each mode keeps a colour of its own: when a theme gives two modes the
   same colour or nearly (Catppuccin's bright magenta is its magenta, so `ELEMENT` would look like
   `VISUAL`), the later of the two in the order `NORMAL`, `INSERT`, `VISUAL`, `COMMAND`, `HINT`,
   `ELEMENT`, `HELP`, `PANEL`, `RESIZE`, prefix takes a lighter or darker shade of its colour, and
@@ -713,9 +816,12 @@ with `F11` keeps it. From the left:
 - the **pending keys**, e.g. `prefix` after `ctrl+b`;
 - the **workspace**: `● 2:work`, its number in workspace order and its name;
 - `tab 2/5`: the selected tab and how many the workspace shows;
-- in a split, `pane 2/3`: the focused pane and how many there are; `split 3 hidden` (dim) when
-  the workspace's split is kept out of sight while another tab shows alone
-  ([below](#picking-a-tab-during-a-split));
+- in a split, `pane 2/3`: the focused pane and how many there are, and `S2 pane 2/3` when the
+  workspace has [several splits](#several-splits), S2 being the one shown; `split 3 hidden`
+  (dim) when the workspace's split is kept out of sight while another tab shows alone
+  ([below](#picking-a-tab-during-a-split)), `3 splits hidden` with several;
+- in the [PDF viewer](#pdf-viewer), the **page**: `page 3/12`, or `page iv (4/120)` when the
+  page has a label that is not its number;
 - the page **title**, or your rename (`ctrl+b shift+t`);
 - on the right, the **search** in this page: `/word [2/5]` (match 2 of 5), or
   `/zzz not found` in red;
@@ -727,6 +833,11 @@ with `F11` keeps it. From the left:
 - `pop-up blocked · y allow · n block · Esc close` (yellow) while the page has Firefox's pop-up
   blocked bar and [its keys](#blocked-pop-ups) count, and `pop-ups blocked · :popups to allow`
   on a site whose pop-ups you blocked with `n`;
+- `↓ 42%` while a download runs (`↓ 3 · 42%` for three, `↓ 3` while no size is known,
+  `↓ paused` when all are paused), then `↓ done` for 10 seconds; `↓ failed` or `↓ blocked`, in
+  red, stays until you next open the [downloads picker](#downloads) in that window. It never
+  shows a file name, and a screen reader hears `downloading 42%` and, once, each file that
+  finished, failed or was blocked;
 - `loading` while the page loads, then its **URL** without `https://`;
 - with the [toolbar hidden](#hiding-the-toolbar), `not secure` in red for a page Firefox's
   address bar would warn about (an `http:` page keeps its `http://`), `using camera, mic` (or
@@ -769,6 +880,11 @@ until a restart or until you edit that line.
   window's top edge does not. It also shows by itself while an add-on's popup or a panel from one
   of its buttons (downloads, the menu, the extensions menu) is open, so the popup hangs from its
   own button as with the toolbar shown.
+- **Downloads:** starting a download no longer opens Firefox's downloads panel, so the toolbar
+  stays hidden; the status bar's `↓` shows it, and `ctrl+b d` [lists them](#downloads). A
+  download Firefox refuses as it starts (an `http:` file from an `https:` page) still opens the
+  panel, and with it the toolbar, because that panel is Firefox's warning; one blocked after it
+  finished downloading shows as `↓ blocked` in red.
 - **Permission prompts** (camera, location, notifications) show the whole address bar, without
   the toolbar's buttons: the prompt points at its icon in the address bar, next to the site's
   identity, exactly as with the toolbar shown. Vimma never shows one without saying which site
@@ -867,7 +983,8 @@ are on the same surface as Vimma's side panel, with the theme's text, edge and f
 search box, the open panel's button in the launcher and the lists' scrollbars included), and
 an open sidebar recolours with the rest of the window. So do Firefox's other surfaces: the find
 bar, the menu bar (`F10`) and every menu, the dialogs a page opens (`alert`, `confirm`,
-`prompt`), the print settings, and Firefox's own pages: Settings and its dialogs, Add-ons,
+`prompt`), the print settings, the [PDF viewer](#pdf-viewer)'s toolbar, menus and the space
+around its pages, and Firefox's own pages: Settings and its dialogs, Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
 `about:profiles` and `about:processes`. Their accent (the selected category, checkboxes, main
 buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and
@@ -1006,6 +1123,7 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b a`                                                                              | Bookmarks the page; type folders before its title: `work/docs/title` ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b shift+b`                                                                        | Opens or closes the bookmarks panel ([below](#bookmarks)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b e`                                                                              | Opens the add-on picker: popups, options, enable/disable, remove, updates ([below](#add-ons)).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `ctrl+b d`                                                                              | Opens the downloads picker: open, show in folder, pause, retry, remove, delete, allow a blocked file ([below](#downloads)).                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | `ctrl+b v` / `ctrl+b -`                                                                 | Splits the pane right / down. The new pane opens a new tab (the start page, address bar focused). At most 8 panes by default (`[panes] max`); a refused split says why.                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b h j k l`                                                                        | Focuses the pane left / below / above / right; when several touch, the one used last. `ctrl+w h j k l` in normal mode. The page of that pane gets focus, and the pane a 3 px border in the theme's focus colour.                                                                                                                                                                                                                                                                                                                                                                          |
 | `ctrl+b z`, `ctrl+w o`                                                                  | Zooms the pane to the whole window, or back. The other panes' pages pause. A pane focus key unzooms when it moves.                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -1013,6 +1131,8 @@ keys. A `[panel]` after a key means it works only in that mode.
 | `ctrl+b shift+h j k l`                                                                  | Swaps the pane with the one left / below / above / right; it keeps focus and its page. `ctrl+w H J K L` in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `ctrl+b r`                                                                              | Resize mode ([below](#resize-mode)): `h j k l` move the pane's divider, `Esc` leaves. `ctrl+w < > + -` resize directly in normal mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `ctrl+b enter`                                                                          | A new pane along the focused pane's longer side: side by side when it is wide, stacked when it is tall ([Layouts](#layouts)). `[panes] layout = "manual"`: as `ctrl+b v`.                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `]s` / `[s`                                                                             | Normal mode: shows the workspace's next / previous split, wrapping; on a tab shown alone, the split shown last ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ctrl+b S`                                                                              | The split picker: the workspace's splits with their colour, pane count and titles; a digit or `Enter` shows one, `/` filters by title ([Several splits](#several-splits)).                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `ctrl+b space`                                                                          | Cycles the layout presets, as tmux does; the status bar names the one you get ([Layouts](#layouts)). `:layout tiled` picks one.                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `ctrl+b shift+x`, `x`, `ctrl+F4`                                                        | Closes the tab, as Firefox's `ctrl+w` did: on a pinned tab it selects the first unpinned tab instead; closing the last tab opens a new tab and keeps the window ([Firefox behaviour Vimma changes](#firefox-behaviour-vimma-changes)). `x` in normal mode. `ctrl+shift+t` reopens the last closed tab, in every mode.                                                                                                                                                                                                                                                                     |
 | `ctrl+b` then anything else                                                             | Never leaks to the page. A binding without a command shows "… not implemented yet" for 1.5 s; an unbound key does nothing. Firefox's `ctrl+b` bookmarks sidebar is off.                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -1048,8 +1168,11 @@ alone in the whole window, as Firefox's own split view does. The split is not lo
 hidden, with its panes, sizes and focused pane, and the status bar says `split 3 hidden`. Go to
 any of its tabs, by any of the same routes, and the whole split comes back, with that tab's pane
 focused. A pinned tab works the same way. While the split is hidden the pane keys act on the tab
-you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "the split is hidden: go to one
-of its tabs first". The hidden split survives a workspace switch and a restart.
+you see as on a single pane, and `ctrl+b v` / `-` / `enter` say "split S1 is hidden: ]s or
+ctrl+b S to go back, or mark tabs in ctrl+b b for a new split"; the message stays until your
+next key. `]s` brings the split back. The hidden split survives a workspace switch and a
+restart. To show the tab you are on beside others, start another split from the side panel
+([Several splits](#several-splits)).
 
 A new tab you open while the split shows (`ctrl+t`, `ctrl+b c`, `t`, `:tabnew`, `P`, a link
 opened in a new foreground tab, also with `f`, or a link from another app) opens in the focused
@@ -1059,9 +1182,41 @@ A split made outside Vimma (Firefox's own split-view command, an extension, or a
 Firefox session) becomes the workspace's panes: its tabs side by side in its order, at the
 widths Firefox gave them, with the selected tab's pane focused. The pane keys then work on it,
 and the workspace keeps it like any other split. If such a split's tabs are in different
-workspaces, or the workspace already has a split, Vimma separates its tabs again and the
-status bar says why; the tabs stay in their workspaces. Separating a split outside Vimma closes
-its panes.
+workspaces, Vimma separates its tabs again and the status bar says why; the tabs stay in their
+workspaces. If the workspace already has a split, Vimma separates it too and the status bar
+says "split undone: mark tabs in ctrl+b b for another split": a further split is made from the
+side panel ([Several splits](#several-splits)). Separating a split outside Vimma closes its
+panes.
+
+### Several splits
+
+A workspace can keep several splits, up to 9, and shows one at a time: an editor beside its
+docs, and a second comparison of two pages, without breaking up the first.
+
+- **Starting another split.** Go to a tab that is in no split, so it shows alone and the split
+  waits hidden. Open the side panel (`ctrl+b b`): on a tab shown alone nothing starts marked.
+  Mark two or more tabs with `space` or `V` and press `Enter`; they become a new split, shown at
+  once, and the split you had before waits hidden. A marked tab that was in another split leaves
+  it, as `ctrl+b x` would close its pane there; a split left with one pane ends.
+- **Numbers and colours.** Each split has a number, `S1` to `S9`, which it keeps while it exists,
+  and the colour of that number from the theme. In the side panel each split's tabs carry a
+  stripe in its colour and its label, and the head says `S2: 3 panes · 3 splits`, or
+  `3 splits (none shown)` on a tab shown alone. A new split takes the lowest free number.
+- **Going between them.** `]s` shows the next split by number and `[s` the previous one,
+  wrapping; on a tab shown alone both bring back the split shown last first. `ctrl+b S` opens the
+  split picker: each split with its colour, label, pane count and the titles of its tabs; a digit
+  or `Enter` shows one, `/` filters by title. Selecting any tab of a split, by any route, shows
+  that split whole too. Without a split, `]s` and `[s` say `no splits`, and `ctrl+b S` says
+  `no splits in this workspace`.
+- **Splitting a lone tab.** While the workspace has a split and a tab shows alone, `ctrl+b v`,
+  `ctrl+b -` and `ctrl+b enter` are refused, so a split you meant to be on screen is never hidden
+  further by mistake; the message names the split and the ways back. With no split in the
+  workspace these keys split the tab as usual.
+- **The limit.** `[panes] max_splits` in [config.toml](#configtoml) sets how many splits a
+  workspace keeps (1 to 9, default 9); `1` gives one split per workspace. Past it, the side
+  panel says `new split: at most 9 splits in a workspace` and changes nothing.
+- **Kept.** A workspace switch, a restart and the private workspace keep every split, its sizes
+  and which one shows.
 
 ### Resize mode
 
@@ -1543,7 +1698,7 @@ it. A private window has no agent. With no model set up, the window says how to 
   which shares its weights, since a ten-item task needs about 19,000. Once you pick an Ollama
   model, Vimma loads it (with no prompt, so no text reaches it) and says where it runs and with
   what context, such as `qwen3:14b-ctx32768 runs on the GPU, with 32,768 tokens of context`;
-- `add: agent CLI (Claude Code, Codex)`, and once one is set up, its models: Vimma runs the agent CLI
+- `add: agent CLI (Claude Code, Codex, Gemini CLI)`, and once one is set up, its models: Vimma runs the agent CLI
   you have, on its own login
   ([Using an agent CLI in the chat window](#using-an-agent-cli-in-the-chat-window)).
 
@@ -1797,7 +1952,7 @@ one. New conversations start with `[agent] default`. A model you pick that `conf
 not list is added there, and becomes the default only when none was set; to change the default,
 edit `[agent] default`.
 
-**Claude Code and Codex** run as programs on your computer rather than as models Vimma calls,
+**Claude Code, Codex and Gemini CLI** run as programs on your computer rather than as models Vimma calls,
 so they are not set up by endpoint: see [CLI providers](specs/builtin-agent-cli.md).
 
 #### Connecting an agent's tool
@@ -1911,7 +2066,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 
 1. Install the CLI and log in to it once in a terminal, as its own documentation says (for
    Claude Code, [its setup page](https://docs.anthropic.com/en/docs/claude-code/setup); then run
-   `claude` and `/login`; for Codex, `codex login`). Vimma runs the same program with the same login.
+   `claude` and `/login`; for Codex, `codex login`; for Gemini CLI, `gemini` and its sign-in). Vimma runs the same program with the same login.
 2. Press `ctrl+b i` (or type `:agent`): the chat window opens beside the page.
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
@@ -1927,7 +2082,7 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 6. While it works, the transcript shows the CLI's replies, each step it takes in the browser
    (from Vimma's own record), and a `◆` line for each use of its own tools; the status bar shows
    its steps and tokens. Writing in the input while it works adds an instruction to the running
-   task (Codex takes it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
+   task (Codex and Gemini CLI take it as the next task, once this one is done). `Esc`, then `s`, stops it. The task's last line says how it ended, with the cost the CLI reported:
    `done · ≈ $0.41 (claude-code estimate)`.
 7. To change the model later, press `Esc`, then `m`: the picker lists the CLI's models
    (`claude · opus`, `claude · haiku`, …) and `claude · other model…`. `Enter` switches the open
@@ -2168,6 +2323,42 @@ Vimma's own`; rename it. A call to any server other than Vimma's ends the task.
   session file, but Codex still updates its own state in `~/.codex`.
 - Not logged in, or a key its provider refused: `stopped:` with Codex's own error, such as
   `unexpected status 401 Unauthorized`; run `codex login` in a terminal.
+
+**Gemini CLI** (`cli = "gemini"`, from version 0.66.0):
+
+- Program: `gemini` on your `PATH`. Sign in by running `gemini` once in a terminal; a Google
+  account, a Gemini API key or Vertex AI all work, as your Gemini CLI settings choose.
+- Models: setup leaves the model empty, for Gemini CLI's own default (its router, which picks a
+  model for each request); the picker lists `pro`, `flash` and `flash-lite` (Gemini CLI's aliases
+  for its newest models), and `other model…` takes a full model name such as `gemini-2.5-pro`.
+- Its own tools follow your Gemini CLI settings and policies. Run without a terminal, Gemini CLI
+  offers its model only the tools that need no confirmation (reading and searching files, its
+  web search) unless a policy of yours allows more, so the header says
+  `its own tools: as its configuration allows`. A tool it did not offer, or that a policy
+  refused, shows as refused on its `◆` line
+  (`◆ gemini ran its own tool: run_shell_command "ls /"`).
+- Vimma gives it one MCP server, `vimma_chat`, in a settings file in the task's own folder, and
+  lets no other server start (`--allowed-mcp-server-names vimma_chat`); its extensions are off
+  for these runs (`-e none`), since they bring servers and tools of their own. So the `vimma`
+  server you may have added for a terminal (Using Vimma from an agent) stays in your settings but
+  does not start. A call to any other server ends the task.
+- Gemini CLI saves every conversation, page text included, under `~/.gemini/tmp`, and has no
+  setting to stop it. After each task, Vimma deletes what Gemini CLI saved of it: its session
+  file, its project folders in `~/.gemini/tmp` and `~/.gemini/history`, and its entry in
+  `~/.gemini/projects.json`. It finds them by the task's own folder, so your other Gemini CLI
+  projects and sessions are never touched. If Vimma or the computer stops during a task, the next
+  start of Vimma deletes what that task left (on macOS, once the task's folder is a day old).
+  If `~/.gemini/projects.json` is a link, as a dotfile manager makes it, Vimma leaves it as it
+  is, so the tasks' entries stay in it; their folders still go. Gemini CLI's error reports, which also hold the
+  conversation, go to the task's own folder, which goes when the task ends.
+- If `vimma-ctl` does not start, Gemini CLI does not say so: the task runs without the
+  browser's tools, and its reply says it could not reach them. Check that `vimma-ctl` is next to
+  Vimma (or the pref `vimma.agent.cli.vimmaCtl`).
+- It reports tokens and no cost. It cannot take a message during a task: a message you send
+  then waits for the next task.
+- Not signed in, or a key its provider refused: `stopped:` with Gemini CLI's own error, such as
+  `gemini exited (145): [API Error: … API key not valid …]`; run `gemini` in a terminal to sign
+  in again.
 
 #### Running an agent CLI headless
 
@@ -2501,8 +2692,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   into the page), file fields (a click would open a file chooser), disabled elements, links to
   another site (the agent follows those with `vimma_keys`, which asks as an open of that site)
   and links that are not web pages. These are refused before you are asked.
-- **A form submission asks every time**, also under a grant, with only `y` and `n`, naming where
-  the form goes and what it sends
+- **A form submission asks**, with only `y` and `n` (and `a` under a grant), naming where the
+  form goes and what it sends: every time without a grant, and under a grant when it sends text
+  or personal details
   ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)):
   `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
   A `y` sends that one form; it never makes or ends a grant.
@@ -2739,7 +2931,7 @@ One grant covers a task. Answer any request with `a`, and that agent may use eve
 it quits, without asking: read pages, list tabs, open and close tabs, press keys and follow
 links, list a page's buttons and fields, click, fill, take screenshots, read a page's errors and
 download. The notice says so:
-`claude-code may use the agent workspace until it quits; sending a form or paying still asks (ctrl+b shift+a ends it)`.
+`claude-code may use the agent workspace until it quits; paying and sending text or personal details still ask (ctrl+b shift+a ends it)`.
 Answer `15a` instead to allow it for 15 minutes only; `[mcp] grant_minutes` makes a bare `a` a
 grant of that many minutes.
 The question's hint leaves that out, so the line stays short; the notice says it the moment you
@@ -2748,10 +2940,11 @@ answer. Requests that wait when you answer run at once.
 These still ask under any grant, and your yes allows that one step without making a grant or
 ending the one in force:
 
-- **Sending a form and paying**
-  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a form
-  sends data to a server, where sign-ups, messages and purchases happen, and a payment spends
-  your money.
+- **Paying, and sending a form with text or personal details**
+  ([Checkpoints: sending a form and paying](#checkpoints-sending-a-form-and-paying)): a payment
+  spends your money, and a form that sends a message, a name, an address, a password or a file
+  is where sign-ups and messages happen. A form that sends only the page's own values, such as a
+  basket's product and quantity, runs under the grant like any other click.
 - **Showing you a page** ([Showing you a page](#showing-you-a-page)): it changes what you see.
 - **A dangerous or unscanned download**, and a download a page started by itself
   ([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
@@ -2763,19 +2956,37 @@ idle link) and it reconnects within two minutes, it keeps its grant; later, it a
 #### Checkpoints: sending a form and paying
 
 Under a grant an agent works through its task without asking, except at two checkpoints: before
-it sends a form and before it pays. A checkpoint is one question that shows what the step will
-do, answered with one key, after which the agent goes on under the grant it had:
+it pays and before it sends a form with text or personal details. A checkpoint is one question
+that shows what the step will do, answered with one key, after which the agent goes on under the
+grant it had:
 
 ```
 ▲ claude-code wants to pay: "Vahvista tilaus" on shop.example · the page says "Yhteensä 42,90 €"   y pay · n stop
 ▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", name "Ada", password •••, + 2 hidden   y send it · n stop
 ```
 
+- **Which forms ask.** Under a grant, a click that sends a form asks when the form sends free
+  text (a message, a search typed into a text field), a person's details (a name, an email
+  address, a phone number, a street address or postcode, a birth date, a username), a password,
+  payment card or one-time-code field, or a file; when it pays; or when Vimma cannot tell what it
+  sends. A form of hidden fields, numbers, checkboxes and choices from the page's own lists, such
+  as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
+  names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
+  form always asks, since it sends what the agent typed. Without a grant every form asks.
+- **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment
+  and sends no password, card, one-time-code or file field ends its hint with
+  `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
+  button (the same text, sending to the same address) on the same site send its form without
+  asking until the grant ends, for example a basket button whose form also sends a delivery
+  postcode. The notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log`
+  marks the row `allowed (checkpoint, for the grant)`. A payment never offers `a`.
+
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
 - **One key.** `y` runs that one step. `n`, `Esc`, `Enter` or `x` stops it: the agent is told
   no for that step and may go on with others under its grant (`ctrl+b shift+a` ends the grant).
-  No count or grant is offered, and neither answer makes, lengthens or ends a grant. Three noes
+  No count or grant is offered (only `a` on a form, above), and no answer makes, lengthens or
+  ends a grant. Three noes
   in a row ignore the agent for a minute, as for any question.
 - **What a payment shows.** The button's text (for a key, such as `H` on a checkout page, the
   keys), the site in bold, and the total the page states, quoted after "the page says". A button
@@ -3061,8 +3272,10 @@ which tabs they are, and the head says `split: 3 panes`. Change the marks as abo
   focused there; any other tab shows alone and the split waits hidden
   ([Picking a tab during a split](#picking-a-tab-during-a-split)). One `Esc` closes the panel.
   After a change, the first `Esc` puts the split's marks back and the second closes.
-- **A hidden split** is listed the same way, its tabs marked, and the head says
-  `split: 2 panes (hidden)`.
+- **A hidden split** is listed with its label, but its tabs are not marked: on a tab shown
+  alone the marks start a new split ([Several splits](#several-splits)). The head says
+  `split: 2 panes (hidden)`, or `3 splits (none shown)` with several. To change a hidden split,
+  show it first (`]s`, `ctrl+b S` or any of its tabs).
 
 `ctrl+b )` / `ctrl+b (` with the panel open list the other workspace with its own split marked.
 No page reloads.
@@ -3101,10 +3314,28 @@ workspace = "notes"
 - **`domain`** matches `http` and `https` pages only, on whole labels (`github.com` is not
   `notgithub.com`), whatever the port; Unicode names work written either way
   (`bücher.example` or `xn--bcher-kva.example`), and an IP address matches only itself.
-- **`app`** is the name of the program that opened the link, as `vimma-open` sees it (below).
+- **`app`** is the name of a program that opened the link, as `vimma-open` sees it (below), up
+  to 64 characters.
 - **Order is the precedence.** Put the rule that matters most first: with `app = "slack"` above
-  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`.
-- A rule naming a workspace that does not exist is skipped (`:route` says so).
+  `domain = "youtube.com"`, a YouTube link from Slack goes to `work`. Among `app` rules above
+  the first matching rule without `app`, the one naming the program nearest the link wins,
+  whatever their order: a link from a herdr pane in Ghostty matches `app = "herdr"` before
+  `app = "ghostty"`. An `app` rule below a matching rule without `app` never applies to that
+  link.
+- A rule naming a workspace that does not exist is skipped (`:route` says so), and so is a rule
+  naming the agent workspace for a link from another app: the next rule applies.
+- **Links from other programs that no rule matches** open where `[routing] default_workspace`
+  says, when you set it:
+
+  ```toml
+  [routing]
+  default_workspace = "work"   # links from other programs that no rule matches
+  ```
+
+  Left out, they open in the workspace Firefox guesses from your open tabs, else in the
+  window's. It never applies to what you type or open in Vimma, and never to the agent
+  workspace. Every program's links can land there, including an AI agent's, so choose a
+  workspace without privileged sign-ins.
 
 **Where rules apply:** an address you type in the address bar or with `:open` / `:tabnew`, a
 bookmark, a link from another app and a new window opened on a URL: what you or Vimma open. A
@@ -3123,12 +3354,65 @@ there (it loses its back/forward history, as any move does). A container you cho
 
 **By application.** Vimma's packages install `vimma-open` and make it the desktop entry's
 command, so when Slack, Discord, a terminal or Neovim opens a link, `vimma-open` looks up which
-program asked (through `/proc`, skipping `xdg-open`, `gio` and shells) and tells Vimma. A link
-you open from a shell counts as the terminal's. Apps in Flatpak (they go through the desktop
-portal), apps started through systemd (`uwsm app`) and links opened while the asking program
-has already exited have no app: only `domain` and `url` rules apply to them. To see what an app
-is called, run `vimma-open https://example.com` from it, or look at its process name
-(`ps -o comm`), lower-cased.
+programs asked (through `/proc`, skipping openers such as `xdg-open` and `gio`) and tells Vimma.
+A link carries up to eight program names, nearest first, shells included: `az login` run in a
+herdr pane in Ghostty carries `python3, zsh, herdr, zsh, ghostty`, so a rule can name whichever
+of them stands for the role, and the rule naming the nearest one wins.
+
+Command-line tools (the Azure CLI, `gh`, anything written in Python) open links through the
+`BROWSER` variable. Set it in your shell's startup file, and their links are routed by the
+terminal and multiplexer they run in:
+
+```sh
+# ~/.zshrc (or ~/.bashrc; in config.fish: set -gx BROWSER vimma-open)
+export BROWSER=vimma-open
+```
+
+```toml
+[[routes]]
+app = "herdr"
+domain = "login.microsoftonline.com"
+workspace = "admin"
+
+[[routes]]
+app = "ghostty"
+domain = "login.microsoftonline.com"
+workspace = "admin"
+
+[[routes]]
+domain = "login.microsoftonline.com"
+workspace = "work"
+```
+
+With these rules, `az login` in Ghostty, or in herdr inside Ghostty, opens its sign-in page in
+`admin`, and the same sign-in link from any other app opens in `work`. `vimma-open` returns at
+once, so the tool never waits for the browser, and a Vimma it starts does not close with the
+terminal.
+
+- **Multiplexers.** Inside tmux, zellij or a herdr session you have detached and attached again,
+  the pane's processes run under the multiplexer's server, not under the terminal, so the names
+  end at `tmux`, `zellij` or `herdr`. Write a rule for the multiplexer, as the `herdr` rule above
+  does; a rule for the terminal behind it does not match. Vimma never asks the multiplexer which
+  terminal is attached.
+- **A program not on the way.** `vimma-open --from <name> <url>` names the program itself, for a
+  script or a systemd unit started outside any terminal: `vimma-open --from backup
+https://example.com`. It names a program, never a workspace: `config.toml` still decides.
+- **What has no names:** apps in Flatpak (they go through the desktop portal, as Ghostty's own
+  link clicks do), apps started through systemd (`uwsm app`), and links opened after the asking
+  program has exited. Only `domain` and `url` rules apply to them, then
+  `[routing] default_workspace`.
+- **What an app is called:** about:vimma's Routing section (`:route`) shows the names the last
+  link from another app carried and the rule it matched (never its address), and marks a rule
+  that an earlier rule always wins against as `shadowed by rule N`. You can also run
+  `vimma-open https://example.com` from the app, or look at its process name (`ps -o comm`),
+  lower-cased.
+
+Every program you run in a terminal carries the terminal's names, an AI agent's command-line
+tool included. When a rule sends an agent's tool (`app = "claude"`) to the agent workspace, that
+tool's links never match an `app` rule at all, so an agent cannot reach a workspace you route
+your terminal's sign-ins to. Route agent tools (`claude`, `codex`) by name, and pair `app` with
+`domain` for a workspace that holds privileged sign-ins, as above, so that a program that only
+claims a name opens nothing but the sign-in host there.
 
 **Commands.**
 
@@ -3486,6 +3770,72 @@ Bitwarden), and `Tab` completes the name. To put an add-on on a key:
 - **Sidebar add-ons** (a `sidebar_action`) open in Firefox's own sidebar, through the add-on's
   button or the View menu, not in Vimma's side panel.
 
+## Downloads
+
+Your downloads are one key away, without the mouse and without Firefox's downloads panel
+dropping the toolbar over the page. While a download runs, the [status bar](#status-bar) shows
+`↓ 42%`; when it ends, `↓ done` for a few seconds, or `↓ failed` or `↓ blocked` until you look.
+
+`ctrl+b d` (or `:downloads`) opens the downloads picker over the page: newest first, those in
+progress, paused or blocked under **Active**, the rest under **Recent**, up to 100 in all. Each row
+shows the file's name, its state (`42%`, `paused`, `done`, `failed`, `canceled`, `blocked`,
+`missing`), its size or progress (`3.1 / 7.4 MB · 1.2 MB/s · 0:35 left`), the site it came from
+(the host only, never the full link) and when it finished. A download from another workspace
+names that workspace, and one from the [agent workspace](#agent-workspace) says `◇ agent`.
+Progress updates in place. Like the other pickers, it takes every key while open; `Esc` or `q`
+closes it.
+
+| Key            | What it does                                                                                                                |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `j` / `k`, `/` | Move; filter by name, site, state or workspace (`Esc` back to the list).                                                    |
+| `Enter`        | The obvious thing for its state: opens a finished file, resumes a paused one, retries a failed one, explains a blocked one. |
+| `o`            | Opens the file as Firefox would: a PDF or an image in a tab, anything else in its app. A program or script asks first.      |
+| `O`            | Opens a file Firefox shows itself (a PDF) in the system's app instead.                                                      |
+| `s`            | Shows the file in its folder (Finder on macOS).                                                                             |
+| `y` / `Y`      | Copies the download's link / the file's path.                                                                               |
+| `p`            | Pauses or resumes.                                                                                                          |
+| `c`            | Cancels, after a `y/N` question, and removes the partial file.                                                              |
+| `r`            | Retries a failed or canceled download.                                                                                      |
+| `u`            | Opens the page the download came from in a new tab.                                                                         |
+| `d`            | Removes it from the list and from history. The file stays (a blocked file's data is deleted, as in Firefox).                |
+| `D`            | Deletes the file from disk, after a `y/N` question.                                                                         |
+| `!`            | Allows or removes a blocked download, in Firefox's own dialog.                                                              |
+| `L`            | Opens Firefox's full downloads view (the Library, or `about:downloads` in a private window), as `ctrl+shift+y` does.        |
+
+A key that does not apply says why in the notice line (`not finished yet`, `the file is
+missing`). `c` and `D` close the picker before they ask, so your `y` answers the question; if the
+download changed before you answered (it finished, or its file went), nothing is done and the
+notice says so.
+
+**Blocked downloads.** Firefox blocks a file it does not trust. For an `http:` file from an
+`https:` page, refused as it starts, its downloads panel opens with its warning, the one time the
+toolbar still comes down by itself; a file blocked after it finished downloading (your
+organization's scanner, or Safe Browsing in a build that has it) shows as `↓ blocked` in red. In
+the picker the file is listed as `blocked`; `Enter` shows Firefox's reason and the keys that
+apply. `!` opens Firefox's own dialog: **Allow download**, **Remove file**, or **Cancel**. Its
+default, the one `Enter` presses, removes the file, and `Esc` cancels, so a habitual `Enter`
+never lets a blocked file through; `y` there allows it only after the dialog has been shown a
+moment with no key pressed, as in Firefox's other dialogs ([Answering a dialog](#answering-a-dialog)). Allowing a file never opens it: press
+`o` afterwards. `!` does nothing, and says why, when `browser.safebrowsing.allowOverride` is off
+or the file is named as malware, which can only be removed. A file your organization's scanner
+blocked as malware cannot be removed or deleted from the picker either.
+
+**Agent downloads.** A file the agent workspace downloaded is listed with `◇ agent` so you can
+find it, show it in its folder, copy its path or delete it, but Vimma never opens it, retries
+it, allows it or opens the page it came from
+([Downloads from the agent workspace](#downloads-from-the-agent-workspace)).
+
+**Private windows.** A private window lists only its own private downloads, and a normal window
+never lists a private one; they are gone when the private session ends, as in Firefox.
+
+**Linux and macOS.** The keys are the same. On macOS `s` shows the file selected in Finder. On
+Linux Vimma asks your file manager to show it, and a desktop without one (a bare tiling window
+manager) shows nothing: `Y` copies the path to paste in a terminal instead.
+
+`ctrl+b d` is the `downloads_picker` binding: like every binding, the prefix and the leader, it
+can be remapped in [config.toml](#configtoml). The keys inside the picker are fixed, as in the
+other pickers.
+
 ## Site permissions
 
 See and change what the site in the selected tab may do (camera, microphone, location,
@@ -3634,6 +3984,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                  |
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
+| `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                       |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
 | `:site`, `:permissions`               | Opens the [site permissions](#site-permissions) picker for the selected tab.                                                                   |
 | `:popups`                             | Opens the [blocked pop-ups picker](#blocked-pop-ups): allow, reset or block the site, open one.                                                |
@@ -3689,19 +4040,20 @@ notices are in `vimma-ctl-licenses/` next to it (`/usr/lib/vimma/vimma-ctl-licen
 
 Vimma's own preferences today:
 
-| Preference                 | Default                                | What it does                                                                                                                                                                            |
-| -------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vimma.ui.tabstrip.hidden` | `true`                                 | Hides Firefox's tab strip (horizontal, and the vertical tab list). Set `false` to show it again; it applies at once, no restart.                                                        |
-| `vimma.ui.toolbar.hidden`  | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
-| `vimma.debug.keys`         | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
-| `vimma.startpage.newtab`   | `true`                                 | New tabs open Vimma's start page (see [The start page](#the-start-page)). Set `false` for Firefox's new tab page; it applies at once, no restart.                                       |
-| `vimma.control.enabled`    | `false`                                | Turns on the control socket for `vimma-ctl` and scripts (see [Scripting with vimma-ctl](#scripting-with-vimma-ctl)). Applies at once, no restart.                                       |
-| `vimma.theme.source`       | `omarchy`                              | `omarchy` follows your Omarchy theme where Omarchy is installed (see [Colours](#colours-and-themes)); `builtin` forces `[theme] name`'s palette. Applies at once.                       |
-| `vimma.theme.appearance`   | `system`                               | What `:theme` sets: the built-in palette `dark`, `light` or as the system is (see [Colours](#colours-and-themes)). `[theme] appearance` in `config.toml` wins over it. Applies at once. |
-| `vimma.theme.omarchyPath`  | `~/.local/state/omarchy/current/theme` | The Omarchy theme directory to read `colors.toml` and `light.mode` from. Applies at once.                                                                                               |
-| `vimma.theme.omarchyHook`  | `true`                                 | Installs the Omarchy theme-set hook for instant theme changes (see [Colours](#colours-and-themes)). `false` removes Vimma's unedited hook at once.                                      |
-| `vimma.config.path`        | unset                                  | A config file to read instead of `$XDG_CONFIG_HOME/vimma/config.toml`. Applies at once.                                                                                                 |
-| `vimma.config.pollMs`      | `2000`                                 | How often Vimma checks `config.toml` for a change, in milliseconds. Applies at once.                                                                                                    |
+| Preference                    | Default                                | What it does                                                                                                                                                                            |
+| ----------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vimma.ui.tabstrip.hidden`    | `true`                                 | Hides Firefox's tab strip (horizontal, and the vertical tab list). Set `false` to show it again; it applies at once, no restart.                                                        |
+| `vimma.ui.toolbar.hidden`     | `false`                                | Hides Firefox's toolbar in every window ([Hiding the toolbar](#hiding-the-toolbar)). `ctrl+b u` and `:toolbar` set it; `[ui] toolbar` sets it at startup. Applies at once.              |
+| `vimma.ui.pdf_outline.hidden` | `false`                                | Opens PDFs without their outline shown ([PDF viewer](#pdf-viewer)); `Tab` still opens it. `[ui] pdf_outline` sets it at startup. Applies to the next PDF.                               |
+| `vimma.debug.keys`            | unset                                  | Create it as a boolean set to `true` to log every key Vimma sees (`{ key, mods, mode }`) to the Browser Console (`ctrl+shift+j`; enable its Debug filter).                              |
+| `vimma.startpage.newtab`      | `true`                                 | New tabs open Vimma's start page (see [The start page](#the-start-page)). Set `false` for Firefox's new tab page; it applies at once, no restart.                                       |
+| `vimma.control.enabled`       | `false`                                | Turns on the control socket for `vimma-ctl` and scripts (see [Scripting with vimma-ctl](#scripting-with-vimma-ctl)). Applies at once, no restart.                                       |
+| `vimma.theme.source`          | `omarchy`                              | `omarchy` follows your Omarchy theme where Omarchy is installed (see [Colours](#colours-and-themes)); `builtin` forces `[theme] name`'s palette. Applies at once.                       |
+| `vimma.theme.appearance`      | `system`                               | What `:theme` sets: the built-in palette `dark`, `light` or as the system is (see [Colours](#colours-and-themes)). `[theme] appearance` in `config.toml` wins over it. Applies at once. |
+| `vimma.theme.omarchyPath`     | `~/.local/state/omarchy/current/theme` | The Omarchy theme directory to read `colors.toml` and `light.mode` from. Applies at once.                                                                                               |
+| `vimma.theme.omarchyHook`     | `true`                                 | Installs the Omarchy theme-set hook for instant theme changes (see [Colours](#colours-and-themes)). `false` removes Vimma's unedited hook at once.                                      |
+| `vimma.config.path`           | unset                                  | A config file to read instead of `$XDG_CONFIG_HOME/vimma/config.toml`. Applies at once.                                                                                                 |
+| `vimma.config.pollMs`         | `2000`                                 | How often Vimma checks `config.toml` for a change, in milliseconds. Applies at once.                                                                                                    |
 
 ## config.toml
 
@@ -3750,7 +4102,8 @@ accent = "#ff9e64"
   message goes away at the next check.
 - **What applies live:** `[keys]`, `[modal]` (leader, `timeout_ms`, per-mode keys, `hint_chars`)
   and `[unbind]`; `[panes] max` (most panes in a workspace, 1 to 16, default 8; it limits new
-  splits), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
+  splits), `[panes] max_splits` (most splits in a workspace, 1 to 9, default 9;
+  [Several splits](#several-splits)), `[panes] layout` (`"dwindle"` or `"manual"`: where `ctrl+b enter` puts a new pane) and
   `[panes] main_size` (the main-\* presets' main pane, 20 to 80%, default 60); `[sites."<host>"] insert` (`auto`, `never` or `always`: whether a text field on that
   site and its subdomains takes insert mode); `[theme]` `source` (`omarchy` or `file`, the
   built-in palette), `name` (`vimma`, the default, or `tokyo-night`: the built-in palette),
@@ -3759,7 +4112,7 @@ accent = "#ff9e64"
   `[workspaces]` (a new one gets its container at once; one removed from the file stays, as a
   workspace you can close yourself); `[firefox] disable` and `enable` (which of Firefox's own
   shortcuts are off, [above](#firefoxs-own-shortcuts)); `[modal] insert_editing` (`ctrl+w`,
-  `ctrl+u`, `ctrl+h` in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
+  `ctrl+u`, `ctrl+h`, and `ctrl+j` and `ctrl+m` as `Enter`, in text fields, default `true`); `[bookmarks] root` (`"workspace"`, the
   default: the current workspace's folder; `"toolbar"`; or `"all"`: what the
   [bookmarks panel](#bookmarks) lists and where paths start); `[panel] numbers` (`"absolute"`, the
   default, `"relative"` or `"hybrid"`: the [side panel](#side-panel)'s row numbers);
@@ -3777,9 +4130,12 @@ accent = "#ff9e64"
   default, or `"hidden"`: [Firefox's toolbar](#hiding-the-toolbar) in every window; applied at
   startup and when the line changes, so `ctrl+b u` lasts until then); `[ui] bookmarks_toolbar`
   (`"shown"`, `"hidden"` or `"newtab"`, unset by default: [Firefox's Bookmarks
-  Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[updates] check`
+  Toolbar](#firefoxs-bookmarks-toolbar), hidden unless you show it); `[ui] pdf_outline`
+  (`"shown"`, the default, or `"hidden"`: the [PDF viewer](#pdf-viewer)'s outline when a PDF
+  opens; applied at startup and when the line changes); `[updates] check`
   (`true`, the default, or `false`: no [update check](#updates) at all).
-- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[firefox]`,
+- **Schema:** `schema = 2` at the top enables `[panes]`, `[sites]`, `[[routes]]`, `[routing]`,
+  `[firefox]`,
   `[bookmarks]`, `[panel]`, `[private]`, `[mcp]`, `[search]`, `[ui]`, `[updates]`, `[agent]`,
   `hint_chars`, `insert_editing`, `[theme] name` and `appearance`. Every key is in the template
   `:config` writes, with its default commented out (the same as
@@ -3840,7 +4196,7 @@ is **off by default**.
 
    ```sh
    vimma-ctl state                    # mode, pending keys, workspace, tabs
-   vimma-ctl state --json             # the same, as JSON
+   vimma-ctl state --json             # as JSON, with the splits and the update check
    vimma-ctl send-keys "ctrl+b ?"     # typed as if on the keyboard: opens the help overlay
    vimma-ctl send-keys esc
    vimma-ctl open https://example.com # a new tab; only http, https, file and about URLs
@@ -3900,7 +4256,8 @@ slots busy. Turn the pref off to stop either.
 
 Vimma 0.1.2 and later tell you when a newer release is out, on Linux x86_64 and on Macs with
 Apple Silicon. Vimma notifies you and shows the command; it does not install the update itself,
-except as an AppImage, which replaces its own file (below).
+except as an AppImage, which replaces its own file, and as a tarball built with Firefox's
+updater, which applies the update at its next start (below).
 
 **Vimma 0.1.6 on a Mac** shows the notice, but its `:update` shows the Linux tarball command,
 which does not apply to a Mac: do not run it. Update with `brew upgrade --cask vimma`, or install
@@ -3915,7 +4272,7 @@ fetches one small signed file from `updates.vimma.dev` that names the newest rel
 update channel. A check that fails is tried again every hour while Vimma runs. Vimma checks the
 file's signature against the keys built into Vimma and refuses anything else: a file signed by
 another key, one for another channel or platform, or one older than a file it already accepted.
-Except for the AppImage, it installs nothing; it tells you.
+Except for the AppImage and such a tarball, it installs nothing; it tells you.
 
 - **A newer version:** the status bar's right side shows `⇡ 0.3.1 available`, dim. A release that
   carries a Firefox security fix shows `⇡ 0.3.1 security: :update` in the error colour. The
@@ -3943,13 +4300,23 @@ Except for the AppImage, it installs nothing; it tells you.
   0.3.1; `about:vimma` shows the version that runs. If the AppImage's directory is not writable,
   the download does not match, or it fails, your file stays as it was, `about:vimma` says why,
   `:update` shows the manual steps, and the next check tries again.
+- **The tarball updates itself** once its release was built with Firefox's updater (the release
+  lists `vimma-X.Y.Z-linux-x86_64.complete.mar` beside the tarball). Firefox's own updater checks
+  the same signed file, downloads the new release's complete update (the `.complete.mar`, from
+  the project's GitHub release, without cookies), checks its signature against the update key
+  built into Vimma and prepares it. The status bar then shows `⇡ 0.3.1 on restart`
+  (`⇡ 0.3.1 security: :restart` in the error colour for a security release), and the next start
+  of Vimma installs it. Vimma never restarts by itself. If Vimma cannot write the directory it
+  runs from (a tarball unpacked as root into `/opt`, say), it keeps showing the offer, and
+  `:update`'s commands say that the directory's owner has to run them.
 - **A security update that is installed asks to restart**, once per session:
   `Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`, with
   `Private tabs will close.` before `(y/N)` while the private workspace has tabs, and
   `Tabs will not come back.` in place of `Tabs come back.` when they will not (below). `y` restarts
   Vimma at once, as `:restart` does; `n`, Esc or any other key dismisses it, and a session that
   runs on is asked again 24 hours later. It waits and arms as the question above does, and is not
-  asked in a private window. Today this is the AppImage, once it has replaced its file.
+  asked in a private window. This is the AppImage once it has replaced its file, and the tarball
+  once its update is ready for the next start.
 - **`:restart`** restarts Vimma. Your workspaces, tabs and panes come back, as after any restart;
   the private workspace's tabs do not, so with private tabs open it asks first:
   `Restart Vimma? 2 private tabs will close. (y/N)`. A page that asks before it is left (unsaved
@@ -3973,7 +4340,7 @@ Except for the AppImage, it installs nothing; it tells you.
   | AUR `vimma-bin`          | `yay -Syu vimma-bin` (or your AUR helper's equivalent); no such package exists yet ([Arch Linux](#arch-linux))                                                   |
   | `.deb`                   | download `vimma_X.Y.Z_amd64.deb`, check it, then `sudo apt install ./vimma_X.Y.Z_amd64.deb`                                                                      |
   | `.rpm`                   | download `vimma-X.Y.Z-1.x86_64.rpm`, check it, then `sudo dnf install` it (Fedora) or `sudo zypper install --allow-unsigned-rpm` it (openSUSE)                   |
-  | Tarball                  | quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory                                                               |
+  | Tarball                  | nothing when it updates itself (above); otherwise quit Vimma, download the tarball, check it, then `tar -xJf` it into the install's parent directory             |
   | AppImage                 | nothing: it replaces its own file (above); if it cannot, download the new AppImage next to yours, check it, and rename it over yours                             |
   | Flatpak (Flathub)        | `flatpak update dev.vimma.browser`, or your software centre; Flathub builds a release after it is published, so it can arrive some hours after the notice        |
   | Homebrew (macOS)         | `brew upgrade --cask vimma`                                                                                                                                      |
@@ -4072,11 +4439,14 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   back (`browser.startup.page` = `3`; Firefox's default `1` opens the home page).
 - **Firefox Sync leaves two settings alone**: `browser.startup.page` and
   `privacy.userContext.enabled` (turning containers off deletes every workspace's data).
-- **A file Firefox opens in a tab of its own opens no downloads panel.** A PDF that a site
-  serves as a download opens in the PDF viewer ready for your keys, with focus in its tab rather
-  than in the downloads panel; the downloads button still shows the download. Other downloads open
-  the panel as in Firefox, and a profile's first download behaves as every later one
-  (`browser.download.panel.shown` = `true`).
+- **A download opens no downloads panel.** The status bar's `↓` shows it and `ctrl+b d` lists
+  it ([Downloads](#downloads)), so the panel no longer brings the hidden toolbar over the page,
+  and a PDF that a site serves as a download opens in the PDF viewer with focus in its tab. A
+  download Firefox refuses as it starts still opens the panel, as its warning; one blocked after
+  it finished downloading shows as `↓ blocked` in red. The toolbar's downloads button
+  and its panel still work (`browser.download.alwaysOpenPanel` = `false`, and
+  `browser.download.panel.shown` = `true` so that a profile's first download behaves as every
+  later one).
 
 ## Accessibility
 

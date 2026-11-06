@@ -234,6 +234,7 @@ npm run e2e -- --xvfb --keep                     # own Xvfb on a desktop; keep t
 npm run e2e -- --run-pending --filter m0         # run a pending scenario anyway (to watch it fail)
 MOZ_HEADLESS=1 npm run e2e -- --artifact --filter m3   # no Xvfb at hand: headless, no screenshots
 npm run e2e -- --headless --filter m0-happy-path       # MOZ_HEADLESS=1; screenshot steps skipped
+npm run e2e -- --updater <objdir> --filter m6a-update  # the updater's scenarios (below)
 npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl /Volumes/Vimma/Vimma.app/Contents/MacOS/vimma-ctl
 ```
 
@@ -269,6 +270,44 @@ Wayland or locale; `HOME` and `TMPDIR` inside the temp profile) and the profile 
 hard: a scenario's deadline kills its launch and any running `vimma-ctl`. The whole suite has a
 5-minute budget (`--budget SECS`).
 Exit 0: nothing failed (pending is not failure, nor a pass); 1: a failure; 2: usage.
+
+**Updater scenarios** (`m6a-update-n-to-n1`, `m6a-update-bad-signature`; spec m6a-updater,
+"Tests", e2e, M6a exit test 1). They need a full `VIMMA_UPDATES=1` build packaged with
+`./mach package`, which no pull-request job has, so they run locally and are reported pending
+elsewhere ("needs a VIMMA_UPDATES=1 build"). Linux only; they also need `openssl` and NSS's
+`certutil` and `pk12util` (`nss` on Arch, `libnss3-tools` on Ubuntu). Start from a build whose
+updater has Vimma's certificates (`VIMMA_UPDATES=1 npx surfer build`, then
+`(cd engine && ./mach package)`):
+
+```sh
+npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update --xvfb --budget 900
+```
+
+The harness unpacks the tarball (N), points its `[AppUpdate] URL` at a host on `127.0.0.1` with
+https (a CA made for the run, trusted only in each scenario's profile with `certutil`), makes N+1
+(a build ID 60 s later and a marker file) and a downgrade build (later still, Firefox 100.0),
+builds their complete MARs with `tools/update/mar.mjs` and signs them with libmar's test key
+`mycert` (exported from `engine/modules/libmar/tests/unit/data` with `pk12util`). Manifests come
+from `tools/update/manifest.mjs`, signed with an RSA key generated for the run, which the browser
+pins only in automation (`vimma.update.testKeys` with `MOZ_DISABLE_NONLOCAL_CONNECTIONS=1` and
+the automation pref). `m6a-update-n-to-n1`'s install carries `updater-xpcshell` (Mozilla's test
+updater, which trusts `mycert`) as `updater`; `m6a-update-bad-signature`'s keeps the shipped one,
+which must refuse the `mycert` MAR (error 19). Nothing reaches `updates.vimma.dev`, and the real
+update key is never used. The browser runs with `XUL_APP_FILE` naming the install's
+`browser/application.ini` (Firefox's binary otherwise uses the copy compiled into it), so the
+local URL and, after the update, N+1's build ID are what it runs with. With
+`MOZ_DISABLE_NONLOCAL_CONNECTIONS` any connection off 127.0.0.1 crashes the browser ("FATAL
+ERROR: Non-local network connections are disabled", in the failure's teardown output); the
+scenario profile turns off the ones Firefox makes on its own (`updatePrefs` in
+`tools/e2e/update-host.mjs`), and a scenario types `:update` only once a page has focus, since
+in the address bar it is a search. The updater applies the update by `execv` in the browser's
+own process, so a `restart` step follows it with nothing extra. `serve-update` picks the
+manifest (`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`);
+`wait-for-install` waits on which build the install holds and the profile last ran
+(`compatibility.ini`), N+1's marker, the error code the updater's last run ended with
+(`updates/last-update.log`) and the MAR requests the host saw. Measured 2026-11-06 (Firefox
+159.0.1, 16 threads): the preparation takes about 2.5 minutes (two MARs, xz), the two scenarios
+about 10 s.
 
 **Baselines.** Screenshots are compared with `tests/e2e/baselines/<name>.png`; more than 0.5 % of
 differing pixels fails, and the actual and diff images land in `e2e-output/`. To change a
@@ -374,7 +413,7 @@ reached the shop's servers: the basket, an order (`paid`), a form, a request to 
 (`injection followed`). Results are published in [agent-bench.md](agent-bench.md).
 
 ```sh
-npm run agent-bench -- --artifact --check --lists L04          # the scripted provider (CI)
+npm run agent-bench -- --artifact --check --lists L04 --two-shops   # the scripted provider (CI)
 npm run agent-bench -- --artifact --provider openai --model qwen2.5:7b --num-ctx 32768 \
   --runs 3 --max-steps 100 --out qwen2.5-7b.json               # a local model on Ollama
 ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
@@ -385,6 +424,14 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   model and no network; `e2e.yml` runs it with `--check` after the e2e scenarios, so the shop,
   the harness and the scoring keep working. A scripted run that is not complete and safe is a
   bug in the bench or in Vimma.
+- `--two-shops` adds the two-shop scenario of issue #693 ([mcp-consequence](specs/mcp-consequence.md),
+  Tests): five items compared across two local shops, Kauppa on `127.0.0.1` and Market on
+  `localhost` (`tools/agent-bench/two-shops.mjs`, `tests/e2e/fixtures/bench-shop/two-shops.json`),
+  both baskets filled with each shop's cheapest match and both checkouts asked. Kauppa's add
+  buttons are icon-only buttons named by `aria-label`; Market's are a repeated "Add" that
+  submits a small form. Alone it runs only that scenario. `--check` also fails it when anything
+  but a checkout asked or a result said that questions were waiting for the user. Unpaced, its
+  ten searches use up the open rate, so a run takes about 70 seconds, most of it the rate wait.
 - `--num-ctx` sets an Ollama model's context length by making a model of that name with
   `num_ctx` set (`qwen2.5:7b-ctx32768`), which shares the original's weights. Ollama's
   OpenAI-compatible API takes no context length, and its default of 4096 tokens holds less than
@@ -1988,17 +2035,18 @@ inside that workflow's run, holding back release-please on every push to `main` 
 and would hand the caller job every permission of every release job at once. A dispatch is the
 same call as the manual re-run, so one path is exercised every time.
 
-| Asset                             | What                                                            |
-| --------------------------------- | --------------------------------------------------------------- |
-| `vimma-X.Y.Z-linux-x86_64.tar.xz` | `./mach package`'s tarball, renamed (one `vimma/` directory)    |
-| `vimma-X.Y.Z-x86_64.AppImage`     | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)    |
-| `vimma_X.Y.Z_amd64.deb`           | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons         |
-| `vimma-X.Y.Z-1.x86_64.rpm`        | the same layout as the `.deb`, for Fedora and openSUSE          |
-| `vimma-X.Y.Z.cdx.json`            | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                   |
-| `PKGBUILD`                        | `vimma-bin` for Arch Linux; its only source is the tarball      |
-| `SRCINFO`                         | its `.SRCINFO` (GitHub renames an asset with a leading period)  |
-| `SHA256SUMS`                      | checksums of the seven files above                              |
-| `*.sigstore.json`                 | cosign keyless bundles, one per file above (when signing is on) |
+| Asset                                   | What                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `vimma-X.Y.Z-linux-x86_64.tar.xz`       | `./mach package`'s tarball, renamed (one `vimma/` directory)                                                                    |
+| `vimma-X.Y.Z-x86_64.AppImage`           | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)                                                                    |
+| `vimma_X.Y.Z_amd64.deb`                 | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons                                                                         |
+| `vimma-X.Y.Z-1.x86_64.rpm`              | the same layout as the `.deb`, for Fedora and openSUSE                                                                          |
+| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                                                                                   |
+| `PKGBUILD`                              | `vimma-bin` for Arch Linux; its only source is the tarball                                                                      |
+| `SRCINFO`                               | its `.SRCINFO` (GitHub renames an asset with a leading period)                                                                  |
+| `vimma-X.Y.Z-linux-x86_64.complete.mar` | the complete MAR Firefox's updater applies to a tarball install, signed with the update key (while `UPDATES_ENABLED` is `true`) |
+| `SHA256SUMS`                            | checksums of the files above                                                                                                    |
+| `*.sigstore.json`                       | cosign keyless bundles, one per file above (when signing is on)                                                                 |
 
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
 `vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
@@ -2011,8 +2059,14 @@ the release tarball repacked with them; adds `vimma-ctl` to the SBOM and checks 
 CycloneDX schema; installs the `.deb` and starts it headless, installs the `.rpm` with
 dnf in a Fedora container and with zypper in an openSUSE container and starts it headless there
 with `tools/package/rpm-smoke.sh`, and runs `makepkg -si` on the `PKGBUILD` in an Arch Linux
-container with `tools/package/arch-smoke.sh`) → `sign` (only job with
-`id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
+container with `tools/package/arch-smoke.sh`; checks the release tarball's updater with
+`tools/update/check-build.mjs`, and while `UPDATES_ENABLED` is `true` builds the complete MAR
+from it with a zeroed signature placeholder, `tools/update/mar.mjs build`) → `mar-sign` (calls
+`update-publish.yml`, whose job of that name signs the MAR with the Cloud KMS update key; see
+"Update signing keys and the update host", step 8) → `mar` (no secret: the signed MAR differs
+from package's only in its signature, verifies under `configs/updater/` with `mar.mjs` and with
+the build's own `signmar`, and joins `SHA256SUMS`) → `sign` (cosign; with `mar-sign`, the only
+jobs with `id-token: write`) → `publish` (only job with `contents: write`; uploads to the draft by its tag
 and checks that the draft is still on that tag after the notes edit) → `failure` (opens a
 `release-failure` issue). `aur.yml`, on publish: `aur` (no GitHub token; the SSH key only) →
 `failure`. `homebrew.yml`, on publish: `start` (`actions: write` only; starts `main`'s copy for
@@ -2370,7 +2424,9 @@ can serve as research), and does steps 3 and 4 by hand.
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
    error in `flatpak.mjs`, not in the generated files. Expect one warning,
    `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
-   on 25.08; and `metainfo-missing-screenshots` until the metainfo has screenshots.
+   on 25.08. The metainfo links its screenshots at the release's tag
+   (`docs/assets/screenshots/README.md`), so submit a release whose tag has
+   `docs/assets/screenshots/`; for an earlier one, the screenshot mirror cannot download them.
 3. Fork `flathub/flathub`, branch from its `new-pr` branch, add the generated files at the top
    level, and open a pull request against `new-pr` titled `Add dev.vimma.browser`. The
    description explains the D-Bus names outside the app id (`org.mozilla.vimma.*` for Firefox's
@@ -2393,7 +2449,8 @@ manifest and shows nothing). These steps need the maintainer's accounts; do them
 All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
 signs and publishes a manifest for every published release; nothing is published while the
 repository variable `UPDATES_ENABLED` is not `true`. It is `true`, so update notices are on for
-every install of 0.1.2 or later (0.1.1 pins no key and never shows one).
+every install of 0.1.2 or later (0.1.1 pins no key and never shows one). Step 8, the MAR that
+`release.yml` signs through the same workflow, needs no setup of its own.
 
 **1. The manifest repository** (decision 18): it holds only manifests.
 
@@ -2550,6 +2607,46 @@ installs keep trusting it until they are updated by hand.
 | primary   | Cloud KMS key ring `vimma-updates`, key `update-primary`, version 1, HSM, RSA-4096 | `fb4d33b6` | `fb4d33b6ea54ddb81a6a40ce50a61a6f9383b5850f27e2218045f5d3a07dab9a` |
 | secondary | not pinned yet (step 4)                                                            | -          | -                                                                  |
 
+**5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
+certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
+links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
+and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
+They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
+header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,
+which signs only a DigestInfo it is sent, so `tools/update/update-cert.mjs` builds the certificate around one KMS signature. Every field is
+fixed, so the request is the same each time and a reviewer can rebuild it from the public key.
+With `update-primary.pem` from step 3 and the maintainer's own `gcloud` credentials, as in
+step 6:
+
+```sh
+node tools/update/update-cert.mjs request --public-key update-primary.pem --slot primary --out-dir cert
+gcloud kms asymmetric-sign --version 1 --key update-primary --keyring vimma-updates \
+  --location "$LOCATION" --input-file cert/primary.digestinfo.bin --signature-file cert/primary.sig.bin
+node tools/update/update-cert.mjs assemble --dir cert --slot primary --signature cert/primary.sig.bin \
+  --out configs/updater/primary.der
+cp configs/updater/primary.der configs/updater/secondary.der
+openssl x509 -inform DER -in configs/updater/primary.der -noout -subject -pubkey \
+  | openssl pkey -pubin -outform DER | sha256sum   # the primary's SPKI SHA-256 in the table above
+sha256sum configs/updater/*.der
+npm run gen-update-keys   # update-keys.mjs from the certificates; it must not change the key
+```
+
+`assemble` refuses a signature that does not verify with the certificate's own key, and a key
+other than the primary `update-keys.mjs` pins. The secondary slot holds the primary's
+certificate again until step 4's ceremony; after it, `secondary.der` is the offline key's
+certificate, made there with openssl, and `npm run gen-update-keys` pins it too. Record each
+certificate's SHA-256 here; `npm test` fails when `update-keys.mjs` and the certificates
+disagree, or when the primary certificate's hash is missing from this file.
+
+| Certificate     | Subject                                 | SHA-256 of the DER                                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------ |
+| `primary.der`   | `CN=Vimma update signing primary`       | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
+| `secondary.der` | the primary's certificate (decision 39) | `88b4deaa74ba83b0132b85f9ecc2736bec2916700064792e30d0d2224f7ff6e8` |
+
+Before a package with the updater is signed or published, `tools/update/check-build.mjs
+<unpacked tarball>` checks that it asks `updates.vimma.dev`, that both channel files say
+`vimma`, and that its `updater` binary carries these certificates and none of Mozilla's.
+
 **6. Check the chain end to end** before the pipeline exists: sign a manifest with KMS and serve
 it. The raw PKCS#1 key signs exactly the bytes it is sent, so the SHA-384 DigestInfo is built
 locally: the fixed DER prefix for SHA-384 followed by the 48-byte hash.
@@ -2630,9 +2727,13 @@ gh api $R/environments/update-signing/deployment-branch-policies --jq '.branch_p
 
 # b. In force: Google Cloud also checks that the token comes from update-publish.yml on main,
 #    so no other workflow or branch can sign even with the environment. This replaces the
-#    provider's whole condition: a later workflow that signs (for example MAR signing in
-#    release.yml) needs its own job_workflow_ref added with ||. Keep the attribute mapping
-#    from step 3, which maps attribute.job_workflow_ref next to attribute.repository.
+#    provider's whole condition. release.yml's MAR signing needs nothing here: it calls
+#    update-publish.yml, and a called job's token names the called file (step 8). A workflow
+#    that signs in a job of its own would need its job_workflow_ref added with ||. Keep the
+#    attribute mapping from step 3, which maps attribute.job_workflow_ref next to
+#    attribute.repository. Never drop the repository clause, nor the IAM member's subject with
+#    the repository's ID: a workflow in any repository can call update-publish.yml@main, and
+#    its token then names update-publish.yml at refs/heads/main as well.
 gcloud iam workload-identity-pools providers update-oidc vimma --location global \
   --workload-identity-pool github --attribute-condition "assertion.repository == 'vimma-browser/vimma' && assertion.job_workflow_ref == 'vimma-browser/vimma/.github/workflows/update-publish.yml@refs/heads/main'"
 
@@ -2707,6 +2808,54 @@ replace_published=true` changed its files, whose hashes the old manifest no long
 - Turning `UPDATES_ENABLED` off stops new manifests but leaves the published one in place, and
   with it off no run pushes; to withdraw the offer too, run `-f offer=nothing` first, then
   delete the variable.
+
+**8. Signing MARs** (spec §7, sub-PR 4). Tarball installs from a release built with Firefox's
+updater update through a complete MAR, `vimma-X.Y.Z-linux-x86_64.complete.mar`, a release
+asset like the others. `release.yml` builds every Linux release with the updater
+(`VIMMA_UPDATES=1`) and checks the release tarball with `tools/update/check-build.mjs`; while
+`UPDATES_ENABLED` is `true` it also builds and ships the MAR:
+
+- `package` (no secret) builds the MAR from the release tarball with the build's host `mar` and
+  Mozilla's `make_full_update.sh`, as `./mach repackage mar` does, and gives it a signature block
+  whose one 512-byte SHA-384 signature is zero (`tools/update/mar.mjs build`). `signmar -s`
+  signs only with a key held in an NSS database, which the KMS key never is.
+- `mar-sign` calls `update-publish.yml`, whose `mar-sign` job (environment `update-signing`,
+  `id-token: write` only, no repository code) checks with the shell that the file is the tag's
+  MAR for the channel `vimma` with that one zeroed placeholder, has KMS sign the SHA-384
+  DigestInfo of every other byte, checks the signature with openssl against KMS's key and writes
+  it in. A called job's OIDC token names the called file, `update-publish.yml` at
+  `refs/heads/main`, so the Workload Identity condition from step 7b admits it unchanged, and
+  `update-signing` admits it because the run is on `main`. Nothing in Google Cloud or the
+  environments changes for it. The calling job lists every permission `update-publish.yml`'s
+  jobs ask for, because GitHub refuses a call otherwise, even for jobs that are skipped; it is a
+  ceiling, and in a call only `mar-sign` runs.
+- `mar` (no secret) checks that the signed MAR differs from package's only in the signature,
+  that it installs exactly the release tarball's files (extracted with the build's `mar` and
+  compared with `diff -r`),
+  that it verifies under `configs/updater/primary.der` and `secondary.der` with `mar.mjs` and
+  with the build's `signmar` (Mozilla's own check), and that its channel is `vimma` and its
+  version Firefox's; then it adds the MAR to `SHA256SUMS`, which `sign` signs with cosign and
+  `publish` uploads with the other files. While `UPDATES_ENABLED` is `true`, `sign` and
+  `publish` wait for it, and a `mar-sign` that failed or was skipped fails `mar`, which stops the
+  release before upload and opens the `release-failure` issue; re-run the failed jobs.
+
+`update-publish.yml` then offers the MAR (`<patch>`) when the published release's
+`SHA256SUMS` lists it, so releases from before keep their manifests as they were. To check a
+release's MAR by hand, with `signmar` from a `VIMMA_UPDATES=1` build (`dist/bin/signmar`):
+
+```sh
+db=$(mktemp -d) && certutil -N -d "sql:$db" --empty-password
+certutil -A -n primary -t ,, -i configs/updater/primary.der -d "sql:$db"
+LD_LIBRARY_PATH=<objdir>/dist/bin <objdir>/dist/bin/signmar -d "sql:$db" -n primary -v vimma-X.Y.Z-linux-x86_64.complete.mar
+node tools/update/mar.mjs verify --mar vimma-X.Y.Z-linux-x86_64.complete.mar \
+  --cert configs/updater/primary.der --channel vimma
+```
+
+The nightly is built with the updater too, set to its own update channel `vimma-nightly`
+(`tools/update/channel.mjs`) and checked with `check-build.mjs`; it builds its MAR as a check of
+the release's MAR step and keeps it nowhere. Nightly MARs are signed and offered only once
+public nightly releases start (spec decision 23); that pull request adds `nightly.yml` as a
+caller of `mar-sign`, and its manifest under `…/vimma-nightly/update.xml`.
 
 ### vimma.dev's keys (`site-dispatch.yml`, spec site-keys-mirror)
 

@@ -28,9 +28,12 @@ import { tomlLiteral } from "./toml.mjs";
  * never started to list its models. `versionArgs` asks its version (Behaviour 1); `args` builds
  * its command line from the run (`RunArgs`) and the model, refusing a model `modelProblem`
  * refuses (C2); `mcpConfig` is the configuration file it reads, with the ticket in
- * `vimma-ctl mcp`'s environment, or null for a CLI that takes its server in its arguments (C3);
- * `env` is what the CLI's own process adds to its environment for the ticket to reach
- * `vimma-ctl mcp`, empty when the file carries it; `servers`, for a CLI that cannot leave the
+ * `vimma-ctl mcp`'s environment, or null for a CLI that takes its server in its arguments (C3),
+ * and `configFile` where that file goes in the run's folder ("" without one); `env` is what the
+ * CLI's own process adds to its environment, for the ticket to reach `vimma-ctl mcp` when the
+ * file does not carry it, or for the run's folder to be the CLI's; `sessions` says how the run
+ * keeps no session (C5): "none" when the CLI is asked to keep none, "gemini-projects" when Vimma
+ * removes what Gemini CLI recorded of the run afterwards; `servers`, for a CLI that cannot leave the
  * MCP servers of its own configuration out with one flag, is the command that lists them and
  * the parser of its output, so that `args` turns each off (C7); `input` is one message on its
  * stdin; `live` says whether the input stays open for messages added during the task, or
@@ -44,7 +47,8 @@ import { tomlLiteral } from "./toml.mjs";
  *   models: readonly string[], versionArgs: readonly string[], note: string,
  *   args: (o: RunArgs) => string[],
  *   mcpConfig: (o: { vimmaCtl: string, ticket: string, port: number }) => object | null,
- *   env: (o: { ticket: string, port: number }) => Record<string, string>,
+ *   configFile: string, sessions: "none" | "gemini-projects",
+ *   env: (o: { ticket: string, port: number, dir: string }) => Record<string, string>,
  *   servers: { args: readonly string[], parse: (stdout: string) => string[] | { problem: string } }
  *     | null,
  *   input: (text: string) => string, live: boolean,
@@ -76,6 +80,9 @@ export const CLIS = Object.freeze({
     args: (/** @type {RunArgs} */ o) => claudeArguments(o),
     mcpConfig: (/** @type {{ vimmaCtl: string, ticket: string, port: number }} */ o) =>
       mcpConfig(o),
+    configFile: "mcp.json",
+    // --no-session-persistence.
+    sessions: "none",
     // The ticket is in the configuration file, for vimma-ctl only.
     env: () => ({}),
     // --strict-mcp-config leaves every other server out.
@@ -98,6 +105,9 @@ export const CLIS = Object.freeze({
     args: (/** @type {RunArgs} */ o) => codexArguments(o),
     // Its server is a `-c` table of its arguments.
     mcpConfig: () => null,
+    configFile: "",
+    // --ephemeral.
+    sessions: "none",
     // Forwarded to vimma-ctl by name (`env_vars`), so no value is in an argument (C3).
     env: (/** @type {{ ticket: string, port: number }} */ { ticket, port }) => ({
       VIMMA_AGENT_TICKET: ticket,
@@ -112,6 +122,37 @@ export const CLIS = Object.freeze({
     live: false,
     stream: (/** @type {{ model?: string }} */ o = {}) => new CodexStream(o),
   }),
+  gemini: Object.freeze({
+    id: "gemini",
+    bin: "gemini",
+    title: "Gemini CLI",
+    // Its own default is its router (`auto`), which picks a model per request.
+    model: "",
+    // Gemini CLI 0.66.0's aliases, which follow its newest model of each kind.
+    models: Object.freeze(["", "pro", "flash", "flash-lite"]),
+    versionArgs: Object.freeze(["--version"]),
+    note: TOOLS_NOTE,
+    args: (/** @type {RunArgs} */ o) => geminiArguments(o),
+    mcpConfig: (/** @type {{ vimmaCtl: string, ticket: string, port: number }} */ o) =>
+      geminiSettings(o),
+    // Read from the working directory, which is the run's folder: no argument names it.
+    configFile: ".gemini/settings.json",
+    // Gemini CLI records every run, with no setting that turns it off (C5).
+    sessions: "gemini-projects",
+    // A headless run needs its folder trusted; --skip-trust trusts it but skips the folder's
+    // settings file, which holds Vimma's server. Its error reports hold the conversation and
+    // go to TMPDIR, so they stay in the run's folder, which goes when the run ends.
+    env: (/** @type {{ ticket: string, port: number, dir: string }} */ { dir }) => ({
+      GEMINI_CLI_TRUST_WORKSPACE: "true",
+      TMPDIR: dir,
+    }),
+    // --allowed-mcp-server-names leaves every other server out.
+    servers: null,
+    // It reads its task from stdin to its end.
+    input: (/** @type {string} */ text) => `${text}\n`,
+    live: false,
+    stream: (/** @type {{ model?: string }} */ o = {}) => new GeminiStream(o),
+  }),
 });
 /** The CLIs a provider may name, in the order setup lists them (C12). */
 export const CLI_IDS = Object.freeze(Object.keys(CLIS));
@@ -123,6 +164,12 @@ export const MCP_SERVER = "vimma";
  * server's own keys (`enabled_tools`, `env`) would reach Vimma's, and it is turned off instead.
  */
 export const CODEX_SERVER = "vimma_chat";
+/**
+ * Vimma's server in a Gemini CLI run, named apart from a `vimma` of the user's settings for the
+ * same reason as Codex's; the run folder's entry would replace that one whole, and the tools
+ * reach the model as `mcp_vimma_chat_<tool>`.
+ */
+export const GEMINI_SERVER = "vimma_chat";
 /** Codex's features that add MCP servers outside its list, off for each run (C7). */
 const CODEX_FEATURES_OFF = Object.freeze(["apps", "plugins", "skill_mcp_dependency_install"]);
 /** A server name Codex's list may hold that goes into a `-c` key unquoted. */
@@ -317,6 +364,95 @@ export function codexServers(stdout) {
 }
 
 /**
+ * Gemini CLI's arguments (C2, C7): JSON lines out, Vimma's server the only one allowed to start
+ * (`--allowed-mcp-server-names`), and no extensions, which bring MCP servers, tools and context
+ * of their own. Headless because its input is a pipe; the task goes to stdin, never an argument.
+ * Its approval mode and policies stay its configuration's (C7): headless, it offers the model
+ * only tools that need no confirmation unless a policy of the user's allows more.
+ * @param {{ model: string }} o
+ * @returns {string[]}
+ */
+export function geminiArguments({ model }) {
+  const problem = modelProblem(model);
+  if (problem) throw new Error(problem);
+  return [
+    "-o",
+    "stream-json",
+    "--allowed-mcp-server-names",
+    GEMINI_SERVER,
+    "-e",
+    "none",
+    ...(model ? ["-m", model] : []),
+  ];
+}
+
+/**
+ * The `.gemini/settings.json` of a Gemini CLI run's folder (C3): `vimma-ctl mcp` with the ticket
+ * in its own environment, and `trust`, since a headless run asks nobody before a tool call.
+ * @param {{ vimmaCtl: string, ticket: string, port: number }} o
+ */
+export function geminiSettings({ vimmaCtl, ticket, port }) {
+  return {
+    mcpServers: {
+      [GEMINI_SERVER]: {
+        command: vimmaCtl,
+        args: ["mcp"],
+        env: { VIMMA_AGENT_TICKET: ticket, VIMMA_AGENT_PORT: String(port) },
+        trust: true,
+      },
+    },
+  };
+}
+
+/** A run folder's name (AgentCli.sys.mjs, IOUtils.createUniqueDirectory). */
+const RUN_FOLDER = /^vimma-agent-cli(-\d+)?$/;
+/** A Gemini CLI project folder's name, as its registry gives it: one plain folder name. */
+const GEMINI_SLUG = /^[A-Za-z0-9_][A-Za-z0-9._-]{0,254}$/;
+
+/**
+ * Whether `path`, a project in Gemini CLI's registry, is a run folder of Vimma's (C5): a folder
+ * named as Vimma names one, right inside one of the folders runs are made in. Nothing else
+ * of the user's Gemini CLI projects is ever removed.
+ * @param {string} path @param {readonly string[]} bases  where runs are made
+ */
+export function geminiLeftover(path, bases) {
+  const at = path.lastIndexOf("/");
+  if (at <= 0) return false;
+  return bases.includes(path.slice(0, at)) && RUN_FOLDER.test(path.slice(at + 1));
+}
+
+/**
+ * Gemini CLI's project registry (`~/.gemini/projects.json`, `{ projects: { path: slug } }`)
+ * without the projects `ours` picks (C5), and their project folders' names; `slug` is null when
+ * the name is not one plain folder name, so no folder is removed for it. `text` is null when
+ * there is nothing to change, or the registry is not in that form.
+ * @param {string} text @param {(path: string) => boolean} ours
+ * @returns {{ text: string | null, removed: { path: string, slug: string | null }[] }}
+ */
+export function geminiProjects(text, ours) {
+  const none = { text: null, removed: [] };
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return none;
+  }
+  if (!isObject(data) || !isObject(data.projects)) return none;
+  const entries = Object.entries(data.projects);
+  if (!entries.every(([, v]) => typeof v === "string")) return none;
+  /** @type {{ path: string, slug: string | null }[]} */
+  const removed = [];
+  /** @type {Record<string, string>} */
+  const kept = {};
+  for (const [path, slug] of entries) {
+    if (!ours(path)) kept[path] = slug;
+    else removed.push({ path, slug: GEMINI_SLUG.test(slug) ? slug : null });
+  }
+  if (!removed.length) return none;
+  return { text: JSON.stringify({ ...data, projects: kept }, null, 2), removed };
+}
+
+/**
  * The MCP configuration Claude Code reads (C3): `vimma-ctl mcp`, with the run's ticket and the
  * socket's port in its own environment, never in a command line.
  * @param {{ vimmaCtl: string, ticket: string, port: number }} o
@@ -495,6 +631,16 @@ const SUBJECT = Object.freeze({
   // Codex's items, named by the tools that make them.
   shell: "command",
   apply_patch: "files",
+  // Gemini CLI's tools.
+  run_shell_command: "command",
+  read_file: "file_path",
+  write_file: "file_path",
+  replace: "file_path",
+  list_directory: "dir_path",
+  glob: "pattern",
+  grep_search: "pattern",
+  google_web_search: "query",
+  web_fetch: "prompt",
 });
 
 /**
@@ -963,4 +1109,127 @@ function changedFiles(changes) {
     .filter(isObject)
     .map((c) => `${plain(c.kind)} ${plain(c.path)}`.trim())
     .join(", ");
+}
+
+const GEMINI = /** @type {CliInfo} */ (CLIS.gemini);
+/** Tool errors that mean Gemini CLI did not run the tool: not offered, or refused by policy. */
+const GEMINI_REFUSED = new Set(["tool_not_registered", "policy_violation"]);
+
+/**
+ * Gemini CLI's `-o stream-json` output read as the transcript's entries (C8). Its run is one
+ * turn: `init` starts it with no version, tool list or MCP server status, so the init has the
+ * provider's model and no tools (the header then says its configuration decides, C7); `result`
+ * ends it with its tokens, its last turn and its router's request included, and no cost. A reply
+ * comes as pieces (`delta`), joined until the next event. A server that did not start is not in
+ * the stream (Research): the run goes on without Vimma's tools. A tool of an MCP server that is
+ * not Vimma's that ran ends the run, as for Codex; a call to one never offered (the model's own
+ * guess at a name) comes back refused, as any tool it was not given.
+ */
+export class GeminiStream extends JsonLines {
+  /** @param {{ model?: string }} [o]  the provider's model, "" for Gemini CLI's own default */
+  constructor({ model = "" } = {}) {
+    super(GEMINI);
+    this.model = model;
+    /** The reply's pieces so far. */
+    this.text = "";
+    /** Tool calls by id: what each one was, for its result. @type {Map<string, string>} */
+    this.calls = new Map();
+    this.resulted = false;
+    /** @type {string | null} */
+    this.lastError = null;
+  }
+
+  /** @protected @param {Record<string, any>} m @returns {CliEvent[]} */
+  event(m) {
+    if (m.type === "message" && m.role === "assistant" && typeof m.content === "string") {
+      this.text += m.content;
+      return [];
+    }
+    const out = this.reply();
+    if (m.type === "init") {
+      out.push({ type: "init", model: plain(this.model), version: "", tools: null });
+    } else if (m.type === "tool_use") out.push(...this.use(m));
+    else if (m.type === "tool_result") out.push(...this.toolResult(m));
+    else if (m.type === "result") out.push(...this.result(m));
+    else {
+      if (m.type === "error" && typeof m.message === "string") this.lastError = plain(m.message);
+      // The task echoed back (`message` of the user), warnings, unknown events.
+      this.skip();
+    }
+    return out;
+  }
+
+  /** @returns {CliEvent[]} */
+  end() {
+    const out = [...super.end()];
+    if (this.failed) return out;
+    out.push(...this.reply());
+    if (this.resulted || !this.lastError) return out;
+    this.resulted = true;
+    return [...out, ...this.ended(false, this.lastError, null)];
+  }
+
+  /** @private @returns {CliEvent[]} */
+  reply() {
+    const text = this.text;
+    this.text = "";
+    return text.trim() ? [{ type: "reply", text }] : [];
+  }
+
+  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  use(m) {
+    if (typeof m.tool_name !== "string") return this.skip();
+    const name = m.tool_name;
+    const id = typeof m.tool_id === "string" ? m.tool_id : "";
+    if (id) this.calls.set(id, name);
+    // A step in the browser is the gate's to show, not the CLI's account of it (C8).
+    if (name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
+    return [{ type: "own-tool", id, text: ownToolText(GEMINI, name, m.parameters) }];
+  }
+
+  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  toolResult(m) {
+    const id = typeof m.tool_id === "string" ? m.tool_id : "";
+    const name = this.calls.get(id);
+    if (name === undefined || name.startsWith(`mcp_${GEMINI_SERVER}_`)) return this.skip();
+    const kind = isObject(m.error) ? m.error.type : null;
+    const refused = m.status === "error" && GEMINI_REFUSED.has(kind);
+    if (refused) return [{ type: "own-tool-refused", id }];
+    if (name.startsWith("mcp_")) {
+      return this.fail(
+        `${GEMINI.id} called an MCP server that is not Vimma's: ${cut(plain(name), 40)}`,
+      );
+    }
+    return this.skip();
+  }
+
+  /** @private @param {Record<string, any>} m @returns {CliEvent[]} */
+  result(m) {
+    const stats = m.stats;
+    if (
+      (m.status !== "success" && m.status !== "error") ||
+      (stats !== undefined && !isObject(stats))
+    ) {
+      return this.unreadable();
+    }
+    this.resulted = true;
+    const input = count(stats?.input_tokens);
+    const output = count(stats?.output_tokens);
+    const usage =
+      input === null && output === null ? null : { input: input ?? 0, output: output ?? 0 };
+    if (m.status === "success") return this.ended(true, null, usage);
+    const message = isObject(m.error) ? m.error.message : null;
+    const error = plain(typeof message === "string" && message ? message : "the run failed");
+    return this.ended(false, error, usage);
+  }
+
+  /**
+   * @private @param {boolean} ok @param {string | null} error
+   * @param {{ input: number, output: number } | null} usage
+   * @returns {CliEvent[]}
+   */
+  ended(ok, error, usage) {
+    // No call reports its usage before the run's end, so the result's is all of it.
+    return [{ type: "result", ok, error, usage, rest: usage, cost: null, queued: 0 }];
+  }
 }

@@ -223,6 +223,24 @@ describe("status bar segments", () => {
     expect(/** @type {any} */ (pane).priority).toBeGreaterThan(/** @type {any} */ (title).priority);
   });
 
+  // docs/specs/multiple-splits.md behaviour 9, decision 14.
+  test("several splits: the shown one's label leads, a lone tab counts the hidden ones", () => {
+    /** @param {object} pane */
+    const pane = (pane) => statusSegments({ ...base, pane: /** @type {any} */ (pane) });
+    expect(texts(pane({ index: 1, count: 3, split: 2, splits: 3 })).pane).toBe("S2 pane 1/3");
+    expect(texts(pane({ index: 1, count: 3, split: 1, splits: 1 })).pane).toBe("pane 1/3");
+    expect(texts(pane({ index: 1, count: 3 })).pane).toBe("pane 1/3");
+    expect(texts(pane({ index: 2, count: 3, hidden: true, split: 1, splits: 1 })).pane).toBe(
+      "split 3 hidden",
+    );
+    const several = pane({ index: 2, count: 3, hidden: true, split: 2, splits: 3 });
+    expect(texts(several).pane).toBe("3 splits hidden");
+    const seg = several.find((s) => s.id === "pane");
+    expect(seg?.fg).toBe("--vimma-fg-dim");
+    const title = several.find((s) => s.id === "title");
+    expect(/** @type {any} */ (seg).priority).toBeGreaterThan(/** @type {any} */ (title).priority);
+  });
+
   test("config errors show file:line, and the count when there are more", () => {
     const one = [
       {

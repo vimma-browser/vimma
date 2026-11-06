@@ -8,6 +8,10 @@
 # scheduled or manual, until the repository variable NIGHTLY_ENABLED is `true`; a manual run
 # (workflow_dispatch) must also start from main. Measured time and disk, and how to switch it
 # on: docs/runbook.md, "Full builds".
+# Spec m6a-updater: the build has Firefox's updater (VIMMA_UPDATES=1), and the package is set to
+# the nightly update channel, vimma-nightly, and checked with tools/update/check-build.mjs. The
+# nightly's MAR and manifest are neither signed nor published until public nightly releases
+# start (decision 23); the MAR step runs here as a check of the release's.
 name: nightly
 
 on:
@@ -43,6 +47,9 @@ jobs:
       contents: read
     env:
       LOG: ${{ github.workspace }}/nightly.log
+      # Firefox's updater with Vimma's channel, update host and certificates
+      # (configs/common/mozconfig, spec m6a-updater §6); every mach call of this job reads it.
+      VIMMA_UPDATES: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -161,6 +168,35 @@ jobs:
           tar -xJf dist/vimma-*.en-US.linux-x86_64.tar.xz -C "$unpacked"
           node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
           rm -rf "$unpacked"
+
+      # Spec m6a-updater §1: the build's channel stays vimma, which picks the updater's
+      # certificates; the package gets the nightly's own update channel, in both files that
+      # name it. Then sub-PR 2's done criteria on what is uploaded: it asks updates.vimma.dev,
+      # both channel files say vimma-nightly, and the updater embeds Vimma's certificates and
+      # none of Mozilla's.
+      - name: Nightly update channel, and the updater checked
+        run: |
+          set -o pipefail
+          tarball=$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)
+          node tools/update/channel.mjs --tarball "$tarball" --channel vimma-nightly --out "$tarball.new"
+          mv "$tarball.new" "$tarball"
+          unpacked=$(mktemp -d)
+          tar -xJf "$tarball" -C "$unpacked"
+          node tools/update/check-build.mjs "$unpacked/vimma" --channel vimma-nightly 2>&1 | tee -a "$LOG"
+          rm -rf "$unpacked"
+
+      # release.yml's MAR step, with this build's host mar and Mozilla's make_full_update.sh, so
+      # a change that breaks it fails a nightly before it can fail a release. Not kept: a
+      # nightly MAR is neither signed nor offered until public nightly releases (decision 23).
+      - name: Complete MAR (a check of the release's MAR step; not kept)
+        run: |
+          set -o pipefail
+          tools=$(mktemp -d)
+          cp engine/obj-x86_64-pc-linux-gnu/dist/host/bin/mar engine/tools/update-packaging/make_full_update.sh \
+            engine/tools/update-packaging/common.sh "$tools/"
+          node tools/update/mar.mjs build --tarball "$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)" \
+            --tools "$tools" --channel vimma-nightly --out "$RUNNER_TEMP/nightly.complete.mar" 2>&1 | tee -a "$LOG"
+          rm -rf "$tools" "$RUNNER_TEMP/nightly.complete.mar"
 
       - name: Delete the Safe Browsing key file
         if: always()

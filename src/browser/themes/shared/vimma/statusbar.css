@@ -73,13 +73,15 @@
 }
 
 .vimma-sb-live,
-.vimma-sb-probe {
+.vimma-sb-probe,
+.vimma-sb-sr {
   position: absolute;
   visibility: hidden;
   pointer-events: none;
 }
 
-.vimma-sb-live {
+.vimma-sb-live,
+.vimma-sb-sr {
   /* visually hidden, still read */
   visibility: visible;
   width: 1px;

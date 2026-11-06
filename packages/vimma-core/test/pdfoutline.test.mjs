@@ -8,6 +8,7 @@ import {
   outlineRows,
   outlineUrlAllowed,
   parsePdfOutline,
+  selectOutlinePage,
   setOutlineQuery,
 } from "../src/pdfoutline.mjs";
 
@@ -215,6 +216,32 @@ describe("the current entry", () => {
     expect(rows[1]).toMatchObject({ title: "Chapter 1", depth: 0, parent: true, open: true });
     expect(rows[3]).toMatchObject({ title: "Detail", depth: 2, parent: false });
     expect(rows[4]).toMatchObject({ title: "Section 1.2", parent: true, open: false });
+  });
+});
+
+// Decision 19: an outline shown beside the document follows its page.
+describe("selectOutlinePage", () => {
+  test("selects the entry for the page and opens the path to it, keeping the rest", () => {
+    const s = keys(openOutline(outline(), 1), "index.collapse_all").state;
+    expect(titles(s)).toEqual(["Preface", "Chapter 1", "Chapter 2", "Website"]);
+    const at5 = selectOutlinePage(s, 5);
+    expect(selectedTitle(at5)).toBe("Hidden");
+    expect(titles(at5)).toEqual([
+      "Preface",
+      "Chapter 1",
+      "Section 1.1",
+      "Section 1.2",
+      "Hidden",
+      "Chapter 2",
+      "Website",
+    ]);
+    expect(selectOutlinePage(at5, 5)).toBe(at5);
+    expect(selectedTitle(selectOutlinePage(at5, 6))).toBe("Chapter 2");
+  });
+
+  test("a filtered outline stays as typed", () => {
+    const s = setOutlineQuery(openOutline(outline(), 1), "chap");
+    expect(selectOutlinePage(s, 5)).toBe(s);
   });
 });
 

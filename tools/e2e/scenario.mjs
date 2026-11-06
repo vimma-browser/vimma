@@ -12,6 +12,12 @@
 // For the built-in agent's CLI mode (docs/specs/builtin-agent-cli.md, "e2e"): `programs` names
 // files in the checkout the browser finds on its PATH under a given name, a pref value
 // `checkout:<path>` is that path in the checkout, and `type` types a text into the focused input.
+// For app routes (docs/specs/app-routes.md, "Tests"): `external` runs the packaged vimma-open
+// with the given arguments, as another program does, against the browser under test.
+// For the updater (docs/specs/m6a-updater.md, "Tests", e2e): a scenario with `update` runs on
+// an install of a VIMMA_UPDATES=1 build with a local update host (update-host.mjs); `serve-update`
+// sets the manifest that host serves and `wait-for-install` waits on the install itself (its
+// build ID, the MAR's marker file, the updater's error code) and the MAR requests the host saw.
 // Names carry the milestone (m<N>-…) or, for regression tests, the issue (issue-<N>-…).
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -25,8 +31,16 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   "agent-result"?: { of: string, expect: unknown }, ctl?: { run: string[], as: string },
  *   "ctl-result"?: { of: string, expect: unknown }, mcp?: McpSend,
  *   "mcp-result"?: { of: string, expect: unknown }, "wait-for-profile-file"?: string,
- *   type?: string,
+ *   type?: string, external?: string[], "serve-update"?: UpdateServe,
+ *   "wait-for-install"?: Partial<InstallState>,
  * }} Step
+ * @typedef {{ offer: "n1" | "n" | "older-firefox" | "none", key?: "test" | "unknown" }}
+ *   UpdateServe
+ * @typedef {{ buildId: "n" | "n1" | null, marker: boolean, updateError: number | null,
+ *   marRequests: number }} InstallState  `buildId`: which build the install holds and the profile
+ *   last ran, null when they differ or are neither
+ * @typedef {{ serve: (spec: UpdateServe) => Promise<void>, install: () => Promise<InstallState> }}
+ *   UpdateControl
  * @typedef {{ method: string, params?: Record<string, unknown>, as?: string }} McpSend
  * @typedef {{ send: string, args?: Record<string, unknown>, as: string, client?: string }}
  *   AgentSend
@@ -40,11 +54,12 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   ctlResult: (name: string) => Promise<{ exitCode: number | null, stderr: string }>,
  *   mcpSend: (spec: McpSend) => void,
  *   mcpResult: (name: string) => Promise<unknown>,
+ *   external?: (args: string[]) => Promise<void>,
  * }} Control
  * @typedef {{
  *   name: string, description: string, issue?: number, pending?: string,
  *   timeoutSeconds?: number, prefs?: Record<string, boolean | number | string | null>,
- *   programs?: Record<string, string>, steps: Step[],
+ *   programs?: Record<string, string>, update?: { updater: "test" | "shipped" }, steps: Step[],
  * }} Scenario
  * @typedef {{
  *   ctl: { state: () => Promise<any>, sendKeys: (keys: string) => Promise<void>,
@@ -56,6 +71,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  *   pollMs?: number,
  *   signal?: AbortSignal,
  *   text?: (text: string) => string,
+ *   update?: UpdateControl,
  * }} StepContext
  */
 
@@ -76,9 +92,19 @@ export const STEP_KINDS = Object.freeze([
   "mcp-result",
   "wait-for-profile-file",
   "type",
+  "external",
+  "serve-update",
+  "wait-for-install",
 ]);
 /** Steps that wait for something and so take `timeoutSeconds`. */
-const WAITS = ["wait-for-state", "wait-for-profile-file"];
+const WAITS = ["wait-for-state", "wait-for-profile-file", "wait-for-install"];
+/** What `serve-update` offers: N+1, N again, a MAR of an older Firefox, or nothing. */
+const OFFERS = ["n1", "n", "older-firefox", "none"];
+/** The manifest's signer: the run's pinned test key, or a key the browser does not pin. */
+const SIGNERS = ["test", "unknown"];
+/** The updater an update scenario's install carries: Mozilla's test build, or the shipped one. */
+const UPDATERS = ["test", "shipped"];
+const INSTALL_FIELDS = ["buildId", "marker", "updateError", "marRequests"];
 /** A file directly in the profile directory: no path, no `.` or `..`. */
 const PROFILE_FILE = /^(?!\.\.?$)[\w.-]+$/;
 /** The agent commands an `agent` step may send (control protocol 2). */
@@ -96,6 +122,7 @@ const FIELDS = new Set([
   "timeoutSeconds",
   "prefs",
   "programs",
+  "update",
   "steps",
 ]);
 const PREF_NAME = /^[\w.-]+$/;
@@ -116,7 +143,7 @@ const hasControlChar = (text) =>
  * observers, no final session write), then launches on the same profile.
  */
 const RESTARTS = ["quit", "kill"];
-const MILESTONE_NAME = /^m\d+-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const MILESTONE_NAME = /^m\d+[a-z]?-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ISSUE_NAME = /^issue-(\d+)-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const SHOT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Default wait for `wait-for-state` and `wait-for-profile-file`, seconds. */
@@ -204,6 +231,16 @@ export function validateScenario(s, fileName) {
       }
     }
   }
+  if ("update" in s) {
+    if (!isObject(s.update)) errors.push('update must be { "updater": "test" | "shipped" }');
+    else {
+      const extra = Object.keys(s.update).filter((k) => k !== "updater");
+      if (extra.length) errors.push(`update: unknown field ${extra.join(", ")}`);
+      if (!UPDATERS.includes(/** @type {string} */ (s.update.updater))) {
+        errors.push("update: updater is test or shipped");
+      }
+    }
+  }
   if (!Array.isArray(s.steps) || s.steps.length === 0) {
     errors.push("steps must be an array with at least one step");
     return errors;
@@ -233,6 +270,16 @@ export function validateScenario(s, fileName) {
     }
     if (kind === "type" && (typeof value !== "string" || value === "" || hasControlChar(value))) {
       errors.push(`${at}: type needs a non-empty text without control characters`);
+    }
+    if (
+      kind === "external" &&
+      !(
+        Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((a) => typeof a === "string" && !hasControlChar(a))
+      )
+    ) {
+      errors.push(`${at}: external is vimma-open's arguments, a non-empty array of strings`);
     }
     if ((kind === "wait-for-state" || kind === "assert-state") && !isObject(value)) {
       errors.push(`${at}: ${kind} needs an object to match against state`);
@@ -326,6 +373,46 @@ export function validateScenario(s, fileName) {
         errors.push(`${at}: ${k} needs { of, expect }`);
       } else if (!names.has(value.of)) {
         errors.push(`${at}: ${k}: no ${what} step before it is named "${value.of}"`);
+      }
+    }
+    if ((kind === "serve-update" || kind === "wait-for-install") && !("update" in s)) {
+      errors.push(`${at}: ${kind} needs the scenario's "update" field`);
+    }
+    if (kind === "serve-update") {
+      if (!isObject(value) || !OFFERS.includes(/** @type {string} */ (value.offer))) {
+        errors.push(`${at}: serve-update: offer is one of ${OFFERS.join(", ")}`);
+      } else {
+        const extra = Object.keys(value).filter((k) => k !== "offer" && k !== "key");
+        if (extra.length) errors.push(`${at}: serve-update: unknown field(s) ${extra.join(", ")}`);
+        if ("key" in value && !SIGNERS.includes(/** @type {string} */ (value.key))) {
+          errors.push(`${at}: serve-update: key is test or unknown`);
+        }
+      }
+    }
+    if (kind === "wait-for-install") {
+      const keys = isObject(value) ? Object.keys(value) : [];
+      if (!isObject(value) || keys.length === 0 || keys.some((k) => !INSTALL_FIELDS.includes(k))) {
+        errors.push(`${at}: wait-for-install needs one or more of ${INSTALL_FIELDS.join(", ")}`);
+      } else {
+        if ("buildId" in value && value.buildId !== "n" && value.buildId !== "n1") {
+          errors.push(`${at}: wait-for-install: buildId is n or n1`);
+        }
+        if ("marker" in value && typeof value.marker !== "boolean") {
+          errors.push(`${at}: wait-for-install: marker is true or false`);
+        }
+        if (
+          "updateError" in value &&
+          value.updateError !== null &&
+          !(Number.isInteger(value.updateError) && /** @type {number} */ (value.updateError) > 0)
+        ) {
+          errors.push(`${at}: wait-for-install: updateError is an error code or null`);
+        }
+        if (
+          "marRequests" in value &&
+          !(Number.isInteger(value.marRequests) && /** @type {number} */ (value.marRequests) >= 0)
+        ) {
+          errors.push(`${at}: wait-for-install: marRequests is a count`);
+        }
       }
     }
     if ("timeoutSeconds" in step && (!WAITS.includes(kind) || !positive(step.timeoutSeconds))) {
@@ -438,7 +525,17 @@ function checkAborted(signal) {
  */
 export async function runSteps(
   scenario,
-  { ctl: own, screenshot, restart, control, profile, pollMs = 100, signal, text = (t) => t },
+  {
+    ctl: own,
+    screenshot,
+    restart,
+    control,
+    profile,
+    pollMs = 100,
+    signal,
+    text = (t) => t,
+    update,
+  },
 ) {
   /** Agent answers so far, for `$name.path` in later args. @type {Record<string, unknown>} */
   const answers = {};
@@ -448,12 +545,31 @@ export async function runSteps(
     if (!control) throw new Error(`this session cannot run ${what} steps`);
     return control;
   };
+  const needUpdate = () => {
+    if (!update) throw new Error("this session has no update host");
+    return update;
+  };
   for (const [i, step] of scenario.steps.entries()) {
     const kind = /** @type {string} */ (Object.keys(step).find((k) => k !== "timeoutSeconds"));
     const at = `step ${i + 1} (${kind})`;
     checkAborted(signal);
     try {
-      if (step.hold !== undefined) {
+      if (step["serve-update"] !== undefined) {
+        await needUpdate().serve(step["serve-update"]);
+      } else if (step["wait-for-install"] !== undefined) {
+        const { install } = needUpdate();
+        const seconds = step.timeoutSeconds ?? DEFAULT_WAIT_SECONDS;
+        const deadline = Date.now() + seconds * 1000;
+        for (;;) {
+          const mismatches = matchState(step["wait-for-install"], await install(), "install");
+          if (mismatches.length === 0) break;
+          if (Date.now() >= deadline) {
+            throw new Error(`not reached in ${seconds} s: ${mismatches.join("; ")}`);
+          }
+          await sleep(pollMs);
+          checkAborted(signal);
+        }
+      } else if (step.hold !== undefined) {
         const c = needControl("hold");
         await c.hold();
         ctl = c.held;
@@ -484,6 +600,10 @@ export async function runSteps(
         const ended = await needControl("ctl-result").ctlResult(of);
         const mismatches = matchState(expect, ended, of);
         if (mismatches.length) throw new Error(mismatches.join("; "));
+      } else if (step.external !== undefined) {
+        const run = needControl("external").external;
+        if (!run) throw new Error("this session cannot run vimma-open");
+        await run(step.external);
       } else if (step.open !== undefined) await ctl.open(step.open);
       else if (step.keys !== undefined) await ctl.sendKeys(step.keys);
       else if (step.type !== undefined) {

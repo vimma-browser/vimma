@@ -956,3 +956,97 @@ describe("the built-in agent and :mcp off (builtin-agent Behaviour 33)", () => {
     expect(q.grants(1)).toEqual([{ conn: "builtin:1", until: Infinity }]);
   });
 });
+
+// docs/specs/mcp-consequence.md K1, K5: a harmless form runs under a grant, and `a` on a form
+// checkpoint allows that button on that site until the grant ends.
+describe("forms by consequence (mcp-consequence K1, K5)", () => {
+  const ACT = "vimma_activate";
+  /** A queue with connection 1 under a 10-minute grant made at 0. */
+  function granted() {
+    const q = new AgentQueue();
+    q.connect(1);
+    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    return q;
+  }
+
+  test("a harmless form runs under a grant, and asks without one", () => {
+    const q = granted();
+    expect(q.ask(1, ACT, 1000, { always: true, covered: true }).kind).toBe("run");
+    const bare = new AgentQueue();
+    bare.connect(1);
+    expect(bare.ask(1, ACT, 1000, { always: true, covered: true }).kind).toBe("wait");
+  });
+
+  test("a grant made later lets a waiting harmless form run, not a consequential one", () => {
+    const q = new AgentQueue();
+    q.connect(1);
+    const read = /** @type {any} */ (q.ask(1, READ, 0));
+    const harmless = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: true }));
+    const message = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const { resolved } = q.answer(read.id, { kind: "grant", minutes: 10 }, 1);
+    expect(resolved.map((r) => r.id)).toEqual([read.id, harmless.id]);
+    expect(q.queue.some((r) => r.id === message.id)).toBe(true);
+  });
+
+  test("an allowance runs its key under the grant", () => {
+    const q = granted();
+    const first = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    expect(first.kind).toBe("wait");
+    const queued = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    const other = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "j" }));
+    const { resolved } = q.answer(first.id, { kind: "here", key: "k" }, 2000);
+    expect(resolved).toEqual([
+      { id: first.id, allow: true },
+      { id: queued.id, allow: true },
+    ]);
+    expect(q.queue.some((r) => r.id === other.id)).toBe(true);
+    expect(q.ask(1, ACT, 3000, { always: true, covered: "k" }).kind).toBe("run");
+    expect(q.ask(1, ACT, 3000, { always: true, covered: "j" }).kind).toBe("wait");
+    expect(q.grants(3000)).toEqual([{ conn: 1, until: 10 * MIN }]);
+  });
+
+  test("an allowance is the connection's own", () => {
+    const q = granted();
+    q.connect(2);
+    q.answer(/** @type {any} */ (q.ask(2, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    q.answer(asked.id, { kind: "here", key: "k" }, 1000);
+    expect(q.ask(2, ACT, 2000, { always: true, covered: "k" }).kind).toBe("wait");
+  });
+
+  test("an allowance ends with the grant: its end, revoke, endGrant", () => {
+    for (const end of [
+      (/** @type {AgentQueue} */ q) => q.ask(1, READ, 11 * MIN),
+      (/** @type {AgentQueue} */ q) => q.revoke(5000),
+      (/** @type {AgentQueue} */ q) => q.endGrant(1),
+    ]) {
+      const q = granted();
+      const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+      q.answer(asked.id, { kind: "here", key: "k" }, 1000);
+      end(q);
+      // A new grant starts with no allowance.
+      const again = /** @type {any} */ (q.ask(1, READ, 11 * MIN));
+      if (again.kind === "wait") q.answer(again.id, { kind: "grant", minutes: 10 }, 11 * MIN);
+      expect(q.ask(1, ACT, 11 * MIN + 1, { always: true, covered: "k" }).kind).toBe("wait");
+    }
+  });
+
+  test("`a` without a grant is a yes for that step only", () => {
+    const q = new AgentQueue();
+    q.connect(1);
+    const asked = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    expect(q.answer(asked.id, { kind: "here", key: "k" }, 1).resolved).toEqual([
+      { id: asked.id, allow: true },
+    ]);
+    q.answer(/** @type {any} */ (q.ask(1, READ, 2)).id, { kind: "grant", minutes: 10 }, 2);
+    expect(q.ask(1, ACT, 3, { always: true, covered: "k" }).kind).toBe("wait");
+  });
+
+  test("an always-ask tool and a request with no cover are never covered", () => {
+    const q = granted();
+    const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    q.answer(asked.id, { kind: "here", key: "k" }, 1000);
+    expect(q.ask(1, "vimma_show", 2000, { covered: true }).kind).toBe("wait");
+    expect(q.ask(1, ACT, 2000, { always: true }).kind).toBe("wait");
+  });
+});

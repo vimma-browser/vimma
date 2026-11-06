@@ -14,7 +14,7 @@ function step(id) {
 describe("the agent bench in e2e.yml", () => {
   it("runs the scripted provider on the artifact build, checked, after the e2e scenarios", () => {
     const s = step("agent-bench");
-    expect(s).toMatch(/run: npm run agent-bench -- --artifact --check --lists \S+\n/);
+    expect(s).toMatch(/run: npm run agent-bench -- --artifact --check --lists \S+ --two-shops\n/);
     // no model and no network: the scripted provider is the default and nothing else is named
     expect(s).not.toMatch(/--provider|--model|--endpoint|--key-env|secrets\./);
     expect(e2e.indexOf("id: e2e\n")).toBeLessThan(e2e.indexOf("id: agent-bench\n"));

@@ -10,7 +10,8 @@ and `ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mc
 `docs/limits.md` · Upstream patches: none · ADR: an amendment to
 [ADR-023](../adr/023-in-browser-model-client.md) (C1). No new dependency.
 
-Issue: [#609](https://github.com/vimma-browser/vimma/issues/609)
+Issue: [#609](https://github.com/vimma-browser/vimma/issues/609); Gemini CLI:
+[#726](https://github.com/vimma-browser/vimma/issues/726)
 
 Builds on [builtin-agent](builtin-agent.md) (the chat window, conversations, budgets and the
 conversation grant), [vimma-mcp](vimma-mcp.md) (the agent workspace, the gate, the control
@@ -379,6 +380,19 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     and each run's working directory is a new project, so they are never deleted.
     `GEMINI_CLI_HOME` moves the whole `~/.gemini` folder, the Google login
     (`oauth_creds.json`) and the user's settings and policies included.
+  - Where a run is recorded (the bundle's `Storage` and `ProjectRegistry`, and a run against
+    the scripted server): `projects.json` maps the working directory, as the process sees it,
+    to a project name made from its last component (`vimma-agent-cli-3`, with `-1`, `-2` added
+    on a clash); `tmp/<project>/` and `history/<project>/` each hold a `.project_root` file
+    naming that directory, and `tmp/<project>/chats/` the session files. The registry is
+    written under proper-lockfile's lock, a `projects.json.lock` folder beside it, and replaced
+    by a rename. `GEMINI_CLI_HOME`, else the home folder, holds `.gemini`.
+  - A refused key also wrote two error reports, `gemini-client-error-*.json` with the request's
+    whole conversation, to the system's temporary folder (`os.tmpdir()`, so `TMPDIR`), readable
+    by every user (0644).
+  - An extension (`~/.gemini/extensions/<name>/gemini-extension.json`) with a server of the
+    run's name and another one: with `--allowed-mcp-server-names` the other one never started,
+    but Vimma's server was started twice; with `-e none` as well, once.
 - **opencode 2.0.32.** `opencode run --help` only: `--format json`, `--model`, `--auto`
   ("Auto-approve permissions that are not explicitly denied"). Its event shape was not found in
   the binary and is not described here.
@@ -576,6 +590,32 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
    the CLI's session between tasks (`exec resume`, `--resume`), because it needs the session
    files above; an `env` key in `config.toml`, because a CLI's login is the CLI's matter and
    variables such as `LD_PRELOAD` would run code (F3).
+
+   (Since changed: Gemini CLI, which cannot be asked, is supported with what it records removed
+   by Vimma, because the window then keeps no conversation on disk once a task ends, as with the
+   other CLIs, and the user keeps Gemini CLI's own login, which moving its folder with
+   `GEMINI_CLI_HOME` would hide. When a run ends, a stop included, Vimma removes each project
+   folder in `~/.gemini/tmp` and `~/.gemini/history` whose `.project_root` names the run's folder,
+   and the run's entry in `~/.gemini/projects.json`, under Gemini CLI's own lock, waited for and
+   never broken. A project is Vimma's only when its path is a run folder's name
+   (`vimma-agent-cli`, `vimma-agent-cli-<n>`) directly in a folder runs are made in, because the
+   user's own Gemini CLI projects and sessions must never be touched. The remaining gap: from
+   the run's start to its end the conversation is in Gemini CLI's folder, and a crash, a kill or
+   a power cut leaves it there. Each run folder holds the process id of the Vimma that runs it,
+   so that at the next start Vimma knows a folder a crash left: one whose process is gone (on
+   Linux, through `/proc`), one its own process id marks while no run of this Vimma's uses it,
+   or one older than any run lasts (`max_minutes`' longest, a day, and an hour more, the only
+   rule where no process can be asked about, as on macOS). It removes such a folder with what
+   Gemini CLI recorded of its run, and the records of every run of its own whose folder is
+   gone, while a run still going, in this Vimma or another, is left alone. A registry that is
+   a link (a dotfile manager's) is not edited, because Gemini CLI locks and writes the file it
+   leads to and a rename would replace the link; its entries stay, the folders still go. Gemini CLI's `TMPDIR` is the run's folder, because its error reports hold
+   the conversation and would otherwise stay in `/tmp`, readable by other users. Rejected:
+   keeping Gemini CLI off until it can be asked, because its users would wait on an upstream
+   change; stating in the window that its files are kept, because they would never be removed;
+   `GEMINI_CLI_HOME` in the run's folder, because it hides the user's login, settings and
+   policies. Issue #726.)
+
 6. **An empty working directory per run** (C6, Behaviour 7). Each run's `workdir` is a new 0700
    directory, removed when the run ends, so that the CLI loads no project's instruction files,
    hooks or settings from wherever Vimma was started, and its file tools start in a place that
@@ -704,6 +744,21 @@ mcp_servers.<name>.enabled=false` turns a configured server off; `--disable <fea
     the server's `env`, and `--allowed-mcp-server-names` keeps every other server from
     starting. Like Codex, it has no live input and reports no tool list and no cost; it
     reports tokens. Research, "Gemini CLI 0.66.0"; issue #726.)
+
+    (Since changed: Gemini CLI is offered, from 0.66.0, with Vimma removing what it records of
+    each run (C5's note). Its entry runs `gemini` with `-o stream-json`,
+    `--allowed-mcp-server-names vimma_chat` and `-e none`, and `-m` for the provider's model,
+    headless because its input is a pipe; Vimma's server is `vimma_chat` in the run folder's
+    `.gemini/settings.json`, with the ticket in the server's `env` and `trust: true`, since a
+    headless run asks nobody;
+    `GEMINI_CLI_TRUST_WORKSPACE=true` in its environment trusts that folder and loads the file.
+    Extensions are off, because they bring servers, tools and context of their own and made
+    Vimma's server start twice. A reply's pieces are joined; a tool it did not offer or its
+    policy refused is shown refused; a tool of another MCP server that ran ends the run, while a
+    call to a name never offered does not, because the model may guess one. A server that does
+    not start is not in its stream, so such a run goes on without the browser's tools; the guide
+    and `docs/limits.md` say so. Like Codex it has no live input (Behaviour 10 queues), no tool
+    list and no cost. Issue #726.)
 
 13. **A CLI's cost is shown, and `max_cost` does not apply to it** (C13, Behaviour 15). The
     status bar shows a reported cost as `≈ $0.41 (claude-code)` while the task runs, and the

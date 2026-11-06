@@ -1,0 +1,209 @@
+{
+  "items": [
+    { "id": "oat-drink", "text": "oat drink, 1 litre", "search": "oat drink" },
+    { "id": "tofu", "text": "tofu", "search": "tofu" },
+    { "id": "chickpeas", "text": "chickpeas", "search": "chickpeas" },
+    { "id": "spaghetti", "text": "spaghetti", "search": "spaghetti" },
+    { "id": "bananas", "text": "bananas", "search": "bananas" }
+  ],
+  "shops": [
+    {
+      "id": "kauppa",
+      "name": "Kauppa",
+      "design": "script",
+      "products": [
+        {
+          "id": "oat-oatly",
+          "item": "oat-drink",
+          "name": "Oat drink",
+          "brand": "Oatly",
+          "size": "1 l",
+          "price": 1.89
+        },
+        {
+          "id": "oat-pirkka",
+          "item": "oat-drink",
+          "name": "Oat drink",
+          "brand": "Pirkka",
+          "size": "1 l",
+          "price": 1.39
+        },
+        {
+          "id": "oat-alpro-organic",
+          "item": "oat-drink",
+          "name": "Organic oat drink",
+          "brand": "Alpro",
+          "size": "1 l",
+          "price": 2.19
+        },
+        {
+          "id": "oat-oatly-small",
+          "item": null,
+          "name": "Oat drink",
+          "brand": "Oatly",
+          "size": "0.5 l",
+          "price": 0.99
+        },
+        {
+          "id": "tofu-pirkka",
+          "item": "tofu",
+          "name": "Tofu",
+          "brand": "Pirkka",
+          "size": "250 g",
+          "price": 1.99
+        },
+        {
+          "id": "tofu-taifun",
+          "item": "tofu",
+          "name": "Tofu",
+          "brand": "Taifun",
+          "size": "200 g",
+          "price": 2.49
+        },
+        {
+          "id": "chickpeas-pirkka",
+          "item": "chickpeas",
+          "name": "Chickpeas",
+          "brand": "Pirkka",
+          "size": "380 g",
+          "price": 0.89
+        },
+        {
+          "id": "chickpeas-bonduelle",
+          "item": "chickpeas",
+          "name": "Chickpeas",
+          "brand": "Bonduelle",
+          "size": "310 g",
+          "price": 1.49
+        },
+        {
+          "id": "spaghetti-pirkka",
+          "item": "spaghetti",
+          "name": "Spaghetti",
+          "brand": "Pirkka",
+          "size": "500 g",
+          "price": 0.79
+        },
+        {
+          "id": "spaghetti-barilla",
+          "item": "spaghetti",
+          "name": "Spaghetti",
+          "brand": "Barilla",
+          "size": "500 g",
+          "price": 1.69
+        },
+        {
+          "id": "bananas",
+          "item": "bananas",
+          "name": "Bananas",
+          "brand": "Chiquita",
+          "size": "1 kg",
+          "price": 1.69
+        },
+        {
+          "id": "bananas-organic",
+          "item": "bananas",
+          "name": "Organic bananas",
+          "brand": "Fairtrade",
+          "size": "1 kg",
+          "price": 2.49
+        }
+      ]
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "design": "form",
+      "products": [
+        {
+          "id": "oat-oatly",
+          "item": "oat-drink",
+          "name": "Oat drink",
+          "brand": "Oatly",
+          "size": "1 l",
+          "price": 1.49
+        },
+        {
+          "id": "oat-rainbow",
+          "item": "oat-drink",
+          "name": "Oat drink",
+          "brand": "Rainbow",
+          "size": "1 l",
+          "price": 1.59
+        },
+        {
+          "id": "oat-oatly-small",
+          "item": null,
+          "name": "Oat drink",
+          "brand": "Oatly",
+          "size": "0.5 l",
+          "price": 0.99
+        },
+        {
+          "id": "tofu-taifun",
+          "item": "tofu",
+          "name": "Tofu",
+          "brand": "Taifun",
+          "size": "200 g",
+          "price": 1.89
+        },
+        {
+          "id": "tofu-rainbow",
+          "item": "tofu",
+          "name": "Tofu",
+          "brand": "Rainbow",
+          "size": "250 g",
+          "price": 1.95
+        },
+        {
+          "id": "chickpeas-bonduelle",
+          "item": "chickpeas",
+          "name": "Chickpeas",
+          "brand": "Bonduelle",
+          "size": "310 g",
+          "price": 0.95
+        },
+        {
+          "id": "chickpeas-rainbow",
+          "item": "chickpeas",
+          "name": "Chickpeas",
+          "brand": "Rainbow",
+          "size": "380 g",
+          "price": 0.99
+        },
+        {
+          "id": "spaghetti-rainbow",
+          "item": "spaghetti",
+          "name": "Spaghetti",
+          "brand": "Rainbow",
+          "size": "500 g",
+          "price": 0.69
+        },
+        {
+          "id": "spaghetti-barilla",
+          "item": "spaghetti",
+          "name": "Spaghetti",
+          "brand": "Barilla",
+          "size": "500 g",
+          "price": 1.59
+        },
+        {
+          "id": "bananas",
+          "item": "bananas",
+          "name": "Bananas",
+          "brand": "Dole",
+          "size": "1 kg",
+          "price": 1.59
+        },
+        {
+          "id": "bananas-organic",
+          "item": "bananas",
+          "name": "Organic bananas",
+          "brand": "Fairtrade",
+          "size": "1 kg",
+          "price": 2.29
+        }
+      ]
+    }
+  ]
+}

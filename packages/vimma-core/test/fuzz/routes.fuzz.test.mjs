@@ -7,6 +7,8 @@ import {
   describeRoute,
   isAppToken,
   matchRoute,
+  MAX_APPS,
+  parseAppList,
   resolveRoutes,
   routeDomainFor,
   validateRoutes,
@@ -184,7 +186,10 @@ describe("routing rule fuzzing", () => {
           (rules, url, app) => {
             const valid = rules.filter((r) => validateRoutes([r]).length === 0);
             const routes = within(1000, () => resolveRoutes(valid));
-            const hit = within(1000, () => matchRoute(routes, { url, app }, { workspaces: ["w"] }));
+            const apps = app === null ? [] : [app];
+            const hit = within(1000, () =>
+              matchRoute(routes, { url, apps }, { workspaces: ["w"] }),
+            );
             if (hit) {
               expect(hit.workspace).toBe("w");
               if (hit.app !== undefined) expect(isAppToken(app) && hit.app === app).toBe(true);
@@ -228,6 +233,32 @@ describe("routing rule fuzzing", () => {
                 if ("url" in r) expect(r.url).not.toBeNull();
               }
             }
+          },
+        ),
+        { weight: 5 },
+      ),
+    FUZZ_TIMEOUT,
+  );
+
+  test(
+    "parseAppList returns only tokens, at most eight, never two equal neighbours",
+    () =>
+      fuzz(
+        "routes-app-list",
+        fc.property(
+          fc.oneof(
+            nastyString,
+            fc
+              .array(fc.oneof(fc.constantFrom("zsh", "herdr", "Ghostty", "", "a b"), nastyString))
+              .map((a) => a.join(",")),
+          ),
+          (raw) => {
+            const names = within(1000, () => parseAppList(raw));
+            expect(names.length).toBeLessThanOrEqual(MAX_APPS);
+            names.forEach((n, i) => {
+              expect(isAppToken(n)).toBe(true);
+              if (i > 0) expect(n).not.toBe(names[i - 1]);
+            });
           },
         ),
         { weight: 5 },

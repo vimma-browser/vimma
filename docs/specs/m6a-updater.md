@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PR 1, sub-PR 3's AppImage replacement, urgent restart question, `:restart` and `updates: off` notice, and sub-PR 4's release manifest implemented; Firefox's updater for tarball installs, that is sub-PRs 2 and 5, the rest of sub-PR 3 and sub-PR 4's MAR and nightly parts, tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4 and sub-PR 5's e2e scenarios implemented; the nightly's signed MAR and manifest wait for public nightly releases and the security rehearsal for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -468,7 +468,10 @@ Rules, in order (each failure has a reason string for about:vimma and the status
    secondary slot. The public keys are the SPKI of the DER certificates the updater embeds,
    generated into `vimma/updates/keys.mjs` at import time from
    `src/toolkit/mozapps/update/updater/vimma/`. A test key is accepted only from the pref
-   `vimma.update.testKeys` and only when `Cu.isInAutomation`.
+   `vimma.update.testKeys` and only when `Cu.isInAutomation`. (Since changed: the keys are
+   generated into `packages/vimma-core/src/update-keys.mjs` by `npm run gen-update-keys` from
+   `configs/updater/`, outside `src/` because `surfer license-check` cannot accept a binary file
+   there.)
 2. `vimmaChannel` equals `UpdateUtils.UpdateChannel` and `vimmaTarget` equals the build target (a
    nightly or other-target manifest served at the release path is refused).
 3. **Replay**: `vimmaSerial` must be ≥ the highest serial this profile has accepted
@@ -581,8 +584,9 @@ ever added, its own spec can revisit it.
 
 **Key ceremony (any option).** RSA-4096, a self-signed certificate per slot (the updater only
 reads the public key; the subject is `CN=Vimma update signing primary|secondary`; validity is
-irrelevant). The two public DERs are committed under `src/toolkit/mozapps/update/updater/vimma/`
-with their SHA-256 in the runbook. The secondary's private half is never on a networked machine.
+irrelevant). The two public DERs are committed under `configs/updater/` (linked into the engine
+by `npm run import`, since `surfer license-check` refuses a binary file under `src/`) with their
+SHA-256 in the runbook. The secondary's private half is never on a networked machine.
 
 **Rotation (planned, for example every two years or on any doubt).** Release R carries an updater
 with `primary = new`, `secondary = cold` and is signed with the **old** primary, which every client
@@ -623,6 +627,27 @@ SHA-384 DigestInfo that the job builds itself, because the KMS key is `rsa-sign-
 non-exportable KMS key cannot be placed in. This is a constraint on sub-PR 4: its MAR signing
 path must use raw PKCS#1 KMS signing over a SHA-384 DigestInfo; `signmar -v` still verifies the
 result.)
+
+(Since changed: sub-PR 4 signs the MAR in `update-publish.yml`'s `mar-sign` job, which
+`release.yml` calls as a reusable workflow, not in an `update-sign` job of `release.yml`,
+because a called job's OIDC token names the called file, so the Workload Identity condition that
+admits `update-publish.yml` on `main` alone (docs/runbook.md, step 7b) admits it unchanged and
+the key gains no new workflow; the job runs no repository code, as the manifest's `sign` does.
+The MAR is built in `package`, not `build`, from the release tarball, because `package` adds
+`vimma-ctl` to that tarball after the build and the MAR must install what the tarball does; the
+build hands over its host `mar`, Mozilla's `make_full_update.sh` and `signmar`
+(`tools/update/mar.mjs build` runs the script as `./mach repackage mar` does). `mar.mjs` gives
+the MAR a signature block whose one signature is zero, laid out as `signmar -s` lays it out,
+and `mar-sign` signs every byte but those: the bytes start with `MAR1`, so the manifest's
+domain prefix keeps the two uses apart (decision 12). A job with no secret, `mar`, then checks
+that only the signature changed and that `signmar -v` and `mar.mjs verify` accept it under the
+committed certificates, and adds it to `SHA256SUMS`, which cosign signs as before; the
+manifest's `<patch>` follows the release's `SHA256SUMS`, so a release from before the MAR keeps
+its manifest. The nightly sets its channel with `tools/update/channel.mjs` rather than
+`package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
+packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
+none until public nightly releases (decision 23). docs/runbook.md, "Update signing keys and the
+update host", step 8; docs/security.md UP14.)
 
 (Since changed: the release manifest is published by a workflow of its own,
 `update-publish.yml`, on `release: released`, because a release has no MAR until sub-PR 2 and
@@ -975,6 +1000,24 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     because the macOS binary cannot run on the Linux job that builds the manifest; and comparing
     Vimma versions instead of build IDs in rule 4, because Firefox's updater, which tarball
     installs are to use (sub-PRs 2 and 5), selects by build ID, and the two must agree.
+41. **The control socket's `state` has an `update` field that names only what a script waits
+    on**: whether checks are on, the install type, the last check's outcome and time, the offered
+    version, build ID and urgency, and how far that build got (`none`, `pending`, `staged`;
+    shape in [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md),
+    "`state`"). The e2e scenario waits on it until an update is staged, and asserts the outcome
+    of the downgrade and bad-signature cases. It is built from an allow-list
+    (`controlUpdateState` in `control.mjs`), because the update state also holds a refusal's
+    reason, the manifest's serial and signing key, the release and MAR URLs and the advisories:
+    about:vimma shows those to the user, and a script needs none of them to know whether an update
+    is staged; an allow-list keeps a field added to the update state later off the socket until
+    the protocol names it. It is read when `state` is asked, so it starts no check and no
+    download (S9). Only the `full` role sees it, as all of `state`: the agent role never reaches
+    `state` (security.md S12), and this spec gives the agent role nothing of the updater (Security
+    and privacy, "Local surface"). It is the same in a private window, because it names no page.
+    Added without a protocol version bump, as `panes` and `splits`, because clients ignore fields
+    they do not know. Rejected: a command of its own (`update-state`), because it would be a new
+    command for the agent role's closed list to keep out and a new request for scripts that already
+    poll `state`.
 
 ### 9. Not in this spec
 
@@ -1088,6 +1131,30 @@ Written first and seen to fail.
   6. **bad signature**: the **shipped** `updater` (Vimma's certificates) given the
      `mycert`-signed MAR → `failed: 19`; the Vimma verifier given an XML signed by an unknown key →
      no download.
+
+  (Since changed: two scenarios, `m6a-update-n-to-n1` (steps 1 to 5) and
+  `m6a-update-bad-signature` (step 6), because step 6 needs an install that keeps the shipped
+  `updater`. They run locally with `npm run e2e -- --updater <objdir>` on a `VIMMA_UPDATES=1` build
+  after `./mach package`, and are pending in every other run, because no pull-request job has such
+  a build, the nightly is off until public nightly releases (decision 23), and decision 23 names
+  exit test 1 a local test. N is the objdir's tarball; the host is https on 127.0.0.1, because the
+  manifest and the browser accept only an https MAR URL, with a CA made for the run that only the
+  scenario's profile trusts. The MAR is built by `tools/update/mar.mjs`, as the release's is,
+  instead of `./mach repackage mar`, and signed with `mycert`'s key, exported from libmar's test
+  database. The browser runs with `XUL_APP_FILE` naming the install's `browser/application.ini`,
+  because Firefox's binary carries its application.ini compiled in and reads a file only when told
+  to; so N+1's build ID, and the local update URL, are what it runs with. The updater applies the
+  update by `execv` in the browser's own process, so a plain `restart` follows it. The checks read
+  the control `state.update`, the install's application.ini and the profile's compatibility.ini
+  (the build that last ran), N+1's marker and the error code at the end of the updater's own
+  `updates/last-update.log`, because Firefox's updates.xml records no failure for an update tried
+  after one was applied in the same install. The status bar's notice is not compared with a
+  screenshot, because its text carries the version: `browser_vimma_update_notice.js` covers it.
+  Firefox's own background connections that crash a browser run with
+  `MOZ_DISABLE_NONLOCAL_CONNECTIONS` (the address bar's speculative connection, the media plugin
+  check at aus5.mozilla.org) are turned off in the scenario's profile; docs/runbook.md, "Updater
+  scenarios".)
+
 - **Security rehearsal (M6a exit test 2; runs after the release gate lifts, decision 23)**: with
   `AUTO_MERGE_UPSTREAM=all` (spec upstream-bump-automation), `AUTO_SECURITY_RELEASE=true` (spec
   firefox-versions) and a real Firefox security release whose patches apply as they are, the
@@ -1140,14 +1207,60 @@ tested:
    `[AppUpdate] URL=https://updates.vimma.dev/…`, `update-settings.ini` says `vimma`, the `updater` binary
    contains Vimma's primary DER's bytes and not `dep1.der`'s, and the built updater applies a
    test-signed MAR from an installed tarball (rpath question answered).
+   (Since changed: sub-PR 2 brings two of the three patches, `moz-configure.patch` and
+   `moz-build.patch`; `UpdateService-sys-mjs.patch` comes with sub-PR 3, whose hook it is,
+   because a patch with no verifier to call would only be a hunk to rebase, and no shipped build
+   has the updater before sub-PR 4 sets `VIMMA_UPDATES=1`. `MOZ_APPUPDATE_HOST` is set outside
+   artifact builds only (`when=~artifact_builds`), because their updater is Mozilla's prebuilt
+   one, which trusts only Mozilla's keys, so they keep asking `aus5.mozilla.org` as before
+   (ADR-010). The mozconfig stops a `VIMMA_UPDATES=1` build when either certificate is missing,
+   because the channel's fallback branch in `moz.build` would embed Mozilla's test keys, and
+   `moz-build.patch` stops an updater build on any channel but `vimma` (Surfer's brand sets the
+   channel), because every other channel embeds Mozilla's keys; an artifact build, which
+   compiles no updater, takes neither branch and needs no certificate.
+   `update-keys.mjs` is generated from the certificates by `npm run gen-update-keys`
+   (`tools/update/gen-update-keys.mjs`); the primary's certificate is self-signed through one
+   Cloud KMS signature by `tools/update/update-cert.mjs` (runbook step 5b), and
+   `tools/update/check-build.mjs` checks a package against the done criteria above. ADR-016
+   records the channel, host and certificates. The rpath question is answered: Firefox 159.0.1's
+   Linux `updater` already has `RUNPATH $ORIGIN`, and the `updater` of an installed
+   `VIMMA_UPDATES=1` tarball, run with an empty environment, applied a complete MAR signed with a
+   test key in its slots and refused one signed with Mozilla's test key (`failed: 19`), so Zen's
+   `-Wl,-rpath=$ORIGIN` hunk is not needed.)
 3. **Host for Firefox's updater** (the `UpdateService-sys-mjs.patch` hook calling the same
    verifier, the staged notices, the urgent prompt, `:restart`, `updates: off` once per session,
    AppImage replacement, the anonymous MAR download, the control `state` field): the remaining
    mochitests.
+   (Since changed: the control `state` field comes in a pull request of its own after the hook,
+   because it changes the control protocol, vimma-ctl's validator and the protocol docs, a
+   surface of its own; sub-PR 5's scenario is its first user. Its shape is decision 41. The hook has four hunks and ten
+   lines, not two: the lazy import of `VimmaUpdates`, `allowCheck` in `#checkForUpdates` next to
+   the policy check, `beforeCheck` before the request is sent and `verify` before
+   `#parseUpdates`. Checks that are off end as not allowed there, before any request, because a
+   check stopped later in `#updateCheck` would leave its entry in the checker's table of
+   checks under way, and every later check would join it. The request asks for the file
+   uncompressed (`Accept-Encoding: identity`) and Necko does not decode it
+   (`applyConversion = false`), because XMLHttpRequest counts its progress in the bytes
+   received, so a cap on that count would not stop a compression bomb, and a static manifest of
+   at most 64 KiB needs no compression; a compressed answer fails the signature. A manifest's
+   `<update>` may hold at most one `<patch>`, a complete MAR on https, because the anonymous
+   download (decision 1) covers the one URL the verified manifest names and the redirects it
+   learns from that URL's answers. On a tarball whose Firefox updater is usable, Firefox's
+   timer checks and Vimma's own fetch stays off, so one check runs; `:update` starts Firefox's
+   check, unless a download is under way or an update is in place, when Firefox checks no
+   further either. While Firefox downloads, the status bar shows the offer as it does while an
+   AppImage downloads (`⇡ 0.3.1 available`); once staged, `⇡ 0.3.1 on restart`, or for a
+   security update `⇡ 0.3.1 security: :restart` and the restart question. A tarball Vimma
+   cannot write keeps the offer and `:update`'s commands, which then say that the directory's
+   owner has to run them (Behaviour 2).)
 4. **Packaging and pipeline** (`package.mjs`, `tools/update/`, `release.yml`, `nightly.yml`,
    `update-publish.yml`): workflow tests and a dry run. Lands after the
    build-supply-chain implementation, whose full builds this extends (decision 4).
+   (Since changed: delivered as §7's note on `mar-sign` says; the nightly's signed MAR, its manifest
+   and the rolling `nightly` release come with public nightly releases, decision 23.)
 5. **e2e and the security rehearsal**: the scenarios above; the M6a gate.
+   (Since changed: the e2e scenarios landed on their own; the rehearsal waits for the release gate,
+   decision 23.)
 
 ## Open questions
 

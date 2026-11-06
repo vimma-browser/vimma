@@ -120,6 +120,14 @@ describe("parseCommandLine: plan §2 commands", () => {
     [":open example.com", run("open", "page.open", { text: "example.com" })],
     ["  :  open   example.com  ", run("open", "page.open", { text: "example.com" })],
     [":TABNEW", run("tabnew", "tab.new")],
+    // docs/specs/downloads.md decision 2.
+    [":downloads", run("downloads", "downloads.picker")],
+    // docs/specs/pdf-mode.md decision 21: the PDF layouts zathura keeps on Vimma's keys.
+    [":rotate", run("rotate", "pdf.rotate")],
+    [":dual", run("dual", "pdf.dual_page")],
+    [":present", run("present", "pdf.presentation")],
+    [":pdf_page_top", run("pdf_page_top", "pdf.page_top")],
+    [":show_link_target", run("show_link_target", "hint.show_target")],
   ])("%j", (text, expected) => {
     expect(parseCommandLine(text)).toEqual(expected);
   });
@@ -548,6 +556,21 @@ describe(":agent (docs/specs/builtin-agent.md Behaviour 14)", () => {
     expect(words).not.toContain("agent");
     expect(words).not.toContain("agent_command");
     expect(completeCommandLine(":agen").candidates.map((c) => c.value)).toContain("agent");
+  });
+
+  test("a hidden command that is also an action's name runs that action (:downloads)", () => {
+    // `downloads` is the picker's command and the Library action's name (docs/specs/downloads.md).
+    const hidden = ["downloads.picker"];
+    expect(parseCommandLine(":downloads", { hidden })).toEqual(
+      run("downloads", "browser.downloads"),
+    );
+    const listed = completeCommandLine(":downloads", { hidden }).candidates;
+    expect(listed.map((c) => [c.value, c.kind])).toEqual([["downloads", "action"]]);
+    expect(
+      completeCommandLine(":downloads")
+        .candidates.slice(0, 2)
+        .map((c) => c.kind),
+    ).toEqual(["command", "action"]);
   });
 });
 

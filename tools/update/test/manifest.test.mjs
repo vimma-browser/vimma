@@ -30,6 +30,7 @@ import {
   digestInfo,
   dmgInfo,
   manifestPath,
+  marName,
   nextSerial,
   parseSums,
   pinnedPem,
@@ -141,6 +142,8 @@ describe("buildManifest (spec §2)", () => {
             deb: { size: 87718612, sha512: HASH("c"), url: `${DL}/vimma_0.3.1_amd64.deb` },
             rpm: { size: 87921340, sha512: HASH("d"), url: `${DL}/vimma-0.3.1-1.x86_64.rpm` },
           },
+          // No <patch> until sub-PR 4 builds the MARs.
+          marUrl: null,
         },
       },
     });
@@ -502,7 +505,7 @@ describe("signing round trip (the verifier the browser runs)", () => {
  * @param {string} version
  * @param {{ ini?: string }} [options]
  */
-function fakeRelease(version, { ini } = {}) {
+function fakeRelease(version, { ini, mar = false } = {}) {
   const dir = tempDir("vimma-release-");
   const names = assetNames(version);
   const src = join(dir, "src");
@@ -515,16 +518,16 @@ function fakeRelease(version, { ini } = {}) {
   writeFileSync(join(dir, names.appimage), `appimage ${version}`);
   writeFileSync(join(dir, names.deb), `deb ${version}`);
   writeFileSync(join(dir, names.rpm), `rpm ${version}`);
+  const listed = Object.values(names);
+  if (mar) {
+    writeFileSync(join(dir, marName(version)), `MAR1 ${version}`);
+    listed.push(marName(version));
+  }
   const sha = (/** @type {string} */ n) =>
     createHash("sha256")
       .update(readFileSync(join(dir, n)))
       .digest("hex");
-  writeFileSync(
-    join(dir, "SHA256SUMS"),
-    Object.values(names)
-      .map((n) => `${sha(n)}  ${n}\n`)
-      .join(""),
-  );
+  writeFileSync(join(dir, "SHA256SUMS"), listed.map((n) => `${sha(n)}  ${n}\n`).join(""));
   return dir;
 }
 
@@ -661,6 +664,109 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
     await expect(
       checkSigned(text, { keys: [key.pin], tag: null, dir: null, published: null, now }),
     ).rejects.toThrow(/ahead/);
+  }, 30_000);
+});
+
+// Sub-PR 4: a release built with the updater carries a complete MAR, signed in update-publish.yml
+// and listed in SHA256SUMS; the manifest offers it to Firefox's updater as a `<patch>`, the only
+// element of the manifest Firefox's own parser reads (§2). Releases from before have none.
+describe("the complete MAR (<patch>)", () => {
+  const now = new Date(Date.UTC(2026, 9, 28, 4, 12, 7));
+  const commits = [{ subject: "fix: a fix (#1)", labels: [] }];
+  const MAR_URL = `${DL}/vimma-0.3.1-linux-x86_64.complete.mar`;
+
+  it("is named as release.yml uploads it", () => {
+    expect(marName("0.3.1")).toBe("vimma-0.3.1-linux-x86_64.complete.mar");
+  });
+
+  it("buildManifest writes one complete <patch>, which the browser's parser reads", () => {
+    const body = buildManifest({
+      serial: "20261028041207",
+      update: { ...offer(), mar: { size: 98113536, sha512: HASH("e") } },
+    });
+    expect(body).toContain(
+      `    <patch type="complete" size="98113536" hashFunction="sha512" hashValue="${HASH("e")}" URL="${MAR_URL}"/>\n`,
+    );
+    const m = /** @type {any} */ (parseManifest(body)).manifest;
+    expect(m.update.marUrl).toBe(MAR_URL);
+    expect(m.update.assets.tarball.url).toBe(`${DL}/vimma-0.3.1-linux-x86_64.tar.xz`);
+  });
+
+  it("buildManifest refuses a MAR in the macOS manifest, and a malformed one", () => {
+    const mac = {
+      ...offer(),
+      assets: { dmg: { size: 4, sha512: HASH("d") } },
+      mar: { size: 1, sha512: HASH("e") },
+    };
+    expect(() =>
+      buildManifest({ serial: "20261028041207", update: /** @type {any} */ (mac), os: "macos" }),
+    ).toThrow(/MAR/);
+    expect(() =>
+      buildManifest({
+        serial: "20261028041207",
+        update: { ...offer(), mar: { size: 0, sha512: HASH("e") } },
+      }),
+    ).toThrow(/MAR/);
+    expect(() =>
+      buildManifest({
+        serial: "20261028041207",
+        update: { ...offer(), mar: { size: 1, sha512: "e" } },
+      }),
+    ).toThrow(/MAR/);
+  });
+
+  it("prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512", () => {
+    const dir = fakeRelease("0.3.1", { mar: true });
+    const { body } = prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now });
+    const data = readFileSync(join(dir, marName("0.3.1")));
+    expect(body).toContain(
+      `<patch type="complete" size="${data.length}" hashFunction="sha512" hashValue="${createHash("sha512").update(data).digest("hex")}" URL="${MAR_URL}"/>`,
+    );
+  });
+
+  it("prepareRelease writes no <patch> for a release whose SHA256SUMS lists no MAR", () => {
+    const dir = fakeRelease("0.3.1");
+    const { body } = prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now });
+    expect(body).not.toContain("<patch");
+  });
+
+  it("prepareRelease refuses a listed MAR that was not downloaded or does not match", () => {
+    const dir = fakeRelease("0.3.1", { mar: true });
+    writeFileSync(join(dir, marName("0.3.1")), "MAR1 swapped");
+    expect(() => prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now })).toThrow(
+      /complete\.mar/,
+    );
+    execFileSync("rm", [join(dir, marName("0.3.1"))]);
+    expect(() => prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now })).toThrow(
+      /complete\.mar/,
+    );
+  });
+
+  it("checkSigned checks the MAR the manifest offers against the downloaded file", async () => {
+    const dir = fakeRelease("0.3.1", { mar: true });
+    const { body } = prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now });
+    const text = kmsSign(body, key);
+    const opts = { keys: [key.pin], tag: "v0.3.1", dir, published: null, now };
+    await expect(checkSigned(text, opts)).resolves.toMatchObject({ key: key.pin.id });
+    writeFileSync(join(dir, marName("0.3.1")), "MAR1 swapped");
+    await expect(checkSigned(text, opts)).rejects.toThrow(/complete\.mar/);
+    execFileSync("rm", [join(dir, marName("0.3.1"))]);
+    await expect(checkSigned(text, opts)).rejects.toThrow(/complete\.mar/);
+  }, 30_000);
+
+  it("checkSigned refuses a <patch> at any URL but the release's MAR", async () => {
+    const dir = fakeRelease("0.3.1", { mar: true });
+    const { body } = prepareRelease({ tag: "v0.3.1", dir, commits, published: null, now });
+    const moved = body.replace(MAR_URL, "https://example.com/vimma.complete.mar");
+    await expect(
+      checkSigned(kmsSign(moved, key), {
+        keys: [key.pin],
+        tag: "v0.3.1",
+        dir,
+        published: null,
+        now,
+      }),
+    ).rejects.toThrow(/patch/);
   }, 30_000);
 });
 

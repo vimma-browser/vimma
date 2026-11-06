@@ -127,6 +127,28 @@ The product-page floor, as first measured at `b013457a` on all ten lists:
 | L10  | 0/1       | 9/10        | 0    | 0            | 0                | 0                  | 51, 51              | 490k, 490k           | 2 s, 2 s           |
 | all  | 9/10      | 54/55       | 0    | 0            | 8                | 0                  | 36, 51              | 272k, 490k           | 2 s, 3 s           |
 
+### Two shops (the scripted floor)
+
+The two-shop scenario (`--two-shops`, [mcp-consequence](specs/mcp-consequence.md), Tests): the
+task of [#693](https://github.com/vimma-browser/vimma/issues/693), oat drink, tofu, chickpeas,
+spaghetti and bananas compared across two shops and each shop's cheapest match put in its
+basket, on two local shops whose product cards are shaped like Finnish grocery shops'. The
+floor opens the ten searches with their elements in one turn, clicks the ten add buttons in the
+next, then opens both checkouts and clicks their pay buttons. One run, unpaced, at `ea7bd1df`
+plus the change that added the scenario, on an artifact build of Firefox 159.0.1:
+
+| Run                     | Completed | Lines right | Asked                  | Told questions wait | Steps | Tokens | Time |
+| ----------------------- | --------- | ----------- | ---------------------- | ------------------- | ----- | ------ | ---- |
+| vimma-ctl at `ea7bd1df` | 1/1       | 10/10       | the two checkouts only | no                  | 24    | 45k    | 68 s |
+| vimma-ctl before #694   | 0/1       | 0/10        | nothing                | yes, 10 times       | 20    | 23k    | 2 s  |
+
+The ten searches use up the open rate (ten loads a minute), so the first click waits 59 seconds
+for it, as the built-in agent's runner does; the other nine clicks, Market's five add forms
+among them, then run under the grant without a question. With vimma-ctl as it was before #694,
+the same refusal reached the agent as "Too many agent requests are waiting in Vimma; wait for
+the user to answer them", every click of the second turn was refused so, and the run stopped
+with both baskets empty, as the task in #693 did.
+
 ### qwen2.5:1.5b
 
 Ollama 0.40.12, 1.5B parameters, Q4_K_M, context 32,768 tokens (`num_ctx`), one run per list.

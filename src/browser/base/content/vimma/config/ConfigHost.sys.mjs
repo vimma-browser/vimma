@@ -24,7 +24,12 @@ import {
 import { formatConfigTemplate } from "../core/defaults.mjs";
 import { updatesCheckAfterRead } from "../core/updates.mjs";
 import { locateKeys } from "../core/toml.mjs";
-import { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC, VimmaHost } from "../host/VimmaHost.sys.mjs";
+import {
+  CONFIG_EDIT_TOPIC,
+  CONFIG_RELOAD_TOPIC,
+  PDF_OUTLINE_PREF,
+  VimmaHost,
+} from "../host/VimmaHost.sys.mjs";
 import { openUrl } from "../host/tab-ops.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { PrivateSwap } from "../host/private-swap.mjs";
@@ -104,6 +109,8 @@ const windows = new Set();
  * @type {string | null}
  */
 let appliedToolbar = null;
+/** `[ui] pdf_outline` of the last config applied; null before the first. @type {string | null} */
+let appliedPdfOutline = null;
 
 /**
  * @param {string} path
@@ -124,6 +131,7 @@ function applyToWindow(win, config) {
   const view = PaneViews.get(win);
   if (!view) return;
   view.max = config.panes.max;
+  view.maxSplits = config.panes.maxSplits;
   view.mode = config.panes.layout;
   view.mainSize = config.panes.mainSize;
 }
@@ -147,11 +155,18 @@ function apply(next, text) {
   PrivateSwap.configure(config.private.placement);
   PanelNumbers.set(config.panel.numbers);
   WorkspaceRouter.setRoutes(config.routes);
+  WorkspaceRouter.setDefaultWorkspace(config.routing.defaultWorkspace);
   McpHost.configure(config.mcp);
   McpHost.configureAgent(config.agent);
   if (config.ui.toolbar !== appliedToolbar) {
     appliedToolbar = config.ui.toolbar;
     Toolbar.setHidden(config.ui.toolbar === "hidden");
+  }
+  // docs/specs/pdf-mode.md decision 19: Vimma's outline beside a PDF, applied as `[ui] toolbar`
+  // is, at startup and when the line changes.
+  if (config.ui.pdfOutline !== appliedPdfOutline) {
+    appliedPdfOutline = config.ui.pdfOutline;
+    Services.prefs.setBoolPref(PDF_OUTLINE_PREF, config.ui.pdfOutline === "hidden");
   }
   // docs/specs/bookmarks-toolbar-hidden.md decisions 4 and 7, applied as `[ui] toolbar` is.
   BookmarksToolbar.configure(config.ui.bookmarksToolbar, (text) => {

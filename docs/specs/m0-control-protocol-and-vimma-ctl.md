@@ -235,6 +235,26 @@ are sent.
   tab's id as in `tabs` and its place there (`-1` if it is not visible). Read-only, like the
   rest of `state`. Since side-panel-unsplit (decision 28) it also has `"hidden": true | false`:
   true while the split is kept as a hidden view and another tab shows alone.
+- `splits` (since [multiple-splits](multiple-splits.md), while `vimma.feature.multiple_splits` is
+  on): every split of the window's workspace in number order, `[]` without one; absent while
+  the feature is off. Each has the shape of `panes` with `"number": 1`-`9` and `"shown": true |
+false` in place of `hidden`. `panes` keeps its meaning: the shown split, else the split shown
+  last with `hidden: true`. Added without a version bump; vimma-ctl accepts it when present and
+  checks that it is an array of objects with an integer `number` from 1 to 9 and a boolean
+  `shown`. (Since changed: the pref is gone and `splits` is always present;
+  [multiple-splits](multiple-splits.md), decision 17.)
+- `update` (since [m6a-updater](m6a-updater.md), decision 41): the update check, the same in
+  every window, a private one included, because it names no page:
+  `{ "enabled": true, "installType": "tarball" | null, "outcome": "offer", "checkedAt": <ms> | null,
+"offer": { "version": "0.3.1", "buildId": "20261101031500", "urgent": false } | null,
+"stage": "none" | "pending" | "staged" }`. `enabled`: checks are on; `installType`: how Vimma
+  was installed (`tarball`, `appimage`, `deb` and the others of m6a-updater §3), `null` until
+  known; `outcome`: the last check's, one of `never`, `current`, `offer`, `unreachable`,
+  `refused`, `off`, `source`; `checkedAt`: its time in ms since the epoch; `offer`: the newer
+  build offered, `null` without one; `stage`: how far that build got (`pending` while it
+  downloads or replaces the AppImage, `staged` once it applies at the next start). Added without
+  a version bump; vimma-ctl accepts it when present and checks every field's type and the two
+  lists.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

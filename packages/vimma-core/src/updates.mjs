@@ -69,6 +69,8 @@ export const HOMEBREW_CASKROOM = "/opt/homebrew/Caskroom/vimma";
  * @property {boolean} urgent         `vimmaUrgency="security"`
  * @property {string[]} advisories    MFSA IDs
  * @property {Assets} assets          each package's size and SHA-512, as the manifest signs them
+ * @property {string | null} [marUrl]  the complete MAR Firefox's updater downloads (`<patch>`),
+ *   whose download goes without cookies (decision 1); absent in a result saved before it existed
  */
 /**
  * A package's download as the signed manifest gives it; `url` is absent in a result saved by a
@@ -234,8 +236,13 @@ const ENTITIES = /** @type {Record<string, string>} */ ({
   apos: "'",
 });
 
+const SPACE = /\s/;
+const NAME_START = /[A-Za-z]/;
+const NAME_CHAR = /[A-Za-z0-9]/;
+
 /**
- * Attributes of one start tag, `name="value"` only, each name once.
+ * Attributes of one start tag, `name="value"` only, each name once. Read by one scan of the
+ * text (no backtracking regular expression), like startTags and withoutComments.
  * @param {string} text  what follows the tag name
  * @returns {Map<string, string> | null}
  */
@@ -243,10 +250,21 @@ function attributes(text) {
   const map = new Map();
   let rest = text.trimEnd();
   if (rest.endsWith("/")) rest = rest.slice(0, -1).trimEnd();
-  const re = /\s+([A-Za-z][A-Za-z0-9]*)="([^"<]*)"/gy;
-  let end = 0;
-  for (let m = re.exec(rest); m; m = re.exec(rest)) {
-    const [, name = "", raw = ""] = m;
+  let at = 0;
+  while (at < rest.length) {
+    const spaceAt = at;
+    while (SPACE.test(rest[at] ?? "")) at++;
+    if (at === spaceAt || !NAME_START.test(rest[at] ?? "")) return null;
+    const nameAt = at;
+    do at++;
+    while (NAME_CHAR.test(rest[at] ?? ""));
+    const name = rest.slice(nameAt, at);
+    if (!rest.startsWith('="', at)) return null;
+    const close = rest.indexOf('"', at + 2);
+    if (close < 0) return null;
+    const raw = rest.slice(at + 2, close);
+    if (raw.includes("<")) return null;
+    at = close + 1;
     if (map.has(name)) return null;
     // Only the five predefined entities; no character references, no stray ampersand.
     if (/&(?!(?:amp|lt|gt|quot|apos);)/.test(raw)) return null;
@@ -254,9 +272,8 @@ function attributes(text) {
       name,
       raw.replace(/&(amp|lt|gt|quot|apos);/g, (_, e) => ENTITIES[e] ?? ""),
     );
-    end = re.lastIndex;
   }
-  return end === rest.length ? map : null;
+  return map;
 }
 
 /**
@@ -349,6 +366,27 @@ function readAssets(content) {
 }
 
 /**
+ * The complete MAR's URL in an `<update>`'s content (`<patch>`, read by Firefox's own parser), or
+ * null when there is none. One complete MAR at most (decision 5): Firefox would pick a partial
+ * one first, and a second URL would be a download that decision 1's rule does not cover.
+ * Firefox checks the MAR's size and hash itself, and its updater the MAR's signature.
+ * @param {string} content
+ * @returns {{ ok: true, url: string | null } | { ok: false, why: string }}
+ */
+function readPatch(content) {
+  const tags = startTags(content, "patch");
+  if (!tags) return { ok: false, why: "<patch> is not closed" };
+  if (tags.length === 0) return { ok: true, url: null };
+  if (tags.length > 1) return { ok: false, why: "more than one <patch>" };
+  const attrs = attributes(/** @type {string} */ (tags[0]));
+  if (!attrs) return { ok: false, why: "<patch> has malformed attributes" };
+  if (attrs.get("type") !== "complete") return { ok: false, why: "<patch> is not complete" };
+  const url = attrs.get("URL") ?? "";
+  if (!url.startsWith("https://")) return { ok: false, why: "<patch> URL is not https" };
+  return { ok: true, url };
+}
+
+/**
  * The well-formed entries of a saved offer's assets (the pref `vimma.update.last`, which anyone
  * can edit): anything else is dropped, so a command never carries a hash that is not SHA-512 hex.
  * @param {unknown} value
@@ -381,6 +419,9 @@ export function parseManifest(body) {
   const bad = (why) =>
     /** @type {{ ok: false, reason: string }} */ ({ ok: false, reason: `manifest: ${why}` });
   if (/<!DOCTYPE|<!ENTITY|<!\[CDATA\[/i.test(body)) return bad("declarations are not allowed");
+  // Firefox's parser finds <update> and <patch> by local name, so a prefixed name would be an
+  // element to it that this parser does not read.
+  if (/<\/?[A-Za-z][\w.-]*:/.test(body)) return bad("prefixed element names are not allowed");
   const text = withoutComments(body.replace(/^<\?xml[^>]*\?>/, ""));
   if (text === null) return bad("a comment is not closed");
   const root = /^\s*<updates(\s[^>]*?)?(\/?)>([\s\S]*)$/.exec(text);
@@ -405,6 +446,8 @@ export function parseManifest(body) {
   if (updates.length > 1) return bad("more than one <update>");
   const read = readAssets(content);
   if (!read.ok) return bad(read.why);
+  const patch = readPatch(content);
+  if (!patch.ok) return bad(patch.why);
   const attrs = attributes(/** @type {string} */ (updates[0]));
   if (!attrs) return bad("<update> has malformed attributes");
   const appVersion = attrs.get("appVersion") ?? "";
@@ -436,6 +479,7 @@ export function parseManifest(body) {
         urgent: urgency === "security",
         advisories,
         assets: read.assets,
+        marUrl: patch.url,
       },
     },
   };
@@ -631,7 +675,9 @@ export function shellQuote(word) {
  * (parseManifest); paths are quoted.
  * @param {InstallType} type
  * @param {Offer} offer
- * @param {{ installDir: string, appImage: string | null }} where
+ * @param {{ installDir: string, appImage: string | null, writable?: boolean }} where
+ *   `writable`: false when Vimma cannot write a tarball's directory, so Firefox's updater cannot
+ *   apply there (Behaviour 2)
  * @returns {{ text: string, commands: string[], link: string }}
  */
 export function updateSteps(type, offer, where) {
@@ -690,7 +736,12 @@ export function updateSteps(type, offer, where) {
       const parent = where.installDir.replace(/\/[^/]*\/?$/, "") || "/";
       const file = `vimma-${v}-linux-x86_64.tar.xz`;
       return {
-        text: "Quit Vimma, then unpack the new tarball over this install:",
+        text:
+          where.writable === false
+            ? `Vimma cannot write ${where.installDir}, so it cannot update itself: update it as ` +
+              "the directory's owner, or reinstall. As its owner, quit Vimma, then unpack the " +
+              "new tarball over this install:"
+            : "Quit Vimma, then unpack the new tarball over this install:",
         commands: [
           `${fetchChecked(`${dl}/${file}`, file, assets.tarball)}` +
             ` && tar -xJf ${file} -C ${shellQuote(parent)}`,

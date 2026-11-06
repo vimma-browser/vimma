@@ -11,6 +11,7 @@ import {
   APP_ID,
   FINISH_ARGS,
   RUNTIME_VERSION,
+  SCREENSHOTS,
   flatpakDesktopEntry,
   flatpakLauncher,
   flatpakManifest,
@@ -192,6 +193,35 @@ describe("Flatpak metainfo", () => {
     expect(xml).toContain('<url type="homepage">https://vimma.dev/</url>');
     expect(xml).toContain('<release version="0.1.6" date="2026-10-19"');
     expect(xml).toContain('<content_rating type="oars-1.1"');
+  });
+
+  // Flathub requires screenshots at URLs that never change (its quality guidelines), and
+  // mirrors them at build time; raw GitHub URLs at the release's tag cannot change.
+  it("shows the screenshots, one default, each captioned, at raw URLs pinned to the release tag", () => {
+    expect(SCREENSHOTS.length).toBeGreaterThanOrEqual(3);
+    const shots = [...xml.matchAll(/<screenshot( type="default")?>([\s\S]*?)<\/screenshot>/g)];
+    expect(shots.map((m) => m[2].match(/<image>(.*)<\/image>/)?.[1])).toEqual(
+      SCREENSHOTS.map(
+        (s) =>
+          `https://raw.githubusercontent.com/vimma-browser/vimma/v0.1.6/docs/assets/screenshots/${s.file}`,
+      ),
+    );
+    expect(shots.filter((m) => m[1]).length).toBe(1);
+    expect(shots[0][1]).toBe(' type="default"');
+    for (const [, , body] of shots) expect(body).toMatch(/<caption>[^<]{10,100}<\/caption>/);
+  });
+
+  it("names screenshots that are in the repository, the size Flathub asks for", () => {
+    for (const { file } of SCREENSHOTS) {
+      const path = join(repo, "docs/assets/screenshots", file);
+      expect(existsSync(path), file).toBe(true);
+      const png = readFileSync(path);
+      expect(png.subarray(1, 4).toString(), file).toBe("PNG");
+      // Width and height from the IHDR chunk: landscape, at most 1920 wide.
+      const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
+      expect(w, file).toBeGreaterThan(h);
+      expect(w, file).toBeLessThanOrEqual(1920);
+    }
   });
 
   it.each(["2026-1-19", "19.10.2026", "2026-10-19T00:00"])("refuses the date %j", (date) => {

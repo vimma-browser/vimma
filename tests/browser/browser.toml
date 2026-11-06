@@ -89,6 +89,8 @@ support-files = ["file_vimma_plain.html"]
 ["browser_vimma_firefox_surfaces_theme.js"]
 support-files = ["file_vimma_plain.html"]
 
+["browser_vimma_square_corners.js"]
+
 ["browser_vimma_tab_keys.js"]
 support-files = ["file_vimma_test.pdf"]
 
@@ -240,6 +242,7 @@ support-files = [
 
 ["browser_vimma_mcp_checkpoint.js"]
 support-files = [
+  "file_vimma_agent_basket_form.html",
   "file_vimma_agent_checkout.html",
   "file_vimma_agent_hosted_pay.html",
   "file_vimma_agent_page.html",
@@ -291,6 +294,13 @@ support-files = [
   "file_vimma_agent_sw.js",
 ]
 
+["browser_vimma_downloads.js"]
+support-files = [
+  "file_vimma_downloads.sjs",
+  "file_vimma_plain.html",
+  "file_vimma_test.pdf",
+]
+
 ["browser_vimma_mcp_downloads.js"]
 support-files = [
   "file_vimma_agent_page.html",
@@ -323,6 +333,10 @@ support-files = ["file_vimma_title.html"]
 
 ["browser_vimma_side_panel_unsplit.js"]
 
+["browser_vimma_multiple_splits.js"]
+
+["browser_vimma_split_picker.js"]
+
 ["browser_vimma_firefox_keys.js"]
 support-files = ["file_vimma_plain.html"]
 
@@ -330,7 +344,11 @@ support-files = ["file_vimma_plain.html"]
 support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_edit_keys.js"]
-support-files = ["file_vimma_insert_scroll.html", "file_vimma_frame.html"]
+support-files = [
+  "file_vimma_insert_scroll.html",
+  "file_vimma_frame.html",
+  "file_vimma_enter_keys.html",
+]
 
 ["browser_vimma_bookmarks.js"]
 
@@ -394,6 +412,14 @@ support-files = [
   "file_vimma_update_bomb.gz^headers^",
 ]
 
+["browser_vimma_update_verify.js"]
+support-files = [
+  "file_vimma_update_manifest.sjs",
+  "file_vimma_update_bomb.gz",
+  "file_vimma_update_bomb.gz^headers^",
+  "file_vimma_update.mar",
+]
+
 ["browser_vimma_update_appimage.js"]
 support-files = ["file_vimma_update_manifest.sjs", "file_vimma_update_appimage.sjs"]
 
@@ -410,6 +436,9 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
 ["browser_vimma_agent_cli_codex.js"]
 support-files = ["fake_vimma_agent_codex.py", "head_vimma_control.js"]
+
+["browser_vimma_agent_cli_gemini.js"]
+support-files = ["fake_vimma_agent_gemini.py", "head_vimma_control.js"]
 
 ["browser_vimma_agent_cli_run.js"]
 support-files = [
@@ -450,11 +479,14 @@ support-files = ["file_vimma_test.pdf", "file_vimma_pdf_attachment.pdf", "file_v
 ["browser_vimma_pdf_keys.js"]
 support-files = ["file_vimma_outline.pdf"]
 
+["browser_vimma_pdf_look.js"]
+support-files = ["file_vimma_outline_pagemode.pdf", "file_vimma_plain.html"]
+
 ["browser_vimma_pdf_marks.js"]
 support-files = ["file_vimma_outline.pdf", "file_vimma_pdf_links.pdf"]
 
 ["browser_vimma_pdf_outline.js"]
-support-files = ["file_vimma_outline.pdf", "file_vimma_outline_kinds.pdf", "file_vimma_test.pdf"]
+support-files = ["file_vimma_outline.pdf", "file_vimma_outline_kinds.pdf", "file_vimma_outline_pagemode.pdf", "file_vimma_test.pdf"]
 
 ["browser_vimma_pdf_status.js"]
 support-files = ["file_vimma_outline.pdf"]

@@ -12,7 +12,7 @@
   overflow: auto;
   padding: 0 1.25rem 1rem;
   border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-  border-radius: 8px;
+  border-radius: var(--vimma-radius, 0);
   background: var(--vimma-bg-dark, Canvas);
   color: var(--vimma-fg, CanvasText);
   font: message-box;
@@ -55,7 +55,7 @@
     width: 18rem;
     padding: 0.15rem 0.4rem;
     border: 1px solid var(--vimma-muted, color-mix(in srgb, CanvasText 25%, transparent));
-    border-radius: 4px;
+    border-radius: var(--vimma-radius, 0);
     background: var(--vimma-bg, Field);
     color: var(--vimma-fg, FieldText);
     font: inherit;

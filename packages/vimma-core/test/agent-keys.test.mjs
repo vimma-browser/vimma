@@ -87,6 +87,22 @@ describe("the whitelist (D9)", () => {
     );
   });
 
+  test("the split actions are not agent key actions (docs/specs/multiple-splits.md)", () => {
+    for (const id of ["pane.split_picker", "pane.next_split", "pane.previous_split"]) {
+      expect(AGENT_KEY_ACTIONS.has(id)).toBe(false);
+    }
+    expect(refusal("ctrl+b S")).toContain("the prefix");
+    expect(refusal("]s")).toBe(
+      'key "]s" (pane.next_split) is refused: the tabs, workspaces, windows and layout are the user\'s',
+    );
+    expect(refusal("[s")).toContain("(pane.previous_split) is refused");
+  });
+
+  test("downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)", () => {
+    expect(AGENT_KEY_ACTIONS.has("downloads.picker")).toBe(false);
+    expect(refusal("ctrl+b d")).toContain("the prefix");
+  });
+
   test("counts, sequences and whitespace between keys", () => {
     expect(ids("3j")).toEqual(["3scroll.down"]);
     expect(ids("3j gg  G")).toEqual(["3scroll.down", "scroll.top", "scroll.bottom"]);

@@ -65,4 +65,14 @@ describe("startPageServer", () => {
     expect((await fetch(`${server.base}missing.html`)).status).toBe(404);
     expect((await fetch(`${server.base}..%2Fetc%2Fpasswd`)).status).toBe(404);
   });
+
+  it("serves a PDF as application/pdf, so it opens in the PDF viewer", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vimma-pages-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    writeFileSync(join(dir, "doc.pdf"), "%PDF-1.4");
+    const server = await startPageServer(dir);
+    cleanups.push(() => server.close());
+    const res = await fetch(`${server.base}doc.pdf`);
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+  });
 });

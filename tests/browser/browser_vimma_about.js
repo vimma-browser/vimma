@@ -150,7 +150,7 @@ add_task(async function config_errors_show_with_file_and_line() {
   // #742: a provider whose CLI this build does not know is left out of a file that loads.
   await IOUtils.writeUTF8(
     file,
-    `schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "gemini"\n`,
+    `schema = 2\n[[agent.providers]]\nname = "x"\nkind = "cli"\ncli = "opencode"\n`,
   );
   await ConfigHost.reload();
   Assert.equal(ConfigHost.warnings.length, 1, "sanity: one warning");

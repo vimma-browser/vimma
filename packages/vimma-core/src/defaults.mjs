@@ -23,6 +23,8 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  * @property {{ max?: number, layout?: "dwindle" | "manual", main_size?: number }} [panes]
  * @property {Record<string, { insert?: import("./editable.mjs").InsertSiteMode }>} [sites]
  * @property {Record<string, string>[]} [routes]  `[[routes]]` (workspace-routing)
+ * @property {{ default_workspace?: string }} [routing]  where links from other programs that no
+ *   rule matches open (docs/specs/app-routes.md)
  * @property {{ disable?: "all" | readonly string[], enable?: readonly string[] }} [firefox]
  *   Firefox's own shortcuts that are off (docs/specs/key-handling-batch.md)
  * @property {{ root?: "workspace" | "toolbar" | "all" }} [bookmarks]  the bookmarks panel's root
@@ -33,9 +35,11 @@ import { DEFAULT_THEME_NAME } from "./theme.mjs";
  *   (docs/specs/private-swap.md)
  * @property {{ check?: boolean }} [updates]  update checks (docs/specs/m6a-updater.md)
  * @property {{ toolbar?: "shown" | "hidden",
- *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting }} [ui]
- *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md) and its Bookmarks Toolbar
- *   (docs/specs/bookmarks-toolbar-hidden.md)
+ *   bookmarks_toolbar?: import("./bookmarks-toolbar.mjs").BookmarksToolbarSetting,
+ *   pdf_outline?: "shown" | "hidden" }} [ui]
+ *   Firefox's toolbar at startup (docs/specs/toolbar-toggle.md), its Bookmarks Toolbar
+ *   (docs/specs/bookmarks-toolbar-hidden.md) and Vimma's outline beside a PDF
+ *   (docs/specs/pdf-mode.md decision 19)
  * @property {{ enabled?: boolean, workspace?: string, ask_timeout?: number,
  *   grant_minutes?: number, grant_max_minutes?: number, max_read_chars?: number,
  *   notify?: boolean, download_dir?: string, download_max_mb?: number,
@@ -101,6 +105,8 @@ const keys = {
   // docs/specs/tiling-layouts.md: tmux's split-window on enter, next-layout on space.
   new_pane: ["prefix+enter"],
   next_layout: ["prefix+space"],
+  // docs/specs/multiple-splits.md decision 13: S for splits, next to w for workspaces.
+  split_picker: ["prefix+shift+s"],
   next_workspace: ["prefix+)"],
   previous_workspace: ["prefix+("],
   // tmux's last session; prefix+ctrl+6 for layouts where ^ is a dead key (Finnish, German).
@@ -173,6 +179,8 @@ const keys = {
   agent_chat: ["prefix+i"],
   copy_mode: ["prefix+["],
   addon_picker: ["prefix+e"],
+  // docs/specs/downloads.md decision 2: the feature's initial, beside the other pickers.
+  downloads_picker: ["prefix+d"],
 };
 
 /**
@@ -207,6 +215,22 @@ export const MAC_KEYS = Object.freeze({
 export function defaultKeys({ mac = false } = {}) {
   return mac ? MAC_MERGED : keys;
 }
+
+/**
+ * zathura's keys that the PDF viewer leaves to Vimma's meaning (docs/specs/pdf-mode.md decision
+ * 21), as `[modal.pdf]` lines: config.toml shows them commented out, for those who want zathura's.
+ * @type {Readonly<Record<string, string>>}
+ */
+export const ZATHURA_PDF_KEYS = Object.freeze({
+  d: "pdf.dual_page",
+  r: "pdf.rotate",
+  H: "pdf.page_top",
+  L: "pdf.page_bottom",
+  P: "pdf.page_top",
+  F: "hint.show_target",
+  "<C-f>": "pdf.screen_down",
+  "<F5>": "pdf.presentation",
+});
 
 const modal = {
   leader: " ",
@@ -264,6 +288,9 @@ const modal = {
     // unimpaired's quickfix keys over the last live grep's results (live-grep decision 8).
     "]q": "grep.next",
     "[q": "grep.previous",
+    // The workspace's splits, as ]w / [w step workspaces (multiple-splits decision 13).
+    "]s": "pane.next_split",
+    "[s": "pane.previous_split",
     yy: "page.yank_url",
     p: "page.open_clipboard",
     P: "page.open_clipboard_new_tab",
@@ -285,17 +312,15 @@ const modal = {
     "<C-w>+": "pane.resize_taller",
     "<C-w>-": "pane.resize_shorter",
   },
-  // docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, over normal mode's (decision 5).
-  // The keys they shadow keep a twin there: ctrl+d, ctrl+o / ctrl+i, R, p, /.
+  // docs/specs/pdf-mode.md: zathura's keys in the PDF viewer, only on the keys normal mode leaves
+  // free (decision 21), so that every Vimma key does the same in a PDF as on a page. gg and G
+  // still go to the top and the bottom; in a PDF their count is a page (decision 6). zathura's
+  // d, r, H, L, P, F, ctrl+f and F5 are commands there, and ZATHURA_PDF_KEYS puts them back.
   pdf: {
     J: "pdf.next_page",
     K: "pdf.previous_page",
     gg: "pdf.first_page",
     G: "pdf.last_page",
-    H: "pdf.page_top",
-    P: "pdf.page_top",
-    L: "pdf.page_bottom",
-    "<C-f>": "pdf.screen_down",
     "+": "pdf.zoom_in",
     zi: "pdf.zoom_in",
     zI: "pdf.zoom_in",
@@ -308,20 +333,15 @@ const modal = {
     z0: "pdf.zoom_set",
     a: "pdf.fit_page",
     s: "pdf.fit_width",
-    d: "pdf.dual_page",
     D: "pdf.first_page_alone",
     w: "pdf.single_page",
-    r: "pdf.rotate",
     R: "page.reload",
     Y: "page.yank_url",
-    "<F5>": "pdf.presentation",
     // The outline panel (decision 10); shift+Tab still moves focus through pdf.js's toolbar.
     "<Tab>": "pdf.outline",
-    // Marks (decision 11) and zathura's link keys (decision 16); F shadows the text-block
-    // hints, which pdf.js's lines do not have.
+    // Marks (decision 11) and zathura's c, which copies a link's target (decision 16).
     m: "pdf.mark_set",
     "'": "pdf.mark_go",
-    F: "hint.show_target",
     c: "hint.copy_target",
   },
   insert: { "<Esc>": "mode.normal" },
@@ -494,7 +514,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   bookmarks: { root: /** @type {const} */ ("workspace") },
   panel: { numbers: /** @type {const} */ ("absolute") },
   private: { placement: /** @type {const} */ ("swap") },
-  ui: { toolbar: /** @type {const} */ ("shown") },
+  ui: { toolbar: /** @type {const} */ ("shown"), pdf_outline: /** @type {const} */ ("shown") },
   updates: { check: true },
   // docs/specs/vimma-mcp.md, decision 26. No `enabled`: left out, `:mcp on|off` decides.
   mcp: {
@@ -546,7 +566,8 @@ export function formatDefaultsToml() {
     `timeout_ms = ${modal.timeout_ms}`,
     "# Hint labels are made of these characters, the first ones most often.",
     `hint_chars = ${tomlString(modal.hint_chars)}`,
-    "# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character.",
+    "# In text fields ctrl+w deletes a word, ctrl+u to the line's start, ctrl+h a character,",
+    "# and ctrl+j and ctrl+m are Enter.",
     `insert_editing = ${modal.insert_editing}`,
   );
   for (const [mode, table] of Object.entries(modal)) {
@@ -554,6 +575,12 @@ export function formatDefaultsToml() {
     lines.push("", `[modal.${mode}]`);
     for (const [seq, action] of Object.entries(table)) {
       lines.push(`${tomlString(seq)} = ${tomlString(action)}`);
+    }
+    if (mode === "pdf") {
+      lines.push("# zathura's keys over Vimma's in the PDF viewer, for those who want them:");
+      for (const [seq, action] of Object.entries(ZATHURA_PDF_KEYS)) {
+        lines.push(`# ${tomlString(seq)} = ${tomlString(action)}`);
+      }
     }
   }
   lines.push(
@@ -622,6 +649,9 @@ export function formatDefaultsToml() {
     '# "shown", "hidden" or "newtab" (on the start page and new tabs only). Left out,',
     "# ctrl+shift+b, :bookmarkstoolbar and Firefox's View > Toolbars menu set it for good.",
     '# bookmarks_toolbar = "shown"',
+    '# Vimma\'s outline beside a PDF that has one (Tab focuses it): "shown" when a PDF opens, or',
+    '# "hidden" until you press Tab.',
+    `pdf_outline = ${tomlString(DEFAULT_CONFIG.ui?.pdf_outline ?? "shown")}`,
     "",
     "# Every 12 hours Vimma asks updates.vimma.dev whether a newer version exists. The request",
     "# names only the update channel and the platform. false stops every check.",
@@ -635,11 +665,17 @@ export function formatDefaultsToml() {
     '# [sites."docs.google.com"]',
     '# insert = "always"',
     "",
-    "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the app",
-    "# that opened it (vimma-open). The first matching rule wins. None by default.",
+    "# Which workspace a link opens in: by domain (and its subdomains), url prefix, or the",
+    "# programs that opened it (vimma-open). The first matching rule wins, except that among the",
+    "# app rules above it, the one naming the nearest program wins. None by default.",
     "# [[routes]]",
     '# domain = "github.com"',
     '# workspace = "work"',
+    "",
+    "# Where a link from another program opens when no rule matches. Left out, it opens where",
+    "# Firefox guesses from your open tabs, else in the window's workspace.",
+    "# [routing]",
+    '# default_workspace = "work"',
     "",
     "# Search engines. default: an installed engine's name (as in Settings > Search), or",
     '# "@alias" of a URL below. Each alias is typed as @alias before the words, in the URL bar',

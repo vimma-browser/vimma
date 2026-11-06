@@ -199,8 +199,8 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   await until(
     () =>
       noticeText() ===
-      "example-agent may use the agent workspace for 15 min; sending a form or paying still asks " +
-        "(ctrl+b shift+a ends it)",
+      "example-agent may use the agent workspace for 15 min; paying and sending text or personal " +
+        "details still ask (ctrl+b shift+a ends it)",
     "the grant notice names its scope and the key that ends it",
   );
   await until(() => segment() === "◇ agent 15m", "the status bar counts the grant down");
@@ -246,8 +246,8 @@ add_task(async function test_a_bare_a_grants_until_the_agent_quits() {
   await until(
     () =>
       noticeText() ===
-      "example-agent may use the agent workspace until it quits; sending a form or paying still " +
-        "asks (ctrl+b shift+a ends it)",
+      "example-agent may use the agent workspace until it quits; paying and sending text or " +
+        "personal details still ask (ctrl+b shift+a ends it)",
     "the grant notice says it lasts until the agent quits",
   );
   await until(() => segment() === "◇ agent granted", "the status bar says a grant runs");

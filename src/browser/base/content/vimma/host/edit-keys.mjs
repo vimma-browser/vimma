@@ -4,10 +4,11 @@
 
 // Vim's text-field keys in chrome (spec: docs/specs/key-handling-batch.md § 2): ctrl+w, ctrl+u,
 // ctrl+h in the URL bar, the `:` line, the help and bookmark filters, the find bar and prompts
-// run the editor's own command, so undo works. Pages get theirs from the content actor
-// (VimmaChild, Vimma:Edit) after the page has had the key.
+// run the editor's own command, so undo works; ctrl+j and ctrl+m press Enter. Pages get theirs
+// from the content actor (VimmaChild, Vimma:Edit) after the page has had the key.
 
-import { isEditable } from "../core/editable.mjs";
+import { INSERT_ENTER, isEditable } from "../core/editable.mjs";
+import { pressEnterLater } from "../actors/enter-key.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -42,12 +43,18 @@ export function focusedChromeField(win) {
 }
 
 /**
- * Runs an editor command on the focused chrome field, as its own key binding would.
+ * Runs an editor command on the focused chrome field, as its own key binding would; for
+ * INSERT_ENTER, presses Enter there.
  * @param {Window} win
- * @param {string} command  cmd_deleteWordBackward and the like
- * @returns {boolean} whether a controller took it
+ * @param {string} command  cmd_deleteWordBackward and the like, or INSERT_ENTER
+ * @returns {boolean} whether a controller took it, or the Enter was queued
  */
 export function runChromeEdit(win, command) {
+  if (command === INSERT_ENTER) {
+    const field = focusedChromeField(win);
+    pressEnterLater(win, () => focusedChromeField(win) === field);
+    return true;
+  }
   const dispatcher = /** @type {any} */ (win.document).commandDispatcher;
   const controller = dispatcher?.getControllerForCommand(command);
   if (!controller?.isCommandEnabled(command)) return false;

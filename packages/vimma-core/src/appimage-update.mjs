@@ -157,15 +157,19 @@ export function downloadProblem(expected, got) {
 }
 
 /**
- * What `:update` and about:vimma show once the file is replaced.
+ * What `:update` and about:vimma show once the update is in place: the AppImage's replaced file,
+ * or a tarball's update that Firefox's updater downloaded and staged (m6a-updater §5).
  * @param {Offer} offer
+ * @param {InstallType} [installType]
  * @returns {{ text: string, commands: string[], link: string }}
  */
-export function stagedSteps(offer) {
+export function stagedSteps(offer, installType = "appimage") {
+  const v = offer.displayVersion;
   return {
     text:
-      `Vimma replaced its AppImage with ${offer.displayVersion}. ` +
-      "Restart Vimma to run it; the file keeps its name.",
+      installType === "tarball"
+        ? `Vimma ${v} is downloaded and applies at the next start: restart Vimma (:restart) to use it.`
+        : `Vimma replaced its AppImage with ${v}. Restart Vimma to run it; the file keeps its name.`,
     commands: [],
     link: offer.detailsUrl,
   };

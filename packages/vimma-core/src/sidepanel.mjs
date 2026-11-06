@@ -8,6 +8,7 @@
  */
 import { activeWorkspace, nextWorkspace, previousWorkspace } from "./workspaces.mjs";
 import { displayLabel } from "./tablabels.mjs";
+import { splitLabel } from "./splits.mjs";
 
 /** @import { Workspaces } from "./workspaces.mjs" */
 
@@ -17,9 +18,15 @@ import { displayLabel } from "./tablabels.mjs";
  *   playing?: boolean, pinned?: boolean }} PanelTabInfo
  */
 /**
+ * `split`: the number of the split showing the tab, null in none (docs/specs/multiple-splits.md
+ * decision 10).
  * @typedef {{ readonly tabId: string, readonly number: number, readonly display: string,
  *   readonly host: string, readonly active: boolean, readonly foreign: boolean,
- *   readonly playing: boolean, readonly pinned: boolean }} PanelRow
+ *   readonly playing: boolean, readonly pinned: boolean, readonly split: number | null }} PanelRow
+ */
+/**
+ * One split of the workspace as the panel shows it: its number and its tabs.
+ * @typedef {{ readonly number: number, readonly tabs: readonly string[] }} PanelSplit
  */
 /**
  * `previous` / `next`: the workspaces ctrl+b ( / ctrl+b ) go to, null with one workspace.
@@ -29,13 +36,16 @@ import { displayLabel } from "./tablabels.mjs";
  * a change to them; `paneFocus`: the focused pane's tab (docs/specs/side-panel-unsplit.md).
  * `workspace.private`: the private workspace (docs/specs/private-workspace.md decision 6), whose
  * neighbours are the host's (the first and last normal workspaces), not the model's.
+ * `splits` / `shownSplit`: every split of the workspace and the shown one's number, null on a
+ * lone tab; [] while the host keeps one split (docs/specs/multiple-splits.md behaviour 6).
  * @typedef {{ readonly workspace: { id: string, name: string, index: number, color?: string,
  *     private?: boolean },
  *   readonly previous: string | null, readonly next: string | null,
  *   readonly rows: readonly PanelRow[], readonly selected: number,
  *   readonly marked: readonly string[], readonly anchor: string | null,
  *   readonly panes: readonly string[], readonly paneFocus: string | null,
- *   readonly hidden: boolean }} PanelState
+ *   readonly hidden: boolean, readonly splits: readonly PanelSplit[],
+ *   readonly shownSplit: number | null }} PanelState
  */
 /**
  * `closeTab`: close that tab and keep the panel open (`x`, docs/specs/key-handling-batch.md).
@@ -59,9 +69,12 @@ import { displayLabel } from "./tablabels.mjs";
  * (side-panel-unsplit); none or [] without a split. `paneHidden`: the split is a hidden view.
  * `skip`: workspace ids the cycle passes over (the agent workspace, docs/specs/vimma-mcp.md
  * decision 9), so the header never names one as a neighbour.
+ * `splits` / `shownSplit`: the workspace's splits when the host keeps several
+ * (docs/specs/multiple-splits.md); `panes` is then the shown split's, none on a lone tab.
  * @typedef {{ color?: string, private?: boolean,
  *   neighbours?: readonly [string | null, string | null], skip?: ReadonlySet<string>,
- *   panes?: readonly string[], paneFocus?: string | null, paneHidden?: boolean }} PanelOptions
+ *   panes?: readonly string[], paneFocus?: string | null, paneHidden?: boolean,
+ *   splits?: readonly PanelSplit[], shownSplit?: number | null }} PanelOptions
  */
 
 /** What `x` says on a pinned tab. */
@@ -100,6 +113,8 @@ export function openPanel(
     panes = [],
     paneFocus = null,
     paneHidden = false,
+    splits = [],
+    shownSplit = null,
     skip,
     ...where
   } = {},
@@ -112,6 +127,9 @@ export function openPanel(
     const to = (step < 0 ? previousWorkspace : nextWorkspace)(model, skip);
     return to.active === model.active ? null : activeWorkspace(to).name;
   };
+  /** @type {Map<string, number>} */
+  const splitOf = new Map();
+  for (const x of splits) for (const t of x.tabs) splitOf.set(t, x.number);
   const rows = w.tabs.map((tabId, i) => {
     const t = info(tabId) ?? {};
     return Object.freeze({
@@ -123,6 +141,7 @@ export function openPanel(
       foreign: !!t.foreign,
       playing: !!t.playing,
       pinned: !!t.pinned,
+      split: splitOf.get(tabId) ?? null,
     });
   });
   const find = (/** @type {string | null} */ id) => rows.findIndex((r) => r.tabId === id);
@@ -146,7 +165,20 @@ export function openPanel(
     panes: split,
     paneFocus: paneFocus && split.includes(paneFocus) ? paneFocus : null,
     hidden: paneHidden && split.length > 1,
+    splits: Object.freeze(
+      splits.map((x) => Object.freeze({ number: x.number, tabs: Object.freeze([...x.tabs]) })),
+    ),
+    shownSplit: splits.some((x) => x.number === shownSplit) ? shownSplit : null,
   });
+}
+
+/**
+ * The end of a row's accessible name that says its split (docs/specs/multiple-splits.md decision
+ * 10), so a screen reader hears what the stripe's colour shows; "" for a tab in no split.
+ * @param {PanelRow} row
+ */
+export function rowSplitName(row) {
+  return row.split === null ? "" : `, split ${row.split}`;
 }
 
 /**
@@ -233,19 +265,31 @@ export function markedRows(state) {
 /**
  * The header's count: "2 marked", "range: 3", "range: 3 · 2 marked", or "" with neither. With a
  * split: "split: 3 panes" while the marks match it, "split: 3 → 2" after a change, and
- * "(unsplit)" when Enter would end it (side-panel-unsplit decision 16).
+ * "(unsplit)" when Enter would end it (side-panel-unsplit decision 16). With several splits
+ * (docs/specs/multiple-splits.md behaviour 6) the shown one goes by its label and the count
+ * follows ("S2: 3 panes · 3 splits"); on a lone tab "3 splits (none shown)", or with one split
+ * "split: 3 panes (hidden)" as before.
  * @param {PanelState} state
  */
 export function markSummary(state) {
   const range = state.rows.filter((_, i) => inRange(state, i)).length;
   const n = state.panes.length;
   const m = state.marked.length;
+  const k = state.splits.length;
+  const name = k > 1 && state.shownSplit !== null ? `${splitLabel(state.shownSplit)}:` : "split:";
   const split = changed(state)
-    ? `split: ${n} → ${m}${m < 2 ? " (unsplit)" : ""}`
-    : `split: ${n} panes${state.hidden ? " (hidden)" : ""}`;
+    ? `${name} ${n} → ${m}${m < 2 ? " (unsplit)" : ""}`
+    : `${name} ${n} panes${state.hidden ? " (hidden)" : ""}`;
+  /** @type {string[]} */
+  let count = [];
+  if (k > 1) count = [n ? `${k} splits` : `${k} splits (none shown)`];
+  else if (k === 1 && !n) {
+    count = [`split: ${/** @type {PanelSplit} */ (state.splits[0]).tabs.length} panes (hidden)`];
+  }
   const parts = [
     ...(range ? [`range: ${range}`] : []),
     ...(n ? [split] : m ? [`${m} marked`] : []),
+    ...count,
   ];
   return parts.join(" · ");
 }

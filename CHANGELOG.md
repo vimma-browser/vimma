@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added
+
+- PDF mode: in Firefox's PDF viewer, zathura's keys go by page (`J`, `K`, `12G`, `:12`), zoom and fit (`+`, `-`, `=`, `a`, `s`), lay out pages (`d`, `D`, `w`, `r`), set and return to marks (`m`, `'`), show or copy a link's target (`F`, `c`) and start presentation mode (`F5`); `Tab` opens the document's outline in a themed panel with zathura's index keys and a fuzzy filter, and the status bar shows `page 3/12` and the match count of a search. Every key can be changed under `[modal.pdf]` and `[modal.index]` in `config.toml`. The new e2e scenario `issue-487-pdf-mode` and its baseline `pdf-outline` show the outline panel open on page 3 of a four-page PDF.
+
 ## [0.1.15](https://github.com/vimma-browser/vimma/compare/v0.1.14...v0.1.15) · Firefox 159.0.1 (2026-11-04)
 
 

@@ -9,6 +9,7 @@
  * workspace picker (m3-workspaces 5) is the same machine over one item per workspace.
  */
 import { AGENT_GLYPH } from "./agent.mjs";
+import { DOWNLOAD_PICKER_KEYS, downloadSearchText } from "./downloads.mjs";
 import { deleteWordBackward } from "./strings.mjs";
 import { displayLabel } from "./tablabels.mjs";
 import { graphemes } from "./textwidth.mjs";
@@ -63,7 +64,12 @@ import { graphemes } from "./textwidth.mjs";
 /** @import { AddonItem } from "./addons.mjs" */
 /** @import { PermissionItem, PermissionOp } from "./sitepermissions.mjs" */
 /** @import { PopupItem } from "./popups.mjs" */
-/** @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem} AnyItem */
+/** @import { DownloadItem } from "./downloads.mjs" */
+/** @import { SplitItem } from "./splits.mjs" */
+/**
+ * @typedef {PickerItem | WorkspaceItem | AddonItem | LogItem | PermissionItem | PopupItem
+ *   | DownloadItem | SplitItem} AnyItem
+ */
 /** @typedef {"display" | "title" | "url" | "workspace" | "markers"} Field */
 /** @typedef {[start: number, end: number]} Range */
 /** @typedef {{ tier: number, score: number, ranges: Range[] }} FieldMatch */
@@ -86,10 +92,13 @@ import { graphemes } from "./textwidth.mjs";
  * `select`: Enter on an item (a tab, workspace or add-on id); `move`: `m` on a workspace, the
  * current tab to go there; `addon`: one of an add-on's keys (docs/specs/addon-manager.md);
  * `reopen`: Enter on a recently closed tab or window in tab search (docs/specs/tab-search.md);
- * `permission`: a key on a site permission row (docs/specs/site-permissions.md).
+ * `permission`: a key on a site permission row (docs/specs/site-permissions.md); `download`: a key
+ * on a download row, Enter included, which the host reads with core downloadKey
+ * (docs/specs/downloads.md).
  * @typedef {null | { type: "select" | "move" | "reopen", id: string } | { type: "close" }
  *   | { type: "addon", op: AddonOp, id: string }
- *   | { type: "permission", op: PermissionOp, id: string }} PickerEffect
+ *   | { type: "permission", op: PermissionOp, id: string }
+ *   | { type: "download", key: string, id: string }} PickerEffect
  */
 /** @typedef {"options" | "toggle" | "remove" | "update" | "private"} AddonOp */
 
@@ -379,12 +388,15 @@ export function itemId(item) {
   if (item.kind === "log") return item.logId;
   if (item.kind === "permission") return item.permissionId;
   if (item.kind === "popup") return item.popupId;
+  if (item.kind === "download") return item.downloadId;
+  if (item.kind === "split") return item.splitId;
   return item.kind === "addon" ? item.addonId : item.workspaceId;
 }
 
 /**
  * Every whitespace-separated term must match some field; per term the best field counts. A
- * workspace or an add-on matches by its name only.
+ * workspace or an add-on matches by its name only; a download by its name, then by its host,
+ * state word and workspace (docs/specs/downloads.md, Behaviour 6).
  * @param {AnyItem} item
  * @param {string} query
  * @returns {Match | null}
@@ -394,7 +406,12 @@ export function matchItem(item, query) {
   /** @type {[Field, string][]} */
   const fields =
     "kind" in item
-      ? [["display", item.display]]
+      ? item.kind === "download"
+        ? [
+            ["display", item.display],
+            ["markers", downloadSearchText(item)],
+          ]
+        : [["display", item.display]]
       : [
           ["display", item.display],
           ...(item.label ? [/** @type {[Field, string]} */ (["title", item.title])] : []),
@@ -456,10 +473,12 @@ export function markerWords({ playing, muted, pinned, agent, closed }) {
 }
 
 /**
- * The section an item is listed under: a window's workspace, or recently closed.
+ * The section an item is listed under: a window's workspace, or recently closed; a download's
+ * `active` or `recent`.
  * @param {AnyItem} item
  */
 export function sectionOf(item) {
+  if ("kind" in item && item.kind === "download") return item.section;
   if ("closed" in item && item.closed) return "closed";
   const window = "window" in item ? (item.window ?? 1) : 1;
   return "workspaceId" in item ? `${window}/${item.workspaceId}` : "";
@@ -694,6 +713,9 @@ export function pickerKey(state, key) {
       if (m && "kind" in m.item && m.item.kind === "permission") {
         return done(state, { type: "permission", op: "next", id: m.item.permissionId });
       }
+      if (m && "kind" in m.item && m.item.kind === "download") {
+        return done(state, { type: "download", key, id: m.item.downloadId });
+      }
       return done(state, m ? { type: "select", id: itemId(m.item) } : null);
     }
     case "tab":
@@ -721,9 +743,21 @@ export function pickerKey(state, key) {
         if (key === "m" && m && "kind" in m.item && m.item.kind === "workspace") {
           return done(state, { type: "move", id: m.item.workspaceId });
         }
+        // The split picker's digits show that split at once (multiple-splits behaviour 7).
+        if (/^[1-9]$/.test(key)) {
+          const split = state.items.find(
+            (i) => "kind" in i && i.kind === "split" && i.splitId === key,
+          );
+          if (split) return done(state, { type: "select", id: key });
+        }
         const op = Object.hasOwn(ADDON_KEYS, key) ? ADDON_KEYS[key] : undefined;
         if (op && m && "kind" in m.item && m.item.kind === "addon") {
           return done(state, { type: "addon", op, id: m.item.addonId });
+        }
+        if (m && "kind" in m.item && m.item.kind === "download") {
+          if (DOWNLOAD_PICKER_KEYS.includes(key)) {
+            return done(state, { type: "download", key, id: m.item.downloadId });
+          }
         }
         const pop = Object.hasOwn(PERMISSION_KEYS, key) ? PERMISSION_KEYS[key] : undefined;
         if (pop && m && "kind" in m.item && m.item.kind === "permission") {

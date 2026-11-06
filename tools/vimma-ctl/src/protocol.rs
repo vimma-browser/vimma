@@ -545,6 +545,31 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
             "result.panes must be present (null before split view)",
         ));
     }
+    // Every split of the workspace (docs/specs/multiple-splits.md, "Control protocol"): optional,
+    // so this works with a Vimma that predates it.
+    match map.get("splits") {
+        None => {}
+        Some(Value::Array(splits)) => {
+            for (i, split) in splits.iter().enumerate() {
+                if !matches!(split, Value::Object(_)) {
+                    return Err(fail(&format!("result.splits[{i}] must be an object")));
+                }
+                if !matches!(split.get("number").and_then(Value::as_u64), Some(1..=9)) {
+                    return Err(fail(&format!(
+                        "result.splits[{i}].number must be an integer from 1 to 9"
+                    )));
+                }
+                if !matches!(split.get("shown"), Some(Value::Bool(_))) {
+                    return Err(fail(&format!("result.splits[{i}].shown must be a boolean")));
+                }
+            }
+        }
+        Some(_) => return Err(fail("result.splits must be an array")),
+    }
+    // The update check (docs/specs/m6a-updater.md, decision 41): optional, as `splits`.
+    if let Some(update) = map.get("update") {
+        check_update(update)?;
+    }
     Ok(State {
         mode: mode.to_string(),
         pending,
@@ -552,6 +577,65 @@ fn decode_state(map: &BTreeMap<String, Value>, raw: &Value) -> Result<State, Dec
         tabs,
         raw: raw.clone(),
     })
+}
+
+/// `state.update`'s outcomes and stages, as vimma-core's `UPDATE_OUTCOMES` and `UPDATE_STAGES`.
+pub const UPDATE_OUTCOMES: [&str; 7] = [
+    "never",
+    "current",
+    "offer",
+    "unreachable",
+    "refused",
+    "off",
+    "source",
+];
+pub const UPDATE_STAGES: [&str; 3] = ["none", "pending", "staged"];
+
+fn check_update(update: &Value) -> Result<(), DecodeError> {
+    let Value::Object(update) = update else {
+        return Err(fail("result.update must be an object"));
+    };
+    if !matches!(update.get("enabled"), Some(Value::Bool(_))) {
+        return Err(fail("result.update.enabled must be a boolean"));
+    }
+    if !matches!(
+        update.get("installType"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        return Err(fail("result.update.installType must be a string or null"));
+    }
+    let one_of = |key: &str, names: &[&str]| match update.get(key) {
+        Some(Value::String(s)) if names.contains(&s.as_str()) => Ok(()),
+        _ => Err(fail(&format!(
+            "result.update.{key} must be one of {}",
+            names.join(", ")
+        ))),
+    };
+    one_of("outcome", &UPDATE_OUTCOMES)?;
+    match update.get("checkedAt") {
+        Some(Value::Null) => {}
+        Some(n) if n.as_u64().is_some() => {}
+        _ => {
+            return Err(fail(
+                "result.update.checkedAt must be a non-negative integer or null",
+            ));
+        }
+    }
+    match update.get("offer") {
+        Some(Value::Null) => {}
+        Some(Value::Object(offer)) => {
+            for key in ["version", "buildId"] {
+                if !matches!(offer.get(key), Some(Value::String(_))) {
+                    return Err(fail(&format!("result.update.offer.{key} must be a string")));
+                }
+            }
+            if !matches!(offer.get("urgent"), Some(Value::Bool(_))) {
+                return Err(fail("result.update.offer.urgent must be a boolean"));
+            }
+        }
+        _ => return Err(fail("result.update.offer must be an object or null")),
+    }
+    one_of("stage", &UPDATE_STAGES)
 }
 
 /// Decode the discovery file.
@@ -1039,6 +1123,63 @@ mod tests {
     }
 
     #[test]
+    fn decode_state_accepts_splits_or_none() {
+        for good in [
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null,"splits":[]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null,"splits":[{"number":1,"shown":false,"focus":"7","zoomed":false,"root":{}},{"number":9,"shown":true,"focus":"8","zoomed":true,"root":{}}]}"#,
+        ] {
+            assert!(
+                decode_result(&Command::State, &parse(good).unwrap()).is_ok(),
+                "refused {good}"
+            );
+        }
+    }
+
+    #[test]
+    fn decode_state_accepts_update_or_none() {
+        let with = |update: &str| {
+            format!(
+                r#"{{"mode":"normal","pending":null,"workspace":"w","tabs":[],"panes":null,"update":{update}}}"#
+            )
+        };
+        for good in [
+            with(
+                r#"{"enabled":true,"installType":"tarball","outcome":"offer","checkedAt":1793000000000,"offer":{"version":"0.3.1","buildId":"20261101031500","urgent":true},"stage":"staged"}"#,
+            ),
+            with(
+                r#"{"enabled":false,"installType":null,"outcome":"never","checkedAt":null,"offer":null,"stage":"none"}"#,
+            ),
+        ] {
+            assert!(
+                decode_result(&Command::State, &parse(&good).unwrap()).is_ok(),
+                "refused {good}"
+            );
+        }
+        let ok = r#""enabled":true,"installType":"tarball","checkedAt":null,"offer":null"#;
+        for bad in [
+            "null".to_string(),
+            "[]".to_string(),
+            format!(r#"{{{ok},"outcome":"maybe","stage":"none"}}"#),
+            format!(r#"{{{ok},"outcome":"offer","stage":"applied"}}"#),
+            r#"{"enabled":"yes","installType":null,"outcome":"never","checkedAt":null,"offer":null,"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":3,"outcome":"never","checkedAt":null,"offer":null,"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"never","checkedAt":-1,"offer":null,"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"never","checkedAt":1.5,"offer":null,"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"offer","checkedAt":null,"offer":[],"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"offer","checkedAt":null,"offer":{"version":1,"buildId":"2","urgent":true},"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"offer","checkedAt":null,"offer":{"version":"1","buildId":null,"urgent":true},"stage":"none"}"#.to_string(),
+            r#"{"enabled":true,"installType":null,"outcome":"offer","checkedAt":null,"offer":{"version":"1","buildId":"2","urgent":"no"},"stage":"none"}"#.to_string(),
+        ] {
+            let text = with(&bad);
+            assert!(
+                decode_result(&Command::State, &parse(&text).unwrap()).is_err(),
+                "accepted {text}"
+            );
+        }
+    }
+
+    #[test]
     fn decode_private_state_has_no_urls_or_titles() {
         let raw = parse(
             r#"{"mode":"normal","pending":null,"workspace":"private","private":true,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
@@ -1063,6 +1204,12 @@ mod tests {
             r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[{"id":"1","url":null,"title":null,"selected":true}],"panes":null}"#,
             r#"{"mode":"normal","pending":null,"workspace":null,"private":true,"tabs":[{"id":"1","url":"u","title":null,"selected":true}],"panes":null}"#,
             r#"{"pending":null,"workspace":null,"tabs":[],"panes":null}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":{}}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[1]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":0,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":10,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":1.5,"shown":true}]}"#,
+            r#"{"mode":"normal","pending":null,"workspace":null,"tabs":[],"panes":null,"splits":[{"number":2,"shown":"yes"}]}"#,
             r#""state""#,
         ] {
             assert!(

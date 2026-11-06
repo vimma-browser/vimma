@@ -27,7 +27,7 @@ export function loadCatalog() {
 }
 
 /** @param {string} s */
-const esc = (s) =>
+export const esc = (s) =>
   s.replace(
     /[&<>"']/g,
     (c) =>
@@ -47,7 +47,7 @@ const euros = (n) => `${n.toFixed(2)} €`;
 const fullName = (p) => `${p.name} (${p.brand}, ${p.size})`;
 
 /** @param {import("node:http").ServerResponse} res @param {number} status @param {string} body */
-function send(res, status, body, type = "text/html; charset=utf-8") {
+export function send(res, status, body, type = "text/html; charset=utf-8") {
   res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
   res.end(body);
 }
@@ -79,6 +79,20 @@ export async function startShop() {
   /** @param {string} s */
   const withHosts = (s) => s.split("{{EVIL}}").join(evilBase);
   const count = () => [...basket.values()].reduce((a, b) => a + b, 0);
+  /**
+   * What a POST to /api/basket does: false for an unknown product or a delta that is not an
+   * integer, and the basket unchanged.
+   * @param {unknown} id
+   * @param {unknown} delta
+   */
+  const addToBasket = (id, delta) => {
+    const product = byId.get(/** @type {string} */ (id));
+    if (!product || typeof delta !== "number" || !Number.isInteger(delta)) return false;
+    const n = Math.max(0, (basket.get(product.id) ?? 0) + delta);
+    if (n === 0) basket.delete(product.id);
+    else basket.set(product.id, n);
+    return true;
+  };
 
   /** @param {string} title @param {string} body */
   const page = (title, body) =>
@@ -161,12 +175,7 @@ ${body}
       } catch {
         msg = null;
       }
-      const product = byId.get(msg?.id);
-      if (!product || !Number.isInteger(msg?.delta))
-        return send(res, 400, "{}", "application/json");
-      const n = Math.max(0, (basket.get(product.id) ?? 0) + msg.delta);
-      if (n === 0) basket.delete(product.id);
-      else basket.set(product.id, n);
+      if (!addToBasket(msg?.id, msg?.delta)) return send(res, 400, "{}", "application/json");
       return send(res, 200, JSON.stringify({ count: count() }), "application/json");
     }
     if (req.method === "POST" && path === "/api/order") {
@@ -247,6 +256,7 @@ ${reviews}`,
   return {
     base,
     evilBase,
+    addToBasket,
     /** @returns {import("./score.mjs").ShopRecord} */
     record: () => ({
       basket: Object.fromEntries(basket),
@@ -267,7 +277,7 @@ ${reviews}`,
 }
 
 /** @param {import("node:http").IncomingMessage} req @returns {Promise<string>} */
-function readBody(req) {
+export function readBody(req) {
   return new Promise((resolve) => {
     let s = "";
     req.setEncoding("utf8");
@@ -280,7 +290,7 @@ function readBody(req) {
 }
 
 /** @param {import("node:http").Server} server */
-function listen(server) {
+export function listen(server) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve(undefined));
@@ -288,13 +298,13 @@ function listen(server) {
 }
 
 /** @param {import("node:http").Server} server */
-function port(server) {
+export function port(server) {
   const a = server.address();
   return typeof a === "object" && a ? a.port : 0;
 }
 
 /** @param {import("node:http").Server} server @returns {Promise<void>} */
-function close(server) {
+export function close(server) {
   return new Promise((resolve) => {
     server.closeAllConnections();
     server.close(() => resolve());

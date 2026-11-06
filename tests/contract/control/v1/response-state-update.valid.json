@@ -1,0 +1,26 @@
+{
+  "description": "state with a staged security update for a tarball (m6a-updater, decision 41)",
+  "kind": "response",
+  "command": "state",
+  "message": {
+    "type": "response",
+    "id": 2,
+    "ok": true,
+    "result": {
+      "mode": "normal",
+      "pending": null,
+      "workspace": "work",
+      "tabs": [{ "id": "7", "url": "https://a.example/", "title": "A", "selected": true }],
+      "panes": null,
+      "splits": [],
+      "update": {
+        "enabled": true,
+        "installType": "tarball",
+        "outcome": "offer",
+        "checkedAt": 1793000000000,
+        "offer": { "version": "0.3.1", "buildId": "20261101031500", "urgent": true },
+        "stage": "staged"
+      }
+    }
+  }
+}

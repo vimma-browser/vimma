@@ -156,9 +156,11 @@ function askTimeoutMs() {
  * @param {number} [answered]  the question the user answered: the others a grant released ran
  *   under it unseen, so each is logged as a call under a grant, and the grant's notice counts
  *   them (mcp-grants behaviour 1)
+ * @param {boolean} [here]  the answer was `a` on a form checkpoint, whose allowance released the
+ *   others, which ran under the grant unseen (docs/specs/mcp-consequence.md K5)
  * @returns {number} how many waiting calls the grant released
  */
-function settle(resolved, grant, answered) {
+function settle(resolved, grant, answered, here = false) {
   let released = 0;
   for (const r of resolved) {
     const p = pending.get(r.id);
@@ -166,7 +168,7 @@ function settle(resolved, grant, answered) {
     pending.delete(r.id);
     lazy.clearTimeout(p.timer);
     // No notice of its own: it would replace the grant's at once, which counts these instead.
-    const unseen = r.allow && grant && r.id !== answered;
+    const unseen = r.allow && (grant || here) && r.id !== answered;
     if (unseen) released++;
     // mcp-checkpoints Behaviour 6: the user's yes or no to a payment or a form is told apart.
     const checkpoint = isCheckpoint(/** @type {any} */ (p));
@@ -178,7 +180,9 @@ function settle(resolved, grant, answered) {
         ? "grant"
         : r.allow
           ? checkpoint
-            ? "checkpoint-yes"
+            ? here
+              ? "checkpoint-here"
+              : "checkpoint-yes"
             : "yes"
           : r.reason === "user" && checkpoint
             ? "checkpoint-no"
@@ -233,16 +237,22 @@ export const AgentGate = {
    * @param {ConnId} conn
    * @param {string} tool  the MCP tool (core AGENT_TOOLS)
    * @param {object} what  what it touches, for the question: plain data, shown as text
-   * @param {{ always?: boolean, onCancel?: (cancel: () => void) => void }} [options]
-   *   `always`: ask even under a grant (a dangerous download, decision 31 d); `onCancel` is
-   *   given a way to withdraw the question unanswered
+   * @param {{ always?: boolean, covered?: true | string,
+   *   onCancel?: (cancel: () => void) => void }} [options]
+   *   `always`: ask even under a grant (a dangerous download, decision 31 d); `covered`: a form
+   *   the connection's grant runs all the same, `true` for a harmless one or the allowance key
+   *   that `a` makes (docs/specs/mcp-consequence.md K1, K5); `onCancel` is given a way to
+   *   withdraw the question unanswered
    * @returns {Promise<Outcome>}
    */
-  request(conn, tool, what, { always = false, onCancel } = {}) {
+  request(conn, tool, what, { always = false, covered, onCancel } = {}) {
     const label = labels.get(conn);
     if (!label) return Promise.resolve({ allow: false, reason: "busy" });
     const now = Date.now();
-    const admission = queue.ask(conn, tool, now, { always });
+    const admission = queue.ask(conn, tool, now, {
+      always,
+      ...(covered === undefined ? {} : { covered }),
+    });
     if (admission.kind === "run") {
       record(conn, tool, what, "grant");
       ranAt = now;
@@ -333,7 +343,7 @@ export const AgentGate = {
    * The user's answer to question `id` (the prompt line): `once`, `deny`, `mute`
    * (`x`), or `grant` for `minutes` (capped at `[mcp] grant_max_minutes`).
    * @param {number} id
-   * @param {Answer | { kind: "grant", minutes: number | null }} answer
+   * @param {Answer | { kind: "grant", minutes: number | null } | { kind: "here" }} answer
    * @returns {{ minutes: number, capped: boolean } | null} the grant's length, for a grant
    */
   answer(id, answer) {
@@ -360,6 +370,17 @@ export const AgentGate = {
     if (question && isCheckpoint(question)) {
       if (answer.kind === "mute") final = { kind: "deny" };
       if (answer.kind === "grant") final = { kind: "once" };
+      // mcp-consequence K5: `a` on a form checkpoint that offers it allows that button on that
+      // site for the rest of the grant; anywhere else it is no answer.
+      if (answer.kind === "here") {
+        const key = /** @type {any} */ (question.what)?.here?.key;
+        if (typeof key !== "string" || /** @type {any} */ (question.what)?.pay) return null;
+        // The grant ended while the question waited: nothing for the allowance to last with.
+        const granted = queue.grants(Date.now()).some((g) => g.conn === question.conn);
+        final = granted ? { kind: "here", key } : { kind: "once" };
+      }
+    } else if (answer.kind === "here") {
+      return null;
     }
     if (final.kind === "grant") {
       length = grantLength(
@@ -369,7 +390,7 @@ export const AgentGate = {
       final = { kind: "grant", minutes: length.minutes };
     }
     const { resolved, grant } = queue.answer(id, final, Date.now());
-    const released = settle(resolved, grant, id);
+    const released = settle(resolved, grant, id, final.kind === "here");
     const granted = resolved.length && length ? length : null;
     changed(
       question && resolved.length

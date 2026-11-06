@@ -114,6 +114,39 @@ shortcut the config re-enables for that chord.
 - **macOS**: Cocoa's own bindings already make `ctrl+h` a backspace in text fields, so Vimma does
   not add a second one there.
 
+(Since changed: `ctrl+j` and `ctrl+m` are `Enter` in text fields, as Vim's `i_CTRL-J` and
+`i_CTRL-M` begin a new line and its command line's `c_CTRL-J` and `c_CTRL-M` run the command,
+under the same `insert_editing`, the same page-first rule and the same Firefox-shortcut rule.
+Decisions:
+
+- Enter is a key press, not an editor command, because Enter means something different in each
+  field (a new line, a form's implicit submit, a page's own `keydown` handler, the address bar's
+  load, the `:` line's run) and only a real Enter gets all of them. A `KeyboardEvent` made by
+  script is untrusted: a form does not submit and the editor adds no line.
+- The parent presses it, through a `TextInputProcessor` (`actors/enter-key.mjs`), the trusted
+  path the control socket's `send-keys` already uses, because a processor in the content
+  process cannot dispatch the `keypress`: its edit commands come from the parent, which
+  `BrowserParent::RecvRequestNativeKeyBindings` answers only under automation. Firefox routes
+  the Enter to the focused field, in chrome or in a page's focused frame, as a keyboard's. The
+  content actor's `Vimma:Edit` keeps taking only the three editor commands.
+- The processor has its own modifier state, so the Enter carries no `ctrl`, because ctrl+Enter
+  is another key (the address bar completes `www.` and `.com`). It is pressed after the current
+  key's dispatch, because a processor cannot begin a transaction on a widget mid-dispatch, and
+  only if the field (chrome), or the page and its focused frame (content), still has focus
+  then; a page's reply acts only on the `<browser>` it came from, because a busy page's late
+  reply would otherwise press Enter in the tab focused since. While an IME
+  composes, the processor gets no transaction and nothing is pressed. In a page the Enter waits
+  for the page's reply, as `ctrl+w` does, so keys sent faster than that round trip (a script
+  driving the control socket) can land before it; typing by hand does not.
+- In the modes that type into a text field (insert, command, help), a default `[keys]` binding
+  on a text-field key is not bound, because `ctrl+j` (`web_search`) and `ctrl+m` (`mute_tab`)
+  carry Firefox's meaning and would otherwise always win over the field's key. They stay bound in
+  normal, visual and panel mode, because those modes' keys are not typing: the side panel's
+  `ctrl+m` still mutes, so its filters get no Enter from these keys. A `[keys]` binding the user added, or a `[modal.*]` binding,
+  still wins; a `[keys]` line that repeats the default (a copied `defaults.toml`) counts as the
+  default, so `parseConfig(defaults.toml)` stays the default keymap. `insert_editing = false`
+  keeps every binding.)
+
 ## 3. Option / AltGr characters
 
 `chordFromEvent` folds a character composed with Option or AltGr into the plain character, as

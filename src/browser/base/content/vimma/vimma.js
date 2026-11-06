@@ -130,6 +130,12 @@
   );
   AgentConsole.init();
 
+  // docs/specs/builtin-agent-cli.md C5: what Gemini CLI kept of runs a crash ended.
+  const { AgentCli } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
+  );
+  AgentCli.init();
+
   // The private workspace in place of this window on Hyprland (spec private-swap): learns the
   // window's address while `[private] placement = "swap"` applies. Nothing without Hyprland.
   const { PrivateSwap } = ChromeUtils.importESModule(

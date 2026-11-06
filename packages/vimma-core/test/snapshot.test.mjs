@@ -1,4 +1,5 @@
 import { describe, test, expect } from "vitest";
+import fc from "fast-check";
 import { readFileSync } from "node:fs";
 import {
   SCHEMA_VERSION,
@@ -9,7 +10,8 @@ import {
   canWrite,
   SnapshotError,
 } from "../src/snapshot.mjs";
-import { activeWorkspace } from "../src/workspaces.mjs";
+import { activeWorkspace, splitsOf } from "../src/workspaces.mjs";
+import { createRow } from "../src/panes.mjs";
 
 const fixture = (/** @type {string} */ name) =>
   readFileSync(new URL(`../../../tests/contract/state/v1/${name}`, import.meta.url), "utf8");
@@ -334,6 +336,153 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
     expect("hidden" in w.panes).toBe(false);
     expect(toSnapshot(fromSnapshot(fixture("valid.json"))).workspaces[0]).not.toHaveProperty(
       "alone",
+    );
+  });
+});
+
+// docs/specs/multiple-splits.md decision 15: every split of a workspace, with the old fields kept.
+describe("splits: a list, with panes and activeTab kept for an older reader", () => {
+  /** w1 (tabs a-c in valid.json's tree) gains tab-x and tab-y, a second split numbered 3. */
+  const several = (/** @type {{ shown?: number | null, alone?: string }} */ o = {}) => {
+    const base = fromSnapshot(fixture("valid.json"));
+    const w = /** @type {any} */ (base.workspaces[0]);
+    const one = Object.freeze({ ...w.panes, number: 1 });
+    const three = Object.freeze({
+      ...createRow(["tab-x", "tab-y"], { focus: "tab-y" }),
+      number: 3,
+    });
+    const shown = o.shown === undefined ? 3 : o.shown;
+    const activeTab = o.alone ?? (shown === 1 ? "tab-c" : "tab-y");
+    const w1 = Object.freeze({
+      ...w,
+      tabs: Object.freeze([...w.tabs, "tab-x", "tab-y", "tab-z"]),
+      activeTab,
+      splits: Object.freeze([one, three]),
+      shown,
+      last: shown ?? 1,
+    });
+    return Object.freeze({ ...base, workspaces: Object.freeze([w1, ...base.workspaces.slice(1)]) });
+  };
+  const w1 = (/** @type {any} */ s) => /** @type {any} */ (s).workspaces[0];
+
+  test("several splits round-trip with their numbers and the shown one", () => {
+    const written = toSnapshot(several());
+    expect(written.workspaces[0].splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(written.workspaces[0].shown).toBe(3);
+    const back = fromSnapshot(JSON.parse(JSON.stringify(written)));
+    expect(w1(back).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(w1(back).shown).toBe(3);
+    expect(w1(back).last).toBe(3);
+    expect(w1(back).activeTab).toBe("tab-y");
+    expect(w1(back).splits[1].focus).toBe(w1(several()).splits[1].focus);
+    expect(toSnapshot(back)).toEqual(written);
+  });
+
+  test("the written panes is the shown split, as an older reader expects it", () => {
+    const written = toSnapshot(several());
+    const w = written.workspaces[0];
+    expect(w.panes.root).toEqual(w.splits[1].root);
+    expect(w.panes).not.toHaveProperty("number");
+    expect(w.panes).not.toHaveProperty("hidden");
+    expect(w.activeTab).toBe("tab-y");
+    expect(w).not.toHaveProperty("alone");
+    // An older reader sees one split, shown, and needs nothing else.
+    const older = JSON.parse(JSON.stringify(written));
+    for (const x of older.workspaces) {
+      delete x.splits;
+      delete x.shown;
+    }
+    expect(w1(fromSnapshot(older)).panes.root).toEqual(w.splits[1].root);
+  });
+
+  test("on a lone tab: shown is null, panes is the split shown last, hidden, alone kept", () => {
+    const written = toSnapshot(several({ shown: null, alone: "tab-z" }));
+    const w = written.workspaces[0];
+    expect(w.shown).toBeNull();
+    expect(w.panes.hidden).toBe(true);
+    expect(w.panes.root).toEqual(w.splits[0].root);
+    expect(w.activeTab).toBe("tab-c");
+    expect(w.alone).toBe("tab-z");
+    const back = w1(fromSnapshot(JSON.parse(JSON.stringify(written))));
+    expect(back.shown).toBeNull();
+    expect(back.last).toBe(1);
+    expect(back.activeTab).toBe("tab-z");
+  });
+
+  test("a file with only panes reads as one split, number 1, and writes back unchanged", () => {
+    const s = fromSnapshot(fixture("valid.json"));
+    expect(w1(s)).not.toHaveProperty("splits");
+    const one = splitsOf(w1(s));
+    expect(one.splits.map((x) => x.number)).toEqual([1]);
+    expect(one.shown).toBe(1);
+    expect(one.splits[0]?.root).toEqual(w1(s).panes.root);
+    expect(splitsOf(/** @type {any} */ (s).workspaces[1]).splits).toEqual([]);
+    expect(toSnapshot(s)).toEqual(JSON.parse(fixture("valid.json")));
+  });
+
+  test("a hidden panes with alone reads as split 1, not shown", () => {
+    const raw = mutated((r) => {
+      r.workspaces[0].tabs.push("tab-z");
+      r.workspaces[0].panes.hidden = true;
+      r.workspaces[0].alone = "tab-z";
+    });
+    expect(splitsOf(w1(fromSnapshot(raw)))).toMatchObject({ shown: null, last: 1 });
+  });
+
+  /** @param {(splits: any[]) => void} damage */
+  const damaged = (damage) => {
+    const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
+    damage(raw.workspaces[0].splits);
+    return w1(fromSnapshot(raw));
+  };
+
+  test.each([
+    ["a repeated number", (/** @type {any[]} */ x) => (x[1].number = 1)],
+    ["a number out of range", (/** @type {any[]} */ x) => (x[1].number = 10)],
+    ["a number that is not an integer", (/** @type {any[]} */ x) => (x[1].number = "3")],
+    [
+      "a tab of an earlier split",
+      (/** @type {any[]} */ x) => (x[1].root.children[0].tab = "tab-a"),
+    ],
+    ["a malformed tree", (/** @type {any[]} */ x) => (x[1].root.ratios = [0.9, 0.9])],
+    ["a tab not in the workspace", (/** @type {any[]} */ x) => (x[1].root.children[0].tab = "t-q")],
+    ["one pane only", (/** @type {any[]} */ x) => (x[1].root = x[1].root.children[0])],
+    ["not an object", (/** @type {any[]} */ x) => (x[1] = 7)],
+  ])("%s: that entry is dropped, the rest of the file reads", (_, damage) => {
+    const w = damaged(damage);
+    expect(w.splits.map((/** @type {any} */ x) => x.number)).toEqual([1]);
+    expect(w.shown).toBeNull();
+  });
+
+  test("a splits field that is not an array reads as no splits", () => {
+    const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
+    raw.workspaces[0].splits = { 1: "x" };
+    expect(w1(fromSnapshot(raw)).splits).toEqual([]);
+  });
+
+  test("property: a tab is never in two splits after a read, whatever the file says", () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.integer({ min: 0, max: 11 }), fc.constantFrom(0, 1)), {
+          maxLength: 6,
+        }),
+        (entries) => {
+          const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
+          const [one, three] = raw.workspaces[0].splits;
+          raw.workspaces[0].splits = entries.map(([n, which]) => ({
+            ...JSON.parse(JSON.stringify(which ? three : one)),
+            number: n,
+          }));
+          const w = w1(fromSnapshot(raw));
+          const tabs = w.splits.flatMap((/** @type {any} */ x) =>
+            JSON.stringify(x.root).match(/tab-[a-z]/g),
+          );
+          expect(new Set(tabs).size).toBe(tabs.length);
+          const ns = w.splits.map((/** @type {any} */ x) => x.number);
+          expect(new Set(ns).size).toBe(ns.length);
+          expect(ns.every((/** @type {number} */ n) => n >= 1 && n <= 9)).toBe(true);
+        },
+      ),
     );
   });
 });
