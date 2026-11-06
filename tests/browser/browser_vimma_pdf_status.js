@@ -14,6 +14,7 @@ const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/ho
 const { PDFJS_CONTRACT, PDFJS_DOM } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/pdf-view.mjs",
 );
+const { PDF_MAX_LABEL } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/pdf.mjs");
 
 const ROOT = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -257,6 +258,16 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
   await withPdf(async (browser) => {
     await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
     await recordingState(async (seen) => {
+      // A state message the adapter read before the viewer turns hostile can reach the parent
+      // after recording starts (its 100 ms timer fires on its own schedule): make one do so.
+      await SpecialPowers.spawn(browser, [], () => {
+        // Well formed, as pdf.js's own listeners run before the adapter's.
+        content.wrappedJSObject.PDFViewerApplication.eventBus.dispatch(
+          "pagechanging",
+          Cu.cloneInto({ source: null, pageNumber: 1, pageLabel: "i", previous: 1 }, content),
+        );
+      });
+      await TestUtils.waitForCondition(() => seen.length > 0, "a state read before the change");
       await SpecialPowers.spawn(browser, [], () => {
         const w = content.wrappedJSObject;
         const app = w.PDFViewerApplication;
@@ -283,6 +294,11 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
         () => seen.length > 0 && PdfOps.state(browser) === null,
         "a page count that is not a number drops the state",
       );
+      // The getters are all replaced within one content task and read() runs within one timer
+      // callback, so a message saw either none of the change (the viewer's own label, "i") or
+      // all of it (the "x" label): each kind is checked for what it can carry, and at least one
+      // read after the change came through.
+      let after = 0;
       for (const data of seen) {
         for (const [k, v] of Object.entries(data)) {
           if (k === "find") {
@@ -291,10 +307,16 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
             Assert.ok(["number", "string", "boolean"].includes(typeof v), `${k} is a primitive`);
           }
         }
+        if (data.label === "i") {
+          Assert.equal(data.pages, 6, "a state read before the change has the real page count");
+          continue;
+        }
+        after++;
         Assert.ok(Number.isNaN(data.pages), "the thenable page count reached the parent as NaN");
-        Assert.lessOrEqual(data.label.length, 33, "a huge label is cut in the child");
+        Assert.equal(data.label, "x".repeat(PDF_MAX_LABEL + 1), "a huge label is cut in the child");
         Assert.deepEqual(data.find, { current: 0, total: 0 }, "a count of objects is not taken");
       }
+      Assert.greater(after, 0, "a state read after the change reached the parent");
       await TestUtils.waitForCondition(() => segment("page") === "", "and the page segment");
     });
   });
