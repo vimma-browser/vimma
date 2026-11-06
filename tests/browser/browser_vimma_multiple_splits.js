@@ -255,6 +255,37 @@ async function withLayersLate(fn) {
   }
 }
 
+/**
+ * The compositor has cleared the layers of `tabs`, put to sleep by an earlier switch. A tab still
+ * holding layers when it is selected again counts as loaded at once (AsyncTabSwitcher's
+ * getTabState and setTabState read `hasLayers`), so the switcher would never load it.
+ * @param {Element[]} tabs
+ * @param {string} names
+ */
+function layersCleared(tabs, names) {
+  return until(
+    () => tabs.every((t) => !t.linkedBrowser.hasLayers),
+    `${names}'s layers are cleared`,
+  );
+}
+
+/**
+ * Selects `t` inside withLayersLate and waits until its page has painted, while the switcher,
+ * not told yet, still loads it. The switcher gives up on a load after 400 ms
+ * (TAB_SWITCH_TIMEOUT), sooner than a slow runner may paint; its timer is stretched so the
+ * load stays pending until the held layers are handed over.
+ * @param {Element} t
+ * @param {string} name
+ */
+async function pickStillLoading(t, name) {
+  gBrowser.selectedTab = t;
+  const switcher = gBrowser._switcher;
+  Assert.equal(switcher?.loadingTab, t, `the switcher loads ${name}`);
+  switcher.loadTimer.delay = 60_000;
+  await until(() => t.linkedBrowser.hasLayers, `${name}'s page has painted`);
+  Assert.equal(gBrowser._switcher?.loadingTab, t, `${name}'s page is still loading`);
+}
+
 /** The switch is done, and `t`'s page is the one painting. */
 async function assertShown(t, name) {
   await until(() => !gBrowser._switcher, `the switch to ${name} is done`);
@@ -266,10 +297,10 @@ add_task(async function a_lone_tab_picked_while_a_split_still_loads_is_shown() {
   await pick(tab("b"));
   await until(() => splitsOf().shown === 1, "S1 shows");
   await until(() => !gBrowser._switcher, "the switch to b is done");
+  await layersCleared([tab("c"), tab("d")], "S2");
   await withLayersLate(async () => {
-    gBrowser.selectedTab = tab("d");
-    await until(() => splitsOf().shown === 2, "picking d shows S2");
-    Assert.equal(gBrowser._switcher?.loadingTab, tab("d"), "d's page is still loading");
+    await pickStillLoading(tab("d"), "d");
+    Assert.equal(splitsOf().shown, 2, "picking d shows S2");
     gBrowser.selectedTab = tab("f");
     await until(() => splitsOf().shown === null, "f shows alone");
   });
@@ -279,10 +310,10 @@ add_task(async function a_lone_tab_picked_while_a_split_still_loads_is_shown() {
 });
 
 add_task(async function a_split_picked_while_another_still_loads_is_shown() {
+  await layersCleared([tab("a"), tab("b")], "S1");
   await withLayersLate(async () => {
-    gBrowser.selectedTab = tab("b");
-    await until(() => splitsOf().shown === 1, "picking b shows S1");
-    Assert.equal(gBrowser._switcher?.loadingTab, tab("b"), "b's page is still loading");
+    await pickStillLoading(tab("b"), "b");
+    Assert.equal(splitsOf().shown, 1, "picking b shows S1");
     gBrowser.selectedTab = tab("d");
     await until(() => splitsOf().shown === 2, "picking d shows S2");
   });
