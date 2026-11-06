@@ -3829,9 +3829,10 @@ bindings, so it is accepted here.
   `data:` page the viewer opens) is not the viewer: the parent also requires an `http`, `https`
   or `file` document URI, which the viewer keeps from the PDF it shows.
   [`a_pdf_in_a_frame_gets_no_pdf_context`](../tests/browser/browser_vimma_pdf_status.js)
-- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays made
-  with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a mark's `XYZ` destination,
-  an internal link's explicit destination read from its fragment), or an outline entry's target
+- V3. The adapter **must** pass pdf.js only functions made with `Cu.exportFunction`, arrays and
+  objects of primitives made with `Cu.cloneInto` into the viewer's window as `PdfJsChild` does (a
+  mark's `XYZ` destination and the history and scroll arguments that go with it, an internal
+  link's explicit destination read from its fragment), or an outline entry's target
   that pdf.js itself gave it (V8); no chrome object **may** be passed in.
   [`a_hostile_viewer_gets_only_primitives_through`](../tests/browser/browser_vimma_pdf_status.js)
 - V4. Exported callbacks **must** read their arguments through Xrays, never waived, and only the
