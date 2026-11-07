@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 1 and 2 (prefs), 4a (menus) and 4b
-// (Settings).
+// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 1 and 2 (prefs), 4a (menus), 4b
+// (Settings) and 4c (About dialog, link panel, account panel, typed Firefox pages).
 
 "use strict";
 
@@ -530,4 +530,100 @@ add_task(async function settings_look_like_vimma() {
     const search = doc.querySelector("moz-input-search")?.shadowRoot?.querySelector("input");
     Assert.equal(radius(search), "0px", "the search field is square");
   });
+});
+
+/**
+ * A colour custom property as `el` sees it, in the rgb() form getComputedStyle reports.
+ * @param {Element} el
+ * @param {string} name
+ */
+function colourVar(el, name) {
+  const win = /** @type {Window} */ (el.ownerDocument.defaultView);
+  const probe = el.ownerDocument.createElementNS("http://www.w3.org/1999/xhtml", "div");
+  probe.style.color = win.getComputedStyle(el).getPropertyValue(name).trim();
+  el.ownerDocument.documentElement.append(probe);
+  const out = win.getComputedStyle(probe).color;
+  probe.remove();
+  return out;
+}
+
+add_task(async function about_dialog_keeps_the_licence_and_drops_mozilla_links() {
+  const win = window.openDialog(
+    "chrome://browser/content/aboutDialog.xhtml",
+    "",
+    "chrome,centerscreen,dependent",
+  );
+  await BrowserTestUtils.waitForEvent(win, "load");
+  const doc = win.document;
+  const shown = (/** @type {string} */ selector) => {
+    const el = doc.querySelector(selector);
+    Assert.ok(el, `the About dialog has ${selector}`);
+    return !!el && win.getComputedStyle(el).display !== "none";
+  };
+  Assert.ok(!shown("#contributeDesc"), "no donate or get-involved paragraph");
+  Assert.ok(
+    !shown('.bottom-link[href^="https://www.mozilla.org/about/legal/"]'),
+    "no Mozilla Terms of Use link",
+  );
+  Assert.ok(!shown('.bottom-link[href^="https://www.mozilla.org/privacy/"]'), "no Privacy link");
+  Assert.ok(shown('.bottom-link[href="about:license"]'), "the licensing information link stays");
+  Assert.ok(shown("#communityDesc"), "the community line stays for the attribution (step 5)");
+  await BrowserTestUtils.closeWindow(win);
+});
+
+add_task(async function link_status_panel_follows_the_theme() {
+  const label = /** @type {Element} */ (document.getElementById("statuspanel-label"));
+  const style = getComputedStyle(label);
+  Assert.equal(style.backgroundColor, colourVar(label, "--vimma-bg-dark"), "theme's surface");
+  Assert.equal(style.color, colourVar(label, "--vimma-fg"), "theme's text");
+  Assert.equal(style.borderTopColor, colourVar(label, "--vimma-muted"), "theme's border");
+});
+
+add_task(async function account_panel_sign_in_box_follows_the_theme() {
+  // The box lives in the panel's template until the panel first opens (PanelMultiView).
+  const fxaView = PanelMultiView.getViewNode(document, "PanelUI-fxa");
+  const shownView = BrowserTestUtils.waitForEvent(fxaView, "ViewShown");
+  /** @type {HTMLElement} */ (document.getElementById("fxa-toolbar-menu-button")).click();
+  await shownView;
+  const box = PanelMultiView.getViewNode(document, "PanelUI-fxa-menu-sign-in-promo");
+  const style = getComputedStyle(box);
+  Assert.equal(style.backgroundColor, colourVar(box, "--vimma-bg"), "theme's surface");
+  Assert.equal(style.color, colourVar(box, "--vimma-fg"), "theme's text, not the promo's");
+  const hidden = BrowserTestUtils.waitForEvent(document, "popuphidden", true);
+  /** @type {any} */ (fxaView.closest("panel")).hidePopup();
+  await hidden;
+});
+
+const START = "chrome://browser/content/vimma/start/start.html";
+
+/**
+ * Types `url` into the URL bar of a new tab and waits for the tab to load `expected`.
+ * @param {string} url
+ * @param {string} expected
+ */
+async function typeInNewTab(url, expected) {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  const browser = tab.linkedBrowser;
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, expected);
+  gURLBar.focus();
+  gURLBar.select();
+  EventUtils.sendString(url);
+  EventUtils.synthesizeKey("KEY_Enter");
+  await loaded;
+  const spec = browser.currentURI.spec;
+  BrowserTestUtils.removeTab(tab);
+  return spec;
+}
+
+add_task(async function typed_firefox_pages_open_the_start_page() {
+  for (const url of ["about:home", "about:newtab", "about:welcome"]) {
+    Assert.equal(await typeInNewTab(url, START), START, `${url} opens the start page`);
+  }
+});
+
+add_task(async function firefox_new_tab_stays_without_the_start_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+  const spec = await typeInNewTab("about:newtab", "about:newtab");
+  Assert.equal(spec, "about:newtab", "with the start page off, Firefox's new tab page loads");
+  await SpecialPowers.popPrefEnv();
 });

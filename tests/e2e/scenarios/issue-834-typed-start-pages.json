@@ -1,0 +1,36 @@
+{
+  "name": "issue-834-typed-start-pages",
+  "issue": 834,
+  "description": "docs/specs/firefox-surfaces-trim.md, decision 10: about:home, about:newtab and about:welcome opened through the control socket end on Vimma's start page, as a typed address does.",
+  "timeoutSeconds": 60,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "about:home" },
+    {
+      "wait-for-state": {
+        "tabs": [{}, { "url": "chrome://browser/content/vimma/start/start.html", "selected": true }]
+      }
+    },
+    { "open": "about:newtab" },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          { "url": "chrome://browser/content/vimma/start/start.html", "selected": true }
+        ]
+      }
+    },
+    { "open": "about:welcome" },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          {},
+          {},
+          { "url": "chrome://browser/content/vimma/start/start.html", "selected": true }
+        ]
+      }
+    }
+  ]
+}

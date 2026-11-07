@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/firefox-surfaces-trim.md, delivery step 3 (branding files and images).
+// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 3 and 4c (branding
+// files and images).
 
 "use strict";
 
@@ -31,6 +32,10 @@ const OVERRIDES = [
   ["chrome://global/skin/illustrations/kit-sympathetic.svg", EMPTY],
   ["chrome://mozapps/skin/extensions/kit-addons.svg", EMPTY],
   ["chrome://mozapps/skin/extensions/kit-themes.svg", EMPTY],
+  // Step 4c: the error pages' fox and the certificate viewer's error mascot.
+  ["chrome://global/skin/illustrations/error-malformed-url.svg", EMPTY],
+  ["chrome://global/skin/illustrations/no-connection.svg", EMPTY],
+  ["chrome://global/skin/illustrations/security-error.svg", EMPTY],
 ];
 
 /**

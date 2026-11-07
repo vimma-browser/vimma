@@ -153,3 +153,6 @@ browser.jar:
 % override chrome://global/skin/illustrations/kit-sympathetic.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://mozapps/skin/extensions/kit-addons.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://mozapps/skin/extensions/kit-themes.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/error-malformed-url.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/no-connection.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/security-error.svg chrome://browser/skin/vimma/empty.svg

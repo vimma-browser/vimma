@@ -4532,7 +4532,19 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
 - **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
   in the theme's colours, the account group in Settings > Sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
-  `about:restartrequired`, the sidebar's empty lists) show no picture.
+  `about:restartrequired`, the sidebar's empty lists) show no picture. Error pages, such as
+  "Server Not Found", show their text without Firefox's fox
+  (`browser.netError.illustration.enabled` = `true` brings the picture's place back, empty).
+- **The About dialog names no Mozilla terms.** It drops Mozilla's donate and get-involved
+  paragraph and the links to Mozilla's Terms of Use and Privacy Notice, which govern Firefox
+  rather than Vimma; the licensing information link stays. Hidden by Vimma's style sheet.
+- **Firefox's start pages open Vimma's.** Typing `about:home`, `about:newtab` or `about:welcome`
+  opens Vimma's start page, as a new tab does. Set `vimma.startpage.newtab` to false in
+  `about:config` and they open Firefox's pages again. `about:firefoxview` (Tab Overview) opens as
+  in Firefox.
+- **The link panel and the account panel follow your theme.** The link address shown at the
+  window's foot when you point at a link, and the account panel's sign-in box, take the theme's
+  colours instead of the system's light grey and Firefox's purple.
 - **Vimma names Firefox where it is built on it, and does not claim Mozilla's work.** The About
   dialog and `about:vimma` say "Built on Firefox by Mozilla". Messages about Mozilla's services
   name neither: an extension is "Not allowed on this site" (Mozilla's list of restricted sites),

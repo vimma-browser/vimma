@@ -1,6 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: accepted (delivery steps 1, 2, 3, 4a, 4b, 5 and 6 built) · Area:
+Status: implemented · Area:
 `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
 `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
@@ -107,10 +107,10 @@ with screenshots).
 6. No visible string credits Vimma with Mozilla's work: the vendor strings listed in Problem name
    neither Vimma nor Mozilla ("Not allowed on this site", "Report this extension").
 7. No Firefox or Mozilla logo or Kit mascot appears in Settings, the app menu, `about:addons`,
-   `about:profiles`, `about:restartrequired` or the Firefox sidebar's empty states; each shows
-   Vimma's logo or nothing.
-8. A typed `about:home`, `about:newtab`, `about:welcome` or `about:firefoxview` opens Vimma's
-   start page.
+   `about:profiles`, `about:restartrequired`, the error pages or the Firefox sidebar's empty
+   states; each shows Vimma's logo or nothing.
+8. A typed `about:home`, `about:newtab` or `about:welcome` opens Vimma's start page;
+   `about:firefoxview` (Tab Overview) opens as in Firefox (decision 10).
 9. Vimma does not ask to become the default browser at startup.
 10. Settings uses the theme's font (`--vimma-font`) and square corners, in the Omarchy theme and in
     the stock themes, and keeps Firefox's own colours and shapes under high contrast.
@@ -213,7 +213,9 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | Send to Device, Help items, Tools > Firefox View           | Vimma CSS in `firefox-chrome.css` on the Send to Device items in the page, link and tab menus, `#menu_openFirefoxView`, `#helpSwitchDevice`, the webcompat reporter items, their app menu copies and the `send-tab-button` and `firefox-view-button` widgets (decision 15) | 4a   |
 | About dialog paragraphs and links                          | Vimma's `aboutDialog.css` over the generated one                                                                                                                                                                                                                           | 4c   |
 | Settings look                                              | Vimma CSS: radius tokens 0, `font-family: var(--vimma-font)`                                                                                                                                                                                                               | 4b   |
-| Typed about:home, newtab, welcome, firefoxview             | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4c   |
+| Typed about:home, newtab, welcome                          | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4c   |
+| Error page illustrations                                   | chrome `override` lines to an empty SVG, pref `browser.netError.illustration.enabled` false                                                                                                                                                                                | 4c   |
+| Link status panel, account panel sign-in box               | Vimma CSS in `firefox-chrome.css` with the theme's tokens                                                                                                                                                                                                                  | 4c   |
 | Vendor strings, About attribution line, error strings      | Fluent and `.properties` patches (decision 16)                                                                                                                                                                                                                             | 5    |
 | `ai_chatbot_sidebar` action and key                        | keymap change (decision 12)                                                                                                                                                                                                                                                | 6    |
 
@@ -300,9 +302,18 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    page's `fox-tail.svg` with an empty SVG. `privatebrowsing/pbm-logo.svg` stays, because it is
    the indicator that marks a private window and carries no Firefox or Mozilla logo;
    `logos/lockwise.svg` stays with `about:protections`, which this spec does not change.
+   Step 4c adds the error pages' illustrations (`error-malformed-url.svg`, `no-connection.svg`,
+   `security-error.svg`, all of them Firefox's fox), and sets
+   `browser.netError.illustration.enabled` false so that the error text does not sit below an
+   empty slot.
 10. **Typed Firefox pages open the start page.** Vimma's start page module redirects a top-level
-    load of `about:home`, `about:newtab`, `about:welcome` or `about:firefoxview` to the start
-    page, so a user who types them sees Vimma's page as every new tab does. Rejected: a patch to
+    load of `about:home`, `about:newtab` or `about:welcome` to the start
+    page, so a user who types them sees Vimma's page as every new tab does. The module's tab
+    progress listener replaces the load as it starts, with the history entry replaced so Back does
+    not return to Firefox's page, and only while `vimma.startpage.newtab` is on, because a user who
+    turned it off chose Firefox's new tab page. `about:firefoxview` is left as Firefox has it:
+    step 3 named it Tab Overview and replaced its images, and whether Vimma keeps that page at all
+    is a separate question from this spec. Rejected: a patch to
     `AboutRedirector.cpp`, because a C++ patch needs a full build on every rebase (ADR-010); the
     patch stays the fallback if step 3 finds a load the module cannot catch.
 11. **Mozilla's own services keep their names and links.** AMO (installs, dictionaries), Safe
@@ -406,6 +417,10 @@ and AMO are unchanged. vimma.dev's support pages receive the Firefox version, OS
 and locale in the path, as support.mozilla.org does today; no other data is sent. The forwards to
 Mozilla articles are not an open redirect: a topic Vimma does not document is forwarded to the
 article of the same name on support.mozilla.org, and vimma.dev forwards to no other site.
+The start page redirect (decision 10) adds no route from the web to the start page: a web page
+cannot link to `about:home`, `about:newtab` or `about:welcome` (none has the `MAKE_LINKABLE`
+flag), so only the user, Vimma or Firefox's own code starts those loads, and the start page is
+the page every new tab already shows.
 
 ## Tests
 
@@ -430,8 +445,11 @@ Written first and seen to fail, by step.
   Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
   Device or Tab Overview widget, while Get Help, Share Ideas and Settings > Sync's sign-in show
   (step 4a); that the About dialog's `#contributeDesc` and mozilla.org bottom links are not
-  displayed, while `#communityDesc` carries the attribution line (decision 16); and that loading
-  `about:home`, `about:newtab`, `about:welcome` and `about:firefoxview` ends on the start page. An e2e scenario types those URLs through the
+  displayed while its licensing information link and `#communityDesc` (step 5's attribution
+  line, decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
+  colours; that the error page illustrations serve the empty SVG; and that typing `about:home`,
+  `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's
+  page with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the
   control socket and checks the tab's URL.
 - **Strings** (step 5): the mochitest formats each patched message and asserts it contains neither
   "Vimma" nor "Mozilla" where decision 4 says so, and that the About dialog and `about:vimma` show
