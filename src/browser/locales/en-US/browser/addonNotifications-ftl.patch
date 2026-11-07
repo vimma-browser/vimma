@@ -1,0 +1,13 @@
+diff --git a/browser/locales/en-US/browser/addonNotifications.ftl b/browser/locales/en-US/browser/addonNotifications.ftl
+index a042ad58017e3eca50098eaf73e65b72bb0773da..1e78ba7f2d6915fceb1c72669efb995d158f30fc 100644
+--- a/browser/locales/en-US/browser/addonNotifications.ftl
++++ b/browser/locales/en-US/browser/addonNotifications.ftl
+@@ -76,7 +76,7 @@ webext-imported-addons = Finalize installing extensions imported to { -brand-sho
+ #  $name (String): The name of the add-on that will be removed.
+ addon-removal-title = Remove { $name }?
+ addon-removal-button = Remove
+-addon-removal-abuse-report-checkbox = Report this extension to { -vendor-short-name }
++addon-removal-abuse-report-checkbox = Report this extension
+ # "it" refers to the local AI model that is paired to the AI feature
+ addon-mlmodel-removal-body = If you use the features or extensions that use this model, it will be re-added.
+ 
