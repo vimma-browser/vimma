@@ -189,7 +189,7 @@ Decisions:
    `[firefox] disable` says, because `ctrl+n` is still a Vimma binding in insert mode and a
    bound chord is off in every mode ([firefox-keys](firefox-keys.md) decision 2), so no key
    opens a window unasked. `[firefox] enable = ["ctrl+n"]` gives Firefox's own new window back
-   and drops the default `suggestion_next` binding on that chord too, because the user asked for
+   and drops the default `suggestion_next` binding on that chord too, because that line asks for
    the key as Firefox runs it and two meanings on one key are what decision 2 forbids; the core
    check that drops a modal default on `enable` (`keymap.mjs`) counts the suggestion actions as
    that chord's own. A `[modal.insert]` binding the user wrote on the chord is an error at the
@@ -264,8 +264,8 @@ Sub-PR 2 updates the help overlay snapshot and the bindings docs, with a `ctrl+b
    `Vimma:SuggestionsOpen`, `pressKeyLater`, the host's page-first handling; vitest and the
    mochitest; the guide paragraph; bindings docs. This spec's status note becomes "sub-PR 1
    built". `Part of #837`.
-2. **Sub-PR 2: `new_window` on `ctrl+b shift+c`.** A keymap change on its own, as
-   [AGENTS.md](../../AGENTS.md) requires: `defaults.mjs`, the bindings docs, the help snapshot,
+2. **Sub-PR 2: `new_window` on `ctrl+b shift+c`.** A keymap change on its own, so
+   that it regenerates the bindings docs and the help snapshot alone: `defaults.mjs`, the bindings docs, the help snapshot,
    the guide's key lines, the firefox-keys note, a `ctrl+b ?` screenshot. Status `implemented`.
    `Closes #837`.
 
