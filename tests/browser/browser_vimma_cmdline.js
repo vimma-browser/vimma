@@ -192,6 +192,37 @@ add_task(async function tabnew_opens_a_tab() {
   closeTabs([...tabs, tab]);
 });
 
+// docs/specs/m1-cmdline.md (Since changed): `:settings [pane]` opens about:preferences, and a
+// Settings tab already open in this workspace is selected instead of a second one.
+add_task(async function settings_opens_about_preferences_and_reuses_its_tab() {
+  const tabs = await openTabs(1);
+  const loaded = BrowserTestUtils.waitForNewTab(gBrowser, "about:preferences#search", true);
+  runCommand("settings search");
+  const settings = await loaded;
+  Assert.equal(gBrowser.selectedTab, settings, ":settings search selects the Settings tab");
+  await TestUtils.waitForCondition(
+    () => settings.linkedBrowser.contentWindow?.document.location.hash === "#search",
+    "the search pane is shown",
+  );
+  const count = gBrowser.tabs.length;
+
+  await select(tabs[0]);
+  await focusContent(tabs[0].linkedBrowser);
+  const opened = tabOpened();
+  runCommand("settings privacy");
+  Assert.equal(await opened, null, "a second :settings opens no tab");
+  Assert.equal(gBrowser.tabs.length, count, "the tab count is unchanged");
+  Assert.equal(gBrowser.selectedTab, settings, "the open Settings tab is selected");
+  await TestUtils.waitForCondition(
+    () => settings.linkedBrowser.currentURI.spec === "about:preferences#privacy",
+    "and goes to the privacy pane",
+  );
+
+  runCommand("settings serch");
+  Assert.ok(noticeShown(), "an unknown pane is refused with a notice");
+  closeTabs([...tabs, settings]);
+});
+
 add_task(async function q_closes_the_tab_but_not_a_pinned_one() {
   const tabs = await openTabs(3);
   const count = gBrowser.tabs.length;

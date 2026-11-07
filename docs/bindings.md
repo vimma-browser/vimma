@@ -149,6 +149,7 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Downloads (the Library)                                      | `downloads`                | `ctrl+shift+y`            |
 | Downloads picker: open, show in folder, pause, retry, remove | `downloads_picker`         | `ctrl+b d`                |
 | Add-ons manager (about:addons)                               | `addons_manager`           | `ctrl+shift+f`            |
+| Firefox Settings (about:preferences), or a pane by name      | `settings`                 | —                         |
 | History (the Library)                                        | `history_library`          | `ctrl+shift+h`            |
 | Bookmarks (the Library)                                      | `bookmarks_library`        | `ctrl+shift+o`            |
 | Mute or unmute the tab                                       | `mute_tab`                 | `ctrl+m`                  |

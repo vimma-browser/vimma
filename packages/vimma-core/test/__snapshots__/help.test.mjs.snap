@@ -122,6 +122,7 @@ Browser
   downloads                 ctrl+shift+y                                         Downloads (the Library)
   downloads_picker          ctrl+b d                                             Downloads picker: open, show in folder, pause, retry, remove
   addons_manager            ctrl+shift+f                                         Add-ons manager (about:addons)
+  settings                  (unbound)                                            Firefox Settings (about:preferences), or a pane by name
   history_library           ctrl+shift+h                                         History (the Library)
   bookmarks_library         ctrl+shift+o                                         Bookmarks (the Library)
   mute_tab                  ctrl+m                                               Mute or unmute the tab
@@ -447,6 +448,7 @@ Browser
   downloads                 ctrl+shift+y                                         Downloads (the Library)
   downloads_picker          ctrl+b d                                             Downloads picker: open, show in folder, pause, retry, remove
   addons_manager            ctrl+shift+f                                         Add-ons manager (about:addons)
+  settings                  (unbound)                                            Firefox Settings (about:preferences), or a pane by name
   history_library           ctrl+shift+h                                         History (the Library)
   bookmarks_library         ctrl+shift+o                                         Bookmarks (the Library)
   mute_tab                  ctrl+m                                               Mute or unmute the tab

@@ -265,7 +265,8 @@ multi-selection (decision 9).
   (m1-find, Research).
 - **`about:` pages** that load in the parent process (`about:preferences`, `about:addons`) are
   matched by Vimma's actor (`about:*`) and searchable the same way. `view-source:` and
-  `moz-extension:` pages are not matched.
+  `moz-extension:` pages are not matched. (Since changed: `view-source:` pages are matched, see
+  m1-actor-insert-scroll, so live grep searches them too.)
 - **Recently closed tabs and windows** (`browser/components/sessionstore/SessionStore.sys.mjs`).
   `getClosedTabDataForWindow(win)` (`:4013`) returns a window's closed tabs, each with
   `closedId`, `title`, `closedAt` and the saved `state`; `getClosedTabData` (`:4036`) gathers

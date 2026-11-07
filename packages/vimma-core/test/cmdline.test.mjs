@@ -11,6 +11,7 @@ import {
   resetHistoryCursor,
   parseToolbarCommand,
   parseBookmarksToolbarCommand,
+  parseSettingsCommand,
 } from "../src/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/actions.mjs";
 
@@ -315,6 +316,18 @@ describe("completeCommandLine", () => {
     expect(c).toMatchObject({ label: "system", kind: "argument", description: "appearance" });
   });
 
+  test(":settings completes its panes", () => {
+    expect(values(":settings ")).toEqual([
+      "settings home",
+      "settings search",
+      "settings privacy",
+      "settings sync",
+    ]);
+    expect(values(":settings pri")).toEqual(["settings privacy"]);
+    const c = completeCommandLine(":settings sy").candidates[0];
+    expect(c).toMatchObject({ label: "sync", kind: "argument", description: "settings pane" });
+  });
+
   test(":toolbar completes show and hide", () => {
     expect(values(":toolbar ")).toEqual(["toolbar show", "toolbar hide"]);
     expect(values(":toolbar hi")[0]).toBe("toolbar hide");
@@ -339,6 +352,45 @@ describe("completeCommandLine", () => {
 
   test("no match gives no candidates", () => {
     expect(values(":qqqqqqqq")).toEqual([]);
+  });
+});
+
+describe(":settings [pane]", () => {
+  test("parses to browser.settings, with the pane as text", () => {
+    expect(parseCommandLine(":settings")).toEqual(run("settings", "browser.settings"));
+    expect(parseCommandLine(":settings privacy")).toEqual(
+      run("settings", "browser.settings", { text: "privacy" }),
+    );
+  });
+
+  test("browser.settings is an action", () => {
+    expect(getAction("settings")?.id).toBe("browser.settings");
+  });
+
+  test("the pane gives about:preferences' URL", () => {
+    expect(parseSettingsCommand(undefined)).toEqual({ kind: "open", url: "about:preferences" });
+    expect(parseSettingsCommand(" ")).toEqual({ kind: "open", url: "about:preferences" });
+    expect(parseSettingsCommand("search")).toEqual({
+      kind: "open",
+      url: "about:preferences#search",
+    });
+    expect(parseSettingsCommand(" Privacy ")).toEqual({
+      kind: "open",
+      url: "about:preferences#privacy",
+    });
+    expect(parseSettingsCommand("home").url).toBe("about:preferences#home");
+    expect(parseSettingsCommand("sync").url).toBe("about:preferences#sync");
+  });
+
+  test("an unknown pane is refused, with the nearest name", () => {
+    expect(parseSettingsCommand("serch")).toEqual({
+      kind: "refuse",
+      text: ':settings takes home, search, privacy, sync or nothing: did you mean "search"?',
+    });
+    expect(parseSettingsCommand("zzzzzz")).toEqual({
+      kind: "refuse",
+      text: ":settings takes home, search, privacy, sync or nothing",
+    });
   });
 });
 

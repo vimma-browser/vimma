@@ -87,7 +87,7 @@ actions that are not implemented yet (parallel spec).
   - `moz-extension:`, `data:`, `view-source:`, `blob:` and `chrome:` pages get no actor. With no
     actor the host treats the browser as `insert`: every key reaches the page as in M0.
     Extension pages are the extension's own UI, often with their own keys; a later spec can add
-    them.
+    them. (Since changed: `view-source:` pages get the actor too, so `gf` and View Page Source open in normal mode with the page keys, because the source is Firefox's own inert rendering, where no page script runs and to which web content cannot navigate, and reading it is where Vim keys help most.)
 - **Child events.** `focusin` and `focusout` (capture), plus `focus` on the window (focus back
   from a subframe). The actor's listener sits on the chrome event handler and sees the event's
   `originalTarget`, unretargeted, so an input inside an open or a closed shadow root is seen.
@@ -224,5 +224,6 @@ unbound) and `browser_vimma_normal_extras.js` (each key, refusals, a split, inse
   by the editable rules (`KNOWN_EDITORS`, contenteditable, ARIA roles).
 - Digits are counts in normal mode, so a page's own digit shortcuts need insert.
 - No actor on `moz-extension:`, `data:`, `view-source:` and `blob:` pages: they stay in insert.
+  (Since changed: `view-source:` pages have the actor and Vim keys, as above.)
 - Focus moved by a page script from a subframe to the top document's `<body>` can leave insert
   on until `Esc` (no focusin fires on `<body>`; the window `focus` recheck covers most cases).

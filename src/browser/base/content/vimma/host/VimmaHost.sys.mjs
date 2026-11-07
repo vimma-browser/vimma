@@ -31,6 +31,7 @@ import {
   parseBookmarksToolbarCommand,
   parseCommandLine,
   parseToolbarCommand,
+  parseSettingsCommand,
 } from "../core/cmdline.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
@@ -83,7 +84,7 @@ import {
 } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
-import { BROWSER_KEYS, browserRunners, firefoxIds, runKey } from "./browser-ops.mjs";
+import { BROWSER_KEYS, browserRunners, firefoxIds, openSettings, runKey } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
 import { runRoute } from "./route-ops.mjs";
 import {
@@ -1159,6 +1160,12 @@ export const RUNNERS = Object.freeze({
     // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
     s.downloads.clearEnd();
     s.downloadPicker.open();
+  },
+  // `:settings [pane]` (m1-cmdline, Since changed): an unknown pane is refused as a notice.
+  "browser.settings": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
+    const settings = parseSettingsCommand(t);
+    if (settings.kind === "refuse") s.notice.show(settings.text, { error: true });
+    else openSettings(s.win, settings.url);
   },
   "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
     if (!text) s.cmdline.open("addon ");
@@ -2340,7 +2347,7 @@ export const VimmaHost = {
 
   /**
    * The page mode keys get while `browser` has focus. A page without our actor (extension
-   * pages, data:, view-source:) stays in insert, as every page was before M1.
+   * pages, data:, blob:) stays in insert, as every page was before M1.
    * @param {any} browser
    * @returns {PageMode}
    */

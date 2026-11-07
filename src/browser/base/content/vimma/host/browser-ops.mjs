@@ -228,3 +228,27 @@ export function browserRunners(say) {
   out["tab.move_right"] = (s) => moveTab(s.win, "right");
   return out;
 }
+
+/**
+ * `:settings [pane]`: selects a Settings tab already open in this workspace (its visible tabs:
+ * the other workspaces' are hidden), as Firefox's openPreferences reuses one, and loads `url`
+ * there when it names a pane; otherwise opens `url` in a new tab. A hash change on
+ * about:preferences shows that pane (preferences.js listens for hashchange).
+ * @param {Window} win
+ * @param {string} url  about:preferences or about:preferences#<pane>
+ */
+export function openSettings(win, url) {
+  const w = /** @type {any} */ (win);
+  const system = Services.scriptSecurityManager.getSystemPrincipal();
+  const tab = w.gBrowser.visibleTabs.find((/** @type {any} */ t) =>
+    /^about:(preferences|settings)$/.test(t.linkedBrowser.currentURI.specIgnoringRef),
+  );
+  if (!tab) {
+    w.openTrustedLinkIn(url, "tab");
+    return;
+  }
+  w.gBrowser.selectedTab = tab;
+  if (url.includes("#") && tab.linkedBrowser.currentURI.spec !== url) {
+    tab.linkedBrowser.loadURI(Services.io.newURI(url), { triggeringPrincipal: system });
+  }
+}

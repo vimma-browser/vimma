@@ -21,6 +21,9 @@ support-files = [
   "file_vimma_test.pdf",
 ]
 
+["browser_vimma_view_source.js"]
+support-files = ["file_vimma_view_source.html"]
+
 ["browser_vimma_insert_focus.js"]
 support-files = [
   "file_vimma_insert_focus.html",

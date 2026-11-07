@@ -452,7 +452,8 @@ text editors' frames) also enters insert.
 Each tab keeps its own mode. Settings (`about:preferences`) and the PDF viewer work the same
 way, but Settings focuses its search box when it opens, so it starts in insert: press `Esc`
 before `j`/`k`. A PDF takes your keys as soon as it opens, also when a site serves it as a
-download. Pages Vimma does not reach (extension pages, `data:` and `view-source:` pages)
+download. A page's source (`gf`, or View Page Source) takes the same keys: scroll it, search it
+with `/`, and follow its links with `f`. Pages Vimma does not reach (extension pages, `data:` pages)
 stay in insert, so their keys are untouched. With focus in the address bar or the find bar, keys
 belong to that field; only `ctrl+b` sequences are Vimma's there (and, in a `/` search,
 `Enter` and `Esc`).
@@ -686,7 +687,7 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   opens live grep again with the last query; `:grep text` opens it with that text.
 - **Not searched:** tabs that have not loaded since a restart (they are listed at the far end as
   `not loaded`; `Enter` opens one, so you can search again), form fields, text drawn on a canvas,
-  images, closed `<details>`, PDFs, and pages Vimma cannot read (`view-source:`). A page in a
+  images, closed `<details>`, PDFs, and pages Vimma cannot read (extension and `data:` pages). A page in a
   frame from another site is searched; its rows say `↳ host`.
 - **Limits.** A search stops in a page, or in the closed tabs' titles, after a second
   (`timed out`, so a pattern that would backtrack for ever never freezes the page or Vimma), covers at most 100 frames a tab and the first
@@ -4022,6 +4023,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:control [on N\|off]`                | Full control for `vimma-ctl`: the status, on for `N` minutes (asks `y/N`), or off now ([below](#agent-workspace)).                             |
 | `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                  |
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
+| `:settings [pane]`, `:prefs`          | Opens Settings, or selects its open tab in this workspace; `home`, `search`, `privacy`, `sync` (`Tab`) go to that pane.                        |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                       |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |
@@ -4500,6 +4502,28 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `true` bring them back).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
+- **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and
+  Help → Get Help open `https://vimma.dev/support/…`. Topics Vimma documents open its own pages;
+  any other topic forwards you to the same article on Mozilla's support site, which still applies
+  to the Firefox underneath. The link carries the Firefox version, your OS and your language, as
+  Firefox's links do (`app.support.baseURL`; Firefox's value is
+  `https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/`). Settings > Sync's links to
+  Firefox for Android and iOS still open Mozilla's download pages, since those apps sync with
+  Vimma.
+- **No Mozilla entry points in the menus.** The page, link and tab menus have no Send to
+  Device, Tools has no Tab Overview (Firefox View), the Help menu (in the menu bar and in the app
+  menu) has no Switching to a New Device or Report Broken Site, and customize mode offers no Send
+  to Device or Tab Overview button. Help keeps Get Help, Share Ideas and Report Deceptive Site,
+  the account button stays, and Firefox Sync, sign-in included, works from Settings > Sync as in
+  Firefox. These are hidden by Vimma's style sheet, not by a pref.
+- **Settings shows only what works in Vimma, in Vimma's style.** Settings hides Labs, the
+  data collection group (Vimma uploads no telemetry, so its switches changed nothing), the
+  extension and feature recommendation switches (those recommendations are off), and the Share
+  Ideas link to Mozilla's idea board. While Vimma's start page opens in new tabs, Home also hides
+  the Start Page content group that set up Firefox Home; set `vimma.startpage.newtab` to false in
+  `about:config` and it comes back with Firefox Home. Settings has square corners and the theme's
+  font, as the status bar and the pickers do, and keeps Firefox Sync, the Vimma support link and
+  the About section.
 - **Firefox's features keep their place under plain names.** Settings, menus and the address bar
   say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
   Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and

@@ -1359,6 +1359,11 @@
           ]
         },
         {
+          "name": "settings",
+          "description": "Firefox Settings (about:preferences), or a pane by name",
+          "keys": []
+        },
+        {
           "name": "history_library",
           "description": "History (the Library)",
           "keys": [
