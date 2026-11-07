@@ -150,3 +150,12 @@ completion list.
   notice and left a tab). Green: `browser_vimma_cmdline.js` 201/0 after merging main (mutation
   testing CI, #36). Mutation: private windows using the shared store fail "a normal window does
   not"; reverted. Full `tests/browser/` 1033/0 on the artifact build; `npm test` 1418/0.
+
+(Since changed: `:settings [pane]`, with the aliases `:preferences` and `:prefs`, opens Firefox's
+Settings (`about:preferences`), because Settings had no key or command and the menu button is a
+mouse path. A Settings tab already open in the current workspace is selected rather than a second
+one opened, as Firefox's own `openPreferences` does, so the command never piles up Settings tabs.
+The optional pane is one of `home`, `search`, `privacy` and `sync`, the panes a keyboard user
+changes most, completed by `Tab`; an unknown pane is refused with the nearest name. It has no
+default key: a command is enough for a page opened this rarely, and it can be bound as
+`settings` in `config.toml`.)
