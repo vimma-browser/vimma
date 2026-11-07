@@ -4413,6 +4413,10 @@ name, then toggle or edit it).
 | Sponsored address-bar suggestions                   | Settings: search for "sponsors" and tick "Suggestions from sponsors"                                                                                                                                  |
 | Feature and add-on recommendations                  | `browser.newtabpage.activity-stream.asrouter.providers.cfr`: change `"enabled":false` to `true` in its JSON value; then `…asrouter.userprefs.cfr.addons`, `…cfr.features` = `true`                    |
 | Mozilla promos (VPN, Relay, Pin, mobile)            | `browser.vpn_promo.enabled`, `browser.promo.relay.enabled`, `browser.promo.pin.enabled`, `browser.preferences.moreFromMozilla`                                                                        |
+| Firefox's AI chatbot and link preview               | `browser.ml.chat.enabled`, `browser.ml.linkPreview.enabled`, `browser.preferences.aiControls` = `true`; the chatbot's sidebar tool: add `aichat` to `sidebar.main.tools`                              |
+| Firefox Relay email masks in login forms            | Settings → Privacy & Security → Passwords: tick the Firefox Relay box (`signon.firefoxRelay.feature` = `available`)                                                                                   |
+| The "make Vimma your default browser" prompt        | `browser.shell.checkDefaultBrowser` = `true` (Settings → General sets the default browser either way)                                                                                                 |
+| Firefox's onboarding messages                       | `browser.newtabpage.activity-stream.asrouter.providers.onboarding`: change `"enabled":false` to `true` in its JSON value                                                                              |
 | Crash reporter                                      | Not built in. A crash leaves a local core dump (`coredumpctl list vimma`). Opt-in reporting to Vimma's own server is planned.                                                                         |
 | Page titles in a private window's title             | `privacy.exposeContentTitleInWindow.pbm` = `true` (Vimma's default is `false`: the window manager, its bar and screen sharing see only `Vimma Private Browsing`)                                      |
 | Telemetry upload                                    | Not built in (no official telemetry). The data-collection switches in Settings are off to match.                                                                                                      |
@@ -4477,6 +4481,16 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   and its panel still work (`browser.download.alwaysOpenPanel` = `false`, and
   `browser.download.panel.shown` = `true` so that a profile's first download behaves as every
   later one).
+- **Fewer Mozilla promotions in menus and panels.** The account button's panel does not promote
+  Mozilla Monitor, the app menu has no sign-in promo with Firefox's mascot, and `about:addons` has
+  no Recommendations pane or recommended add-ons; Firefox Sync and installs from
+  addons.mozilla.org work as in Firefox
+  (`identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled` = `true`,
+  `identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed` = `false`,
+  `extensions.getAddons.showPane` and `extensions.htmlaboutaddons.recommendations.enabled` =
+  `true` bring them back).
+- **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
+  backup's download link points at Vimma's releases.
 
 ## Accessibility
 

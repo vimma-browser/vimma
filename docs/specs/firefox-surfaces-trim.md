@@ -1,6 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: draft (delivery step 6 built) · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: draft (delivery steps 2 and 6 built; step 2's vimma.dev links wait for step 1) · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new), `src/browser/themes/shared/vimma/`
 (`firefox-pages.css`, `firefox-chrome.css`), `src/browser/base/content/vimma/jar.mn`,
 `src/browser/base/content/vimma/start/`, `packages/vimma-core/src/actions.mjs` and `defaults.mjs`,
@@ -8,6 +8,10 @@ Status: draft (delivery step 6 built) · Area: `src/browser/branding/vimma/pref/
 step 5, each with its ADR-003 register line · ADR: [ADR-003](../adr/003-own-files-minimal-patches.md)
 
 Issue: [#834](https://github.com/vimma-browser/vimma/issues/834)
+
+Step 2 sets every pref in its rows except the two that point at vimma.dev pages,
+`app.support.baseURL` and `identity.mobilepromo.*`: they keep Firefox's values until the vimma.dev
+support pages (delivery step 1) exist, so that no link points at a missing page.
 
 ## Summary
 
@@ -250,7 +254,13 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 5. **Prefs, not policies.** Every pref this spec sets is a `pref()` default in
    `firefox-branding.js`, and no enterprise policy is used, because policies lock their prefs and
    make Settings say the browser is managed (Research). Firefox Suggest's region rewrite is not
-   involved: the prefs here have no runtime writer, so defaults hold.
+   involved. One pref has a runtime writer: Firefox writes `sidebar.main.tools` as a user value
+   (`SidebarManager.sys.mjs`, `updateDefaultTools`, at a profile's first window, and
+   `ProfileDataUpgrader.sys.mjs`, migration 153), so a profile from before this change keeps
+   `aichat` and with it the chatbot's page menu, which shows while `aichat` is a tool even with
+   the chatbot off (`GenAI.sys.mjs`, `canShowAskChat`). `MozillaServices.sys.mjs` removes
+   `aichat` from that user value at each start while `browser.ml.chat.enabled` is false, as
+   Firefox's own migration 152 does, because a default cannot reach a user value.
 6. **Settings hides what controls nothing in Vimma.** The data collection group is hidden,
    because Vimma builds upload no telemetry, health report or studies (m0-mozilla-services,
    "Why telemetry does not upload"), so its switches change nothing. The Firefox Home content group

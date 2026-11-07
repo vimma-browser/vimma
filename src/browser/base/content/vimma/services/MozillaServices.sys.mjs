@@ -21,6 +21,17 @@ const SPONSORED_SUGGESTIONS = "browser.urlbar.suggest.quicksuggest.sponsored";
 const SUGGEST_MIGRATION_VERSION = "browser.urlbar.quicksuggest.migrationVersion";
 
 /**
+ * The sidebar launcher's tools. Firefox writes them as a user value (SidebarManager.sys.mjs,
+ * updateDefaultTools, at a profile's first window; ProfileDataUpgrader.sys.mjs, migration 153), so
+ * a profile from before Vimma's default (firefox-branding.js) keeps `aichat`, and the chatbot's
+ * page menu shows while `aichat` is a tool, even with the chatbot off (GenAI.sys.mjs,
+ * canShowAskChat). docs/specs/firefox-surfaces-trim.md, decision 5.
+ */
+const SIDEBAR_TOOLS = "sidebar.main.tools";
+const CHAT_ENABLED = "browser.ml.chat.enabled";
+const CHAT_TOOL = "aichat";
+
+/**
  * Without a Google key the build fetches no Safe Browsing lists (SafeBrowsing.sys.mjs,
  * `checkGoogleSafeBrowsingKey`). These are the "Block dangerous and deceptive content" switches;
  * keyless, Vimma defaults them to false so Settings shows the protection off (spec
@@ -77,11 +88,25 @@ export const MozillaServices = {
   },
 
   /**
-   * Turn sponsored address-bar suggestions off unless the user has chosen. Idempotent.
+   * Turn sponsored address-bar suggestions off unless the user has chosen, and take the chatbot
+   * out of the sidebar launcher while it is off, as Firefox's own migration 152 does for a
+   * profile with the chatbot off. Idempotent.
    */
   applyUserDefaults() {
     if (!Services.prefs.prefHasUserValue(SPONSORED_SUGGESTIONS)) {
       Services.prefs.setBoolPref(SPONSORED_SUGGESTIONS, false);
+    }
+    if (
+      !Services.prefs.getBoolPref(CHAT_ENABLED, false) &&
+      Services.prefs.prefHasUserValue(SIDEBAR_TOOLS)
+    ) {
+      const tools = Services.prefs.getStringPref(SIDEBAR_TOOLS).split(",");
+      if (tools.includes(CHAT_TOOL)) {
+        Services.prefs.setStringPref(
+          SIDEBAR_TOOLS,
+          tools.filter((tool) => tool !== CHAT_TOOL).join(","),
+        );
+      }
     }
   },
 };
