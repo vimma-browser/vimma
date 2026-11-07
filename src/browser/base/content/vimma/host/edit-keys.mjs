@@ -8,7 +8,7 @@
 // from the content actor (VimmaChild, Vimma:Edit) after the page has had the key.
 
 import { INSERT_ENTER, isEditable } from "../core/editable.mjs";
-import { pressEnterLater } from "../actors/enter-key.mjs";
+import { pressKeyLater } from "../actors/enter-key.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -52,7 +52,7 @@ export function focusedChromeField(win) {
 export function runChromeEdit(win, command) {
   if (command === INSERT_ENTER) {
     const field = focusedChromeField(win);
-    pressEnterLater(win, () => focusedChromeField(win) === field);
+    pressKeyLater(win, "Enter", () => focusedChromeField(win) === field);
     return true;
   }
   const dispatcher = /** @type {any} */ (win.document).commandDispatcher;

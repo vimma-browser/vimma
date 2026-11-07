@@ -352,6 +352,12 @@ support-files = [
   "file_vimma_enter_keys.html",
 ]
 
+["browser_vimma_page_suggestions.js"]
+support-files = [
+  "file_vimma_suggest_combobox.html",
+  "file_vimma_suggest_datalist.html",
+]
+
 ["browser_vimma_bookmarks.js"]
 
 ["browser_vimma_bookmarks_workspaces.js"]

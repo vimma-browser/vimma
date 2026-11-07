@@ -17,6 +17,7 @@ import {
 } from "../src/firefox-keys.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { insertEditCommand } from "../src/editable.mjs";
+import { SUGGESTION_ACTIONS } from "../src/suggestions.mjs";
 
 /** The modes whose keys type into a text field (keymap.mjs TEXT_FIELD_MODES). */
 const TEXT_FIELD = new Set(["insert", "command", "help"]);
@@ -332,6 +333,12 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
           continue;
         }
+        // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
+        // row's action outside one (page-suggestions decision 6).
+        if (mode === "insert" && SUGGESTION_ACTIONS.has(/** @type {any} */ (node?.action?.id))) {
+          expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
+          continue;
+        }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);
         expect(node?.children.size, `${r.chord} in ${mode} is a whole binding`).toBe(0);
       }
@@ -617,6 +624,12 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
         // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
         if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
+          continue;
+        }
+        // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
+        // row's action outside one (page-suggestions decision 6).
+        if (mode === "insert" && SUGGESTION_ACTIONS.has(/** @type {any} */ (node?.action?.id))) {
+          expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
           continue;
         }
         expect(node?.action?.name, `${r.chord} in ${mode}`).toBe(r.action);

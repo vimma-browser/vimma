@@ -1,7 +1,5 @@
-# Spec: page-suggestions
-
-Status: accepted · Area: `packages/vimma-core/src/suggestions.mjs` (new), `actions.mjs`,
-`defaults.mjs`, `keymap.mjs`, `firefox-keys.mjs`; `actors/VimmaChild.sys.mjs`,
+Status: accepted (sub-PR 1 built) · Area: `packages/vimma-core/src/suggestions.mjs` (new),
+`actions.mjs`, `defaults.mjs`, `keymap.mjs`, `firefox-keys.mjs`; `actors/VimmaChild.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/enter-key.mjs`; `host/VimmaHost.sys.mjs` · Upstream
 patches: none · ADR: none
 
@@ -112,8 +110,7 @@ typing a query.
 
 **Detection, in the content actor and core.** On a `Vimma:SuggestionsOpen` query, the child of
 the focused frame (`actors/VimmaChild.sys.mjs`) describes its focused element (through shadow
-roots, as `focusin` reports do) as plain data: its `role`, `aria-expanded`,
-`aria-autocomplete`, the elements its `aria-controls` and `aria-owns` name (each with its role,
+roots, as `focusin` reports do) as plain data: its `role`, `aria-expanded`, the elements its `aria-controls` and `aria-owns` name (each with its role,
 whether it is rendered, `checkVisibility()`, and whether it has a `role="option"` descendant),
 the same for its nearest `role="combobox"` ancestor, and whether the frame's `AutoComplete`
 actor reports its popup open. Core's `suggestionListOpen(snapshot)` (`suggestions.mjs`, pure)
@@ -157,9 +154,11 @@ Decisions:
    - the focused element, or its nearest `role="combobox"` ancestor, has `role="combobox"` and
      `aria-expanded="true"`, and, when its `aria-controls` or `aria-owns` names elements, at
      least one of them is rendered and visible;
-   - the focused element has `aria-autocomplete` of `list` or `both`, or an `aria-controls` or
-     `aria-owns`, naming a rendered, visible `role="listbox"` that holds at least one
-     `role="option"`;
+   - the focused element names with `aria-controls` or `aria-owns` a rendered, visible
+     `role="listbox"` that holds at least one `role="option"`, unless it has
+     `aria-expanded="false"`: the pattern of a text box marked `aria-autocomplete`, whose
+     attribute is not checked because it names no list whose visibility could be checked, and
+     a field that says it is collapsed is, whatever its listbox shows;
    - the focused frame's `AutoComplete` actor reports its popup open (decision 5).
 
    The visibility check is there because sites often leave `aria-expanded="true"` on a field
@@ -203,8 +202,9 @@ Decisions:
 
 ## Security and privacy
 
-No new surface. The parent presses an arrow key only in the page and frame that had focus when
-the user pressed `ctrl+n` or `ctrl+p`, and only if they still have focus. The query to the
+No new surface. The parent presses an arrow key only in the page the user pressed `ctrl+n` or
+`ctrl+p` in, in the frame focused when the page's reply arrives, and only if that frame still
+has focus at the press; Vimma's own key handling leaves the pressed key to the page. The query to the
 child returns one boolean computed from the page's own attributes, so a page can at most make
 `ctrl+n` an arrow press in itself, which it can already do by handling `ctrl+n`. The control
 socket, MCP, the agent gate and the agent's keys are unchanged.

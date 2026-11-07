@@ -17,7 +17,8 @@ import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
 import { INSERT_ENTER } from "../core/editable.mjs";
-import { pressEnterLater } from "./enter-key.mjs";
+import { suggestionStep } from "../core/suggestions.mjs";
+import { pressKeyLater } from "./enter-key.mjs";
 
 /** @import { BlockReply } from "../core/hints.mjs" */
 
@@ -129,6 +130,19 @@ function actorFor(bc) {
   } catch {
     return null;
   }
+}
+
+/**
+ * `browser` still has focus, and `frame` is still its focused frame: a key pressed later goes
+ * where the user typed or nowhere.
+ * @param {any} browser XULBrowserElement
+ * @param {any} frame BrowsingContext
+ */
+function stillFocused(browser, frame) {
+  return (
+    Services.focus.focusedElement === browser &&
+    Services.focus.focusedContentBrowsingContext === frame
+  );
 }
 
 /**
@@ -307,15 +321,37 @@ export const VimmaActors = {
       const frame = Services.focus.focusedContentBrowsingContext;
       const win = browser.ownerDocument?.defaultView;
       if (!win || !frame) return;
-      pressEnterLater(
-        win,
-        () =>
-          Services.focus.focusedElement === browser &&
-          Services.focus.focusedContentBrowsingContext === frame,
-      );
+      pressKeyLater(win, "Enter", () => stillFocused(browser, frame));
       return;
     }
     actorFor(framesFor(browser)[0])?.sendAsyncMessage("Vimma:Edit", { command });
+  },
+
+  /**
+   * ctrl+n or ctrl+p after the page left it alone (docs/specs/page-suggestions.md): asks the
+   * focused frame whether its field's suggestion list is open, and if so presses ArrowDown or
+   * ArrowUp there, from the parent, so the page gets a trusted key. The frame focused now: one
+   * that loses focus before the press gets none.
+   * @param {any} browser XULBrowserElement
+   * @param {string} actionId  page.suggestion_next or page.suggestion_prev
+   * @param {() => boolean} [still]  the caller's own check, made again just before the press
+   * @returns {Promise<boolean>} whether a list was open; false means the caller falls back
+   */
+  async suggestion(browser, actionId, still = () => true) {
+    const frame = Services.focus.focusedContentBrowsingContext;
+    const win = browser.ownerDocument?.defaultView;
+    if (!win || !frame || frame.top !== browser.browsingContext) return false;
+    let open = false;
+    try {
+      // The child answers one boolean; anything else from a compromised process is "no list".
+      open = (await actorFor(frame)?.sendQuery("Vimma:SuggestionsOpen")) === true;
+    } catch {
+      // The frame went away (navigation): no list.
+    }
+    const step = suggestionStep(actionId, open);
+    if (step.kind !== "press") return false;
+    pressKeyLater(win, step.key, () => stillFocused(browser, frame) && still());
+    return true;
   },
 
   /**

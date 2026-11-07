@@ -1143,6 +1143,28 @@
               "chords": ["gf"]
             }
           ]
+        },
+        {
+          "name": "suggestion_next",
+          "description": "Next suggestion in the page's list",
+          "keys": [
+            {
+              "keys": "ctrl+n",
+              "chords": ["ctrl+n"],
+              "mode": "insert"
+            }
+          ]
+        },
+        {
+          "name": "suggestion_prev",
+          "description": "Previous suggestion in the page's list",
+          "keys": [
+            {
+              "keys": "ctrl+p",
+              "chords": ["ctrl+p"],
+              "mode": "insert"
+            }
+          ]
         }
       ]
     },

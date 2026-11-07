@@ -236,6 +236,8 @@ insert_editing = true
 
 [modal.insert]
 "<Esc>" = "mode.normal"
+"<C-n>" = "page.suggestion_next"
+"<C-p>" = "page.suggestion_prev"
 
 [modal.visual]
 "0" = "caret.line_start"

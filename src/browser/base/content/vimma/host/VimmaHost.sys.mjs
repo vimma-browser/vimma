@@ -21,6 +21,8 @@ import {
 import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { PageFirstQueue } from "../core/page-first.mjs";
+import { SUGGESTION_ACTIONS } from "../core/suggestions.mjs";
+import { pressingKey } from "../actors/enter-key.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { describeAction, notImplementedText } from "../core/actions.mjs";
@@ -864,6 +866,12 @@ export const RUNNERS = Object.freeze({
     s.help.toggle();
   },
   "help.close": (/** @type {WindowState} */ s) => s.help.close(),
+  // Run from a key, they wait for the page (`_runAfterPage`); from anywhere else (the `:` line)
+  // there is no chord to fall back to.
+  "page.suggestion_next": (/** @type {WindowState} */ s, a) =>
+    VimmaHost._suggest(s, a, null, VimmaHost._mode(s)),
+  "page.suggestion_prev": (/** @type {WindowState} */ s, a) =>
+    VimmaHost._suggest(s, a, null, VimmaHost._mode(s)),
   "help.filter": (/** @type {WindowState} */ s) => s.help.focusFilter(),
   "hint.cancel": (/** @type {WindowState} */ s) => VimmaHost._cancelHints(s),
   "tab.new": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
@@ -2429,6 +2437,8 @@ export const VimmaHost = {
     // A key the page has had, back for chrome's shortcuts (requestReplyFromRemoteContent): it
     // was dispatched once already, before the page.
     if (/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) return;
+    // An Enter or arrow key Vimma pressed itself (enter-key.mjs) is the page's.
+    if (pressingKey()) return;
     // A notice shown until the next key goes on any key but a bare modifier, before the key's
     // own action can show another (docs/specs/multiple-splits.md, decision 4).
     if (chordFromEvent(e)) state.notice.keyPressed();
@@ -2606,7 +2616,7 @@ export const VimmaHost = {
         if (first && !modal && !this._runnable(state, result.action.id)) return;
         // Firefox let the page have this chord first: so does Vimma (firefox-keys decision 6).
         // The keydown goes on; the keypress after the page runs the action (_onKeyPress).
-        if (first && !modal && this._pageFirst(state, chord, mode)) {
+        if (first && !modal && this._pageFirstAction(state, chord, mode, result.action.id)) {
           state.pageFirst.defer(formatKey(chord), result, mode);
           return;
         }
@@ -2618,6 +2628,12 @@ export const VimmaHost = {
         if (mode === "element" && !result.action.id.startsWith("element.")) {
           state.element.leave();
           if (result.action.id === "mode.normal") return;
+        }
+        // A suggestion key that does not wait for a page (a chrome field has focus) runs its
+        // chord's [keys] binding: the address bar keeps ctrl+n and ctrl+p.
+        if (SUGGESTION_ACTIONS.has(/** @type {any} */ (result.action.id))) {
+          this._suggest(state, result.action, first ? formatKey(chord) : null, mode);
+          return;
         }
         this._run(state, result);
       }
@@ -2652,6 +2668,46 @@ export const VimmaHost = {
   },
 
   /**
+   * `_pageFirst`, and the suggestion keys in a page: they always wait for it, because a web app
+   * may move its own list on ctrl+n (docs/specs/page-suggestions.md decision 3).
+   * @param {WindowState} state
+   * @param {Chord} chord
+   * @param {Mode} mode
+   * @param {string} id  the action the chord runs
+   */
+  _pageFirstAction(state, chord, mode, id) {
+    if (SUGGESTION_ACTIONS.has(/** @type {any} */ (id)) && this._contentBrowser(state)) return true;
+    return this._pageFirst(state, chord, mode);
+  },
+
+  /**
+   * A suggestion key (docs/specs/page-suggestions.md): ArrowDown or ArrowUp in the focused
+   * page's open suggestion list; with none open, or no page focused (a chrome field), the
+   * chord's [keys] binding in `mode`, if any. The page already had the key, so the fallback
+   * runs straight away (decision 6).
+   * @param {WindowState} state
+   * @param {Action} action
+   * @param {string | null} key  the chord pressed, or null when not run from a key
+   * @param {Mode} [mode]
+   * @param {EventTarget | null} [target]  where the key went
+   */
+  async _suggest(state, action, key, mode = "insert", target = null) {
+    const browser = this._contentBrowser(state);
+    // Esc while the page's reply or the frame's answer is on its way: nothing more happens.
+    const sameMode = () => this._mode(state) === mode;
+    // A late reply (a busy page) must not press a key in, or run the fallback for, the tab or
+    // pane focused since (docs/security.md K6).
+    if (browser && target && target !== browser) return;
+    if (browser && (await VimmaActors.suggestion(browser, action.id, sameMode))) return;
+    if (browser && this._contentBrowser(state) !== browser) return;
+    if (!sameMode()) return;
+    const fallback = key ? state.keymap.fallback(mode, key) : null;
+    if (!fallback || state.win.closed) return;
+    this._run(state, { kind: "action", action: { ...fallback, count: action.count } });
+    this._emit(state);
+  },
+
+  /**
    * The focused page's site blocks "Override keyboard shortcuts" (Firefox's
    * nsContentUtils::ShouldBlockReservedKeys): its keys are Vimma's first.
    * @param {WindowState} state
@@ -2677,7 +2733,7 @@ export const VimmaHost = {
    * @param {KeyboardEvent} e
    */
   _onKeyPress(state, e) {
-    if (!state.pageFirst.size) return;
+    if (!state.pageFirst.size || pressingKey()) return;
     const chord = chordFromEvent(e);
     const key = chord && formatKey(chord);
     const ev = /** @type {ChromeKeyEvent} */ (e);
@@ -2689,7 +2745,7 @@ export const VimmaHost = {
       const pending = key && state.pageFirst.reply(key, e.timeStamp);
       if (!pending || this._pageTookKey(e, pending)) return;
       consume(e);
-      this._runAfterPage(state, key, pending);
+      this._runAfterPage(state, key, pending, e.target);
       this._emit(state);
       return;
     }
@@ -2749,12 +2805,23 @@ export const VimmaHost = {
    * @param {WindowState} state
    * @param {string} key
    * @param {{ result: DispatchResult, mode: Mode }} pending
+   * @param {EventTarget | null} [target]  the keypress's target: for a remote page's reply, the
+   *   <browser> the key went to (BrowserParent::RecvReplyKeyEvent)
    */
-  _runAfterPage(state, key, pending) {
+  _runAfterPage(state, key, pending, target = null) {
     const escape = key === "esc" ? resolveEscape({ mode: pending.mode }) : null;
     if (escape?.kind === "action" && escape.blur) {
       const browser = this._focusedBrowser(state.win);
       if (browser) blurPage(browser);
+    }
+    const { result } = pending;
+    if (
+      result.kind === "action" &&
+      SUGGESTION_ACTIONS.has(/** @type {any} */ (result.action.id)) &&
+      RUNNABLE.has(result.action.id)
+    ) {
+      this._suggest(state, result.action, key, pending.mode, target);
+      return;
     }
     this._run(state, pending.result);
   },

@@ -494,6 +494,16 @@ that is not the default. `[modal] insert_editing = false` in `config.toml` turns
 stay off either way. On macOS, `ctrl+h` is already a backspace in text fields, so Vimma adds
 nothing there.
 
+**`ctrl+n` and `ctrl+p` move through a page's suggestion list.** While a search field or any
+other field on a page shows its list of suggestions (a search engine's completions, a shop's
+product matches, Firefox's own list for a form field), `ctrl+n` moves down the list and `ctrl+p`
+up it, as Vim's insert-mode completion keys do, so you pick a suggestion without leaving the
+home row. The page gets a real `ArrowDown` or `ArrowUp`, so its highlight moves and the field
+shows the suggestion as it does for the arrow keys. The page goes first: a web app that uses
+`ctrl+n` or `ctrl+p` itself keeps the key. With no list open, `ctrl+p` prints and `ctrl+n` opens
+a window, as before. The address bar and Vimma's own fields keep their keys. Both keys can be
+remapped in `config.toml` (`suggestion_next` and `suggestion_prev` under `[modal.insert]`).
+
 **`Esc` in a text field is Vimma's.** It leaves insert, so the page does not see that `Esc`: a
 site's own `Esc` (closing an autocomplete list or a dialog) does not fire from the field. Press
 `Esc` again: in normal mode `Esc` has no binding, so it reaches the page (the field no longer

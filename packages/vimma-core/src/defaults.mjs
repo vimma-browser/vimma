@@ -343,7 +343,12 @@ const modal = {
     "'": "pdf.mark_go",
     c: "hint.copy_target",
   },
-  insert: { "<Esc>": "mode.normal" },
+  // Vim's insert-mode completion keys, in a page's suggestion list (page-suggestions).
+  insert: {
+    "<Esc>": "mode.normal",
+    "<C-n>": "page.suggestion_next",
+    "<C-p>": "page.suggestion_prev",
+  },
   visual: {
     "<Esc>": "mode.normal",
     h: "caret.left",

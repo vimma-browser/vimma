@@ -10,6 +10,7 @@ import { removedAction, resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "./defaults.mjs";
 import { insertEditCommand } from "./editable.mjs";
+import { SUGGESTION_ACTIONS } from "./suggestions.mjs";
 import { firefoxShortcuts } from "./firefox-keys.mjs";
 import {
   KeyNotationError,
@@ -63,6 +64,8 @@ const TEXT_FIELD_MODES = Object.freeze(["insert", "command", "help"]);
  * @property {"keys" | "modal"} layer
  * @property {Set<KeymapTarget>} modes  the modes it is bound in, and `pdf` for normal mode's pdf context
  * @property {boolean} user       written in the user's config, not a default
+ * @property {Set<KeymapTarget>} [shadowed]  [keys] only: the modes where a modal binding on the
+ *   same sequence hides it; it is that binding's fallback there (keymap `fallback`)
  */
 
 export class KeymapError extends Error {
@@ -295,7 +298,12 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       for (const k of entries) {
         if (k.seq !== e.seq) continue;
         if (mode === "pdf") k.modes.delete("pdf");
-        else if (k.layer === "keys") for (const m of e.modes) k.modes.delete(m);
+        else if (k.layer === "keys") {
+          for (const m of e.modes) {
+            if (!k.modes.delete(m)) continue;
+            (k.shadowed ??= new Set()).add(m);
+          }
+        }
       }
       entries.push(e);
     }
@@ -321,7 +329,10 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
       if (e.layer !== "keys" || !e.chords[0]) continue;
       if (e.user && !defaults.has(`${e.action.name} ${e.seq}`)) continue;
       if (!insertEditCommand(formatKey(e.chords[0]), { mac })) continue;
-      for (const m of TEXT_FIELD_MODES) e.modes.delete(m);
+      for (const m of TEXT_FIELD_MODES) {
+        e.modes.delete(m);
+        e.shadowed?.delete(m);
+      }
     }
   }
 
@@ -362,7 +373,16 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
           path,
         );
       }
-      if (e.layer === "keys" || firefoxActions.has(e.action.name)) e.modes.clear();
+      // The suggestion keys count as the chord's own (page-suggestions decision 8): enable asks
+      // for the key as Firefox runs it, everywhere.
+      if (
+        e.layer === "keys" ||
+        firefoxActions.has(e.action.name) ||
+        SUGGESTION_ACTIONS.has(/** @type {any} */ (e.action.id))
+      ) {
+        e.modes.clear();
+        e.shadowed?.clear();
+      }
     }
   });
 
@@ -463,6 +483,16 @@ export function compileKeymap(user = {}, { mac = false } = {}) {
         : `prefix = ${displayKey(prefix)}`,
     /** @param {string} name */
     isOverridden: (name) => overridden.has(name),
+    /**
+     * The [keys] binding a modal binding on `seq` hides in `mode`, or null: what a suggestion key
+     * runs outside a list (docs/specs/page-suggestions.md decision 6).
+     * @param {Mode} mode
+     * @param {string} seq  canonical sequence, `ctrl+p`
+     * @returns {ActionDef | null}
+     */
+    fallback: (mode, seq) =>
+      entries.find((e) => e.layer === "keys" && e.seq === seq && e.shadowed?.has(mode))?.action ??
+      null,
     /**
      * The `:` bindings, one per command line, in config order: the overlay's Commands group.
      * @returns {{ line: string, bindings: string[], name: string }[]}
