@@ -75,3 +75,52 @@ describe("Firefox's Bookmarks Toolbar", () => {
     expect(readFileSync(OURS, "utf8")).not.toMatch(/lockPref\(\s*"browser\.toolbars\.bookmarks/);
   });
 });
+
+// docs/specs/firefox-surfaces-trim.md, delivery step 2: the design table's prefs rows, written as
+// defaults (decision 5: never locked, never a policy). browser_vimma_firefox_surfaces_trim.js
+// checks what they do in a running build.
+describe("Firefox and Mozilla surfaces (firefox-surfaces-trim, step 2)", () => {
+  const RELEASES = '"https://github.com/vimma-browser/vimma/releases/latest"';
+  /** @type {Record<string, string>} pref name to its value as written */
+  const rows = {
+    "app.feedback.baseURL": '"https://github.com/vimma-browser/vimma/discussions"',
+    "identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled": "false",
+    "identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed": "true",
+    "browser.ml.chat.enabled": "false",
+    "browser.ml.linkPreview.enabled": "false",
+    "browser.preferences.aiControls": "false",
+    "sidebar.main.tools": '"opentabs,bookmarks,history,syncedtabs,passwords"',
+    "signon.firefoxRelay.feature": '"disabled"',
+    "browser.shell.checkDefaultBrowser": "false",
+    "extensions.getAddons.showPane": "false",
+    "extensions.htmlaboutaddons.recommendations.enabled": "false",
+    "toolkit.datacollection.infoURL": '""',
+    "datareporting.policy.firstRunURL": '""',
+    "browser.uitour.url": '""',
+    "breakpad.reportURL": '""',
+    "browser.backup.template.fallback-download.release": RELEASES,
+    "browser.backup.template.fallback-download.beta": RELEASES,
+    "browser.backup.template.fallback-download.aurora": RELEASES,
+    "browser.backup.template.fallback-download.nightly": RELEASES,
+    "browser.backup.template.fallback-download.esr": RELEASES,
+  };
+
+  it.each(Object.entries(rows))("%s defaults to %s", (name, value) => {
+    expect(prefValue(name)).toBe(value);
+  });
+
+  it("turn the local onboarding provider off, upstream's value otherwise", () => {
+    const raw = prefValue("browser.newtabpage.activity-stream.asrouter.providers.onboarding");
+    expect(JSON.parse(JSON.parse(/** @type {string} */ (raw)))).toEqual({
+      id: "onboarding",
+      type: "local",
+      localProvider: "OnboardingMessageProvider",
+      enabled: false,
+      exclude: [],
+    });
+  });
+
+  it("lock none of them", () => {
+    expect(readFileSync(OURS, "utf8")).not.toMatch(/lockPref\(/);
+  });
+});

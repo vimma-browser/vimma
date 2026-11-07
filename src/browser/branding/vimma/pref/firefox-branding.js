@@ -94,6 +94,58 @@ pref("browser.promo.relay.enabled", false);
 pref("browser.contentblocking.report.show_mobile_app", false);
 pref("browser.contentblocking.report.hide_vpn_banner", true);
 
+// Firefox and Mozilla surfaces (docs/specs/firefox-surfaces-trim.md, delivery step 2). Defaults
+// only (decision 5), so each comes back when set to Firefox's value in about:config. The support
+// links (app.support.baseURL) and Sync's mobile-app links (identity.mobilepromo.*) wait for their
+// vimma.dev pages (delivery step 1).
+// Help > Share Ideas opens Vimma's discussions instead of ideas.mozilla.org.
+pref("app.feedback.baseURL", "https://github.com/vimma-browser/vimma/discussions");
+// Sync stays (decision 1); the account button's Monitor promo and the app menu's Kit sign-in promo
+// go. The Relay and VPN promos are already off (browser.promo.relay.enabled, vpn_promo above).
+pref("identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled", false);
+pref("identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed", true);
+// Firefox's AI features (decision 3): Vimma's AI is its own agent over MCP. The chatbot's page
+// menu shows while `aichat` is a launcher tool even with the chatbot off (GenAI.sys.mjs,
+// canShowAskChat), so the launcher gets Firefox's default tools without it
+// (SidebarManager.sys.mjs, DEFAULT_LAUNCHER_TOOLS); a non-empty value also keeps a new profile's
+// first window from writing Firefox's list.
+pref("browser.ml.chat.enabled", false);
+pref("browser.ml.linkPreview.enabled", false);
+pref("browser.preferences.aiControls", false);
+pref("sidebar.main.tools", "opentabs,bookmarks,history,syncedtabs,passwords");
+// No Firefox Relay email masks in login forms; Settings > Passwords keeps its switch, unticked,
+// to turn them on. Signing out of a Mozilla account clears the user value (LoginHelper.sys.mjs),
+// which falls back to this.
+pref("signon.firefoxRelay.feature", "disabled");
+// Firefox's onboarding and default-browser prompt (decision 13): Vimma has its own first run;
+// setting the default browser stays in Settings > General.
+pref("browser.shell.checkDefaultBrowser", false);
+// Upstream's provider with "enabled": false; carry upstream changes on rebase. One line: wrapped,
+// prettier adds a trailing comma that libpref's parser rejects.
+// prettier-ignore
+pref("browser.newtabpage.activity-stream.asrouter.providers.onboarding", "{\"id\":\"onboarding\",\"type\":\"local\",\"localProvider\":\"OnboardingMessageProvider\",\"enabled\":false,\"exclude\":[]}");
+// about:addons: no Recommendations pane and no recommended add-ons; installs from AMO stay.
+pref("extensions.getAddons.showPane", false);
+pref("extensions.htmlaboutaddons.recommendations.enabled", false);
+// Leftover links to Mozilla pages about Firefox's data collection, tour and crash reports; Vimma
+// uploads no telemetry and builds no crash reporter, so they lead nowhere useful.
+pref("toolkit.datacollection.infoURL", "");
+pref("datareporting.policy.firstRunURL", "");
+pref("browser.uitour.url", "");
+pref("breakpad.reportURL", "");
+// A backup's HTML page offers this link to install the browser that restores it: Vimma's releases.
+// One line each: wrapped, prettier adds a trailing comma that libpref's parser rejects.
+// prettier-ignore
+pref("browser.backup.template.fallback-download.release", "https://github.com/vimma-browser/vimma/releases/latest");
+// prettier-ignore
+pref("browser.backup.template.fallback-download.beta", "https://github.com/vimma-browser/vimma/releases/latest");
+// prettier-ignore
+pref("browser.backup.template.fallback-download.aurora", "https://github.com/vimma-browser/vimma/releases/latest");
+// prettier-ignore
+pref("browser.backup.template.fallback-download.nightly", "https://github.com/vimma-browser/vimma/releases/latest");
+// prettier-ignore
+pref("browser.backup.template.fallback-download.esr", "https://github.com/vimma-browser/vimma/releases/latest");
+
 // Google Safe Browsing (spec m0-safebrowsing-key). Google serves the download lists
 // goog-badbinurl-proto and goog-downloadwhite-proto, and the remote download check, only to
 // Mozilla's key: ours gets 404/403, and one refused list fails the whole update, so no list would
