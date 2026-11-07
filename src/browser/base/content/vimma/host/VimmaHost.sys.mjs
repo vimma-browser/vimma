@@ -2340,7 +2340,7 @@ export const VimmaHost = {
 
   /**
    * The page mode keys get while `browser` has focus. A page without our actor (extension
-   * pages, data:, view-source:) stays in insert, as every page was before M1.
+   * pages, data:, blob:) stays in insert, as every page was before M1.
    * @param {any} browser
    * @returns {PageMode}
    */
