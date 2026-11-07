@@ -511,11 +511,19 @@ function isFirefoxPage(doc) {
 
 /**
  * One of Firefox's pages or dialogs, with firefox-pages.css; a prompt in a window of its own
- * gets its buttons coloured once it is parsed.
+ * gets its buttons coloured once it is parsed. The root carries vimma-startpage while Vimma's
+ * start page replaces Firefox Home, so Settings hides Firefox Home's content group (spec
+ * firefox-surfaces-trim, decision 6): CSS cannot read a pref.
  * @param {Document} doc
  */
 function attachFirefoxPage(doc) {
-  attachPage(doc, PAGES_SHEET, colourDialogButtons);
+  attachPage(doc, PAGES_SHEET, (parsed) => {
+    parsed.documentElement?.toggleAttribute(
+      "vimma-startpage",
+      Services.prefs.getBoolPref("vimma.startpage.newtab", false),
+    );
+    colourDialogButtons(parsed);
+  });
 }
 
 /**
