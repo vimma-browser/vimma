@@ -26,7 +26,6 @@ const INCIDENT_TITLE = "INC-1187 Checkout slow after deploy · Tracker";
 const STANDUP = `${HOSTS.notes}standup.html`;
 const STANDUP_TITLE = "Standup, Tuesday · Notes";
 const START_URL = "chrome://browser/content/vimma/start/start.html";
-const SETTINGS = "about:preferences#appearance";
 
 /** @typedef {import("./record.mjs").Director} Director */
 /** @typedef {{ name: string, theme?: "file" | "omarchy", agent?: boolean,
@@ -333,12 +332,24 @@ const flip = {
 };
 
 /**
- * @type {Shot} the built-in palette, then two Omarchy themes set live, over the article and
- * Firefox's Settings
+ * Rosé Pine's main dark palette (rosepinetheme.com: base, surface, text, rose, iris), as the
+ * video's config card types it into `[theme.colors]`.
+ */
+export const ROSE_PINE = Object.freeze({
+  accent: "#ebbcba",
+  background: "#191724",
+  dark_background: "#1f1d2e",
+  foreground: "#e0def4",
+  magenta: "#c4a7e7",
+});
+
+/**
+ * @type {Shot} the theme from config.toml: over a split of the article and the start page, the
+ * built-in aqua palette, then Rosé Pine's colours saved into `[theme.colors]`. The video's config
+ * card types the same lines before the save.
  */
 const theme = {
   name: "theme",
-  theme: "omarchy",
   async setup(d) {
     await only(d, ARTICLE, ARTICLE_TITLE);
     await d.send("ctrl+b v");
@@ -346,26 +357,16 @@ const theme = {
       (s) => s.panes?.root?.children?.length === 2 && selected(s)?.url === START_URL,
       "a split with the start page on the right",
     );
+    // the new pane's address bar has focus: Esc twice puts it back in the page (normal mode)
     await d.send("esc");
     await d.send("esc");
-    await d.until((s) => s.mode === "normal", "focus in the start page");
-    await d.send(
-      `: ${[..."open "]
-        .concat([...SETTINGS])
-        .map((c) => (c === " " ? "space" : c))
-        .join(" ")} enter`,
-    );
-    await d.until((s) => selected(s)?.title === "Settings", "Settings loaded");
-    // Settings focuses its search field: Esc puts the keys back in normal mode
-    await d.send("esc");
-    await d.until((s) => s.mode === "normal", "normal mode in Settings");
+    await d.until((s) => s.mode === "normal", "focus back in the start page");
   },
   async run(d) {
-    await d.hold(1.4);
-    await d.theme("gruvbox");
-    await d.hold(2.0);
-    await d.theme("rose-pine");
-    await d.hold(2.2);
+    // the card types `[theme.colors]` and its lines meanwhile
+    await d.hold(6.4);
+    await d.saveTheme({ colors: ROSE_PINE }, "config:save");
+    await d.hold(4.2);
   },
 };
 

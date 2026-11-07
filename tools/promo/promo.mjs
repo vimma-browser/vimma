@@ -129,17 +129,22 @@ export function promoPrefs({ port, themeDir, configPath, scale }) {
  * and `[ui] toolbar` when given: "hidden" records the page up to the window's top edge, with
  * only the status bar around it. Without `name` the build's default built-in shows. `schema = 2`: `[theme] name` is a
  * schema-2 key. With `agent`, the chat window's provider: one OpenAI-compatible endpoint on this
- * machine, as a user lists a local server, and the default for new conversations. With
+ * machine, as a user lists a local server, and the default for new conversations. `colors` is
+ * `[theme.colors]`: single colours over the palette, as the theme shot's config card types. With
  * `search`, a fixture search URL as the default engine: an engine made from a URL is not one of
  * Firefox's own, so the address bar's placeholder names no search company.
  * @param {{ source: "file" | "omarchy", name: string | null, appearance?: "dark" | "light",
- *   toolbar?: "hidden" | "shown", agent?: { endpoint: string, model: string },
- *   search?: boolean }} options
+ *   colors?: Record<string, string>, toolbar?: "hidden" | "shown",
+ *   agent?: { endpoint: string, model: string }, search?: boolean }} options
  */
-export function promoConfig({ source, name, appearance, toolbar, agent, search }) {
+export function promoConfig({ source, name, appearance, colors, toolbar, agent, search }) {
   const lines = ["schema = 2", "", "[theme]", `source = "${source}"`];
   if (name) lines.push(`name = "${name}"`);
   if (appearance) lines.push(`appearance = "${appearance}"`);
+  if (colors) {
+    lines.push("", "[theme.colors]");
+    for (const [k, v] of Object.entries(colors)) lines.push(`${k} = "${v}"`);
+  }
   if (toolbar) lines.push("", "[ui]", `toolbar = "${toolbar}"`);
   if (search) {
     lines.push("", "[search]", 'default = "@s"', "", "[search.aliases]");

@@ -509,23 +509,27 @@ export class Director {
   }
 
   /**
-   * Back to the built-in palette: config.toml's `[theme] source = "file"`, as a user who stops
-   * following Omarchy writes it. Vimma polls config.toml (every 200 ms in the promo profile);
-   * nothing in the state shows the colours, so the shot's next hold covers the poll. Marked as
-   * `theme:builtin`.
+   * Save config.toml's theme as a user does in their editor: `source` (the built-in palette,
+   * "file", unless given), `name` (the built-in palette's) and `colors` (`[theme.colors]`), with
+   * the shot's other keys as they were. Vimma polls config.toml (every 200 ms in the promo
+   * profile); nothing in the state shows the colours, so the shot's next hold covers the poll.
+   * Marked on the track as `mark`.
+   * @param {{ source?: "file" | "omarchy", name?: string, colors?: Record<string, string> }} look
+   * @param {string} mark
    */
-  async builtinTheme() {
+  async saveTheme({ source = "file", name, colors }, mark) {
     writeConfig(
       this.configPath,
       promoConfig({
-        source: "file",
-        name: this.themeName,
+        source,
+        name: name ?? this.themeName,
         appearance: this.appearance,
+        colors,
         toolbar: this.toolbar,
         search: true,
       }),
     );
-    this.mark("theme:builtin");
+    this.mark(mark);
   }
 
   /**

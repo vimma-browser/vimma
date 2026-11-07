@@ -12,6 +12,7 @@ import {
   servedModule,
   supportsThemeName,
 } from "../promo.mjs";
+import { ROSE_PINE } from "../shots.mjs";
 
 describe("parseGeometry", () => {
   it("reads WIDTHxHEIGHT", () => {
@@ -106,6 +107,22 @@ describe("promoConfig", () => {
       'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[agent]\ndefault = "local"\n\n' +
         '[[agent.providers]]\nname = "local"\nkind = "openai"\n' +
         'endpoint = "http://127.0.0.1:8800/v1"\nmodel = "scripted"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+  });
+  it("sets single colours over the palette with [theme.colors], as the config card types them", () => {
+    expect(
+      parseConfig(promoConfig({ source: "file", name: "vimma", colors: ROSE_PINE })).errors,
+    ).toEqual([]);
+    const text = promoConfig({
+      source: "file",
+      name: "tokyo-night",
+      colors: { accent: "#ff9e64" },
+      toolbar: "hidden",
+    });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "tokyo-night"\n\n[theme.colors]\n' +
+        'accent = "#ff9e64"\n\n[ui]\ntoolbar = "hidden"\n',
     );
     expect(parseConfig(text).errors).toEqual([]);
   });
