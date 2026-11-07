@@ -1,7 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: accepted (delivery steps 2, 3, 4a and 6 built; step 2's vimma.dev links wait for step 1) ·
-Area:
+Status: accepted (delivery steps 1, 2, 3, 4a and 6 built) · Area:
 `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
 `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
@@ -12,9 +11,9 @@ step 5, each with its ADR-003 register line · ADR: [ADR-003](../adr/003-own-fil
 
 Issue: [#834](https://github.com/vimma-browser/vimma/issues/834)
 
-Step 2 sets every pref in its rows except the two that point at vimma.dev pages,
-`app.support.baseURL` and `identity.mobilepromo.*`: they keep Firefox's values until the vimma.dev
-support pages (delivery step 1) exist, so that no link points at a missing page.
+Step 2 set every pref in its rows except `app.support.baseURL`, which kept Firefox's value until
+the vimma.dev support pages (delivery step 1) existed, so that no link pointed at a missing page;
+step 1 then set it (decision 2).
 
 ## Summary
 
@@ -206,7 +205,7 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | Relay masks                                                | pref `signon.firefoxRelay.feature` `"disabled"`                                                                                                                                                                                                                            | 2    |
 | Default-browser prompt                                     | pref `browser.shell.checkDefaultBrowser` false                                                                                                                                                                                                                             | 2    |
 | Onboarding infobars, about:addons recommendations          | prefs `…asrouter.providers.onboarding` with `enabled:false`, `extensions.getAddons.showPane` false, `extensions.htmlaboutaddons.recommendations.enabled` false                                                                                                             | 2    |
-| Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `identity.mobilepromo.*` and `browser.backup.template.fallback-download.*` to Vimma's site or releases                                       | 2    |
+| Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `browser.backup.template.fallback-download.*` to Vimma's releases; `identity.mobilepromo.*` kept (decision 2)                                | 2    |
 | `-brand-shortcut-name`                                     | `src/browser/branding/vimma/locales/en-US/brand.ftl` replacing Surfer's generated file                                                                                                                                                                                     | 3    |
 | Product names (Firefox View, Home, Labs, Translations)     | `src/toolkit/…/brandings.ftl` generated from upstream's by `tools/branding/brandings.mjs` (decision 14)                                                                                                                                                                    | 3    |
 | Logos and mascots                                          | chrome `override` lines in `vimma/jar.mn` to Vimma's logo or an empty SVG                                                                                                                                                                                                  | 3    |
@@ -226,11 +225,16 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    accounts off (`identity.fxaccounts.enabled` false), because it removes Sync; leaving them, since
    they are the surfaces this spec exists to remove.
 2. **Support links go to vimma.dev.** `app.support.baseURL` is a vimma.dev support path that keeps
-   Firefox's template, `https://vimma.dev/support/%VERSION%/%OS%/%LOCALE%/` (exact path set in
-   step 2 with the site change in step 1), so every topic link resolves to
-   `…/<locale>/<topic>`. vimma.dev serves a Vimma page for each topic it covers and, for any
-   other topic, a general help page or a forward to the matching Mozilla article, so every link
-   resolves and Vimma's interface never names Mozilla's site. Settings' "Vimma support" button and
+   Firefox's template, `https://vimma.dev/support/%VERSION%/%OS%/%LOCALE%/`, so every topic link
+   resolves to `…/<locale>/<topic>`. vimma.dev opens its general help page for Firefox's general
+   topics (`firefox-help`, `preferences`, an empty topic), its own docs for each topic Vimma
+   documents, and forwards every other topic to the article of the same name on
+   support.mozilla.org, because most of Firefox's articles still apply to the Firefox underneath;
+   so every link resolves and Vimma's interface never names Mozilla's site. Settings > Sync's
+   Android and iOS links (`identity.mobilepromo.*`) keep Firefox's values, because their text,
+   "Download Firefox for Android or iOS", names Firefox's mobile apps, which sync with Vimma
+   (decision 1), and Mozilla's pages are where those apps are downloaded; a vimma.dev page in
+   between would only add a hop. Settings' "Vimma support" button and
    Help > Get Help then open vimma.dev and stay visible. Share Ideas opens Vimma's GitHub
    discussions through `app.feedback.baseURL`; Settings' hard-coded connect.mozilla.org link is
    hidden by CSS, since no pref sets it. Rejected: keeping support.mozilla.org, because Vimma's
@@ -364,10 +368,10 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 ## Security and privacy
 
 No new surface. The changes remove entry points and point links at vimma.dev; Sync, Safe Browsing
-and AMO are unchanged. vimma.dev's support pages are static and receive the Firefox version, OS
+and AMO are unchanged. vimma.dev's support pages receive the Firefox version, OS
 and locale in the path, as support.mozilla.org does today; no other data is sent. The forwards to
-Mozilla articles are fixed redirects on vimma.dev, not an open redirect: an unknown topic gets the
-general help page.
+Mozilla articles are not an open redirect: a topic Vimma does not document is forwarded to the
+article of the same name on support.mozilla.org, and vimma.dev forwards to no other site.
 
 ## Tests
 
@@ -375,7 +379,8 @@ Written first and seen to fail, by step.
 
 - **Prefs** (step 2): `tools/branding/test/branding-prefs.test.mjs` asserts each value in the
   Design table. `browser_vimma_firefox_surfaces_trim.js` (new mochitest) asserts that
-  `getHelpLinkURL("x")` starts with the vimma.dev base, that the account panel's Monitor button
+  `getHelpLinkURL("x")` and a Settings "Learn more" link start with the vimma.dev base and
+  carry the version, OS and locale (step 1), that the account panel's Monitor button
   and `#appMenu-fxa-sign-in-promo` are hidden, that the content context menu has no chatbot or
   link-preview item, and that `Services.prefs` reports each pref back at Firefox's value after a
   user reset is reverted.
@@ -414,9 +419,10 @@ Written first and seen to fail, by step.
 ## Delivery
 
 1. **vimma-site support pages** (`vimma-browser/vimma-site`): the support path with its topic
-   pages, general help page and forwards. A local preview goes to the maintainer before any push,
-   as for every site change. It merges before step 2, so no link points at a missing page.
-2. **Prefs** (`firefox-branding.js`): every row marked step 2, plus the vimma.dev support base.
+   pages, general help page and forwards, then the `app.support.baseURL` default in
+   `firefox-branding.js` once they are live, so no link points at a missing page. A local preview
+   goes to the maintainer before any site push, as for every site change. Tested by the mochitest.
+2. **Prefs** (`firefox-branding.js`): every row marked step 2.
    Tested by the branding vitest and the new mochitest.
 3. **Branding files and images**: Vimma's `brand.ftl` with `-brand-shortcut-name`, the generated
    `brandings.ftl` (decision 14), and the `jar.mn` image overrides. Tested by the

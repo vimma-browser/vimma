@@ -95,9 +95,13 @@ pref("browser.contentblocking.report.show_mobile_app", false);
 pref("browser.contentblocking.report.hide_vpn_banner", true);
 
 // Firefox and Mozilla surfaces (docs/specs/firefox-surfaces-trim.md, delivery step 2). Defaults
-// only (decision 5), so each comes back when set to Firefox's value in about:config. The support
-// links (app.support.baseURL) and Sync's mobile-app links (identity.mobilepromo.*) wait for their
-// vimma.dev pages (delivery step 1).
+// only (decision 5), so each comes back when set to Firefox's value in about:config.
+// Every "Learn more" link, Settings' support button and Help > Get Help (decision 2, delivery step
+// 1): Firefox appends the topic to this base (utilityOverlay.js getHelpLinkURL, moz-support-link).
+// vimma.dev opens its own page for a topic Vimma documents and forwards any other topic to the
+// same article on support.mozilla.org. Sync's Android and iOS links (identity.mobilepromo.*) keep
+// Firefox's values: they download Firefox's mobile apps, which sync with Vimma.
+pref("app.support.baseURL", "https://vimma.dev/support/%VERSION%/%OS%/%LOCALE%/");
 // Help > Share Ideas opens Vimma's discussions instead of ideas.mozilla.org.
 pref("app.feedback.baseURL", "https://github.com/vimma-browser/vimma/discussions");
 // Sync stays (decision 1); the account button's Monitor promo and the app menu's Kit sign-in promo

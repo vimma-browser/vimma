@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 2 (prefs) and 4a (menus).
+// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 1 and 2 (prefs) and 4a (menus).
 
 "use strict";
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 /* global gSync, PanelMultiView, PanelUI, gCustomizeMode, gNavToolbox -- browser window globals
    (browser-sync.js, browser.js, panelUI.js, browser-customization.js) */
+/* global getHelpLinkURL -- a browser window global (utilityOverlay.js) */
 
 const { SidebarManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sidebar/SidebarManager.sys.mjs",
@@ -222,6 +223,52 @@ add_task(async function chatbot_tool_stays_when_the_user_turned_the_chatbot_on()
   });
   MozillaServices.applyUserDefaults();
   Assert.equal(Services.prefs.getStringPref("sidebar.main.tools"), FIREFOX_TOOLS, "kept");
+  await SpecialPowers.popPrefEnv();
+});
+
+/**
+ * The support base as Vimma ships it, formatted: the harness profile points app.support.baseURL
+ * at a dummy server (testing/profiles/unittest-required/user.js), so its user value is cleared.
+ */
+async function useShippedSupportBase() {
+  await SpecialPowers.pushPrefEnv({ clear: [["app.support.baseURL"]] });
+  const { version, OS } = Services.appinfo;
+  return `https://vimma.dev/support/${version}/${OS}/${Services.locale.appLocaleAsBCP47}/`;
+}
+
+add_task(async function support_links_open_vimma_dev() {
+  const base = await useShippedSupportBase();
+  Assert.equal(
+    Services.urlFormatter.formatURLPref("app.support.baseURL"),
+    base,
+    "the support base is vimma.dev's support path with the version, OS and locale",
+  );
+  Assert.equal(getHelpLinkURL("x"), `${base}x`, "a help topic is appended to vimma.dev's base");
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function settings_learn_more_links_open_vimma_dev() {
+  const base = await useShippedSupportBase();
+  await BrowserTestUtils.withNewTab("about:preferences#privacy", async (browser) => {
+    const links = await SpecialPowers.spawn(browser, [], async () => {
+      // Settings builds some groups after load, so wait for its Learn more links to have an href.
+      const selector = 'a[is="moz-support-link"][support-page], moz-support-link[support-page]';
+      await ContentTaskUtils.waitForCondition(
+        () => [...content.document.querySelectorAll(selector)].some((a) => a.href),
+        "Settings' Learn more links",
+      );
+      return [...content.document.querySelectorAll(selector)]
+        .filter((a) => a.href)
+        .map((a) => ({ page: a.getAttribute("support-page"), href: a.href }));
+    });
+    Assert.ok(links.length, `Settings has Learn more links (${links.length})`);
+    for (const { page, href } of links) {
+      Assert.ok(
+        href.startsWith(`${base}${page}`),
+        `Settings' Learn more link for ${page} opens vimma.dev: ${href}`,
+      );
+    }
+  });
   await SpecialPowers.popPrefEnv();
 });
 
