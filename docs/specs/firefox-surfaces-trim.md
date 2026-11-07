@@ -1,6 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: accepted (delivery steps 1, 2, 3, 4a, 4b, 4c and 6 built; step 5 remains) · Area:
+Status: implemented · Area:
 `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
 `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
@@ -216,7 +216,7 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | Typed about:home, newtab, welcome                          | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4c   |
 | Error page illustrations                                   | chrome `override` lines to an empty SVG, pref `browser.netError.illustration.enabled` false                                                                                                                                                                                | 4c   |
 | Link status panel, account panel sign-in box               | Vimma CSS in `firefox-chrome.css` with the theme's tokens                                                                                                                                                                                                                  | 4c   |
-| Vendor strings, About attribution line                     | Fluent patches                                                                                                                                                                                                                                                             | 5    |
+| Vendor strings, About attribution line, error strings      | Fluent and `.properties` patches (decision 16)                                                                                                                                                                                                                             | 5    |
 | `ai_chatbot_sidebar` action and key                        | keymap change (decision 12)                                                                                                                                                                                                                                                | 6    |
 
 1. **Firefox Sync stays; only its entry points go.** Settings > Sync keeps sign-in and Sync works
@@ -382,6 +382,33 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     menus keep these items for now; the app menu, the context menus and customize mode are drawn
     by Gecko and covered on both platforms. Hiding them in the macOS menu bar is a follow-up for
     macOS, because Linux comes first.
+16. **Step 5 patches the strings a user meets with Vimma's defaults.** One patch per file
+    (ADR-003's register), each the smallest hunk:
+    - The About dialog's community paragraph (`community-2`, and `community-exp` on experimental
+      builds) becomes the attribution line, "Built on Firefox by Mozilla", without its links to
+      mozilla.org and `about:credits`, because that paragraph is where the dialog already says who
+      makes the browser; step 4 hides the donation paragraph and the Mozilla terms and privacy
+      links, and leaves this one visible. `about:vimma` shows the same line under its header.
+    - The vendor strings of the quarantined-domain list (`originControls.ftl`,
+      `unifiedExtensions.ftl`, `extensionsUI.ftl`, `aboutAddons.ftl`), the extension report
+      (`addonNotifications.ftl`) and `about:processes` read "Not allowed on this site", "restricted
+      sites", "Report this extension" and "Privileged sites".
+    - The certificate error's "Vimma is backed by the non-profit Mozilla" (`certError.ftl`) says
+      that Vimma uses the open CA store Mozilla administers, because Mozilla does not back Vimma;
+      Mozilla keeps its name there, as decision 11 keeps it for its services.
+    - The network error descriptions in `browser/locales/en-US/chrome/overrides/appstrings.properties`
+      ("Firefox can't establish a connection to the server at …") name Vimma, because they say
+      which browser failed, as the Fluent error strings do through `-brand-short-name`; a
+      `.properties` file has no brand terms, so the name is written in. The browser's file, not
+      `dom/locales`' one, because the browser's chrome manifest overrides the global file.
+    - Not patched, because Vimma's defaults never show them and each patch is a hunk to carry on
+      every Firefox bump: the data collection strings (hidden with their group, decision 6), the
+      onboarding and preonboarding strings (off, decision 13), Firefox Home's `newtab.ftl`,
+      including "your Vimma account" (Vimma never shows Firefox Home), "More from Vimma"
+      (`browser.preferences.moreFromMozilla` false), the chatbot's settings (off, decision 3),
+      Firefox Suggest's online opt-in, the crash reporter (not built) and `about:glean`, a
+      developer page. Settings > Sync's "Download Firefox for Android or iOS" stays, because a
+      phone syncs with Vimma through Firefox's mobile apps, so the name is accurate (decision 11).
 
 ## Security and privacy
 
@@ -419,7 +446,7 @@ Written first and seen to fail, by step.
   Device or Tab Overview widget, while Get Help, Share Ideas and Settings > Sync's sign-in show
   (step 4a); that the About dialog's `#contributeDesc` and mozilla.org bottom links are not
   displayed while its licensing information link and `#communityDesc` (step 5's attribution
-  line) are; that the link status panel and the account panel's sign-in box take the theme's
+  line, decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
   colours; that the error page illustrations serve the empty SVG; and that typing `about:home`,
   `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's
   page with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the

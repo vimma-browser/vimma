@@ -1,0 +1,13 @@
+diff --git a/toolkit/locales/en-US/toolkit/neterror/certError.ftl b/toolkit/locales/en-US/toolkit/neterror/certError.ftl
+index e0433267c21db82df42310305b7ee5386179cee7..96bf7d2ac357ed1b1925077780eb6868616758ac 100644
+--- a/toolkit/locales/en-US/toolkit/neterror/certError.ftl
++++ b/toolkit/locales/en-US/toolkit/neterror/certError.ftl
+@@ -8,7 +8,7 @@ cert-error-intro = { $hostname } uses an invalid security certificate.
+ 
+ cert-error-mitm-intro = Websites prove their identity via certificates, which are issued by certificate authorities.
+ 
+-cert-error-mitm-mozilla = { -brand-short-name } is backed by the non-profit Mozilla, which administers a completely open certificate authority (CA) store. The CA store helps ensure that certificate authorities are following best practices for user security.
++cert-error-mitm-mozilla = { -brand-short-name } uses the completely open certificate authority (CA) store that the non-profit Mozilla administers. The CA store helps ensure that certificate authorities are following best practices for user security.
+ 
+ cert-error-mitm-connection = { -brand-short-name } uses the Mozilla CA store to verify that a connection is secure, rather than certificates supplied by the user’s operating system. So, if an antivirus program or a network is intercepting a connection with a security certificate issued by a CA that is not in the Mozilla CA store, the connection is considered unsafe.
+ 

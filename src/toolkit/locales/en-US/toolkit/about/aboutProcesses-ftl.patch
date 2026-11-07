@@ -1,0 +1,13 @@
+diff --git a/toolkit/locales/en-US/toolkit/about/aboutProcesses.ftl b/toolkit/locales/en-US/toolkit/about/aboutProcesses.ftl
+index 66bc270a5b28e5454ec0aa8712fa657f90124da1..984186a024b58ec9507842b1935ef91d597c1db8 100644
+--- a/toolkit/locales/en-US/toolkit/about/aboutProcesses.ftl
++++ b/toolkit/locales/en-US/toolkit/about/aboutProcesses.ftl
+@@ -53,7 +53,7 @@ about-processes-file-process = Files ({ $pid })
+ about-processes-extension-process = Extensions ({ $pid })
+ about-processes-privilegedabout-process = About pages ({ $pid })
+ about-processes-plugin-process = Plugins ({ $pid })
+-about-processes-privilegedmozilla-process = { -vendor-short-name } sites ({ $pid })
++about-processes-privilegedmozilla-process = Privileged sites ({ $pid })
+ about-processes-gmp-plugin-process = Gecko Media Plugins ({ $pid })
+ about-processes-gpu-process = GPU ({ $pid })
+ about-processes-vr-process = VR ({ $pid })

@@ -4545,6 +4545,12 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
 - **The link panel and the account panel follow your theme.** The link address shown at the
   window's foot when you point at a link, and the account panel's sign-in box, take the theme's
   colours instead of the system's light grey and Firefox's purple.
+- **Vimma names Firefox where it is built on it, and does not claim Mozilla's work.** The About
+  dialog and `about:vimma` say "Built on Firefox by Mozilla". Messages about Mozilla's services
+  name neither: an extension is "Not allowed on this site" (Mozilla's list of restricted sites),
+  the remove dialog offers "Report this extension" (the report goes to addons.mozilla.org), and
+  `about:processes` lists "Privileged sites". Network error pages say "Vimma can't establish a
+  connection", as the rest of the error page does.
 
 ## Accessibility
 

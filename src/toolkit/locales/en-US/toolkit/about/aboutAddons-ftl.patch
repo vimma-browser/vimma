@@ -1,0 +1,13 @@
+diff --git a/toolkit/locales/en-US/toolkit/about/aboutAddons.ftl b/toolkit/locales/en-US/toolkit/about/aboutAddons.ftl
+index a1d4ced9dc57fc7112ce64777266b9cf260f302c..adfd1dcf69c86444704bb6e3fdcdb9373445bfe1 100644
+--- a/toolkit/locales/en-US/toolkit/about/aboutAddons.ftl
++++ b/toolkit/locales/en-US/toolkit/about/aboutAddons.ftl
+@@ -470,7 +470,7 @@ addon-detail-group-label-private-browsing =
+ # Used as a description for the option to allow or block an add-on on quarantined domains.
+ addon-detail-quarantined-domains-label = Run on sites with restrictions
+ # Used as help text part of the quarantined domains UI controls row.
+-addon-detail-quarantined-domains-help = When allowed, the extension will have access to sites restricted by { -vendor-short-name }. Allow only if you trust this extension.
++addon-detail-quarantined-domains-help = When allowed, the extension will have access to restricted sites. Allow only if you trust this extension.
+ # Used as label and tooltip text on the radio inputs associated to the quarantined domains UI controls.
+ addon-detail-quarantined-domains-allow = Allow
+ addon-detail-quarantined-domains-disallow = Don’t Allow
