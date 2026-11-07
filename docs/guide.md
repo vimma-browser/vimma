@@ -4515,6 +4515,14 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   to Device or Tab Overview button. Help keeps Get Help, Share Ideas and Report Deceptive Site,
   the account button stays, and Firefox Sync, sign-in included, works from Settings > Sync as in
   Firefox. These are hidden by Vimma's style sheet, not by a pref.
+- **Settings shows only what works in Vimma, in Vimma's style.** Settings hides Labs, the
+  data collection group (Vimma uploads no telemetry, so its switches changed nothing), the
+  extension and feature recommendation switches (those recommendations are off), and the Share
+  Ideas link to Mozilla's idea board. While Vimma's start page opens in new tabs, Home also hides
+  the Start Page content group that set up Firefox Home; set `vimma.startpage.newtab` to false in
+  `about:config` and it comes back with Firefox Home. Settings has square corners and the theme's
+  font, as the status bar and the pickers do, and keeps Firefox Sync, the Vimma support link and
+  the About section.
 - **Firefox's features keep their place under plain names.** Settings, menus and the address bar
   say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
   Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and

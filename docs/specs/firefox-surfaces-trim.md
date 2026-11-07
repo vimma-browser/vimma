@@ -1,6 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: accepted (delivery steps 1, 2, 3, 4a and 6 built) · Area:
+Status: accepted (delivery steps 1, 2, 3, 4a, 4b and 6 built) · Area:
 `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
 `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
@@ -211,9 +211,9 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | Logos and mascots                                          | chrome `override` lines in `vimma/jar.mn` to Vimma's logo or an empty SVG                                                                                                                                                                                                  | 3    |
 | Labs pane, Firefox Home group, data collection, support    | Vimma CSS in `firefox-pages.css` for the Settings document                                                                                                                                                                                                                 | 4b   |
 | Send to Device, Help items, Tools > Firefox View           | Vimma CSS in `firefox-chrome.css` on the Send to Device items in the page, link and tab menus, `#menu_openFirefoxView`, `#helpSwitchDevice`, the webcompat reporter items, their app menu copies and the `send-tab-button` and `firefox-view-button` widgets (decision 15) | 4a   |
-| About dialog paragraphs and links                          | Vimma's `aboutDialog.css` over the generated one                                                                                                                                                                                                                           | 4b   |
+| About dialog paragraphs and links                          | Vimma's `aboutDialog.css` over the generated one                                                                                                                                                                                                                           | 4c   |
 | Settings look                                              | Vimma CSS: radius tokens 0, `font-family: var(--vimma-font)`                                                                                                                                                                                                               | 4b   |
-| Typed about:home, newtab, welcome, firefoxview             | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4b   |
+| Typed about:home, newtab, welcome, firefoxview             | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4c   |
 | Vendor strings, About attribution line                     | Fluent patches                                                                                                                                                                                                                                                             | 5    |
 | `ai_chatbot_sidebar` action and key                        | keymap change (decision 12)                                                                                                                                                                                                                                                | 6    |
 
@@ -272,15 +272,22 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    because Vimma builds upload no telemetry, health report or studies (m0-mozilla-services,
    "Why telemetry does not upload"), so its switches change nothing. The Firefox Home content group
    is hidden and Vimma's start page is the default in Home's menus, because Vimma never shows
-   Firefox Home (`vimma.startpage.newtab`).
+   Firefox Home (`vimma.startpage.newtab`); the group comes back with Firefox Home when that pref
+   is false, because its switches then shape the new tab page again. Theme-host marks the Settings
+   root while the pref is true, since CSS cannot read a pref. The extension and feature
+   recommendation switches are hidden too, because their `cfr` provider is off
+   ([m0-mozilla-services](m0-mozilla-services.md)), so they change nothing either.
 7. **Hiding rules hold under high contrast.** Rules that hide a surface sit outside the
    `@media not ((prefers-contrast) or (forced-colors))` block, and the Kit mascot rule moves out of
    it, so that a high-contrast user does not see Mozilla's surfaces return; only colour rules stay
    inside it, where [firefox-surfaces-theme](firefox-surfaces-theme.md) behaviour 8 put them.
 8. **Settings looks like Vimma.** The Settings document gets square corners (Firefox's
-   `--border-radius-*` tokens set to 0) and `--vimma-font`, as Vimma's own surfaces use
+   `--border-radius-*` tokens set to 0, and the button, card, field and navigation tokens built on
+   them) and `--vimma-font`, as Vimma's own surfaces use
    (`firefox-toolbar.css`, `cmdline.css`), so Settings no longer reads as a different app inside
    Vimma. Colours stay as [firefox-surfaces-theme](firefox-surfaces-theme.md) set them.
+   `--border-radius-circle` stays, because toggles and radio buttons are told apart by their round
+   shape.
 9. **Images are replaced, not hidden one by one.** A chrome `override` line per logo or mascot
    points it at Vimma's logo (where the layout needs an image, such as the About Vimma
    navigation button) or an empty SVG (illustrations), because one line covers every page that
@@ -427,15 +434,19 @@ Written first and seen to fail, by step.
 3. **Branding files and images**: Vimma's `brand.ftl` with `-brand-shortcut-name`, the generated
    `brandings.ftl` (decision 14), and the `jar.mn` image overrides. Tested by the
    vitest, the mochitest and screenshots.
-4. **Settings, menus and the About dialog**, in two pull requests, because the menus are small and
-   do not depend on the Settings restyle:
+4. **Settings, menus and the About dialog**, in three pull requests, because the menus are small
+   and do not depend on the Settings restyle, and the About dialog, error pages and redirects touch
+   other documents and modules than Settings' style sheet:
    - **4a, menus**: the rule in `firefox-chrome.css` that hides the menus' and customize mode's
      entry points (decision 15). Tested by the mochitest and screenshots of the context menus,
      both Help menus, Tools and customize mode.
-   - **4b, Settings, the About dialog and redirects**: the CSS in `firefox-pages.css` (hidden
-     panes and groups, square corners, the theme's font, high-contrast rules), Vimma's
-     `aboutDialog.css`, and the start page redirect. Tested by the mochitest, the e2e scenario
-     and screenshots.
+   - **4b, Settings**: the CSS in `firefox-pages.css` (hidden panes and groups, square corners,
+     the theme's font, rules that hold under high contrast) and the start page mark on the
+     Settings root (decision 6). Tested by the mochitest and screenshots of Settings.
+   - **4c, About dialog, error pages, link panel, redirects**: Vimma's `aboutDialog.css`, the
+     error page mascot override, the link status panel's theme, the account panel's sign-in box
+     and the start page redirect (decision 10). Tested by the mochitest, the e2e scenario and
+     screenshots.
 5. **String patches**: one Fluent patch per file for the vendor strings and the attribution
    line, each with its line in ADR-003's patch register; `about:vimma`'s attribution line.
    Tested by the mochitest and screenshots.

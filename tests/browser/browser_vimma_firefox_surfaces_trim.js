@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 1 and 2 (prefs) and 4a (menus).
+// Spec: docs/specs/firefox-surfaces-trim.md, delivery steps 1 and 2 (prefs), 4a (menus) and 4b
+// (Settings).
 
 "use strict";
 
@@ -427,5 +428,106 @@ add_task(async function sync_sign_in_stays_in_settings() {
     const button = /** @type {HTMLElement} */ (doc.getElementById("noFxaSignIn"));
     Assert.ok(BrowserTestUtils.isVisible(button), "Settings > Sync offers sign-in");
     Assert.ok(!button.hasAttribute("disabled"), "and it can be pressed");
+  });
+});
+
+// Step 4b: Settings hides what controls nothing in Vimma (decisions 2, 3 and 6), also under
+// forced colours (decision 7), and looks like Vimma (decision 8).
+
+/**
+ * Open a Settings pane and wait for `selector` to be in it.
+ * @param {string} pane the hash, such as "home"
+ * @param {string} selector
+ * @param {(doc: Document, el: HTMLElement) => Promise<void> | void} check
+ */
+async function inSettingsPane(pane, selector, check) {
+  await BrowserTestUtils.withNewTab(`about:preferences#${pane}`, async (browser) => {
+    const doc = browser.contentDocument;
+    await TestUtils.waitForCondition(
+      () => doc.querySelector(selector),
+      `Settings' ${pane} pane builds ${selector}`,
+    );
+    await check(doc, /** @type {HTMLElement} */ (doc.querySelector(selector)));
+  });
+}
+
+/** Each surface decision 6 hides: [pane, selector, what it is]. */
+const HIDDEN_IN_SETTINGS = [
+  ["home", 'setting-group[groupid="home"]', "the Firefox Home content group"],
+  ["privacy", 'setting-group[groupid="dataCollection"]', "the data collection group"],
+  ["general", "#setting-control-cfrRecommendations", "the extension recommendations switch"],
+  ["general", "#setting-control-cfrRecommendations-features", "the feature recommendations switch"],
+  ["general", "#setting-control-supportShareIdeas", "the connect.mozilla.org link"],
+];
+
+async function settingsHideWhatControlsNothing(label) {
+  for (const [pane, selector, what] of HIDDEN_IN_SETTINGS) {
+    await inSettingsPane(pane, selector, (doc, el) => {
+      Assert.equal(
+        doc.defaultView.getComputedStyle(el).display,
+        "none",
+        `Settings does not show ${what}${label}`,
+      );
+    });
+  }
+  await inSettingsPane("general", "#category-experimental", (doc, labs) => {
+    // Firefox shows the Labs button once a Labs recipe is enrolled (firefoxLabs.mjs).
+    labs.hidden = false;
+    Assert.equal(
+      doc.defaultView.getComputedStyle(labs).display,
+      "none",
+      `Settings' navigation has no Firefox Labs${label}`,
+    );
+  });
+}
+
+add_task(async function settings_hide_what_controls_nothing() {
+  await settingsHideWhatControlsNothing("");
+});
+
+add_task(async function settings_hide_them_under_forced_colours() {
+  await SpecialPowers.pushPrefEnv({ set: [["ui.useAccessibilityTheme", 1]] });
+  await settingsHideWhatControlsNothing(" under forced colours");
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function settings_keep_sync_and_support() {
+  await inSettingsPane("general", "#setting-control-supportGetHelp", (doc, help) => {
+    const sync = /** @type {HTMLElement} */ (doc.getElementById("category-sync"));
+    Assert.ok(BrowserTestUtils.isVisible(sync), "Settings' navigation keeps Sync");
+    Assert.notEqual(
+      doc.defaultView.getComputedStyle(help).display,
+      "none",
+      "Settings keeps the Vimma support link",
+    );
+  });
+});
+
+add_task(async function settings_show_firefox_home_without_the_start_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+  await inSettingsPane("home", 'setting-group[groupid="home"]', (doc, group) => {
+    Assert.notEqual(
+      doc.defaultView.getComputedStyle(group).display,
+      "none",
+      "with Firefox Home as the new tab page, Settings shows its content group",
+    );
+  });
+  await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function settings_look_like_vimma() {
+  await inSettingsPane("general", "setting-group moz-card", (doc, card) => {
+    const win = doc.defaultView;
+    const radius = (/** @type {Element | null | undefined} */ el) =>
+      el ? win.getComputedStyle(el).borderTopLeftRadius : "missing";
+    const font = win.getComputedStyle(doc.documentElement).getPropertyValue("--vimma-font").trim();
+    Assert.ok(font, `the theme's font token reaches Settings: ${font}`);
+    const body = /** @type {HTMLElement} */ (doc.body);
+    Assert.equal(win.getComputedStyle(body).fontFamily, font, "Settings' text is the theme's font");
+    Assert.equal(radius(card), "0px", "a Settings card is square");
+    const nav = doc.querySelector("moz-page-nav-button")?.shadowRoot?.querySelector("a, button");
+    Assert.equal(radius(nav), "0px", "a navigation button is square");
+    const search = doc.querySelector("moz-input-search")?.shadowRoot?.querySelector("input");
+    Assert.equal(radius(search), "0px", "the search field is square");
   });
 });
