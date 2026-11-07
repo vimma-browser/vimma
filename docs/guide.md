@@ -4509,6 +4509,12 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   in the theme's colours, the account group in Settings > Sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
   `about:restartrequired`, the sidebar's empty lists) show no picture.
+- **Vimma names Firefox where it is built on it, and does not claim Mozilla's work.** The About
+  dialog and `about:vimma` say "Built on Firefox by Mozilla". Messages about Mozilla's services
+  name neither: an extension is "Not allowed on this site" (Mozilla's list of restricted sites),
+  the remove dialog offers "Report this extension" (the report goes to addons.mozilla.org), and
+  `about:processes` lists "Privileged sites". Network error pages say "Vimma can't establish a
+  connection", as the rest of the error page does.
 
 ## Accessibility
 

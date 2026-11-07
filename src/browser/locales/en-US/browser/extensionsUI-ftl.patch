@@ -1,0 +1,13 @@
+diff --git a/browser/locales/en-US/browser/extensionsUI.ftl b/browser/locales/en-US/browser/extensionsUI.ftl
+index a37a1ba6adc1e5656e8a818510255f9d24f54ff5..e863e5408b12a0f7d4d3da7742490b12c83e1ff6 100644
+--- a/browser/locales/en-US/browser/extensionsUI.ftl
++++ b/browser/locales/en-US/browser/extensionsUI.ftl
+@@ -28,7 +28,7 @@ webext-quarantine-confirmation-title =
+ webext-quarantine-confirmation-line-1 =
+     To protect your data, this extension is not allowed on this site.
+ webext-quarantine-confirmation-line-2 =
+-    Allow this extension if you trust it to read and change your data on sites restricted by { -vendor-short-name }.
++    Allow this extension if you trust it to read and change your data on restricted sites.
+ 
+ webext-quarantine-confirmation-allow =
+     .label = Allow
