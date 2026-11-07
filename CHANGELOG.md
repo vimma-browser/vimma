@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.17](https://github.com/vimma-browser/vimma/compare/v0.1.16...v0.1.17) (2026-11-07)
+## [Unreleased]
+
+## [0.1.17](https://github.com/vimma-browser/vimma/compare/v0.1.16...v0.1.17) · Firefox 159.0.1 (2026-11-07)
 
 
 ### Added
@@ -21,8 +23,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 * **actors:** vim keys on view-source pages ([#849](https://github.com/vimma-browser/vimma/issues/849)) ([921a65b](https://github.com/vimma-browser/vimma/commit/921a65b2555ba5fd5d125207cc7a984ac7ec0950))
 * **keys:** esc in normal mode takes focus off the page's link or button ([#831](https://github.com/vimma-browser/vimma/issues/831)) ([57cf3c7](https://github.com/vimma-browser/vimma/commit/57cf3c7c541ceb7ed4d0efabc4e99c11ccaccc35))
-
-## [Unreleased]
 
 ## [0.1.16](https://github.com/vimma-browser/vimma/compare/v0.1.15...v0.1.16) · Firefox 159.0.1 (2026-11-06)
 
