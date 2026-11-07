@@ -334,9 +334,10 @@ export const VimmaActors = {
    * that loses focus before the press gets none.
    * @param {any} browser XULBrowserElement
    * @param {string} actionId  page.suggestion_next or page.suggestion_prev
+   * @param {() => boolean} [still]  the caller's own check, made again just before the press
    * @returns {Promise<boolean>} whether a list was open; false means the caller falls back
    */
-  async suggestion(browser, actionId) {
+  async suggestion(browser, actionId, still = () => true) {
     const frame = Services.focus.focusedContentBrowsingContext;
     const win = browser.ownerDocument?.defaultView;
     if (!win || !frame || frame.top !== browser.browsingContext) return false;
@@ -349,7 +350,7 @@ export const VimmaActors = {
     }
     const step = suggestionStep(actionId, open);
     if (step.kind !== "press") return false;
-    pressKeyLater(win, step.key, () => stillFocused(browser, frame));
+    pressKeyLater(win, step.key, () => stillFocused(browser, frame) && still());
     return true;
   },
 

@@ -13,6 +13,17 @@
 // gives only under automation.
 
 /** The keys pressed this way, with their DOM key codes. */
+let pressing = false;
+
+/**
+ * Whether a key pressed here is being dispatched now: the window's own key listeners see it
+ * first, synchronously inside the processor's keydown and keyup, and must leave it to the page.
+ * Otherwise a press that comes late could complete a Vimma sequence the user began meanwhile
+ * (`ctrl+b`, resize mode's arrows), and a suggestion action bound to an arrow key would press
+ * itself again (docs/security.md K6).
+ */
+export const pressingKey = () => pressing;
+
 const KEY_CODES = Object.freeze({ Enter: 13, ArrowUp: 38, ArrowDown: 40 });
 
 /**
@@ -37,7 +48,12 @@ export function pressKeyLater(win, key, stillFocused) {
       code: key,
       keyCode: KEY_CODES[key],
     });
-    tip.keydown(event);
-    tip.keyup(event);
+    pressing = true;
+    try {
+      tip.keydown(event);
+      tip.keyup(event);
+    } finally {
+      pressing = false;
+    }
   });
 }

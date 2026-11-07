@@ -420,7 +420,6 @@ export class VimmaChild extends JSWindowActorChild {
     this.#watched = sel;
   }
 
-  /** Whether the focus is in something editable, whose selection is insert mode's. */
   /**
    * Whether the focused field's suggestion list is open (docs/specs/page-suggestions.md): one
    * boolean, from the page's own attributes and Firefox's autocomplete popup for this frame.
@@ -446,6 +445,7 @@ export class VimmaChild extends JSWindowActorChild {
     });
   }
 
+  /** Whether the focus is in something editable, whose selection is insert mode's. */
   #inEditable() {
     const doc = this.document;
     if (doc.designMode === "on") return true;

@@ -159,6 +159,32 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
   });
 });
 
+// docs/security.md K6: the arrow key Vimma presses is the page's. With an insert-mode binding on
+// <Down> (here: new tab), the key still reaches the page and runs no binding.
+add_task(async function a_pressed_arrow_key_runs_no_vimma_binding() {
+  const { compileKeymap } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/core/keymap.mjs",
+  );
+  const mac = { mac: Services.appinfo.OS === "Darwin" };
+  VimmaHost.configure({
+    keymap: compileKeymap({ modal: { insert: { "<Down>": "tab.new" } } }, mac),
+  });
+  try {
+    await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
+      const tabs = gBrowser.tabs.length;
+      await focusContent(browser);
+      await focusField(browser, browser, "combo");
+      EventUtils.sendString("a");
+      await waitForValue(browser, "combo", "a", "typed");
+      ctrl("n");
+      await waitForValue(browser, "combo", "alpha", "ctrl+n's ArrowDown reaches the page");
+      Assert.equal(gBrowser.tabs.length, tabs, "and runs no <Down> binding");
+    });
+  } finally {
+    VimmaHost.configure({ keymap: compileKeymap({}, mac) });
+  }
+});
+
 add_task(async function a_page_that_takes_ctrl_n_keeps_it() {
   await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
     await focusContent(browser);

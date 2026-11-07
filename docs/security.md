@@ -2458,16 +2458,20 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
 
 - K6. `ctrl+n` and `ctrl+p` in a page's suggestion list
   ([page-suggestions](specs/page-suggestions.md)) **must** press `ArrowDown` or `ArrowUp` only
-  for a key the user pressed in insert mode, only after the page left it alone, and only in the
-  `<browser>` and frame that had focus then and still have it: a page's late reply neither
-  presses a key in, nor runs the chord's other binding for, the tab or pane focused since. The
-  key comes from the parent's `TextInputProcessor` (`actors/enter-key.mjs`, as for K5's `Enter`)
-  and carries no modifier. The focused frame's actor answers `Vimma:SuggestionsOpen` with one
+  for a key the user pressed in insert mode, only after the page left it alone, only in the
+  `<browser>` the key went to, and only in the frame focused when the page's reply arrives and
+  still focused, in the same mode, at the press: a page's late reply neither presses a key in,
+  nor runs the chord's other binding for, the tab or pane focused since, and `Esc` meanwhile
+  stops both. The key comes from the parent's `TextInputProcessor` (`actors/enter-key.mjs`, as
+  for K5's `Enter`), carries no modifier, and is the page's: Vimma's own key handling skips it,
+  so it neither completes a Vimma sequence nor runs a binding on an arrow key. The focused frame's actor answers `Vimma:SuggestionsOpen` with one
   boolean computed from its page's own attributes; the parent treats anything but `true` as
   "no list", and no message from a content process can ask for a key. A page, or a compromised
   content process, can at most turn the user's own `ctrl+n` into an arrow key in itself, which it
   could do by handling `ctrl+n`.
   [`suggestionListOpen`](../packages/vimma-core/test/suggestions.test.mjs),
+  [`ctrl_n_and_ctrl_p_move_an_aria_combobox`](../tests/browser/browser_vimma_page_suggestions.js),
+  [`a_pressed_arrow_key_runs_no_vimma_binding`](../tests/browser/browser_vimma_page_suggestions.js),
   [`a_page_that_takes_ctrl_n_keeps_it`](../tests/browser/browser_vimma_page_suggestions.js),
   [`a_late_reply_presses_no_arrow_key_in_another_tab`](../tests/browser/browser_vimma_page_suggestions.js),
   [`a_hidden_list_left_aria_expanded_is_not_open`](../tests/browser/browser_vimma_page_suggestions.js)
