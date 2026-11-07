@@ -11,7 +11,7 @@
  * CLI: node tools/branding/brandings.mjs [--check]   (npm run gen-brandings)
  */
 import { spawnSync } from "node:child_process";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -123,13 +123,21 @@ export function generate(upstream) {
  * @returns {string | null}
  */
 export function readUpstream() {
-  let link;
+  // One open that refuses a link (ELOOP), rather than lstat then read, so the file read is the
+  // file checked.
+  let fd;
   try {
-    link = lstatSync(UPSTREAM).isSymbolicLink();
-  } catch {
-    return null;
+    fd = openSync(UPSTREAM, constants.O_RDONLY | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ELOOP") return null;
   }
-  if (!link) return readFileSync(UPSTREAM, "utf8");
+  if (fd !== undefined) {
+    try {
+      return readFileSync(fd, "utf8");
+    } finally {
+      closeSync(fd);
+    }
+  }
   const git = spawnSync("git", ["-C", `${root}engine`, "show", `HEAD:${PATH}`], {
     encoding: "utf8",
   });
