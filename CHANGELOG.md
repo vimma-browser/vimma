@@ -2,6 +2,26 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.17](https://github.com/vimma-browser/vimma/compare/v0.1.16...v0.1.17) (2026-11-07)
+
+
+### Added
+
+* **branding:** firefox's help links open vimma.dev ([#846](https://github.com/vimma-browser/vimma/issues/846)) ([b11cc72](https://github.com/vimma-browser/vimma/commit/b11cc72a13c21c0cd30c45689bfb8cdbdae2b1ad))
+* **branding:** hide send to device, firefox view and mozilla help items in menus ([#844](https://github.com/vimma-browser/vimma/issues/844)) ([23b3b49](https://github.com/vimma-browser/vimma/commit/23b3b495e3c8642b8ccdd485322f91b8640fe028))
+* **branding:** neutral names for firefox's features and no firefox logos ([#841](https://github.com/vimma-browser/vimma/issues/841)) ([a54bf1b](https://github.com/vimma-browser/vimma/commit/a54bf1bd2bd17a0c567785927f571ef194749175))
+* **branding:** turn off firefox's ai chatbot, mozilla promos and default-browser prompt ([#838](https://github.com/vimma-browser/vimma/issues/838)) ([da78b45](https://github.com/vimma-browser/vimma/commit/da78b452934189f3b8c6690c8111d1102fa2d138))
+* **keys:** drop the ai_chatbot_sidebar action and its ctrl+alt+x key ([#836](https://github.com/vimma-browser/vimma/issues/836)) ([3c6fe0a](https://github.com/vimma-browser/vimma/commit/3c6fe0a6e02d75d9098e9a81ac9ff9c85ef315ab))
+* **keys:** move through a page's suggestion list with ctrl+n and ctrl+p ([#840](https://github.com/vimma-browser/vimma/issues/840)) ([d5b0d58](https://github.com/vimma-browser/vimma/commit/d5b0d580dc0aaeb70e5cdef58b6bb2b69b18dcbe))
+* **keys:** open a new window with ctrl+b shift+c instead of ctrl+n ([#843](https://github.com/vimma-browser/vimma/issues/843)) ([b2148b0](https://github.com/vimma-browser/vimma/commit/b2148b0baac93716ae035bcb0a8c12bc19d2cbc4)), closes [#837](https://github.com/vimma-browser/vimma/issues/837)
+* **promo:** v3 shots, with vimma's own agent at the payment question ([#832](https://github.com/vimma-browser/vimma/issues/832)) ([89d6bf6](https://github.com/vimma-browser/vimma/commit/89d6bf68985ab74538627bed215d21c63b73397f))
+
+
+### Fixed
+
+* **actors:** vim keys on view-source pages ([#849](https://github.com/vimma-browser/vimma/issues/849)) ([921a65b](https://github.com/vimma-browser/vimma/commit/921a65b2555ba5fd5d125207cc7a984ac7ec0950))
+* **keys:** esc in normal mode takes focus off the page's link or button ([#831](https://github.com/vimma-browser/vimma/issues/831)) ([57cf3c7](https://github.com/vimma-browser/vimma/commit/57cf3c7c541ceb7ed4d0efabc4e99c11ccaccc35))
+
 ## [Unreleased]
 
 ## [0.1.16](https://github.com/vimma-browser/vimma/compare/v0.1.15...v0.1.16) · Firefox 159.0.1 (2026-11-06)
