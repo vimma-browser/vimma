@@ -107,15 +107,24 @@ async function firefoxCheck() {
   return checker.checkForUpdates(Ci.nsIUpdateChecker.FOREGROUND_CHECK).result;
 }
 
+// The real appinfo, taken once: each setUpdateURL wraps it afresh. Saving the current value per
+// call and restoring it in a cleanup function left a wrapper behind, because the harness runs
+// cleanup functions first registered, first run (browser-test.js), so the last restore put back
+// the URL of the call before it, and later tests (browser_vimma_updater.js) saw that URL.
+const originalAppinfo = Services.appinfo;
+let restoresAppinfo = false;
+
 /** The update URL Firefox's checker asks, for this process (Mozilla's setUpdateURL). */
 function setUpdateURL(url) {
-  const original = Services.appinfo;
-  Services.appinfo = Object.create(original, {
+  Services.appinfo = Object.create(originalAppinfo, {
     updateURL: { configurable: true, enumerable: true, writable: false, value: url },
   });
-  registerCleanupFunction(() => {
-    Services.appinfo = original;
-  });
+  if (!restoresAppinfo) {
+    restoresAppinfo = true;
+    registerCleanupFunction(() => {
+      Services.appinfo = originalAppinfo;
+    });
+  }
 }
 
 function addCookie(host) {
