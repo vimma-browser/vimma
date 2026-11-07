@@ -200,6 +200,16 @@ jobs:
           rm -f .surfer/engine/firefox-*.source.tar.xz
           df -h . | tail -1
 
+      # Before the import, which replaces upstream's brandings.ftl with a link to ours and leaves
+      # no copy (the engine has no history). Fails when src/'s generated file is stale or upstream
+      # has a new Firefox or Mozilla name the mapping does not decide (docs/rebase.md).
+      - name: Product names follow upstream's brandings.ftl (tools/branding/brandings.mjs)
+        id: brandings
+        continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
+        env:
+          BRANDINGS_REQUIRE_UPSTREAM: "1"
+        run: npx --no -- vitest run tools/branding/test/brandings.test.mjs
+
       - name: Import our patches and sources
         id: import
         run: npm run import

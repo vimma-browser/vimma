@@ -40,6 +40,7 @@
     "agent-bench": "node tools/agent-bench/agent-bench.mjs",
     "mutation": "stryker run",
     "gen-agent-tools": "node tools/gen-agent-tools.mjs",
+    "gen-brandings": "node tools/branding/brandings.mjs",
     "gen-update-keys": "node tools/update/gen-update-keys.mjs"
   },
   "devDependencies": {

@@ -20,6 +20,7 @@ import { parseArgs } from "node:util";
 
 /** The step ids e2e.yml gives the build, the checks and the suites, in order. */
 export const STEPS = [
+  "brandings",
   "import",
   "branding",
   "upstream-prefs",
