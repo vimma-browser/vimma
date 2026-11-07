@@ -4500,6 +4500,14 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `true` bring them back).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
+- **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and
+  Help → Get Help open `https://vimma.dev/support/…`. Topics Vimma documents open its own pages;
+  any other topic forwards you to the same article on Mozilla's support site, which still applies
+  to the Firefox underneath. The link carries the Firefox version, your OS and your language, as
+  Firefox's links do (`app.support.baseURL`; Firefox's value is
+  `https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/`). Settings > Sync's links to
+  Firefox for Android and iOS still open Mozilla's download pages, since those apps sync with
+  Vimma.
 - **Firefox's features keep their place under plain names.** Settings, menus and the address bar
   say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
   Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and
