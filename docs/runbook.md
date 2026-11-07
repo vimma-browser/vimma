@@ -548,7 +548,7 @@ Limits:
 | -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
 | `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest` + macOS   | nothing                                    |
 | `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
-| `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | the `NIGHTLY_ENABLED` variable             |
+| `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | nothing (`NIGHTLY_ENABLED` is set)         |
 | `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
 | `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
 | `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
@@ -1209,7 +1209,8 @@ about 26 GB and the swap file 16 GB. The free space is a property of the runner 
 documented guarantee (GitHub documents 14 GB); if the guard fails, the image has shrunk, and
 removing preinstalled toolsets (`/usr/local/lib/android` alone is about 9 GB) is the first fix.
 
-**Switching them on.** Both stay off until a repository variable says otherwise:
+**Switching them on.** Both stay off until a repository variable says otherwise; both
+variables are set (`gh variable list`), and the commands below are how they were switched on:
 
 ```sh
 gh workflow run nightly.yml --ref main                # one manual nightly from main, to check it

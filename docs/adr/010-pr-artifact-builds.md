@@ -33,7 +33,9 @@ Tests that only a full build can pass carry `skip-if = ["artifact"]` in `browser
 tests and all compiled-in build-config behaviour run only on local full builds.** A PR that
 touches `*.patch`, `configs/`, `moz.configure` or branding must therefore report a local
 `npm run mochitest -- tests/browser/` on the full build (PR template checkbox). Once the nightly
-runs, it also runs the whole suite on the full build.
+runs, it also runs the whole suite on the full build. (Since changed: `NIGHTLY_ENABLED` is set,
+so `nightly.yml` runs the whole suite on a full build of `main` every night. The PR checkbox
+stays, because the nightly sees a change only after it has merged.)
 
 ## Reasoning
 
