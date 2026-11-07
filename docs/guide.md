@@ -4023,6 +4023,7 @@ type reaches the page, and `ctrl+b` sequences still work.
 | `:control [on N\|off]`                | Full control for `vimma-ctl`: the status, on for `N` minutes (asks `y/N`), or off now ([below](#agent-workspace)).                             |
 | `:theme [dark\|light\|system]`        | The built-in palette dark, light or as the system is; bare, the other of dark and light (see [Colours](#colours-and-themes)).                  |
 | `:about`, `:vimma`                    | Opens [about:vimma](#aboutvimma) in a new tab.                                                                                                 |
+| `:settings [pane]`, `:prefs`          | Opens Settings, or selects its open tab in this workspace; `home`, `search`, `privacy`, `sync` (`Tab`) go to that pane.                        |
 | `:addons`                             | Opens the [add-on picker](#add-ons), as `ctrl+b e`.                                                                                            |
 | `:downloads`                          | Opens the [downloads picker](#downloads), as `ctrl+b d`.                                                                                       |
 | `:addon name`                         | Opens that add-on's popup; `Tab` completes the name ([Add-ons](#add-ons)).                                                                     |

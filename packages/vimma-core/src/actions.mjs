@@ -211,6 +211,8 @@ group("Browser", [
     "Downloads picker: open, show in folder, pause, retry, remove",
   ],
   ["addons_manager", "browser.addons", "Add-ons manager (about:addons)"],
+  // m1-cmdline (Since changed): `:settings [pane]`; an open Settings tab is reused.
+  ["settings", "browser.settings", "Firefox Settings (about:preferences), or a pane by name"],
   ["history_library", "browser.history", "History (the Library)"],
   ["bookmarks_library", "browser.bookmarks", "Bookmarks (the Library)"],
   ["mute_tab", "tab.mute", "Mute or unmute the tab"],

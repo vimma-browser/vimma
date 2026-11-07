@@ -161,6 +161,10 @@ export const COMMANDS = Object.freeze([
   // docs/specs/addon-manager.md. Without a name, :addon asks on the command line.
   cmd("addons", "none", "addons.picker", "Add-on picker"),
   cmd("addon", "optional", "addons.popup", "Open an add-on's popup (Tab completes names)"),
+  // m1-cmdline (Since changed): Firefox's Settings, or one pane (SETTINGS_PANES).
+  cmd("settings", "optional", "browser.settings", "Firefox Settings, or a pane (Tab completes)", {
+    aliases: ["preferences", "prefs"],
+  }),
   cmd("site", "none", "site.permissions", "Site permissions of this page: allow, block, reset", {
     aliases: ["permissions"],
   }),
@@ -216,6 +220,28 @@ export function parseToolbarCommand(text) {
   if (word === "show" || word === "hide") return { kind: word };
   const near = closest(word, [...TOOLBAR_WORDS]);
   const refusal = ':toolbar takes "show", "hide" or nothing';
+  return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
+}
+
+/**
+ * `:settings`' panes, in completion order: the ones a keyboard user goes to most (the start
+ * page, search engines, privacy, sync). Each is about:preferences' own `#pane` name.
+ */
+const SETTINGS_PANES = Object.freeze(/** @type {const} */ (["home", "search", "privacy", "sync"]));
+
+/**
+ * `:settings [pane]`: about:preferences, or the pane's `#pane` URL.
+ * @param {string | undefined} text
+ * @returns {{ kind: "open", url: string } | { kind: "refuse", text: string }}
+ */
+export function parseSettingsCommand(text) {
+  const word = (text ?? "").trim().toLowerCase();
+  if (!word) return { kind: "open", url: "about:preferences" };
+  if (/** @type {readonly string[]} */ (SETTINGS_PANES).includes(word)) {
+    return { kind: "open", url: `about:preferences#${word}` };
+  }
+  const near = closest(word, [...SETTINGS_PANES]);
+  const refusal = `:settings takes ${SETTINGS_PANES.join(", ")} or nothing`;
   return { kind: "refuse", text: near ? `${refusal}: did you mean "${near}"?` : refusal };
 }
 
@@ -484,6 +510,7 @@ const ARGUMENT_KINDS = Object.freeze({
   // The two a first-time user reaches for, then back to following the system.
   theme: { names: "theme", kind: "appearance", fixed: ["dark", "light", "system"] },
   toolbar: { names: "toolbar", kind: "toolbar", fixed: TOOLBAR_WORDS },
+  settings: { names: "settings", kind: "settings pane", fixed: SETTINGS_PANES },
   bookmarkstoolbar: {
     names: "bookmarkstoolbar",
     kind: "bookmarks toolbar",
