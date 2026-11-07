@@ -1,6 +1,7 @@
 # Spec: firefox-surfaces-trim
 
-Status: accepted (delivery steps 2, 3 and 6 built; step 2's vimma.dev links wait for step 1) · Area:
+Status: accepted (delivery steps 2, 3, 4a and 6 built; step 2's vimma.dev links wait for step 1) ·
+Area:
 `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
 `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
@@ -133,8 +134,8 @@ All engine paths are from Firefox 159.0.1 (`surfer.json`), read in `engine/`.
   (`toolkit/modules/RemotePageAccessManager.sys.mjs:45`), so one pref covers every caller.
 - **The Help menu in the app menu.** The app menu's Help view copies only menu items whose
   `hidden` property is false (`browser/components/customizableui/content/panelUI.js:841-844`). A
-  CSS rule hides an item in the menu bar but not in the app menu, so Help items are hidden by
-  setting `hidden`.
+  CSS rule on a menu bar item hides it in the menu bar only; its copy in the app menu is another
+  element, with the id `appMenu_` plus the item's id (`cloneHelpMenuItem`, `:76`).
 - **The account button** is in the navigation toolbar's default placements
   (`browser/components/customizableui/CustomizableUI.sys.mjs:375`). Send to Device
   (`send-tab-button`) and Firefox View (`firefox-view-button`) are customize-palette widgets
@@ -197,25 +198,25 @@ Each change uses the lightest mechanism that reaches it, in this order: a pref d
 sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or a chrome
 `override` in `vimma/jar.mn`; a small upstream patch for strings.
 
-| Surface                                                    | Mechanism                                                                                                                                                                                                                                     | Step |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| Support links, Share Ideas                                 | prefs `app.support.baseURL` (vimma.dev), `app.feedback.baseURL` (Vimma's GitHub discussions)                                                                                                                                                  | 2    |
-| Monitor promo, Kit sign-in promo                           | prefs `…pxiToolbarEnabled.monitorEnabled` false, `…appMenuSignInPromo.dismissed` true                                                                                                                                                         | 2    |
-| AI chatbot, link preview, AI controls pane, launcher tools | prefs `browser.ml.chat.enabled` false, `browser.ml.linkPreview.enabled` false, `browser.preferences.aiControls` false, `sidebar.main.tools` Firefox's list without `aichat`                                                                   | 2    |
-| Relay masks                                                | pref `signon.firefoxRelay.feature` `"disabled"`                                                                                                                                                                                               | 2    |
-| Default-browser prompt                                     | pref `browser.shell.checkDefaultBrowser` false                                                                                                                                                                                                | 2    |
-| Onboarding infobars, about:addons recommendations          | prefs `…asrouter.providers.onboarding` with `enabled:false`, `extensions.getAddons.showPane` false, `extensions.htmlaboutaddons.recommendations.enabled` false                                                                                | 2    |
-| Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `identity.mobilepromo.*` and `browser.backup.template.fallback-download.*` to Vimma's site or releases          | 2    |
-| `-brand-shortcut-name`                                     | `src/browser/branding/vimma/locales/en-US/brand.ftl` replacing Surfer's generated file                                                                                                                                                        | 3    |
-| Product names (Firefox View, Home, Labs, Translations)     | `src/toolkit/…/brandings.ftl` generated from upstream's by `tools/branding/brandings.mjs` (decision 14)                                                                                                                                       | 3    |
-| Logos and mascots                                          | chrome `override` lines in `vimma/jar.mn` to Vimma's logo or an empty SVG                                                                                                                                                                     | 3    |
-| Labs pane, Firefox Home group, data collection, support    | Vimma CSS in `firefox-pages.css` for the Settings document                                                                                                                                                                                    | 4    |
-| Send to Device, Help items, Tools > Firefox View           | Vimma code at window start sets `hidden` on `#context-sendpagetodevice`, `#context-sendlinktodevice`, `#helpSwitchDevice`, `#menu_openFirefoxView` and the webcompat reporter items, because the app menu copies items by `hidden` (Research) | 4    |
-| About dialog paragraphs and links                          | Vimma's `aboutDialog.css` over the generated one                                                                                                                                                                                              | 4    |
-| Settings look                                              | Vimma CSS: radius tokens 0, `font-family: var(--vimma-font)`                                                                                                                                                                                  | 4    |
-| Typed about:home, newtab, welcome, firefoxview             | Vimma's start page module redirects the top-level load                                                                                                                                                                                        | 4    |
-| Vendor strings, About attribution line                     | Fluent patches                                                                                                                                                                                                                                | 5    |
-| `ai_chatbot_sidebar` action and key                        | keymap change (decision 12)                                                                                                                                                                                                                   | 6    |
+| Surface                                                    | Mechanism                                                                                                                                                                                                                                                                  | Step |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| Support links, Share Ideas                                 | prefs `app.support.baseURL` (vimma.dev), `app.feedback.baseURL` (Vimma's GitHub discussions)                                                                                                                                                                               | 2    |
+| Monitor promo, Kit sign-in promo                           | prefs `…pxiToolbarEnabled.monitorEnabled` false, `…appMenuSignInPromo.dismissed` true                                                                                                                                                                                      | 2    |
+| AI chatbot, link preview, AI controls pane, launcher tools | prefs `browser.ml.chat.enabled` false, `browser.ml.linkPreview.enabled` false, `browser.preferences.aiControls` false, `sidebar.main.tools` Firefox's list without `aichat`                                                                                                | 2    |
+| Relay masks                                                | pref `signon.firefoxRelay.feature` `"disabled"`                                                                                                                                                                                                                            | 2    |
+| Default-browser prompt                                     | pref `browser.shell.checkDefaultBrowser` false                                                                                                                                                                                                                             | 2    |
+| Onboarding infobars, about:addons recommendations          | prefs `…asrouter.providers.onboarding` with `enabled:false`, `extensions.getAddons.showPane` false, `extensions.htmlaboutaddons.recommendations.enabled` false                                                                                                             | 2    |
+| Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `identity.mobilepromo.*` and `browser.backup.template.fallback-download.*` to Vimma's site or releases                                       | 2    |
+| `-brand-shortcut-name`                                     | `src/browser/branding/vimma/locales/en-US/brand.ftl` replacing Surfer's generated file                                                                                                                                                                                     | 3    |
+| Product names (Firefox View, Home, Labs, Translations)     | `src/toolkit/…/brandings.ftl` generated from upstream's by `tools/branding/brandings.mjs` (decision 14)                                                                                                                                                                    | 3    |
+| Logos and mascots                                          | chrome `override` lines in `vimma/jar.mn` to Vimma's logo or an empty SVG                                                                                                                                                                                                  | 3    |
+| Labs pane, Firefox Home group, data collection, support    | Vimma CSS in `firefox-pages.css` for the Settings document                                                                                                                                                                                                                 | 4b   |
+| Send to Device, Help items, Tools > Firefox View           | Vimma CSS in `firefox-chrome.css` on the Send to Device items in the page, link and tab menus, `#menu_openFirefoxView`, `#helpSwitchDevice`, the webcompat reporter items, their app menu copies and the `send-tab-button` and `firefox-view-button` widgets (decision 15) | 4a   |
+| About dialog paragraphs and links                          | Vimma's `aboutDialog.css` over the generated one                                                                                                                                                                                                                           | 4b   |
+| Settings look                                              | Vimma CSS: radius tokens 0, `font-family: var(--vimma-font)`                                                                                                                                                                                                               | 4b   |
+| Typed about:home, newtab, welcome, firefoxview             | Vimma's start page module redirects the top-level load                                                                                                                                                                                                                     | 4b   |
+| Vendor strings, About attribution line                     | Fluent patches                                                                                                                                                                                                                                                             | 5    |
+| `ai_chatbot_sidebar` action and key                        | keymap change (decision 12)                                                                                                                                                                                                                                                | 6    |
 
 1. **Firefox Sync stays; only its entry points go.** Settings > Sync keeps sign-in and Sync works
    as in Firefox, while the account button's Monitor promo, the app menu's Kit sign-in promo and
@@ -338,6 +339,23 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     `brandings.ftl` without `brand.ftl` would keep Firefox's names and each duplicate term logs a
     Fluent error. This changes [search-engines](search-engines.md) decision 10, which carries a
     "Since changed" note.
+15. **The menus' entry points are hidden by CSS, not by `hidden`.** One rule in
+    `firefox-chrome.css`, outside the high-contrast block (decision 7), hides the Send to Device
+    menus and their separators, Tools > Tab Overview, Help > Switching to a New Device, Help >
+    Report Broken Site and the protections panel's Report Broken Site button, and the Send to
+    Device and Tab Overview widgets in customize mode and on any toolbar. CSS, because Firefox
+    rewrites `hidden` on these items each time a menu opens or a tab loads (`browser-sync.js`,
+    `updateContentContextMenu` and `updateTabContextMenu`; `ReportBrokenSite.sys.mjs`,
+    `enableOrDisableMenuitems`, from the Help menu's and the app menu's `popupshown`), so a
+    `hidden` set at window start would not hold. The app menu's Help view copies each visible
+    Help item as `appMenu_` plus its id (Research) and replaces the Switch Device copy with a
+    promo while `browser.nova.enabled` is on, so the rule names those copies and the promo too;
+    every group of the Help view keeps an item, so no separator is left alone. Get Help and Share
+    Ideas stay, because they open vimma.dev and Vimma's discussions (decision 2); Report Deceptive
+    Site stays (decision 11); the account button stays, because it is Sync's entry point
+    (decision 1). Rejected: Vimma code that sets `hidden` at window start, the mechanism this
+    table first named, for the reason above; a listener that sets `hidden` again before each menu
+    opens, because it races Firefox's own listeners on the same events.
 
 ## Security and privacy
 
@@ -364,9 +382,11 @@ Written first and seen to fail, by step.
 - **Settings, menus, About dialog** (step 4): the mochitest opens `about:preferences` and asserts
   the Labs, AI controls, Firefox Home and data collection groups and the connect.mozilla.org link
   are not displayed, also with `prefers-contrast` forced; that a Settings card's computed
-  `border-radius` is `0px` and its `font-family` is the theme's; that `#context-sendpagetodevice`,
-  `#helpSwitchDevice` and `#menu_openFirefoxView` have `hidden`, and that the app menu's Help view
-  has no item for them; that the About dialog's `#communityDesc`, `#contributeDesc` and mozilla.org
+  `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and tab menus
+  show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app menu's
+  Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
+  Device or Tab Overview widget, while Get Help, Share Ideas and Settings > Sync's sign-in show
+  (step 4a); that the About dialog's `#communityDesc`, `#contributeDesc` and mozilla.org
   bottom links are not displayed; and that loading `about:home`, `about:newtab`, `about:welcome`
   and `about:firefoxview` ends on the start page. An e2e scenario types those URLs through the
   control socket and checks the tab's URL.
@@ -397,10 +417,15 @@ Written first and seen to fail, by step.
 3. **Branding files and images**: Vimma's `brand.ftl` with `-brand-shortcut-name`, the generated
    `brandings.ftl` (decision 14), and the `jar.mn` image overrides. Tested by the
    vitest, the mochitest and screenshots.
-4. **Settings, menus and the About dialog**: the CSS in `firefox-pages.css` and
-   `firefox-chrome.css` (hidden panes and groups, square corners, the theme's font, high-contrast
-   rules), the code that sets `hidden` on menu items, Vimma's `aboutDialog.css`, and the start
-   page redirect. Tested by the mochitest, the e2e scenario and screenshots.
+4. **Settings, menus and the About dialog**, in two pull requests, because the menus are small and
+   do not depend on the Settings restyle:
+   - **4a, menus**: the rule in `firefox-chrome.css` that hides the menus' and customize mode's
+     entry points (decision 15). Tested by the mochitest and screenshots of the context menus,
+     both Help menus, Tools and customize mode.
+   - **4b, Settings, the About dialog and redirects**: the CSS in `firefox-pages.css` (hidden
+     panes and groups, square corners, the theme's font, high-contrast rules), Vimma's
+     `aboutDialog.css`, and the start page redirect. Tested by the mochitest, the e2e scenario
+     and screenshots.
 5. **String patches**: one Fluent patch per file for the vendor strings and the attribution
    line, each with its line in ADR-003's patch register; `about:vimma`'s attribution line.
    Tested by the mochitest and screenshots.

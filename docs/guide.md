@@ -4500,6 +4500,12 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `true` bring them back).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
+- **No Mozilla entry points in the menus.** The page, link and tab menus have no Send to
+  Device, Tools has no Tab Overview (Firefox View), the Help menu (in the menu bar and in the app
+  menu) has no Switching to a New Device or Report Broken Site, and customize mode offers no Send
+  to Device or Tab Overview button. Help keeps Get Help, Share Ideas and Report Deceptive Site,
+  the account button stays, and Firefox Sync, sign-in included, works from Settings > Sync as in
+  Firefox. These are hidden by Vimma's style sheet, not by a pref.
 - **Firefox's features keep their place under plain names.** Settings, menus and the address bar
   say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
   Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and
