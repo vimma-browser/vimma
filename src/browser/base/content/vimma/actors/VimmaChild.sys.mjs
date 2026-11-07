@@ -8,6 +8,7 @@
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
+import { suggestionListOpen } from "../core/suggestions.mjs";
 import { isSensitiveAutocomplete } from "../core/agent-element.mjs";
 import {
   AGENT_CONSOLE,
@@ -68,6 +69,53 @@ function deepActiveElement(doc) {
   let el = doc.activeElement;
   while (el?.openOrClosedShadowRoot?.activeElement) el = el.openOrClosedShadowRoot.activeElement;
   return el;
+}
+
+/** @param {Element} el  its first ARIA role token, lower case, or "" */
+const roleOf = (el) => (el.getAttribute("role") ?? "").trim().split(/\s+/)[0]?.toLowerCase() ?? "";
+
+/**
+ * A field as core suggestions.mjs reads it (docs/specs/page-suggestions.md decision 4): its
+ * role, aria-expanded, and the elements its aria-controls and aria-owns name, looked up in its
+ * own tree (a shadow root or the document).
+ * @param {Element} el
+ * @returns {import("../core/suggestions.mjs").FieldSnapshot}
+ */
+function fieldSnapshot(el) {
+  const root = /** @type {Document | ShadowRoot} */ (el.getRootNode());
+  const ids = `${el.getAttribute("aria-controls") ?? ""} ${el.getAttribute("aria-owns") ?? ""}`
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 16);
+  const popups = [];
+  for (const id of ids) {
+    const p = root.getElementById?.(id);
+    if (!p) continue;
+    popups.push({
+      role: roleOf(p),
+      rendered: p.getClientRects().length > 0,
+      visible: p.checkVisibility({ visibilityProperty: true }),
+      hasOption: !!p.querySelector('[role~="option"]'),
+    });
+  }
+  return { role: roleOf(el), expanded: el.getAttribute("aria-expanded") ?? "", popups };
+}
+
+/**
+ * The nearest ancestor with role="combobox" (the ARIA 1.1 wrapper), across shadow roots.
+ * @param {Element} el
+ * @returns {Element | null}
+ */
+function comboboxAncestor(el) {
+  /** @type {Node | null} */
+  let node = el.parentNode;
+  while (node) {
+    if (node.nodeType === 1 && roleOf(/** @type {Element} */ (node)) === "combobox") {
+      return /** @type {Element} */ (node);
+    }
+    node = node.parentNode ?? /** @type {ShadowRoot} */ (node).host ?? null;
+  }
+  return null;
 }
 
 /**
@@ -373,6 +421,31 @@ export class VimmaChild extends JSWindowActorChild {
   }
 
   /** Whether the focus is in something editable, whose selection is insert mode's. */
+  /**
+   * Whether the focused field's suggestion list is open (docs/specs/page-suggestions.md): one
+   * boolean, from the page's own attributes and Firefox's autocomplete popup for this frame.
+   */
+  #suggestionsOpen() {
+    const doc = this.document;
+    if (!doc?.hasFocus()) return false;
+    const el = deepActiveElement(doc);
+    let autocompletePopup = false;
+    try {
+      autocompletePopup = !!this.manager?.getActor("AutoComplete")?.popupOpen;
+    } catch {
+      // No AutoComplete actor in this frame (a system page): no Firefox popup.
+    }
+    if (!el || el === doc.body) {
+      return suggestionListOpen({ focused: null, combobox: null, autocompletePopup });
+    }
+    const combo = comboboxAncestor(el);
+    return suggestionListOpen({
+      focused: fieldSnapshot(el),
+      combobox: combo ? fieldSnapshot(combo) : null,
+      autocompletePopup,
+    });
+  }
+
   #inEditable() {
     const doc = this.document;
     if (doc.designMode === "on") return true;
@@ -630,6 +703,8 @@ export class VimmaChild extends JSWindowActorChild {
         return this.#focusInput(msg.data?.count);
       case "Vimma:FocusLast":
         return this.#focusLast();
+      case "Vimma:SuggestionsOpen":
+        return this.#suggestionsOpen();
       case "Vimma:Edit": {
         // ctrl+w, ctrl+u, ctrl+h after the page left them alone (key-handling-batch § 2): the
         // editor's own command on the focused text field, so undo works.

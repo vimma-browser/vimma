@@ -177,6 +177,9 @@ group("Page", [
   ],
   ["focus_input", "page.focus_input", "Focus the first text field (with a count: the Nth)"],
   ["view_source", "page.view_source", "View the page's source in a new tab"],
+  // docs/specs/page-suggestions.md: ArrowDown and ArrowUp in an open suggestion list.
+  ["suggestion_next", "page.suggestion_next", "Next suggestion in the page's list"],
+  ["suggestion_prev", "page.suggestion_prev", "Previous suggestion in the page's list"],
 ]);
 
 // docs/specs/firefox-keys.md decision 3: Firefox's own features on Firefox's keys, each running

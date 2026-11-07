@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_page_suggestions.js (docs/specs/page-suggestions.md). An ARIA 1.2
+     combobox whose list opens on input and whose highlight moves on ArrowDown and ArrowUp; a
+     combobox left aria-expanded with its list hidden; an open combobox that takes ctrl+n itself;
+     a plain input. Every keydown is logged with isTrusted. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma suggest combobox</title>
+  </head>
+  <body>
+    <input
+      id="combo"
+      role="combobox"
+      aria-autocomplete="list"
+      aria-expanded="false"
+      aria-controls="lb"
+    />
+    <ul id="lb" role="listbox" hidden>
+      <li role="option" id="o0">alpha</li>
+      <li role="option" id="o1">apple</li>
+      <li role="option" id="o2">avocado</li>
+    </ul>
+    <input id="stale" role="combobox" aria-expanded="true" aria-controls="lb2" />
+    <ul id="lb2" role="listbox" style="display: none">
+      <li role="option">stale</li>
+    </ul>
+    <input id="takes" role="combobox" aria-expanded="true" aria-controls="lb3" />
+    <ul id="lb3" role="listbox">
+      <li role="option">own</li>
+    </ul>
+    <input id="plain" />
+    <script>
+      const combo = document.getElementById("combo");
+      const lb = document.getElementById("lb");
+      let active = -1;
+      window.log = [];
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          const mods = (e.ctrlKey ? "ctrl+" : "") + (e.altKey ? "alt+" : "");
+          window.log.push(`${e.target.id}:${mods}${e.key}:${e.isTrusted}`);
+        },
+        true,
+      );
+      combo.addEventListener("input", () => {
+        lb.hidden = false;
+        combo.setAttribute("aria-expanded", "true");
+      });
+      combo.addEventListener("keydown", (e) => {
+        if (combo.getAttribute("aria-expanded") !== "true") return;
+        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+        e.preventDefault();
+        const opts = lb.querySelectorAll("[role=option]");
+        active = (active + (e.key === "ArrowDown" ? 1 : opts.length - 1)) % opts.length;
+        combo.setAttribute("aria-activedescendant", opts[active].id);
+        combo.value = opts[active].textContent;
+      });
+      document.getElementById("takes").addEventListener("keydown", (e) => {
+        if (e.ctrlKey && e.key === "n") e.preventDefault();
+      });
+    </script>
+  </body>
+</html>

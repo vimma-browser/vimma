@@ -2456,6 +2456,22 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`a_late_reply_presses_no_enter_in_another_tab`](../tests/browser/browser_vimma_edit_keys.js),
   [`ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter`](../tests/browser/browser_vimma_edit_keys.js)
 
+- K6. `ctrl+n` and `ctrl+p` in a page's suggestion list
+  ([page-suggestions](specs/page-suggestions.md)) **must** press `ArrowDown` or `ArrowUp` only
+  for a key the user pressed in insert mode, only after the page left it alone, and only in the
+  `<browser>` and frame that had focus then and still have it: a page's late reply neither
+  presses a key in, nor runs the chord's other binding for, the tab or pane focused since. The
+  key comes from the parent's `TextInputProcessor` (`actors/enter-key.mjs`, as for K5's `Enter`)
+  and carries no modifier. The focused frame's actor answers `Vimma:SuggestionsOpen` with one
+  boolean computed from its page's own attributes; the parent treats anything but `true` as
+  "no list", and no message from a content process can ask for a key. A page, or a compromised
+  content process, can at most turn the user's own `ctrl+n` into an arrow key in itself, which it
+  could do by handling `ctrl+n`.
+  [`suggestionListOpen`](../packages/vimma-core/test/suggestions.test.mjs),
+  [`a_page_that_takes_ctrl_n_keeps_it`](../tests/browser/browser_vimma_page_suggestions.js),
+  [`a_late_reply_presses_no_arrow_key_in_another_tab`](../tests/browser/browser_vimma_page_suggestions.js),
+  [`a_hidden_list_left_aria_expanded_is_not_open`](../tests/browser/browser_vimma_page_suggestions.js)
+
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
 Vimma's binaries are built from Mozilla's Firefox source, this repository, and the npm packages

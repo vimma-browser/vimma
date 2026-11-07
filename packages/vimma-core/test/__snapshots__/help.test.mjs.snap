@@ -99,6 +99,8 @@ Page
   open_clipboard_tab        P                                                    Open the clipboard's URL or search in a new tab
   focus_input               gi                                                   Focus the first text field (with a count: the Nth)
   view_source               gf                                                   View the page's source in a new tab
+  suggestion_next           ctrl+n [insert]                                      Next suggestion in the page's list
+  suggestion_prev           ctrl+p [insert]                                      Previous suggestion in the page's list
 
 Browser
   new_window                ctrl+n                                               New window
@@ -422,6 +424,8 @@ Page
   open_clipboard_tab        P                                                    Open the clipboard's URL or search in a new tab
   focus_input               gi                                                   Focus the first text field (with a count: the Nth)
   view_source               gf                                                   View the page's source in a new tab
+  suggestion_next           ctrl+n [insert]                                      Next suggestion in the page's list
+  suggestion_prev           ctrl+p [insert]                                      Previous suggestion in the page's list
 
 Browser
   new_window                ctrl+n                                               New window

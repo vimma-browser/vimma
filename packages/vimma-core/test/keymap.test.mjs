@@ -254,6 +254,52 @@ describe("[firefox] enable in the keymap", () => {
   });
 });
 
+// docs/specs/page-suggestions.md: ctrl+n and ctrl+p in insert mode, and their fallback.
+describe("suggestion keys in insert mode", () => {
+  test("ctrl+n and ctrl+p move through a page's suggestion list", () => {
+    const km = compileKeymap();
+    expect(km.trie("insert").children.get("ctrl+n")?.action?.name).toBe("suggestion_next");
+    expect(km.trie("insert").children.get("ctrl+p")?.action?.name).toBe("suggestion_prev");
+    expect(km.trie("normal").children.get("ctrl+p")?.action?.name).toBe("print_page");
+  });
+
+  test("the fallback is the chord's [keys] binding in that mode", () => {
+    const km = compileKeymap();
+    expect(km.fallback("insert", "ctrl+p")?.name).toBe("print_page");
+    // new_window stays on ctrl+n until sub-PR 2 moves it.
+    expect(km.fallback("insert", "ctrl+n")?.name).toBe("new_window");
+    expect(km.fallback("normal", "ctrl+p")).toBeNull();
+    expect(km.fallback("insert", "ctrl+x")).toBeNull();
+  });
+
+  test("a user's [keys] binding on the chord is the fallback", () => {
+    const km = compileKeymap({ keys: { new_window: [], new_tab: ["ctrl+n"] } });
+    expect(km.fallback("insert", "ctrl+n")?.name).toBe("new_tab");
+  });
+
+  test("[unbind] insert drops the suggestion key", () => {
+    const km = compileKeymap({ unbind: { insert: ["<C-n>"] } });
+    expect(km.trie("insert").children.get("ctrl+n")).toBeUndefined();
+  });
+
+  test("[firefox] enable drops the default suggestion binding on its chord", () => {
+    const km = compileKeymap({ firefox: { enable: ["ctrl+n"] } });
+    expect(km.trie("insert").children.get("ctrl+n")).toBeUndefined();
+    expect(km.keysFor("suggestion_next")).toEqual([]);
+    expect(km.fallback("insert", "ctrl+n")).toBeNull();
+    expect(km.trie("insert").children.get("ctrl+p")?.action?.name).toBe("suggestion_prev");
+  });
+
+  test("a user's [modal.insert] binding on the enabled chord is an error", () => {
+    expect(() =>
+      compileKeymap({
+        modal: { insert: { "<C-n>": "suggestion_next" } },
+        firefox: { enable: ["ctrl+n"] },
+      }),
+    ).toThrow("ctrl+n is bound to suggestion_next in [modal.insert]; unbind it or drop it here");
+  });
+});
+
 // docs/specs/firefox-keys.md decision 5: a `:` value runs a command line.
 describe(": bindings in [modal.*]", () => {
   test("compile to a command binding with its line", () => {

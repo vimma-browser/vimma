@@ -116,13 +116,15 @@ shows as `space n` ([guide](guide.md#configtoml)).
 
 ## Page
 
-| Action                                             | Config name          | Bindings        |
-| -------------------------------------------------- | -------------------- | --------------- |
-| Copy the page's URL                                | `yank_url`           | `yy`, `Y [pdf]` |
-| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`             |
-| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`             |
-| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`            |
-| View the page's source in a new tab                | `view_source`        | `gf`            |
+| Action                                             | Config name          | Bindings          |
+| -------------------------------------------------- | -------------------- | ----------------- |
+| Copy the page's URL                                | `yank_url`           | `yy`, `Y [pdf]`   |
+| Open the clipboard's URL or search in this tab     | `open_clipboard`     | `p`               |
+| Open the clipboard's URL or search in a new tab    | `open_clipboard_tab` | `P`               |
+| Focus the first text field (with a count: the Nth) | `focus_input`        | `gi`              |
+| View the page's source in a new tab                | `view_source`        | `gf`              |
+| Next suggestion in the page's list                 | `suggestion_next`    | `ctrl+n [insert]` |
+| Previous suggestion in the page's list             | `suggestion_prev`    | `ctrl+p [insert]` |
 
 ## Browser
 
