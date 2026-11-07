@@ -6,8 +6,9 @@
 // list is open, ctrl+n presses a trusted ArrowDown and ctrl+p a trusted ArrowUp in it: an ARIA
 // combobox, the same in a cross-origin frame, and Firefox's own datalist popup. The page goes
 // first: a page that takes ctrl+n keeps it. With no list open (a plain field, a combobox left
-// aria-expanded with its list hidden), the chord's [keys] binding runs: ctrl+p prints, ctrl+n
-// opens a window until new_window moves (sub-PR 2). Normal mode presses no arrow key.
+// aria-expanded with its list hidden), the chord's [keys] binding runs: ctrl+p prints, and ctrl+n,
+// which has none since new_window moved to ctrl+b shift+c, only reaches the page and opens no
+// window. Normal mode presses no arrow key.
 
 "use strict";
 
@@ -84,17 +85,42 @@ function waitForValue(target, id, want, msg) {
 const ctrl = (key) => EventUtils.synthesizeKey(key, { ctrlKey: true });
 
 /**
- * Presses ctrl+n where the fallback opens a window (new_window, until sub-PR 2), and closes it.
- * @param {XULBrowserElement} browser
+ * Runs fn and counts the windows opened while it runs (decision 7: ctrl+n opens none).
+ * @param {() => Promise<void>} fn
+ * @returns {Promise<number>}
  */
-async function ctrlNOpensAWindow(browser) {
-  const opened = BrowserTestUtils.waitForNewWindow();
-  ctrl("n");
-  const win = await opened;
-  Assert.ok(win, "ctrl+n with no list open runs new_window");
-  await BrowserTestUtils.closeWindow(win);
-  await SimpleTest.promiseFocus(window);
-  await focusContent(browser);
+async function windowsOpenedBy(fn) {
+  let opened = 0;
+  /** @type {nsIObserver} */
+  const observer = { observe: (_s, topic) => topic === "domwindowopened" && opened++ };
+  Services.ww.registerNotification(observer);
+  try {
+    await fn();
+  } finally {
+    Services.ww.unregisterNotification(observer);
+  }
+  return opened;
+}
+
+/**
+ * Presses ctrl+n in a field with no list open: the page gets it, and no window opens.
+ * @param {XULBrowserElement} browser
+ * @param {string} id  the focused field, as the page logs it
+ */
+async function ctrlNOpensNoWindow(browser, id) {
+  const opened = await windowsOpenedBy(async () => {
+    ctrl("n");
+    await TestUtils.waitForCondition(
+      async () => (await pageLog(browser)).includes(`${id}:ctrl+n:true`),
+      "the page received ctrl+n",
+    );
+    // The page's reply reaches the parent before this answer from the same process, so a
+    // fallback would have run by the next main-thread turn.
+    await pageLog(browser);
+    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+  });
+  Assert.equal(opened, 0, "ctrl+n with no list open opens no window");
+  Assert.equal(BrowserWindowTracker.orderedWindows.length, 1, "one window");
 }
 
 add_task(async function ctrl_n_and_ctrl_p_move_an_aria_combobox() {
@@ -265,10 +291,8 @@ add_task(async function with_no_list_open_the_keys_binding_runs() {
       ctrl("p");
       await TestUtils.waitForCondition(() => prints() === 1, "ctrl+p runs print_page");
       await focusField(browser, browser, "plain");
-      await ctrlNOpensAWindow(browser);
-      const log = await pageLog(browser);
-      Assert.ok(log.includes("plain:ctrl+n:true"), "the page received ctrl+n");
-      Assert.deepEqual(arrows(log), [], "and no arrow key");
+      await ctrlNOpensNoWindow(browser, "plain");
+      Assert.deepEqual(arrows(await pageLog(browser)), [], "and no arrow key");
     });
   });
 });
@@ -291,18 +315,18 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
     EventUtils.synthesizeKey("KEY_Enter");
     await hidden;
     await waitForValue(browser, "dl", "banana", "Enter fills the field");
-    // With the popup closed ctrl+n does not open it; until sub-PR 2 it opens a window.
+    // With the popup closed ctrl+n opens neither the popup nor a window.
     await SpecialPowers.spawn(browser, [], () => {
       content.document.getElementById("dl").value = "";
     });
     await focusField(browser, browser, "dl");
-    await ctrlNOpensAWindow(browser);
+    await ctrlNOpensNoWindow(browser, "dl");
     Assert.ok(!popup.popupOpen, "ctrl+n did not open the popup");
   });
 });
 
 // Chrome fields keep their keys (decision 6 of the spec's Behaviour, item 6): in the address bar
-// ctrl+p prints and ctrl+n opens a window as before.
+// ctrl+p prints as before, and ctrl+n opens no window (decision 7).
 add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
   await withPrintRecorder(async (prints) => {
     await BrowserTestUtils.withNewTab(COMBO, async () => {
@@ -310,12 +334,11 @@ add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
       ctrl("p");
       await TestUtils.waitForCondition(() => prints() === 1, "ctrl+p prints from the address bar");
       gURLBar.focus();
-      const opened = BrowserTestUtils.waitForNewWindow();
-      ctrl("n");
-      const win = await opened;
-      Assert.ok(win, "ctrl+n in the address bar opens a window");
-      await BrowserTestUtils.closeWindow(win);
-      await SimpleTest.promiseFocus(window);
+      const opened = await windowsOpenedBy(async () => {
+        ctrl("n");
+        await new Promise((r) => Services.tm.dispatchToMainThread(r));
+      });
+      Assert.equal(opened, 0, "ctrl+n in the address bar opens no window");
     });
   });
 });

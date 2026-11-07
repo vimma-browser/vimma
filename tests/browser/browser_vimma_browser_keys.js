@@ -467,12 +467,28 @@ add_task(async function ctrl_q_asks_as_firefoxs_quit_shortcut() {
   BrowserTestUtils.removeTab(tab);
 });
 
-add_task(async function ctrl_n_opens_a_window() {
+// docs/specs/page-suggestions.md decisions 7 and 8: new_window is ctrl+b shift+c; ctrl+n has no
+// binding in normal mode, so it reaches the page, and Firefox's own new window stays off.
+add_task(async function ctrl_b_shift_c_opens_a_window_and_ctrl_n_does_not() {
   const tab = await normalPage();
+  const browser = tab.linkedBrowser;
+  let windows = 0;
+  /** @type {nsIObserver} */
+  const observer = { observe: (_s, topic) => topic === "domwindowopened" && windows++ };
+  Services.ww.registerNotification(observer);
+  try {
+    EventUtils.synthesizeKey("n", { ctrlKey: true });
+    Assert.ok(await waitForPageKey(browser, ["n"]), "the page gets ctrl+n, not prevented");
+    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    Assert.equal(windows, 0, "ctrl+n opens no window");
+  } finally {
+    Services.ww.unregisterNotification(observer);
+  }
   const opened = BrowserTestUtils.waitForNewWindow();
-  EventUtils.synthesizeKey("n", { ctrlKey: true });
+  EventUtils.synthesizeKey("b", { ctrlKey: true });
+  EventUtils.synthesizeKey("C", { shiftKey: true });
   const win = await opened;
-  Assert.ok(win.gBrowser, "a browser window opened");
+  Assert.ok(win.gBrowser, "ctrl+b shift+c opened a browser window");
   await BrowserTestUtils.closeWindow(win);
   BrowserTestUtils.removeTab(tab);
 });

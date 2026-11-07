@@ -1176,8 +1176,8 @@
           "description": "New window",
           "keys": [
             {
-              "keys": "ctrl+n",
-              "chords": ["ctrl+n"]
+              "keys": "ctrl+b shift+c",
+              "chords": ["ctrl+b", "shift+c"]
             }
           ]
         },

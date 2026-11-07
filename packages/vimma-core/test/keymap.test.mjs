@@ -266,14 +266,24 @@ describe("suggestion keys in insert mode", () => {
   test("the fallback is the chord's [keys] binding in that mode", () => {
     const km = compileKeymap();
     expect(km.fallback("insert", "ctrl+p")?.name).toBe("print_page");
-    // new_window stays on ctrl+n until sub-PR 2 moves it.
-    expect(km.fallback("insert", "ctrl+n")?.name).toBe("new_window");
+    // new_window is on ctrl+b shift+c (decision 7): with no list open ctrl+n is the page's.
+    expect(km.fallback("insert", "ctrl+n")).toBeNull();
     expect(km.fallback("normal", "ctrl+p")).toBeNull();
     expect(km.fallback("insert", "ctrl+x")).toBeNull();
   });
 
+  test("new_window is ctrl+b shift+c, and ctrl+n has no binding outside insert mode", () => {
+    const km = compileKeymap();
+    expect(km.keysFor("new_window")).toEqual(["ctrl+b shift+c"]);
+    expect(km.trie("normal").children.get("ctrl+b")?.children.get("shift+c")?.action?.name).toBe(
+      "new_window",
+    );
+    for (const mode of /** @type {const} */ (["normal", "visual", "panel", "help", "command"]))
+      expect(km.trie(mode).children.get("ctrl+n"), mode).toBeUndefined();
+  });
+
   test("a user's [keys] binding on the chord is the fallback", () => {
-    const km = compileKeymap({ keys: { new_window: [], new_tab: ["ctrl+n"] } });
+    const km = compileKeymap({ keys: { new_tab: ["ctrl+n"] } });
     expect(km.fallback("insert", "ctrl+n")?.name).toBe("new_tab");
   });
 

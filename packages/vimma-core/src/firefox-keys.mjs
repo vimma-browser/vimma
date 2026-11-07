@@ -53,7 +53,7 @@ export const OVERLAP_CHORDS = Object.freeze([
  *   key is off in every tab all the same
  * @property {boolean} [conditional]  only in some builds or settings
  * @property {boolean} [unbound]  the action has no default key on this chord (another row's
- *   action owns it)
+ *   action owns it, or the action moved to another key)
  * @property {"fullscreen"} [when]  only then (Firefox's reserved F11 that leaves full screen)
  */
 
@@ -86,7 +86,20 @@ function rowsOf(source, rows) {
  */
 export const FIREFOX_SHORTCUTS = Object.freeze([
   ...rowsOf("main", [
-    ["ctrl+n", "key_newNavigator", "cmd_newNavigator", "new window", "b", "new_window", "all", "V"],
+    // page-suggestions decisions 7 and 8: new_window is prefix+shift+c; ctrl+n is the insert-mode
+    // suggestion key, so Firefox's key stays off, and a user who binds new_window here again
+    // gets it before the page, as Firefox's reserved key was.
+    [
+      "ctrl+n",
+      "key_newNavigator",
+      "cmd_newNavigator",
+      "new window",
+      "b",
+      "new_window",
+      "all",
+      "V",
+      { unbound: true },
+    ],
     [
       "ctrl+t",
       "key_newNavigatorTab",

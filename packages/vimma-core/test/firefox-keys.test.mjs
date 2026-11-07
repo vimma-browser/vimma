@@ -458,6 +458,27 @@ describe("bound means off (decision 2)", () => {
     expect(plan.unmatched).toEqual([]);
   });
 
+  // docs/specs/page-suggestions.md decisions 7 and 8: new_window left ctrl+n, but ctrl+n is still
+  // the insert-mode suggestion key, so Firefox's new window stays off until [firefox] enable.
+  test("Firefox's ctrl+n stays off after new_window moved, until enable gives it back", () => {
+    const newWindow = [{ id: "key_newNavigator", chord: "ctrl+n" }];
+    const row = FIREFOX_SHORTCUTS.find((r) => r.id === "key_newNavigator");
+    expect(row).toMatchObject({ action: "new_window", unbound: true, first: "V" });
+    const bound = boundChords(compileKeymap());
+    expect(bound.has("ctrl+n")).toBe(true);
+    expect(ids(planFirefoxKeys(newWindow, { disable: [], enable: [] }, { bound }))).toEqual([
+      "key_newNavigator",
+    ]);
+    const enabled = boundChords(compileKeymap({ firefox: { enable: ["ctrl+n"] } }));
+    expect(enabled.has("ctrl+n")).toBe(false);
+    const plan = planFirefoxKeys(
+      newWindow,
+      { disable: [], enable: ["ctrl+n"] },
+      { bound: enabled },
+    );
+    expect(ids(plan)).toEqual([]);
+  });
+
   test("an internal key stays the editor's even when bound", () => {
     const plan = planFirefoxKeys(KEYS, { disable: [], enable: [] }, { bound: new Set(["ctrl+c"]) });
     expect(ids(plan)).toEqual([]);

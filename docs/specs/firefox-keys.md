@@ -48,7 +48,8 @@ tests.**
   lands: the common Firefox keys are Vimma's defaults, and they do what Firefox did.
 - As a user on Google Docs, Figma or a web terminal, a page that takes `ctrl+f`, `ctrl+s` or
   `ctrl+plus` for itself still gets it, as in Firefox. `ctrl+t`, `ctrl+n`, `ctrl+tab` and the
-  `ctrl+b` prefix stay the browser's, as in Firefox and Vimma today.
+  `ctrl+b` prefix stay the browser's, as in Firefox and Vimma today. (Since changed: `ctrl+n` is no
+  longer a browser key outside insert mode; [page-suggestions](page-suggestions.md) decision 7.)
 - As a user typing in a text field or the address bar, `ctrl+t` still opens a tab, and
   `ctrl+z`, `ctrl+shift+z`, `ctrl+c`, `ctrl+v`, `ctrl+a` still edit the text.
 - As a user who needs a Firefox feature Vimma has no named action for, `:firefox Tools:Downloads`
@@ -257,6 +258,11 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 
 (Since changed: `ctrl+alt+x` is fate c, unbound and off, with no `ai_chatbot_sidebar` action;
 [firefox-surfaces-trim](firefox-surfaces-trim.md) decision 12.)
+
+(Since changed: `new_window` is `ctrl+b shift+c`, and `ctrl+n` has no Vimma binding outside insert
+mode, where it moves a page's suggestion list; Firefox's `key_newNavigator` stays off because the
+chord is bound there, until `[firefox] enable = ["ctrl+n"]`;
+[page-suggestions](page-suggestions.md) decisions 7 and 8.)
 
 Three zoom keys have an empty letter in en-US (`full-zoom-reduce-shortcut-alt-b`,
 `…-enlarge-shortcut-alt2`, `…-reset-shortcut-alt`: `.key = {""}`), and `key_addTabSplitView`,
