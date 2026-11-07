@@ -176,7 +176,14 @@ add_task(async function about_home_and_newtab_render() {
   registerCleanupFunction(() => Services.console.unregisterListener(listener));
 
   // A preloaded about:newtab is swapped in without a load event, which withNewTab waits for.
-  await SpecialPowers.pushPrefEnv({ set: [["browser.newtab.preload", false]] });
+  // With the start page as the new tab, these loads open the start page instead (spec
+  // firefox-surfaces-trim, decision 10); Firefox's pages still render once the user turns it off.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.newtab.preload", false],
+      ["vimma.startpage.newtab", false],
+    ],
+  });
   NewTabPagePreloading.removePreloadedBrowser(window);
   for (const url of ["about:home", "about:newtab"]) {
     await BrowserTestUtils.withNewTab({ gBrowser, url }, async (browser) => {
