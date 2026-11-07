@@ -90,3 +90,56 @@
     --promo-image-size: 0px !important;
   }
 }
+
+/* Settings hides what controls nothing in Vimma (docs/specs/firefox-surfaces-trim.md, decisions
+ * 2, 3 and 6): Firefox Labs, the data collection group (no telemetry uploads), the extension and
+ * feature recommendation switches (the cfr provider is off), the connect.mozilla.org link no pref
+ * sets, and the Firefox Home content group while Vimma's start page replaces Firefox Home
+ * (theme-host.mjs sets vimma-startpage from vimma.startpage.newtab). Outside the high-contrast
+ * block, so these stay hidden there too (decision 7). Firefox rewrites the Labs button's
+ * `hidden` (firefoxLabs.mjs), hence CSS. Both the redesigned groups and the legacy markup
+ * Firefox keeps for unmigrated panes are named. */
+#preferences-root {
+  #category-experimental,
+  setting-pane[data-category="paneExperimental"],
+  setting-group[groupid="dataCollection"],
+  [data-srd-groupid="dataCollection"],
+  setting-group[groupid="recommendations"],
+  #setting-control-cfrRecommendations,
+  #setting-control-cfrRecommendations-features,
+  #setting-control-supportShareIdeas {
+    display: none !important;
+  }
+
+  &[vimma-startpage] setting-group[groupid="home"] {
+    display: none !important;
+  }
+}
+
+/* Settings looks like Vimma (decision 8): square corners and the theme's font, as Vimma's own
+ * surfaces use. --border-radius-circle stays, so toggles and radio buttons keep the round shape
+ * that tells them apart. Not a colour, so outside the high-contrast block. */
+#preferences-root {
+  --border-radius-xsmall: 0px !important;
+  --border-radius-small: 0px !important;
+  --border-radius-medium: 0px !important;
+  --border-radius-large: 0px !important;
+  --border-radius-xlarge: 0px !important;
+  --button-border-radius: 0px !important;
+  --card-border-radius: 0px !important;
+  --card-border-radius-compact: 0px !important;
+  --input-border-radius: 0px !important;
+  --input-search-border-radius: 0px !important;
+
+  /* The navigation buttons' tokens are set on :host too (moz-page-nav.tokens.css), so they are
+   * set on each button, where the page's rule wins over the shadow tree's. */
+  & moz-page-nav-button {
+    --page-nav-button-border-radius: 0px !important;
+    --page-nav-button-border-radius-focused: 0px !important;
+  }
+
+  &,
+  & > body {
+    font-family: var(--vimma-font, monospace) !important;
+  }
+}
