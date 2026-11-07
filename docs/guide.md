@@ -4500,6 +4500,15 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `true` bring them back).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
+- **Firefox's features keep their place under plain names.** Settings, menus and the address bar
+  say Address Bar Suggestions, Start Page, Tab Overview, Labs, Translations and Screenshots where
+  Firefox says Firefox Suggest, Firefox Home, Firefox View, Firefox Labs, Firefox Translations and
+  Firefox Screenshots. Mozilla's own products, such as Relay, Monitor and Mozilla VPN, keep their
+  names.
+- **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
+  in the theme's colours, the account group in Settings > Sync a plain account icon, and the
+  pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
+  `about:restartrequired`, the sidebar's empty lists) show no picture.
 
 ## Accessibility
 

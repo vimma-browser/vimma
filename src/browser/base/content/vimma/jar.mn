@@ -131,3 +131,25 @@ browser.jar:
         content/browser/vimma/about/about.mjs             (about/about.mjs)
         content/browser/vimma/about/patches.json          (/browser/config/vimma/patches.json)
         skin/classic/browser/vimma/about.css              (/browser/themes/shared/vimma/about.css)
+        skin/classic/browser/vimma/vimma-glyph.svg        (/browser/themes/shared/vimma/vimma-glyph.svg)
+        skin/classic/browser/vimma/empty.svg              (/browser/themes/shared/vimma/empty.svg)
+# Firefox's logos and Kit mascot (spec firefox-surfaces-trim, decision 9). An override replaces
+# the URL everywhere it loads, content-process pages and high contrast included: Vimma's glyph
+# where a layout needs an icon, a neutral account glyph for Mozilla accounts, else nothing.
+% override chrome://browser/skin/sidebar/firefox.svg chrome://browser/skin/vimma/vimma-glyph.svg
+% override chrome://browser/skin/preferences/mozilla-logo.svg chrome://browser/skin/fxa/avatar-empty.svg
+% override chrome://browser/content/kit-signed-out.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-page-history.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-tabs-devices.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-tabs-devices-error.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-qr-tabs-devices-empty.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/privatebrowsing/kit-pbw.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/privatebrowsing/fox-tail.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-concerned.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-confetti.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-happy.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-in-circle.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-holding-lock.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/skin/illustrations/kit-sympathetic.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://mozapps/skin/extensions/kit-addons.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://mozapps/skin/extensions/kit-themes.svg chrome://browser/skin/vimma/empty.svg

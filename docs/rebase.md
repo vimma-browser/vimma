@@ -334,15 +334,32 @@ upstream adds there is silently dropped, and some break startup (spec m0-brandin
 
 ```sh
 npx vitest run tools/branding/
-# want: "Tests  1 passed (1)"
+# want: every test passed, none skipped
 # fails with the missing pref names; add each to src/browser/branding/vimma/pref/firefox-branding.js
 ```
 
 It must **pass, not skip**. The test reads upstream's
 `engine/browser/branding/unofficial/pref/firefox-branding.js`, and without `engine/` it skips and
 vitest still exits 0. A skip prints `branding-prefs: skipped, … is absent (run npm run import
-first)` and reports `1 skipped` instead of `1 passed`. Run it after `npm run import`, in the
-checkout that has the new `engine/`.
+first)` and reports skipped tests. Run it after `npm run import`, in the checkout that has the new
+`engine/`.
+
+**Product names.** `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` is generated from
+upstream's by `tools/branding/brandings.mjs`, which gives the features Vimma ships as its own
+neutral names (spec firefox-surfaces-trim). After a bump, regenerate it and commit the result:
+
+```sh
+npm run gen-brandings
+# → gen-brandings: wrote src/toolkit/locales/en-US/toolkit/branding/brandings.ftl
+git diff src/toolkit/
+```
+
+The generator stops when upstream has a term whose value says Firefox or Mozilla and that neither
+`RENAME` nor `KEEP` in the script decides: put a feature Vimma ships in `RENAME` with a neutral
+name that reads in the strings that use it, and a Mozilla product in `KEEP`. `e2e.yml` runs
+`tools/branding/test/brandings.test.mjs` before the import (afterwards upstream's file is a link to
+ours and a CI engine has no history to read it from), so an autopilot PR whose new release changes
+`brandings.ftl` fails there until someone regenerates the file.
 
 **Upstream pref copies, checked.** `node tools/upstream/upstream-prefs.mjs` (after the import)
 compares both copies below with the engine's and prints the line to paste for a stale one; exit
@@ -409,7 +426,8 @@ For a draft you fixed by hand, tick the rest:
 - [ ] full build: `--version` and `application.ini` as above; `npm run mochitest -- tests/browser/`
       green (paste counts in the PR, as the PR template asks)
 - [ ] artifact build: preflight OK; `npm run mochitest -- --artifact tests/browser/` green
-- [ ] `npx vitest run tools/branding/` green; `node tools/upstream/upstream-prefs.mjs` up to date
+- [ ] `npm run gen-brandings` committed; `npx vitest run tools/branding/` green;
+      `node tools/upstream/upstream-prefs.mjs` up to date
 - [ ] split-view contract green on both builds
 
 Then `gh pr ready <n>`, which starts `ci.yml` and `e2e.yml`. Merge when green. The nightly

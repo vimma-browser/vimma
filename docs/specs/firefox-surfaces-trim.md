@@ -1,7 +1,9 @@
 # Spec: firefox-surfaces-trim
 
-Status: draft (delivery steps 2 and 6 built; step 2's vimma.dev links wait for step 1) · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
-`src/browser/branding/vimma/locales/en-US/brand.ftl` (new), `src/browser/themes/shared/vimma/`
+Status: accepted (delivery steps 2, 3 and 6 built; step 2's vimma.dev links wait for step 1) · Area:
+`src/browser/branding/vimma/pref/firefox-branding.js`,
+`src/browser/branding/vimma/locales/en-US/brand.ftl` (new),
+`src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` (generated, `tools/branding/brandings.mjs`), `src/browser/themes/shared/vimma/`
 (`firefox-pages.css`, `firefox-chrome.css`), `src/browser/base/content/vimma/jar.mn`,
 `src/browser/base/content/vimma/start/`, `packages/vimma-core/src/actions.mjs` and `defaults.mjs`,
 `vimma-browser/vimma-site` (support pages) · Upstream patches: Fluent string patches in delivery
@@ -168,7 +170,7 @@ All engine paths are from Firefox 159.0.1 (`surfer.json`), read in `engine/`.
   `src/browser/locales/en-US/browser/browser-ftl.patch` in ADR-003's register.
 - **Firefox Suggest** is named in Settings today, where [search-engines](search-engines.md)
   (decision 10, since changed) keeps the name because it names Mozilla's service; only the
-  address bar's group heading was renamed, by `browser-ftl.patch`. Open question 1 reopens this.
+  address bar's group heading was renamed, by `browser-ftl.patch`. Decision 14 renames it.
 - **Who loads `brandings.ftl`.** 40 non-test files under `browser/` and `toolkit/` reference
   `toolkit/branding/brandings.ftl`; 7 of them do not also reference `branding/brand.ftl`
   (`webext-panels.xhtml`, `fxview-tab-list.mjs`, `aboutReader.html`, `aboutLogging.html` and three
@@ -205,7 +207,7 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | Onboarding infobars, about:addons recommendations          | prefs `…asrouter.providers.onboarding` with `enabled:false`, `extensions.getAddons.showPane` false, `extensions.htmlaboutaddons.recommendations.enabled` false                                                                                | 2    |
 | Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `identity.mobilepromo.*` and `browser.backup.template.fallback-download.*` to Vimma's site or releases          | 2    |
 | `-brand-shortcut-name`                                     | `src/browser/branding/vimma/locales/en-US/brand.ftl` replacing Surfer's generated file                                                                                                                                                        | 3    |
-| Product names (Firefox View, Home, Labs, Translations)     | open question 1                                                                                                                                                                                                                               | 3    |
+| Product names (Firefox View, Home, Labs, Translations)     | `src/toolkit/…/brandings.ftl` generated from upstream's by `tools/branding/brandings.mjs` (decision 14)                                                                                                                                       | 3    |
 | Logos and mascots                                          | chrome `override` lines in `vimma/jar.mn` to Vimma's logo or an empty SVG                                                                                                                                                                     | 3    |
 | Labs pane, Firefox Home group, data collection, support    | Vimma CSS in `firefox-pages.css` for the Settings document                                                                                                                                                                                    | 4    |
 | Send to Device, Help items, Tools > Firefox View           | Vimma code at window start sets `hidden` on `#context-sendpagetodevice`, `#context-sendlinktodevice`, `#helpSwitchDevice`, `#menu_openFirefoxView` and the webcompat reporter items, because the app menu copies items by `hidden` (Research) | 4    |
@@ -278,6 +280,14 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    points it at Vimma's logo (where the layout needs an image, such as the About Vimma
    navigation button) or an empty SVG (illustrations), because one line covers every page that
    loads the file, content-process pages included, where Vimma's CSS cannot reach.
+   Step 3 overrides `sidebar/firefox.svg` with Vimma's mark as a one-colour glyph
+   (`vimma-glyph.svg`, `context-fill`, so it follows the theme as Firefox's glyph did),
+   `preferences/mozilla-logo.svg` with Firefox's plain account glyph (`fxa/avatar-empty.svg`),
+   because that group is the Mozilla account and Vimma's mark there would claim it, and every
+   `kit-*.svg` in Research, `kit-signed-out.svg` (the account panel) and the private-browsing
+   page's `fox-tail.svg` with an empty SVG. `privatebrowsing/pbm-logo.svg` stays, because it is
+   the indicator that marks a private window and carries no Firefox or Mozilla logo;
+   `logos/lockwise.svg` stays with `about:protections`, which this spec does not change.
 10. **Typed Firefox pages open the start page.** Vimma's start page module redirects a top-level
     load of `about:home`, `about:newtab`, `about:welcome` or `about:firefoxview` to the start
     page, so a user who types them sees Vimma's page as every new tab does. Rejected: a patch to
@@ -307,6 +317,27 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     run ([first-run-setup](first-run-setup.md)). Setting the default browser stays in Settings >
     General. This changes [m0-mozilla-services](m0-mozilla-services.md), which left these as
     Firefox has them; that spec carries a "Since changed" note.
+14. **Product names come from a generated `brandings.ftl`.** `tools/branding/brandings.mjs`
+    reads upstream's `toolkit/locales/en-US/toolkit/branding/brandings.ftl`, applies Vimma's
+    mapping and writes `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl`, which
+    replaces the engine file in every document that loads it (`npm run gen-brandings`). A
+    generated file follows Firefox's changes to the file on each bump, and its vitest
+    (`tools/branding/test/brandings.test.mjs`) fails when the file is stale or when upstream has a
+    term whose value says Firefox or Mozilla that the mapping does not decide, so a Firefox bump
+    surfaces a new name instead of shipping it; a hand-kept copy would drift silently. `e2e.yml`
+    runs that test before the import, because the import replaces upstream's file with a link to
+    Vimma's and a CI engine has no history to read it from. The mapping renames only the features
+    Vimma ships under its own name: Firefox Suggest becomes "Address Bar Suggestions" (it heads
+    Settings' address bar group and reads in "Manage Address Bar Suggestions"), Firefox Home
+    "Start Page" (Vimma's start page is what new tabs and windows show: "Start Page (Default)"),
+    Firefox View "Tab Overview", Firefox Labs "Labs", Firefox Translations "Translations" and
+    Firefox Screenshots "Screenshots". Mozilla's own products keep their names (Relay, Monitor,
+    Mozilla VPN, Send, Profiler, Thunderbird, Fakespot), because renaming them would claim them as
+    Vimma's (decision 4). Rejected: a hand-carried copy, because a rebase can keep a stale file or
+    miss a new term; the terms in Vimma's `brand.ftl`, because the 7 documents that load
+    `brandings.ftl` without `brand.ftl` would keep Firefox's names and each duplicate term logs a
+    Fluent error. This changes [search-engines](search-engines.md) decision 10, which carries a
+    "Since changed" note.
 
 ## Security and privacy
 
@@ -326,7 +357,8 @@ Written first and seen to fail, by step.
   and `#appMenu-fxa-sign-in-promo` are hidden, that the content context menu has no chatbot or
   link-preview item, and that `Services.prefs` reports each pref back at Firefox's value after a
   user reset is reverted.
-- **Branding** (step 3): a vitest that Vimma's `brand.ftl` defines `-brand-shortcut-name`; the
+- **Branding** (step 3): a vitest that Vimma's `brand.ftl` defines `-brand-shortcut-name`, and
+  `tools/branding/test/brandings.test.mjs` for the generator (decision 14); the
   mochitest formats `desktop-entry-name` and `private-browsing-shortcut-text-2` and gets "Vimma"
   and "Vimma Private Browsing"; it loads each overridden chrome URL and asserts it is Vimma's file.
 - **Settings, menus, About dialog** (step 4): the mochitest opens `about:preferences` and asserts
@@ -362,8 +394,8 @@ Written first and seen to fail, by step.
    as for every site change. It merges before step 2, so no link points at a missing page.
 2. **Prefs** (`firefox-branding.js`): every row marked step 2, plus the vimma.dev support base.
    Tested by the branding vitest and the new mochitest.
-3. **Branding files and images**: Vimma's `brand.ftl` with `-brand-shortcut-name`, the product
-   names by the route open question 1 settles, and the `jar.mn` image overrides. Tested by the
+3. **Branding files and images**: Vimma's `brand.ftl` with `-brand-shortcut-name`, the generated
+   `brandings.ftl` (decision 14), and the `jar.mn` image overrides. Tested by the
    vitest, the mochitest and screenshots.
 4. **Settings, menus and the About dialog**: the CSS in `firefox-pages.css` and
    `firefox-chrome.css` (hidden panes and groups, square corners, the theme's font, high-contrast
@@ -376,27 +408,3 @@ Written first and seen to fail, by step.
    `npm run gen-docs`, the help snapshot and a screenshot of the `ctrl+b ?` overlay. Its own pull request, as every keymap change.
 
 The spec becomes `implemented` with the last of these.
-
-## Open questions
-
-1. **Route and mapping for Firefox product names.** Some names stay visible after the surfaces
-   go (Firefox View in a palette widget, Firefox Home in Settings' menus, Firefox Translations in
-   Settings). Whatever the route, the mapping follows one principle: rename only the names of
-   features Vimma ships under its own name (Firefox Suggest, Firefox Home, Firefox Labs, Firefox
-   View, Firefox Translations, to neutral names such as "Suggest", "Home page", "Translations"),
-   and keep the names of Mozilla's own products (Relay, Monitor, Mozilla VPN, Profiler,
-   Thunderbird), because those are real Mozilla products, mostly hidden by this spec, and renaming
-   them would claim them as Vimma's (decision 4). Renaming Firefox Suggest changes
-   [search-engines](search-engines.md) decision 10, which then gets a "Since changed" note.
-   - A generated file. A small `tools/` script reads upstream
-     `engine/toolkit/locales/en-US/toolkit/branding/brandings.ftl`, applies Vimma's mapping (term
-     to value) and writes `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl`, which
-     replaces the engine file. A vitest fails when the generated file is stale, or when upstream
-     adds a term whose value says Firefox or Mozilla and the mapping does not decide it, so a
-     Firefox bump (and the upstream autopilot, [m7-upstream-autopilot](m7-upstream-autopilot.md))
-     surfaces a new name instead of shipping it. Covers every document. (Recommended.)
-   - A hand-carried copy of `brandings.ftl` under `src/toolkit/…`: covers every document, but a
-     rebase can silently keep a stale file or miss a new term.
-   - The terms defined in Vimma's own `brand.ftl`: no extra file, but the 7 documents that load
-     `brandings.ftl` without `brand.ftl` keep Firefox's names, and each duplicate term logs a
-     Fluent error.

@@ -183,6 +183,7 @@ export async function decide({ versionsText, manualVersion, repositoryId, now, l
 
 /** The checks e2e.yml runs besides the suites, as the issue names them. */
 const CHECKS = /** @type {Record<string, string>} */ ({
+  brandings: "product names (`tools/branding/brandings.mjs`)",
   import: "patches and sources import (`npm run import`)",
   branding: "branding prefs (`tools/branding/`)",
   "upstream-prefs": "upstream pref copies (`tools/upstream/upstream-prefs.mjs`)",

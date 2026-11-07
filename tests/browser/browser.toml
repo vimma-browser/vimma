@@ -58,6 +58,8 @@ support-files = ["file_vimma_copy_motions.html"]
 
 ["browser_vimma_branding.js"]
 
+["browser_vimma_branding_files.js"]
+
 ["browser_vimma_user_agent.js"]
 
 ["browser_vimma_mozilla_services.js"]

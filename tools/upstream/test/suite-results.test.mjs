@@ -66,6 +66,7 @@ describe("suiteResults", () => {
     const r = suiteResults({
       version: "159.0b1",
       steps: {
+        brandings: OK,
         import: OK,
         branding: OK,
         "upstream-prefs": FAILED,
@@ -81,6 +82,7 @@ describe("suiteResults", () => {
     expect(r.version).toBe("159.0b1");
     expect(r.ok).toBe(false);
     expect(r.steps).toEqual({
+      brandings: "success",
       import: "success",
       branding: "success",
       "upstream-prefs": "failure",
@@ -111,6 +113,7 @@ describe("suiteResults", () => {
   it("is ok only when every step succeeded", () => {
     const steps = Object.fromEntries(
       [
+        "brandings",
         "import",
         "branding",
         "upstream-prefs",

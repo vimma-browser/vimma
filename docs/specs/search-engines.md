@@ -226,6 +226,9 @@ running it, not recalled.
     and right-click, `shift+delete` still removes the selected history row, and the menu's
     "Skip this menu when using the tab key" item turns the stop back on. Test:
     `browser_vimma_urlbar_suggestions.js`.)
+    (Since changed, issue #834: Settings no longer says "Firefox Suggest" either; Vimma's generated
+    `brandings.ftl` names the feature "Address Bar Suggestions", because Vimma ships it as its own
+    feature; [firefox-surfaces-trim](firefox-surfaces-trim.md), decision 14.)
 11. **Completion.** `ARGUMENT_KINDS` gains `open` and `tabnew` with names from
     `args.search`: the host passes every alias starting with `@` (Vimma's and Firefox's, from
     `UrlbarSearchUtils.tokenAliasEngines()`) with its engine's name as the description. It

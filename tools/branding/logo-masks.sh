@@ -13,7 +13,11 @@
 #   part = HSV saturation: below 0.15 is the white wordmark, above 0.30 the aqua mark, a ramp
 #   between, so the anti-aliased edges are split smoothly (the two parts never touch).
 # Both are cropped to the artwork's box (349x287 at +83+114, with a 2 px margin) so CSS can
-# size them without padding. Needs ImageMagick (magick). Re-run after replacing the logo, and
+# size them without padding. It also writes vimma-glyph.svg, the mark as a one-colour icon
+# (context-fill) for Firefox's places that show its glyph (spec firefox-surfaces-trim, decision 9):
+# the window+V of the mark mask (without the separate brushstroke V, which turns to noise at 16 px)
+# downscaled to 96 px and embedded, since an SVG image cannot load other files.
+# Needs ImageMagick (magick). Re-run after replacing the logo, and
 # commit the outputs.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -36,3 +40,22 @@ render() {
 
 render "$dir/vimma-logo-mark.png" "$mark"
 render "$dir/vimma-logo-wordmark.png" "1 - $mark"
+
+glyph="$root/src/browser/themes/shared/vimma/vimma-glyph.svg"
+png="$(mktemp --suffix=.png)"
+trap 'rm -f "$png"' EXIT
+magick "$dir/vimma-logo-mark.png" -crop 260x200+50+0 +repage -trim +repage -resize 96x96 -strip \
+  -define png:color-type=4 -define png:exclude-chunks=date,time "$png"
+read -r w h <<<"$(magick identify -format '%w %h' "$png")"
+{
+  echo '<!-- This Source Code Form is subject to the terms of the Mozilla Public'
+  echo '   - License, v. 2.0. If a copy of the MPL was not distributed with this'
+  echo '   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->'
+  echo '<!-- The Vimma mark in one colour (context-fill). Rendered by tools/branding/logo-masks.sh. -->'
+  echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" width="16" height="16">'
+  echo '  <mask id="m" style="mask-type: alpha">'
+  echo "    <image x=\"$(((96 - w) / 2))\" y=\"$(((96 - h) / 2))\" width=\"$w\" height=\"$h\" href=\"data:image/png;base64,$(base64 -w0 "$png")\"/>"
+  echo '  </mask>'
+  echo '  <rect width="96" height="96" fill="context-fill" mask="url(#m)"/>'
+  echo '</svg>'
+} >"$glyph"
