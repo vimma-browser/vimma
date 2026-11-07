@@ -1,4 +1,4 @@
-Status: accepted (sub-PR 1 built) · Area: `packages/vimma-core/src/suggestions.mjs` (new),
+Status: implemented · Area: `packages/vimma-core/src/suggestions.mjs` (new),
 `actions.mjs`, `defaults.mjs`, `keymap.mjs`, `firefox-keys.mjs`; `actors/VimmaChild.sys.mjs`,
 `actors/VimmaActors.sys.mjs`, `actors/enter-key.mjs`; `host/VimmaHost.sys.mjs` · Upstream
 patches: none · ADR: none

@@ -79,6 +79,18 @@ lines.push(
 );
 /** @param {(typeof FIREFOX_SHORTCUTS)[number]} r */
 const fate = (r) => {
+  // The row's action is on other keys (ctrl+n: new_window, page-suggestions decision 7); Firefox's
+  // key stays off while a mode binds the chord, ctrl+n's suggestion_next in insert mode.
+  if (r.action && r.unbound) {
+    const keys = keymap.keysFor(r.action).map((k) => `\`${cell(k)}\``);
+    const insert =
+      !keymap.trie("normal").children.has(r.chord) &&
+      keymap.trie("insert").children.get(r.chord)?.action?.name;
+    return [
+      `\`${r.action}\` ${keys.length ? `is ${keys.join(", ")}` : "has no default key"}`,
+      ...(insert ? [`\`${insert}\` in insert mode`] : []),
+    ].join("; ");
+  }
   if (r.action) {
     const where = r.modes === "normal" ? " (normal mode)" : "";
     // In a text field ctrl+j and ctrl+m are Enter (docs/specs/key-handling-batch.md § 2).

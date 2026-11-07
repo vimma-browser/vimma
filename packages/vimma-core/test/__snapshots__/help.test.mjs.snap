@@ -103,7 +103,7 @@ Page
   suggestion_prev           ctrl+p [insert]                                      Previous suggestion in the page's list
 
 Browser
-  new_window                ctrl+n                                               New window
+  new_window                ctrl+b shift+c                                       New window
   close_window              ctrl+shift+w                                         Close the window
   restore_window            ctrl+shift+n                                         Reopen the last closed window
   quit                      ctrl+q                                               Quit (asks first)
@@ -428,7 +428,7 @@ Page
   suggestion_prev           ctrl+p [insert]                                      Previous suggestion in the page's list
 
 Browser
-  new_window                ctrl+n                                               New window
+  new_window                ctrl+b shift+c                                       New window
   close_window              ctrl+shift+w                                         Close the window
   restore_window            ctrl+shift+n                                         Reopen the last closed window
   quit                      ctrl+q                                               Quit (asks first)

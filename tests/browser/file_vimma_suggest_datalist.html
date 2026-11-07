@@ -3,7 +3,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!-- Fixture for browser_vimma_page_suggestions.js: an input with a datalist, whose list
-     Firefox draws as #PopupAutoComplete. -->
+     Firefox draws as #PopupAutoComplete, and the
+     keys the page receives in window.log. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -15,5 +16,16 @@
       <option value="banana"></option>
       <option value="blueberry"></option>
     </datalist>
+    <script>
+      window.log = [];
+      document.addEventListener(
+        "keydown",
+        (e) => {
+          const mods = (e.ctrlKey ? "ctrl+" : "") + (e.altKey ? "alt+" : "");
+          window.log.push(`${e.target.id}:${mods}${e.key}:${e.isTrusted}`);
+        },
+        true,
+      );
+    </script>
   </body>
 </html>

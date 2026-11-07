@@ -130,7 +130,9 @@ const keys = {
   focus_urlbar: ["ctrl+l", "alt+d"],
   find_next: ["ctrl+g", "f3"],
   find_previous: ["ctrl+shift+g", "shift+f3"],
-  new_window: ["ctrl+n"],
+  // docs/specs/page-suggestions.md decision 7: next to prefix+c (new tab); ctrl+n is insert
+  // mode's suggestion key, and a window opened while typing is disruptive.
+  new_window: ["prefix+shift+c"],
   close_window: ["ctrl+shift+w"],
   restore_window: ["ctrl+shift+n"],
   quit: ["ctrl+q"],
@@ -438,8 +440,8 @@ const modal = {
   },
   // The PDF viewer's outline panel (docs/specs/pdf-mode.md decision 10): zathura's index keys,
   // and `/` for Vimma's filter, where the arrow keys move. No ctrl chord Vimma leaves to Firefox
-  // elsewhere (ctrl+n, ctrl+p, ctrl+j, ctrl+c): a chord bound in any mode turns Firefox's key off
-  // in every tab (firefox-keys decision 2), and these would stop new window, print and copy.
+  // elsewhere (ctrl+p, ctrl+j, ctrl+c): a chord bound in any mode turns Firefox's key off in every
+  // tab (firefox-keys decision 2), and these would stop print and copy.
   index: {
     j: "index.down",
     "<Down>": "index.down",
