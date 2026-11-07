@@ -135,7 +135,9 @@ export async function startModelServer({ port, script, paceMs = 0 }) {
         const reply = await answer(`${SCRIPTED_PROVIDER.endpoint}/chat/completions`, { body });
         return json(reply.status, await reply.text());
       } catch (e) {
-        return json(500, JSON.stringify({ error: { message: String(e) } }));
+        // the detail goes to the recorder's log, never to the client, which sees a fixed message
+        console.error("promo: the scripted model failed:", e);
+        return json(500, JSON.stringify({ error: { message: "scripted model failed" } }));
       }
     }
     return json(404, JSON.stringify({ error: { message: "not found" } }));

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startShop } from "../../agent-bench/shop.mjs";
 import {
   DECLINED_TEXT,
@@ -130,6 +130,30 @@ describe("startModelServer", () => {
     expect(json.choices[0].message.content).toBe("hello");
     // the turns it answered, for the shot to wait on
     expect(/** @type {any} */ (server).replies).toEqual([{ text: "hello" }]);
+  });
+  it("answers a failing script with a 500 that names no detail of the error", async () => {
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      server = await startModelServer({
+        port: 0,
+        script: () => {
+          throw new Error("secret detail at /home/someone/script.mjs:12");
+        },
+      });
+      const res = await fetch(`${/** @type {any} */ (server).endpoint}/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model: "scripted", messages: [{ role: "user", content: "hi" }] }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).not.toContain("secret detail");
+      expect(JSON.parse(text)).toEqual({ error: { message: "scripted model failed" } });
+      // the error itself goes to the recorder's log
+      expect(String(quiet.mock.calls.flat().join(" "))).toContain("secret detail");
+    } finally {
+      quiet.mockRestore();
+    }
   });
   it("lists its one model, as an OpenAI-compatible server does", async () => {
     server = await startModelServer({ port: 0, script: () => ({ text: "hello" }) });
