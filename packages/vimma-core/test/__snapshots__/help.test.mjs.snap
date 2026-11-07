@@ -131,7 +131,6 @@ Browser
   about_processes           shift+esc                                            Process manager (about:processes)
   bookmark_all_tabs         ctrl+shift+d                                         Bookmark all tabs
   toggle_bookmarks_toolbar  ctrl+shift+b                                         Show / hide the bookmarks toolbar
-  ai_chatbot_sidebar        ctrl+alt+x                                           Firefox sidebar: AI chatbot
   open_tabs_sidebar         ctrl+alt+u                                           Firefox sidebar: tabs from other devices
   toggle_firefox_sidebar    ctrl+alt+z                                           Show / hide Firefox's sidebar
   switch_text_direction     ctrl+shift+x                                         Switch a text field's direction
@@ -455,7 +454,6 @@ Browser
   about_processes           shift+esc                                            Process manager (about:processes)
   bookmark_all_tabs         ctrl+shift+d                                         Bookmark all tabs
   toggle_bookmarks_toolbar  ctrl+shift+b                                         Show / hide the bookmarks toolbar
-  ai_chatbot_sidebar        ctrl+alt+x                                           Firefox sidebar: AI chatbot
   open_tabs_sidebar         ctrl+alt+u                                           Firefox sidebar: tabs from other devices
   toggle_firefox_sidebar    ctrl+alt+z                                           Show / hide Firefox's sidebar
   switch_text_direction     ctrl+shift+x                                         Switch a text field's direction

@@ -158,7 +158,6 @@ shows as `space n` ([guide](guide.md#configtoml)).
 | Process manager (about:processes)                            | `about_processes`          | `shift+esc`               |
 | Bookmark all tabs                                            | `bookmark_all_tabs`        | `ctrl+shift+d`            |
 | Show / hide the bookmarks toolbar                            | `toggle_bookmarks_toolbar` | `ctrl+shift+b`            |
-| Firefox sidebar: AI chatbot                                  | `ai_chatbot_sidebar`       | `ctrl+alt+x`              |
 | Firefox sidebar: tabs from other devices                     | `open_tabs_sidebar`        | `ctrl+alt+u`              |
 | Show / hide Firefox's sidebar                                | `toggle_firefox_sidebar`   | `ctrl+alt+z`              |
 | Switch a text field's direction                              | `switch_text_direction`    | `ctrl+shift+x`            |
@@ -477,7 +476,7 @@ unchanged.
 | `ctrl+b`              | bookmarks sidebar                              | Vimma's own key                             |
 | `ctrl+shift+b`        | show or hide the bookmarks toolbar             | `toggle_bookmarks_toolbar`, page first      |
 | `esc`                 | stop loading                                   | `stop_loading` (normal mode), page first    |
-| `ctrl+alt+x`          | AI chatbot sidebar                             | `ai_chatbot_sidebar`, page first            |
+| `ctrl+alt+x`          | AI chatbot sidebar                             | unbound                                     |
 | `ctrl+alt+u`          | open-tabs sidebar                              | `open_tabs_sidebar`, page first             |
 | `ctrl+alt+z`          | toggle the sidebar                             | `toggle_firefox_sidebar`, page first        |
 | `ctrl+h`              | history sidebar                                | Vimma's own key                             |

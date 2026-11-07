@@ -291,6 +291,25 @@ describe("the downloads picker (docs/specs/downloads.md decision 2)", () => {
   });
 });
 
+// docs/specs/firefox-surfaces-trim.md decision 12: Firefox's chatbot is off, so its sidebar key
+// would open a panel that does nothing. The other two sidebar actions reach features Vimma keeps.
+describe("Firefox's sidebar actions (firefox-surfaces-trim decision 12)", () => {
+  test("ai_chatbot_sidebar is gone and ctrl+alt+x is unbound", () => {
+    expect(getAction("ai_chatbot_sidebar")).toBeUndefined();
+    expect(resolveActionName("browser.sidebar_chatbot")).toBeUndefined();
+    const km = compileKeymap();
+    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+      expect(km.trie(mode).children.get("ctrl+alt+x"), mode).toBeUndefined();
+    }
+  });
+
+  test("open_tabs_sidebar and toggle_firefox_sidebar keep their keys", () => {
+    const km = compileKeymap();
+    expect(km.bindingsFor("open_tabs_sidebar")).toEqual(["ctrl+alt+u"]);
+    expect(km.bindingsFor("toggle_firefox_sidebar")).toEqual(["ctrl+alt+z"]);
+  });
+});
+
 describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4 to 6)", () => {
   test("split_picker, next_split and previous_split are pane actions", () => {
     for (const [name, id] of [

@@ -6,7 +6,7 @@
  * Compile defaults + user config into per-mode tries for the dispatcher.
  * See docs/specs/m0-core-dispatcher.md § Dispatcher contract, § Config input.
  */
-import { resolveActionName, suggestAction } from "./actions.mjs";
+import { removedAction, resolveActionName, suggestAction } from "./actions.mjs";
 import { parseCommandLine } from "./cmdline.mjs";
 import { DEFAULT_CONFIG, defaultKeys } from "./defaults.mjs";
 import { insertEditCommand } from "./editable.mjs";
@@ -88,8 +88,10 @@ export class KeymapError extends Error {
  */
 function resolveOrThrow(text, path) {
   const a = resolveActionName(text);
-  if (!a) throw new KeymapError(`unknown action "${text}"`, path, suggestAction(text));
-  return a;
+  if (a) return a;
+  const why = removedAction(text);
+  if (why) throw new KeymapError(`action "${text}" was removed: ${why}`, path);
+  throw new KeymapError(`unknown action "${text}"`, path, suggestAction(text));
 }
 
 /**

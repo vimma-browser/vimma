@@ -154,6 +154,13 @@ add_task(async function the_overlapping_and_the_bound_keys_are_disabled_the_othe
   for (const id of ["key_find", "key_search2", "viewBookmarksToolbarKb"]) {
     Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
+  // firefox-surfaces-trim decision 12: Vimma no longer binds ctrl+alt+x, and Firefox's chatbot
+  // key on it stays off under the default "all" (fate c), so it cannot open the chatbot.
+  Assert.equal(
+    document.getElementById("viewGenaiChatSidebarKb").getAttribute("disabled"),
+    "true",
+    "#viewGenaiChatSidebarKb is off though unbound",
+  );
 });
 
 add_task(async function no_overlapping_shortcut_fires_and_the_page_gets_the_key() {

@@ -345,16 +345,9 @@ export const FIREFOX_SHORTCUTS = Object.freeze([
       "P",
     ],
     ["esc", "key_stop", "Browser:Stop", "stop loading", "b", "stop_loading", "normal", "P"],
-    [
-      "ctrl+alt+x",
-      "viewGenaiChatSidebarKb",
-      "",
-      "AI chatbot sidebar",
-      "b",
-      "ai_chatbot_sidebar",
-      "all",
-      "P",
-    ],
+    // Off with no action: Firefox's chatbot is off (docs/specs/firefox-surfaces-trim.md
+    // decision 12).
+    ["ctrl+alt+x", "viewGenaiChatSidebarKb", "", "AI chatbot sidebar", "c"],
     [
       "ctrl+alt+u",
       "viewOpenTabsSidebarKb",

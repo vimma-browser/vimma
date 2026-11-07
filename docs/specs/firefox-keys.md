@@ -255,6 +255,9 @@ Chords are written as Vimma canonicalises them: `shift` folds into the character
 | `alt+1` … `alt+8` (8 keys) | `key_selectTab1..8`                                    | tab N                                    | a    | `select_tab_1..8` (all)                                                   | P     |
 | `alt+9`                    | `key_selectLastTab`                                    | last tab                                 | b    | `select_last_tab` (all)                                                   | P     |
 
+(Since changed: `ctrl+alt+x` is fate c, unbound and off, with no `ai_chatbot_sidebar` action;
+[firefox-surfaces-trim](firefox-surfaces-trim.md) decision 12.)
+
 Three zoom keys have an empty letter in en-US (`full-zoom-reduce-shortcut-alt-b`,
 `…-enlarge-shortcut-alt2`, `…-reset-shortcut-alt`: `.key = {""}`), and `key_addTabSplitView`,
 `key_separateTabSplitView`, `key_duplicateTab` have no letter at all: none is active, so none is
@@ -359,7 +362,9 @@ keys from c to d. Fate c keeps the conditional keys, `'` and the `alt` tap.)
    the keys that were fate c: "Browser" gains `web_search` (`browser.search`, Firefox's
    `Tools:Search`), `about_processes` (`browser.processes`), `bookmark_all_tabs`
    (`browser.bookmark_all_tabs`), `toggle_bookmarks_toolbar` (`browser.bookmarks_toolbar`),
-   `ai_chatbot_sidebar` (`browser.sidebar_chatbot`), `open_tabs_sidebar`
+   `ai_chatbot_sidebar` (`browser.sidebar_chatbot`; since changed: removed, and `ctrl+alt+x` is
+   unbound and off, [firefox-surfaces-trim](firefox-surfaces-trim.md) decision 12),
+   `open_tabs_sidebar`
    (`browser.sidebar_tabs`), `toggle_firefox_sidebar` (`browser.sidebar`),
    `switch_text_direction` (`browser.text_direction`) and `caret_browsing`
    (`browser.caret_browsing`); "Developer tools" gains `devtools_dom` (`devtools.dom`).

@@ -282,7 +282,6 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     ["ctrl+f", "find_forward"],
     ["ctrl+shift+d", "bookmark_all_tabs"],
     ["ctrl+shift+b", "toggle_bookmarks_toolbar"],
-    ["ctrl+alt+x", "ai_chatbot_sidebar"],
     ["ctrl+alt+u", "open_tabs_sidebar"],
     ["ctrl+alt+z", "toggle_firefox_sidebar"],
     ["ctrl+shift+x", "switch_text_direction"],
@@ -304,9 +303,11 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
   });
 
   // ' was one of them until the PDF viewer bound it to its marks (docs/specs/pdf-mode.md).
-  test("the only unbound c keys are the conditional ones and the alt tap", () => {
+  // ctrl+alt+x lost its action with Firefox's chatbot (firefox-surfaces-trim decision 12).
+  test("the only unbound c keys are the conditional ones, the alt tap and ctrl+alt+x", () => {
     const left = rows.filter((r) => r.fate === "c" && !r.conditional).map((r) => r.chord);
     expect(left).toEqual([
+      "ctrl+alt+x",
       "ctrl+f7",
       "alt+f7",
       "ctrl+alt+f7",
@@ -355,9 +356,10 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
     }
   });
 
-  test("the 47 new actions are named, and firefox_command runs any other (sub-PR 2)", () => {
+  // 47 until ai_chatbot_sidebar went (firefox-surfaces-trim decision 12).
+  test("the 46 new actions are named, and firefox_command runs any other (sub-PR 2)", () => {
     const actions = new Set(rows.filter((r) => r.fate === "b").map((r) => r.action));
-    expect(actions.size).toBe(47);
+    expect(actions.size).toBe(46);
     expect(getAction("firefox_command")).toMatchObject({ id: "firefox.command", group: "Browser" });
     expect(getAction("new_private_window")).toBeUndefined();
   });
