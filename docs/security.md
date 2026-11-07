@@ -2475,6 +2475,20 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`a_page_that_takes_ctrl_n_keeps_it`](../tests/browser/browser_vimma_page_suggestions.js),
   [`a_late_reply_presses_no_arrow_key_in_another_tab`](../tests/browser/browser_vimma_page_suggestions.js),
   [`a_hidden_list_left_aria_expanded_is_not_open`](../tests/browser/browser_vimma_page_suggestions.js)
+- K7. The content actor **must** attach only to http, https, file, `about:` and `view-source:`
+  documents and Vimma's start page (`VimmaActors.register`); `moz-extension:`, `data:`, `blob:` and
+  `chrome:` documents get none and stay in insert, though their `view-source:` forms match. A
+  `view-source:` document is Firefox's own rendering of a source as inert markup: no page script
+  runs in it, web content cannot navigate to `view-source:` (`URI_DANGEROUS_TO_LOAD`), and it is
+  never framed. It loads in the process its inner URI's origin selects: a web page's source in
+  that site's process, the source of a parent-process `about:` or `chrome:` page in the parent,
+  where the actor already runs for `about:` pages and the start page. Its replies go through the
+  same parent checks (K1, `parseHintReply`, `parseGrepReply`). Agents gain no reach from it: the
+  agent tools open only http and https (M6), and the document's principal keeps the
+  `view-source:` scheme, so every agent check for an http or https page refuses on it.
+  [`j_k_G_and_gg_scroll_the_source`](../tests/browser/browser_vimma_view_source.js),
+  [`f_labels_the_link_in_the_source_and_follows_it`](../tests/browser/browser_vimma_view_source.js),
+  [`the_actor_reaches_settings_and_the_pdf_viewer_but_not_data_urls`](../tests/browser/browser_vimma_insert_scroll.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 

@@ -8,7 +8,7 @@ the [user guide](guide.md); planned work is on the
 
 - Pages that take keys outside a text field (games, Google Docs, Figma) lose their plain keys
   and digits to normal mode. Press `i` to pass every key to the page until `Esc`.
-- Extension pages (`moz-extension:`), `data:`, `view-source:` and `blob:` pages have no Vim keys;
+- Extension pages (`moz-extension:`), `data:` and `blob:` pages have no Vim keys;
   the prefix and chords such as `ctrl+t` still work.
 - Link hints label only real elements: canvas apps (Google Docs, Figma, maps, games) get no
   hints.

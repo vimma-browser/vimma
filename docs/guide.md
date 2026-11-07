@@ -452,7 +452,8 @@ text editors' frames) also enters insert.
 Each tab keeps its own mode. Settings (`about:preferences`) and the PDF viewer work the same
 way, but Settings focuses its search box when it opens, so it starts in insert: press `Esc`
 before `j`/`k`. A PDF takes your keys as soon as it opens, also when a site serves it as a
-download. Pages Vimma does not reach (extension pages, `data:` and `view-source:` pages)
+download. A page's source (`gf`, or View Page Source) takes the same keys: scroll it, search it
+with `/`, and follow its links with `f`. Pages Vimma does not reach (extension pages, `data:` pages)
 stay in insert, so their keys are untouched. With focus in the address bar or the find bar, keys
 belong to that field; only `ctrl+b` sequences are Vimma's there (and, in a `/` search,
 `Enter` and `Esc`).
@@ -686,7 +687,7 @@ Edit menu's Find in Page, and there `Enter` goes to the next match.
   opens live grep again with the last query; `:grep text` opens it with that text.
 - **Not searched:** tabs that have not loaded since a restart (they are listed at the far end as
   `not loaded`; `Enter` opens one, so you can search again), form fields, text drawn on a canvas,
-  images, closed `<details>`, PDFs, and pages Vimma cannot read (`view-source:`). A page in a
+  images, closed `<details>`, PDFs, and pages Vimma cannot read (extension and `data:` pages). A page in a
   frame from another site is searched; its rows say `↳ host`.
 - **Limits.** A search stops in a page, or in the closed tabs' titles, after a second
   (`timed out`, so a pattern that would backtrack for ever never freezes the page or Vimma), covers at most 100 frames a tab and the first

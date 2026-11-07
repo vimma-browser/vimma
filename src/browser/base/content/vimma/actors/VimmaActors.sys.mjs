@@ -120,7 +120,7 @@ function intersect(a, b) {
 
 /**
  * The actor of a frame's current document, or null when the document does not match
- * (moz-extension:, data:, view-source:) or the frame is gone.
+ * (moz-extension:, data:, blob:) or the frame is gone.
  * @param {any} bc BrowsingContext
  * @returns {any} JSWindowActorParent
  */
@@ -255,8 +255,17 @@ export const VimmaActors = {
       },
       allFrames: true,
       // The start page (start/start.html) loads in the parent process; it needs the actor
-      // for normal mode like any page.
-      matches: ["http://*/*", "https://*/*", "file:///*", "about:*", START_PAGE_MATCH],
+      // for normal mode like any page. A view-source: page (`gf`, View Page Source) is
+      // Firefox's own rendering of a source as inert markup: no page script runs in it, and web
+      // content cannot navigate to it (URI_DANGEROUS_TO_LOAD, nsViewSourceHandler.cpp).
+      matches: [
+        "http://*/*",
+        "https://*/*",
+        "file:///*",
+        "about:*",
+        "view-source:*",
+        START_PAGE_MATCH,
+      ],
       messageManagerGroups: ["browsers"],
       // The child only reports focus, scrolls its own page and answers about its own text; the
       // parent trusts nothing but a descriptor, which at worst flips that tab's mode, and
