@@ -124,6 +124,10 @@ pref("signon.firefoxRelay.feature", "disabled");
 // Firefox's onboarding and default-browser prompt (decision 13): Vimma has its own first run;
 // setting the default browser stays in Settings > General.
 pref("browser.shell.checkDefaultBrowser", false);
+// Error pages without the illustration slot: its images (Firefox's fox) are empty overrides in
+// vimma/jar.mn, and with the slot off the text is centred rather than beside a blank space
+// (aboutNetError.css; firefox-surfaces-trim, step 4c).
+pref("browser.netError.illustration.enabled", false);
 // Upstream's provider with "enabled": false; carry upstream changes on rebase. One line: wrapped,
 // prettier adds a trailing comma that libpref's parser rejects.
 // prettier-ignore

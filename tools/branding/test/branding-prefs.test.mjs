@@ -109,6 +109,11 @@ describe("Firefox and Mozilla surfaces (firefox-surfaces-trim, step 2)", () => {
     expect(prefValue(name)).toBe(value);
   });
 
+  // Step 4c: the error pages lay out without the mascot's slot (its image is also empty).
+  it("browser.netError.illustration.enabled defaults to false", () => {
+    expect(prefValue("browser.netError.illustration.enabled")).toBe("false");
+  });
+
   it("turn the local onboarding provider off, upstream's value otherwise", () => {
     const raw = prefValue("browser.newtabpage.activity-stream.asrouter.providers.onboarding");
     expect(JSON.parse(JSON.parse(/** @type {string} */ (raw)))).toEqual({

@@ -1,0 +1,45 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The About dialog's branding sheet (aboutDialog.xhtml loads chrome://branding/content/aboutDialog.css).
+ * Surfer generates this file from Firefox's unofficial branding with the background colour of
+ * configs/branding/vimma; this file replaces it (src/ is linked over the generated copy), so the
+ * generated rules are kept as they were and Vimma's follow (docs/specs/firefox-surfaces-trim.md,
+ * delivery step 4c). */
+
+@media not ((prefers-contrast) and (prefers-color-scheme: light)) {
+  #aboutDialogContainer {
+    background-color: var(--theme-bg);
+    color: #fff;
+    color-scheme: dark;
+  }
+
+  #bottomBox {
+    background-color: hsla(235, 43%, 10%, 0.5);
+  }
+}
+
+#rightBox {
+  background-size: auto 44px;
+  margin-inline: 30px;
+  padding-top: 64px;
+}
+
+#bottomBox {
+  padding: 15px 10px;
+}
+
+:root {
+  --theme-bg: #071011;
+}
+
+/* Mozilla's donate and get-involved paragraph, and Mozilla's Terms of Use and Privacy Notice,
+ * which govern Firefox rather than Vimma. The community paragraph stays (it carries the "Built on
+ * Firefox by Mozilla" attribution), and so do the licensing information link, which leads to
+ * the licence notices, and the trademark line. */
+#contributeDesc,
+#contributeDescReferrals,
+.bottom-link[href^="https://www.mozilla.org/"] {
+  display: none !important;
+}

@@ -218,6 +218,24 @@
       color: var(--vimma-fg-dim) !important;
     }
   }
+
+  /* The link status panel at the window's foot (a hovered link's URL): a picker's surface, like
+   * the find bar. Firefox paints it in the system's dialog colours (content-area.css), which stay
+   * light under a dark theme (docs/specs/firefox-surfaces-trim.md, delivery step 4c). */
+  #statuspanel-label {
+    background-color: var(--vimma-bg-dark) !important;
+    border-color: var(--vimma-muted) !important;
+    color: var(--vimma-fg) !important;
+    color-scheme: var(--vimma-color-scheme) !important;
+  }
+
+  /* The account panel's sign-in box: the theme's base surface on the panel's darker one, with
+   * the panel's text, rather than Firefox's vibrant purple promo (panelUI-shared.css). */
+  #PanelUI-fxa-menu-sign-in-promo {
+    background-color: var(--vimma-bg) !important;
+    color: var(--vimma-fg) !important;
+    border: 1px solid var(--vimma-muted);
+  }
 }
 
 /* Web pages in the theme's colour scheme (docs/specs/content-color-scheme.md). A tab's page takes
