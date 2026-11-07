@@ -355,7 +355,11 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     Site stays (decision 11); the account button stays, because it is Sync's entry point
     (decision 1). Rejected: Vimma code that sets `hidden` at window start, the mechanism this
     table first named, for the reason above; a listener that sets `hidden` again before each menu
-    opens, because it races Firefox's own listeners on the same events.
+    opens, because it races Firefox's own listeners on the same events. On macOS the menu bar is
+    native and drawn from the items' attributes, which CSS does not reach, so its Tools and Help
+    menus keep these items for now; the app menu, the context menus and customize mode are drawn
+    by Gecko and covered on both platforms. Hiding them in the macOS menu bar is a follow-up for
+    macOS, because Linux comes first.
 
 ## Security and privacy
 

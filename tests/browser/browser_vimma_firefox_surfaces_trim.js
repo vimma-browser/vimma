@@ -13,6 +13,7 @@
 const { SidebarManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sidebar/SidebarManager.sys.mjs",
 );
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { FirefoxRelayUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/FirefoxRelayUtils.sys.mjs",
 );
@@ -288,7 +289,17 @@ add_task(async function context_menus_have_no_send_to_device() {
   });
 });
 
+/**
+ * macOS draws the menu bar natively from the XUL items' attributes, which CSS does not reach
+ * (decision 15), and its popups have no Gecko layout to measure.
+ */
+const NATIVE_MENUBAR = AppConstants.platform === "macosx";
+
 add_task(async function tools_menu_has_no_firefox_view() {
+  if (NATIVE_MENUBAR) {
+    Assert.ok(true, "macOS's native menu bar is out of reach of Vimma's CSS");
+    return;
+  }
   const popup = document.getElementById("menu_ToolsPopup");
   const visible = await shownWhileOpen(
     popup,
@@ -302,6 +313,10 @@ const HIDDEN_HELP = ["helpSwitchDevice", "help_reportBrokenSite"];
 const KEPT_HELP = ["menu_openHelp", "feedbackPage", "troubleShooting", "aboutName"];
 
 add_task(async function menubar_help_has_no_mozilla_items() {
+  if (NATIVE_MENUBAR) {
+    Assert.ok(true, "macOS's native menu bar is out of reach of Vimma's CSS");
+    return;
+  }
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {
     const popup = document.getElementById("menu_HelpPopup");
     const visible = await shownWhileOpen(
