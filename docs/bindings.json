@@ -1447,16 +1447,6 @@
           ]
         },
         {
-          "name": "ai_chatbot_sidebar",
-          "description": "Firefox sidebar: AI chatbot",
-          "keys": [
-            {
-              "keys": "ctrl+alt+x",
-              "chords": ["ctrl+alt+x"]
-            }
-          ]
-        },
-        {
           "name": "open_tabs_sidebar",
           "description": "Firefox sidebar: tabs from other devices",
           "keys": [

@@ -164,6 +164,21 @@ describe("parseConfig: errors carry line numbers", () => {
     );
   });
 
+  // docs/specs/firefox-surfaces-trim.md decision 12: a config written before the action went
+  // says why it no longer loads, instead of suggesting a look-alike action.
+  test.each([
+    [
+      toml("schema = 1", "[keys]", 'ai_chatbot_sidebar = ["ctrl+alt+x"]'),
+      "keys.ai_chatbot_sidebar",
+    ],
+    [toml("schema = 1", "[modal.normal]", '"gx" = "browser.sidebar_chatbot"'), "modal.normal.gx"],
+  ])("a removed action is an error that says it was removed (%#)", (text, path) => {
+    const e = oneError(text);
+    expect(e).toMatchObject({ line: 3, path });
+    expect(e.suggestion).toBeUndefined();
+    expect(e.message).toMatch(/was removed: Firefox's AI chatbot is off in Vimma/);
+  });
+
   // Regression (found by the fuzzer, seed 1027517388, issue #134): an action name with a `[`
   // made parseConfig throw "RangeError: Invalid array length" instead of reporting it.
   test("an unknown action whose name is not a bare key is an error, not a throw", () => {

@@ -1352,7 +1352,10 @@ A Firefox shortcut on a key Vimma binds is always off, so the two never both run
 Firefox key is a Vimma binding on Firefox's own key too: `ctrl+f` (a second find key, as `/`),
 `ctrl+j` (web search), `F7` (caret browsing), `ctrl+shift+b` (bookmarks toolbar) and the rest.
 An unbound key does nothing, including the tab keys Firefox handles outside its shortcut lists
-(`ctrl+pagedown`, `ctrl+tab`, `ctrl+F4`, `F7`). `shift+esc` (stop loading) works in normal mode
+(`ctrl+pagedown`, `ctrl+tab`, `ctrl+F4`, `F7`). `ctrl+alt+x`, Firefox's AI chatbot sidebar, is
+one of them, since Firefox's chatbot is off in Vimma; a `config.toml` that still names
+`ai_chatbot_sidebar` gets an error that says the action was removed. `ctrl+alt+u` (tabs from
+your other devices) and `ctrl+alt+z` (show or hide Firefox's sidebar) keep working. `shift+esc` (stop loading) works in normal mode
 only. Three are left alone: the `alt+letter` keys that open the menu bar's menus stay Firefox's,
 and a bare `alt` tap and `'` (quick find for links) do nothing (the `ui.key.menuAccessKeyFocuses`
 and `accessibility.typeaheadfind.manual` prefs are `false` in Vimma's defaults).

@@ -220,7 +220,6 @@ group("Browser", [
   ["about_processes", "browser.processes", "Process manager (about:processes)"],
   ["bookmark_all_tabs", "browser.bookmark_all_tabs", "Bookmark all tabs"],
   ["toggle_bookmarks_toolbar", "browser.bookmarks_toolbar", "Show / hide the bookmarks toolbar"],
-  ["ai_chatbot_sidebar", "browser.sidebar_chatbot", "Firefox sidebar: AI chatbot"],
   ["open_tabs_sidebar", "browser.sidebar_tabs", "Firefox sidebar: tabs from other devices"],
   ["toggle_firefox_sidebar", "browser.sidebar", "Show / hide Firefox's sidebar"],
   ["switch_text_direction", "browser.text_direction", "Switch a text field's direction"],
@@ -499,6 +498,26 @@ for (const a of ACTIONS) {
  */
 export function isRunnable(id, runnable) {
   return runnable ? runnable.has(id) : true;
+}
+
+/**
+ * Actions that existed and were removed, by config name and id, with why: a config written before
+ * the removal says so instead of suggesting a look-alike action.
+ * @type {Readonly<Record<string, string>>}
+ */
+const REMOVED = Object.freeze({
+  // docs/specs/firefox-surfaces-trim.md decision 12.
+  ai_chatbot_sidebar: "Firefox's AI chatbot is off in Vimma",
+  "browser.sidebar_chatbot": "Firefox's AI chatbot is off in Vimma",
+});
+
+/**
+ * Why `text` no longer names an action, when it named one that was removed.
+ * @param {string} text
+ * @returns {string | undefined}
+ */
+export function removedAction(text) {
+  return Object.hasOwn(REMOVED, text) ? REMOVED[text] : undefined;
 }
 
 /**

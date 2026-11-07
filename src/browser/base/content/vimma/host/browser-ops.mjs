@@ -57,7 +57,6 @@ export const BROWSER_KEYS = Object.freeze({
   // No <command>: browser-sets.js handles these by the key's id.
   "browser.bookmark_all_tabs": "bookmarkAllTabsKb",
   "browser.bookmarks_toolbar": "viewBookmarksToolbarKb",
-  "browser.sidebar_chatbot": "viewGenaiChatSidebarKb",
   "browser.sidebar_tabs": "viewOpenTabsSidebarKb",
   "browser.sidebar": "toggleSidebarKb",
 });

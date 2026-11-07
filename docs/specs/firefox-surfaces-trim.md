@@ -1,6 +1,6 @@
 # Spec: firefox-surfaces-trim
 
-Status: draft · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: draft (delivery step 6 built) · Area: `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/branding/vimma/locales/en-US/brand.ftl` (new), `src/browser/themes/shared/vimma/`
 (`firefox-pages.css`, `firefox-chrome.css`), `src/browser/base/content/vimma/jar.mn`,
 `src/browser/base/content/vimma/start/`, `packages/vimma-core/src/actions.mjs` and `defaults.mjs`,
@@ -279,7 +279,14 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     renaming them would misattribute them the other way.
 12. **Only the chatbot's sidebar key goes.** The `ai_chatbot_sidebar` action and its
     `ctrl+alt+x` key are removed, because the chatbot is off (decision 3) and the key would open a
-    panel that does nothing. `open_tabs_sidebar` (`ctrl+alt+u`) stays, because tabs from other
+    panel that does nothing. Firefox's own key on that chord (`viewGenaiChatSidebarKb`) becomes
+    fate c in firefox-keys' inventory, unbound and off under the default `[firefox] disable =
+"all"`, because a chord Vimma no longer binds would otherwise reach the chatbot whenever
+    `browser.ml.chat.enabled` is set back to `true`; the pref (step 2) covers a user who lists the
+    chord in `[firefox] enable`. A `config.toml` that still names `ai_chatbot_sidebar` (or
+    `browser.sidebar_chatbot`) gets an error saying the action was removed and why, instead of a
+    "did you mean" suggestion, because the config loader refuses unknown actions and a look-alike
+    suggestion would mislead. `open_tabs_sidebar` (`ctrl+alt+u`) stays, because tabs from other
     devices come from Sync, which stays (decision 1); `toggle_firefox_sidebar` (`ctrl+alt+z`)
     stays, because the bookmarks, history and passwords panels still work. Rejected: dropping all
     three, because two of them reach features Vimma keeps.
