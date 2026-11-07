@@ -69,6 +69,10 @@ Left as Firefox has them (local features, not Mozilla services; revisit with key
 annoy): the startup default-browser prompt (`browser.shell.checkDefaultBrowser`, which offers
 "don't ask again"), local onboarding messages, UITour (only on `mozilla.org` pages).
 
+(Since changed: the Firefox Labs pane is hidden and Firefox's AI features are off by default, the
+startup default-browser prompt and the local onboarding messages are off, and UITour's URL is
+empty, all as plain prefs; [firefox-surfaces-trim](firefox-surfaces-trim.md), decisions 3 and 13.)
+
 ## How the defaults are applied
 
 | Mechanism                              | Upstream patch                                                | User can override                 | Verdict                                                                                |
