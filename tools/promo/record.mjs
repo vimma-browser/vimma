@@ -7,11 +7,15 @@
  * HTTP proxy: no real website and no network. Colours: Vimma's built-in palette, set by a temp
  * config.toml (`[theme] source = "file"`, and `name = "vimma"` when the build knows the key), so
  * the recording machine's Omarchy theme never shows; the theme shot sets its Omarchy themes from
- * tools/promo/themes. The video itself is composited elsewhere
+ * tools/promo/themes. The agent shot also runs the agent bench's stand-in shop, with
+ * its own unbranded catalog and name (as
+ * shop.example, through the same proxy) and its scripted shopper behind a local
+ * OpenAI-compatible endpoint (--model-port, default 8800), which config.toml lists as the chat
+ * window's provider. The video itself is composited elsewhere
  * (vimma-site: npm run video); this writes the raw clips and what happened in them.
  *
  *   node tools/promo/record.mjs --out DIR                       # every shot, 1920x1080
- *   node tools/promo/record.mjs --out DIR --geometry 1080x1920 --shots keys,tiling,marks,theme
+ *   node tools/promo/record.mjs --out DIR --geometry 1080x1920 --shots keys,tiling,agent
  *   node tools/promo/record.mjs --out DIR --pace 800            # slower: ms per beat
  *
  * Options: --scale (device pixels per CSS pixel, default 1.5), --fps (default 30), --toolbar
@@ -25,12 +29,14 @@
  * failure, 2 on usage errors.
  */
 import { spawn } from "node:child_process";
+import { createServer, request } from "node:http";
 import {
   copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -44,14 +50,26 @@ import { parseArgs } from "node:util";
 import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
 import { startPageServer } from "../e2e/pages.mjs";
+import { startShop } from "../agent-bench/shop.mjs";
+import {
+  MODEL,
+  PROMO_CATALOG,
+  SHOP_NAME,
+  promoShopper,
+  startModelServer,
+  textKeys,
+} from "./agent.mjs";
 import { READ_PATH_PREF, devPrefs } from "../start.mjs";
 import {
+  HOSTS,
   KeyTrack,
   cssWindow,
   parseGeometry,
   parseProbeTitle,
   promoConfig,
   promoPrefs,
+  proxyRoute,
+  servedModule,
   supportsThemeName,
 } from "./promo.mjs";
 import { SHOTS } from "./shots.mjs";
@@ -69,6 +87,7 @@ const OPTIONS = /** @type {const} */ ({
   pace: { type: "string", default: "700" },
   toolbar: { type: "string", default: "hidden" },
   fps: { type: "string", default: "30" },
+  "model-port": { type: "string", default: "8800" },
   shots: { type: "string" },
   build: { type: "string" },
   "vimma-ctl": { type: "string" },
@@ -97,6 +116,23 @@ function writeTheme(dir, name) {
   rmSync(join(dir, "colors.toml.tmp"));
   if (LIGHT_THEMES.has(name)) writeFileSync(join(dir, "light.mode"), "");
   else rmSync(join(dir, "light.mode"), { force: true });
+}
+
+/**
+ * Serve vimma-core's `name`.mjs as `name`.js in `dir`, with the modules it imports, for
+ * probe.js (fixtures/probe.js imports hints.js).
+ * @param {string} dir
+ * @param {string} name
+ * @param {Set<string>} [done]
+ */
+function serveCore(dir, name, done = new Set()) {
+  if (done.has(name)) return;
+  done.add(name);
+  const { text, imports } = servedModule(
+    readFileSync(join(REPO, `packages/vimma-core/src/${name}.mjs`), "utf8"),
+  );
+  writeFileSync(join(dir, `${name}.js`), text);
+  for (const dep of imports) serveCore(dir, dep, done);
 }
 
 /**
@@ -165,6 +201,52 @@ function sandboxPrefs(binary) {
   if (!checkout) return {};
   const paths = new Set([...devPrefs(REPO), ...devPrefs(checkout)].map(([, v]) => String(v)));
   return { [READ_PATH_PREF]: [...paths].join(",") };
+}
+
+/**
+ * The HTTP proxy the profile uses for every request: the fixture pages for the fixture hosts,
+ * and the servers `routes` names for theirs (the shop and the scripted model of the agent shot).
+ * `routes` is read at each request, so a shot can add its servers after the proxy starts.
+ * @param {string} pages the fixture page server's origin
+ * @param {Record<string, string>} routes
+ * @returns {Promise<{ port: number, close: () => Promise<void> }>}
+ */
+async function startProxy(pages, routes) {
+  const server = createServer((req, res) => {
+    const { origin, path } = proxyRoute(req.url ?? "/", req.headers.host ?? "", routes, pages);
+    const target = new URL(origin);
+    const upstream = request(
+      {
+        host: target.hostname,
+        port: target.port,
+        method: req.method,
+        path,
+        headers: { ...req.headers, host: target.host },
+      },
+      (up) => {
+        res.writeHead(up.statusCode ?? 502, up.headers);
+        up.pipe(res);
+      },
+    );
+    upstream.on("error", () => {
+      if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain" });
+      res.end("bad gateway\n");
+    });
+    req.pipe(upstream);
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(undefined));
+  });
+  const address = server.address();
+  return {
+    port: typeof address === "object" && address ? address.port : 0,
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve(undefined));
+      }),
+  };
 }
 
 /**
@@ -300,6 +382,8 @@ export class Director {
     this.labels = {};
     /** @type {Record<string, { x: number, y: number }>} screen points for the video's zoom */
     this.points = {};
+    /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[] | null} the agent shot's model turns */
+    this.agentReplies = null;
   }
 
   /** @returns {Promise<any>} */
@@ -358,6 +442,49 @@ export class Director {
     for (const c of text) await this.key(c === " " ? "space" : c, beats);
   }
 
+  /**
+   * The agent shot: wait until the scripted model has asked to click at the checkout, the
+   * payment checkpoint Vimma then puts to the user. Nothing in the state shows the question,
+   * so the shot's next hold covers its drawing.
+   */
+  async agentPaying() {
+    const replies = this.agentReplies;
+    if (!replies) throw new Error("agentPaying in a shot without agent: true");
+    await this.until(
+      () => {
+        const at = replies.findIndex((r) =>
+          r.calls?.some((c) => c.name === "vimma_open" && /\/checkout$/.test(c.args.url)),
+        );
+        return (
+          at >= 0 && replies.slice(at + 1).some((r) => r.calls?.[0]?.name === "vimma_activate")
+        );
+      },
+      "the agent's click at the checkout",
+      60_000,
+    );
+  }
+
+  /** The agent shot: wait for the scripted model's closing reply. */
+  async agentDone() {
+    const replies = this.agentReplies;
+    if (!replies) throw new Error("agentDone in a shot without agent: true");
+    await this.until(() => !replies.at(-1)?.calls?.length, "the agent's last reply", 30_000);
+  }
+
+  /**
+   * Type a sentence a word at a time, `beats` after each, off the key track: a chip for every
+   * letter of a sentence would bury the picture. Marked as `typed` once done.
+   * @param {string} text
+   * @param {number} beats
+   */
+  async typeText(text, beats) {
+    for (const word of textKeys(text)) {
+      await this.ctl.sendKeys(word);
+      await this.hold(beats);
+    }
+    this.mark("typed");
+  }
+
   /** @param {string} url */
   open(url) {
     return this.ctl.open(url);
@@ -382,22 +509,27 @@ export class Director {
   }
 
   /**
-   * Back to the built-in palette: config.toml's `[theme] source = "file"`, as a user who stops
-   * following Omarchy writes it. Vimma polls config.toml (every 200 ms in the promo profile);
-   * nothing in the state shows the colours, so the shot's next hold covers the poll. Marked as
-   * `theme:builtin`.
+   * Save config.toml's theme as a user does in their editor: `source` (the built-in palette,
+   * "file", unless given), `name` (the built-in palette's) and `colors` (`[theme.colors]`), with
+   * the shot's other keys as they were. Vimma polls config.toml (every 200 ms in the promo
+   * profile); nothing in the state shows the colours, so the shot's next hold covers the poll.
+   * Marked on the track as `mark`.
+   * @param {{ source?: "file" | "omarchy", name?: string, colors?: Record<string, string> }} look
+   * @param {string} mark
    */
-  async builtinTheme() {
+  async saveTheme({ source = "file", name, colors }, mark) {
     writeConfig(
       this.configPath,
       promoConfig({
-        source: "file",
-        name: this.themeName,
+        source,
+        name: name ?? this.themeName,
         appearance: this.appearance,
+        colors,
         toolbar: this.toolbar,
+        search: true,
       }),
     );
-    this.mark("theme:builtin");
+    this.mark(mark);
   }
 
   /**
@@ -472,14 +604,20 @@ async function main() {
   }
 
   try {
-    // the fixtures, plus vimma-core's hints.mjs for probe.js (as .js: the server's types)
+    // the fixtures, plus vimma-core's hints.mjs and its imports for probe.js (as .js: the
+    // server's types)
     const served = mkdtempSync(join(tmpdir(), "vimma-promo-pages-"));
     cleanups.push(async () => rmSync(served, { recursive: true, force: true }));
     cpSync(FIXTURES, served, { recursive: true });
-    copyFileSync(join(REPO, "packages/vimma-core/src/hints.mjs"), join(served, "hints.js"));
+    serveCore(served, "hints");
     const pages = await startPageServer(served);
     cleanups.push(() => pages.close());
-    const port = Number(new URL(pages.base).port);
+    /** @type {Record<string, string>} */
+    const routes = {};
+    const proxy = await startProxy(new URL(pages.base).origin, routes);
+    cleanups.push(() => proxy.close());
+    const port = proxy.port;
+    const modelPort = Number(values["model-port"]);
     const display = await startXvfb({ ...screen });
     cleanups.push(() => display.stop());
     const themeDir = mkdtempSync(join(tmpdir(), "vimma-promo-theme-"));
@@ -512,9 +650,42 @@ async function main() {
       console.log(`promo: ${shot.name}`);
       // no Omarchy theme until a shot sets one; config.toml picks the source
       for (const f of readdirSync(themeDir)) rmSync(join(themeDir, f), { force: true });
+      // the agent shot: a fresh shop (an empty basket) and a fresh script, on this machine
+      /** @type {{ endpoint: string, model: string } | undefined} */
+      let agent;
+      /** @type {() => Promise<void>} */
+      let closeAgent = async () => {};
+      /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[] | null} */
+      let agentReplies = null;
+      if (shot.agent) {
+        const shop = await startShop({ catalog: PROMO_CATALOG, name: SHOP_NAME });
+        const shopHost = new URL(HOSTS.shop).host;
+        routes[shopHost] = new URL(shop.base).origin;
+        const model = await startModelServer({
+          port: modelPort,
+          script: promoShopper({ base: HOSTS.shop }),
+          paceMs: Math.round(pace * 1.8),
+        });
+        routes[new URL(model.endpoint).host] = new URL(model.endpoint).origin;
+        closeAgent = async () => {
+          delete routes[shopHost];
+          delete routes[new URL(model.endpoint).host];
+          await Promise.all([shop.close(), model.close()]);
+        };
+        cleanups.push(() => closeAgent());
+        agent = { endpoint: model.endpoint, model: MODEL };
+        agentReplies = model.replies;
+      }
       writeConfig(
         configPath,
-        promoConfig({ source: shot.theme ?? "file", name: themeName, appearance, toolbar }),
+        promoConfig({
+          source: shot.theme ?? "file",
+          name: themeName,
+          appearance,
+          toolbar,
+          agent,
+          search: true,
+        }),
       );
       /** @type {() => Promise<void>} */
       let teardown = async () => {};
@@ -547,6 +718,7 @@ async function main() {
         appearance,
         toolbar,
       });
+      director.agentReplies = agentReplies;
       await director.until((s) => s.workspace === "main", "the first window", 20_000);
       await shot.setup(director);
       const raw = join(out, `${shot.name}.raw.mkv`);
@@ -566,6 +738,8 @@ async function main() {
       }
       const failed = session.loadFailure();
       await teardown();
+      await closeAgent();
+      closeAgent = async () => {};
       if (failed) throw new Error(`the browser logged "${failed}"`);
       const file = `${shot.name}.mkv`;
       const { origin, duration } = await finishClip(raw, join(out, file));

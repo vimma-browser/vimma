@@ -10,7 +10,7 @@
 // a model.
 
 import { setTimeout as delay } from "node:timers/promises";
-import { loadCatalog } from "./shop.mjs";
+import { fullName, loadCatalog } from "./shop.mjs";
 
 /** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Provider} */
 export const SCRIPTED_PROVIDER = Object.freeze({
@@ -183,7 +183,7 @@ export function shopper({ base, list, path = "search", catalog }) {
         }
         const p = byId.get(i.accept[0]);
         if (!p) throw new Error(`the catalog has no ${i.accept[0]}`);
-        const full = `${p.name} (${p.brand}, ${p.size})`;
+        const full = fullName(p);
         const q = new URLSearchParams({ q: p.name.replace(/,/g, "").toLowerCase() });
         return {
           url: `${base}search?${q}`,

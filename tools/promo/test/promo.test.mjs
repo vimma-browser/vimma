@@ -8,8 +8,11 @@ import {
   parseProbeTitle,
   promoConfig,
   promoPrefs,
+  proxyRoute,
+  servedModule,
   supportsThemeName,
 } from "../promo.mjs";
+import { ROSE_PINE } from "../shots.mjs";
 
 describe("parseGeometry", () => {
   it("reads WIDTHxHEIGHT", () => {
@@ -94,10 +97,90 @@ describe("promoConfig", () => {
     );
     expect(parseConfig(text).errors).toEqual([]);
   });
+  it("lists the agent's provider when given: a local OpenAI-compatible endpoint, no key", () => {
+    const text = promoConfig({
+      source: "file",
+      name: "vimma",
+      agent: { endpoint: "http://127.0.0.1:8800/v1", model: "scripted" },
+    });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[agent]\ndefault = "local"\n\n' +
+        '[[agent.providers]]\nname = "local"\nkind = "openai"\n' +
+        'endpoint = "http://127.0.0.1:8800/v1"\nmodel = "scripted"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+  });
+  it("sets single colours over the palette with [theme.colors], as the config card types them", () => {
+    expect(
+      parseConfig(promoConfig({ source: "file", name: "vimma", colors: ROSE_PINE })).errors,
+    ).toEqual([]);
+    const text = promoConfig({
+      source: "file",
+      name: "tokyo-night",
+      colors: { accent: "#ff9e64" },
+      toolbar: "hidden",
+    });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "tokyo-night"\n\n[theme.colors]\n' +
+        'accent = "#ff9e64"\n\n[ui]\ntoolbar = "hidden"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+  });
+  it("makes the fixture search the default engine when asked, so no engine's name shows", () => {
+    const text = promoConfig({ source: "file", name: "vimma", search: true });
+    expect(text).toBe(
+      'schema = 2\n\n[theme]\nsource = "file"\nname = "vimma"\n\n[search]\ndefault = "@s"\n\n' +
+        '[search.aliases]\ns = "http://search.example/?q=%s"\n',
+    );
+    expect(parseConfig(text).errors).toEqual([]);
+  });
   it("leaves the name out for a build without it: its default built-in shows", () => {
     expect(promoConfig({ source: "omarchy", name: null })).toBe(
       'schema = 2\n\n[theme]\nsource = "omarchy"\n',
     );
+  });
+});
+
+describe("proxyRoute", () => {
+  const routes = {
+    "shop.example": "http://127.0.0.1:5001",
+    "127.0.0.1:8800": "http://127.0.0.1:8800",
+  };
+  it("sends a routed host to its server, keeping the path and query", () => {
+    expect(
+      proxyRoute("http://shop.example/search?q=oat", "shop.example", routes, "http://p"),
+    ).toEqual({ origin: "http://127.0.0.1:5001", path: "/search?q=oat" });
+    expect(proxyRoute("http://127.0.0.1:8800/v1/models", "", routes, "http://p")).toEqual({
+      origin: "http://127.0.0.1:8800",
+      path: "/v1/models",
+    });
+  });
+  it("reads the Host header for a request sent straight to the proxy", () => {
+    expect(proxyRoute("/basket", "shop.example", routes, "http://p")).toEqual({
+      origin: "http://127.0.0.1:5001",
+      path: "/basket",
+    });
+  });
+  it("sends every other host to the fixture pages", () => {
+    expect(
+      proxyRoute("http://wiki.example/runbook.html", "wiki.example", routes, "http://p"),
+    ).toEqual({ origin: "http://p", path: "/runbook.html" });
+  });
+});
+
+describe("servedModule", () => {
+  it("renames a module's relative imports to .js, which the page server serves as scripts", () => {
+    const text = 'import { a } from "./blocks.mjs";\nimport { b, c } from "./agent-element.mjs";\n';
+    expect(servedModule(text)).toEqual({
+      text: 'import { a } from "./blocks.js";\nimport { b, c } from "./agent-element.js";\n',
+      imports: ["blocks", "agent-element"],
+    });
+  });
+  it("leaves a module without imports as it is", () => {
+    expect(servedModule("export const x = 1;\n")).toEqual({
+      text: "export const x = 1;\n",
+      imports: [],
+    });
   });
 });
 
