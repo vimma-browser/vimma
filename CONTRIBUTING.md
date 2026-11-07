@@ -424,10 +424,10 @@ Vimma.
   `--version` string, `MOZ_APP_NAME` and the crash-reporter flag
   ([ADR-010](docs/adr/010-pr-artifact-builds.md), Known gaps). PR CI's builds also have no Google
   Safe Browsing key, so Safe Browsing is off in them.
-- The nightly full build is not live: `nightly.yml` builds on GitHub-hosted runners (about 2
-  hours), but stays switched off until `NIGHTLY_ENABLED` is set
-  ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml)). Until then
-  `skip-if = ["artifact"]` tests run only on local full builds. `RELEASE_ENABLED` is set, but each
+- The nightly full build is live: `nightly.yml` builds `main` on a GitHub-hosted runner at
+  03:00 UTC (about 2 hours) and runs the whole mochitest suite on it, `skip-if = ["artifact"]`
+  tests included ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml)). It sees a
+  change only after the change has merged. `RELEASE_ENABLED` is set, but each
   release is a draft that runs no build until the maintainer publishes it
   ([runbook](docs/runbook.md#releases-release-pleaseyml)). PRs that touch patches, `configs/`,
   `moz.configure` or branding must report a full-build run
