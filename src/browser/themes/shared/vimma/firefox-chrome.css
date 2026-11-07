@@ -235,3 +235,34 @@
     ) !important;
   }
 }
+
+/* Mozilla's entry points in the menus (docs/specs/firefox-surfaces-trim.md, decision 1 and
+ * delivery step 4a): Send to Device in the page, link and tab menus, Tools > Tab Overview
+ * (Firefox View), Help > Switching to a New Device and Report Broken Site, and the Send to Device
+ * and Tab Overview widgets. CSS rather than `hidden`, because Firefox rewrites `hidden` on these
+ * every time a menu opens or a tab loads (browser-sync.js, updateContentContextMenu and
+ * updateTabContextMenu; ReportBrokenSite.sys.mjs, enableOrDisableMenuitems). The app menu's Help
+ * view copies the visible Help items as `appMenu_` + id (panelUI.js, cloneHelpMenuItem) and swaps
+ * the Switch Device copy for a promo while browser.nova.enabled is on, so the copies are named
+ * too. Outside the high-contrast block, so they stay hidden there (decision 7). Sync stays in
+ * Settings > Sync and the account button. */
+#context-sendpagetodevice,
+#context-sep-sendpagetodevice,
+#context-sendlinktodevice,
+#context-sep-sendlinktodevice,
+#context_sendTabToDevice,
+#context_sendTabToDeviceSeparator,
+#menu_openFirefoxView,
+#helpSwitchDevice,
+#help_reportBrokenSite,
+#appMenu_helpSwitchDevice,
+#appMenu-nova-switch-device-promo,
+#appMenu_help_reportBrokenSite,
+#protections-popup-report-broken-site-button,
+toolbarseparator:has(+ #protections-popup-report-broken-site-button),
+#send-tab-button,
+#wrapper-send-tab-button,
+#firefox-view-button,
+#wrapper-firefox-view-button {
+  display: none !important;
+}
