@@ -98,7 +98,7 @@ describe("keymap contexts", () => {
 
   test("the config template's zathura block, uncommented, gives zathura's keys back", () => {
     const lines = formatConfigTemplate().split("\n");
-    const start = lines.findIndex((l) => /zathura/.test(l) && l.startsWith("#"));
+    const start = lines.findIndex((l) => /^# PDF actions on keys/.test(l) && l.startsWith("#"));
     expect(start).toBeGreaterThan(lines.indexOf("[modal.pdf]"));
     const block = [];
     for (const l of lines.slice(start + 1)) {

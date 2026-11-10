@@ -221,7 +221,7 @@ insert_editing = true
 "m" = "pdf.mark_set"
 "'" = "pdf.mark_go"
 "c" = "hint.copy_target"
-# zathura's keys over Vimma's in the PDF viewer, for those who want them:
+# PDF actions on keys that are Vimma's elsewhere, for those who want them in the PDF viewer:
 # "d" = "pdf.dual_page"
 # "r" = "pdf.rotate"
 # "H" = "pdf.page_top"

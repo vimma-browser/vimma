@@ -18,7 +18,7 @@ What works today, each with the section that explains it:
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
-- **[PDFs with zathura's keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`,
+- **[PDFs with the same keys](#pdf-viewer):** Vimma's keys, plus `J`/`K` and `12G` by page, zoom and fit (`+`,
   `-`, `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
   marks, presentation with `:present`, `page 3/12` with the match count in the status bar, and
   the viewer in your theme. Vimma's own keys keep their meaning there.
@@ -749,8 +749,7 @@ the field and use its own selection.
 ### PDF viewer
 
 PDFs open in Firefox's own viewer, pdf.js, Mozilla's PDF reader, and Vimma drives it with the
-keys of zathura, the keyboard-driven document viewer, so a paper or a manual reads the same in the
-browser as in your viewer. pdf.js keeps rendering, forms, printing and accessibility; Vimma adds
+same keys as every other page, plus keys for pages, zoom and the outline. pdf.js keeps rendering, forms, printing and accessibility; Vimma adds
 the keys, a page count in the status bar and an outline panel, and gives the viewer's toolbar,
 menus and the space around the pages your theme's colours, light or dark. Pages are shown in the
 document's own colours.
@@ -764,8 +763,7 @@ it.
 Every Vimma key does in the PDF viewer what it does on any page, so your hands need not know
 which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
 and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. The
-viewer adds zathura's keys only on the keys Vimma leaves free, and zathura's other keys are
-commands:
+viewer adds its own keys only on the keys Vimma leaves free, and its other actions are commands:
 
 - **Pages.** `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
   page and `G` to the last; with a count, to that page (`12G`, `12gg`), counted from 1 whatever
@@ -811,17 +809,15 @@ leaves it. `/` finds in the PDF with the match count in the status bar, and the 
 the page as `page 3/12`, or `page iv (4/120)` when the page has a label that is not its number.
 
 A PDF that a web page shows inside itself (in a frame, `<embed>` or `<object>`) keeps the page's
-keys; open it in its own tab for these. Some of zathura's keys stay Vimma's: `ctrl+b` is the prefix,
-not a screen up (`shift+space` scrolls up a screen); `t` opens a tab; `q` does not close the tab
-(`x` and `:q` do); and `alt+left` / `alt+right` go back and forward rather than a page. `ctrl+r`
-reloads rather than recolouring the pages, and `ctrl+n` does not hide the status bar. Marks and the
-jump list are not kept across restarts, `o` does not open a file (`:open` with a `file://` address
-does), and there is no SyncTeX.
+keys; open it in its own tab for these. In a PDF, as everywhere, `ctrl+b` is the prefix
+(`shift+space` scrolls up a screen), `t` opens a tab, `x` and `:q` close it, and `alt+left` /
+`alt+right` go back and forward. Marks and the jump list are not kept across restarts, and
+`:open` with a `file://` address opens a local PDF.
 
 Every one of these keys can be changed in [config.toml](#configtoml): `[modal.pdf]` holds the
 PDF viewer's normal-mode keys, over `[modal.normal]`, and `[modal.index]` the outline's. `[unbind]
-pdf = ["D"]` takes `D` off in the PDF viewer only. To have zathura's `d`, `r`, `H`, `L`, `P`,
-`F`, `ctrl+f` and `F5` in the PDF viewer instead of Vimma's, uncomment the zathura block under
+pdf = ["D"]` takes `D` off in the PDF viewer only. To give `d`, `r`, `H`, `L`, `P`,
+`F`, `ctrl+f` and `F5` PDF actions in the PDF viewer instead of Vimma's, uncomment the block under
 `[modal.pdf]` in the file `:config` writes (or copy it from `defaults.toml`). `ctrl+b ?`
 lists them under `[pdf]` and `[index]`, and [bindings.md](bindings.md#pdf-viewer) has their
 config names.
