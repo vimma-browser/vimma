@@ -259,7 +259,7 @@ file once the release is published.
 | Remove Vimma, keeping your profile             | `brew uninstall --cask vimma`       |
 | Remove Vimma and its profile, caches and prefs | `brew uninstall --zap --cask vimma` |
 
-Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
+On a Mac, Vimma does not update itself, so `brew upgrade` (or `brew upgrade --cask vimma`) is how a
 Homebrew install gets a new release; after an upgrade to an ad hoc signed release, macOS may ask
 for **Open Anyway** again.
 When a newer release is out, Vimma's [update notice](#updates) says so, and `:update` shows that
@@ -4434,9 +4434,9 @@ name, then toggle or edit it).
 
 Kept as in Firefox: Remote Settings (CRLite certificate revocation, intermediate certificates),
 the add-on blocklist, Firefox Sync, add-ons from addons.mozilla.org and their updates, and
-Google Safe Browsing (see below). Firefox's app updater is not built into Vimma, and system add-on
-updates are off, so neither asks Mozilla's update server for them; Vimma's own
-[update check](#updates) asks `updates.vimma.dev` only. The one request Vimma still sends to
+Google Safe Browsing (see below). Firefox's app updater is built into release builds, where the tarball
+uses it, and its address is `updates.vimma.dev`, not Mozilla's update server; system add-on
+updates are off. Vimma's own [update check](#updates) asks `updates.vimma.dev` only. The one request Vimma still sends to
 Mozilla's update server is for the OpenH264 and Widevine plugins, which video calls and DRM video
 need.
 
@@ -4599,12 +4599,14 @@ default (see [Safe Browsing](#safe-browsing)). A build without a key fetches no 
 malware lists; Settings then shows "Block dangerous and deceptive content" unticked, and ticking
 it does not help. Mozilla's tracking-protection lists update either way.
 
-**Does Vimma update itself?** No. Install each new release yourself ([Installing](#installing));
-from 0.1.2 on, Vimma's update check tells you when one is out and how to install it
-([Updates](#updates)). Vimma 0.1.1 shows no notice: update it once by hand.
-Vimma notifies you and shows the command; it does not install updates itself.
-Firefox's updater is not built into Vimma, so it never asks Mozilla's update server
-(`aus5.mozilla.org`) for a Firefox build.
+**Does Vimma update itself?** The AppImage and the tarball do: the AppImage replaces its own
+file, and a tarball whose release lists `vimma-X.Y.Z-linux-x86_64.complete.mar` installs the
+update at its next start ([Updates](#updates)). The `.deb`, the `.rpm`, the Arch package and
+macOS only notify: from 0.1.2 on, the status bar tells you when a release is out and
+`:update` shows the command for your install ([Installing](#installing)). Vimma 0.1.1 shows no
+notice: update it once by hand. Every update is checked against a file signed with Vimma's own
+key from `updates.vimma.dev`; Vimma never asks Mozilla's update server (`aus5.mozilla.org`) for a
+Firefox build.
 
 **I want the tab strip back.** Set `vimma.ui.tabstrip.hidden` to `false` in `about:config`.
 
