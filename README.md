@@ -107,9 +107,11 @@ scripts and agents, so it updates with the browser ([where it is](docs/guide.md#
 can also [build Vimma from source](CONTRIBUTING.md#build-and-run).
 
 Vimma checks a signed update file every 12 hours and shows a newer release in the status bar. The
-AppImage and the tarball install the update themselves, checked against Vimma's own signing key,
-and run it from the next start; the other packages show the command to run
-([Updates](docs/guide.md#updates)). What does not work yet is in [limits.md](docs/limits.md).
+AppImage and the tarball install the update themselves, once it matches what Vimma's own key
+signed, and run it from the next start; the other packages show the command to run
+([Updates](docs/guide.md#updates)). Vimma's chat window runs Claude Code, Codex and Gemini CLI on
+their own login ([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)). What does
+not work yet is in [limits.md](docs/limits.md).
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
