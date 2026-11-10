@@ -111,8 +111,9 @@ the [user guide](guide.md); planned work is on the
 
 ## Privacy, security and services
 
-- Vimma's update check only notifies: it shows the new version and the command for your install,
-  and installs nothing itself.
+- Only the AppImage and the tarball update themselves. The `.deb`, the `.rpm`, the Arch package,
+  Flatpak and macOS only notify: they show the new version and the command for your install.
+  The tarball's updater downloads complete updates only (no partial MARs).
 - No download reputation: Google's download lists and file checks are open only to Mozilla's own
   key, so "Block dangerous downloads" adds nothing beyond the Safe Browsing site lists.
 - No crash reporter: a crash leaves only the system's local core dump.
@@ -230,7 +231,8 @@ the [user guide](guide.md); planned work is on the
   workflow's signing is switched on; before that, and in every CI test build, the `.dmg` is ad
   hoc signed and macOS asks once, under Privacy & Security, before it first opens. Passkeys
   stored in macOS do not work in either (issue #544).
-  It has no update notices (no update manifest exists for macOS): install a newer `.dmg` by hand.
+  It shows update notices but does not update itself: run `brew upgrade --cask vimma` or install
+  the newer `.dmg` by hand.
 - Finder on recent macOS (checked on 27.0.1) opens the mounted `.dmg`'s window at the frame of
   the last Finder window and ignores the size the `.dmg` stores, as it does for Firefox's: a
   small last window can cut off the Applications link, and a large one shows blank space past
