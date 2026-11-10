@@ -117,8 +117,9 @@ the [user guide](guide.md); planned work is on the
 
 ## Agents (MCP)
 
-- Agents reach only the agent workspace: they cannot see or act on tabs in your other
-  workspaces or the private workspace.
+- An MCP agent (`vimma-ctl mcp`) reaches only the agent workspace: it cannot see or act on tabs
+  in your other workspaces or in private windows. Full control (`:control on`) is different: any
+  local program with a shell then reaches every workspace ([security.md](security.md)).
 - Pages in the agent workspace open no pop-up, so a page loaded over HTTP there loses its
   `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
   `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.
@@ -225,8 +226,8 @@ the [user guide](guide.md); planned work is on the
 
 - Vimma is released for Linux x86_64 and for macOS on Apple Silicon. There is no Intel Mac,
   universal or Windows build.
-- On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases before
-  late October 2026, and every CI test build, are ad hoc signed rather than notarised: macOS asks
+- On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases 0.1.10
+  and earlier, and every CI test build, are ad hoc signed rather than notarised: macOS asks
   once, under Privacy & Security, before such a `.dmg` first opens. Vimma on macOS shows update
   notices but does not update itself: run `brew upgrade --cask vimma` or install
   the newer `.dmg` by hand.

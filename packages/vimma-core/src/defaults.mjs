@@ -584,7 +584,7 @@ export function formatDefaultsToml() {
     }
     if (mode === "pdf") {
       lines.push(
-        "# PDF actions on keys that are Vimma's elsewhere, for those who want them in the PDF viewer:",
+        "# PDF actions in place of Vimma's d, r, H, L, P, F, ctrl+f and F5, for the PDF viewer:",
       );
       for (const [seq, action] of Object.entries(ZATHURA_PDF_KEYS)) {
         lines.push(`# ${tomlString(seq)} = ${tomlString(action)}`);

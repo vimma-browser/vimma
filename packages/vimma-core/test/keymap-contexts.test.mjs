@@ -96,9 +96,9 @@ describe("keymap contexts", () => {
     expect(shadowed.sort()).toEqual(["g g", "shift+g"]);
   });
 
-  test("the config template's zathura block, uncommented, gives zathura's keys back", () => {
+  test("the config template's opt-in PDF block, uncommented, gives those PDF actions back", () => {
     const lines = formatConfigTemplate().split("\n");
-    const start = lines.findIndex((l) => /^# PDF actions on keys/.test(l) && l.startsWith("#"));
+    const start = lines.findIndex((l) => /^# PDF actions in place of/.test(l));
     expect(start).toBeGreaterThan(lines.indexOf("[modal.pdf]"));
     const block = [];
     for (const l of lines.slice(start + 1)) {
