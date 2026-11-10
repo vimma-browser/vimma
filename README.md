@@ -17,6 +17,8 @@
 memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` drives tabs, panes
 and workspaces, and your hands never leave the keyboard.
 
+The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)**.
+
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
   `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
   its label, then `y` (or `v` to adjust it first).
@@ -78,11 +80,10 @@ carries no OpenPGP signature; check it with `SHA256SUMS` and cosign instead, as 
 **Any other distribution:** download `vimma-X.Y.Z-x86_64.AppImage`, then
 `chmod +x vimma-X.Y.Z-x86_64.AppImage && ./vimma-X.Y.Z-x86_64.AppImage`.
 
-`X.Y.Z` is the Vimma version. To update, install the newer release the same way. From 0.1.2 on,
-the status bar says when a new release is out and `:update` shows the command for your install;
-Vimma 0.1.1 does not, so update it once by hand
-([Updates](docs/guide.md#updates)). The guide's [Installing](docs/guide.md#installing) section has the tarball
-and how to verify a download with `sha256sum` and cosign.
+`X.Y.Z` is the Vimma version. The status bar says when a new release is out. The AppImage and the
+tarball then update themselves; for the other packages, `:update` shows the command for your
+install ([Updates](docs/guide.md#updates)). The guide's [Installing](docs/guide.md#installing)
+section has the tarball and how to verify a download with `sha256sum` and cosign.
 
 ## Why
 
@@ -98,20 +99,17 @@ the hours slip by. It also happens to start with _Vim_.
 
 ## Status
 
-Early, for Linux x86_64 and macOS on Apple Silicon. Releases are on
-[GitHub Releases](https://github.com/vimma-browser/vimma/releases), with a tarball, an AppImage, a
-`.deb`, an `.rpm` for Fedora and openSUSE and an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also installs as a Homebrew cask
-([Install](#install)). Each carries `vimma-ctl`, the client for scripts and agents, so it updates
-with the browser ([where it is](docs/guide.md#installing)); you can also
-[build Vimma from source](CONTRIBUTING.md#build-and-run). Update notices are live: Vimma 0.1.2 and
-later check a signed update file every 12 hours and show a newer release in the status bar. The
-AppImage, from the first release that includes its self-update, then replaces its own file with
-the newer release once its size and SHA-512 match the signed file, and the next start runs it.
-The tarball, from the first release built with Firefox's updater, installs an update signed with
-Vimma's own key at its next start. The other packages notify only; installing the update is up
-to you. Vimma's chat window runs
-Claude Code from 0.1.13, and Codex and Gemini CLI, on their own login
-([quick start](docs/guide.md#using-an-agent-cli-in-the-chat-window)).
+Early, with regular releases for Linux x86_64 and macOS on Apple Silicon. Each
+[release](https://github.com/vimma-browser/vimma/releases) has a tarball, an AppImage, a `.deb`,
+an `.rpm` for Fedora and openSUSE, an Arch Linux `PKGBUILD`, and a macOS `.dmg` that also
+installs as a Homebrew cask ([Install](#install)). Each carries `vimma-ctl`, the client for
+scripts and agents, so it updates with the browser ([where it is](docs/guide.md#installing)); you
+can also [build Vimma from source](CONTRIBUTING.md#build-and-run).
+
+Vimma checks a signed update file every 12 hours and shows a newer release in the status bar. The
+AppImage and the tarball install the update themselves, checked against Vimma's own signing key,
+and run it from the next start; the other packages show the command to run
+([Updates](docs/guide.md#updates)). What does not work yet is in [limits.md](docs/limits.md).
 
 Roadmap: <https://github.com/orgs/vimma-browser/projects/1>
 
