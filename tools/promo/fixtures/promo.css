@@ -3,17 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* The promo video's fictional sites (tools/promo/record.mjs): a handbook, a news front page
-   and a mail inbox. Dark and calm, so they sit well in a Tokyo Night video, and responsive, so
-   the same pages work in the 16:9 and the 9:16 recordings and in a half-width pane. */
+   and a mail inbox. Dark and calm, in Vimma's own palette (theme.mjs VIMMA_DARK) one step lighter
+   than the browser's background, so a page stays apart from the status bar; links and accents
+   avoid the aqua and magenta of Vimma's own surfaces and hints. Responsive, so the same pages work in the 16:9 and the 9:16 recordings and in a half-width pane. */
 
 :root {
-  --bg: #16161e;
-  --panel: #1f2030;
-  --text: #c8cde8;
-  --dim: #8a90b0;
-  --link: #8fb4ff;
-  --accent: #e0af68;
-  --rule: #2c2f45;
+  --bg: #0e1b1c;
+  --panel: #123532;
+  --text: #c2d6d3;
+  --dim: #7f9a96;
+  --link: #5cc8f0;
+  --accent: #f2c94c;
+  --rule: #234040;
   color-scheme: dark;
 }
 * {
@@ -65,12 +66,12 @@ h1 {
   font-size: 2.1em;
   line-height: 1.2;
   margin: 0.3em 0 0.2em;
-  color: #e6e9ff;
+  color: #dbeae8;
 }
 h2 {
   font-size: 1.35em;
   margin: 1.6em 0 0.4em;
-  color: #e6e9ff;
+  color: #dbeae8;
 }
 .meta {
   color: var(--dim);
@@ -126,16 +127,16 @@ ul.cards .meta {
   font:
     600 20px "Noto Sans",
     sans-serif;
-  background: #2a2f4a;
-  color: #e6e9ff;
+  background: #234040;
+  color: #dbeae8;
 }
 .who.work {
-  background: #4a3a1c;
-  color: #ffd38a;
+  background: #3d3415;
+  color: #ffdd7a;
 }
 .who.personal {
-  background: #1d3f3a;
-  color: #9ff0d8;
+  background: #1a3d2a;
+  color: #c0f29e;
 }
 table.mail {
   width: 100%;
@@ -151,7 +152,7 @@ table.mail td {
 table.mail td.from {
   width: 32%;
   font-weight: 600;
-  color: #e6e9ff;
+  color: #dbeae8;
 }
 table.mail td.subject {
   color: var(--text);
