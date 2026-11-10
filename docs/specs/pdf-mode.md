@@ -848,7 +848,7 @@ cannot carry bidi or zero-width characters`); page targets for
 ## Delivery
 
 Keymap changes go one pull request at a time, each regenerating the bindings docs and the help
-snapshot with a screenshot of the `ctrl+b ?` overlay (`plan.md` §6, item 8), so PRs 3 to 5 merge
+snapshot with a screenshot of the `ctrl+b ?` overlay (`plan.md` §6), so PRs 3 to 5 merge
 in order and none runs beside another keymap PR.
 
 PRs 2 to 5 land behind `vimma.feature.pdf_mode`, default `false` (`CONTRIBUTING.md`, "Unfinished
