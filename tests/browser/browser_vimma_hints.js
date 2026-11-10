@@ -22,6 +22,7 @@ const DIR = getRootDirectory(gTestPath).replace(
 const PAGE = DIR + "file_vimma_hints.html";
 const MANY = DIR + "file_vimma_hints_many.html";
 const MENU = DIR + "file_vimma_hints_menu.html";
+const CONSENT = DIR + "file_vimma_consent.html";
 const { compileKeymap } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/keymap.mjs",
 );
@@ -755,3 +756,98 @@ add_task(async function a_label_clicks_a_menu_entry_with_only_a_listener() {
     );
   });
 });
+
+/**
+ * Each control's centre in the consent fixture (inside its banner's root, light or shadow), by
+ * id. A switch drawn by its <label> over a zero-size checkbox is reached through the label.
+ * @param {XULBrowserElement} browser
+ * @param {string[]} ids
+ * @returns {Promise<Record<string, { x: number, y: number }>>}
+ */
+function consentCentres(browser, ids) {
+  return SpecialPowers.spawn(browser, [ids], (list) => {
+    const root = content.wrappedJSObject.consentRoot;
+    /** @type {Record<string, { x: number, y: number }>} */
+    const out = {};
+    for (const id of list) {
+      const el = root.querySelector(`#${id}`);
+      const r = (el.closest(".track") ?? el).getBoundingClientRect();
+      out[id] = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }
+    return out;
+  });
+}
+
+/**
+ * Whether each switch of the consent fixture is on, by id.
+ * @param {XULBrowserElement} browser
+ * @param {string[]} ids
+ */
+function switchesOn(browser, ids) {
+  return SpecialPowers.spawn(browser, [ids], (list) => {
+    const root = content.wrappedJSObject.consentRoot;
+    return list.map((id) => {
+      const el = root.querySelector(`#${id}`);
+      return el.localName === "input" ? el.checked : el.getAttribute("aria-checked") === "true";
+    });
+  });
+}
+
+// A cookie banner's settings layer (issue #864): the buttons and every switch kind the consent
+// platforms draw get a label and turn on from it. `G` goes to the end of the list of categories
+// while focus is still in the layer's header, outside the list, so the last switches come on
+// screen with labels of their own; a label on a switch drawn by its <label> then focuses its
+// checkbox, which is why that kind comes last.
+for (const shape of ["region", "shadow"]) {
+  add_task(async function every_switch_and_button_of_a_cookie_settings_layer_gets_a_label() {
+    await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
+    await withPage(`${CONSENT}?${shape}`, async (browser) => {
+      const ids = ["c0", "c1", "c2", "close", "deny", "save", "allow"];
+      let hints = await startHints();
+      let at = await consentCentres(browser, ids);
+      for (const id of ids) Assert.ok(labelAt(hints, at[id]), `${shape}: ${id} has a label`);
+      EventUtils.synthesizeKey("KEY_Escape");
+
+      EventUtils.synthesizeKey("G", { shiftKey: true });
+      await TestUtils.waitForCondition(
+        () =>
+          SpecialPowers.spawn(browser, [], () => {
+            const root = content.wrappedJSObject.consentRoot;
+            const list = root.querySelector("#list").getBoundingClientRect();
+            const c7 = root.querySelector("#c7").getBoundingClientRect();
+            return c7.top >= list.top && c7.bottom <= list.bottom;
+          }),
+        `${shape}: G brings the last categories into view`,
+      );
+      /** Turns each switch on from its label. @param {string[]} list */
+      const turnOn = async (list) => {
+        for (const id of list) {
+          hints = await startHints();
+          at = await consentCentres(browser, [id]);
+          const label = labelAt(hints, at[id]);
+          Assert.ok(label, `${shape}: ${id} has a label`);
+          type(/** @type {string} */ (label));
+          await TestUtils.waitForCondition(
+            async () => (await switchesOn(browser, [id]))[0],
+            `${shape}: ${id} turns on from its label`,
+          );
+        }
+      };
+      // A role=switch button, a visible styled checkbox, a transparent one over its slider.
+      await turnOn(["c5", "c6", "c7"]);
+      EventUtils.synthesizeKey("g");
+      EventUtils.synthesizeKey("g");
+      await TestUtils.waitForCondition(
+        () =>
+          SpecialPowers.spawn(
+            browser,
+            [],
+            () => content.wrappedJSObject.consentRoot.querySelector("#list").scrollTop === 0,
+          ),
+        `${shape}: gg goes back to the top of the list`,
+      );
+      // A zero-size checkbox under its <label>.
+      await turnOn(["c0"]);
+    });
+  });
+}

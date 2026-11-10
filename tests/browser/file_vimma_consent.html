@@ -1,0 +1,189 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_insert_scroll.js and browser_vimma_hints.js: a cookie banner's
+   - settings layer over a long page that still scrolls, in the shapes the common consent
+   - platforms draw it (issue #864). A fixed layer holds a panel with a header, a scrollable list
+   - of categories and a footer of buttons. The query picks the shape:
+   -   ?region  role=region, focus on a tab link in the header (Cookiebot)
+   -   ?shadow  role=dialog without aria-modal, in a closed shadow root (Usercentrics)
+   -   ?header  role=dialog aria-modal=true, focus on the close button, and a header so tall
+   -            that the viewport's centre falls on it, not on the list (CookieYes)
+   -   ?corner  the same panel as a small widget in a corner, with no layer over the page
+   -   ?static  a layer over the page whose panel has nothing to scroll
+   - Each category ends in a switch of one of the four kinds the platforms use: a zero-size
+   - checkbox under its <label> (OneTrust, Funding Choices), a <button role=switch>
+   - (Usercentrics, Ketch), a styled checkbox that is itself visible (CookieYes), and a
+   - transparent checkbox over the whole slider (Cookiebot). -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>vimma consent fixture</title>
+    <style>
+      body {
+        margin: 0;
+        font: 16px/1.5 sans-serif;
+      }
+      #page p {
+        margin: 0;
+        height: 100px;
+      }
+    </style>
+    <template id="banner">
+      <style>
+        #layer {
+          position: fixed;
+          inset: 0;
+          display: grid;
+          place-items: center;
+          background: rgb(0 0 0 / 0.4);
+        }
+        #layer.corner {
+          inset: auto 16px 16px auto;
+          background: none;
+        }
+        #panel {
+          width: 560px;
+          height: 480px;
+          display: flex;
+          flex-direction: column;
+          background: #fff;
+          border-radius: 8px;
+        }
+        .corner #panel {
+          width: 280px;
+          height: 240px;
+        }
+        header {
+          flex: none;
+          padding: 8px 16px;
+        }
+        .tall header {
+          height: 280px;
+        }
+        #list {
+          flex: 1;
+          overflow: auto;
+          padding: 0 16px;
+        }
+        .static #list {
+          overflow: visible;
+        }
+        .cat {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          height: 120px;
+          border-bottom: 1px solid #ddd;
+        }
+        .static .cat {
+          height: 30px;
+        }
+        footer {
+          flex: none;
+          display: flex;
+          gap: 8px;
+          padding: 8px 16px;
+        }
+        .track {
+          position: relative;
+          display: inline-block;
+          width: 44px;
+          height: 24px;
+          border-radius: 12px;
+          background: #999;
+        }
+        .zero {
+          position: absolute;
+          width: 0;
+          height: 0;
+          opacity: 0;
+        }
+        .over {
+          position: absolute;
+          inset: 0;
+          margin: 0;
+          opacity: 0;
+        }
+        [role="switch"] {
+          width: 44px;
+          height: 24px;
+          border: 0;
+          border-radius: 12px;
+          background: #999;
+        }
+        .styled {
+          appearance: none;
+          width: 44px;
+          height: 24px;
+          margin: 0;
+          border-radius: 12px;
+          background: #999;
+        }
+      </style>
+      <div id="layer">
+        <div id="panel">
+          <header>
+            <a id="tab-consent" href="#consent">Consent</a>
+            <a id="tab-details" href="#details">Details</a>
+            <button id="close" type="button">Close</button>
+          </header>
+          <div id="list"></div>
+          <footer>
+            <button id="deny" type="button">Deny</button>
+            <button id="save" type="button">Allow selection</button>
+            <button id="allow" type="button">Allow all</button>
+          </footer>
+        </div>
+      </div>
+    </template>
+  </head>
+  <body>
+    <div id="page"></div>
+    <script>
+      const page = document.getElementById("page");
+      for (let i = 0; i < 200; i++) page.insertAdjacentHTML("beforeend", `<p>Line ${i}</p>`);
+
+      const shape = location.search.slice(1) || "region";
+      const host = document.createElement("aside");
+      host.id = "host";
+      document.body.append(host);
+      // Usercentrics draws its banner in a shadow root; a closed one is the harder case.
+      const root = shape === "shadow" ? host.attachShadow({ mode: "closed" }) : host;
+      root.append(document.getElementById("banner").content.cloneNode(true));
+      window.consentRoot = root;
+      const layer = root.querySelector("#layer");
+      const panel = root.querySelector("#panel");
+      if (shape === "corner") layer.classList.add("corner");
+      if (shape === "static") layer.classList.add("static");
+      if (shape === "header") layer.classList.add("tall");
+      if (shape === "region") panel.setAttribute("role", "region");
+      else panel.setAttribute("role", "dialog");
+      if (shape === "header") panel.setAttribute("aria-modal", "true");
+
+      const kinds = [
+        (n) =>
+          `<label class="track" for="c${n}"><input class="zero" type="checkbox" id="c${n}" /></label>`,
+        (n) => `<button type="button" role="switch" aria-checked="false" id="c${n}"></button>`,
+        (n) => `<input class="styled" type="checkbox" id="c${n}" />`,
+        (n) => `<label class="track"><input class="over" type="checkbox" id="c${n}" /></label>`,
+      ];
+      const list = root.querySelector("#list");
+      for (let n = 0; n < 8; n++) {
+        list.insertAdjacentHTML(
+          "beforeend",
+          `<div class="cat"><span>Category ${n}</span>${kinds[n % 4](n)}</div>`,
+        );
+      }
+      for (const sw of root.querySelectorAll("[role=switch]")) {
+        sw.addEventListener("click", () =>
+          sw.setAttribute("aria-checked", String(sw.getAttribute("aria-checked") !== "true")),
+        );
+      }
+      // Where the platforms put focus when the layer opens.
+      if (shape === "region") root.querySelector("#tab-details").focus();
+      if (shape === "header") root.querySelector("#close").focus();
+    </script>
+  </body>
+</html>

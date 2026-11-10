@@ -12,6 +12,9 @@ the [user guide](guide.md); planned work is on the
   the prefix and chords such as `ctrl+t` still work.
 - Link hints label only real elements: canvas apps (Google Docs, Figma, maps, games) get no
   hints.
+- Cookie banners from TrustArc set their categories with a slider (required, functional,
+  advertising): `f` labels its handle, but a label picks no level. Press `Tab` until the handle
+  has focus, then the arrow keys move it, and `f` reaches "Submit Preferences".
 - Element focus follows the page's elements: a page that draws several paragraphs as one
   element with line breaks gets one label for all of them (focus it, then `v` and copy-mode
   motions narrow the selection), and text drawn on a canvas gets none. The PDF viewer gets no

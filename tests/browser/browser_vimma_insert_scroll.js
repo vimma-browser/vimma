@@ -509,6 +509,62 @@ add_task(async function a_scroll_locked_page_does_not_scroll() {
   }, ROOT + "file_vimma_plain.html");
 });
 
+const CONSENT = ROOT + "file_vimma_consent.html";
+
+/**
+ * The consent fixture's list and page scroll positions, and what has focus in its banner.
+ * @param {XULBrowserElement} browser
+ */
+function consentState(browser) {
+  return SpecialPowers.spawn(browser, [], () => {
+    const root = content.wrappedJSObject.consentRoot;
+    return {
+      list: root.querySelector("#list").scrollTop,
+      page: content.scrollY,
+      focused: root.activeElement?.id ?? content.document.activeElement?.id ?? "",
+    };
+  });
+}
+
+// A cookie banner's settings layer (issue #864): a fixed layer over a page that still scrolls,
+// whose list of categories scrolls inside it. Focus sits in the layer's header or on its host,
+// outside the list, so the focused element's scroller was the page behind the banner.
+for (const [shape, focused] of [
+  ["region", "tab-details"],
+  ["shadow", ""],
+  ["header", "close"],
+]) {
+  add_task(async function j_scrolls_the_cookie_settings_list_not_the_page_behind() {
+    await withPage(async (browser) => {
+      const before = await consentState(browser);
+      if (focused) Assert.equal(before.focused, focused, `${shape}: focus is in the header`);
+      EventUtils.synthesizeKey("j");
+      await TestUtils.waitForCondition(
+        async () => (await consentState(browser)).list === STEP,
+        `${shape}: j scrolls the list of categories`,
+      );
+      EventUtils.synthesizeKey("G", { shiftKey: true });
+      await TestUtils.waitForCondition(
+        async () => (await consentState(browser)).list > 4 * STEP,
+        `${shape}: G goes to the end of the list`,
+      );
+      Assert.equal((await consentState(browser)).page, 0, `${shape}: the page stays`);
+    }, `${CONSENT}?${shape}`);
+  });
+}
+
+// A fixed element that is no layer over the page's middle (a chat widget in a corner), or a
+// layer with nothing to scroll, leaves the keys to the page.
+for (const shape of ["corner", "static"]) {
+  add_task(async function j_scrolls_the_page_past_a_fixed_element_that_is_no_scrolling_layer() {
+    await withPage(async (browser) => {
+      EventUtils.synthesizeKey("j");
+      await waitForScroll(browser, (y) => y === STEP, `${shape}: j scrolls the page`);
+      Assert.equal((await consentState(browser)).list, 0, `${shape}: not the widget's list`);
+    }, `${CONSENT}?${shape}`);
+  });
+}
+
 add_task(async function i_with_no_text_field_lets_keys_through() {
   await withPage(async (browser) => {
     EventUtils.synthesizeKey("i");

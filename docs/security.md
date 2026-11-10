@@ -2489,6 +2489,13 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   [`j_k_G_and_gg_scroll_the_source`](../tests/browser/browser_vimma_view_source.js),
   [`f_labels_the_link_in_the_source_and_follows_it`](../tests/browser/browser_vimma_view_source.js),
   [`the_actor_reaches_settings_and_the_pdf_viewer_but_not_data_urls`](../tests/browser/browser_vimma_insert_scroll.js)
+- K8. The scroll keys' target **must** be chosen within the frame's own document, its shadow
+  trees included, and a page **must not** be able to make that choice slow: the search of a
+  fixed layer over the page (a cookie banner's settings) reads at most 10,000 elements, and a
+  layer with nothing to scroll is not searched again for a second. A layer with nothing to scroll
+  leaves the keys to the page.
+  [`j_scrolls_the_cookie_settings_list_not_the_page_behind`](../tests/browser/browser_vimma_insert_scroll.js),
+  [`j_scrolls_the_page_past_a_fixed_element_that_is_no_scrolling_layer`](../tests/browser/browser_vimma_insert_scroll.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
