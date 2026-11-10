@@ -2,18 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* The promo video's fictional sites (tools/promo/record.mjs): a handbook, a news front page
-   and a mail inbox. Dark and calm, in Vimma's own palette (theme.mjs VIMMA_DARK) one step lighter
-   than the browser's background, so a page stays apart from the status bar; links and accents
-   avoid the aqua and magenta of Vimma's own surfaces and hints. Responsive, so the same pages work in the 16:9 and the 9:16 recordings and in a half-width pane. */
+/* The promo video's fictional sites (tools/promo/record.mjs): a handbook, a news front page and a
+   mail inbox. Dark and calm, in Vimma's own palette (theme.mjs VIMMA_DARK): the background one
+   step lighter than the browser's background, so a page stays apart from the status bar; links and
+   accents avoid the aqua and magenta of Vimma's own surfaces and hints, and the panels and the
+   accent are shades Vimma's selection and mode badges do not use. Responsive, so the same pages
+   work in the 16:9 and the 9:16 recordings and in a half-width pane. */
 
 :root {
   --bg: #0e1b1c;
-  --panel: #123532;
+  --panel: #13292a;
   --text: #c2d6d3;
   --dim: #7f9a96;
   --link: #5cc8f0;
-  --accent: #f2c94c;
+  --accent: #ffdd7a;
   --rule: #234040;
   color-scheme: dark;
 }
