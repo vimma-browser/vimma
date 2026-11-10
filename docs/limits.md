@@ -118,8 +118,10 @@ the [user guide](guide.md); planned work is on the
 ## Agents (MCP)
 
 - An MCP agent (`vimma-ctl mcp`) reaches only the agent workspace: it cannot see or act on tabs
-  in your other workspaces or in private windows. Full control (`:control on`) is different: any
-  local program with a shell then reaches every workspace ([security.md](security.md)).
+  in your other workspaces or in private windows. Full control (`:control on`) is a wider grant: a
+  program that can read Vimma's control token reaches every workspace, and while MCP is on Vimma
+  asks you before each such connection
+  ([security model](security.md#1-control-socket-ctlvimmacontrolsysmjs)).
 - Pages in the agent workspace open no pop-up, so a page loaded over HTTP there loses its
   `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
   `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.

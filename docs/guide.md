@@ -761,7 +761,7 @@ the outline, put `[ui] pdf_outline = "hidden"` in [config.toml](#configtoml); `T
 it.
 
 Every Vimma key does in the PDF viewer what it does on any page (only `gg` and `G` with a count
-go to that page), so your hands need not know
+go to page N, as in `12G`), so your hands need not know
 which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
 and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. Vimma
 adds PDF keys only on the keys it leaves free; the other PDF actions are commands:
