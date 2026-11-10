@@ -111,8 +111,8 @@ the [user guide](guide.md); planned work is on the
 
 ## Privacy, security and services
 
-- Only the AppImage and the tarball update themselves. The `.deb`, the `.rpm`, the Arch package,
-  Flatpak and macOS only notify: they show the new version and the command for your install.
+- Only the AppImage and the tarball (from 0.1.16) update themselves. The `.deb`, the `.rpm`, the
+  Arch package and macOS only notify: they show the new version and the command for your install.
   The tarball's updater downloads complete updates only (no partial MARs).
 - No download reputation: Google's download lists and file checks are open only to Mozilla's own
   key, so "Block dangerous downloads" adds nothing beyond the Safe Browsing site lists.
