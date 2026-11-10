@@ -564,6 +564,18 @@ The labels are drawn by the browser, over the page, not inside it: the page cann
 restyle them or hide them. Apps that draw their own controls on a canvas (Google Docs, Figma,
 maps, games) have nothing to label.
 
+#### Cookie banners
+
+You can answer a site's cookie banner without the mouse. `f` labels its buttons (allow all,
+reject, necessary only, settings), also when the banner sits in a frame from another site or in a
+web component. In the settings layer, each category's switch gets its own label, and its save
+button too. `j`, `k`, `G` and `gg` scroll the list of categories inside the banner, not the page
+behind it, so `f` reaches the switches further down. A banner in a frame scrolls once a label in
+it has been used, which puts the keys in that frame. `Tab` moves through the banner's controls,
+and `F` labels its paragraphs so you can [copy them](#copying-a-paragraph-element-focus). One
+banner kind sets its categories with a slider instead of switches; [Known limits](limits.md)
+says how to move it.
+
 ### Copying a paragraph (element focus)
 
 `F` (element focus) puts the same labels as link hints on the text on screen instead of on what

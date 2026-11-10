@@ -193,6 +193,64 @@ function hasSize(win) {
 }
 
 /**
+ * The largest element of `all` (at most SEARCH_LIMIT of them) that scrolls on the axis, or null.
+ * @param {HTMLCollectionOf<Element>} all  a live collection, read lazily
+ * @param {boolean} vertical
+ * @param {boolean} [visibleOnly]  skip what is hidden (a layer's other tab panels)
+ */
+function largestScrollable(all, vertical, visibleOnly = false) {
+  let best = null;
+  let area = 0;
+  for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
+    const el = /** @type {Element} */ (all[i]);
+    if (!canScroll(el, vertical)) continue;
+    if (visibleOnly && !el.checkVisibility({ visibilityProperty: true })) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width * r.height > area) [best, area] = [el, r.width * r.height];
+  }
+  return best;
+}
+
+/**
+ * The fixed layer under the middle of the viewport, and the scroller under that point inside it:
+ * a cookie banner's settings, a modal or a lightbox drawn over a page that still scrolls (issue
+ * #864). Cookiebot's layer is a `role=region`, Usercentrics' a dialog without `aria-modal` in a
+ * shadow root, so the layer is told by its `position: fixed`, not by its ARIA. Null when the
+ * middle of the viewport is the page's own: a fixed header or a chat widget in a corner is not
+ * there.
+ * @param {Window} win
+ * @param {boolean} vertical
+ * @returns {{ layer: Element, inner: Element | null } | null}
+ */
+function layerAtCentre(win, vertical) {
+  const { vw, vh } = viewportSize(win);
+  if (!(vw > 0 && vh > 0)) return null;
+  const x = vw / 2;
+  const y = vh / 2;
+  const doc = win.document;
+  let hit = doc.elementFromPoint(x, y);
+  // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
+  for (let root = /** @type {any} */ (hit)?.openOrClosedShadowRoot; root;) {
+    const inner = root.elementFromPoint(x, y);
+    if (!inner || inner === hit) break;
+    hit = inner;
+    root = /** @type {any} */ (hit).openOrClosedShadowRoot;
+  }
+  /** @type {Element | null} */
+  let inner = null;
+  for (
+    let el = hit;
+    el && el !== doc.body && el !== doc.documentElement;
+    // Slotted content belongs to the layer its slot is in, not to its light-tree parents.
+    el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)
+  ) {
+    if (!inner && canScroll(el, vertical)) inner = el;
+    if (win.getComputedStyle(el)?.position === "fixed") return { layer: el, inner };
+  }
+  return null;
+}
+
+/**
  * The parent element, stepping out of a shadow root to its host.
  * @param {Element} el
  * @returns {Element | null}
@@ -268,6 +326,14 @@ export class VimmaChild extends JSWindowActorChild {
 
   /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
   #largest = null;
+  /**
+   * The last fixed layer's largest scrollable, reused while that layer is under the middle of
+   * the viewport and the element can scroll.
+   * `el` is null when the layer had nothing to scroll, and that search is not repeated for
+   * SEARCH_BACKOFF_MS (holding j over a fixed background).
+   * @type {{ layer: WeakRef<Element>, el: WeakRef<Element> | null, at: number } | null}
+   */
+  #layerScroller = null;
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
@@ -1663,6 +1729,25 @@ export class VimmaChild extends JSWindowActorChild {
       if (canScroll(el, vertical)) return el;
       el = parentOf(el);
     }
+    // A layer over the page (a cookie banner's settings) scrolls before the page behind it: the
+    // scroller under the middle of the viewport, else the layer's largest.
+    const win = /** @type {Window} */ (this.contentWindow);
+    const over = win && layerAtCentre(win, vertical);
+    if (over?.inner) return over.inner;
+    if (over) {
+      const c = this.#layerScroller?.layer.deref() === over.layer ? this.#layerScroller : null;
+      const kept = c?.el?.deref();
+      if (kept?.isConnected && canScroll(kept, vertical)) return kept;
+      if (!(c && !c.el && Date.now() - c.at < SEARCH_BACKOFF_MS)) {
+        const el = largestScrollable(over.layer.getElementsByTagName("*"), vertical, true);
+        this.#layerScroller = {
+          layer: new WeakRef(over.layer),
+          el: el ? new WeakRef(el) : null,
+          at: Date.now(),
+        };
+        if (el) return el;
+      }
+    }
     if (root && canScroll(root, vertical)) return root;
     // App shells, pdf.js and a locked page's modal scroll an inner element: take the largest
     // visible one. Cached; a search is bounded, and one that found nothing is not repeated
@@ -1671,15 +1756,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (last?.isConnected && canScroll(last, vertical)) return last;
     const now = Date.now();
     if (this.#emptySearchAt && now - this.#emptySearchAt < SEARCH_BACKOFF_MS) return null;
-    let best = null;
-    let area = 0;
-    const all = doc.getElementsByTagName("*");
-    for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
-      const el = /** @type {Element} */ (all[i]);
-      if (!canScroll(el, vertical)) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width * r.height > area) [best, area] = [el, r.width * r.height];
-    }
+    const best = largestScrollable(doc.getElementsByTagName("*"), vertical);
     this.#largest = best ? new WeakRef(best) : null;
     this.#emptySearchAt = best ? 0 : now;
     return best;

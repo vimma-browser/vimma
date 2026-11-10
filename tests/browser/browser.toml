@@ -14,6 +14,7 @@ support-files = ["file_vimma_test.pdf"]
 ["browser_vimma_insert_scroll.js"]
 support-files = [
   "file_vimma_insert_scroll.html",
+  "file_vimma_consent.html",
   "file_vimma_frame.html",
   "file_vimma_design.html",
   "file_vimma_design_host.html",
@@ -39,6 +40,7 @@ support-files = [
   "file_vimma_hints_frame.html",
   "file_vimma_hints_many.html",
   "file_vimma_hints_menu.html",
+  "file_vimma_consent.html",
 ]
 
 ["browser_vimma_element.js"]

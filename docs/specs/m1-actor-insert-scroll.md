@@ -119,7 +119,12 @@ actions that are not implemented yet (parallel spec).
   else the largest visible scrollable element (app shells, pdf.js). Amounts: `j k h l` 60 px
   (Vimium's `scrollStepSize`) times the count; `d`/`u` half the target's client height, rounded
   to a whole pixel so `d` then `u` returns to the same place, times the count; `gg`/`G` to 0 and the end. `behavior` is `smooth` when `general.smoothScroll` is
-  true, else `instant`.
+  true, else `instant`. (Since changed: between the focused element's scroller and the document
+  comes a fixed layer under the middle of the viewport, such as a cookie banner's settings over a
+  page that still scrolls: the scroller under that point inside the layer, else the layer's
+  largest visible one. The layer is told by its `position: fixed`, because Cookiebot's is a
+  `role=region` and Usercentrics' a dialog without `aria-modal` in a shadow root; tested in
+  `browser_vimma_insert_scroll.js`, issue #864.)
 - **"Pass if not runnable", revisited.** Unbound bare keys in normal mode pass to the page: plan §3
   ("keys the dispatcher returns `pass` for continue untouched") and plan §2's `[unbind]`, which
   would be pointless if unbound keys were swallowed; sites' own single-key shortcuts (GitHub `s`,
