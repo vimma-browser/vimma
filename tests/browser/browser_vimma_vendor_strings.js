@@ -87,17 +87,40 @@ add_task(async function the_ca_store_line_does_not_say_mozilla_backs_vimma() {
   Assert.stringContains(text, "Mozilla", "the CA store stays Mozilla's (decision 11)");
 });
 
+// Keys the override rewrites from "Firefox" to "Vimma" (appstrings-properties.patch). Upstream
+// removes keys over time (Firefox 160 dropped the externalProtocol* ones), so the test names the
+// rewritten keys instead of counting the whole bundle.
+const VIMMA_NETWORK_ERRORS = [
+  "fileNotFound",
+  "unknownProtocolFound",
+  "connectionFailure",
+  "redirectLoop",
+  "clientSocketMisconfiguration",
+  "netOffline",
+  "deniedPortAccess",
+  "proxyResolveFailure",
+  "proxyConnectFailure",
+  "sslv3Used",
+  "blockedByCORP",
+  "networkProtocolError",
+];
+
 // The docshell reads its error descriptions from global/appstrings.properties, which the browser's
 // chrome.manifest overrides with browser/locales/en-US/chrome/overrides/appstrings.properties; an
 // error page shows the string as its short description (aboutNetError.mjs, getDescription).
 add_task(async function network_errors_name_vimma_not_firefox() {
   const bundle = Services.strings.createBundle("chrome://global/locale/appstrings.properties");
-  let count = 0;
+  const values = new Map();
   for (const { key, value } of bundle.getSimpleEnumeration()) {
-    count++;
+    values.set(key, value);
     Assert.ok(!/Firefox/.test(value), `${key} does not say Firefox: "${value}"`);
   }
-  Assert.greater(count, 40, "the bundle has the error strings");
+  // A floor against an empty or wrong bundle passing the loop above vacuously.
+  Assert.greater(values.size, 20, "the bundle has the error strings");
+  for (const key of VIMMA_NETWORK_ERRORS) {
+    Assert.ok(values.has(key), `the bundle has ${key}`);
+    Assert.stringContains(values.get(key) ?? "", "Vimma", `${key} names Vimma`);
+  }
   Assert.equal(
     bundle.GetStringFromName("connectionFailure"),
     "Vimma can’t establish a connection to the server at %S.",
