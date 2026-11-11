@@ -939,12 +939,12 @@ over its own network without Vimma anyway. A step that may pay, a form submissio
 personal details, a secret or a file ([mcp-consequence](specs/mcp-consequence.md)), a show, a
 dangerous or unscanned download and a page's own download still ask under any grant (M11, M13, M19,
 M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md) makes sending a form and paying checkpoints:
-one `y` or `n` (and, on a form that is not a payment, sends no secret or file and is read whole, `a`
-for that button on that site until the grant ends) that shows what the step sends or spends and
-leaves the grant as it was (M28, M33). The question's hint names only the keys (`a until it quits`,
-or `10a 10 min`), so that the question fits one line; the guide's key table says that `a` covers
-every tool, and the grant's notice, shown the moment it is made, says so and names what still asks
-and the key that ends it.
+one `y` or `n` (and, on a form that is not a payment, sends no secret or file and whose fields Vimma
+read in time and in full number, `a` for that button on that site until the grant ends) that shows
+what the step sends or spends and leaves the grant as it was (M28, M33). The question's hint names
+only the keys (`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's
+key table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
+so and names what still asks and the key that ends it.
 
 Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's `INSTRUCTIONS`,
 which are also the built-in agent's system text) tell an agent to search a site by opening its
@@ -954,8 +954,8 @@ new reach, since any URL could already be opened under a grant, and it is under 
 every other open (M6, the open rate of M3, the notice and the `:mcp log` row of M23). It skips only
 the form question; the words of the search are what the agent puts in the URL, the same risk as any
 open (mcp-grants, above). A form sent through the page, a search included, is still a form
-submission under M28: asked without a grant, and under one when it is consequential (typed into a
-text field, not `type=search`) or sent by a fill (mcp-consequence K4).
+submission under M28: asked without a grant, and under one when it is consequential (for a search:
+its words typed into a text field rather than `type=search`) or sent by a fill (mcp-consequence K4).
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
@@ -1973,8 +1973,8 @@ vision; its key stays in login storage.
   when the task it was made for ends (done, stopped, at its budget or on an error), on a send
   that asks every step (`ctrl+Enter`), on stopping the conversation, on
   `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
-  cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
-  that always ask **must** ask under it (M19, M28, M33).
+  cover another conversation. Form submissions that M28 makes ask, payment steps, `vimma_show`
+  and the downloads that always ask **must** ask under it (M19, M28, M33).
   [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_grant_ends_with_its_task_and_enter_grants_again`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),

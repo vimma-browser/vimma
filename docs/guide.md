@@ -62,10 +62,10 @@ What works today, each with the section that explains it:
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
-  click their buttons, fill their fields (never a password or card number), take a screenshot,
-  read a page's errors and show you a page. An agent asks you first, one answer lets it work
-  through its task until it quits, and paying or sending a form with text or personal details
-  still asks, showing what is sent or the total the page states.
+  click their buttons, fill their fields (never a password or card number), take a screenshot, read
+  a page's errors and show you a page. An agent asks you first, one answer lets it work through its
+  task until it quits, and paying or sending a form with text or personal details still asks,
+  showing what is sent or the total the page states.
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
   task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
   by API key, or [Claude Code](#using-an-agent-cli-in-the-chat-window) on its own login. It
@@ -2319,9 +2319,9 @@ A `config.toml` shared between machines on different versions keeps working on e
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation for that task, so steps run without asking; paying, sending a
-  form with text or personal details and `vimma_show` still ask. Each step is a line in the
-  transcript, from Vimma's own record.
+  `Enter` grants the conversation for that task, so steps run without asking; paying, sending a form
+  with text or personal details and `vimma_show` still ask. Each step is a line in the transcript,
+  from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The
   header lists the ones it reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`),
@@ -2527,8 +2527,7 @@ where you can answer it (when it is not in front, it marks its window urgent and
 - **Answer the first question with `a`.** Later steps then run under the grant without asking,
   until the run ends ([What a grant covers](#what-a-grant-covers)). Each run starts its own
   `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Paying, sending a form
-  with text or personal details, showing you a page and the downloads that always ask still
-  ask.
+  with text or personal details, showing you a page and the downloads that always ask still ask.
 - **A denial or no answer.** The tool call comes back as an error, `The user denied this request
 in Vimma.` or `No answer in Vimma within 50 s; treated as denied.`, and the agent says so in
   its answer. The run itself does not fail (Claude Code and Copilot CLI exit with status 0), so
@@ -2696,16 +2695,17 @@ with the rest of your computer.
 
 - **Grants are wide.** A grant lets that agent use every tool without asking until it ends: read,
   open, press keys, click, fill, take screenshots and download, and send by a click a form of hidden
-  fields, numbers, dates, checkboxes and list choices, including ones it filled in. Only paying,
-  sending a form with text or personal details, showing you a page and a dangerous or unscanned
-  download still ask ([What a grant covers](#what-a-grant-covers)). A grant given for a read
-  therefore also means "let it fetch any address", and an address can carry what the agent has read
-  elsewhere. `a always here` on a form's question lets that button on that site send its later forms
-  without asking until the grant ends, whatever text or personal details they carry; a payment, a
-  password, card, one-time-code or file field, or a form Vimma cannot read whole still asks. Every
-  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
-  `a` lasts until the agent quits, which can be hours: give a grant for a task you are watching, a
-  count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
+  fields, numbers, dates, checkboxes and list choices that are not personal details, including ones
+  it filled in. Only paying, sending a form with text or personal details, showing you a page and a
+  dangerous or unscanned download still ask ([What a grant covers](#what-a-grant-covers)). A grant
+  given for a read therefore also means "let it fetch any address", and an address can carry what
+  the agent has read elsewhere. `a always here` on a form's question lets that button on that site
+  send its later forms without asking until the grant ends, whatever text or personal details they
+  carry; a payment, a password, card, one-time-code or file field, a form with more fields than its
+  question lists, or one whose fields Vimma could not read still asks. Every call under a grant
+  shows a notice and a row in `:mcp log`, so you can see where it went. A bare `a` lasts until the
+  agent quits, which can be hours: give a grant for a task you are watching, a count (`15a`) when
+  you want it to lapse by itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
   Only [Vimma's own agent](#vimmas-own-agent) is labelled `built-in`; an MCP agent that calls
@@ -2860,9 +2860,9 @@ button inside an embedded frame that updates the page around it reads as no chan
   results page by URL (`https://shop.example/search?q=oat+drink`) rather than through the search
   form, which takes the agent one step instead of three. Such a search is covered by a grant like
   any other open and shows its notice and `:mcp log` row; a search the agent sends through the form
-  is a form submission: it asks without a grant, and under one when the search is typed into a text
-  field rather than a search field (`type=search`) or sent by a fill. The instructions limit this to
-  searches; other forms ask as [Checkpoints](#checkpoints-sending-a-form-and-paying) says.
+  is a form submission: it asks without a grant, and under one when it is sent by a fill or its
+  words are in a text field rather than a search field (`type=search`). The instructions limit this
+  to searches; other forms ask as [Checkpoints](#checkpoints-sending-a-form-and-paying) says.
 - **Several steps at once are still asked one by one.** The instructions also tell an agent to
   send steps that do not depend on each other in one turn, such as each item's search in its own
   tab. Each of those calls is asked, limited and logged as if it came alone.

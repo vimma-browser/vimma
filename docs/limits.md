@@ -151,23 +151,24 @@ the [user guide](guide.md); planned work is on the
   form with text or personal details (free text, a name, an email address, a phone number, an
   address, a birth date, a username or organisation, a password, a payment card or one-time-code
   field, or a file), or one whose fields Vimma cannot read whole. A click that sends a form of only
-  the page's own values (hidden fields, numbers, checkboxes, choices from its lists) runs under the
-  grant, whatever that does on the server, such as deleting or unsubscribing; a fill that sends a
-  form always asks. Not free text: a search field (`type=search`), a number, date or other non-text
-  field whatever value the agent fills in, and a short number typed into a text field (up to three
-  digits, with decimals, such as a quantity, but also a three-digit code). Text a page's script
-  copies into hidden fields before the click is not seen either. `a always here` on a form's
-  question lets the same button on the same site send without asking until the grant ends, whatever
-  text or personal details its later forms send (a payment, a password, card, one-time-code or file
-  field, or a form Vimma cannot read whole still asks) ([which forms
-  ask](guide.md#checkpoints-sending-a-form-and-paying)). Paying is recognised by a payment card
-  field the page shows, in any frame, or by the pressed button's or followed link's words (a fixed
-  list in six languages). A checkout that shows neither, such as a one-button checkout whose button
-  is an icon with no name or says `Continue`, runs unasked under a grant, and so does a load of a
-  payment provider's or bank's site from such a button, up to that site's own card fields or pay
-  button ([checkpoints](guide.md#checkpoints-sending-a-form-and-paying)). A button whose script
-  sends data without a form, and whose words do not say it pays, is an ordinary click. The total a
-  payment's question quotes is what the page states.
+  the page's own values (hidden fields, numbers, dates, checkboxes, choices from its lists, none of
+  them personal details) runs under the grant, whatever that does on the server, such as deleting or
+  unsubscribing; a fill that sends a form always asks. Not free text: a search field
+  (`type=search`), a number, date or other non-text field that is not a personal detail, whatever
+  value the agent fills in, and a short number typed into a text field (up to three digits, with
+  decimals, such as a quantity, but also a three-digit code). Text a page's script copies into
+  hidden fields before the click is not seen either. `a always here` on a form's question lets the
+  same button on the same site send without asking until the grant ends, whatever text or personal
+  details its later forms send (a payment, a password, card, one-time-code or file field, a form
+  with more fields than its question lists, or one whose fields Vimma could not read still asks).
+  Paying is recognised by a payment card field the page shows, in any frame, or by the pressed
+  button's or followed link's words (a fixed list in six languages). A checkout that shows neither,
+  such as a one-button checkout whose button is an icon with no name or says `Continue`, runs
+  unasked under a grant, and so does a load of a payment provider's or bank's site from such a
+  button, up to that site's own card fields or pay button
+  ([checkpoints](guide.md#checkpoints-sending-a-form-and-paying)). A button whose script sends data
+  without a form, and whose words do not say it pays, is an ordinary click. The total a payment's
+  question quotes is what the page states.
 - Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor
   changes them. What an agent does outside Vimma, with its shell and files, is up to that tool
   ([what Vimma protects](guide.md#what-vimma-protects-and-what-it-does-not)).
