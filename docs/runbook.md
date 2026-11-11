@@ -70,7 +70,8 @@ That is an upstream shutdown race, not a broken import: hence the warm-up run ab
 
 Mozilla services (spec m0-mozilla-services): builds have no crash reporter
 (`--disable-crashreporter` in `configs/common/mozconfig`), so a crash leaves a systemd-coredump
-core (`coredumpctl list vimma`), not a minidump, and nothing is sent anywhere. Studies,
+core (`coredumpctl list | grep vimma`: a tab's process is named `Web Content`, so
+`coredumpctl list vimma` misses it), not a minidump, and nothing is sent anywhere. Studies,
 experiments, sponsored content and Mozilla promos are off by default in
 `src/browser/branding/vimma/pref/firefox-branding.js`; `about:config` turns any back on. In a
 local build `dist/bin` symlinks that file, so an edit to it applies at the next launch, no build

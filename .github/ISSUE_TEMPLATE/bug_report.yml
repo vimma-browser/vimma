@@ -24,17 +24,23 @@ body:
         - Arch PKGBUILD
         - AUR
         - .deb
+        - .rpm
         - AppImage
         - Tarball
+        - Flatpak
+        - macOS .dmg
+        - Homebrew (macOS)
         - Built from source
     validations:
       required: true
   - type: input
     id: system
     attributes:
-      label: Linux distribution and desktop
-      description: The distribution, and the desktop or window manager, with Wayland or X11 if you know it.
-      placeholder: "Omarchy 4 (Arch), Hyprland, Wayland"
+      label: Operating system and desktop
+      description: >-
+        On Linux, the distribution and the desktop or window manager, with Wayland or X11 if you
+        know it. On a Mac, the macOS version.
+      placeholder: "Omarchy 4 (Arch), Hyprland, Wayland; or macOS 26.1"
     validations:
       required: true
   - type: textarea
@@ -61,6 +67,17 @@ body:
       label: Expected behaviour
     validations:
       required: true
+  - type: textarea
+    id: crash
+    attributes:
+      label: Crash details
+      description: >-
+        If Vimma or a tab crashed: the signal or exception and the backtrace of the crashed thread,
+        as text. [Reporting a crash](https://github.com/vimma-browser/vimma/blob/main/docs/guide.md#reporting-a-crash)
+        shows how to get them on Linux and macOS.
+        Never attach a core dump, a profile folder or a whole crash file: they can hold your pages,
+        passwords and cookies. Read the text first and remove your user name and host name.
+      render: text
   - type: input
     id: site
     attributes:

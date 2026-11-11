@@ -4539,7 +4539,7 @@ name, then toggle or edit it).
 | Firefox Relay email masks in login forms            | Settings → Privacy & Security → Passwords: tick the Firefox Relay box (`signon.firefoxRelay.feature` = `available`)                                                                                   |
 | The "make Vimma your default browser" prompt        | `browser.shell.checkDefaultBrowser` = `true` (the prompt is off; [Making Vimma your default browser](#making-vimma-your-default-browser) sets the default either way)                                 |
 | Firefox's onboarding messages                       | `browser.newtabpage.activity-stream.asrouter.providers.onboarding`: change `"enabled":false` to `true` in its JSON value                                                                              |
-| Crash reporter                                      | Not built in. A crash leaves a local core dump (`coredumpctl list vimma`). Opt-in reporting to Vimma's own server is planned.                                                                         |
+| Crash reporter                                      | Not built in: Vimma sends nothing. Your system may keep its own local record ([Reporting a crash](#reporting-a-crash)). Opt-in reporting to Vimma's own server is planned.                            |
 | Page titles in a private window's title             | `privacy.exposeContentTitleInWindow.pbm` = `true` (Vimma's default is `false`: the window manager, its bar and screen sharing see only `Vimma Private Browsing`)                                      |
 | Telemetry upload                                    | Not built in (no official telemetry). The data-collection switches in Settings are off to match.                                                                                                      |
 
@@ -4761,5 +4761,90 @@ screensaver. On Hyprland, `hyprctl -j clients | jq '.[] | select(.class|test("vi
 .inhibitingIdle'` prints `true` while it holds. A `MOZ_WAKE_LOCK_TYPE` you export yourself wins
 over Vimma's choice.
 
-**Where are crash reports?** Nothing is sent anywhere. Use `coredumpctl list vimma`, then
-`coredumpctl info` on the entry.
+**Where are crash reports?** Vimma sends nothing anywhere; your system keeps its own record. On
+Linux with systemd-coredump, `coredumpctl list | grep vimma` lists them; on macOS, they are in
+`~/Library/Logs/DiagnosticReports/`. [Reporting a crash](#reporting-a-crash) says what to send
+and how to get a backtrace without sharing private data.
+
+### Reporting a crash
+
+A crash report with a backtrace lets a crash be found and fixed without guessing. Vimma collects
+none itself, so this section shows how to take one from your system and what to send with it.
+
+**What happens on a crash.** Vimma is built without Firefox's crash reporter, so no crash report
+is written or sent, to Mozilla or to Vimma: Vimma itself sends nothing. A crashed tab shows
+Firefox's "Gah. Your tab just crashed." page with a button to restore it, and no report to
+send. Your system may keep its own record of the crash: on Linux a core dump (through systemd-coredump
+on Arch, Fedora and most other distributions; Debian and Ubuntu need it installed, below), on
+macOS a crash report in `~/Library/Logs/DiagnosticReports/`. Some systems
+have their own crash tool (Fedora's ABRT, Ubuntu's apport) that may offer to send a report to
+the distribution; that follows the tool's own settings. On macOS, crash reports go to Apple only
+when "Share Mac Analytics" is on (System Settings → Privacy & Security → Analytics &
+Improvements).
+
+**Keep private data out.** A core dump is a copy of the crashed process's memory: it can hold
+the pages you had open, form contents, passwords and cookies. Never attach a core file, a
+profile folder or a whole crash file (an `.ips` report, or apport's `.crash` file, which holds a
+whole core dump) to a public issue; share only the backtrace text, and read
+it before you post it. Remove your user name, host name and anything else you would not publish.
+systemd-coredump deletes its cores after a few days; to delete one sooner, `coredumpctl info`
+shows its file under `Storage:`. If a web page can make Vimma crash at will, the crash may be a
+security bug: report it privately as
+[SECURITY.md](https://github.com/vimma-browser/vimma/blob/main/SECURITY.md) describes (Vimma's
+private advisory form, or Mozilla's process for a flaw in Firefox itself), not in a public issue.
+
+**What to send.** Open a [bug report](https://github.com/vimma-browser/vimma/issues/new/choose)
+with:
+
+- the version: the Vimma, Firefox and Build ID lines of `about:vimma` (if Vimma no longer
+  starts, the line `vimma --version` prints, `Vimma X.Y.Z · Firefox N`);
+- how you installed Vimma (`.deb`, `.rpm`, AppImage, tarball, Arch package, Flatpak,
+  `.dmg` or Homebrew, or built from source);
+- your system: the Linux distribution and desktop or window manager, or the macOS version;
+- what you were doing, and whether it happens again on the same page or with the same keys;
+- the backtrace, or at least the crash's signature: the signal or exception and the top few
+  frames of the crashed thread (below);
+- if the crash may depend on your setup (config, theme, workspaces), the redacted report that
+  `:bug` copies ([about:vimma](#aboutvimma)). It has no addresses or page titles, but read it
+  before you paste it.
+
+**Linux: a backtrace from systemd-coredump.** Every Vimma process runs Vimma's own binary, but a
+tab's process is named `Web Content` or `Isolated Web Co`, so `coredumpctl list vimma` shows only
+crashes of the main process. List them all by the binary's path instead. On Debian and Ubuntu,
+install systemd-coredump first (`sudo apt install systemd-coredump`) and make the crash happen
+again:
+
+```sh
+coredumpctl list | grep vimma           # every crash of a Vimma process, newest last
+coredumpctl info PID                    # PID from that list: the signal and a stack trace
+```
+
+From `coredumpctl info`, copy the `Signal:` line and the `Stack trace of thread` block whose
+number matches the `TID:` line (the thread that crashed). Leave out the rest of the header: it
+shows your user name, host name, machine ID and the full command line. A `Signal:` line with
+`si_code: SI_USER` means another process sent the signal (often Vimma ending a tab that hung), not
+a crash of the tab's own. Release builds carry no debug symbols, and Vimma does not publish any
+yet, so frames inside Vimma show only as `libxul.so + 0x…`: the signal, the library names and
+the steps to reproduce help most. For a fuller backtrace, open the core in gdb:
+
+```sh
+coredumpctl debug PID                   # starts gdb on the core
+(gdb) bt -frame-arguments none                  # the crashed thread
+(gdb) thread apply all bt -frame-arguments none # every thread, when asked for it
+```
+
+If your distribution runs a debuginfod server (Arch, Fedora, openSUSE and Ubuntu do, and set
+`DEBUGINFOD_URLS` for you), gdb offers to download symbols for system libraries such as glib or
+Mesa: answer `y`. Keep `-frame-arguments none` and never use `bt full`: without them gdb prints
+the values of arguments and local variables, which can include page text and file paths. A
+Flatpak's crash is read with `flatpak-coredumpctl dev.vimma.browser` instead, since gdb on the
+host cannot find the files inside the Flatpak. If `coredumpctl` is missing or lists nothing, your system handles crashes
+another way: `cat /proc/sys/kernel/core_pattern` names the program that receives them.
+
+**macOS: the crash report.** macOS writes a report for each crash to
+`~/Library/Logs/DiagnosticReports/`: `vimma-<date>.ips` for the main process, and
+`plugin-container-<date>.ips` for a tab's process. The file itself is JSON: open it in Console
+(double-click the file, or Applications → Utilities → Console, then Crash Reports), and from
+that view copy the header lines (Process, Version, OS Version, Exception Type, Termination
+Reason) and the backtrace of the thread marked `Crashed`.
+Paths in the report can contain your user name: remove it before posting.
