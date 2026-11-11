@@ -310,9 +310,9 @@ export function readAppIni(appDir) {
  */
 export function desktopEntry({ wmClass, launcher }) {
   // Firefox's GNOME shell service finds its own entry by comparing the Exec program, looked up
-  // on PATH, with MOZ_APP_LAUNCHER (which vimma-open sets to its own path): only an absolute
-  // Exec matches, so Make Default sets this entry and not a userapp- one (#855). Characters that
-  // Exec would need quoted or escaped are refused rather than quoted.
+  // on PATH, with MOZ_APP_LAUNCHER (which Vimma sets at startup to the vimma-open next to its
+  // binary): only an absolute Exec matches, so Make Default sets this entry and not a userapp-
+  // one (#855). Characters that Exec would need quoted or escaped are refused rather than quoted.
   if (launcher !== undefined && !/^\/[A-Za-z0-9._/-]+$/.test(launcher)) {
     throw new Error(`launcher must be an absolute path of [A-Za-z0-9._/-], got: ${launcher}`);
   }

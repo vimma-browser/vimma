@@ -9,8 +9,6 @@
 
 "use strict";
 
-/* global Cm -- the component manager, a global of the browser-chrome harness */
-
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 
 const { AppLauncher } = ChromeUtils.importESModule(
@@ -48,34 +46,36 @@ function fakeEnv(vars = {}) {
 /**
  * Runs init with a fake environment and records what the shell service would have read.
  *
- * @param {{ vars?: Record<string, string>, platform?: string, exists?: boolean, exeDir?: string, appDir?: string }} options
+ * @param {{ vars?: Record<string, string>, platform?: string, exists?: boolean, marker?: string, running?: boolean }} options
  */
-function run({ vars = {}, platform = "linux", exists = true, exeDir = DIR, appDir = "" } = {}) {
+function run({ vars = {}, platform = "linux", exists = true, marker = "", running = false } = {}) {
   const env = fakeEnv({ ...vars });
   /** @type {string[]} */
   const seen = [];
-  AppLauncher.init({
+  const started = AppLauncher.init({
     platform,
     env,
-    exeDir,
-    exists: (/** @type {string} */ path) => exists && path === `${exeDir}/vimma-open`,
-    appDir,
+    exeDir: DIR,
+    exists: (/** @type {string} */ path) => exists && path === OWN,
+    marker,
+    running: () => running,
     startShellService: () => seen.push(env.get("MOZ_APP_LAUNCHER")),
   });
-  return { env, seen };
+  return { env, seen, started };
 }
 
 add_task(async function test_the_shell_service_starts_with_the_launcher_next_to_the_binary() {
-  const { env, seen } = run();
+  const { env, seen, started } = run({ marker: "vimma-package=deb\n" });
   Assert.deepEqual(seen, [OWN], "the shell service read vimma-open's path when it started");
   Assert.equal(
     env.get("MOZ_APP_LAUNCHER"),
     "",
-    "then cleared, so no program Vimma starts inherits it",
+    "then emptied, so no program Vimma starts inherits it",
   );
+  Assert.ok(started);
 });
 
-add_task(async function test_a_value_from_the_launcher_is_read_once_and_cleared() {
+add_task(async function test_a_value_equal_to_its_own_launcher_is_read_once_and_emptied() {
   const { env, seen } = run({ vars: { MOZ_APP_LAUNCHER: OWN } });
   Assert.deepEqual(seen, [OWN]);
   Assert.equal(env.get("MOZ_APP_LAUNCHER"), "");
@@ -87,23 +87,35 @@ add_task(async function test_an_inherited_value_never_picks_another_program() {
   Assert.equal(env.get("MOZ_APP_LAUNCHER"), "");
 });
 
+add_task(async function test_an_inherited_appdir_never_keeps_another_program() {
+  // APPDIR comes from the caller; only the package's own marker makes an install an AppImage.
+  const { env, seen } = run({
+    vars: { MOZ_APP_LAUNCHER: "/home/u/.local/bin/not-vimma", APPDIR: "/usr", APPIMAGE: "/x" },
+  });
+  Assert.deepEqual(seen, [OWN]);
+  Assert.equal(env.get("MOZ_APP_LAUNCHER"), "");
+});
+
 add_task(async function test_an_appimage_keeps_apprun_s_value() {
   const appimage = "/home/u/Apps/Vimma-1.0.0-x86_64.AppImage";
-  const { env, seen } = run({
+  const { env, seen, started } = run({
     vars: { MOZ_APP_LAUNCHER: appimage },
-    exeDir: "/tmp/.mount_VimmaX/usr/lib/vimma",
-    appDir: "/tmp/.mount_VimmaX",
+    marker: "vimma-package=appimage\n",
   });
   Assert.deepEqual(seen, [], "left to the shell service's own start");
   Assert.equal(env.get("MOZ_APP_LAUNCHER"), appimage);
   Assert.deepEqual(env.log, []);
+  Assert.ok(!started);
 });
 
-add_task(async function test_another_appimage_s_appdir_changes_nothing_for_a_package() {
-  // Another AppImage app's APPDIR reaches the programs it starts, a packaged Vimma among them.
-  const { env, seen } = run({ appDir: "/tmp/.mount_OtherApp" });
-  Assert.deepEqual(seen, [OWN]);
-  Assert.equal(env.get("MOZ_APP_LAUNCHER"), "");
+add_task(async function test_a_shell_service_already_running_is_reported_and_the_value_emptied() {
+  const { env, seen, started } = run({
+    vars: { MOZ_APP_LAUNCHER: "/home/u/.local/bin/not-vimma" },
+    running: true,
+  });
+  Assert.deepEqual(seen, [], "too late to name the launcher: nothing pretends otherwise");
+  Assert.ok(!started);
+  Assert.deepEqual(env.log, ["MOZ_APP_LAUNCHER="], "still emptied for the programs Vimma starts");
 });
 
 add_task(async function test_without_vimma_open_nothing_changes() {
@@ -123,7 +135,7 @@ add_task(async function test_other_platforms_are_left_alone() {
   }
 });
 
-add_task(async function test_startup_leaves_no_launcher_for_the_programs_vimma_starts() {
+add_task(async function test_startup_named_the_launcher_before_anything_else_started_the_service() {
   if (AppConstants.platform !== "linux") {
     Assert.ok(true, "only Linux reads MOZ_APP_LAUNCHER");
     return;
@@ -133,16 +145,10 @@ add_task(async function test_startup_leaves_no_launcher_for_the_programs_vimma_s
     "vimma-open",
   );
   if (await IOUtils.exists(own)) {
-    Assert.equal(Services.env.get("MOZ_APP_LAUNCHER"), "", "read at startup, then cleared");
+    Assert.ok(AppLauncher.init(), "the window's startup came first and named vimma-open");
+    Assert.equal(Services.env.get("MOZ_APP_LAUNCHER"), "", "read at startup, then emptied");
   } else {
-    Assert.notEqual(Services.env.get("MOZ_APP_LAUNCHER"), own, "a build without vimma-open");
+    Assert.ok(!AppLauncher.init(), "a build without vimma-open names no launcher");
+    Assert.notEqual(Services.env.get("MOZ_APP_LAUNCHER"), own);
   }
-  const services = Cm.QueryInterface(Ci.nsIServiceManager);
-  Assert.ok(
-    services.isServiceInstantiatedByContractID(
-      "@mozilla.org/browser/shell-service;1",
-      Ci.nsISupports,
-    ),
-    "the shell service has started",
-  );
 });

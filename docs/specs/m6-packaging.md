@@ -92,7 +92,8 @@ structural checks: group order, required keys, `;`-terminated lists, every actio
   installs names it by its absolute path: `/usr/lib/vimma/vimma-open %u` in the `.deb` and the
   `.rpm`, `/opt/vimma/vimma-open %u` in the PKGBUILD. Firefox's GNOME shell service finds its own
   entry only by comparing the `Exec` program, looked up on `PATH`, with `MOZ_APP_LAUNCHER`, which
-  Vimma sets at startup to the `vimma-open` next to its binary; with a bare `vimma-open` the
+  Vimma sets at startup to the `vimma-open` next to its binary (then to empty, so programs it
+  starts never inherit it); with a bare `vimma-open` the
   Settings button wrote a `userapp-` entry of its own instead, which skipped routing and never
   counted as the default (#855). The AppImage's entry keeps `vimma-open %u`, since whatever
   integrates the AppImage rewrites `Exec` to the `.AppImage`, the path `AppRun` gives as
