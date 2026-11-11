@@ -64,8 +64,8 @@ What works today, each with the section that explains it:
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
   click their buttons, fill their fields (never a password or card number), take a screenshot,
   read a page's errors and show you a page. An agent asks you first, one answer lets it work
-  through its task until it quits, and sending a form or paying asks every time, showing what is
-  sent or the total the page states.
+  through its task until it quits, and paying or sending a form with text or personal details
+  asks every time, showing what is sent or the total the page states.
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
   task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
   by API key, or [Claude Code](#using-an-agent-cli-in-the-chat-window) on its own login. It
@@ -1879,7 +1879,9 @@ Sending with `Enter` is your grant: the window asks no separate question. The gr
 one task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or
 `ctrl+b shift+a`), or it reaches its budget or an error; `:mcp revoke`, deleting the conversation
 and restarting Vimma end it too. The next task you send with `Enter` grants again, so
-`◇ agent granted` shows only while an agent works with your permission. Sending a form, paying, showing you a page and the downloads that
+`◇ agent granted` shows only while an agent works with your permission. Paying, sending a form
+with text or personal details
+([Checkpoints](#checkpoints-sending-a-form-and-paying)), showing you a page and the downloads that
 always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
 nothing you type in the input and nothing the model writes answers it. A message sent while a
 task runs reaches the model at its next turn.
@@ -2120,7 +2122,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 | `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 | `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`   | Click a button, link or checkbox from that list; sending a form or paying asks you every time.           |
+| `vimma_activate`   | Click a button, link or checkbox from that list; paying and forms with text or personal details ask.     |
 | `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
 | `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
@@ -2318,8 +2320,9 @@ A `config.toml` shared between machines on different versions keeps working on e
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation for that task, so steps run without asking; sending a form, paying and
-  `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
+  `Enter` grants the conversation for that task, so steps run without asking; paying, sending a
+  form with text or personal details and `vimma_show` still ask. Each step is a line in the
+  transcript, from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The
   header lists the ones it reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`),
@@ -2524,8 +2527,9 @@ where you can answer it (when it is not in front, it marks its window urgent and
   allow only the `vimma` server's tools; Vimma's own question remains the check on each step.
 - **Answer the first question with `a`.** Later steps then run under the grant without asking,
   until the run ends ([What a grant covers](#what-a-grant-covers)). Each run starts its own
-  `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Sending a form, paying,
-  showing you a page and the downloads that always ask still ask at each step.
+  `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Paying, sending a form
+  with text or personal details, showing you a page and the downloads that always ask still ask
+  at each step.
 - **A denial or no answer.** The tool call comes back as an error, `The user denied this request
 in Vimma.` or `No answer in Vimma within 50 s; treated as denied.`, and the agent says so in
   its answer. The run itself does not fail (Claude Code and Copilot CLI exit with status 0), so
@@ -2692,11 +2696,14 @@ with the rest of your computer.
 **What Vimma does not protect:**
 
 - **Grants are wide.** A grant lets that agent use every tool without asking until it ends:
-  read, open, press keys, click, fill, take screenshots and download. Only sending a form,
-  paying, showing you a page and a dangerous or unscanned download still ask
-  ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
-  "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
-  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
+  read, open, press keys, click, fill, take screenshots and download, and send a form of only
+  the page's own values. Only paying, sending a form with text or personal details, showing you a
+  page and a dangerous or unscanned download still ask
+  ([What a grant covers](#what-a-grant-covers)). `a always here` on a form's question lets that
+  button on that site send its later forms without asking until the grant ends, whatever text or
+  personal details they carry; a payment, password, card, one-time code or file still asks. A
+  grant given for a read therefore also means "let it fetch any address", and an address can
+  carry what the agent has read elsewhere. Every call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
   `a` lasts until the agent quits, which can be hours: give a grant for a task you are watching,
   a count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.

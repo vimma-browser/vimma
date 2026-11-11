@@ -909,40 +909,42 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
-[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
-M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
-brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
-is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent
-tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
-M32), `vimma_activate` (a click on one of them, with no user activation, every form
-submission asked: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
-them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32),
-`vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
-card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script
-errors, console errors and warnings and failed requests, read without running page code: M25,
-M30, M31, M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584),
-`vimma_open`, `vimma_activate` and `vimma_fill` can return the page's element list in their
-result, made and limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller
-unless the agent asks for it at full size (M31).
+[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16, M17,
+M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace brought
+to the front with one agent tab selected: M19, M20) and full control's wording while MCP is on
+(M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent tab's buttons,
+fields and links listed with hint labels, sensitive values left out: M25, M31, M32),
+`vimma_activate` (a click on one of them, with no user activation, a form submission asked without a
+grant, and under one when it sends text or personal details or pays: M25, M26, M28, M29, M32) and
+`vimma_fill` (fields set as form autofill sets them, never a password, payment card, one-time-code
+or file field: M25, M27, M28, M32), `vimma_screenshot` (an image of an agent tab's viewport, refused
+while a password or payment card field on screen has a value: M25, M31, M32) and `vimma_console` (an
+agent tab's script errors, console errors and warnings and failed requests, read without running
+page code: M25, M30, M31, M32), in force. Since
+[#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`, `vimma_activate` and
+`vimma_fill` can return the page's element list in their result, made and limited as a
+`vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for it at full
+size (M31).
 
-[mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a
-grant given in answer to any question, a read included, lets that agent open URLs, follow links,
-press keys, click buttons that do not submit a form, fill fields, take screenshots and download
-(not dangerous or unscanned files) without asking until it ends. An open can carry in its URL
-what the agent read, so a grant is a grant to fetch any http or https address from the agent
-workspace. What limits it: the agent workspace's container holds none of your other logins
-(vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
-under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
-(M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
-with a shell can send what it read over its own network without Vimma anyway. A step that may pay,
-a form submission that sends text, personal details, a secret or a file
-([mcp-consequence](specs/mcp-consequence.md)), a show, a dangerous or unscanned download and a
-page's own download still ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
-makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
-spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
-(`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
-table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
-so and names what still asks and the key that ends it.
+[mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a grant
+given in answer to any question, a read included, lets that agent open URLs, follow links, press
+keys, click buttons that do not submit a form, fill fields, take screenshots and download (not
+dangerous or unscanned files) without asking until it ends. An open can carry in its URL what the
+agent read, so a grant is a grant to fetch any http or https address from the agent workspace. What
+limits it: the agent workspace's container holds none of your other logins (vimma-mcp decision 7),
+so what an agent can read is what the agent workspace holds; every call under a grant shows a notice
+(an open names its host) and is a `:mcp log` row with its whole URL (M23); at most 10 opens a minute
+(M3); `ctrl+b shift+a` ends every grant at once; and an agent with a shell can send what it read
+over its own network without Vimma anyway. A step that may pay, a form submission that sends text,
+personal details, a secret or a file ([mcp-consequence](specs/mcp-consequence.md)), a show, a
+dangerous or unscanned download and a page's own download still ask under any grant (M11, M13, M19,
+M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md) makes sending a form and paying checkpoints:
+one `y` or `n` (and, on a form that is not a payment and sends no secret or file, `a` for that
+button on that site until the grant ends) that shows what the step sends or spends and leaves the
+grant as it was (M28, M33). The question's hint names only the keys (`a until it quits`, or `10a 10
+min`), so that the question fits one line; the guide's key table says that `a` covers every tool,
+and the grant's notice, shown the moment it is made, says so and names what still asks and the key
+that ends it.
 
 Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's
 `INSTRUCTIONS`, which are also the built-in agent's system text) tell an agent to search a site
