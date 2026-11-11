@@ -6,7 +6,8 @@
 // decision 11a). The agent question line is the model (agent-prompt.mjs): `y` and `n`, counted
 // only once the prompt is armed, and never from a field. Esc stays Firefox's: the prompt runs
 // its own Esc action (PopupNotifications, `escAction`, the secondary one unless it says
-// otherwise).
+// otherwise). The notice after an add-on install takes them too, with `p` for its checkbox
+// ("Pin extension to toolbar", issue #868).
 
 /**
  * @typedef {object} DoorhangerState
@@ -18,14 +19,17 @@
  * prompt's username and password)
  * @property {boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {boolean} [repeat]  the key is held down
+ * @property {boolean} [toggle]  the prompt shows a checkbox that `p` toggles (the post-install
+ * notice's "Pin extension to toolbar")
  */
 
 /**
  * @typedef {{ kind: "pass" } | { kind: "wait" } | { kind: "allow" } | { kind: "block" }
- *   | { kind: "focus" }} DoorhangerKey
+ *   | { kind: "focus" } | { kind: "toggle" }} DoorhangerKey
  * `pass`: not the prompt's key; `wait`: swallowed, and the arming delay starts again (a key
  * typed on through the prompt never answers it); `allow` / `block`: the prompt's main or
- * secondary button; `focus`: focus moves into the prompt, onto its first button.
+ * secondary button; `focus`: focus moves into the prompt, onto its first button (or its
+ * checkbox); `toggle`: the prompt's checkbox.
  */
 
 /**
@@ -41,8 +45,9 @@ export function doorhangerKey(key, s) {
   // types nothing.
   if ((s.inField && !s.inPrompt) || s.promptField) return { kind: "pass" };
   if (key === "tab") return s.inPrompt ? { kind: "pass" } : { kind: "focus" };
-  if (key !== "y" && key !== "n") return { kind: "pass" };
+  if (key !== "y" && key !== "n" && !(key === "p" && s.toggle)) return { kind: "pass" };
   if (!s.armed || s.repeat) return { kind: "wait" };
+  if (key === "p") return { kind: "toggle" };
   return { kind: key === "y" ? "allow" : "block" };
 }
 
@@ -59,12 +64,14 @@ function hintLabel(label) {
  * The keys line shown inside an armed prompt, named after its own buttons. With focus in a field
  * outside the prompt (a login form that keeps the page leaves it in the password field), the keys
  * are the field's text, so the line starts with the way out: Esc leaves the field and keeps the
- * prompt open. The same holds in hint, copy and element mode, which keep the keys too.
- * @param {{ main: string, secondary: string, inField?: boolean }} labels
+ * prompt open. The same holds in hint, copy and element mode, which keep the keys too. A prompt
+ * with a checkbox `p` toggles names it after the checkbox's label.
+ * @param {{ main: string, secondary: string, toggle?: string, inField?: boolean }} labels
  */
-export function doorhangerHint({ main, secondary, inField = false }) {
+export function doorhangerHint({ main, secondary, toggle = "", inField = false }) {
   const parts = [`y ${hintLabel(main)}`];
   if (secondary.trim()) parts.push(`n ${hintLabel(secondary)}`);
+  if (toggle.trim()) parts.push(`p ${hintLabel(toggle)}`);
   // From a field, Tab is the field's; leaving `Tab buttons` out keeps the line on one row.
   if (inField) return `Esc, then ${parts.join(" · ")}`;
   parts.push("Tab buttons");

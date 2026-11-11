@@ -839,6 +839,114 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   gBrowser.removeTab(tab);
 });
 
+// 5d: the notice after an install ("<name> was added", Firefox's app menu notification) takes
+// the same keys (issue #868): p toggles its "Pin extension to toolbar" checkbox and y presses OK.
+// Firefox gives the notice no delay of its own; the keys wait for its prompts' delay all the same,
+// from when the notice shows or from the last key.
+add_task(async function the_addon_installed_notice_answers_p_and_y() {
+  const DELAY = 400;
+  await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
+  const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
+  const { AddonManager } = ChromeUtils.importESModule(
+    "resource://gre/modules/AddonManager.sys.mjs",
+  );
+  const ID = "notice@vimma.test";
+  const ext = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: { browser_action: {}, browser_specific_settings: { gecko: { id: ID } } },
+  });
+  await ext.startup();
+  const addon = await AddonManager.getAddonByID(ID);
+  const widget = `${ID.replace(/[^a-z0-9_-]/g, "_")}-browser-action`;
+  const area = () => CustomizableUI.getPlacementOfWidget(widget)?.area;
+  const tab = await openPage();
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
+  /** Shows the notice; resolves with it and its end (OK pressed). */
+  const notice = async () => {
+    const shown = BrowserTestUtils.waitForEvent(PanelUI.notificationPanel, "popupshown");
+    const done = ExtensionsUI.showInstallNotification(tab.linkedBrowser, addon);
+    await shown;
+    const n = /** @type {any} */ ($("appMenu-addon-installed-notification"));
+    await until(() => shows(n.pinExtensionEl), "the notice offers to pin the add-on");
+    return { n, done };
+  };
+
+  let { n, done } = await notice();
+  let ended = false;
+  done.then(() => (ended = true));
+  Assert.equal(area(), CustomizableUI.AREA_ADDONS, "the add-on starts in the extensions menu");
+  EventUtils.synthesizeKey("p");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.equal(area(), CustomizableUI.AREA_ADDONS, "p before the notice is armed pins nothing");
+  Assert.ok(PanelUI.isNotificationPanelOpen && !ended, "and y closes nothing");
+  await until(() => shows(hintOf(n)), "the keys hint shows once armed");
+  Assert.equal(
+    hintOf(n).textContent,
+    "y ok · p pin extension to toolbar · Tab buttons",
+    "the hint names OK and the checkbox",
+  );
+  EventUtils.synthesizeKey("p");
+  Assert.equal(area(), CustomizableUI.AREA_NAVBAR, "p pins the add-on to the toolbar");
+  Assert.ok(n.pinExtensionEl.checked, "and checks the box");
+  Assert.ok(!shows(hintOf(n)), "a key starts the wait again");
+  await until(() => shows(hintOf(n)), "armed again");
+  EventUtils.synthesizeKey("p");
+  Assert.equal(area(), CustomizableUI.AREA_ADDONS, "p again unpins it");
+  await until(() => shows(hintOf(n)), "armed again");
+  EventUtils.synthesizeKey("p");
+  await until(() => shows(hintOf(n)), "armed again");
+  EventUtils.synthesizeKey("y");
+  await done;
+  await until(() => !PanelUI.isNotificationPanelOpen, "y presses OK and the notice is gone");
+  Assert.equal(area(), CustomizableUI.AREA_NAVBAR, "the add-on stays pinned");
+
+  // Tab reaches the checkbox, where Space is Firefox's own toggle.
+  CustomizableUI.addWidgetToArea(widget, CustomizableUI.AREA_ADDONS, 0);
+  ({ n, done } = await notice());
+  await until(() => shows(hintOf(n)), "armed");
+  EventUtils.synthesizeKey("KEY_Tab");
+  await until(() => document.activeElement === n.pinExtensionEl, "Tab focuses the checkbox");
+  EventUtils.synthesizeKey(" ");
+  await until(() => area() === CustomizableUI.AREA_NAVBAR, "Space on it pins the add-on");
+  await until(() => shows(hintOf(n)), "armed");
+  EventUtils.synthesizeKey("y");
+  await done;
+
+  // Keys typed in a field of the page are the page's.
+  ({ n, done } = await notice());
+  ended = false;
+  done.then(() => (ended = true));
+  await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const input = content.document.createElement("input");
+    content.document.body.prepend(input);
+    input.focus();
+  });
+  await until(() => VimmaHost.status(window).mode === "insert", "insert mode");
+  await until(() => shows(hintOf(n)), "armed");
+  Assert.ok(hintOf(n).textContent.startsWith("Esc, then y ok"), hintOf(n).textContent);
+  EventUtils.synthesizeKey("p");
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 2);
+  Assert.ok(!ended, "y typed in the field closes nothing");
+  Assert.equal(area(), CustomizableUI.AREA_NAVBAR, "p typed in the field leaves the pin alone");
+  Assert.equal(
+    await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.activeElement.value),
+    "py",
+    "the field has both letters",
+  );
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => VimmaHost.status(window).mode === "normal", "Esc leaves the field");
+  await until(() => shows(hintOf(n)) && hintOf(n).textContent.startsWith("y ok"), "armed");
+  EventUtils.synthesizeKey("y");
+  await done;
+
+  await ext.unload();
+  await SpecialPowers.popPrefEnv();
+  gBrowser.removeTab(tab);
+});
+
 // 6: the site's identity panel (Firefox's trust panel, or the identity panel where that is
 // off) opens with a click on the site's identity in the prompt bar, hangs from it and keeps the
 // prompt bar up while open. The minimal bar has no identity to click; the full toolbar has.

@@ -447,6 +447,15 @@ text that pages, add-ons and bookmarks choose.
     `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
     its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
     under the same delay; no text field has focus then.
+    The notice after an add-on install ("<name> was added", Firefox's app menu notification)
+    takes `y` (OK) and `p` (its "Pin extension to toolbar" checkbox) under the same rules, and
+    `Tab` focuses that checkbox. Firefox
+    gives that notice no delay of its own, so the wait counts from when Vimma sees it shown or the
+    window activated, or from the last key, and the wait starts again when the checkbox appears
+    or goes. A page cannot raise the notice: it follows only an install answered with Add in the
+    install prompt. It grants nothing: `p` moves the add-on's button between the toolbar and the
+    extensions menu, and private-window access is asked in the install prompt, not here. No other
+    notice of that panel takes the keys (the update notices' main button restarts the browser).
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
@@ -454,6 +463,7 @@ text that pages, add-ons and bookmarks choose.
     [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
     [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+    [`the_addon_installed_notice_answers_p_and_y`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Firefox's pop-up blocked bar takes the same keys (`y` allows the site, `n` blocks it, `Esc`
     closes the bar; docs/specs/popup-blocked.md) under the same rules. They count only from the

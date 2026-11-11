@@ -1931,8 +1931,7 @@ export const VimmaHost = {
     UpdateUi.register(win, {
       prompt: state.updatePrompt,
       inField: () => this._mode(state) === "insert",
-      otherOpen: () =>
-        keysHeld(state) || state.agentPrompt.isOpen || !!state.promptKeys?.notification,
+      otherOpen: () => keysHeld(state) || state.agentPrompt.isOpen || !!state.promptKeys?.current,
       pending: () => state.dispatcher.pending().length > 0,
       notice: (text) => state.notice.show(text, { ms: ANNOUNCE_MS }),
       hideNotice: (text) => {
