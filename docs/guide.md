@@ -375,19 +375,20 @@ Vimma at another file.
 Vimma never makes itself your default browser; links from other apps open in it once you choose
 it. How depends on the install:
 
-| Installed from             | Make it the default                                                                                                  |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `.deb`, `.rpm`, Arch Linux | `xdg-settings set default-web-browser vimma-vimma.desktop`                                                           |
-| Omarchy (any package)      | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                       |
-| AppImage, tarball          | Settings → Account and sync → Make default (`:settings`); it records the file's path, so press it again after a move |
-| Flatpak                    | your desktop's default-apps settings                                                                                 |
-| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                |
+| Installed from             | Make it the default                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `.deb`, `.rpm`, Arch Linux | `xdg-settings set default-web-browser vimma-vimma.desktop`                                                                |
+| Omarchy (Arch package)     | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                            |
+| AppImage, tarball          | Settings → Account and sync → Make default (`:settings sync`); it records the file's path, so press it again after a move |
+| Flatpak                    | your desktop's default-apps settings                                                                                      |
+| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                     |
 
 With the `xdg-settings` command, links from other apps go through `vimma-open`, so
 [routing rules](#routing-which-workspace-a-link-opens-in) by app apply to them. On the Linux
 packages, Settings' Make default button does not do the same yet: it registers a desktop entry of
 its own that skips `vimma-open`, and Settings goes on saying that Vimma is not your default
-browser after the command has made it one. Both are issue
+browser after the command has made it one. On Omarchy, an AppImage or a tarball uses Settings'
+button as elsewhere, and Settings keeps saying that Vimma is not the default. These are issue
 [#855](https://github.com/vimma-browser/vimma/issues/855);
 [limits.md](limits.md#platforms-and-packaging) lists what else differs, Omarchy's case included.
 
@@ -448,7 +449,7 @@ To change it back:
 ### Moving over from Firefox or Chrome
 
 Vimma is Firefox underneath, with a profile of its own, so nothing comes over from another
-browser until you bring it. Bookmarks, history and passwords move in a few minutes; add-ons are
+browser until you bring it. Bookmarks, passwords and recent history move in a few minutes; add-ons are
 installed again.
 
 **From Firefox, with Firefox Sync.** Sign in with the same Mozilla account in Firefox and in
@@ -489,13 +490,15 @@ it to pick another one. Then choose **Done**.
   every one of them.
 - **Passwords:** in Firefox, `about:logins` → `…` → Export Passwords; in Vimma, `about:logins`
   → `…` → Import from a File. Delete the exported file afterwards, as above.
-- History has no file to carry it; it comes over through Sync. A backup made by Firefox's
+- History has no file to carry it. Sync brings recent history (about the last 60 days, up to
+  5000 pages); older Firefox history does not come over. A backup made by Firefox's
   backup service cannot be restored into Vimma ([limits.md](limits.md#compatibility-and-versions)).
 
 **Where imported bookmarks go.** An import puts bookmarks in Firefox's own folders: a Chromium
 browser's bookmarks bar goes loose into the Bookmarks Toolbar and its other bookmarks into Other
 Bookmarks. The [bookmarks panel](#bookmarks) shows only the current workspace's folder, so set
-`[bookmarks] root = "toolbar"` or `"all"` in [config.toml](#configtoml) to see them, and move
+`[bookmarks] root = "toolbar"` in [config.toml](#configtoml) to see the bookmarks bar, or `"all"` to
+see Other Bookmarks too, and move
 what you want in a workspace with `m`.
 
 **Add-ons.** Install them again from [addons.mozilla.org](https://addons.mozilla.org)
@@ -4618,14 +4621,14 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   any other topic forwards you to the same article on Mozilla's support site, which still applies
   to the Firefox underneath. The link carries the Firefox version, your OS and your language, as
   Firefox's links do (`app.support.baseURL`; Firefox's value is
-  `https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/`). Settings > Sync's links to
+  `https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/`). Settings > Account and sync's links to
   Firefox for Android and iOS still open Mozilla's download pages, since those apps sync with
   Vimma.
 - **No Mozilla entry points in the menus.** The page, link and tab menus have no Send to
   Device, Tools has no Tab Overview (Firefox View), the Help menu (in the menu bar and in the app
   menu) has no Switching to a New Device or Report Broken Site, and customize mode offers no Send
   to Device or Tab Overview button. Help keeps Get Help, Share Ideas and Report Deceptive Site,
-  the account button stays, and Firefox Sync, sign-in included, works from Settings > Sync as in
+  the account button stays, and Firefox Sync, sign-in included, works from Settings > Account and sync as in
   Firefox. These are hidden by Vimma's style sheet, not by a pref.
 - **Settings shows only what works in Vimma, in Vimma's style.** Settings hides Labs, the
   data collection group (Vimma uploads no telemetry, so its switches changed nothing), the
@@ -4641,7 +4644,7 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   Firefox Screenshots. Mozilla's own products, such as Relay, Monitor and Mozilla VPN, keep their
   names.
 - **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
-  in the theme's colours, the account group in Settings > Sync a plain account icon, and the
+  in the theme's colours, the account group in Settings > Account and sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
   `about:restartrequired`, the sidebar's empty lists) show no picture. Error pages, such as
   "Server Not Found", show their text without Firefox's fox
