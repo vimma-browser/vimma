@@ -61,6 +61,7 @@ browser.jar:
         content/browser/vimma/host/pdf-ops.mjs            (host/pdf-ops.mjs)
         content/browser/vimma/services/MozillaServices.sys.mjs (services/MozillaServices.sys.mjs)
         content/browser/vimma/services/WakeLock.sys.mjs (services/WakeLock.sys.mjs)
+        content/browser/vimma/services/AppLauncher.sys.mjs (services/AppLauncher.sys.mjs)
         content/browser/vimma/services/ViewedDownloads.sys.mjs (services/ViewedDownloads.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceStore.sys.mjs (workspaces/WorkspaceStore.sys.mjs)
         content/browser/vimma/workspaces/WindowWorkspaces.sys.mjs (workspaces/WindowWorkspaces.sys.mjs)

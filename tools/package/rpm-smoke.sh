@@ -15,7 +15,8 @@
 # requirement and installs the .rpm; `vimma --version` prints the expected line, and vimma-ctl on
 # PATH names the same Vimma version;
 # /usr/lib/vimma/is-packaged-app says vimma-package=rpm; vimma-open is the repository's launcher
-# byte for byte; the desktop file passes desktop-file-validate; rpm -V finds every file as
+# byte for byte; the desktop file passes desktop-file-validate and runs
+# /usr/lib/vimma/vimma-open by that path; rpm -V finds every file as
 # packaged; for a real build (not --stub), Vimma starts headless and takes a screenshot, so the
 # requirements rpmbuild found are enough; and rpm -e removes everything it installed.
 set -euo pipefail
@@ -55,6 +56,8 @@ if [ "${1:-}" = "--inside" ]; then
   test -x /usr/bin/vimma-open
   cmp /usr/lib/vimma/vimma-open /repo/tools/package/vimma-open.sh
   desktop-file-validate /usr/share/applications/vimma-vimma.desktop
+  # Firefox's shell service finds its own entry only by the Exec program's exact path (#855).
+  grep -qx 'Exec=/usr/lib/vimma/vimma-open %u' /usr/share/applications/vimma-vimma.desktop
   test -f /usr/share/icons/hicolor/128x128/apps/vimma.png
   rpm -V vimma
   if [ "$real" = 1 ]; then

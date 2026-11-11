@@ -88,6 +88,15 @@ structural checks: group order, required keys, `;`-terminated lists, every actio
 
 - `Exec=vimma %u`, `Icon=vimma`, `StartupWMClass=<RemotingName>`, `Categories=Network;WebBrowser;`,
   `Terminal=false`, `StartupNotify=true`, `Keywords=…;vim;`.
+  (Since changed: `Exec` runs `vimma-open` (spec workspace-routing), and the entry a package
+  installs names it by its absolute path: `/usr/lib/vimma/vimma-open %u` in the `.deb` and the
+  `.rpm`, `/opt/vimma/vimma-open %u` in the PKGBUILD. Firefox's GNOME shell service finds its own
+  entry only by comparing the `Exec` program, looked up on `PATH`, with `MOZ_APP_LAUNCHER`, which
+  Vimma sets at startup to the `vimma-open` next to its binary; with a bare `vimma-open` the
+  Settings button wrote a `userapp-` entry of its own instead, which skipped routing and never
+  counted as the default (#855). The AppImage's entry keeps `vimma-open %u`, since whatever
+  integrates the AppImage rewrites `Exec` to the `.AppImage`, the path `AppRun` gives as
+  `MOZ_APP_LAUNCHER`.)
 - `MimeType=`: Mozilla's list from `python/mozbuild/mozbuild/repackaging/desktop_file.py` without
   `x-scheme-handler/chrome` and `x-scheme-handler/mailto` (a browser that grabs mail links is a
   surprise): `text/html`, `application/xhtml+xml`, `x-scheme-handler/http`,

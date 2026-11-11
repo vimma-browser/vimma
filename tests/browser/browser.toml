@@ -79,6 +79,8 @@ support-files = ["file_vimma_copy_motions.html"]
 
 ["browser_vimma_wake_lock.js"]
 
+["browser_vimma_app_launcher.js"]
+
 ["browser_vimma_crash_reporter.js"]
 # Artifact builds run Mozilla's libxul, built with the crash reporter (ADR-010).
 skip-if = ["artifact"]

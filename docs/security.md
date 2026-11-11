@@ -521,10 +521,10 @@ text that pages, add-ons and bookmarks choose.
 
 The hook (`omarchy/vimma-theme-reload.sh`) runs when you change your Omarchy theme. Vimma
 writes it into `~/.config/omarchy/hooks/theme-set.d/`. `vimma-open` (`tools/package/`) is the
-desktop entry's launcher (`vimma-open %u`) and the command `BROWSER=vimma-open` runs: it names
-the programs that opened a link, nearest first, for routing (spec
-[app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to `vimma` in its own
-session.
+desktop entry's launcher (`Exec=/usr/lib/vimma/vimma-open %u`, by its installed path) and the
+command `BROWSER=vimma-open` runs: it names the programs that opened a link, nearest first, for
+routing (spec [app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to
+`vimma` in its own session.
 
 **Reach:** the hook gets the theme name, which comes from a theme anyone can publish.
 `vimma-open` gets a URL and its arguments from any local program, reads `/proc` for the names
@@ -572,6 +572,22 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   name the wrong terminal. Its server ends the list instead.
   [`never runs tmux or herdr`](../tools/package/test/vimma-open.test.mjs),
   [`a daemonised tmux server ends the list at tmux, whatever its clients`](../tools/package/test/vimma-open.test.mjs)
+
+- O10. Settings' Make default button **must** register only the package's own desktop entry,
+  never a command another program chose. On Linux, the first window's first script
+  (`services/AppLauncher.sys.mjs`) starts Firefox's shell service with `MOZ_APP_LAUNCHER` set to
+  the `vimma-open` next to the binary, replacing any value inherited from the caller, and then
+  clears it, so no program Vimma starts inherits it (a Firefox started from one would take
+  `vimma-open` as itself, bug 1494436). Inside an AppImage, `AppRun`'s value (the `.AppImage`)
+  stands; without a `vimma-open` next to the binary (the tarball, a build from source) nothing is
+  set. A program that can write `~/.local/share/applications` or `mimeapps.list` can choose the
+  default browser itself, so a desktop entry there that also runs `vimma-open` is outside this
+  boundary (§11).
+  [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_an_inherited_value_never_picks_another_program`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_startup_leaves_no_launcher_for_the_programs_vimma_starts`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_an_appimage_keeps_apprun_s_value`](../tests/browser/browser_vimma_app_launcher.js),
+  [`names each package's installed vimma-open by its absolute path in the desktop entry`](../tools/package/test/package.test.mjs)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
 runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
