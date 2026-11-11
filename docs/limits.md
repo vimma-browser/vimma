@@ -116,8 +116,8 @@ the [user guide](guide.md); planned work is on the
   The tarball's updater downloads complete updates only (no partial MARs).
 - No download reputation: Google's download lists and file checks are open only to Mozilla's own
   key, so "Block dangerous downloads" adds nothing beyond the Safe Browsing site lists.
-- No crash reporter: Vimma sends nothing; a crash leaves only whatever local record the system
-  keeps (a core dump on Linux, a `.ips` report on macOS).
+- No crash reporter: Vimma sends nothing; a crash leaves whatever record the system keeps (a core
+  dump where systemd-coredump keeps them, a `.ips` report on macOS).
 
 ## Agents (MCP)
 
