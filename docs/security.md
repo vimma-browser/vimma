@@ -2435,12 +2435,17 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
 - K4. After `Esc`, a page **must not** put the tab back in insert by focusing a field other than
   while it handles the user's input, and a focus report sent before the `Esc` **must not** undo
   it; only the user's next action (a click, a key the page gets, `i`, `gi`, a hint) or another
-  top document ends this. This holds for an uncompromised content process: a report's `user` and
+  top document ends this. A key the user pressed after `Esc`, that a page in a content process
+  handled before the blur arrived, keeps the focus it gave (insert-focus behaviour 8), and its
+  focus is reported under the same rule. This holds for an uncompromised content process: a report's `user` and
   `gen` fields and `Vimma:Click` come from the content process, so a compromised one can do what
   K1 allows, no more.
   [`after_esc_a_page_refocusing_its_field_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
-  [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
+  [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
+  [`tab_right_after_esc_on_a_busy_page_keeps_its_focus`](../tests/browser/browser_vimma_insert_focus.js),
+  [`tab_right_before_esc_on_a_busy_page_is_blurred`](../tests/browser/browser_vimma_insert_focus.js),
+  [`a_key_right_after_esc_on_a_busy_page_still_blurs`](../tests/browser/browser_vimma_insert_focus.js)
 - K5. Vim's text-field keys ([key-handling-batch](specs/key-handling-batch.md) § 2) **must**
   act only on a key the user pressed, in insert mode or in a focused chrome field, and in a page
   only after the page left the key alone. `ctrl+j` and `ctrl+m` press a trusted `Enter` from the

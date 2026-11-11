@@ -79,7 +79,7 @@ function pageScrollY(browser) {
 }
 
 /**
- * Leaves insert with Esc and waits for normal mode with nothing focused in the page.
+ * Leaves insert with Esc and waits for normal mode. The page's blur can still be on its way.
  * @param {XULBrowserElement} browser
  */
 async function leaveInsert(browser) {
@@ -530,6 +530,82 @@ add_task(async function esc_in_normal_mode_blurs_what_tab_focused() {
       "Esc leaves nothing focused in the page",
     );
     Assert.ok((await pageKeys(browser)).includes("Escape"), "the page still had the Esc");
+    Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is in normal");
+  });
+});
+
+/**
+ * Keeps the page's process busy for half a second from its next task, so that the keys pressed next
+ * and Esc's blur all wait there: the process then handles input first (#850).
+ * @param {XULBrowserElement} browser
+ */
+function busyPage(browser) {
+  return SpecialPowers.spawn(browser, [], () => {
+    content.setTimeout(() => {
+      const end = Date.now() + 500;
+      while (Date.now() < end) {
+        // busy
+      }
+    }, 0);
+  });
+}
+
+// Tab right after Esc: the page's process can handle the Tab before Esc's blur, which must
+// then leave the focus Tab gave (#850).
+add_task(async function tab_right_after_esc_on_a_busy_page_keeps_its_focus() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "editor");
+    await waitForMode(browser, "insert");
+    await busyPage(browser);
+    EventUtils.synthesizeKey("KEY_Escape");
+    EventUtils.synthesizeKey("KEY_Tab");
+    // Queued after the blur, so it runs after it.
+    await SpecialPowers.spawn(browser, [], () => {});
+    Assert.equal(await activeId(browser), "button", "Tab's focus stays");
+    Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is in normal");
+  });
+});
+
+// Tab right before Esc: the page handled it before the blur was asked for, so the blur takes
+// the focus Tab gave.
+add_task(async function tab_right_before_esc_on_a_busy_page_is_blurred() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "first");
+    await waitForMode(browser, "insert");
+    // Where the Tab found focus: the content process usually runs input first, but not always.
+    await SpecialPowers.spawn(browser, [], () => {
+      const win = content.wrappedJSObject;
+      content.addEventListener("keydown", (e) => {
+        if (e.key === "Tab") win.vimmaTabFrom = content.document.activeElement?.id ?? "";
+      });
+    });
+    await busyPage(browser);
+    EventUtils.synthesizeKey("KEY_Tab");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await SpecialPowers.spawn(browser, [], () => {});
+    const from = await SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.vimmaTabFrom);
+    Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is in normal");
+    if (from !== "first") {
+      // The blur ran first, so Tab started from nothing: this run tells nothing.
+      info(`the blur ran before the Tab (Tab from "${from}")`);
+      return;
+    }
+    Assert.equal(await activeId(browser), "", "nothing is focused in the page");
+  });
+});
+
+// A key right after Esc that the page gets but that moves no focus: the late blur still
+// takes the field's.
+add_task(async function a_key_right_after_esc_on_a_busy_page_still_blurs() {
+  await withPage(async (browser) => {
+    await pageFocuses(browser, "editor");
+    await waitForMode(browser, "insert");
+    await busyPage(browser);
+    EventUtils.synthesizeKey("KEY_Escape");
+    EventUtils.synthesizeKey("KEY_Shift");
+    await SpecialPowers.spawn(browser, [], () => {});
+    Assert.ok((await pageKeys(browser)).includes("Shift"), "the page got the key");
+    Assert.equal(await activeId(browser), "", "nothing is focused in the page");
     Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is in normal");
   });
 });
