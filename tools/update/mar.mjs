@@ -257,19 +257,21 @@ export function verifyMar(buf, keys, want) {
 }
 
 /**
- * application.ini's [App] Version (Firefox's version), which make_full_update.sh writes into the
- * product information block as `./mach repackage mar` does.
+ * A key of application.ini's [App] section, as `./mach repackage mar` reads them: Version
+ * (Firefox's version), which make_full_update.sh writes into the product information block, and
+ * Name, whose lowercase form the script takes as APPNAME since Firefox 160.
  * @param {string} text
+ * @param {"Version" | "Name"} key
  */
-function appVersion(text) {
+function appValue(text, key) {
   let section = "";
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     const head = /^\[(.+)\]$/.exec(line);
     if (head) section = head[1] ?? "";
-    else if (section === "App" && line.startsWith("Version=")) return line.slice(8);
+    else if (section === "App" && line.startsWith(`${key}=`)) return line.slice(key.length + 1);
   }
-  throw new Error("application.ini has no [App] Version");
+  throw new Error(`application.ini has no [App] ${key}`);
 }
 
 /**
@@ -305,9 +307,14 @@ export function buildMarFromDir({ dir, tools, channel, out }) {
   need(CHANNELS.includes(channel), `channel ${channel} is not ${CHANNELS.join(" or ")}`);
   const work = mkdtempSync(join(tmpdir(), "vimma-mar-"));
   try {
-    const version = appVersion(readFileSync(join(dir, "application.ini"), "utf8"));
+    const ini = readFileSync(join(dir, "application.ini"), "utf8");
+    const version = appValue(ini, "Version");
+    // Firefox 160's make_full_update.sh exits 1 without APPNAME, which it uses to order the
+    // manifest's instructions (common.sh reorder_instructions, bugs 2058197 and 2058594).
+    const appName = appValue(ini, "Name").toLowerCase();
+    need(appName !== "", "application.ini's [App] Name is empty");
     const unsigned = join(work, "unsigned.mar");
-    execFileSync(join(tools, "make_full_update.sh"), ["-q", unsigned, dir], {
+    execFileSync(join(tools, "make_full_update.sh"), ["-q", unsigned, dir, appName], {
       stdio: ["ignore", "inherit", "inherit"],
       env: {
         ...process.env,
