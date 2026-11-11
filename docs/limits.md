@@ -161,7 +161,7 @@ the [user guide](guide.md); planned work is on the
   hidden fields before the click is not seen either. `a always here` on a form's question lets the
   same button on the same site send without asking until the grant ends, whatever text or personal
   details its later forms send (a payment, a password, card, one-time-code or file field, a form
-  with more than 64 fields, a value too long for Vimma to read whole (over 1024
+  with more than 64 fields besides hidden ones, a value too long for Vimma to read whole (over 1024
   characters), or a form whose fields Vimma could not read still asks).
   Paying is recognised by a payment card field the page shows, in any frame, or by the pressed
   button's or followed link's words (a fixed list in six languages). A checkout that shows neither,

@@ -1051,8 +1051,9 @@ export function sentFieldsOf(el, by, skip) {
   let more = 0;
   const identity = identityFields(form);
   /**
-   * `f.value` is the whole value sent, cut here. @param {any} [c] the field, for its marks
+   * One field sent; `f.value` is the whole value, cut here.
    * @param {{ name: string, value?: string, secret?: true, file?: true }} f
+   * @param {any} [c] the field, for its marks
    */
   const add = (f, c) => {
     if (fields.length >= SENT_MAX) return more++;

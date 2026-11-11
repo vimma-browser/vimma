@@ -1514,33 +1514,32 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
   marks every field), or free text (a textarea or a text-like input other than `type=search`
   whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
-  value so digits of other scripts or forms never pass); or a form whose fields the page did
-  not say in time, that sends more than the 64 fields the child reads, or one of whose values is
-  longer than the child reads of it. It asks with only `y` and `n`, naming
-  the form's method, destination and each field it sends by name and value (hidden fields
-  counted, a file field by its name), **never** a password, payment card or one-time-code
-  field's value, only its name and `•••`, or the number of fields when the page did not say in
-  time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
-  submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
-  row naming its method and destination (M23), and the guard below lets that one submission
-  through as after a yes. Because another call (a fill) may change the form between that
-  judgement and the click, the child judges the form again just before it presses the button,
-  after the page's handlers of the pressing ran, and skips the click when it no longer passes
-  (no longer harmless, or, under an allowance, sending a secret, a file or a value it cannot
-  read whole). Under a grant, the question of a consequential submission that is not a payment
-  step, sends no password, card, one-time-code or file field, and is known whole (its fields
-  said in time, none past the 64 the child reads, no value, the pressed button's and each chosen
-  option's included, longer than the 1024 characters the child reads of it) also takes `a`
-  (mcp-consequence K5), because an allowance must not rest on a form Vimma did not read whole:
-  it allows that submission and every later click of the same connection whose tab's site
-  (registrable domain), form method, destination (scheme, host, port and path) and pressed
-  button's text are the same, checked again on each click against the payment, secret and
-  known-whole rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
-  conversation's stop, the connection's close; an allowance is held in memory and never kept
-  for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
-  step. An allowance covers later submissions whatever text or personal details they send,
-  which no question shows. Not covered: a page's own script that copies typed text into hidden
-  fields before a harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17);
+  value so digits of other scripts or forms never pass); or a form whose fields the page did not say
+  in time, that sends more than the 64 fields besides hidden ones the child reads, or one of whose
+  values is longer than the child reads of it. It asks with only `y` and `n`, naming the form's
+  method, destination and each field it sends by name and value (hidden fields counted, a file field
+  by its name), **never** a password, payment card or one-time-code field's value, only its name and
+  `•••`, or the number of fields when the page did not say in time; its yes **never** makes or ends
+  a grant, and its `x` is a plain no. Under a grant, a submission that is none of the above runs
+  unasked, with the grant's notice and a `:mcp log` row naming its method and destination (M23), and
+  the guard below lets that one submission through as after a yes. Because another call (a fill) may
+  change the form between that judgement and the click, the child judges the form again just before
+  it presses the button, after the page's handlers of the pressing ran, and skips the click when it
+  no longer passes (no longer harmless, or, under an allowance, sending a secret, a file or a value
+  it cannot read whole). Under a grant, the question of a consequential submission that is not a
+  payment step, sends no password, card, one-time-code or file field, and is known whole (its fields
+  said in time, none past the 64 besides hidden ones the child reads, no value, the pressed button's
+  and each chosen option's included, longer than the 1024 characters the child reads of it) also
+  takes `a` (mcp-consequence K5), because an allowance must not rest on a form Vimma did not read
+  whole: it allows that submission and every later click of the same connection whose tab's site
+  (registrable domain), form method, destination (scheme, host, port and path) and pressed button's
+  text are the same, checked again on each click against the payment, secret and known-whole
+  rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in conversation's
+  stop, the connection's close; an allowance is held in memory and never kept for a reconnect); `a`
+  on a payment's question, or without a grant, allows nothing beyond that step. An allowance covers
+  later submissions whatever text or personal details they send, which no question shows. Not
+  covered: a page's own script that copies typed text into hidden fields before a harmless-looking
+  submission, as a page's own `fetch` is not (mcp-forms F17);
   a form that sends only the page's own values runs unasked under a grant whatever it does on
   the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
   only the payment signals of M33 add a question there; a short number typed into a plain text

@@ -2701,12 +2701,12 @@ with the rest of your computer.
   given for a read therefore also means "let it fetch any address", and an address can carry what
   the agent has read elsewhere. `a always here` on a form's question lets that button on that site
   send its later forms without asking until the grant ends, whatever text or personal details they
-  carry; a payment, a password, card, one-time-code or file field, a form with more than 64
-  fields, a value too long for Vimma to read whole (over 1024 characters), or a form whose fields
-  Vimma could not read still asks. Every call under a grant shows a notice and a row in `:mcp log`,
-  so you can see where it went. A bare `a` lasts until the agent quits, which can be hours: give a
-  grant for a task you are watching, a count (`15a`) when you want it to lapse by itself, and answer
-  `y` one at a time otherwise.
+  carry; a payment, a password, card, one-time-code or file field, a form with more than 64 fields
+  besides hidden ones, a value too long for Vimma to read whole (over 1024 characters), or a form
+  whose fields Vimma could not read still asks. Every call under a grant shows a notice and a row in
+  `:mcp log`, so you can see where it went. A bare `a` lasts until the agent quits, which can be
+  hours: give a grant for a task you are watching, a count (`15a`) when you want it to lapse by
+  itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
   Only [Vimma's own agent](#vimmas-own-agent) is labelled `built-in`; an MCP agent that calls
