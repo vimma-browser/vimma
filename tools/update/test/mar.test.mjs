@@ -222,12 +222,12 @@ describe("mar.mjs, the commands the workflows run", () => {
     ).not.toBe(0);
   });
 
-  it("build: runs Mozilla's make_full_update.sh on the tarball's top directory, then the placeholder", () => {
+  it("build: runs Mozilla's make_full_update.sh on the tarball's top directory and the app name, then the placeholder", () => {
     const dir = tempDir("vimma-mar-build-");
     mkdirSync(join(dir, "pkg", "vimma"), { recursive: true });
     writeFileSync(
       join(dir, "pkg", "vimma", "application.ini"),
-      "[App]\nVersion=159.0.1\nBuildID=20261106000000\n",
+      "[App]\nVendor=Vimma\nName=Vimma\nVersion=159.0.1\nBuildID=20261106000000\n",
     );
     writeFileSync(join(dir, "pkg", "vimma", "precomplete"), "");
     execFileSync("tar", ["-cJf", join(dir, "vimma.tar.xz"), "-C", join(dir, "pkg"), "vimma"]);
@@ -241,7 +241,7 @@ describe("mar.mjs, the commands the workflows run", () => {
 set -e
 [ "$1" = -q ] && shift && quiet=yes
 printf '%s\\n' "quiet=$quiet" "MAR=$MAR" "MOZ_PRODUCT_VERSION=$MOZ_PRODUCT_VERSION" "MAR_CHANNEL_ID=$MAR_CHANNEL_ID" \\
-  "BCJ_OPTIONS=$BCJ_OPTIONS" "dir=$(basename "$2")" "precomplete=$(test -f "$2/precomplete" && echo yes)" > "${dir}/seen"
+  "BCJ_OPTIONS=$BCJ_OPTIONS" "dir=$(basename "$2")" "precomplete=$(test -f "$2/precomplete" && echo yes)" "appname=$3" "args=$#" > "${dir}/seen"
 cp "${new URL("unsigned.mar", FIXTURES).pathname}" "$1"
 `,
     );
@@ -268,6 +268,10 @@ cp "${new URL("unsigned.mar", FIXTURES).pathname}" "$1"
       "BCJ_OPTIONS=--x86",
       "dir=vimma",
       "precomplete=yes",
+      // Firefox 160's make_full_update.sh takes the lowercase app name third and exits 1
+      // without it; ./mach repackage mar passes application.ini's [App] Name, lowercased.
+      "appname=vimma",
+      "args=3",
       "",
     ]);
     expect(readMar(readFileSync(join(dir, "out.mar"))).signatures).toEqual([
