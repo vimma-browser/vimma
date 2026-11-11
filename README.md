@@ -13,7 +13,7 @@
 
 # Vimma
 
-**A keyboard-first browser for people who live in Vim and tmux.** You already have the muscle
+**A keyboard-first browser for people who live in the terminal.** You already have the muscle
 memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` drives tabs, panes
 and workspaces, and your hands never leave the keyboard.
 
