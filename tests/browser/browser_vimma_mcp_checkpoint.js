@@ -595,6 +595,7 @@ addTidyTask(async function test_a_message_cut_or_written_late_still_asks() {
   const id = activate(c, tab, by["Lähetä viesti"]);
   const q = await question();
   Assert.ok(q.what.submit, "the form asks: what it sends past the cut is not known");
+  Assert.ok(!q.what.here, "and offers no a: it cannot be allowed for the grant unread (K5)");
   AgentGate.answer(q.id, { kind: "deny" });
   await c.response(id);
   Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "sends nothing");
@@ -605,4 +606,39 @@ addTidyTask(async function test_a_message_cut_or_written_late_still_asks() {
   Assert.equal(AgentGate.waiting.length, 0, "an empty note runs under the grant");
   Assert.ok(!r.ok || r.result.navigated === false, "but the click is skipped");
   Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, "and the note is not sent");
+});
+
+addTidyTask(async function test_a_long_button_value_or_chosen_option_asks() {
+  await mcp(true);
+  const tab = await openAgentTab(BASKET);
+  // Values the page itself chose, past what the child reads of a value: the pressed button's,
+  // and a second chosen option of a multiple select, whose own value is only the first's (K3).
+  await SpecialPowers.spawn(tab.linkedBrowser, ["\u{1D7CF}".repeat(1100)], (long) => {
+    const doc = content.document;
+    doc.body.insertAdjacentHTML(
+      "beforeend",
+      `<form method="get" action="file_vimma_agent_page.html">
+         <button type="submit" name="next" value="">Jatka</button>
+       </form>
+       <form method="get" action="file_vimma_agent_page.html">
+         <select name="pick" multiple aria-label="Valinta">
+           <option value="a" selected>a</option><option value="" selected>b</option>
+         </select>
+         <button type="submit">Valitse</button>
+       </form>`,
+    );
+    doc.querySelector('button[name="next"]').value = long;
+    doc.querySelectorAll('select[name="pick"] option')[1].value = long;
+  });
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  for (const button of ["Jatka", "Valitse"]) {
+    const id = activate(c, tab, by[button]);
+    const q = await question();
+    Assert.ok(q.what.submit, `${button}: asks under the grant: past the cut is not known`);
+    Assert.ok(!q.what.here, `${button}: and offers no a (K5)`);
+    AgentGate.answer(q.id, { kind: "deny" });
+    Assert.equal((await c.response(id)).error?.reason, "user", `${button}: a no`);
+    Assert.equal(tab.linkedBrowser.currentURI.spec, BASKET, `${button}: sends nothing`);
+  }
 });

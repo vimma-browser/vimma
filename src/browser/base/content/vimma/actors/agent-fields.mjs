@@ -1050,7 +1050,11 @@ export function sentFieldsOf(el, by, skip) {
   let hidden = 0;
   let more = 0;
   const identity = identityFields(form);
-  /** @param {{ name: string, value?: string, secret?: true, file?: true }} f @param {any} [c] */
+  /**
+   * One field sent; `f.value` is the whole value, cut here.
+   * @param {{ name: string, value?: string, secret?: true, file?: true }} f
+   * @param {any} [c] the field, for its marks
+   */
   const add = (f, c) => {
     if (fields.length >= SENT_MAX) return more++;
     /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
@@ -1058,8 +1062,13 @@ export function sentFieldsOf(el, by, skip) {
     const out = { ...f };
     if (c && (c.localName === "textarea" || TEXT_TYPES.has(c.type))) out.text = true;
     if (c && identity.has(c)) out.identity = true;
-    // What is past the cut is not known: a doubt asks (mcp-consequence K3).
-    if (c && String(c.value ?? "").length > VALUE) out.cut = true;
+    // What is past the cut is not known: a doubt asks (mcp-consequence K3). Judged on each value
+    // sent, as the pressed button's and every chosen option's are not the field's own `value`.
+    if ("value" in f) {
+      const whole = String(f.value ?? "");
+      out.value = cap(whole, VALUE);
+      if (whole.length > VALUE) out.cut = true;
+    }
     return fields.push(out);
   };
   for (const c of form.elements) {
@@ -1069,7 +1078,7 @@ export function sentFieldsOf(el, by, skip) {
     const box = c.type === "checkbox" || c.type === "radio";
     if (c.localName === "button" || BUTTON_TYPES.has(c.type)) {
       // Of the buttons only the one pressed is sent; an image button's click point means nothing.
-      if (c === submit.submitter && c.type !== "image") add({ name, value: cap(c.value, VALUE) });
+      if (c === submit.submitter && c.type !== "image") add({ name, value: c.value });
     } else if (c.type === "hidden") {
       hidden++;
     } else if (box && !c.checked) {
@@ -1077,13 +1086,13 @@ export function sentFieldsOf(el, by, skip) {
     } else if (secretOf(c)) {
       add({ name, secret: true });
     } else if (box) {
-      add({ name, value: cap(c.value, VALUE) }, c);
+      add({ name, value: c.value }, c);
     } else if (c.type === "file") {
       add({ name, file: true });
     } else if (c.localName === "select") {
-      for (const o of c.selectedOptions) add({ name, value: cap(o.value, VALUE) }, c);
+      for (const o of c.selectedOptions) add({ name, value: o.value }, c);
     } else {
-      add({ name, value: cap(c.value, VALUE) }, c);
+      add({ name, value: c.value }, c);
     }
   }
   return { fields, hidden, more };

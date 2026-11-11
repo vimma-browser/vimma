@@ -270,6 +270,24 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
     expect(mayAllowHere({ pay: false, sent: sent([], { more: 3 }) })).toBe(false);
   });
 
+  test("a is not offered for a form with a value cut to fit: it is not known whole (K5)", () => {
+    expect(
+      mayAllowHere({
+        pay: false,
+        sent: sent([{ name: "note", value: "x".repeat(1024), text: true, cut: true }]),
+      }),
+    ).toBe(false);
+    expect(
+      mayAllowHere({
+        pay: false,
+        sent: sent([
+          { name: "zip", value: "1", identity: true },
+          { name: "id", value: "y", cut: true },
+        ]),
+      }),
+    ).toBe(false);
+  });
+
   test("the allowance: site, method, destination without its query, and the button's text", () => {
     const key = (/** @type {object} */ o) =>
       allowanceKey({
