@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -728,6 +729,33 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
   /** @param {string} record */
   const readRecord = (record) =>
     /** @type {{ pid: number, fbdir: string }} */ (JSON.parse(readFileSync(record, "utf8")));
+
+  // The tests below wait for the record to exist and then read it, so it has to appear whole:
+  // a file written in place exists, empty or half written, before its JSON is all there. A
+  // second link to a file already at the record's path tells the two apart without a race: a
+  // write in place changes that file under the link, a rename puts a new one at the path.
+  it("the fake Xvfb's record is renamed into place, never written into a file at its path", async () => {
+    const dir = tempDir();
+    const fbdir = tempDir();
+    const record = join(dir, "xvfb.json");
+    const earlier = join(dir, "earlier.json");
+    writeFileSync(record, "{}");
+    linkSync(record, earlier);
+    const child = spawn(process.execPath, [FAKE_XVFB, "-displayfd", "1", "-fbdir", fbdir], {
+      env: { ...process.env, FAKE_XVFB_DELAY_MS: "60000", FAKE_XVFB_RECORD: record },
+      stdio: "ignore",
+    });
+    cleanups.push(async () => {
+      child.kill("SIGKILL");
+    });
+    // The fixture writes the record before its screen file, both synchronously.
+    const screen = join(fbdir, "Xvfb_screen0");
+    for (let i = 0; i < 250 && !existsSync(screen); i++) await sleep(20);
+    expect(existsSync(screen)).toBe(true);
+    expect(readFileSync(earlier, "utf8")).toBe("{}");
+    expect(readRecord(record)).toMatchObject({ pid: child.pid, fbdir });
+    expect(readdirSync(dir).sort()).toEqual(["earlier.json", "xvfb.json"]);
+  });
 
   it("teardown during Xvfb startup stops Xvfb and removes its fbdir", async () => {
     const tmpRoot = tempDir();
