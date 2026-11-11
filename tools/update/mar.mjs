@@ -312,6 +312,7 @@ export function buildMarFromDir({ dir, tools, channel, out }) {
     // Firefox 160's make_full_update.sh exits 1 without APPNAME, which it uses to order the
     // manifest's instructions (common.sh reorder_instructions, bugs 2058197 and 2058594).
     const appName = appValue(ini, "Name").toLowerCase();
+    need(appName !== "", "application.ini's [App] Name is empty");
     const unsigned = join(work, "unsigned.mar");
     execFileSync(join(tools, "make_full_update.sh"), ["-q", unsigned, dir, appName], {
       stdio: ["ignore", "inherit", "inherit"],

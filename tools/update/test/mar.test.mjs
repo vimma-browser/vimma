@@ -227,7 +227,8 @@ describe("mar.mjs, the commands the workflows run", () => {
     mkdirSync(join(dir, "pkg", "vimma"), { recursive: true });
     writeFileSync(
       join(dir, "pkg", "vimma", "application.ini"),
-      "[App]\nVendor=Vimma\nName=Vimma\nVersion=159.0.1\nBuildID=20261106000000\n",
+      // A Name and Version outside [App] must not be read.
+      "[Gecko]\nName=Gecko\nVersion=1.0\n[App]\nVendor=Vimma\nName=Vimma\nVersion=159.0.1\nBuildID=20261106000000\n",
     );
     writeFileSync(join(dir, "pkg", "vimma", "precomplete"), "");
     execFileSync("tar", ["-cJf", join(dir, "vimma.tar.xz"), "-C", join(dir, "pkg"), "vimma"]);
