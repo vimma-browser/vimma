@@ -734,7 +734,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
   // a file written in place exists, empty or half written, before its JSON is all there. A
   // second link to a file already at the record's path tells the two apart without a race: a
   // write in place changes that file under the link, a rename puts a new one at the path.
-  it("the fake Xvfb's record appears whole: it never writes into a file at the record's path", async () => {
+  it("the fake Xvfb's record is renamed into place, never written into a file at its path", async () => {
     const dir = tempDir();
     const fbdir = tempDir();
     const record = join(dir, "xvfb.json");
