@@ -316,6 +316,18 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     is a separate question from this spec. Rejected: a patch to
     `AboutRedirector.cpp`, because a C++ patch needs a full build on every rebase (ADR-010); the
     patch stays the fallback if step 3 finds a load the module cannot catch.
+    (Since changed: the module stands in for Firefox's `about:home`, `about:newtab` and
+    `about:welcome` modules in the parent process instead of watching loads, so the load is the
+    start page from its first request. A load replaced after it started could lose to that load's
+    own switch to the privilegedabout process, and Firefox's page then stayed
+    ([#863](https://github.com/vimma-browser/vimma/issues/863)). The stand-in hands the load to
+    Firefox's module while `vimma.startpage.newtab` is off. It drops Firefox's
+    `URI_SAFE_FOR_UNTRUSTED_CONTENT` and child-process flags, so the page loads in the parent, and
+    has no `MAKE_LINKABLE`, so the web still cannot link to it. A history entry recorded while the
+    pref was off comes back under its about: URL, and the start page then replaces it with its own.
+    A load of these pages triggered by a principal other than the system principal, such as an
+    extension's `windows.create()` with one of them as the home page, is refused: the start page
+    is a chrome page, which such principals cannot load.)
 11. **Mozilla's own services keep their names and links.** AMO (installs, dictionaries), Safe
     Browsing (including Report Deceptive Site), `about:credits`, `about:policies` and the Mozilla
     root store wording stay, because they name or reach services Vimma uses unchanged, and

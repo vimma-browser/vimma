@@ -600,30 +600,66 @@ const START = "chrome://browser/content/vimma/start/start.html";
  * Types `url` into the URL bar of a new tab and waits for the tab to load `expected`.
  * @param {string} url
  * @param {string} expected
+ * @returns {Promise<{ spec: string, loads: number }>} the loaded URL, and how many top-level
+ *   document loads the tab started on the way
  */
 async function typeInNewTab(url, expected) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
   const browser = tab.linkedBrowser;
-  const loaded = BrowserTestUtils.browserLoaded(browser, false, expected);
-  gURLBar.focus();
-  gURLBar.select();
-  EventUtils.sendString(url);
-  EventUtils.synthesizeKey("KEY_Enter");
-  await loaded;
+  let loads = 0;
+  const counter = {
+    /** @type {(b: any, progress: any, request: any, flags: number) => void} */
+    onStateChange(b, progress, _request, flags) {
+      const start = Ci.nsIWebProgressListener.STATE_START;
+      const doc = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT;
+      if (b === browser && progress?.isTopLevel && flags & start && flags & doc) loads++;
+    },
+  };
+  gBrowser.addTabsProgressListener(counter);
+  try {
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, expected);
+    gURLBar.focus();
+    gURLBar.select();
+    EventUtils.sendString(url);
+    EventUtils.synthesizeKey("KEY_Enter");
+    await loaded;
+  } finally {
+    gBrowser.removeTabsProgressListener(counter);
+  }
   const spec = browser.currentURI.spec;
   BrowserTestUtils.removeTab(tab);
-  return spec;
+  return { spec, loads };
 }
 
+// A load of Firefox's page that is replaced after it starts can lose to that load's own switch to
+// another content process, and Firefox's page then stays (#863): the start page has to be the
+// only load.
 add_task(async function typed_firefox_pages_open_the_start_page() {
   for (const url of ["about:home", "about:newtab", "about:welcome"]) {
-    Assert.equal(await typeInNewTab(url, START), START, `${url} opens the start page`);
+    const { spec, loads } = await typeInNewTab(url, START);
+    Assert.equal(spec, START, `${url} opens the start page`);
+    Assert.equal(loads, 1, `${url} starts no load of Firefox's page`);
   }
 });
 
 add_task(async function firefox_new_tab_stays_without_the_start_page() {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
-  const spec = await typeInNewTab("about:newtab", "about:newtab");
+  const { spec } = await typeInNewTab("about:newtab", "about:newtab");
   Assert.equal(spec, "about:newtab", "with the start page off, Firefox's new tab page loads");
   await SpecialPowers.popPrefEnv();
+});
+
+add_task(async function firefox_page_from_history_reloads_as_the_start_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+  const browser = tab.linkedBrowser;
+  let loaded = BrowserTestUtils.browserLoaded(browser, false, "about:newtab");
+  BrowserTestUtils.startLoadingURIString(browser, "about:newtab");
+  await loaded;
+  await SpecialPowers.popPrefEnv();
+  loaded = BrowserTestUtils.browserLoaded(browser, false, START);
+  browser.reload();
+  await loaded;
+  Assert.equal(browser.currentURI.spec, START, "the reloaded entry is the start page's URL");
+  BrowserTestUtils.removeTab(tab);
 });
