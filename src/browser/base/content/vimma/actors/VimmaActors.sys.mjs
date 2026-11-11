@@ -64,6 +64,14 @@ let hintGen = 0;
  * @type {WeakMap<object, number>}
  */
 const blurGens = new WeakMap();
+
+/**
+ * The keydowns the parent let through to each document (WindowGlobalParent) since its last
+ * blur (insert-focus behaviour 8), which that blur names so the frame can tell the keys it
+ * handled before the blur was asked for from those it handled after.
+ * @type {WeakMap<object, number>}
+ */
+const keysSent = new WeakMap();
 /**
  * The live collection of each window, and of each agent tab (docs/specs/mcp-drive.md D12):
  * another window's `f` must not void a window's, and an agent's `f`, keyed by its tab's
@@ -242,6 +250,9 @@ export const VimmaActors = {
           focusin: { capture: true },
           focusout: { capture: true },
           focus: { capture: true },
+          // Counts the keys that reach the page, for a late Vimma:Blur (insert-focus
+          // behaviour 8). Trusted only, from outside the page, which cannot stop them.
+          keydown: { capture: true, createActor: false },
           // Only for an editable document root; a frame never focused has no actor to ask.
           mousedown: { capture: true, createActor: false },
           // A drag and drop's end is no mouse selection (m1-copy-mode).
@@ -380,6 +391,18 @@ export const VimmaActors = {
   },
 
   /**
+   * A keydown is on its way to `browser`'s focused frame: chrome left it alone, so Firefox
+   * passes it to the page once chrome's handlers are done.
+   * @param {any} browser XULBrowserElement
+   */
+  keySent(browser) {
+    const wg = framesFor(browser)[0]?.currentWindowGlobal;
+    // A page of the parent process (the start page) has had the key already, in order with
+    // the blur: no count, and its blur falls back to a plain one.
+    if (wg && !wg.isInProcess) keysSent.set(wg, (keysSent.get(wg) ?? 0) + 1);
+  },
+
+  /**
    * Blurs the focused element of the focused frame (Esc in insert). Each blur has a new
    * generation, which the frame's later focus reports carry.
    * @param {any} browser XULBrowserElement
@@ -392,7 +415,10 @@ export const VimmaActors = {
     if (!actor) return null;
     const gen = (blurGens.get(browser) ?? 0) + 1;
     blurGens.set(browser, gen);
-    actor.sendAsyncMessage("Vimma:Blur", { gen });
+    const wg = bc.currentWindowGlobal;
+    const keys = wg?.isInProcess ? undefined : (keysSent.get(wg) ?? 0);
+    keysSent.delete(wg);
+    actor.sendAsyncMessage("Vimma:Blur", { gen, keys });
     return { windowId: bc.currentWindowGlobal?.innerWindowId ?? 0, gen };
   },
 

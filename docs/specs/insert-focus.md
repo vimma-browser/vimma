@@ -5,7 +5,8 @@ Status: implemented · Area: `host/VimmaHost.sys.mjs`, `host/page-ops.mjs`,
 patches: none · ADR: none
 
 Issues: [#165](https://github.com/vimma-browser/vimma/issues/165),
-[#298](https://github.com/vimma-browser/vimma/issues/298) (the follow-up below)
+[#298](https://github.com/vimma-browser/vimma/issues/298) (the follow-up below),
+[#850](https://github.com/vimma-browser/vimma/issues/850) (the second follow-up)
 
 ## Summary
 
@@ -309,6 +310,118 @@ failed 8 of 8 runs before and passed 12 of 12 after.
 - `docs/guide.md`, "Normal and insert mode": a page cannot pull the tab back into insert after
   `Esc`; a dialog that keeps focus closes with a second `Esc`.
 - `docs/security.md`: rule K4.
+- `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
+
+## Follow-up: a key right after Esc
+
+`Tab` pressed right after `Esc` sometimes lost its focus
+([#850](https://github.com/vimma-browser/vimma/issues/850)): the button it focused was blurred at
+once, and nothing in the page had focus. `esc_in_normal_mode_blurs_what_tab_focused` failed this
+way in CI, and 3 of 10 runs under CPU load on Firefox 160.0.
+
+### Problem
+
+`Esc` in insert is Vimma's: the parent sets normal mode and sends `Vimma:Blur` to the focused
+frame, and the page never sees the `Esc`. A key the user presses next goes to the page as input.
+When the page's process is busy, both wait there, and the process handles the key first: `Tab`
+moves focus to the next element, then the late blur takes that focus away. A user on a busy page
+who presses `Esc` then `Tab` sees no focus at all.
+
+### Behaviour
+
+8. **A key after `Esc` keeps the focus it gave.** In a page of a content process, a key the user
+   presses after `Esc` in insert, and that the page gets, keeps its effect on focus even when the
+   page handles it before `Esc`'s blur arrives: the element it focused stays focused, and its
+   focus decides the mode by the usual rules (behaviours 4 and 6). A key pressed before `Esc`
+   does not: the blur takes the focus it gave, as before. Keys that move focus away and back
+   (`Tab`, then `shift+Tab`) leave it where it was, and the blur takes it. `Esc` in normal mode
+   blurs once the page has had it ([m1-core-logic](m1-core-logic.md), § Esc), after the keys
+   typed meanwhile, which it still blurs as before.
+
+### Research
+
+- **Firefox.** A key event for a remote page is sent with input priority (`[Priority=input]
+async RealKeyEvent`, `dom/ipc/PBrowser.ipdl:782-783`, Firefox 160.0, chosen by
+  `BrowserParent::SendRealKeyEvent` when input priority is on, `dom/ipc/BrowserParent.cpp:2107-2111`),
+  and a `JSWindowActor` message with normal priority. The content process usually runs input
+  tasks first (not always: `xpcom/threads/InputTaskManager.cpp:61-79` puts input below normal
+  tasks while the refresh driver waits for its next tick), so a key the parent sends after a
+  message can run before it. In a mochitest on Firefox 160.0, a page busy for half a second
+  when `Esc` and `Tab` arrived handled the `Tab` before `Vimma:Blur` every time
+  (`tab_right_after_esc_on_a_busy_page_keeps_its_focus`).
+- **Firefox.** `Esc` that Vimma consumes in the parent (`preventDefault` from chrome) is not sent
+  to the page at all (`WidgetEvent::PreventDefault` calls `StopCrossProcessForwarding`,
+  `widget/BasicEvents.h:196-211`), so the page cannot tell where the `Esc` was among its keys.
+- **Firefox.** A page of the parent process (the start page, `about:` pages such as
+  about:preferences) gets its keys in the same process, between chrome's capture and bubble
+  listeners, and native handlers there (a `<select>`'s arrow keys) prevent them as chrome would,
+  so the parent cannot count them as a remote page gets them.
+
+### Design
+
+- **The parent counts the keys it lets through.** In the system group's bubble, after every
+  chrome handler, a keydown that chrome did not prevent goes on to the focused remote
+  `<browser>`. The host counts it for the focused frame's document (`VimmaActors.keySent`, per
+  `WindowGlobalParent`). `Vimma:Blur` carries that count (`keys`) and starts it again. A document
+  of the parent process gets no count and no `keys`.
+- **The page counts the keys it gets.** The child listens to trusted `keydown` in the capture
+  phase, outside the page, without creating the actor. It counts them since its last blur, and
+  keeps for the last 16 the element that had focus when each arrived.
+- **The blur compares.** The keys beyond the blur's `keys` came after it was asked for. If there
+  is one and the focus has changed since the first of them arrived, the child does not blur; it
+  sends a `focusin` report for the focused element with the blur's generation, so the mode follows
+  the focus that key gave. Otherwise, or with no `keys`, it blurs as before. Either way it starts
+  its count again from nothing.
+
+### Decisions
+
+12. **Keys are counted on both sides,** because the page never sees the `Esc` that Vimma took,
+    and only the parent knows which of the page's keys came before it. Rejected: blurring only
+    the element focused when the `Esc` arrived, because that `Esc` never arrives. Rejected:
+    blurring only the element the parent last heard of, because a `Tab` just before `Esc`, whose
+    report is still on its way, would then keep its focus in normal mode. Rejected: holding the
+    keys typed after `Esc` until the blur is done and pressing them again, because a replayed key
+    must carry its modifiers, composition and `keyup` as the user typed them. Rejected: waiting in
+    the test for the blur before pressing `Tab`, because a user on a busy page meets the same
+    race.
+13. **Every count error must make the parent's count the larger,** because then the blur only
+    falls back to what it did before this change (a lost `Tab` focus), while a larger count in the
+    page would keep a field focused in normal mode after a plain `Tab` then `Esc`. So the page
+    starts its count from nothing at every blur, and a page of the parent process, whose keys
+    the parent cannot count as the page gets them, gets no count. The parent counts more for a
+    key Firefox reserves (`ctrl+t`), which chrome does not prevent but never passes on, and when
+    keys go to another frame than the one the blur goes to. The page can count more for at most
+    the next blur when the parent's focused frame is behind the page's (focus moved between
+    frames of one process, a navigation about to commit).
+14. **Only `Esc` in insert,** because in normal mode `Esc` reaches the page first and the blur
+    is asked for when the page's answer comes back, after the keys typed meanwhile have been
+    counted as before it. Those still lose their focus to a late blur, as before this change.
+
+### Security and privacy
+
+The child keeps no key, only a count and up to 16 weak references to elements of its own
+document, until its next blur. It counts trusted keydowns only, from a listener outside the page,
+so a page can neither add to the count nor hide a key from it; by moving focus between its own
+frames it can at most make a frame count more for one blur, which keeps the focus that frame has
+in normal mode. The `keys` field goes from the parent to the child; a compromised content process
+could skip any blur already, so the field gives it nothing. A kept focus decides the mode through
+an ordinary focus report under rules K1 and K4 in [security.md](../security.md): a page's own
+focus after `Esc` stays in normal unless a key the page got ended the hold, as before.
+
+### Tests
+
+`tests/browser/browser_vimma_insert_focus.js`, with the page's process kept busy for half a second
+so that the keys and the blur wait there together:
+
+- `tab_right_after_esc_on_a_busy_page_keeps_its_focus` (failed every run before the change),
+- `tab_right_before_esc_on_a_busy_page_is_blurred` and
+  `a_key_right_after_esc_on_a_busy_page_still_blurs` (guards: a key before `Esc`, and a key after
+  it that moves no focus). The first checks only a run in which the page had the `Tab` before the
+  blur.
+
+### Docs and changelog
+
+- `docs/security.md`: rule K4 names the three tests.
 - `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
 
 ## Open questions
