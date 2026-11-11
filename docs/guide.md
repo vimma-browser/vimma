@@ -473,9 +473,10 @@ ways to reach it from the keyboard:
   data** (Settings → Account and sync → Import browser data).
 
 The wizard picks a browser it found; `f` reaches its buttons, so `f` on **Import** brings over
-everything it lists, and the **+** next to "Import all available data" lets you choose. A hint
-does not open the browser list at the top yet: with more than one browser on the computer, click
-it to pick another one. Then choose **Done**.
+everything it lists, and the **+** next to "Import all available data" lets you choose. With
+more than one browser on the computer, `f` on the browser list at the top opens it: `Down` and
+`Up` move through the browsers, `Enter` picks one, then `f` on **Import**. The file entries below
+the browsers start their import as soon as they are picked. Then choose **Done**.
 
 - **Passwords from a Chromium-based browser on Linux** do not come through the wizard: Firefox's
   importer cannot decrypt them there, so it does not offer them. Export them from that browser
