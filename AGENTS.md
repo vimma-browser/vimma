@@ -43,13 +43,11 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run e2e -- --filter <name>`: socket-driven e2e under Xvfb (`--xvfb --scenarios`,
   `--baselines`, `--out` for throwaway runs).
 - `npm run lane:setup` / `npm run lane:teardown`: a worktree's own artifact engine for browser
-  tests. If setup fails on `verify-source --require`, run `npm run verify-source` in that worktree.
-  `lane:setup` copies the primary checkout's `engine/`, which must be on the Firefox version in
-  `surfer.json`. After an `upstream: firefox X.Y.Z` pull request merges, whoever merged it updates
-  the primary checkout once, with no dev build running from it (the one exception to "never in the
-  primary checkout"): `git pull --ff-only && npx surfer download --force && npm run
-verify-source && npm run import && node tools/artifact-build/artifact-build.mjs`. Until then every
-  lane would download and build its own engine, and several at once overload the machine.
+  tests, copied from the primary checkout's `engine/`. If setup fails on `verify-source --require`
+  naming an older Firefox version, the primary checkout is behind `surfer.json` after a Firefox
+  bump: it is updated once for every lane (`docs/runbook.md`, "Parallel browser lanes"), not
+  downloaded again per lane. If it says the engine was never verified, run `npm run verify-source`
+  in the primary checkout.
 - `cargo test` and `cargo clippy -- -D warnings` in `tools/vimma-ctl` (Rust).
 - `npm run security-links`: every test link in `docs/security.md` resolves.
 - `npm run test:py`, `npm run license-check`, `npx surfer license-check`: also run before pushing.
@@ -184,13 +182,13 @@ labels`). An item with the other machine's label is not yours: do not push to it
 5. Security-sensitive: get the fresh review and fix its findings.
 6. Open the pull request: why, how it was tested (with the red and green output), `Closes #N` or
    `Part of #N`, and a dependency's licence line when one was added.
-7. Wait for green: `gh pr checks <N> --watch`. Before re-running a failed mochitest job, run the
-   failing file in your lane on the same Firefox version:
-   `npm run mochitest -- --artifact tests/browser/<file> --repeat=10`. If it fails there, it is a
-   real failure, yours or `main`'s. If it passes every time and your change cannot reach it,
-   re-run the job once, name the flake and its issue (open one if none exists), and say so. Never
-   re-run a second time: a second unrelated failure is reported, not retried. A real failure: fix
-   it, or stop and report.
+7. Wait for green: `gh pr checks <N> --watch`. A failed job in a test your change cannot reach:
+   reproduce it in your lane first, on two busy CPUs as `docs/runbook.md` "To shake out a race"
+   shows (`--repeat=N` runs the file N+1 times). Failing there is a real failure, yours or
+   `main`'s. Passing every time: re-run the job once, name the flake and its issue (open one with
+   the log if none exists), and say so. Any other failed job: re-run at most once, only for a
+   known flake, and say so. Never re-run a second time: a second unrelated failure is reported,
+   not retried. A real failure: fix it, or stop and report.
 8. Squash-merge with a checked message. Write the subject and body to `msg.txt` and the body
    alone to a file (`tail -n +3 msg.txt > body.txt`), then merge in one unbroken `&&` chain, so
    that any failure blocks the merge (a `;` once merged a pull request with an empty message):

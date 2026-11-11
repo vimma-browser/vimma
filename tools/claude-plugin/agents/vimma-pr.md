@@ -35,15 +35,17 @@ What applies to you as a subagent:
   not the whole `tests/browser/` directory: CI's required mochitest job runs the full suite on
   every push. Run the whole directory only when your change reaches every window or test (shared
   test helpers, `browser.toml`, startup code) or when a task asks for it.
-- Set up your lane from the primary checkout (plain `npm run lane:setup`); its engine is verified
-  for the version in `surfer.json`. If `lane:setup` refuses it because the primary checkout is
-  behind `surfer.json` (a Firefox bump just merged), do not quietly download your own: other
-  agents need the same engine, and parallel downloads and builds overload the machine. Say so to
-  the session that started you and wait for the primary checkout to be updated, or download your
-  own only when your task says to.
-- A required check failed in a test your change does not touch: reproduce it in your lane first
-  (`npm run mochitest -- --artifact tests/browser/<file> --repeat=10`). Failing there means a
-  real failure. Passing every time: re-run the job once at most, naming the flake and its issue.
+- Set up your lane from the primary checkout (plain `npm run lane:setup`); its engine should be
+  verified for the version in `surfer.json`. If setup fails on `verify-source --require` and the
+  message names an older Firefox version in parentheses, the primary checkout is behind after a
+  Firefox bump. Do not download your own engine: other agents need the same one, and parallel
+  builds overload the machine. Tell the session that started you and wait for the primary
+  checkout to be updated, or download your own only when your task says to.
+- A required check failed in a test your change cannot reach: reproduce it in your lane first,
+  on two busy CPUs (`taskset -c 0,1` with busy loops and `--repeat=N`, as the runbook's "To shake
+  out a race" shows). Failing there is a real failure, yours or `main`'s. Passing every time:
+  re-run the job once at most, naming the flake and its issue; report a second unrelated failure
+  instead of re-running.
 - Running Vimma: unset `WAYLAND_DISPLAY` and use Xvfb only, so no window reaches the desktop.
 - vimma-site design changes: show a local preview before any push.
 
