@@ -31,15 +31,15 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
-- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
-  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies. An agent asks you
-  first, and one answer (`a`) lets an agent work through its task until it quits. There
-  they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
-  and fill forms by hint label (never a password or payment card field), see a page as a
-  screenshot, read its errors, and show you a page when they want you to look at it. Paying and
-  sending a form with text or personal details are checkpoints, asked every time under any
-  grant: the question shows what the form sends, or the button, the site and the total the page
-  states.
+- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through MCP
+  (`vimma-ctl mcp`), only in an agent workspace with its own cookies. An agent asks you first, and
+  one answer (`a`) lets an agent work through its task until it quits. There they read and open
+  pages, scroll, search and follow links with Vimma's own keys, click buttons and fill forms by hint
+  label (never a password or payment card field), see a page as a screenshot, read its errors, and
+  show you a page when they want you to look at it. Paying and sending a form with text or personal
+  details are checkpoints, asked under any grant (a form button you answer with `a always here`
+  sends without asking until the grant ends): the question shows what the form sends, or the button,
+  the site and the total the page states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
   step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
   Claude Code, Codex or Gemini CLI you already have, on its own login and plan. It works only in the agent

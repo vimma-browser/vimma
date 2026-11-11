@@ -915,16 +915,16 @@ to the front with one agent tab selected: M19, M20) and full control's wording w
 (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent tab's buttons,
 fields and links listed with hint labels, sensitive values left out: M25, M31, M32),
 `vimma_activate` (a click on one of them, with no user activation, a form submission asked without a
-grant, and under one when it sends text or personal details or pays: M25, M26, M28, M29, M32) and
-`vimma_fill` (fields set as form autofill sets them, never a password, payment card, one-time-code
-or file field: M25, M27, M28, M32), `vimma_screenshot` (an image of an agent tab's viewport, refused
-while a password or payment card field on screen has a value: M25, M31, M32) and `vimma_console` (an
-agent tab's script errors, console errors and warnings and failed requests, read without running
-page code: M25, M30, M31, M32), in force. Since
-[#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`, `vimma_activate` and
-`vimma_fill` can return the page's element list in their result, made and limited as a
-`vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for it at full
-size (M31).
+grant, and under one when it pays, sends text, personal details, a secret or a file, or Vimma cannot
+tell what it sends: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
+them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32),
+`vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment card
+field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script errors,
+console errors and warnings and failed requests, read without running page code: M25, M30, M31,
+M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`,
+`vimma_activate` and `vimma_fill` can return the page's element list in their result, made and
+limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for
+it at full size (M31).
 
 [mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a grant
 given in answer to any question, a read included, lets that agent open URLs, follow links, press
@@ -939,23 +939,23 @@ over its own network without Vimma anyway. A step that may pay, a form submissio
 personal details, a secret or a file ([mcp-consequence](specs/mcp-consequence.md)), a show, a
 dangerous or unscanned download and a page's own download still ask under any grant (M11, M13, M19,
 M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md) makes sending a form and paying checkpoints:
-one `y` or `n` (and, on a form that is not a payment and sends no secret or file, `a` for that
-button on that site until the grant ends) that shows what the step sends or spends and leaves the
-grant as it was (M28, M33). The question's hint names only the keys (`a until it quits`, or `10a 10
-min`), so that the question fits one line; the guide's key table says that `a` covers every tool,
-and the grant's notice, shown the moment it is made, says so and names what still asks and the key
-that ends it.
+one `y` or `n` (and, on a form that is not a payment, sends no secret or file and is read whole, `a`
+for that button on that site until the grant ends) that shows what the step sends or spends and
+leaves the grant as it was (M28, M33). The question's hint names only the keys (`a until it quits`,
+or `10a 10 min`), so that the question fits one line; the guide's key table says that `a` covers
+every tool, and the grant's notice, shown the moment it is made, says so and names what still asks
+and the key that ends it.
 
-Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's
-`INSTRUCTIONS`, which are also the built-in agent's system text) tell an agent to search a site
-by opening its search results by URL with `elements: true` rather than by filling the search
-field and sending the form, and to do so only for a search. Such a search is a load, not a form
-submission: it gives no new reach, since any URL could already be opened under a grant, and it
-is under the same rules as every other open (M6, the open rate of M3, the notice and the
-`:mcp log` row of M23). It skips only the form question; the words of the search are what the
-agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
-page, a search included, is still a form submission under M28, asked whenever it sends what was
-typed.
+Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's `INSTRUCTIONS`,
+which are also the built-in agent's system text) tell an agent to search a site by opening its
+search results by URL with `elements: true` rather than by filling the search field and sending the
+form, and to do so only for a search. Such a search is a load, not a form submission: it gives no
+new reach, since any URL could already be opened under a grant, and it is under the same rules as
+every other open (M6, the open rate of M3, the notice and the `:mcp log` row of M23). It skips only
+the form question; the words of the search are what the agent puts in the URL, the same risk as any
+open (mcp-grants, above). A form sent through the page, a search included, is still a form
+submission under M28: asked without a grant, and under one when it is consequential (typed into a
+text field, not `type=search`) or sent by a fill (mcp-consequence K4).
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
