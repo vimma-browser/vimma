@@ -117,17 +117,19 @@
 }
 
 /* Settings hides the controls for what Vimma manages itself (docs/specs/firefox-surfaces-trim.md,
- * decision 6, Since changed): Firefox themes (Vimma's theme colours the chrome whichever one is
- * active); the horizontal or vertical tabs layout and Appearance's "Customize browser layout"
- * link to it, tab groups and tab previews (the tab strip is hidden); Firefox's ctrl+tab order
- * (ctrl+tab is Vimma's next_tab); the about:keyboard links (Vimma's keys are remapped in
- * config.toml); the container tabs switch (workspaces are containers, so turning it off turns
- * workspaces off); and search when you start typing (a key normal mode does not bind would open
- * the find bar, which then takes the keys that follow). Hidden, not changed: every pref keeps its
- * value and stays in about:config. The Interaction fieldset goes whole, since its only other
- * item, taskbar previews, is Windows only. The ids name both the redesigned panes and the legacy
- * groups Firefox keeps while the redesign pref is off. Outside the high-contrast block
- * (decision 7). */
+ * decision 6, Since changed): Firefox themes (Vimma's theme supplies the colours, and light or
+ * dark is chosen with :theme and Website appearance); the horizontal or vertical tabs layout and
+ * Appearance's "Customize browser layout" link to it, tab groups and tab previews (the tab strip
+ * is hidden); Firefox's ctrl+tab order (ctrl+tab is Vimma's next_tab); the about:keyboard links
+ * (Vimma's keys are remapped in config.toml); the container tabs switch (workspaces are
+ * containers, so turning it off turns workspaces off); and search when you start typing (a key
+ * normal mode does not bind would open the find bar, which then takes the keys that follow).
+ * Hidden, not changed: every pref keeps its value and stays in about:config. The Interaction
+ * fieldset goes whole, since its only other item, taskbar previews, is Windows only. Each item is
+ * also named on its own, as the ids also serve the legacy groups Firefox builds while the
+ * redesign pref is off, and so an item Firefox moves to another group stays hidden. Find in
+ * Settings still counts a hidden control's words as a match (findInPage.js reads attributes, not
+ * styles). Outside the high-contrast block (decision 7). */
 #preferences-root {
   setting-group[groupid="browserTheme"],
   #setting-control-web-appearance-manage-themes-link,

@@ -4532,13 +4532,15 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   data collection group (Vimma uploads no telemetry, so its switches changed nothing), the
   extension and feature recommendation switches (those recommendations are off), and the Share
   Ideas link to Mozilla's idea board. It also hides the controls for what Vimma does its own way:
-  Firefox themes (Vimma's theme colours the window), the horizontal or vertical tabs layout, tab
-  groups and tab previews (Vimma shows no tab strip), Firefox's `ctrl+tab` order (`ctrl+tab` is
-  Vimma's next tab), the `about:keyboard` links (every key, the prefix and the leader can be
-  remapped in [config.toml](#configtoml)), "Search for text when you start typing" (in normal
-  mode it would open the find bar on any key Vimma does not bind; `/` searches) and the Use
-  Container Tabs switch (workspaces are containers, and turning it off would turn them off).
-  Their preferences keep their values in `about:config`. While Vimma's start page opens in new
+  Firefox themes (Vimma's theme colours the window; `:theme` picks dark or light), the horizontal
+  or vertical tabs layout, tab groups and tab previews (Vimma shows no tab strip), Firefox's
+  `ctrl+tab` order (`ctrl+tab` is Vimma's next tab, unless `[firefox] enable` gives it back), the
+  `about:keyboard` links (every key, the prefix and the leader can be remapped in
+  [config.toml](#configtoml)), "Search for text when you start typing" (in normal mode it would
+  open the find bar on any key Vimma does not bind; `/` searches) and the Use Container Tabs
+  switch (workspaces are containers, and turning it off would turn them off). Their preferences
+  keep their values in `about:config`; "Search for text when you start typing", if you turned it
+  on before, is `accessibility.typeaheadfind` there. While Vimma's start page opens in new
   tabs, Home also hides the Start Page content group that set up Firefox Home; set
   `vimma.startpage.newtab` to false in `about:config` and it comes back with Firefox Home.
   Settings has square corners and the theme's font, as the status bar and the pickers do, and

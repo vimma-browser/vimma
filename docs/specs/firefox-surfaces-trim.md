@@ -282,7 +282,8 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    (Since changed: issue [#866](https://github.com/vimma-browser/vimma/issues/866) also hides
    the controls for what Vimma manages itself, read against Firefox 160.0, because each does
    nothing in Vimma or turns a Vimma feature off. In Appearance: the Firefox theme group (Vimma's
-   theme colours the chrome whichever Firefox theme is active) and the "Customize browser layout"
+   theme supplies the colours, and light or dark is chosen with `:theme` and Website appearance;
+   a Firefox theme would only switch that choice behind them) and the "Customize browser layout"
    link. In Tabs and browsing: the browser layout choice (the tab strip and the vertical tab list
    are hidden, so vertical tabs opens an empty sidebar); the Interaction fieldset with its ctrl+tab
    order, tab preview, tab group suggestion and drag-to-group switches (`ctrl+tab` is Vimma's
@@ -293,7 +294,10 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    Accessibility: the `about:keyboard` link (Vimma's keys are remapped in `config.toml`). Each rule
    hides the control and changes no pref, so `about:config` still reaches every value. Container
    management, cursor-key navigation, Website appearance, window density, fonts and zoom stay,
-   because they work in Vimma. Tested by `browser_vimma_settings_managed.js`.)
+   because they work in Vimma. Find in Settings still counts a hidden control's words as a match
+   (`findInPage.js` reads attributes, not styles), so a search for one of them can show a pane
+   without the control, as for Labs and data collection. Tested by
+   `browser_vimma_settings_managed.js`.)
 7. **Hiding rules hold under high contrast.** Rules that hide a surface sit outside the
    `@media not ((prefers-contrast) or (forced-colors))` block, and the Kit mascot rule moves out of
    it, so that a high-contrast user does not see Mozilla's surfaces return; only colour rules stay

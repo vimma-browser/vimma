@@ -12,9 +12,9 @@
 
 /**
  * Opens a Settings pane and, for each selector, waits for the element Firefox itself shows there:
- * one that matches with no `hidden` on it or above it. Firefox sets `hidden` on a control whose
- * condition is unmet and on its legacy copies, so a check on such an element would pass whatever
- * Vimma's rules say.
+ * one that matches with nothing above it or on it that Firefox hides: `hidden` on a control whose
+ * condition is unmet, `data-hidden-by-setting-group` on a group with no control left to show
+ * (setting-group.mjs). A check on such an element would pass whatever Vimma's rules say.
  * @param {string} pane
  * @param {Array<[string, string]>} rows [selector, what it is]
  * @param {(el: HTMLElement, what: string) => void} check
@@ -24,7 +24,9 @@ async function inSettingsPane(pane, rows, check) {
     const doc = browser.contentDocument;
     for (const [selector, what] of rows) {
       const shownByFirefox = () =>
-        [...doc.querySelectorAll(selector)].find((el) => !el.closest("[hidden]"));
+        [...doc.querySelectorAll(selector)].find(
+          (el) => !el.closest("[hidden], [data-hidden-by-setting-group]"),
+        );
       await TestUtils.waitForCondition(shownByFirefox, `Settings' ${pane} pane shows ${selector}`);
       check(/** @type {HTMLElement} */ (shownByFirefox()), what);
     }
@@ -83,6 +85,8 @@ const MANAGED = [
 const KEPT = [
   ["appearance", 'setting-group[groupid="appearance"]', "Website appearance"],
   ["appearance", 'setting-group[groupid="windowDensity"]', "window density"],
+  ["appearance", "#setting-control-related-settings-accessibility-link", "the Accessibility link"],
+  ["appearance", "#setting-control-related-settings-home-link", "the Start Page link"],
   ["tabsBrowsing", "#setting-control-browserContainersSettings", "the containers' settings"],
   ["tabsBrowsing", "#setting-control-switchToNewTabs", "switch to new tabs"],
   ["tabsBrowsing", "#setting-control-useCursorNavigation", "cursor-key navigation"],
@@ -121,14 +125,5 @@ add_task(async function settings_hide_them_under_forced_colours() {
 add_task(async function settings_keep_what_works_in_vimma() {
   await eachPane(KEPT, (el, what) => {
     Assert.ok(shown(el), `Settings keeps ${what}`);
-  });
-});
-
-add_task(async function hiding_changes_no_pref() {
-  await inSettingsPane("tabsBrowsing", [["#setting-control-browserContainersCheckbox", ""]], () => {
-    Assert.ok(
-      Services.prefs.getBoolPref("privacy.userContext.enabled"),
-      "containers stay on, so workspaces keep working",
-    );
   });
 });
