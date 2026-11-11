@@ -325,6 +325,16 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    `security-error.svg`, all of them Firefox's fox), and sets
    `browser.netError.illustration.enabled` false so that the error text does not sit below an
    empty slot.
+   (Since changed: issue [#894](https://github.com/vimma-browser/vimma/issues/894) adds
+   `megalist/icons/cpm-fox-illustration.svg`, the fox on a chest that `about:logins` shows with
+   no saved passwords, and the Passwords sidebar with none or while it asks for the primary
+   password. `about:logins` runs in a content process, so
+   its intro keeps the picture's height as an empty space above its heading: closing it would
+   need a patch to Firefox's page. The breach and vulnerable-password alert icons stay, because
+   they carry security information. Settings' AI Controls fox (`preferences/fox-ai.svg`) and VPN
+   fox (`ipprotection/assets/vpn-settings-get-started.svg`) stay, because those sections are off:
+   Vimma sets `browser.preferences.aiControls` false, and `browser.ipProtection.enabled` is false
+   by default with the experiments that could turn it on switched off.)
 10. **Typed Firefox pages open the start page.** Vimma's start page module redirects a top-level
     load of `about:home`, `about:newtab` or `about:welcome` to the start
     page, so a user who types them sees Vimma's page as every new tab does. The module's tab

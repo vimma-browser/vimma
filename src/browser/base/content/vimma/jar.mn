@@ -156,3 +156,4 @@ browser.jar:
 % override chrome://global/skin/illustrations/error-malformed-url.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/no-connection.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/security-error.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/content/megalist/icons/cpm-fox-illustration.svg chrome://browser/skin/vimma/empty.svg
