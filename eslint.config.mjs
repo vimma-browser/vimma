@@ -163,6 +163,11 @@ export default [
     languageOptions: { globals: { Components: "readonly" } },
   },
   {
+    // The about:home, about:newtab and about:welcome stand-ins: the component registrar (#863).
+    files: ["src/**/vimma/start/StartPage.sys.mjs"],
+    languageOptions: { globals: { Components: "readonly" } },
+  },
+  {
     files: ["src/**/vimma/**/*.js"],
     languageOptions: { sourceType: "script" },
   },

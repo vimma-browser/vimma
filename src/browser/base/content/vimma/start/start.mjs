@@ -7,6 +7,15 @@
 // theme changes, so the page matches the bar. start.css falls back to vimma's dark colours until
 // this runs, so the first paint already has colours.
 
+// Reloaded, restored or reached by Back from a history entry recorded as Firefox's page (while
+// vimma.startpage.newtab was off), the start page comes up under that about: URL: the docshell
+// gives such a load the entry's empty result principal URI over the one StartPage.sys.mjs sets
+// (nsDocShell.cpp, CreateAndConfigureRealChannelForLoadState). Replacing it from here stays in
+// the parent process, so no process switch can overtake it (#863).
+if (location.protocol === "about:") {
+  location.replace("chrome://browser/content/vimma/start/start.html");
+}
+
 const { ThemeHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/theme-host.mjs",
 );
