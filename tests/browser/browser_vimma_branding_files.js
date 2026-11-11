@@ -22,6 +22,9 @@ const OVERRIDES = [
   ["chrome://browser/skin/sidebar/kit-tabs-devices.svg", EMPTY],
   ["chrome://browser/skin/sidebar/kit-tabs-devices-error.svg", EMPTY],
   ["chrome://browser/skin/sidebar/kit-qr-tabs-devices-empty.svg", EMPTY],
+  // The History sidebar's import promo (#897) and the vertical tabs' pinning promo, both Kit.
+  ["chrome://browser/skin/sidebar/kit-history-import.svg", EMPTY],
+  ["chrome://browser/skin/sidebar/foxy.svg", EMPTY],
   ["chrome://browser/skin/privatebrowsing/kit-pbw.svg", EMPTY],
   ["chrome://browser/skin/privatebrowsing/fox-tail.svg", EMPTY],
   ["chrome://global/skin/illustrations/kit-concerned.svg", EMPTY],
@@ -121,4 +124,40 @@ add_task(async function logos_and_mascots_serve_vimma_files() {
     Assert.equal(await text(url), await text(target), `${url} serves ${target}`);
   }
   Assert.ok((await text(VIMMA_GLYPH)).includes("context-fill"), "the glyph follows the theme");
+});
+
+add_task(async function history_import_promo_brought_back_shows_no_kit() {
+  // Off by default (browser.tabs.firefox-view.importHistory.dismissed, see
+  // browser_vimma_firefox_surfaces_trim.js); with Firefox's value it comes back without Kit.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.tabs.firefox-view.importHistory.dismissed", false],
+      ["browser.migrate.interactions.history", false],
+    ],
+  });
+  await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
+  await SidebarController.show("viewHistorySidebar");
+  /** @type {any} */
+  let history;
+  await TestUtils.waitForCondition(() => {
+    history = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
+    return history?.controller && !history.controller.isHistoryPending;
+  }, "the History sidebar loads");
+  history.controller.profileAge = 0;
+  /** @type {any} */
+  let img;
+  await TestUtils.waitForCondition(() => {
+    img = history.shadowRoot
+      .querySelector(".import-history-promo")
+      ?.shadowRoot?.querySelector(".image-container img");
+    return img?.complete;
+  }, "the import promo's image has loaded");
+  Assert.deepEqual(
+    [img.naturalWidth, img.naturalHeight],
+    [1, 1],
+    "the import promo shows the empty image, not Kit",
+  );
+  SidebarController.hide();
+  await PlacesUtils.history.clear();
+  await SpecialPowers.popPrefEnv();
 });

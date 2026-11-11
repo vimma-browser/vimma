@@ -143,6 +143,8 @@ browser.jar:
 % override chrome://browser/skin/sidebar/kit-tabs-devices.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/sidebar/kit-tabs-devices-error.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/sidebar/kit-qr-tabs-devices-empty.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-history-import.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/foxy.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/privatebrowsing/kit-pbw.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/privatebrowsing/fox-tail.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/kit-concerned.svg chrome://browser/skin/vimma/empty.svg

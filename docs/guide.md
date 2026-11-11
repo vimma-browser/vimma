@@ -4619,6 +4619,11 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed` = `false`,
   `extensions.getAddons.showPane` and `extensions.htmlaboutaddons.recommendations.enabled` =
   `true` bring them back).
+- **No import promo in the History sidebar.** Firefox asks a profile less than 8 days old to
+  import history from another browser; Vimma does not, and
+  [Moving over from Firefox or Chrome](#moving-over-from-firefox-or-chrome) says how to import
+  (`browser.tabs.firefox-view.importHistory.dismissed` = `false` brings the promo back, without
+  Firefox's mascot).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
 - **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and
@@ -4660,7 +4665,7 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
 - **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
   in the theme's colours, the account group in Settings > Account and sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
-  `about:restartrequired`, the sidebar's empty lists) show no picture. Error pages, such as
+  `about:restartrequired`, the sidebar's empty lists and promos) show no picture. Error pages, such as
   "Server Not Found", show their text without Firefox's fox
   (`browser.netError.illustration.enabled` = `true` brings the picture's place back, empty).
 - **The About dialog names no Mozilla terms.** It drops Mozilla's donate and get-involved
