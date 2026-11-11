@@ -2701,12 +2701,12 @@ with the rest of your computer.
   given for a read therefore also means "let it fetch any address", and an address can carry what
   the agent has read elsewhere. `a always here` on a form's question lets that button on that site
   send its later forms without asking until the grant ends, whatever text or personal details they
-  carry; a payment, a password, card, one-time-code or file field, a form with more fields than its
-  question lists, a value too long to show whole, or a form whose fields Vimma could not read still
-  asks. Every call under a grant
-  shows a notice and a row in `:mcp log`, so you can see where it went. A bare `a` lasts until the
-  agent quits, which can be hours: give a grant for a task you are watching, a count (`15a`) when
-  you want it to lapse by itself, and answer `y` one at a time otherwise.
+  carry; a payment, a password, card, one-time-code or file field, a form with more than 64
+  fields, a value too long for Vimma to read whole (over 1024 characters), or a form whose fields
+  Vimma could not read still asks. Every call under a grant shows a notice and a row in `:mcp log`,
+  so you can see where it went. A bare `a` lasts until the agent quits, which can be hours: give a
+  grant for a task you are watching, a count (`15a`) when you want it to lapse by itself, and answer
+  `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
   Only [Vimma's own agent](#vimmas-own-agent) is labelled `built-in`; an MCP agent that calls
@@ -3134,13 +3134,13 @@ grant it had:
   names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
   form always asks, since it sends what the agent typed. Without a grant every form asks.
 - **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment,
-  sends no password, card, one-time-code or file field and shows every value whole ends its hint with
-  `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
-  button (the same text, sending to the same address) on the same site send its form without
-  asking until the grant ends, for example a basket button whose form also sends a delivery
-  postcode. The notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log`
-  marks the row `allowed (checkpoint, for the grant)`. A payment never offers `a`, nor does a form
-  with a value cut to fit the question, since you could not read what it sends.
+  sends no password, card, one-time-code or file field and that Vimma read whole ends its hint
+  with `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
+  button (the same text, sending to the same address) on the same site send its form without asking
+  until the grant ends, for example a basket button whose form also sends a delivery postcode. The
+  notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log` marks the row
+  `allowed (checkpoint, for the grant)`. A payment never offers `a`, nor does a form with a value
+  too long for Vimma to read whole (over 1024 characters).
 
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.

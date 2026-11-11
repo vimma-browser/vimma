@@ -134,8 +134,10 @@ per product, sends hidden fields (a product id, a token) and a quantity. The fix
    form's values, because a basket form differs per product and the allowance would never match
    again.
    (Since changed: `a` is neither offered nor applied for a form that is not known whole, as K3
-   puts it: its fields not said in time, more fields than the question lists, or a value longer
-   than the child reads of it, because the user would allow a form they could not read whole.)
+   puts it: its fields not said in time, more than the 64 fields the child reads, or a value,
+   the pressed button's and each chosen option's included, longer than the 1024 characters the
+   child reads, because an allowance must not rest on a form Vimma did not read whole;
+   docs/security.md M28, [#891](https://github.com/vimma-browser/vimma/issues/891).)
 6. **The pay words are only an extra signal (K6),** because a word list can never be complete,
    so it may add a question but never decide that a step is harmless. Card fields shown in any
    frame and the pay phrases stay the payment signals of mcp-checkpoints C6, with "a doubt asks";

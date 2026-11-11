@@ -356,7 +356,7 @@ export function isConsequential({ pay, sent }) {
  * Whether a form checkpoint may offer `a`, which allows its button on its site for the rest of
  * the grant (docs/specs/mcp-consequence.md K5): never for a payment, a secret or a file, nor
  * when what it sends is not known whole (`sent` null, fields past the cap, a value cut), since
- * the user would allow a form they could not read.
+ * an allowance must not rest on a form Vimma did not read whole.
  * @param {{ pay: boolean, sent: SentFields | null }} step
  */
 export function mayAllowHere({ pay, sent }) {
