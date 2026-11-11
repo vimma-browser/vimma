@@ -33,11 +33,8 @@ the [user guide](guide.md); planned work is on the
 ## PDF viewer
 
 - Marks (`m`, `'`) and the jump list inside a PDF last until Vimma quits; they are not saved
-  across restarts as zathura saves them.
-- `ctrl+b` is Vimma's prefix in the PDF viewer too, so zathura's full-screen-up `ctrl+b` is not
-  there: `shift+space` scrolls a screen up.
-- Pages keep the document's colours: there is no recolouring for a dark theme, as zathura's
-  `ctrl+r` gives (`ctrl+r` reloads).
+  across restarts.
+- Pages keep the document's colours: there is no recolouring for a dark theme.
 - No SyncTeX: neither forward search from an editor nor `ctrl`+click back to the source.
 - pdf.js's sidebar does not show, so its page thumbnails and its attachments and layers views
   are not reachable; Vimma's outline (`Tab`) is the outline, and an attachment entry in it is not
@@ -123,7 +120,11 @@ the [user guide](guide.md); planned work is on the
 
 ## Agents (MCP)
 
-- Agents can list, read, open and close tabs of the agent workspace, and download through it.
+- An MCP agent (`vimma-ctl mcp`) reaches only the agent workspace: it cannot see or act on tabs
+  in your other workspaces or in private windows. Full control (`:control on`) is a wider grant: a
+  program that can read Vimma's control token reaches every workspace, and while MCP is on Vimma
+  asks you before each such connection
+  ([security model](security.md#1-control-socket-ctlvimmacontrolsysmjs)).
 - Pages in the agent workspace open no pop-up, so a page loaded over HTTP there loses its
   `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
   `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.
@@ -233,13 +234,12 @@ the [user guide](guide.md); planned work is on the
 
 ## Platforms and packaging
 
-- Vimma is released for Linux x86_64, and for macOS on Apple Silicon once the macOS release jobs
-  are switched on. There is no Intel Mac, universal or Windows build.
-- A macOS release is signed with Vimma's Developer ID and notarised only once the release
-  workflow's signing is switched on; before that, and in every CI test build, the `.dmg` is ad
-  hoc signed and macOS asks once, under Privacy & Security, before it first opens. Passkeys
-  stored in macOS do not work in either (issue #544).
-  It shows update notices but does not update itself: run `brew upgrade --cask vimma` or install
+- Vimma is released for Linux x86_64 and for macOS on Apple Silicon. There is no Intel Mac,
+  universal or Windows build.
+- On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases 0.1.10
+  and earlier, and every CI test build, are ad hoc signed rather than notarised: macOS asks
+  once, under Privacy & Security, before such a `.dmg` first opens. Vimma on macOS shows update
+  notices but does not update itself: run `brew upgrade --cask vimma` or install
   the newer `.dmg` by hand.
 - Finder on recent macOS (checked on 27.0.1) opens the mounted `.dmg`'s window at the frame of
   the last Finder window and ignores the size the `.dmg` stores, as it does for Firefox's: a

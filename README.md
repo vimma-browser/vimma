@@ -22,8 +22,9 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
   `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
   its label, then `y` (or `v` to adjust it first).
-- **PDFs with zathura's keys:** `J`/`K` and `12G` by page, zoom and fit, the outline on `Tab`,
-  marks and presentation mode in Firefox's own PDF viewer, with the page count in the status bar.
+- **PDFs with the same keys:** Vimma's keys work in PDFs too, plus `J`/`K` and `12G` by page,
+  zoom and fit, the outline on `Tab`, marks and presentation mode in Firefox's own PDF viewer,
+  with the page count in the status bar.
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. A workspace keeps several splits, one shown at a time, and `]s` steps
   between them. If your fingers know tmux, they already know Vimma.
@@ -63,11 +64,10 @@ mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://gi
 brew install --cask vimma-browser/tap/vimma
 ```
 
-A release that is not notarised (the guide says how to tell) makes macOS block the first open
-("Apple could not verify “Vimma”"): choose **Done**, then in System Settings → Privacy & Security
-choose **Open Anyway** next to Vimma. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
-The guide's [macOS](docs/guide.md#macos) section has the steps and a one-line terminal
-alternative.
+Releases are signed with Vimma's Developer ID and notarised by Apple, so Vimma opens like any
+other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
+For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
+guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.
