@@ -173,7 +173,9 @@ hashValue size/></update></updates>`. Unknown attributes are kept in the propert
 --arch x86_64 --mar-channel-id vimma` (`repackage_mar`,
   `python/mozbuild/mozbuild/repackaging/mar.py:29`) runs
   `tools/update-packaging/make_full_update.sh` with `MOZ_PRODUCT_VERSION` from the tarball's
-  `application.ini` (lines 60-65). The host `mar` is built with `NO_SIGN_VERIFY`
+  `application.ini` (lines 60-65). (Since changed: Firefox 160's script also takes the
+  lowercase `[App] Name` from `application.ini` as a third argument, `APPNAME`, and exits
+  without it; `mar.mjs build` passes `vimma`.) The host `mar` is built with `NO_SIGN_VERIFY`
   (`modules/libmar/tool/moz.build:21`); signing is `signmar` (links NSS):
   `signmar -d <nssdb> -n <nickname> -s in out`, and `-X`/`-I` extract and import a detached
   signature. Partial MARs (`make_incremental_update.sh`, zucchini) need the previous build.
