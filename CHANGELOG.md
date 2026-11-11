@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.18](https://github.com/vimma-browser/vimma/compare/v0.1.17...v0.1.18) (2026-11-11)
+## [Unreleased]
+
+## [0.1.18](https://github.com/vimma-browser/vimma/compare/v0.1.17...v0.1.18) · Firefox 160.0 (2026-11-11)
 
 
 ### Fixed
@@ -16,9 +18,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ### Changed
 
-* firefox 160.0 (MFSA 2026-125) ([#872](https://github.com/vimma-browser/vimma/issues/872)) ([9c7eaa7](https://github.com/vimma-browser/vimma/commit/9c7eaa709f0c9a98242256b0c5d8f009a5c61084))
-
-## [Unreleased]
+* Firefox 160.0 ([MFSA 2026-125](https://www.mozilla.org/en-US/security/advisories/mfsa2026-125/)) ([#872](https://github.com/vimma-browser/vimma/issues/872)) ([9c7eaa7](https://github.com/vimma-browser/vimma/commit/9c7eaa709f0c9a98242256b0c5d8f009a5c61084))
 
 ## [0.1.17](https://github.com/vimma-browser/vimma/compare/v0.1.16...v0.1.17) · Firefox 159.0.1 (2026-11-07)
 
