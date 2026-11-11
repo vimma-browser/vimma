@@ -287,9 +287,46 @@ describe("desktop entry", () => {
     expect(errors).toMatch(/new-window/);
   });
 
+  // #855: Firefox's GNOME shell service takes MOZ_APP_LAUNCHER as itself and looks for the
+  // installed entry whose Exec program, found on PATH, is that exact path; `vimma-open` would be
+  // /usr/bin/vimma-open, never the launcher's own path, so it made a userapp- entry instead.
+  it("names the installed launcher by its absolute path when given one", () => {
+    const installed = desktopEntry({
+      wmClass: "vimma-vimma",
+      launcher: "/usr/lib/vimma/vimma-open",
+    });
+    expect(installed).toMatch(/^Exec=\/usr\/lib\/vimma\/vimma-open %u$/m);
+    expect(installed.replace(/^Exec=.*$/m, "")).toBe(text.replace(/^Exec=.*$/m, ""));
+    expect(checkDesktopEntry(installed)).toEqual([]);
+  });
+
+  it("refuses a launcher path that is not absolute or needs quoting in Exec", () => {
+    for (const launcher of [
+      "vimma-open",
+      "./vimma-open",
+      "/opt/my vimma/vimma-open",
+      '/a"b',
+      "/a%u",
+      "/a$b",
+      "/a\\b",
+    ]) {
+      expect(() => desktopEntry({ wmClass: "vimma-vimma", launcher }), launcher).toThrow(
+        /launcher/,
+      );
+    }
+  });
+
   it.skipIf(!has("desktop-file-validate"))("passes desktop-file-validate", () => {
     const dir = tempDir("vimma-desktop-");
     writeFileSync(join(dir, "vimma-vimma.desktop"), text);
+    writeFileSync(
+      join(dir, "installed.desktop"),
+      desktopEntry({ wmClass: "vimma-vimma", launcher: "/opt/vimma/vimma-open" }),
+    );
+    const installed = spawnSync("desktop-file-validate", [join(dir, "installed.desktop")], {
+      encoding: "utf8",
+    });
+    expect(installed.stdout + installed.stderr).toBe("");
     const result = spawnSync("desktop-file-validate", [join(dir, "vimma-vimma.desktop")], {
       encoding: "utf8",
     });
@@ -538,7 +575,7 @@ describe("RPM spec", () => {
 });
 
 describe("PKGBUILD and .SRCINFO", () => {
-  const desktop = desktopEntry({ wmClass: "vimma-vimma" });
+  const desktop = desktopEntry({ wmClass: "vimma-vimma", launcher: "/opt/vimma/vimma-open" });
   const launcher = readFileSync(LAUNCHER, "utf8");
   const input = {
     version: "0.1.0",
@@ -618,6 +655,13 @@ describe("PKGBUILD and .SRCINFO", () => {
 
   it("writes the desktop file inline, byte for byte, under the remoting name", () => {
     expect(heredoc(build, "$pkgdir/usr/share/applications/vimma-vimma.desktop")).toBe(desktop);
+  });
+
+  // #855: the entry's Exec is the launcher the PKGBUILD installs, by its absolute path.
+  it("names the launcher it installs by its absolute path in the desktop file's Exec", () => {
+    const exec = /^Exec=(.*) %u$/m.exec(input.desktop)?.[1];
+    expect(exec).toBe("/opt/vimma/vimma-open");
+    expect(build).toContain(`cat > "$pkgdir${exec}" <<'VIMMA_OPEN_EOF'`);
   });
 
   it("writes vimma-open inline, byte for byte, next to vimma and on PATH", () => {
@@ -1062,6 +1106,25 @@ describe("packageRelease on a fake ./mach package tarball", () => {
     execFileSync("tar", ["-xJf", join(out, "vimma-0.1.0-linux-x86_64.tar.xz"), "-C", unpacked]);
     expect(type(join(unpacked, "vimma"))).toBe("tarball\n");
     expect(spawnSync(process.execPath, [script]).status).toBe(64);
+  });
+
+  // #855: Firefox's shell service matches its own entry only by the Exec program's exact path.
+  it("names each package's installed vimma-open by its absolute path in the desktop entry", () => {
+    const exec = (/** @type {string} */ text) => /^Exec=(\/\S+) %u$/m.exec(text)?.[1];
+    for (const root of [result.debRoot, result.rpmRoot]) {
+      const entry = readFileSync(join(root, "usr/share/applications/vimma-vimma.desktop"), "utf8");
+      expect(exec(entry)).toBe("/usr/lib/vimma/vimma-open");
+      expectSameBytes(join(root, "usr/lib/vimma/vimma-open"), LAUNCHER);
+    }
+    const build = readFileSync(join(out, "PKGBUILD"), "utf8");
+    const entry = /<<'VIMMA_DESKTOP_EOF'\n([\s\S]*?)VIMMA_DESKTOP_EOF\n/.exec(build)?.[1] ?? "";
+    expect(exec(entry)).toBe("/opt/vimma/vimma-open");
+    expect(build).toContain(`cat > "$pkgdir/opt/vimma/vimma-open" <<'VIMMA_OPEN_EOF'`);
+    // The AppImage's entry is rewritten by whatever integrates it, to the .AppImage's path;
+    // AppRun sets MOZ_APP_LAUNCHER to that path.
+    expect(readFileSync(join(result.appDir, "vimma-vimma.desktop"), "utf8")).toMatch(
+      /^Exec=vimma-open %u$/m,
+    );
   });
 
   it("writes the release PKGBUILD and SRCINFO with the release tarball's SHA-256", () => {

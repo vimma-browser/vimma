@@ -265,14 +265,12 @@ the [user guide](guide.md); planned work is on the
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
-- On the `.deb`, the `.rpm` and the Arch package, Settings' Make default button registers a desktop
-  entry of its own that skips `vimma-open`, so routing rules by app do not apply to links, and
-  Settings says Vimma is not the default browser even after `xdg-settings` made it one (issue
-  #855). Use `xdg-settings` ([Making Vimma your default browser](guide.md#making-vimma-your-default-browser)).
 - On Omarchy, `xdg-settings set default-web-browser` fails unless `BROWSER` and
   `XDG_CURRENT_DESKTOP` are cleared for it, Settings always says Vimma is not the default, and a
   link from another app may not raise Vimma's window, since Omarchy's launcher looks for a window
-  named after the command it ran (issue #855).
+  named after the command it ran (issue #855). Settings' Make default button there sets the same
+  default as the command, but also turns `browser.shell.checkDefaultBrowser` back on, so the
+  startup prompt may return; set it to `false` again in `about:config`.
 - The Flatpak (`dev.vimma.browser`) is not on Flathub yet (issue #465). Once it is:
   - Links from other apps are not routed by app: its desktop entry runs `vimma` without
     `vimma-open`, whose look-up of the app that asked ends at Flatpak's own processes inside the

@@ -1157,6 +1157,18 @@ esac
   );
 });
 
+// #855: Firefox's GNOME shell service finds its own desktop entry only when the entry's Exec
+// program is the launcher's exact path, so each install is checked for it as installed.
+it.each([
+  ["arch-smoke.sh", "/opt/vimma"],
+  ["rpm-smoke.sh", "/usr/lib/vimma"],
+])("%s checks that the installed desktop entry runs %s/vimma-open by its path", (name, lib) => {
+  const script = readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+  expect(script).toContain(
+    `grep -qx 'Exec=${lib}/vimma-open %u' /usr/share/applications/vimma-vimma.desktop`,
+  );
+});
+
 // aur.yml: pushes vimma-bin to the AUR, which is public at once, so only for a published
 // release. Its only source is the published release's own files.
 describe("aur.yml", () => {

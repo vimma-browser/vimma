@@ -5,6 +5,12 @@
 // Loaded by browser.xhtml (browser-xhtml.patch) right after browser-main.js.
 
 {
+  // First: nothing may start Firefox's shell service before it knows its launcher (#855).
+  const { AppLauncher } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/services/AppLauncher.sys.mjs",
+  );
+  AppLauncher.init();
+
   const { MozillaServices } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/services/MozillaServices.sys.mjs",
   );

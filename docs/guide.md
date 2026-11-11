@@ -375,22 +375,26 @@ Vimma at another file.
 Vimma never makes itself your default browser; links from other apps open in it once you choose
 it. How depends on the install:
 
-| Installed from             | Make it the default                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `.deb`, `.rpm`, Arch Linux | `xdg-settings set default-web-browser vimma-vimma.desktop`                                                                |
-| Omarchy (Arch package)     | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                            |
-| AppImage, tarball          | Settings → Account and sync → Make default (`:settings sync`); it records the file's path, so press it again after a move |
-| Flatpak                    | your desktop's default-apps settings                                                                                      |
-| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                     |
+| Installed from             | Make it the default                                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `.deb`, `.rpm`, Arch Linux | Settings → Account and sync → Make default (`:settings sync`), or `xdg-settings set default-web-browser vimma-vimma.desktop` |
+| Omarchy (Arch package)     | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                               |
+| AppImage, tarball          | Settings → Account and sync → Make default (`:settings sync`); it records the file's path, so press it again after a move    |
+| Flatpak                    | your desktop's default-apps settings                                                                                         |
+| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                        |
 
-With the `xdg-settings` command, links from other apps go through `vimma-open`, so
-[routing rules](#routing-which-workspace-a-link-opens-in) by app apply to them. On the Linux
-packages, Settings' Make default button does not do the same yet: it registers a desktop entry of
-its own that skips `vimma-open`, and Settings goes on saying that Vimma is not your default
-browser after the command has made it one. On Omarchy, an AppImage or a tarball uses Settings'
-button as elsewhere, and Settings keeps saying that Vimma is not the default. These are issue
-[#855](https://github.com/vimma-browser/vimma/issues/855);
-[limits.md](limits.md#platforms-and-packaging) lists what else differs, Omarchy's case included.
+On the Linux packages, both ways choose the package's own `vimma-vimma.desktop`, so links from
+other apps go through `vimma-open` and [routing rules](#routing-which-workspace-a-link-opens-in)
+by app apply to them, and Settings says that Vimma is your default browser. A
+`userapp-Vimma-….desktop` file in `~/.local/share/applications/` was left by an earlier version's
+Settings button, which skipped `vimma-open`; once Vimma is the default again it is unused, and
+you can delete it.
+
+On Omarchy, Settings always says that Vimma is not your default browser: Omarchy answers that
+question for its own launcher, `omarchy-browser.desktop`, which then opens the browser the command
+above chose. With an AppImage or a tarball on Omarchy, use Settings' button as elsewhere.
+[limits.md](limits.md#platforms-and-packaging) lists what else differs on Omarchy (issue
+[#855](https://github.com/vimma-browser/vimma/issues/855)).
 
 #### From a source checkout
 
