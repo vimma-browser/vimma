@@ -161,7 +161,8 @@ the [user guide](guide.md); planned work is on the
   hidden fields before the click is not seen either. `a always here` on a form's question lets the
   same button on the same site send without asking until the grant ends, whatever text or personal
   details its later forms send (a payment, a password, card, one-time-code or file field, a form
-  with more fields than its question lists, or one whose fields Vimma could not read still asks).
+  with more fields than its question lists, a value too long to show whole, or a form whose fields
+  Vimma could not read still asks).
   Paying is recognised by a payment card field the page shows, in any frame, or by the pressed
   button's or followed link's words (a fixed list in six languages). A checkout that shows neither,
   such as a one-button checkout whose button is an icon with no name or says `Continue`, runs
