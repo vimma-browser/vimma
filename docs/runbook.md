@@ -529,6 +529,20 @@ Limits:
 - **One lane per worktree** (its `engine/`). After changing `src/` or `tests/` paths, rerun
   `npm run import` there; after a Firefox bump, `npm run lane:setup -- --force` from a source
   checkout on the new release.
+- **After a Firefox bump, update the source checkout once.** Lanes copy the primary checkout's
+  `engine/`, so after an `upstream: firefox X.Y.Z` merge (by hand or by auto-merge) every lane's
+  setup fails on `verify-source --require`, naming the old version, until the primary checkout is
+  on the new release. The maintainer, or the session coordinating agents, updates it with no dev
+  build running from it:
+
+  ```sh
+  git pull --ff-only && npx surfer download --force && npm run verify-source && npm run import
+  ```
+
+  `surfer download --force` deletes `engine/` with its full build; run `npm run build` again when
+  the dev build is needed. Do not download an engine per lane instead: several downloads and
+  artifact builds at once overloaded a 12-core machine (load average 22 after the 160.0 bump).
+
 - **CPU:** an artifact build is CPU-bound (the front-end build). On a 16-thread machine run at
   most about 3 artifact builds at once, and none while the main checkout runs a full build;
   mochitests are light, a few in parallel are fine.
