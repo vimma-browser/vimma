@@ -4665,8 +4665,8 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
 - **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
   in the theme's colours, the account group in Settings > Account and sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
-  `about:restartrequired`, the sidebar's empty lists) show no picture. Error pages, such as
-  "Server Not Found", show their text without Firefox's fox
+  `about:restartrequired`, the sidebar's empty lists, and `about:logins` with no saved passwords)
+  show no picture. Error pages, such as "Server Not Found", show their text without Firefox's fox
   (`browser.netError.illustration.enabled` = `true` brings the picture's place back, empty).
 - **The About dialog names no Mozilla terms.** It drops Mozilla's donate and get-involved
   paragraph and the links to Mozilla's Terms of Use and Privacy Notice, which govern Firefox

@@ -39,6 +39,8 @@ const OVERRIDES = [
   ["chrome://global/skin/illustrations/error-malformed-url.svg", EMPTY],
   ["chrome://global/skin/illustrations/no-connection.svg", EMPTY],
   ["chrome://global/skin/illustrations/security-error.svg", EMPTY],
+  // The fox on a chest in about:logins' and the Passwords sidebar's empty state.
+  ["chrome://global/content/megalist/icons/cpm-fox-illustration.svg", EMPTY],
 ];
 
 /**
@@ -124,6 +126,27 @@ add_task(async function logos_and_mascots_serve_vimma_files() {
     Assert.equal(await text(url), await text(target), `${url} serves ${target}`);
   }
   Assert.ok((await text(VIMMA_GLYPH)).includes("context-fill"), "the glyph follows the theme");
+  // about:logins' breach and vulnerable-password alerts are security information: their icons
+  // stay Firefox's.
+  for (const icon of ["breached-website.svg", "vulnerable-password.svg"]) {
+    const url = `chrome://browser/content/aboutlogins/icons/${icon}`;
+    Assert.notEqual(await text(url), await text(EMPTY), `${url} keeps its picture`);
+  }
+});
+
+add_task(async function logins_empty_state_shows_no_fox() {
+  await BrowserTestUtils.withNewTab("about:logins", async (browser) => {
+    const size = await SpecialPowers.spawn(browser, [], async () => {
+      const intro = content.document.querySelector("login-intro");
+      let img;
+      await ContentTaskUtils.waitForCondition(() => {
+        img = intro?.shadowRoot?.querySelector(".illustration");
+        return img?.complete;
+      }, "the empty state's illustration has loaded");
+      return [img.naturalWidth, img.naturalHeight];
+    });
+    Assert.deepEqual(size, [1, 1], "about:logins' empty state shows the empty image, not the fox");
+  });
 });
 
 add_task(async function history_import_promo_brought_back_shows_no_kit() {
