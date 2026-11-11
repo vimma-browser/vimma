@@ -36,7 +36,14 @@ What applies to you as a subagent:
   every push. Run the whole directory only when your change reaches every window or test (shared
   test helpers, `browser.toml`, startup code) or when a task asks for it.
 - Set up your lane from the primary checkout (plain `npm run lane:setup`); its engine is verified
-  for the version in `surfer.json`. Download your own engine only if `lane:setup` refuses it.
+  for the version in `surfer.json`. If `lane:setup` refuses it because the primary checkout is
+  behind `surfer.json` (a Firefox bump just merged), do not quietly download your own: other
+  agents need the same engine, and parallel downloads and builds overload the machine. Say so to
+  the session that started you and wait for the primary checkout to be updated, or download your
+  own only when your task says to.
+- A required check failed in a test your change does not touch: reproduce it in your lane first
+  (`npm run mochitest -- --artifact tests/browser/<file> --repeat=10`). Failing there means a
+  real failure. Passing every time: re-run the job once at most, naming the flake and its issue.
 - Running Vimma: unset `WAYLAND_DISPLAY` and use Xvfb only, so no window reaches the desktop.
 - vimma-site design changes: show a local preview before any push.
 
