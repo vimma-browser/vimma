@@ -17,7 +17,7 @@ requestLongerTimeout(4);
 
 /* global focusContent -- from head.js */
 /* global PopupNotifications, SitePermissions, gCustomizeMode, gNavToolbox, CustomizableUI, PanelMultiView,
-   PanelUI -- browser window globals (browser.js) */
+   PanelUI, AppMenuNotifications -- browser window globals (browser.js) */
 
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
@@ -844,7 +844,9 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
 // Firefox gives the notice no delay of its own; the keys wait for its prompts' delay all the same,
 // from when the notice shows or from the last key.
 add_task(async function the_addon_installed_notice_answers_p_and_y() {
-  const DELAY = 400;
+  // Long enough that the first keys, sent right after the notice shows, land before it is
+  // armed on a busy machine too.
+  const DELAY = 1000;
   await SpecialPowers.pushPrefEnv({ set: [["security.notification_enable_delay", DELAY]] });
   const { ExtensionsUI } = ChromeUtils.importESModule("resource:///modules/ExtensionsUI.sys.mjs");
   const { AddonManager } = ChromeUtils.importESModule(
@@ -863,10 +865,17 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
   /** Shows the notice; resolves with it and its end (OK pressed). */
-  const notice = async () => {
-    const shown = BrowserTestUtils.waitForEvent(PanelUI.notificationPanel, "popupshown");
+  const notice = async (opens = true) => {
+    const before = AppMenuNotifications.activeNotification;
+    const shown = opens && BrowserTestUtils.waitForEvent(PanelUI.notificationPanel, "popupshown");
     const done = ExtensionsUI.showInstallNotification(tab.linkedBrowser, addon);
-    await shown;
+    if (shown) await shown;
+    else {
+      await until(
+        () => AppMenuNotifications.activeNotification !== before,
+        "Firefox puts the new notice in the open panel",
+      );
+    }
     const n = /** @type {any} */ ($("appMenu-addon-installed-notification"));
     await until(() => shows(n.pinExtensionEl), "the notice offers to pin the add-on");
     return { n, done };
@@ -876,6 +885,7 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   let ended = false;
   done.then(() => (ended = true));
   Assert.equal(area(), CustomizableUI.AREA_ADDONS, "the add-on starts in the extensions menu");
+  Assert.ok(!shows(hintOf(n)), "not armed yet");
   EventUtils.synthesizeKey("p");
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 4);
@@ -896,6 +906,22 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   Assert.equal(area(), CustomizableUI.AREA_ADDONS, "p again unpins it");
   await until(() => shows(hintOf(n)), "armed again");
   EventUtils.synthesizeKey("p");
+  await until(() => shows(hintOf(n)), "armed again");
+  // n is not the notice's (it has no second button): Vimma's n gets it, and the wait restarts.
+  EventUtils.synthesizeKey("n");
+  Assert.ok(PanelUI.isNotificationPanelOpen && !ended, "n leaves the notice open");
+  await until(() => shows(hintOf(n)), "armed again");
+  // Firefox puts a second install's notice into the open panel without showing it again (and
+  // drops the first without answering it): it waits from then.
+  ({ n, done } = await notice(false));
+  ended = false;
+  done.then(() => (ended = true));
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.ok(
+    PanelUI.isNotificationPanelOpen && !ended,
+    "y right after the notice changed closes nothing",
+  );
   await until(() => shows(hintOf(n)), "armed again");
   EventUtils.synthesizeKey("y");
   await done;
@@ -942,6 +968,24 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   EventUtils.synthesizeKey("y");
   await done;
 
+  // The update notices share the panel; their main button restarts the browser, so no key
+  // answers them.
+  let restarted = false;
+  const shown = BrowserTestUtils.waitForEvent(PanelUI.notificationPanel, "popupshown");
+  AppMenuNotifications.showNotification("update-restart", { callback: () => (restarted = true) });
+  await shown;
+  await wait(DELAY * 1.5);
+  EventUtils.synthesizeKey("y");
+  await wait(DELAY / 4);
+  Assert.ok(!restarted, "y never restarts the browser");
+  Assert.ok(
+    !PanelUI.notificationPanel.querySelector(".vimma-prompt-keys[armed]"),
+    "and no keys line shows",
+  );
+  AppMenuNotifications.removeNotification("update-restart");
+  await until(() => !PanelUI.isNotificationPanelOpen, "the update notice is gone");
+
+  CustomizableUI.removeWidgetFromArea(widget);
   await ext.unload();
   await SpecialPowers.popPrefEnv();
   gBrowser.removeTab(tab);

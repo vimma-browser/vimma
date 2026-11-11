@@ -592,7 +592,7 @@ Numbered decisions, each with its reason and the alternatives rejected.
       issue #495.)
       (Since changed: the notice after an add-on install ("<name> was added", an app menu
       notification with no delay of its own) takes the keys too, with `p` for its "Pin extension
-      to toolbar" checkbox, the checkbox's own access key, because a keyboard user could neither
+      to toolbar" checkbox, its access key in Firefox's English strings, because a keyboard user could neither
       pin the add-on nor close the notice; the wait counts on Vimma's clock from when it shows;
       issue #868.)
     - **`Tab`** (focus in the page, not in a field) moves focus onto the prompt's first button,

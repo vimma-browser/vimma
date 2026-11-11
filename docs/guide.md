@@ -1068,7 +1068,8 @@ other prompts in that panel, such as "Save password?" (`y` saves, `n` is Not now
 After the install, the "<name> was added" notice takes `y` for OK, and `p` pins the add-on's
 button to the toolbar, or unpins it, as its "Pin extension to toolbar" checkbox does; its line
 reads `y ok · p pin extension to toolbar · Tab buttons`. `Tab` moves focus onto that checkbox,
-where `Space` toggles it. The same half-second wait applies.
+where `Space` toggles it. The same half-second wait applies. `n` keeps its usual meaning while
+the notice is open, since the notice has nothing to decline.
 Firefox's pop-up blocked bar takes `y`, `n` and `Esc` with the same rules
 ([Blocked pop-ups](#blocked-pop-ups)).
 

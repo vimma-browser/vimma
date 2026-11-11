@@ -83,6 +83,14 @@ describe("doorhangerKey", () => {
     expect(doorhangerKey("p", base)).toEqual({ kind: "pass" });
   });
 
+  test("a notice with no secondary button leaves n to Vimma", () => {
+    expect(doorhangerKey("n", { ...base, secondary: false })).toEqual({ kind: "pass" });
+    expect(doorhangerKey("n", { ...base, secondary: false, armed: false })).toEqual({
+      kind: "pass",
+    });
+    expect(doorhangerKey("y", { ...base, secondary: false })).toEqual({ kind: "allow" });
+  });
+
   test("no prompt open, or a key sequence under way: every key passes", () => {
     for (const key of ["y", "n", "tab"]) {
       expect(doorhangerKey(key, { ...base, open: false })).toEqual({ kind: "pass" });

@@ -19,6 +19,8 @@
  * prompt's username and password)
  * @property {boolean} pending  a key sequence is under way (after ctrl+b)
  * @property {boolean} [repeat]  the key is held down
+ * @property {boolean} [secondary]  false: the prompt has no secondary button, and `n` is not its
+ * key (the post-install notice, which stays open until answered)
  * @property {boolean} [toggle]  the prompt shows a checkbox that `p` toggles (the post-install
  * notice's "Pin extension to toolbar")
  */
@@ -45,6 +47,7 @@ export function doorhangerKey(key, s) {
   // types nothing.
   if ((s.inField && !s.inPrompt) || s.promptField) return { kind: "pass" };
   if (key === "tab") return s.inPrompt ? { kind: "pass" } : { kind: "focus" };
+  if (key === "n" && s.secondary === false) return { kind: "pass" };
   if (key !== "y" && key !== "n" && !(key === "p" && s.toggle)) return { kind: "pass" };
   if (!s.armed || s.repeat) return { kind: "wait" };
   if (key === "p") return { kind: "toggle" };

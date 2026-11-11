@@ -28,6 +28,8 @@ window, a payment provider's window) needs the mouse.
    `y` allows pop-ups for the site (Firefox's "Allow pop-ups for <site>", which also opens what
    was blocked and closes the bar), `n` records a block in the site's `popup` permission and
    closes the bar, and `Esc` closes the bar without changing any permission.
+   (Since changed: nor while the notice after an add-on install is open, which takes `y` too,
+   because one key must never answer two questions; issue #868.)
 2. The keys have the permission prompt's guards: `y`, `n` and `Esc` count only once the bar has
    been up for `security.notification_enable_delay` (500 ms by default) with no key pressed in
    between, and any key restarts the wait; a held key never answers. An `Esc` before then stays
