@@ -279,6 +279,21 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    root while the pref is true, since CSS cannot read a pref. The extension and feature
    recommendation switches are hidden too, because their `cfr` provider is off
    ([m0-mozilla-services](m0-mozilla-services.md)), so they change nothing either.
+   (Since changed: issue [#866](https://github.com/vimma-browser/vimma/issues/866) also hides
+   the controls for what Vimma manages itself, read against Firefox 160.0, because each does
+   nothing in Vimma or turns a Vimma feature off. In Appearance: the Firefox theme group (Vimma's
+   theme colours the chrome whichever Firefox theme is active) and the "Customize browser layout"
+   link. In Tabs and browsing: the browser layout choice (the tab strip and the vertical tab list
+   are hidden, so vertical tabs opens an empty sidebar); the Interaction fieldset with its ctrl+tab
+   order, tab preview, tab group suggestion and drag-to-group switches (`ctrl+tab` is Vimma's
+   `next_tab`, the others act on the hidden tab strip, and its last item is Windows only); the
+   container tabs switch (workspaces are containers, so turning it off turns workspaces off); the
+   keyboard shortcuts group; and "Search for text when you start typing" (with it on, a key normal
+   mode does not bind, such as `z`, opens the find bar, which then takes the keys that follow). In
+   Accessibility: the `about:keyboard` link (Vimma's keys are remapped in `config.toml`). Each rule
+   hides the control and changes no pref, so `about:config` still reaches every value. Container
+   management, cursor-key navigation, Website appearance, window density, fonts and zoom stay,
+   because they work in Vimma. Tested by `browser_vimma_settings_managed.js`.)
 7. **Hiding rules hold under high contrast.** Rules that hide a surface sit outside the
    `@media not ((prefers-contrast) or (forced-colors))` block, and the Kit mascot rule moves out of
    it, so that a high-contrast user does not see Mozilla's surfaces return; only colour rules stay
