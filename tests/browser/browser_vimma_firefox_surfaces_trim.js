@@ -139,7 +139,13 @@ add_task(async function account_panel_has_no_monitor_promo() {
 
 add_task(async function history_sidebar_has_no_import_promo() {
   // Firefox shows it on profiles under 8 days old (HistoryController.shouldShowImportBanner);
-  // the harness profile is new.
+  // the harness profile is new. Pin its other conditions so that the dismissed pref is what hides it.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.interactions.history", false]] });
+  registerCleanupFunction(async () => {
+    SidebarController.hide();
+    await PlacesUtils.history.clear();
+  });
+  Assert.ok(Services.policies.isAllowed("profileImport"), "importing is allowed");
   await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
   await SidebarController.show("viewHistorySidebar");
   /** @type {any} */
@@ -157,6 +163,7 @@ add_task(async function history_sidebar_has_no_import_promo() {
   );
   SidebarController.hide();
   await PlacesUtils.history.clear();
+  await SpecialPowers.popPrefEnv();
 });
 
 /**

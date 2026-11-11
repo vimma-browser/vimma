@@ -135,6 +135,10 @@ add_task(async function history_import_promo_brought_back_shows_no_kit() {
       ["browser.migrate.interactions.history", false],
     ],
   });
+  registerCleanupFunction(async () => {
+    SidebarController.hide();
+    await PlacesUtils.history.clear();
+  });
   await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
   await SidebarController.show("viewHistorySidebar");
   /** @type {any} */
@@ -143,6 +147,8 @@ add_task(async function history_import_promo_brought_back_shows_no_kit() {
     history = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
     return history?.controller && !history.controller.isHistoryPending;
   }, "the History sidebar loads");
+  // The controller also looks the profile's age up itself, and may overwrite this; the harness
+  // profile is new, so both are under 8 days.
   history.controller.profileAge = 0;
   /** @type {any} */
   let img;
