@@ -8,7 +8,15 @@
 // a signmar linked, with an $ORIGIN run path, to libraries beside it, as Mozilla's is.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -107,6 +115,36 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("libnss3.so");
+  });
+
+  it("packs what a library NSS opens itself loads from the objdir, though signmar does not", () => {
+    const root = tempDir("vimma-mar-tools-");
+    const { bin, built } = fakeTree(root);
+    cc(join(built, "libnssdbm3.so"), "int libnssdbm3_so(void) { return 0; }\n", [
+      "-shared",
+      "-fPIC",
+    ]);
+    symlinkSync(join(built, "libnssdbm3.so"), join(bin, "libnssdbm3.so"));
+    rmSync(join(bin, "libfreeblpriv3.so"));
+    rmSync(join(built, "libfreeblpriv3.so"));
+    cc(join(built, "libfreeblpriv3.so"), "int libfreeblpriv3_so(void) { return 0; }\n", [
+      "-shared",
+      "-fPIC",
+      `-L${built}`,
+      "-lnssdbm3",
+    ]);
+    symlinkSync(join(built, "libfreeblpriv3.so"), join(bin, "libfreeblpriv3.so"));
+    const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
+    expect(r.status, r.stderr).toBe(0);
+    expect(readdirSync(join(root, "mar-tools"))).toContain("libnssdbm3.so");
+  });
+
+  it.each([".", "..", ""])("refuses to empty --out %j, the checkout or above it", (out) => {
+    const root = tempDir("vimma-mar-tools-");
+    fakeTree(root);
+    const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", out]);
+    expect(r.status).not.toBe(0);
+    expect(existsSync(join(root, "engine"))).toBe(true);
   });
 
   it("fails when a tool is missing", () => {

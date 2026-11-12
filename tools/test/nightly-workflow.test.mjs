@@ -795,19 +795,19 @@ describe.skipIf(process.platform !== "linux")("nightly.yml: the failure report, 
   });
 
   /**
-   * @param {{ open: string, runView: "ok" | "fail" }} o
+   * @param {{ open: string, runView: "ok" | "fail" | "none" }} o
    */
   function report({ open, runView }) {
     const dir = tempDir("vimma-nightly-report-");
     mkdirSync(join(dir, "bin"));
-    writeFileSync(join(dir, "jobs.json"), JOBS_JSON);
+    writeFileSync(join(dir, "jobs.json"), runView === "none" ? '{"jobs":[]}' : JOBS_JSON);
     writeFileSync(
       join(dir, "bin/gh"),
       `#!/bin/bash
 echo "$*" >> "$CALLS"
 case "$1 $2" in
   "run view")
-    ${runView === "ok" ? "" : "exit 1"}
+    ${runView === "fail" ? "exit 1" : ""}
     shift 2
     jq_filter=""
     while [ $# -gt 0 ]; do case "$1" in --jq) jq_filter=$2; shift ;; esac; shift; done
@@ -865,6 +865,13 @@ esac
     expect(r.status, r.stderr).toBe(0);
     expect(r.calls).toContain("issue comment 847");
     expect(r.body).toContain("43207796514");
+    expect(r.body).toContain("- (the run's jobs could not be read)");
+  });
+
+  it("says so when the run lists no failed job", () => {
+    const r = report({ open: "847", runView: "none" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.body).toContain("- (no failed job found)");
   });
 
   it("reads the run's jobs with a read-only actions token, beside its issues one", () => {

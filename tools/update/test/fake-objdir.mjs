@@ -38,8 +38,9 @@ export function cc(out, source, args = []) {
 
 /**
  * A checkout with an engine tree and an objdir laid out as mozbuild leaves them: dist/bin holds
- * symlinks to the objects built elsewhere in the objdir, and signmar finds its libraries through
- * an $ORIGIN run path.
+ * symlinks to the objects built elsewhere in the objdir; signmar finds its libraries through an
+ * $ORIGIN run path, and the libraries, which have none as NSS's have none, find each other only
+ * through LD_LIBRARY_PATH.
  * @param {string} root
  */
 export function fakeTree(root) {
@@ -53,13 +54,12 @@ export function fakeTree(root) {
       "-fPIC",
       `-L${built}`,
       ...deps.map((d) => `-l${d}`),
-      "-Wl,-rpath,$ORIGIN",
     ]);
     symlinkSync(join(built, name), join(bin, name));
   };
   lib("libmozsqlite3.so");
   lib("libnss3.so", ["mozsqlite3"]);
-  lib("libsoftokn3.so");
+  lib("libsoftokn3.so", ["mozsqlite3"]);
   lib("libfreeblpriv3.so");
   // A library of the objdir that signmar does not load: never packed.
   lib("libxul.so");

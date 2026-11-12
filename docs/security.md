@@ -3764,10 +3764,11 @@ _Pages_ and _extensions_ cannot reach it.
   ([m6a-updater](specs/m6a-updater.md), decision 42). Both workflows' build jobs pack the MAR
   tools the `mar` job runs (`signmar`, the NSS libraries of the objdir it loads, the host `mar`)
   with one script, `tools/update/mar-tools.mjs`, which fails the build, before anything is
-  uploaded, unless `signmar` and `mar` start from the packed directory with every library ldd
-  lists found there; a pack that missed a library would otherwise surface only in `mar`, after
-  `mar-sign` had signed. It runs the build's own tools in the build job, after the Safe
-  Browsing key file is deleted, and in no job that holds a secret.
+  uploaded, unless `signmar` and `mar` start from the packed directory with every library of
+  the objdir that ldd lists found there; a pack that missed a library would otherwise surface only in `mar`, after
+  `mar-sign` had signed. It runs the build's own tools only in the build job, which built them and
+  already runs the build's code, after the Safe Browsing key file is deleted; no other job that
+  holds a secret runs them.
   **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox with
   the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as it can
   produce a malicious tarball that cosign signs; it cannot copy the key out, and every signature is

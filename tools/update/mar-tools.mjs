@@ -76,6 +76,9 @@ function ldd(file, env = process.env) {
   return r.stdout;
 }
 
+/** @param {string[]} names */
+const unique = (names) => [...new Set(names)].join(", ");
+
 /** @param {string} path */
 const dirOf = (path) => realpathSync(resolve(path, ".."));
 
@@ -104,25 +107,41 @@ export function pack({ objdir, engine, out }) {
   for (const t of tools) need(existsSync(t), `${t}: not found`);
   const listed = ldd(signmar);
   const missing = missingIn(listed);
-  need(missing.length === 0, `signmar needs ${missing.join(", ")}, which ldd did not find`);
+  need(missing.length === 0, `signmar needs ${unique(missing)}, which ldd did not find`);
   const binDir = realpathSync(bin);
   // The objdir's own libraries, wherever ldd says they are: the paths are dist/bin's symlinks
   // to the objects, so their directory is compared, not their targets.
-  const libraries = librariesIn(listed)
-    .filter((l) => dirOf(l.path) === binDir)
-    .map((l) => l.path);
+  const ours = (/** @type {string} */ text) =>
+    librariesIn(text)
+      .filter((l) => dirOf(l.path) === binDir)
+      .map((l) => join(bin, l.name));
+  const libraries = new Set(ours(listed));
   need(
-    libraries.some((l) => basename(l) === NSS),
+    libraries.has(join(bin, NSS)),
     `ldd lists no ${NSS} of ${bin} for signmar; it listed:\n${listed}`,
   );
+  // NSS's libraries have no run path: what they load from dist/bin, they find there through
+  // LD_LIBRARY_PATH, as signmar's later jobs give it.
+  const inBin = { ...process.env, LD_LIBRARY_PATH: binDir };
   for (const d of DLOPENED) {
-    need(existsSync(join(bin, d)), `${join(bin, d)}: not found`);
-    libraries.push(join(bin, d));
+    const path = join(bin, d);
+    need(existsSync(path), `${path}: not found`);
+    libraries.add(path);
+    const deps = ldd(path, inBin);
+    const gone = missingIn(deps);
+    need(gone.length === 0, `${d} needs ${unique(gone)}, which ldd did not find`);
+    for (const l of ours(deps)) libraries.add(l);
   }
   const certDir = join(engine, "toolkit/mozapps/update/updater");
   const certs = readdirSync(certDir).filter((f) => f.endsWith(".der"));
   need(certs.length > 0, `${certDir}: no update certificates`);
 
+  // The directory is emptied first: never the checkout or anything above it.
+  const target = resolve(out);
+  need(
+    out.trim() !== "" && !(process.cwd() + "/").startsWith(target === "/" ? "/" : `${target}/`),
+    `--out ${out} is the working directory or above it`,
+  );
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, CERTS), { recursive: true });
   for (const f of [...tools, ...libraries]) copyFileSync(f, join(out, basename(f)));
@@ -153,7 +172,7 @@ export function check(dir) {
   for (const f of ["signmar", "mar", ...libraries]) {
     const listed = ldd(join(real, f), env);
     const missing = missingIn(listed);
-    need(missing.length === 0, `${dir}/${f} needs ${missing.join(", ")}, not in ${dir}`);
+    need(missing.length === 0, `${dir}/${f} needs ${unique(missing)}, not in ${dir}`);
     for (const l of librariesIn(listed)) {
       need(
         !files.includes(l.name) || dirOf(l.path) === real,
@@ -162,9 +181,13 @@ export function check(dir) {
     }
   }
   // Both print their usage and exit non-zero without arguments; a program the loader cannot
-  // start exits 127 with "error while loading shared libraries".
-  for (const f of ["signmar", "mar"]) {
-    const r = spawnSync(join(real, f), [], { encoding: "utf8", env, timeout: 30_000 });
+  // start exits 127 with "error while loading shared libraries". Each runs as the mar jobs run
+  // it: signmar with LD_LIBRARY_PATH, mar without.
+  for (const [f, withEnv] of /** @type {const} */ ([
+    ["signmar", env],
+    ["mar", process.env],
+  ])) {
+    const r = spawnSync(join(real, f), [], { encoding: "utf8", env: withEnv, timeout: 30_000 });
     const output = `${r.stdout ?? ""}${r.stderr ?? ""}`;
     need(
       !r.error && r.status !== 127 && r.signal === null && !/error while loading/.test(output),
