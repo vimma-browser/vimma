@@ -13,6 +13,8 @@
 
 "use strict";
 
+const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+
 const APPEARANCE_PREF = "vimma.theme.appearance";
 const PLAIN =
   getRootDirectory(gTestPath).replace("chrome://mochitests/content", "https://example.com") +
@@ -405,10 +407,11 @@ add_task(async function high_contrast_keeps_the_wizards_colours() {
     const list = /** @type {Element} */ (w.shadow.querySelector("panel-list"));
     const panel = /** @type {any} */ (list.parentElement);
     await openList(w.selector, list);
+    // popup.css: the system's Menu, or none on macOS, where the panel draws natively.
     Assert.equal(
       style(panel).getPropertyValue("--panel-background-color").trim(),
-      "Menu",
-      "the browser list keeps the system's Menu (popup.css)",
+      AppConstants.platform === "macosx" ? "none" : "Menu",
+      "the browser list keeps Firefox's own surface (popup.css)",
     );
     Assert.equal(
       style(/** @type {Element} */ (list.querySelector("panel-item.selected"))).backgroundColor,
