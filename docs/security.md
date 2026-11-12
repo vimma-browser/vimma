@@ -533,10 +533,11 @@ text that pages, add-ons and bookmarks choose.
 
 The hook (`omarchy/vimma-theme-reload.sh`) runs when you change your Omarchy theme. Vimma
 writes it into `~/.config/omarchy/hooks/theme-set.d/`. `vimma-open` (`tools/package/`) is the
-desktop entry's launcher (`vimma-open %u`) and the command `BROWSER=vimma-open` runs: it names
-the programs that opened a link, nearest first, for routing (spec
-[app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to `vimma` in its own
-session.
+desktop entry's launcher (`Exec=/usr/lib/vimma/vimma-open %u`, `/opt/vimma/vimma-open %u` in
+the PKGBUILD: by its installed path) and the
+command `BROWSER=vimma-open` runs: it names the programs that opened a link, nearest first, for
+routing (spec [app-routes](specs/app-routes.md), decisions 6 to 10), and hands the link to
+`vimma` in its own session.
 
 **Reach:** the hook gets the theme name, which comes from a theme anyone can publish.
 `vimma-open` gets a URL and its arguments from any local program, reads `/proc` for the names
@@ -584,6 +585,39 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   name the wrong terminal. Its server ends the list instead.
   [`never runs tmux or herdr`](../tools/package/test/vimma-open.test.mjs),
   [`a daemonised tmux server ends the list at tmux, whatever its clients`](../tools/package/test/vimma-open.test.mjs)
+
+- O10. Settings' Make default button **must** register only the package's own desktop entry,
+  never a command another program chose. On Linux, the first window's first script
+  (`services/AppLauncher.sys.mjs`) starts Firefox's shell service with `MOZ_APP_LAUNCHER` set to
+  the `vimma-open` next to the binary, replacing any value inherited from the caller, and then
+  sets it to empty, so no program Vimma starts inherits it (a Firefox started from one would take
+  `vimma-open` as itself, bug 1494436). An AppImage, known by its own `is-packaged-app` marker
+  and never by the caller's `APPDIR`, keeps `AppRun`'s value (the `.AppImage`); without a
+  `vimma-open` next to the binary (the tarball, a build from source) nothing is set. **⚠ limit:**
+  when something starts the shell service first (the profile service making a dedicated default
+  profile on a first start, `vimma -setDefaultBrowser`), that session keeps Firefox's behaviour,
+  which Vimma reports in the console. A program that can write `~/.local/share/applications` or
+  `mimeapps.list` can choose the default browser itself, so a desktop entry there that also runs
+  `vimma-open` is outside this boundary (§11). On Omarchy, where GIO names Omarchy's router
+  (`omarchy-browser.desktop`) as the http and https handler, Vimma also counts itself the
+  default when the entry the router opens (the first installed one past it in the
+  `mimeapps.list` files, as `omarchy-cmd-default-browser` reads them) runs exactly the absolute
+  command the shell service took as Vimma's own, read line by line exactly as Omarchy's launcher
+  reads it, so a relative or quoted command, or a line Omarchy skips, never matches. This
+  changes only what Firefox's default-browser check reports (Settings, the startup prompt,
+  messaging targeting), never which program opens a link, and nothing is read unless GIO names
+  the router.
+  [`test_omarchy_s_router_to_vimma_counts_as_default`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_without_omarchy_s_router_nothing_is_read`](../tests/browser/browser_vimma_app_launcher.js),
+  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../packages/vimma-core/test/default-browser.test.mjs),
+  [`matches the program by its exact absolute path, never by name or a relative one`](../packages/vimma-core/test/default-browser.test.mjs),
+  [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_an_inherited_value_never_picks_another_program`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_an_inherited_appdir_never_keeps_another_program`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_a_shell_service_already_running_is_reported_and_the_value_emptied`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_startup_named_the_launcher_before_anything_else_started_the_service`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_an_appimage_keeps_apprun_s_value`](../tests/browser/browser_vimma_app_launcher.js),
+  [`names each package's installed vimma-open by its absolute path in the desktop entry`](../tools/package/test/package.test.mjs)
 
 Allowed: two or more arguments (other than `--from`) pass through unchanged; a local app that
 runs `vimma-open` with its own flags could run `vimma` with them directly. Any local program can
@@ -921,51 +955,53 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
 
-[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16,
-M17, M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace
-brought to the front with one agent tab selected: M19, M20) and full control's wording while MCP
-is on (M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent
-tab's buttons, fields and links listed with hint labels, sensitive values left out: M25, M31,
-M32), `vimma_activate` (a click on one of them, with no user activation, every form
-submission asked: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
+[mcp-drive](specs/mcp-drive.md) adds `vimma_keys` (Vimma's own page keys in an agent tab: M16, M17,
+M20, M23), following its links by hint label (M18, M21), `vimma_show` (the agent workspace brought
+to the front with one agent tab selected: M19, M20) and full control's wording while MCP is on
+(M22), all in force. [mcp-forms](specs/mcp-forms.md) adds `vimma_elements` (an agent tab's buttons,
+fields and links listed with hint labels, sensitive values left out: M25, M31, M32),
+`vimma_activate` (a click on one of them, with no user activation, a form submission asked without a
+grant, and under one when it pays, sends text, personal details, a secret or a file, or Vimma cannot
+tell what it sends: M25, M26, M28, M29, M32) and `vimma_fill` (fields set as form autofill sets
 them, never a password, payment card, one-time-code or file field: M25, M27, M28, M32),
-`vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment
-card field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script
-errors, console errors and warnings and failed requests, read without running page code: M25,
-M30, M31, M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584),
-`vimma_open`, `vimma_activate` and `vimma_fill` can return the page's element list in their
-result, made and limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller
-unless the agent asks for it at full size (M31).
+`vimma_screenshot` (an image of an agent tab's viewport, refused while a password or payment card
+field on screen has a value: M25, M31, M32) and `vimma_console` (an agent tab's script errors,
+console errors and warnings and failed requests, read without running page code: M25, M30, M31,
+M32), in force. Since [#584](https://github.com/vimma-browser/vimma/issues/584), `vimma_open`,
+`vimma_activate` and `vimma_fill` can return the page's element list in their result, made and
+limited as a `vimma_elements` call (M31, M32), and a screenshot is smaller unless the agent asks for
+it at full size (M31).
 
-[mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a
-grant given in answer to any question, a read included, lets that agent open URLs, follow links,
-press keys, click buttons that do not submit a form, fill fields, take screenshots and download
-(not dangerous or unscanned files) without asking until it ends. An open can carry in its URL
-what the agent read, so a grant is a grant to fetch any http or https address from the agent
-workspace. What limits it: the agent workspace's container holds none of your other logins
-(vimma-mcp decision 7), so what an agent can read is what the agent workspace holds; every call
-under a grant shows a notice (an open names its host) and is a `:mcp log` row with its whole URL
-(M23); at most 10 opens a minute (M3); `ctrl+b shift+a` ends every grant at once; and an agent
-with a shell can send what it read over its own network without Vimma anyway. A step that may pay,
-a form submission that sends text, personal details, a secret or a file
-([mcp-consequence](specs/mcp-consequence.md)), a show, a dangerous or unscanned download and a
-page's own download still ask under any grant (M11, M13, M19, M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md)
-makes sending a form and paying checkpoints: one `y` or `n` that shows what the step sends or
-spends and leaves the grant as it was (M28, M33). The question's hint names only the keys
-(`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's key
-table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
+[mcp-grants](specs/mcp-grants.md) makes a grant cover every agent tool of its connection: a grant
+given in answer to any question, a read included, lets that agent open URLs, follow links, press
+keys, click buttons that do not submit a form, fill fields, take screenshots and download (not
+dangerous or unscanned files) without asking until it ends. An open can carry in its URL what the
+agent read, so a grant is a grant to fetch any http or https address from the agent workspace. What
+limits it: the agent workspace's container holds none of your other logins (vimma-mcp decision 7),
+so what an agent can read is what the agent workspace holds; every call under a grant shows a notice
+(an open names its host) and is a `:mcp log` row with its whole URL (M23); at most 10 opens a minute
+(M3); `ctrl+b shift+a` ends every grant at once; and an agent with a shell can send what it read
+over its own network without Vimma anyway. A step that may pay, a form submission that sends text,
+personal details, a secret or a file ([mcp-consequence](specs/mcp-consequence.md)), a show, a
+dangerous or unscanned download and a page's own download still ask under any grant (M11, M13, M19,
+M28, M33). [mcp-checkpoints](specs/mcp-checkpoints.md) makes sending a form and paying checkpoints:
+one `y` or `n` (and, on a form that is not a payment, sends no secret or file and whose fields Vimma
+read in time and in full number, `a` for that button on that site until the grant ends) that shows
+what the step sends or spends and leaves the grant as it was (M28, M33). The question's hint names
+only the keys (`a until it quits`, or `10a 10 min`), so that the question fits one line; the guide's
+key table says that `a` covers every tool, and the grant's notice, shown the moment it is made, says
 so and names what still asks and the key that ends it.
 
-Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's
-`INSTRUCTIONS`, which are also the built-in agent's system text) tell an agent to search a site
-by opening its search results by URL with `elements: true` rather than by filling the search
-field and sending the form, and to do so only for a search. Such a search is a load, not a form
-submission: it gives no new reach, since any URL could already be opened under a grant, and it
-is under the same rules as every other open (M6, the open rate of M3, the notice and the
-`:mcp log` row of M23). It skips only the form question; the words of the search are what the
-agent puts in the URL, the same risk as any open (mcp-grants, above). A form sent through the
-page, a search included, is still a form submission under M28, asked whenever it sends what was
-typed.
+Under [agent-speed](specs/agent-speed.md) S2, the agent instructions (vimma-ctl's `INSTRUCTIONS`,
+which are also the built-in agent's system text) tell an agent to search a site by opening its
+search results by URL with `elements: true` rather than by filling the search field and sending the
+form, and to do so only for a search. Such a search is a load, not a form submission: it gives no
+new reach, since any URL could already be opened under a grant, and it is under the same rules as
+every other open (M6, the open rate of M3, the notice and the `:mcp log` row of M23). It skips only
+the form question; the words of the search are what the agent puts in the URL, the same risk as any
+open (mcp-grants, above). A form sent through the page, a search included, is still a form
+submission under M28: asked without a grant, and under one when it is consequential (for a search:
+its words typed into a text field rather than `type=search`) or sent by a fill (mcp-consequence K4).
 
 Under [agent-speed](specs/agent-speed.md) S6, the same instructions tell an agent that steps that
 do not depend on each other's results go as several tool calls in one turn, and that each call is
@@ -1524,29 +1560,32 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
   marks every field), or free text (a textarea or a text-like input other than `type=search`
   whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
-  value so digits of other scripts or forms never pass); or a form whose fields the page did
-  not say in time, that sends more fields than the question lists, or one of whose values is
-  longer than the child reads of it. It asks with only `y` and `n`, naming
-  the form's method, destination and each field it sends by name and value (hidden fields
-  counted, a file field by its name), **never** a password, payment card or one-time-code
-  field's value, only its name and `•••`, or the number of fields when the page did not say in
-  time; its yes **never** makes or ends a grant, and its `x` is a plain no. Under a grant, a
-  submission that is none of the above runs unasked, with the grant's notice and a `:mcp log`
-  row naming its method and destination (M23), and the guard below lets that one submission
-  through as after a yes. Because another call (a fill) may change the form between that
-  judgement and the click, the child judges the form again just before it presses the button,
-  after the page's handlers of the pressing ran, and skips the click when it no longer passes
-  (no longer harmless, or, under an allowance, sending a secret or file). Under a grant, the question of a consequential submission that is not
-  a payment step and sends no password, card, one-time-code or file field also takes `a`
-  (mcp-consequence K5): it allows that submission and every later click of the same connection
-  whose tab's site (registrable domain), form method, destination (scheme, host, port and path)
-  and pressed button's text are the same, checked again on each click against the payment and
-  secret rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in
-  conversation's stop, the connection's close; an allowance is held in memory and never kept
-  for a reconnect); `a` on a payment's question, or without a grant, allows nothing beyond that
-  step. An allowance covers later submissions whatever text or personal details they send,
-  which no question shows. Not covered: a page's own script that copies typed text into hidden
-  fields before a harmless-looking submission, as a page's own `fetch` is not (mcp-forms F17);
+  value so digits of other scripts or forms never pass); or a form whose fields the page did not say
+  in time, that sends more than the 64 fields besides hidden ones the child reads, or one of whose
+  values is longer than the child reads of it. It asks with only `y` and `n`, naming the form's
+  method, destination and each field it sends by name and value (hidden fields counted, a file field
+  by its name), **never** a password, payment card or one-time-code field's value, only its name and
+  `•••`, or the number of fields when the page did not say in time; its yes **never** makes or ends
+  a grant, and its `x` is a plain no. Under a grant, a submission that is none of the above runs
+  unasked, with the grant's notice and a `:mcp log` row naming its method and destination (M23), and
+  the guard below lets that one submission through as after a yes. Because another call (a fill) may
+  change the form between that judgement and the click, the child judges the form again just before
+  it presses the button, after the page's handlers of the pressing ran, and skips the click when it
+  no longer passes (no longer harmless, or, under an allowance, sending a secret, a file or a value
+  it cannot read whole). Under a grant, the question of a consequential submission that is not a
+  payment step, sends no password, card, one-time-code or file field, and is known whole (its fields
+  said in time, none past the 64 besides hidden ones the child reads, no value, the pressed button's
+  and each chosen option's included, longer than the 1024 characters the child reads of it) also
+  takes `a` (mcp-consequence K5), because an allowance must not rest on a form Vimma did not read
+  whole: it allows that submission and every later click of the same connection whose tab's site
+  (registrable domain), form method, destination (scheme, host, port and path) and pressed button's
+  text are the same, checked again on each click against the payment, secret and known-whole
+  rules, until the grant ends (its end, `ctrl+b shift+a`, `:mcp revoke`, a built-in conversation's
+  stop, the connection's close; an allowance is held in memory and never kept for a reconnect); `a`
+  on a payment's question, or without a grant, allows nothing beyond that step. An allowance covers
+  later submissions whatever text or personal details they send, which no question shows. Not
+  covered: a page's own script that copies typed text into hidden fields before a harmless-looking
+  submission, as a page's own `fetch` is not (mcp-forms F17);
   a form that sends only the page's own values runs unasked under a grant whatever it does on
   the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
   only the payment signals of M33 add a question there; a short number typed into a plain text
@@ -1605,6 +1644,9 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_a_allows_that_button_on_that_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_a_is_not_offered_on_a_pay_step`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`free text, an identity field, a secret or a file makes it consequential`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a allows only a known form that pays nothing and sends no secret or file (K5)`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a is not offered for a form with a value cut to fit: it is not known whole (K5)`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`test_a_long_button_value_or_chosen_option_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`an allowance ends with the grant: its end, revoke, endGrant`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_a_message_cut_or_written_late_still_asks`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`a value cut to fit, digits in other scripts or forms, or a long number is free text`](../packages/vimma-core/test/agent-checkpoint.test.mjs),
@@ -1983,8 +2025,8 @@ vision; its key stays in login storage.
   when the task it was made for ends (done, stopped, at its budget or on an error), on a send
   that asks every step (`ctrl+Enter`), on stopping the conversation, on
   `ctrl+b shift+a`, on `:mcp revoke` and when the conversation is deleted, and **must never**
-  cover another conversation. Form submissions, payment steps, `vimma_show` and the downloads
-  that always ask **must** ask under it (M19, M28, M33).
+  cover another conversation. Form submissions that M28 makes ask, payment steps, `vimma_show`
+  and the downloads that always ask **must** ask under it (M19, M28, M33).
   [`test_ctrl_enter_asks_every_step_and_ends_the_grant`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_grant_ends_with_its_task_and_enter_grants_again`](../tests/browser/browser_vimma_agent_conversations.js),
   [`test_checkpoint_and_show_ask_under_the_conversation_grant`](../tests/browser/browser_vimma_agent_conversations.js),
@@ -2447,12 +2489,17 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
 - K4. After `Esc`, a page **must not** put the tab back in insert by focusing a field other than
   while it handles the user's input, and a focus report sent before the `Esc` **must not** undo
   it; only the user's next action (a click, a key the page gets, `i`, `gi`, a hint) or another
-  top document ends this. This holds for an uncompromised content process: a report's `user` and
+  top document ends this. A key the user pressed after `Esc`, that a page in a content process
+  handled before the blur arrived, keeps the focus it gave (insert-focus behaviour 8), and its
+  focus is reported under the same rule. This holds for an uncompromised content process: a report's `user` and
   `gen` fields and `Vimma:Click` come from the content process, so a compromised one can do what
   K1 allows, no more.
   [`after_esc_a_page_refocusing_its_field_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
   [`after_esc_on_a_trapping_page_i_click_and_tab_enter_insert`](../tests/browser/browser_vimma_insert_focus.js),
-  [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js)
+  [`esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal`](../tests/browser/browser_vimma_insert_focus.js),
+  [`tab_right_after_esc_on_a_busy_page_keeps_its_focus`](../tests/browser/browser_vimma_insert_focus.js),
+  [`tab_right_before_esc_on_a_busy_page_is_blurred`](../tests/browser/browser_vimma_insert_focus.js),
+  [`a_key_right_after_esc_on_a_busy_page_still_blurs`](../tests/browser/browser_vimma_insert_focus.js)
 - K5. Vim's text-field keys ([key-handling-batch](specs/key-handling-batch.md) § 2) **must**
   act only on a key the user pressed, in insert mode or in a focused chrome field, and in a page
   only after the page left the key alone. `ctrl+j` and `ctrl+m` press a trusted `Enter` from the
@@ -3461,10 +3508,11 @@ _Pages_ and _extensions_ cannot reach it.
 - UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
   restart question, or Firefox's own restart commands do. The restart question
   (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
-  security release that is already in place (an AppImage that replaced its file), once per
-  session and again 24 hours after an answer, and arms, waits and refuses keys exactly as the
-  question of UP9. It **never** hides a loss: while the private workspace has tabs it says they
-  will close, and when session restore will bring no tab back it says `Tabs will not come back`;
+  security release that is already in place (an AppImage that replaced its file, or a tarball
+  whose update Firefox's updater will apply at the next start), once per session and again 24
+  hours after an answer, and arms, waits and refuses keys exactly as the question of UP9. It
+  **never** hides a loss: while the private workspace has tabs it says they will close, and when
+  session restore will bring no tab back it says `Tabs will not come back`;
   a loss that appears while the line is open (a private tab opened since) makes `y` ask
   `:restart`'s `y/N` before anything restarts. `:restart` asks that `y/N` first whenever tabs
   would be lost. A restart asks Firefox's `quit-application-requested` observers with
@@ -3488,6 +3536,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`an_appimage_whose_file_cannot_run_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
   [`private_tabs_ask_before_they_close`](../tests/browser/browser_vimma_restart.js),
   [`a_replaced_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_staged_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_verify.js),
   [`an_ordinary_replaced_update_asks_nothing`](../tests/browser/browser_vimma_update_appimage.js),
   [`answered in this session: asked again 24 hours later, not sooner`](../packages/vimma-core/test/update-notices.test.mjs),
   [`the_restart_question_says_what_a_restart_loses`](../tests/browser/browser_vimma_update_appimage.js),

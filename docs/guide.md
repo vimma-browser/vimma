@@ -18,8 +18,8 @@ What works today, each with the section that explains it:
   list item or code block with `y`; `/` find as you type, in frames and PDFs too; `v` copy mode
   with Vim motions and `y`; insert mode in text fields, `Esc` to leave; `:` a
   [command line](#the-command-line) with completion and history.
-- **[PDFs with zathura's keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`,
-  `-`, `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
+- **[PDFs with the same keys](#pdf-viewer):** `J`/`K` and `12G` by page, zoom and fit (`+`, `-`,
+  `a`, `s`), two pages side by side, the outline beside the page with `Tab` and a filter,
   marks, presentation with `:present`, `page 3/12` with the match count in the status bar, and
   the viewer in your theme. Vimma's own keys keep their meaning there.
 - **tmux for the window** (prefix `ctrl+b`, [keys](#keys)): tabs (`c` new, `n`/`p`, `1..9`,
@@ -62,10 +62,10 @@ What works today, each with the section that explains it:
 - **Scriptable** ([vimma-ctl](#scripting-with-vimma-ctl), shipped and updated with Vimma): a
   token-protected control socket; local AI agents reach one [agent workspace](#agent-workspace)
   through MCP, where they can read, open, scroll and search pages, follow their links, list and
-  click their buttons, fill their fields (never a password or card number), take a screenshot,
-  read a page's errors and show you a page. An agent asks you first, one answer lets it work
-  through its task until it quits, and sending a form or paying asks every time, showing what is
-  sent or the total the page states.
+  click their buttons, fill their fields (never a password or card number), take a screenshot, read
+  a page's errors and show you a page. An agent asks you first, one answer lets it work through its
+  task until it quits, and paying or sending a form with text or personal details still asks,
+  showing what is sent or the total the page states.
 - **[Vimma's own agent](#vimmas-own-agent)**: `ctrl+b i` opens a chat window where you write a
   task and watch every step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one
   by API key, or [Claude Code](#using-an-agent-cli-in-the-chat-window) on its own login. It
@@ -375,22 +375,32 @@ Vimma at another file.
 Vimma never makes itself your default browser; links from other apps open in it once you choose
 it. How depends on the install:
 
-| Installed from             | Make it the default                                                                                                       |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `.deb`, `.rpm`, Arch Linux | `xdg-settings set default-web-browser vimma-vimma.desktop`                                                                |
-| Omarchy (Arch package)     | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                            |
-| AppImage, tarball          | Settings → Account and sync → Make default (`:settings sync`); it records the file's path, so press it again after a move |
-| Flatpak                    | your desktop's default-apps settings                                                                                      |
-| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                     |
+| Installed from             | Make it the default                                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.deb`, `.rpm`, Arch Linux | Settings → Home and startup → Make default (`:settings home`), or `xdg-settings set default-web-browser vimma-vimma.desktop`                                     |
+| Omarchy (Arch package)     | Settings → Home and startup → Make default (`:settings home`), or `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop` |
+| AppImage, tarball          | Settings → Home and startup → Make default (`:settings home`); it records the file's path, so press it again after a move                                        |
+| Flatpak                    | your desktop's default-apps settings                                                                                                                             |
+| macOS                      | Settings → Home and startup → Make default, or System Settings → Desktop & Dock → Default web browser                                                            |
 
-With the `xdg-settings` command, links from other apps go through `vimma-open`, so
-[routing rules](#routing-which-workspace-a-link-opens-in) by app apply to them. On the Linux
-packages, Settings' Make default button does not do the same yet: it registers a desktop entry of
-its own that skips `vimma-open`, and Settings goes on saying that Vimma is not your default
-browser after the command has made it one. On Omarchy, an AppImage or a tarball uses Settings'
-button as elsewhere, and Settings keeps saying that Vimma is not the default. These are issue
-[#855](https://github.com/vimma-browser/vimma/issues/855);
-[limits.md](limits.md#platforms-and-packaging) lists what else differs, Omarchy's case included.
+On the Linux packages, both ways choose the package's own `vimma-vimma.desktop`, so links from
+other apps go through `vimma-open` and [routing rules](#routing-which-workspace-a-link-opens-in)
+by app apply to them, and Settings says that Vimma is your default browser. A
+`userapp-Vimma-….desktop` file in `~/.local/share/applications/` was left by an earlier version's
+Settings button, which skipped `vimma-open`; once Vimma is the default again it is unused, and
+you can delete it.
+
+On Omarchy, links from other apps go to Omarchy's own launcher, `omarchy-browser.desktop`,
+which opens the browser that `mimeapps.list` names. Both ways above write that list, and Settings
+then says that Vimma is your default browser, so the startup prompt does not return. Plain
+`xdg-settings` fails there, which is why the command clears `BROWSER` and `XDG_CURRENT_DESKTOP`
+for it, as Omarchy's own `omarchy default browser` does; that command offers only the browsers it
+knows, so it cannot choose Vimma. Leave Omarchy's `BROWSER` (`omarchy-launch-browser`) as it is:
+it opens the same browser. To see which browser Omarchy will open, run
+`omarchy-cmd-default-browser`, which prints Vimma's desktop entry (`vimma-vimma.desktop` for the
+packages).
+[limits.md](limits.md#platforms-and-packaging) lists what else differs on Omarchy (issue
+[#855](https://github.com/vimma-browser/vimma/issues/855)).
 
 #### From a source checkout
 
@@ -469,9 +479,10 @@ ways to reach it from the keyboard:
   data** (Settings → Account and sync → Import browser data).
 
 The wizard picks a browser it found; `f` reaches its buttons, so `f` on **Import** brings over
-everything it lists, and the **+** next to "Import all available data" lets you choose. A hint
-does not open the browser list at the top yet: with more than one browser on the computer, click
-it to pick another one. Then choose **Done**.
+everything it lists, and the **+** next to "Import all available data" lets you choose. With
+more than one browser on the computer, `f` on the browser list at the top opens it: `Down` and
+`Up` move through the browsers, `Enter` picks one, then `f` on **Import**. The file entries below
+the browsers start their import as soon as they are picked. Then choose **Done**.
 
 - **Passwords from a Chromium-based browser on Linux** do not come through the wizard: Firefox's
   importer cannot decrypt them there, so it does not offer them. Export them from that browser
@@ -862,12 +873,11 @@ the field and use its own selection.
 
 ### PDF viewer
 
-PDFs open in Firefox's own viewer, pdf.js, Mozilla's PDF reader, and Vimma drives it with the
-keys of zathura, the keyboard-driven document viewer, so a paper or a manual reads the same in the
-browser as in your viewer. pdf.js keeps rendering, forms, printing and accessibility; Vimma adds
-the keys, a page count in the status bar and an outline panel, and gives the viewer's toolbar,
-menus and the space around the pages your theme's colours, light or dark. Pages are shown in the
-document's own colours.
+PDFs open in Firefox's own viewer, pdf.js, Mozilla's PDF reader, and Vimma drives it with the same
+keys as every other page, plus keys for pages, zoom and the outline. pdf.js keeps rendering, forms,
+printing and accessibility; Vimma adds the keys, a page count in the status bar and an outline
+panel, and gives the viewer's toolbar, menus and the space around the pages your theme's colours,
+light or dark. Pages are shown in the document's own colours.
 
 A PDF with an outline opens with it shown on the left, the entry for the page you are on
 selected as you move; your keys stay with the document, so `J` and `/` work at once. pdf.js's
@@ -875,11 +885,11 @@ own sidebar and its button do not show: Vimma's outline takes its place. To open
 the outline, put `[ui] pdf_outline = "hidden"` in [config.toml](#configtoml); `Tab` still opens
 it.
 
-Every Vimma key does in the PDF viewer what it does on any page, so your hands need not know
+Every Vimma key does in the PDF viewer what it does on any page (only `gg` and `G` with a count
+go to page N, as in `12G`), so your hands need not know
 which kind of page they are on: `d` scrolls half a screen, `r` and `F5` reload, `H` / `L` go back
-and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. The
-viewer adds zathura's keys only on the keys Vimma leaves free, and zathura's other keys are
-commands:
+and forward, `P` opens the clipboard in a new tab, `F` is element focus and `ctrl+f` finds. Vimma
+adds PDF keys only on the keys it leaves free; the other PDF actions are commands:
 
 - **Pages.** `J` / `K` go to the next / previous page, with a count (`3J`). `gg` goes to the first
   page and `G` to the last; with a count, to that page (`12G`, `12gg`), counted from 1 whatever
@@ -925,17 +935,15 @@ leaves it. `/` finds in the PDF with the match count in the status bar, and the 
 the page as `page 3/12`, or `page iv (4/120)` when the page has a label that is not its number.
 
 A PDF that a web page shows inside itself (in a frame, `<embed>` or `<object>`) keeps the page's
-keys; open it in its own tab for these. Some of zathura's keys stay Vimma's: `ctrl+b` is the prefix,
-not a screen up (`shift+space` scrolls up a screen); `t` opens a tab; `q` does not close the tab
-(`x` and `:q` do); and `alt+left` / `alt+right` go back and forward rather than a page. `ctrl+r`
-reloads rather than recolouring the pages, and `ctrl+n` does not hide the status bar. Marks and the
-jump list are not kept across restarts, `o` does not open a file (`:open` with a `file://` address
-does), and there is no SyncTeX.
+keys; open it in its own tab for these. In a PDF, as everywhere, `ctrl+b` is the prefix,
+`t` opens a tab, `x` and `:q` close it, and `alt+left` /
+`alt+right` go back and forward. Marks and the jump list are not kept across restarts, and
+`:open` with a `file://` address opens a local PDF.
 
 Every one of these keys can be changed in [config.toml](#configtoml): `[modal.pdf]` holds the
 PDF viewer's normal-mode keys, over `[modal.normal]`, and `[modal.index]` the outline's. `[unbind]
-pdf = ["D"]` takes `D` off in the PDF viewer only. To have zathura's `d`, `r`, `H`, `L`, `P`,
-`F`, `ctrl+f` and `F5` in the PDF viewer instead of Vimma's, uncomment the zathura block under
+pdf = ["D"]` takes `D` off in the PDF viewer only. To give `d`, `r`, `H`, `L`, `P`,
+`F`, `ctrl+f` and `F5` PDF actions in the PDF viewer instead of Vimma's, uncomment the block under
 `[modal.pdf]` in the file `:config` writes (or copy it from `defaults.toml`). `ctrl+b ?`
 lists them under `[pdf]` and `[index]`, and [bindings.md](bindings.md#pdf-viewer) has their
 config names.
@@ -1131,9 +1139,11 @@ search box, the open panel's button in the launcher and the lists' scrollbars in
 an open sidebar recolours with the rest of the window. So do Firefox's other surfaces: the find
 bar, the menu bar (`F10`) and every menu, the dialogs a page opens (`alert`, `confirm`,
 `prompt`), the print settings, the [PDF viewer](#pdf-viewer)'s toolbar, menus and the space
-around its pages, and Firefox's own pages: Settings and its dialogs, Add-ons,
+around its pages, and Firefox's own pages: Settings and its dialogs (the import wizard and its
+list of browsers included), Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
-`about:profiles` and `about:processes`. Their accent (the selected category, checkboxes, main
+`about:profiles`, `about:processes` and Tab Overview (`about:firefoxview`), its cards and its
+navigation included. Their accent (the selected category, checkboxes, main
 buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and
 button without Firefox's mascot. With your system's high-contrast setting on, these surfaces keep
 Firefox's own high-contrast colours. Pages that Firefox loads in a web content process, such as
@@ -1883,14 +1893,15 @@ decide whether it sends anything on.
 | `shift+Enter` | Starts a new line.                                                                        |
 | `Esc`         | Normal mode in the window.                                                                |
 
-Sending with `Enter` is your grant: the window asks no separate question. The grant covers that
-one task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or
-`ctrl+b shift+a`), or it reaches its budget or an error; `:mcp revoke`, deleting the conversation
-and restarting Vimma end it too. The next task you send with `Enter` grants again, so
-`◇ agent granted` shows only while an agent works with your permission. Sending a form, paying, showing you a page and the downloads that
-always ask still ask every time, in a bordered slot above the input that takes only `y` and `n`;
-nothing you type in the input and nothing the model writes answers it. A message sent while a
-task runs reaches the model at its next turn.
+Sending with `Enter` is your grant: the window asks no separate question. The grant covers that one
+task and ends with it, whether it finishes, you stop it (`s`, `:agent stop` or `ctrl+b shift+a`), or
+it reaches its budget or an error; `:mcp revoke`, deleting the conversation and restarting Vimma end
+it too. The next task you send with `Enter` grants again, so `◇ agent granted` shows only while an
+agent works with your permission. Paying, sending a form with text or personal details
+([Checkpoints](#checkpoints-sending-a-form-and-paying)), showing you a page and the downloads that
+always ask still ask, in a bordered slot above the input that takes only `y` and `n` (and `a` on a
+form question that offers `a always here`); nothing you type in the input and nothing the model
+writes answers it. A message sent while a task runs reaches the model at its next turn.
 
 **In normal mode** (after `Esc`): `j`/`k`, `ctrl+d`/`ctrl+u` and `gg`/`G` move through the
 transcript, `i` or `a` goes back to the input, `s` stops the running task, `m` opens the model
@@ -2128,7 +2139,7 @@ and output, connects to Vimma as an agent (never with full control), and offers 
 | `vimma_keys`       | Scroll, find text, follow a link, go back and forward or up a level in one of its tabs, with Vimma keys. |
 | `vimma_show`       | Show you one of its tabs: your window switches to the agent workspace, and `ctrl+^` brings you back.     |
 | `vimma_elements`   | List the buttons, fields and links on screen in one of its tabs, with labels; never a password's value.  |
-| `vimma_activate`   | Click a button, link or checkbox from that list; sending a form or paying asks you every time.           |
+| `vimma_activate`   | Click a button, link or checkbox from that list; paying and forms with text or personal details ask.     |
 | `vimma_fill`       | Fill fields from that list, never passwords, card numbers, one-time codes or files.                      |
 | `vimma_screenshot` | See what one of its tabs shows, as an image, with that list's labels drawn on it if it asks.             |
 | `vimma_console`    | Read one of its tabs' script errors, console errors and warnings, and failed requests.                   |
@@ -2230,7 +2241,8 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
    it finds with its version and full path, such as `claude 2.1.303 · /home/you/.local/bin/claude`.
-   Press `Enter` on it.
+   A CLI slow to start, as on its first start after an install, is listed as
+   `codex gave no version in 5 s · <path>` and can still be picked. Press `Enter` on it.
 4. The prompt line asks `agent model:` with the CLI's suggested model filled in (`sonnet` for
    Claude Code). Press `Enter` to keep it, type another model the CLI takes, or clear it to leave
    the choice to the CLI's own default model. The notice confirms it, for example
@@ -2326,8 +2338,9 @@ A `config.toml` shared between machines on different versions keeps working on e
   `~/.cache/vimma-agent-cli`), removed when the task ends, with no shell around it. Each task is
   a new run given the conversation so far; the CLI keeps no session of its own.
 - In the browser it has only Vimma's tools, on the conversation's own agent tabs. Sending with
-  `Enter` grants the conversation for that task, so steps run without asking; sending a form, paying and
-  `vimma_show` still ask. Each step is a line in the transcript, from Vimma's own record.
+  `Enter` grants the conversation for that task, so steps run without asking; paying, sending a form
+  with text or personal details and `vimma_show` still ask. Each step is a line in the transcript,
+  from Vimma's own record.
 - **Its own tools are outside Vimma's gate.** The CLI keeps the shell, file and web tools its own
   settings allow. Vimma does not approve, refuse or confine them: they act with your rights. The
   header lists the ones it reported for the run (`its own tools: Bash, Read, Write, WebFetch +3`),
@@ -2532,8 +2545,8 @@ where you can answer it (when it is not in front, it marks its window urgent and
   allow only the `vimma` server's tools; Vimma's own question remains the check on each step.
 - **Answer the first question with `a`.** Later steps then run under the grant without asking,
   until the run ends ([What a grant covers](#what-a-grant-covers)). Each run starts its own
-  `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Sending a form, paying,
-  showing you a page and the downloads that always ask still ask at each step.
+  `vimma-ctl mcp`, so its grant ends with it and the next run asks again. Paying, sending a form
+  with text or personal details, showing you a page and the downloads that always ask still ask.
 - **A denial or no answer.** The tool call comes back as an error, `The user denied this request
 in Vimma.` or `No answer in Vimma within 50 s; treated as denied.`, and the agent says so in
   its answer. The run itself does not fail (Claude Code and Copilot CLI exit with status 0), so
@@ -2699,14 +2712,20 @@ with the rest of your computer.
 
 **What Vimma does not protect:**
 
-- **Grants are wide.** A grant lets that agent use every tool without asking until it ends:
-  read, open, press keys, click, fill, take screenshots and download. Only sending a form,
-  paying, showing you a page and a dangerous or unscanned download still ask
-  ([What a grant covers](#what-a-grant-covers)). A grant given for a read therefore also means
-  "let it fetch any address", and an address can carry what the agent has read elsewhere. Every
-  call under a grant shows a notice and a row in `:mcp log`, so you can see where it went. A bare
-  `a` lasts until the agent quits, which can be hours: give a grant for a task you are watching,
-  a count (`15a`) when you want it to lapse by itself, and answer `y` one at a time otherwise.
+- **Grants are wide.** A grant lets that agent use every tool without asking until it ends: read,
+  open, press keys, click, fill, take screenshots and download, and send by a click a form of hidden
+  fields, numbers, dates, checkboxes and list choices that are not personal details, including ones
+  it filled in. Only paying, sending a form with text or personal details, showing you a page and a
+  dangerous or unscanned download still ask ([What a grant covers](#what-a-grant-covers)). A grant
+  given for a read therefore also means "let it fetch any address", and an address can carry what
+  the agent has read elsewhere. `a always here` on a form's question lets that button on that site
+  send its later forms without asking until the grant ends, whatever text or personal details they
+  carry; a payment, a password, card, one-time-code or file field, a form with more than 64 fields
+  besides hidden ones, a value too long for Vimma to read whole (over 1024 characters), or a form
+  whose fields Vimma could not read still asks. Every call under a grant shows a notice and a row in
+  `:mcp log`, so you can see where it went. A bare `a` lasts until the agent quits, which can be
+  hours: give a grant for a task you are watching, a count (`15a`) when you want it to lapse by
+  itself, and answer `y` one at a time otherwise.
 - **The name is the agent's claim.** `claude-code` in the question is what the agent says it is.
   Grants belong to the connection, not the name, and `:mcp` shows the program that started it.
   Only [Vimma's own agent](#vimmas-own-agent) is labelled `built-in`; an MCP agent that calls
@@ -2858,11 +2877,12 @@ button inside an embedded frame that updates the page around it reads as no chan
   `▲ claude-code wants to send a form: 2 "Sign up · Example" → POST example.com/api/signup  email "ada@example.com", password •••, + 1 hidden`.
   A `y` sends that one form; it never makes or ends a grant.
 - **A search is an open.** Vimma's instructions tell an agent to search a site by opening its
-  results page by URL (`https://shop.example/search?q=oat+drink`) rather than through the
-  search form, which takes the agent one step instead of three. Such a search is covered by a
-  grant like any other open and shows its notice and `:mcp log` row; a search the agent sends
-  through the form asks as a form submission. The instructions limit this to searches; any
-  other form still asks.
+  results page by URL (`https://shop.example/search?q=oat+drink`) rather than through the search
+  form, which takes the agent one step instead of three. Such a search is covered by a grant like
+  any other open and shows its notice and `:mcp log` row; a search the agent sends through the form
+  is a form submission: it asks without a grant, and under one when it is sent by a fill or its
+  words are in a text field rather than a search field (`type=search`). The instructions limit this
+  to searches; other forms ask as [Checkpoints](#checkpoints-sending-a-form-and-paying) says.
 - **Several steps at once are still asked one by one.** The instructions also tell an agent to
   send steps that do not depend on each other in one turn, such as each item's search in its own
   tab. Each of those calls is asked, limited and logged as if it came alone.
@@ -3132,13 +3152,14 @@ grant it had:
   as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
   names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
   form always asks, since it sends what the agent typed. Without a grant every form asks.
-- **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment
-  and sends no password, card, one-time-code or file field ends its hint with
-  `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
-  button (the same text, sending to the same address) on the same site send its form without
-  asking until the grant ends, for example a basket button whose form also sends a delivery
-  postcode. The notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log`
-  marks the row `allowed (checkpoint, for the grant)`. A payment never offers `a`.
+- **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment,
+  sends no password, card, one-time-code or file field and that Vimma read whole ends its hint
+  with `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
+  button (the same text, sending to the same address) on the same site send its form without asking
+  until the grant ends, for example a basket button whose form also sends a delivery postcode. The
+  notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log` marks the row
+  `allowed (checkpoint, for the grant)`. A payment never offers `a`, nor does a form with a value
+  too long for Vimma to read whole (over 1024 characters).
 
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
@@ -4547,7 +4568,7 @@ name, then toggle or edit it).
 | Firefox Relay email masks in login forms            | Settings → Privacy & Security → Passwords: tick the Firefox Relay box (`signon.firefoxRelay.feature` = `available`)                                                                                   |
 | The "make Vimma your default browser" prompt        | `browser.shell.checkDefaultBrowser` = `true` (the prompt is off; [Making Vimma your default browser](#making-vimma-your-default-browser) sets the default either way)                                 |
 | Firefox's onboarding messages                       | `browser.newtabpage.activity-stream.asrouter.providers.onboarding`: change `"enabled":false` to `true` in its JSON value                                                                              |
-| Crash reporter                                      | Not built in. A crash leaves a local core dump (`coredumpctl list vimma`). Opt-in reporting to Vimma's own server is planned.                                                                         |
+| Crash reporter                                      | Not built in: Vimma sends nothing. Your system may keep its own local record ([Reporting a crash](#reporting-a-crash)). Opt-in reporting to Vimma's own server is planned.                            |
 | Page titles in a private window's title             | `privacy.exposeContentTitleInWindow.pbm` = `true` (Vimma's default is `false`: the window manager, its bar and screen sharing see only `Vimma Private Browsing`)                                      |
 | Telemetry upload                                    | Not built in (no official telemetry). The data-collection switches in Settings are off to match.                                                                                                      |
 
@@ -4619,6 +4640,11 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed` = `false`,
   `extensions.getAddons.showPane` and `extensions.htmlaboutaddons.recommendations.enabled` =
   `true` bring them back).
+- **No import promo in the History sidebar or Tab Overview.** Firefox asks a profile less than 8
+  days old to import history from another browser; Vimma does not, and
+  [Moving over from Firefox or Chrome](#moving-over-from-firefox-or-chrome) says how to import
+  (`browser.tabs.firefox-view.importHistory.dismissed` = `false` brings the promo back on such a
+  profile, without Firefox's mascot and in the theme's colours).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
 - **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and
@@ -4660,8 +4686,8 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
 - **No Firefox logo or mascot.** Settings' About Vimma section and the sidebar show Vimma's mark
   in the theme's colours, the account group in Settings > Account and sync a plain account icon, and the
   pages and panels that showed Firefox's Kit mascot (the account panel, `about:addons`,
-  `about:restartrequired`, the sidebar's empty lists) show no picture. Error pages, such as
-  "Server Not Found", show their text without Firefox's fox
+  `about:restartrequired`, the sidebar's empty lists, and `about:logins` with no saved passwords)
+  show no picture. Error pages, such as "Server Not Found", show their text without Firefox's fox
   (`browser.netError.illustration.enabled` = `true` brings the picture's place back, empty).
 - **The About dialog names no Mozilla terms.** It drops Mozilla's donate and get-involved
   paragraph and the links to Mozilla's Terms of Use and Privacy Notice, which govern Firefox
@@ -4769,5 +4795,90 @@ screensaver. On Hyprland, `hyprctl -j clients | jq '.[] | select(.class|test("vi
 .inhibitingIdle'` prints `true` while it holds. A `MOZ_WAKE_LOCK_TYPE` you export yourself wins
 over Vimma's choice.
 
-**Where are crash reports?** Nothing is sent anywhere. Use `coredumpctl list vimma`, then
-`coredumpctl info` on the entry.
+**Where are crash reports?** Vimma sends nothing anywhere; your system keeps its own record. On
+Linux with systemd-coredump, `coredumpctl list | grep vimma` lists them; on macOS, they are in
+`~/Library/Logs/DiagnosticReports/`. [Reporting a crash](#reporting-a-crash) says what to send
+and how to get a backtrace without sharing private data.
+
+### Reporting a crash
+
+A crash report with a backtrace lets a crash be found and fixed without guessing. Vimma collects
+none itself, so this section shows how to take one from your system and what to send with it.
+
+**What happens on a crash.** Vimma is built without Firefox's crash reporter, so no crash report
+is written or sent, to Mozilla or to Vimma: Vimma itself sends nothing. A crashed tab shows
+Firefox's "Gah. Your tab just crashed." page with a button to restore it, and no report to
+send. Your system may keep its own record of the crash: on Linux a core dump (through systemd-coredump
+on Arch, Fedora and most other distributions; Debian and Ubuntu need it installed, below), on
+macOS a crash report in `~/Library/Logs/DiagnosticReports/`. Some systems
+have their own crash tool (Fedora's ABRT, Ubuntu's apport) that may offer to send a report to
+the distribution; that follows the tool's own settings. On macOS, crash reports go to Apple only
+when "Share Mac Analytics" is on (System Settings → Privacy & Security → Analytics &
+Improvements).
+
+**Keep private data out.** A core dump is a copy of the crashed process's memory: it can hold
+the pages you had open, form contents, passwords and cookies. Never attach a core file, a
+profile folder or a whole crash file (an `.ips` report, or apport's `.crash` file, which holds a
+whole core dump) to a public issue; share only the backtrace text, and read
+it before you post it. Remove your user name, host name and anything else you would not publish.
+systemd-coredump deletes its cores after a few days; to delete one sooner, `coredumpctl info`
+shows its file under `Storage:`. If a web page can make Vimma crash at will, the crash may be a
+security bug: report it privately as
+[SECURITY.md](https://github.com/vimma-browser/vimma/blob/main/SECURITY.md) describes (Vimma's
+private advisory form, or Mozilla's process for a flaw in Firefox itself), not in a public issue.
+
+**What to send.** Open a [bug report](https://github.com/vimma-browser/vimma/issues/new/choose)
+with:
+
+- the version: the Vimma, Firefox and Build ID lines of `about:vimma` (if Vimma no longer
+  starts, the line `vimma --version` prints, `Vimma X.Y.Z · Firefox N`);
+- how you installed Vimma (`.deb`, `.rpm`, AppImage, tarball, Arch package, Flatpak,
+  `.dmg` or Homebrew, or built from source);
+- your system: the Linux distribution and desktop or window manager, or the macOS version;
+- what you were doing, and whether it happens again on the same page or with the same keys;
+- the backtrace, or at least the crash's signature: the signal or exception and the top few
+  frames of the crashed thread (below);
+- if the crash may depend on your setup (config, theme, workspaces), the redacted report that
+  `:bug` copies ([about:vimma](#aboutvimma)). It has no addresses or page titles, but read it
+  before you paste it.
+
+**Linux: a backtrace from systemd-coredump.** Every Vimma process runs Vimma's own binary, but a
+tab's process is named `Web Content` or `Isolated Web Co`, so `coredumpctl list vimma` shows only
+crashes of the main process. List them all by the binary's path instead. On Debian and Ubuntu,
+install systemd-coredump first (`sudo apt install systemd-coredump`) and make the crash happen
+again:
+
+```sh
+coredumpctl list | grep vimma           # every crash of a Vimma process, newest last
+coredumpctl info PID                    # PID from that list: the signal and a stack trace
+```
+
+From `coredumpctl info`, copy the `Signal:` line and the `Stack trace of thread` block whose
+number matches the `TID:` line (the thread that crashed). Leave out the rest of the header: it
+shows your user name, host name, machine ID and the full command line. A `Signal:` line with
+`si_code: SI_USER` means another process sent the signal (often Vimma ending a tab that hung), not
+a crash of the tab's own. Release builds carry no debug symbols, and Vimma does not publish any
+yet, so frames inside Vimma show only as `libxul.so + 0x…`: the signal, the library names and
+the steps to reproduce help most. For a fuller backtrace, open the core in gdb:
+
+```sh
+coredumpctl debug PID                   # starts gdb on the core
+(gdb) bt -frame-arguments none                  # the crashed thread
+(gdb) thread apply all bt -frame-arguments none # every thread, when asked for it
+```
+
+If your distribution runs a debuginfod server (Arch, Fedora, openSUSE and Ubuntu do, and set
+`DEBUGINFOD_URLS` for you), gdb offers to download symbols for system libraries such as glib or
+Mesa: answer `y`. Keep `-frame-arguments none` and never use `bt full`: without them gdb prints
+the values of arguments and local variables, which can include page text and file paths. A
+Flatpak's crash is read with `flatpak-coredumpctl dev.vimma.browser` instead, since gdb on the
+host cannot find the files inside the Flatpak. If `coredumpctl` is missing or lists nothing, your system handles crashes
+another way: `cat /proc/sys/kernel/core_pattern` names the program that receives them.
+
+**macOS: the crash report.** macOS writes a report for each crash to
+`~/Library/Logs/DiagnosticReports/`: `vimma-<date>.ips` for the main process, and
+`plugin-container-<date>.ips` for a tab's process. The file itself is JSON: open it in Console
+(double-click the file, or Applications → Utilities → Console, then Crash Reports), and from
+that view copy the header lines (Process, Version, OS Version, Exception Type, Termination
+Reason) and the backtrace of the thread marked `Crashed`.
+Paths in the report can contain your user name: remove it before posting.

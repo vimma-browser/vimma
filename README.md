@@ -13,7 +13,7 @@
 
 # Vimma
 
-**A keyboard-first browser for people who live in Vim and tmux.** You already have the muscle
+**A keyboard-first browser for people who live in the terminal.** You already have the muscle
 memory; Vimma puts it to work on the web. Bare keys drive the page, `ctrl+b` drives tabs, panes
 and workspaces, and your hands never leave the keyboard.
 
@@ -22,23 +22,24 @@ The docs, every key and the install page are at **[vimma.dev](https://vimma.dev)
 - **Vim on the page:** `j`/`k` to scroll, `f` for link hints, `/` to find, `:` for commands, and
   `Esc` to get back to normal mode. Copy a paragraph, list item or code block in three keys: `F`,
   its label, then `y` (or `v` to adjust it first).
-- **PDFs with zathura's keys:** `J`/`K` and `12G` by page, zoom and fit, the outline on `Tab`,
-  marks and presentation mode in Firefox's own PDF viewer, with the page count in the status bar.
+- **PDFs with the same keys:** Vimma's keys work in PDFs too, plus `J`/`K` and `12G` by page,
+  zoom and fit, the outline on `Tab`, marks and presentation mode in Firefox's own PDF viewer,
+  with the page count in the status bar.
 - **tmux for the window:** `ctrl+b`, tmux's default prefix, then `c` for a new tab, `v` to split,
   `w` to switch workspace. A workspace keeps several splits, one shown at a time, and `]s` steps
   between them. If your fingers know tmux, they already know Vimma.
 - **Every key is yours:** every binding, the prefix and the leader can be remapped in
   `config.toml`, Firefox's own keys too: every Firefox shortcut is a Vimma binding with
   Firefox's meaning, listed in `ctrl+b ?`, and `:firefox <id>` runs any other Firefox command.
-- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through
-  MCP (`vimma-ctl mcp`), only in an agent workspace with its own cookies. An agent asks you
-  first, and one answer (`a`) lets an agent work through its task until it quits. There
-  they read and open pages, scroll, search and follow links with Vimma's own keys, click buttons
-  and fill forms by hint label (never a password or payment card field), see a page as a
-  screenshot, read its errors, and show you a page when they want you to look at it. Paying and
-  sending a form with text or personal details are checkpoints, asked every time under any
-  grant: the question shows what the form sends, or the button, the site and the total the page
-  states.
+- **Local AI agents, kept apart:** Claude Code, Codex, opencode and Copilot reach Vimma through MCP
+  (`vimma-ctl mcp`), only in an agent workspace with its own cookies. An agent asks you first, and
+  one answer (`a`) lets an agent work through its task until it quits. There they read and open
+  pages, scroll, search and follow links with Vimma's own keys, click buttons and fill forms by hint
+  label (never a password or payment card field), see a page as a screenshot, read its errors, and
+  show you a page when they want you to look at it. Paying and sending a form with text or personal
+  details are checkpoints, asked under any grant (a form button you answer with `a always here`
+  sends without asking until the grant ends): the question shows what the form sends, or the button,
+  the site and the total the page states.
 - **An agent of its own:** `ctrl+b i` opens a chat window where you write a task and watch every
   step, with a local model (Ollama, LM Studio, llama.cpp), a hosted one by API key, or the
   Claude Code, Codex or Gemini CLI you already have, on its own login and plan. It works only in the agent
@@ -63,11 +64,10 @@ mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://gi
 brew install --cask vimma-browser/tap/vimma
 ```
 
-A release that is not notarised (the guide says how to tell) makes macOS block the first open
-("Apple could not verify “Vimma”"): choose **Done**, then in System Settings → Privacy & Security
-choose **Open Anyway** next to Vimma. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
-The guide's [macOS](docs/guide.md#macos) section has the steps and a one-line terminal
-alternative.
+Releases are signed with Vimma's Developer ID and notarised by Apple, so Vimma opens like any
+other app. Without Homebrew, open `vimma-X.Y.Z-macos-aarch64.dmg` and drag Vimma to Applications.
+For release 0.1.10 or earlier, or a CI test build, which are not notarised, the
+guide's [macOS](docs/guide.md#macos) section has the steps to open it the first time.
 
 **Debian 12+, Ubuntu 22.04+:** download `vimma_X.Y.Z_amd64.deb`, then
 `sudo apt install ./vimma_X.Y.Z_amd64.deb`.

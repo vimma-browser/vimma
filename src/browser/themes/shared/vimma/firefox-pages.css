@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /* Firefox's own pages and dialogs in the theme's colours (docs/specs/firefox-surfaces-theme.md):
- * Settings, Add-ons, Downloads, Troubleshooting, about:config and the other privileged pages a
- * tab shows, the dialogs those pages open, and the prompts and print settings that open over a
- * tab or as a window of their own. Loaded by ui/theme-host.mjs into each such document with the
- * token sheet and focus.css; the window's sheets do not reach them.
+ * Settings, Add-ons, Downloads, Troubleshooting, about:config, Tab Overview and the other
+ * privileged pages a tab shows, the dialogs those pages open, and the prompts and print settings
+ * that open over a tab or as a window of their own. Loaded by ui/theme-host.mjs into each such
+ * document with the token sheet and focus.css; the window's sheets do not reach them.
  * These documents draw from Firefox's design-system tokens (tokens-shared.css, tokens-brand.css,
  * in-content/common-shared.css), which this sheet points at Vimma's, as about:vimma lays them
  * out: the page on --vimma-bg, its cards on --vimma-bg-dark bordered --vimma-muted, the accent
@@ -56,7 +56,12 @@
     --button-text-color-primary-active: var(--vimma-mode-normal-fg) !important;
     --button-border-color-primary: transparent !important;
 
-    /* Other buttons keep Firefox's tint of the text colour; their text is the theme's. */
+    /* Other buttons keep Firefox's tint of the text colour; their text is the theme's. Hovered
+     * and pressed, Nova tints them violet (tokens-brand.css), which also marks the chosen entry
+     * of a list such as the import wizard's: they take Firefox's own tints of the text colour
+     * (tokens-platform.css) instead. */
+    --button-background-color-hover: color-mix(in srgb, currentColor 17%, transparent) !important;
+    --button-background-color-active: color-mix(in srgb, currentColor 30%, transparent) !important;
     --button-text-color: var(--vimma-fg) !important;
     --button-text-color-hover: var(--vimma-fg) !important;
     --button-text-color-active: var(--vimma-fg) !important;
@@ -68,6 +73,16 @@
     --input-text-color: var(--vimma-fg) !important;
     --input-text-border-color: var(--vimma-muted) !important;
     --input-border-color: var(--vimma-muted) !important;
+
+    /* Tab Overview (about:firefoxview) paints its page, its cards and their links from the new
+     * tab page's tokens, which it sets itself (firefoxview.css: a fixed grey or near-white page,
+     * white or grey cards, Firefox's blue links): the page on --vimma-bg, its cards on
+     * --vimma-bg-dark. No other page these sheets reach reads them. Its navigation, as Settings',
+     * takes the accent above: Nova's selected item is the primary button's colour. */
+    --newtab-background-color: var(--vimma-bg) !important;
+    --newtab-background-color-secondary: var(--vimma-bg-dark) !important;
+    --newtab-text-primary-color: var(--vimma-fg) !important;
+    --newtab-primary-action-background: var(--vimma-text-accent) !important;
 
     scrollbar-color: var(--vimma-muted) var(--vimma-bg) !important;
     accent-color: var(--vimma-mode-normal) !important;
@@ -82,6 +97,16 @@
     background-color: var(--vimma-bg-dark) !important;
     color: var(--vimma-fg) !important;
     scrollbar-color: var(--vimma-muted) var(--vimma-bg-dark) !important;
+  }
+
+  /* The import wizard (Settings, Import browser data) is an HTML <dialog> in the page, painted
+   * from --dialog-background-color and --dialog-border-color (preferences.css) with the UA's
+   * CanvasText: a dialog's surface, as above. Its browser list is themed from inside the
+   * wizard's shadow root (theme-host.mjs, WIZARD_RULES). */
+  #migrationWizardDialog {
+    --dialog-background-color: var(--vimma-bg-dark) !important;
+    --dialog-border-color: var(--vimma-muted) !important;
+    color: var(--vimma-fg) !important;
   }
 
   /* The default-browser card in Settings shows Firefox's mascot (illustrations/kit-*.svg), which

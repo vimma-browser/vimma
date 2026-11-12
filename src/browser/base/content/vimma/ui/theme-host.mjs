@@ -36,6 +36,10 @@ const TOOLBAR_SHEET = "chrome://browser/skin/vimma/firefox-toolbar.css";
  * firefox-surfaces-theme). */
 const CHROME_SHEET = "chrome://browser/skin/vimma/firefox-chrome.css";
 const PAGES_SHEET = "chrome://browser/skin/vimma/firefox-pages.css";
+/** The History sidebar's import promo in the theme's colours, as an agent sheet (#912). */
+const SIDEBAR_PROMO_SHEET = "chrome://browser/skin/vimma/firefox-sidebar-promo.css";
+/** Tab Overview's and the sidebar's empty states without their picture's column (#912). */
+const EMPTY_STATES_SHEET = "chrome://browser/skin/vimma/firefox-empty-states.css";
 /**
  * Firefox's pages that load in the parent process with the system principal, by about: name
  * (nsAboutRedirector.cpp, AboutRedirector.cpp: IS_SECURE_CHROME_UI without
@@ -50,6 +54,7 @@ const THEMED_PAGES = new Set([
   "config",
   "profiles",
   "processes",
+  "firefoxview",
 ]);
 /** A prompt's document: alert, confirm, prompt, over a tab or in a window of its own. */
 const COMMON_DIALOG = "chrome://global/content/commonDialog.xhtml";
@@ -170,6 +175,8 @@ const windows = new Map();
  * firefox-sidebar-theme), by document: the sidebar's window object outlives its documents
  */
 const pages = new Map();
+/** The documents that have firefox-empty-states.css. @type {WeakSet<Document>} */
+const emptyStateDocs = new WeakSet();
 /** Sidebar documents are found by this topic (onDocumentInserted) while a window is themed. */
 const DOCUMENT_TOPIC = "document-element-inserted";
 let observingDocuments = false;
@@ -432,6 +439,56 @@ const DIALOG_BUTTON_RULES = `
   }
 }`;
 
+/**
+ * Firefox's import wizard (<migration-wizard>, in Settings' #migrationWizardDialog) shows its
+ * browser list as a XUL <panel> in its shadow root, where no document sheet reaches. The panel
+ * takes the system's Menu and MenuText (popup.css, loaded by the wizard's own sheet), and the
+ * chosen browser is a pressed button's colour (migration-wizard.css, panel-item.selected). One
+ * sheet adopted into that shadow root gives the list a menu's colours (firefox-chrome.css): the
+ * picker's surface, and the chosen browser a selected row. Custom properties inherit into the
+ * shadow tree, so it follows theme changes.
+ */
+const WIZARD_RULES = `
+@media not ((prefers-contrast) or (forced-colors)) {
+  panel {
+    --panel-background-color: var(--vimma-bg-dark) !important;
+    --panel-text-color: var(--vimma-fg) !important;
+    --panel-border-color: var(--vimma-muted) !important;
+    --panel-border-radius: var(--vimma-radius, 0) !important;
+    color-scheme: var(--vimma-color-scheme) !important;
+  }
+  panel-item.selected {
+    background-color: var(--vimma-selection) !important;
+    color: var(--vimma-fg-bright) !important;
+  }
+}`;
+
+/**
+ * The import wizard is built when Settings first opens its dialog, and asks for its state
+ * (MigrationWizard:RequestState, bubbling from the wizard) before the dialog is shown, so its
+ * shadow root gets WIZARD_RULES then, once.
+ * @param {Document} doc  one of Firefox's pages, once parsed
+ */
+function colourWizards(doc) {
+  const win = /** @type {any} */ (doc.defaultView);
+  if (!win) return;
+  /** @type {WeakSet<ShadowRoot>} */
+  const done = new WeakSet();
+  win.addEventListener(
+    "MigrationWizard:RequestState",
+    (/** @type {Event} */ event) => {
+      const wizard = /** @type {Element} */ (event.target);
+      const root = wizard?.localName === "migration-wizard" ? wizard.shadowRoot : null;
+      if (!root || done.has(root)) return;
+      done.add(root);
+      const sheet = new win.CSSStyleSheet();
+      sheet.replaceSync(WIZARD_RULES);
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+    },
+    true,
+  );
+}
+
 /** @param {Document} doc  a prompt in a window of its own, once parsed */
 function colourDialogButtons(doc) {
   const win = /** @type {any} */ (doc.defaultView);
@@ -483,11 +540,20 @@ function attachPage(doc, sheet, parsed) {
 
 /**
  * A document in Firefox's sidebar (history, bookmarks, ...), with firefox-sidebar-page.css; its
- * trees' scrollbars and rename fields get their colours once it is parsed.
+ * trees' scrollbars and rename fields get their colours once it is parsed. The History panel's
+ * import promo draws its colours from tokens on :host in its shadow root, inside
+ * sidebar-history's shadow root, which neither an author sheet nor an adopted sheet reaches
+ * before Lit renders it: firefox-sidebar-promo.css is an agent sheet, which applies inside the
+ * document's shadow trees, and sets only the promo's tokens.
  * @param {Document | null | undefined} doc
  */
 function attachSidebarPage(doc) {
-  attachPage(doc, SIDEBAR_PAGE_SHEET, colourTrees);
+  attachPage(doc, SIDEBAR_PAGE_SHEET, (parsed) => {
+    colourTrees(parsed);
+    if (!(/** @type {any} */ (parsed).nodePrincipal?.isSystemPrincipal)) return;
+    const win = /** @type {any} */ (parsed.defaultView);
+    win?.windowUtils.loadSheetUsingURIString(SIDEBAR_PROMO_SHEET, win.windowUtils.AGENT_SHEET);
+  });
 }
 
 /**
@@ -523,7 +589,27 @@ function attachFirefoxPage(doc) {
       Services.prefs.getBoolPref("vimma.startpage.newtab", false),
     );
     colourDialogButtons(parsed);
+    colourWizards(parsed);
   });
+}
+
+/**
+ * Tab Overview and the sidebar's documents, which show Firefox's empty states (#912), get
+ * firefox-empty-states.css as an agent sheet: the picture's column sits in shadow roots, inside
+ * further shadow roots, that neither an author sheet nor ::part reaches, while a document's agent
+ * sheets apply inside its shadow trees. Only these parent-process system-principal documents, so
+ * no web page can tell Vimma by it. Whether or not a window is themed: the pictures are always
+ * empty.
+ * @param {Document} doc
+ * @param {boolean} inSidebar
+ */
+function hideEmptyStatePictures(doc, inSidebar) {
+  const win = doc?.defaultView;
+  if (!doc || !win || emptyStateDocs.has(doc)) return;
+  if (!(/** @type {any} */ (doc).nodePrincipal?.isSystemPrincipal)) return;
+  if (!inSidebar && !/^about:firefoxview(?:[#?]|$)/i.test(doc.documentURI ?? "")) return;
+  win.windowUtils.loadSheetUsingURIString(EMPTY_STATES_SHEET, win.windowUtils.AGENT_SHEET);
+  emptyStateDocs.add(doc);
 }
 
 /**
@@ -536,6 +622,7 @@ function attachFirefoxPage(doc) {
 function onDocumentInserted(subject) {
   const doc = /** @type {Document} */ (subject);
   const frame = doc.defaultView?.browsingContext?.embedderElement;
+  if (frame) hideEmptyStatePictures(doc, frame.id === "sidebar");
   if (frame?.id === "sidebar") {
     const owner = frame.ownerDocument.defaultView;
     if (owner && windows.has(owner)) attachSidebarPage(doc);
@@ -577,7 +664,9 @@ export const ThemeHost = {
       observingDocuments = true;
     }
     // A panel already open (restored with the window) has missed its document's insertion.
-    attachSidebarPage(/** @type {any} */ (win.document.getElementById("sidebar"))?.contentDocument);
+    const panel = /** @type {any} */ (win.document.getElementById("sidebar"))?.contentDocument;
+    attachSidebarPage(panel);
+    hideEmptyStatePictures(panel, true);
     start();
   },
 

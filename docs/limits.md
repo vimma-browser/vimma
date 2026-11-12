@@ -33,11 +33,8 @@ the [user guide](guide.md); planned work is on the
 ## PDF viewer
 
 - Marks (`m`, `'`) and the jump list inside a PDF last until Vimma quits; they are not saved
-  across restarts as zathura saves them.
-- `ctrl+b` is Vimma's prefix in the PDF viewer too, so zathura's full-screen-up `ctrl+b` is not
-  there: `shift+space` scrolls a screen up.
-- Pages keep the document's colours: there is no recolouring for a dark theme, as zathura's
-  `ctrl+r` gives (`ctrl+r` reloads).
+  across restarts.
+- Pages keep the document's colours: there is no recolouring for a dark theme.
 - No SyncTeX: neither forward search from an editor nor `ctrl`+click back to the source.
 - pdf.js's sidebar does not show, so its page thumbnails and its attachments and layers views
   are not reachable; Vimma's outline (`Tab`) is the outline, and an attachment entry in it is not
@@ -119,11 +116,16 @@ the [user guide](guide.md); planned work is on the
   The tarball's updater downloads complete updates only (no partial MARs).
 - No download reputation: Google's download lists and file checks are open only to Mozilla's own
   key, so "Block dangerous downloads" adds nothing beyond the Safe Browsing site lists.
-- No crash reporter: a crash leaves only the system's local core dump.
+- No crash reporter: Vimma sends nothing; a crash leaves whatever record the system keeps (a core
+  dump where systemd-coredump keeps them, a `.ips` report on macOS).
 
 ## Agents (MCP)
 
-- Agents can list, read, open and close tabs of the agent workspace, and download through it.
+- An MCP agent (`vimma-ctl mcp`) reaches only the agent workspace: it cannot see or act on tabs
+  in your other workspaces or in private windows. Full control (`:control on`) is a wider grant: a
+  program that can read Vimma's control token reaches every workspace, and while MCP is on Vimma
+  asks you before each such connection
+  ([security model](security.md#1-control-socket-ctlvimmacontrolsysmjs)).
 - Pages in the agent workspace open no pop-up, so a page loaded over HTTP there loses its
   `Cross-Origin-Opener-Policy`, which Firefox refuses in such a tab. A page that also sends
   `Cross-Origin-Embedder-Policy` is not cross-origin isolated there: it has no `SharedArrayBuffer`.
@@ -146,15 +148,29 @@ the [user guide](guide.md); planned work is on the
   in the parent process.
 - The agent's name in a question (`claude-code`) is what the agent says it is; Vimma cannot check
   it. Grants belong to the connection, and `:mcp` shows the program that started it.
-- A grant covers every agent tool for its minutes, but for the checkpoints: sending a form and
-  paying. Paying is recognised by a payment card field the page shows, in any frame, or by the
-  pressed button's or followed link's words (a fixed list in six languages). A checkout that
-  shows neither, such as a one-button checkout whose button is an icon with no name or says
-  `Continue`, runs unasked under a grant, and so does a load of a payment provider's or bank's
-  site from such a button, up to that site's own card fields or pay button
-  ([checkpoints](guide.md#checkpoints-sending-a-form-and-paying)). A button whose script sends
-  data without a form, and whose words do not say it pays, is an ordinary click. The total a
-  payment's question quotes is what the page states.
+- A grant covers every agent tool for its minutes, but for the checkpoints: paying, and sending a
+  form with text or personal details (free text, a name, an email address, a phone number, an
+  address, a birth date, a username or organisation, a password, a payment card or one-time-code
+  field, or a file), or one whose fields Vimma cannot read whole. A click that sends a form of only
+  the page's own values (hidden fields, numbers, dates, checkboxes, choices from its lists, none of
+  them personal details) runs under the grant, whatever that does on the server, such as deleting or
+  unsubscribing; a fill that sends a form always asks. Not free text: a search field
+  (`type=search`), a number, date or other non-text field that is not a personal detail, whatever
+  value the agent fills in, and a short number typed into a text field (up to three digits, with
+  decimals, such as a quantity, but also a three-digit code). Text a page's script copies into
+  hidden fields before the click is not seen either. `a always here` on a form's question lets the
+  same button on the same site send without asking until the grant ends, whatever text or personal
+  details its later forms send (a payment, a password, card, one-time-code or file field, a form
+  with more than 64 fields besides hidden ones, a value too long for Vimma to read whole (over 1024
+  characters), or a form whose fields Vimma could not read still asks).
+  Paying is recognised by a payment card field the page shows, in any frame, or by the pressed
+  button's or followed link's words (a fixed list in six languages). A checkout that shows neither,
+  such as a one-button checkout whose button is an icon with no name or says `Continue`, runs
+  unasked under a grant, and so does a load of a payment provider's or bank's site from such a
+  button, up to that site's own card fields or pay button
+  ([checkpoints](guide.md#checkpoints-sending-a-form-and-paying)). A button whose script sends data
+  without a form, and whose words do not say it pays, is an ordinary click. The total a payment's
+  question quotes is what the page states.
 - Each agent tool's own approvals, sandbox and timeouts are its own; Vimma neither reads nor
   changes them. What an agent does outside Vimma, with its shell and files, is up to that tool
   ([what Vimma protects](guide.md#what-vimma-protects-and-what-it-does-not)).
@@ -233,13 +249,12 @@ the [user guide](guide.md); planned work is on the
 
 ## Platforms and packaging
 
-- Vimma is released for Linux x86_64, and for macOS on Apple Silicon once the macOS release jobs
-  are switched on. There is no Intel Mac, universal or Windows build.
-- A macOS release is signed with Vimma's Developer ID and notarised only once the release
-  workflow's signing is switched on; before that, and in every CI test build, the `.dmg` is ad
-  hoc signed and macOS asks once, under Privacy & Security, before it first opens. Passkeys
-  stored in macOS do not work in either (issue #544).
-  It shows update notices but does not update itself: run `brew upgrade --cask vimma` or install
+- Vimma is released for Linux x86_64 and for macOS on Apple Silicon. There is no Intel Mac,
+  universal or Windows build.
+- On macOS, passkeys stored in macOS (iCloud Keychain) do not work (issue #544). Releases 0.1.10
+  and earlier, and every CI test build, are ad hoc signed rather than notarised: macOS asks
+  once, under Privacy & Security, before such a `.dmg` first opens. Vimma on macOS shows update
+  notices but does not update itself: run `brew upgrade --cask vimma` or install
   the newer `.dmg` by hand.
 - Finder on recent macOS (checked on 27.0.1) opens the mounted `.dmg`'s window at the frame of
   the last Finder window and ignores the size the `.dmg` stores, as it does for Firefox's: a
@@ -251,12 +266,8 @@ the [user guide](guide.md); planned work is on the
   window in full screen is never hidden, so from full screen the private workspace is a
   fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
-- On the `.deb`, the `.rpm` and the Arch package, Settings' Make default button registers a desktop
-  entry of its own that skips `vimma-open`, so routing rules by app do not apply to links, and
-  Settings says Vimma is not the default browser even after `xdg-settings` made it one (issue
-  #855). Use `xdg-settings` ([Making Vimma your default browser](guide.md#making-vimma-your-default-browser)).
 - On Omarchy, `xdg-settings set default-web-browser` fails unless `BROWSER` and
-  `XDG_CURRENT_DESKTOP` are cleared for it, Settings always says Vimma is not the default, and a
+  `XDG_CURRENT_DESKTOP` are cleared for it, `omarchy default browser` does not list Vimma, and a
   link from another app may not raise Vimma's window, since Omarchy's launcher looks for a window
   named after the command it ran (issue #855).
 - The Flatpak (`dev.vimma.browser`) is not on Flathub yet (issue #465). Once it is:

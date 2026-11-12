@@ -294,6 +294,9 @@ const NOT_BLANK = /\S/;
 const MOUSEUP_REASON = 4;
 const JS_REASON = 256;
 
+/** How many keydowns a document remembers the focus of, for a late Vimma:Blur (#keys). */
+const KEYS_KEPT = 16;
+
 /**
  * @param {unknown} n
  * @returns {n is number}
@@ -401,6 +404,15 @@ export class VimmaChild extends JSWindowActorChild {
    * so that the parent can tell a report sent before that blur (docs/specs/insert-focus.md).
    */
   #blurGen = 0;
+  /**
+   * The trusted keydowns this document had since its last Vimma:Blur, and for the last
+   * KEYS_KEPT of them, by their number in that count, the element that had focus when each
+   * arrived. The content process handles input before other messages, so a key typed right
+   * after Esc can reach the page before Esc's blur does; the blur then must not take the focus
+   * that key gave (#850, insert-focus behaviour 8). No key itself is kept.
+   * @type {{ count: number, focus: { n: number, el: WeakRef<Element> | null }[] }}
+   */
+  #keys = { count: 0, focus: [] };
   /** @type {WeakRef<HTMLInputElement> | null} the text field a find focused and we blurred */
   #findMatchField = null;
   /**
@@ -536,6 +548,14 @@ export class VimmaChild extends JSWindowActorChild {
           this.#lastField = new WeakRef(el);
         }
         this.#report(el, "focusin");
+        return;
+      }
+      case "keydown": {
+        if (!event.isTrusted) return;
+        const el = deepActiveElement(doc);
+        const keys = this.#keys;
+        keys.focus.push({ n: keys.count++, el: el ? new WeakRef(el) : null });
+        if (keys.focus.length > KEYS_KEPT) keys.focus.shift();
         return;
       }
       case "focusout":
@@ -700,6 +720,23 @@ export class VimmaChild extends JSWindowActorChild {
     return null;
   }
 
+  /**
+   * Whether keys the page handled after Esc's blur was asked for, but before it arrived, moved
+   * the focus (insert-focus behaviour 8). `sent`: the keys the parent let through to this
+   * document before it asked; the ones this document counted beyond that came after. Starts
+   * the count again from nothing, so that a count that drifted (more keys here than the parent
+   * saw) lasts until this blur only; the parent then counts more, and a blur falls back to a
+   * plain one.
+   * @param {unknown} sent
+   * @param {Element | null} el  the focused element now
+   */
+  #keptByLaterKeys(sent, el) {
+    const before = isIndex(sent) ? sent : this.#keys.count;
+    const first = this.#keys.focus.find((k) => k.n === before);
+    this.#keys = { count: 0, focus: [] };
+    return !!first && (first.el?.deref() ?? null) !== el;
+  }
+
   #recheck() {
     // A document that lost focus does not speak for the tab: the one that gained it does.
     if (!this.document.hasFocus()) return;
@@ -762,6 +799,11 @@ export class VimmaChild extends JSWindowActorChild {
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
+        if (this.#keptByLaterKeys(msg.data?.keys, el)) {
+          // The focus a later key gave stays, and decides the mode with this blur's gen.
+          this.#report(el ?? this.document.body, "focusin");
+          return undefined;
+        }
         if (el && el !== this.document.body) /** @type {HTMLElement} */ (el).blur();
         return undefined;
       }

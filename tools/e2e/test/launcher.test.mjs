@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   chmodSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -28,6 +29,7 @@ import {
   launch,
   quitBrowser,
   startSessionBus,
+  stderrTimeline,
   userJs,
   waitForDiscovery,
   waitForSessionSaved,
@@ -723,11 +725,131 @@ describe("launch and teardown (fake browser)", () => {
   });
 });
 
+describe("browser stderr with the time since spawn (issue #901)", () => {
+  it("on a timeout, prints every stderr line with its time since spawn", async () => {
+    const err = await launch({
+      build: {
+        binary: FAKE_BROWSER,
+        env: {
+          FAKE_BROWSER: "never",
+          FAKE_BROWSER_STDERR: "early line",
+          FAKE_BROWSER_LATE_STDERR: "late line",
+          FAKE_BROWSER_LATE_STDERR_MS: "600",
+        },
+      },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 4000,
+      graceMs: 300,
+    }).catch((/** @type {unknown} */ e) => e);
+    expect(err).toBeInstanceOf(Error);
+    const message = /** @type {Error} */ (err).message;
+    expect(message).toMatch(/no usable control socket within 4000 ms/);
+    expect(message).toMatch(/browser stderr with the time since spawn \(spawned at \d{4}-/);
+    const at = (/** @type {string} */ text) => {
+      const m = new RegExp(`^ {2}\\+(\\d+\\.\\d{3}) s {2}${text}$`, "m").exec(message);
+      expect(m, `${text} in:\n${message}`).not.toBeNull();
+      return Number(/** @type {RegExpExecArray} */ (m)[1]);
+    };
+    const early = at("early line");
+    const late = at("late line");
+    expect(late).toBeGreaterThanOrEqual(0.6);
+    expect(early).toBeLessThan(late);
+  });
+
+  it("stamps a line split across chunks with the time its first byte came", () => {
+    let t = 1000;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 1010;
+    timeline.push("first\nsec");
+    t = 1500;
+    timeline.push("ond\nthird\n");
+    t = 2000;
+    timeline.push("unfinished");
+    t = 3000;
+    const report = timeline.format();
+    expect(report.split("\n").slice(1)).toEqual([
+      "  +0.010 s  first",
+      "  +0.010 s  second",
+      "  +0.500 s  third",
+      "  +1.000 s  unfinished",
+      "  (2.000 s since spawn, 1.000 s since the last line)",
+    ]);
+  });
+
+  it("keeps only the last lines, cut to a bounded length, and says how many it dropped", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t, maxLines: 3, maxChars: 5 });
+    for (const line of ["one", "two", "three", "four", "fivefivefive"]) {
+      t += 100;
+      timeline.push(`${line}\n`);
+    }
+    const report = timeline.format();
+    expect(report.split("\n")[0]).toMatch(/2 earlier lines dropped/);
+    expect(report.split("\n").slice(1, 4)).toEqual([
+      "  +0.300 s  three",
+      "  +0.400 s  four",
+      "  +0.500 s  fivef…",
+    ]);
+  });
+
+  it("says so when the browser wrote nothing", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 30_000;
+    expect(timeline.format()).toMatch(/^browser stderr: nothing in the 30\.000 s since spawn/);
+  });
+
+  it("a launch that reaches its socket logs nothing extra", async () => {
+    /** @type {string[]} */
+    const logged = [];
+    const session = await launch({
+      build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER_STDERR: "noise" } },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 300,
+      log: (line) => logged.push(line),
+    });
+    cleanups.push(() => session.teardown());
+    expect(logged).toEqual([]);
+  });
+});
+
 // Ctrl+C while Xvfb was still starting must leave no live Xvfb and no fbdir.
 describe("cancelling while Xvfb starts (fake Xvfb)", () => {
   /** @param {string} record */
   const readRecord = (record) =>
     /** @type {{ pid: number, fbdir: string }} */ (JSON.parse(readFileSync(record, "utf8")));
+
+  // The tests below wait for the record to exist and then read it, so it has to appear whole:
+  // a file written in place exists, empty or half written, before its JSON is all there. A
+  // second link to a file already at the record's path tells the two apart without a race: a
+  // write in place changes that file under the link, a rename puts a new one at the path.
+  it("the fake Xvfb's record is renamed into place, never written into a file at its path", async () => {
+    const dir = tempDir();
+    const fbdir = tempDir();
+    const record = join(dir, "xvfb.json");
+    const earlier = join(dir, "earlier.json");
+    writeFileSync(record, "{}");
+    linkSync(record, earlier);
+    const child = spawn(process.execPath, [FAKE_XVFB, "-displayfd", "1", "-fbdir", fbdir], {
+      env: { ...process.env, FAKE_XVFB_DELAY_MS: "60000", FAKE_XVFB_RECORD: record },
+      stdio: "ignore",
+    });
+    cleanups.push(async () => {
+      child.kill("SIGKILL");
+    });
+    // The fixture writes the record before its screen file, both synchronously.
+    const screen = join(fbdir, "Xvfb_screen0");
+    for (let i = 0; i < 250 && !existsSync(screen); i++) await sleep(20);
+    expect(existsSync(screen)).toBe(true);
+    expect(readFileSync(earlier, "utf8")).toBe("{}");
+    expect(readRecord(record)).toMatchObject({ pid: child.pid, fbdir });
+    expect(readdirSync(dir).sort()).toEqual(["earlier.json", "xvfb.json"]);
+  });
 
   it("teardown during Xvfb startup stops Xvfb and removes its fbdir", async () => {
     const tmpRoot = tempDir();

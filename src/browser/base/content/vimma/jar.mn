@@ -61,6 +61,7 @@ browser.jar:
         content/browser/vimma/host/pdf-ops.mjs            (host/pdf-ops.mjs)
         content/browser/vimma/services/MozillaServices.sys.mjs (services/MozillaServices.sys.mjs)
         content/browser/vimma/services/WakeLock.sys.mjs (services/WakeLock.sys.mjs)
+        content/browser/vimma/services/AppLauncher.sys.mjs (services/AppLauncher.sys.mjs)
         content/browser/vimma/services/ViewedDownloads.sys.mjs (services/ViewedDownloads.sys.mjs)
         content/browser/vimma/workspaces/WorkspaceStore.sys.mjs (workspaces/WorkspaceStore.sys.mjs)
         content/browser/vimma/workspaces/WindowWorkspaces.sys.mjs (workspaces/WindowWorkspaces.sys.mjs)
@@ -91,6 +92,8 @@ browser.jar:
         skin/classic/browser/vimma/firefox-chrome.css     (/browser/themes/shared/vimma/firefox-chrome.css)
         skin/classic/browser/vimma/firefox-pages.css      (/browser/themes/shared/vimma/firefox-pages.css)
         skin/classic/browser/vimma/firefox-pdf.css        (/browser/themes/shared/vimma/firefox-pdf.css)
+        skin/classic/browser/vimma/firefox-empty-states.css (/browser/themes/shared/vimma/firefox-empty-states.css)
+        skin/classic/browser/vimma/firefox-sidebar-promo.css (/browser/themes/shared/vimma/firefox-sidebar-promo.css)
         skin/classic/browser/vimma/statusbar.css          (/browser/themes/shared/vimma/statusbar.css)
         content/browser/vimma/ui/notice.mjs               (ui/notice.mjs)
         skin/classic/browser/vimma/notice.css             (/browser/themes/shared/vimma/notice.css)
@@ -143,6 +146,11 @@ browser.jar:
 % override chrome://browser/skin/sidebar/kit-tabs-devices.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/sidebar/kit-tabs-devices-error.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/sidebar/kit-qr-tabs-devices-empty.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/kit-history-import.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/skin/sidebar/foxy.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/content/firefoxview/history-empty.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/content/firefoxview/synced-tabs-empty.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://browser/content/firefoxview/synced-tabs-error.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/privatebrowsing/kit-pbw.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://browser/skin/privatebrowsing/fox-tail.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/kit-concerned.svg chrome://browser/skin/vimma/empty.svg
@@ -156,3 +164,4 @@ browser.jar:
 % override chrome://global/skin/illustrations/error-malformed-url.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/no-connection.svg chrome://browser/skin/vimma/empty.svg
 % override chrome://global/skin/illustrations/security-error.svg chrome://browser/skin/vimma/empty.svg
+% override chrome://global/content/megalist/icons/cpm-fox-illustration.svg chrome://browser/skin/vimma/empty.svg

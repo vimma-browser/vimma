@@ -302,11 +302,20 @@ export function readAppIni(appDir) {
 }
 
 /**
- * The vimma.desktop file shared by the AppImage, the .deb and the AUR package.
- * @param {{ wmClass: string }} options wmClass: application.ini RemotingName (also Wayland app_id)
+ * The vimma.desktop file shared by the AppImage, the .deb, the .rpm and the PKGBUILD.
+ * @param {{ wmClass: string, launcher?: string }} options wmClass: application.ini RemotingName
+ *   (also Wayland app_id); launcher: the installed vimma-open's absolute path, for a package that
+ *   installs the entry (the AppImage's is rewritten to the .AppImage by whatever integrates it).
  * @returns {string}
  */
-export function desktopEntry({ wmClass }) {
+export function desktopEntry({ wmClass, launcher }) {
+  // Firefox's GNOME shell service finds its own entry by comparing the Exec program, looked up
+  // on PATH, with MOZ_APP_LAUNCHER (which Vimma sets at startup to the vimma-open next to its
+  // binary): only an absolute Exec matches, so Make Default sets this entry and not a userapp-
+  // one (#855). Characters that Exec would need quoted or escaped are refused rather than quoted.
+  if (launcher !== undefined && !/^\/[A-Za-z0-9._/-]+$/.test(launcher)) {
+    throw new Error(`launcher must be an absolute path of [A-Za-z0-9._/-], got: ${launcher}`);
+  }
   const lines = [
     "[Desktop Entry]",
     "Version=1.5",
@@ -315,7 +324,7 @@ export function desktopEntry({ wmClass }) {
     "GenericName=Web Browser",
     "Comment=Browse the web from the keyboard",
     // vimma-open walks /proc to the app that opened the link (spec workspace-routing).
-    `Exec=${LAUNCHER_NAME} %u`,
+    `Exec=${launcher ?? LAUNCHER_NAME} %u`,
     `Icon=${APP}`,
     "Terminal=false",
     "StartupNotify=true",
@@ -948,10 +957,19 @@ function packageIn(work, options) {
     throw new Error(`${options.tarball} has ${APP}/${PACKAGED_APP_FILE}: the tarball carries none`);
   }
   const desktop = desktopEntry({ wmClass: ini.remotingName });
+  // The .deb and the .rpm install vimma-open in /usr/lib/vimma, the PKGBUILD in /opt/vimma.
+  const libDesktop = desktopEntry({
+    wmClass: ini.remotingName,
+    launcher: `/usr/lib/${APP}/${LAUNCHER_NAME}`,
+  });
+  const optDesktop = desktopEntry({
+    wmClass: ini.remotingName,
+    launcher: `/opt/${APP}/${LAUNCHER_NAME}`,
+  });
   // Desktop file ID = RemotingName (X11 WM_CLASS, Wayland app_id, MPRIS), so shells match the
   // window to it without guessing (spec m6-packaging, Settled).
   const desktopId = ini.remotingName;
-  const problems = checkDesktopEntry(desktop);
+  const problems = [desktop, libDesktop, optDesktop].flatMap(checkDesktopEntry);
   if (problems.length) throw new Error(`desktop file: ${problems.join("; ")}`);
 
   installCtl(options.ctl, join(app, CTL_NAME));
@@ -997,7 +1015,7 @@ function packageIn(work, options) {
   rmSync(debRoot, { recursive: true, force: true });
   mkdirSync(debRoot, { recursive: true, mode: 0o755 });
   copyApp(app, join(debRoot, `usr/lib/${APP}`));
-  installShare(debRoot, options.brandDir, desktop, desktopId);
+  installShare(debRoot, options.brandDir, libDesktop, desktopId);
   mkdirSync(join(debRoot, "usr/bin"), { recursive: true, mode: 0o755 });
   symlinkSync(`../lib/${APP}/${APP}`, join(debRoot, `usr/bin/${APP}`));
   installLauncher(join(debRoot, `usr/lib/${APP}/${LAUNCHER_NAME}`));
@@ -1027,7 +1045,7 @@ function packageIn(work, options) {
   rmSync(rpmRoot, { recursive: true, force: true });
   mkdirSync(rpmRoot, { recursive: true, mode: 0o755 });
   copyApp(app, join(rpmRoot, `usr/lib/${APP}`));
-  installShare(rpmRoot, options.brandDir, desktop, desktopId);
+  installShare(rpmRoot, options.brandDir, libDesktop, desktopId);
   mkdirSync(join(rpmRoot, "usr/bin"), { recursive: true, mode: 0o755 });
   symlinkSync(`../lib/${APP}/${APP}`, join(rpmRoot, `usr/bin/${APP}`));
   installLauncher(join(rpmRoot, `usr/lib/${APP}/${LAUNCHER_NAME}`));
@@ -1098,7 +1116,7 @@ function packageIn(work, options) {
       maintainer: options.maintainer,
       repo: options.repo,
       tarballSha256: sha256File(tarball),
-      desktop,
+      desktop: optDesktop,
       desktopId,
       launcher: readFileSync(LAUNCHER, "utf8"),
     };

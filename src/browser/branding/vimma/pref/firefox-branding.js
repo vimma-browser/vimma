@@ -124,6 +124,10 @@ pref("signon.firefoxRelay.feature", "disabled");
 // Firefox's onboarding and default-browser prompt (decision 13): Vimma has its own first run;
 // setting the default browser stays in Settings > General.
 pref("browser.shell.checkDefaultBrowser", false);
+// The History sidebar's import promo for a profile's first 8 days (HistoryController.sys.mjs) is
+// onboarding too, as is Tab Overview's import banner on the same pref; the guide's "Moving over
+// from Firefox or Chrome" covers importing (#897).
+pref("browser.tabs.firefox-view.importHistory.dismissed", true);
 // Error pages without the illustration slot: its images (Firefox's fox) are empty overrides in
 // vimma/jar.mn, and with the slot off the text is centred rather than beside a blank space
 // (aboutNetError.css; firefox-surfaces-trim, step 4c).

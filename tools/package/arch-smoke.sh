@@ -16,8 +16,9 @@
 # downloads the tarball, verifies its SHA-256 and installs; `vimma --version` prints the expected
 # line; vimma-ctl on PATH names the same Vimma version; /opt/vimma/is-packaged-app says
 # vimma-package=pkgbuild-release; vimma-open is the repository's launcher byte for byte; the
-# desktop file passes desktop-file-validate; and, for a real build (not
-# --stub), Vimma starts headless and takes a screenshot, so the PKGBUILD's depends are enough.
+# desktop file passes desktop-file-validate and runs /opt/vimma/vimma-open by that path; and,
+# for a real build (not --stub), Vimma starts headless and takes a screenshot, so the PKGBUILD's
+# depends are enough.
 set -euo pipefail
 
 # archlinux:base-devel as published on 2026-10-12. The run updates the system with pacman first,
@@ -64,6 +65,8 @@ if [ "${1:-}" = "--inside" ]; then
   test -x /usr/bin/vimma-open
   cmp /opt/vimma/vimma-open /repo/tools/package/vimma-open.sh
   desktop-file-validate /usr/share/applications/vimma-vimma.desktop
+  # Firefox's shell service finds its own entry only by the Exec program's exact path (#855).
+  grep -qx 'Exec=/opt/vimma/vimma-open %u' /usr/share/applications/vimma-vimma.desktop
   test -f /usr/share/icons/hicolor/128x128/apps/vimma.png
   if [ "$real" = 1 ]; then
     # As the .deb smoke in release.yml: the first run creates the profile, since --screenshot on

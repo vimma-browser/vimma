@@ -47,12 +47,32 @@ Their accent was Firefox's violet, not the theme's.
 4. A prompt over a tab, a prompt in a window of its own, and the dialogs Settings opens are on
    `--vimma-bg-dark` with `--vimma-fg` text; the main button is `--vimma-mode-normal` with
    `--vimma-mode-normal-fg` text, the others the text colour tinted.
+   (Since changed: the import wizard Settings shows for Import browser data is such a dialog,
+   bordered `--vimma-muted`; its list of browsers has a menu's surface, text and border
+   (behaviour 2), the chosen browser on `--vimma-selection` with `--vimma-fg-bright`, and a
+   hovered entry tinted with the text colour so that it stays apart from the chosen one. A
+   hovered or pressed button that is not the main one is the text colour tinted on every page
+   and dialog, where Nova tints it violet. The wizard in a window of its own (at startup or a
+   profile refresh) and in Firefox View keeps Firefox's colours, as those documents are not
+   themed. Issue [#905](https://github.com/vimma-browser/vimma/issues/905).) (Since changed:
+   Tab Overview is themed, behaviour 5; the wizard its History view opens takes the theme's
+   buttons and checkboxes from its tokens, while its dialog and list of browsers sit in the
+   view's shadow root, out of the page sheet's reach, and keep the UA's Canvas and CanvasText
+   and the system's Menu colours. Issue
+   [#912](https://github.com/vimma-browser/vimma/issues/912).)
 5. Firefox's privileged pages listed in Summary, and the print settings, are on `--vimma-bg`,
    their cards on `--vimma-bg-dark` bordered `--vimma-muted`, their text `--vimma-fg` and
    `--vimma-fg-dim`, their links `--vimma-text-accent`, their accent (the selected category,
    checkboxes, toggles, primary buttons, the selected row) `--vimma-mode-normal` with
    `--vimma-mode-normal-fg` text. Every design token not mapped takes its light or dark value
    from the theme's colour scheme.
+   (Since changed: Tab Overview, `about:firefoxview`, is one of these pages: its page on
+   `--vimma-bg`, its cards on `--vimma-bg-dark`, their links `--vimma-text-accent`, and the
+   selected item of its navigation the accent, where Nova painted Firefox's violet pill. The
+   History sidebar's import promo, shown again with
+   `browser.tabs.firefox-view.importHistory.dismissed` set to `false`, is a card on `--vimma-bg`
+   bordered `--vimma-muted` with `--vimma-fg` text instead of Firefox's violet. Issue
+   [#912](https://github.com/vimma-browser/vimma/issues/912).)
 6. Settings' default-browser card shows its text and button without Firefox's mascot.
 7. All of it follows a theme change (`omarchy-theme-set`, `:theme`) without reopening the surface.
 8. With the system's high-contrast setting on (`prefers-contrast` or `forced-colors`), every
@@ -129,7 +149,25 @@ var(--vimma-color-scheme)`, so that every token left unmapped takes its own ligh
    `document-element-inserted`, before they are styled, as the sidebar's documents are. The
    system-principal check is there so that no web page is ever touched. Rejected: every
    system-principal document, because DevTools and other chrome documents have their own
-   themes.
+   themes. (Since changed: `firefoxview` joins `THEMED_PAGES`; its entry has
+   `IS_SECURE_CHROME_UI` and neither `URI_CAN_LOAD_IN_CHILD` nor
+   `URI_MUST_LOAD_IN_CHILD` (its `{"firefoxview", …}` entry in `AboutRedirector.cpp`), so it loads
+   in the parent process with the system principal. It paints its page and cards from the new
+   tab page's tokens, which it sets itself (`firefoxview.css`: `--newtab-background-color`,
+   `--newtab-background-color-secondary`, `--newtab-text-primary-color`,
+   `--newtab-primary-action-background`), so
+   `firefox-pages.css` points those at Vimma's as well; no other page it reaches reads them.
+   Issue [#912](https://github.com/vimma-browser/vimma/issues/912).)
+   (Since changed: the History sidebar's import promo is a `moz-promo` of type `vibrant`, whose
+   colours are tokens set on `:host` in its own shadow root (`moz-promo.tokens.css`, built from
+   `--color-violet-*`), inside `sidebar-history`'s shadow root. No author sheet of the document
+   reaches it, and a sheet adopted into its shadow root would need a hook after Lit renders it.
+   `ThemeHost` loads `firefox-sidebar-promo.css` as an agent sheet into the sidebar's documents
+   of a themed window: a document's agent sheets apply inside its shadow trees, and their
+   `!important` declarations win over the shadow root's author rules. It sets only the promo's
+   four `--promo-*-vibrant` tokens, inside the high-contrast guard. Rejected: remapping
+   `--color-violet-*` on the sidebar documents' root, because those tokens also feed Nova's
+   buttons, text and accent. Issue [#912](https://github.com/vimma-browser/vimma/issues/912).)
 6. **The mascot is hidden, not replaced.** `moz-promo` cards whose image is a
    `illustrations/kit-*` file get `--promo-image-size: 0`, because the image is Mozilla's
    branding and the card reads the same without it. Rejected: a Vimma image in its place,
@@ -139,7 +177,11 @@ var(--vimma-color-scheme)`, so that every token left unmapped takes its own ligh
    buttons in the `<dialog>`'s shadow root, where `::part(dialog-button)` cannot select the
    default one, so one sheet is adopted into that shadow root (as the sidebar's trees get one)
    with the tinted and primary looks. It is decided by the window having no embedder, because
-   the `subdialog` attribute arrives only after the document loads.
+   the `subdialog` attribute arrives only after the document loads. (Since changed: the import
+   wizard's list of browsers is a XUL `<panel>` in the `<migration-wizard>`'s shadow root, which
+   the wizard's own sheet fills with the system's `Menu` colour, so a sheet is adopted into that
+   shadow root as well, when the wizard asks for its state (`MigrationWizard:RequestState`),
+   before its dialog shows. Issue [#905](https://github.com/vimma-browser/vimma/issues/905).)
 8. **`<select>` drop-downs keep the page's colours.** `#ContentSelectDropdown > menupopup` is
    excluded, because it belongs to the page and Firefox fills it from the `<select>`'s own
    styles.
@@ -152,6 +194,17 @@ var(--vimma-color-scheme)`, so that every token left unmapped takes its own ligh
 No new surface: the change adds CSS to documents of Firefox's own front end, through the same
 `windowUtils.loadSheetUsingURIString` author sheets used for the sidebar. No script runs in those
 documents and nothing is read from them. The system-principal check keeps web pages out.
+(Since changed: each themed page's window has one capturing `MigrationWizard:RequestState`
+listener, added from the parent's own code, that reads only the event target's local name and
+shadow root and adopts a constant sheet into a `<migration-wizard>`'s shadow root; it parses no
+page content and restyles none of the wizard's status, error or permission messages. Issue
+[#905](https://github.com/vimma-browser/vimma/issues/905).)
+(Since changed: Tab Overview gets the same author sheets as the other privileged pages, and the
+sidebar's documents one more agent sheet, `firefox-sidebar-promo.css`; both are constant files
+loaded only into parent-process, system-principal documents, never a web page. They change
+colours only: no security or permission UI lives in Tab Overview or the promo, and under high
+contrast Firefox's own colours stay. Issue
+[#912](https://github.com/vimma-browser/vimma/issues/912).)
 
 ## Tests
 
@@ -163,6 +216,14 @@ documents and nothing is read from them. The system-principal check keeps web pa
   a `drawSnapshot`), and the hidden mascot.
 - Same file, `high_contrast_keeps_firefox_colours`: with `ui.useAccessibilityTheme` the find bar
   and `about:preferences` keep Firefox's colours.
+- `tests/browser/browser_vimma_firefox_wizard_theme.js` (since added, #905): the import wizard's
+  dialog, text, buttons, checkboxes and list of browsers in the same three themes and after it
+  is reopened, and Firefox's colours with high contrast. The wizard reads only Firefox's test
+  migrator.
+- `tests/browser/browser_vimma_firefoxview_theme.js` (since added, #912): Tab Overview's page
+  (computed and painted), cards, links, accent, selected and other navigation items and button
+  tints, and the History sidebar's import promo, in the same three themes with Nova on; with
+  high contrast both keep Firefox's colours.
 - `tools/test/chrome-css.test.mjs`: every Firefox text-colour token the sheets set
   (`--*text-color*`, `--*link-color*`, `--*icon-color*`, `--*icon-fill*`) is set to a Vimma
   text token whose contrast `packages/vimma-core/test/a11y.test.mjs` checks.

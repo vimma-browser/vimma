@@ -71,6 +71,10 @@ own configuration allows; Vimma does not confine them, and the window states whi
    and a `PATH` entry that is not a shim is listed instead when there is one, because it runs
    the CLI without one more program in between. A shim stays listed when it is all `PATH` has,
    because running its link works.
+   (Since changed: a CLI whose `--version` is killed after 5 s is listed as
+   `codex gave no version in 5 s · /usr/bin/codex` rather than with an unknown version, because a
+   first start after an install or on a busy machine can take that long, and it can still be
+   picked; described in docs/guide.md, "Using an agent CLI in the chat window".)
 2. **The path is confirmed, not configured.** Picking a CLI stores its absolute path, as setup
    listed it, in the pref `vimma.agent.cli.<name>.path` (C4). `config.toml` may list a CLI provider by name and model
    only:

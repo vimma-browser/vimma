@@ -2882,6 +2882,16 @@ export const VimmaHost = {
    * @param {KeyboardEvent} e
    */
   _onKeyDownAfter(state, e) {
+    // Chrome left the key alone: it goes on to the focused remote page (insert-focus
+    // behaviour 8). Not a reply, which the page has had already.
+    const keyBrowser = this._focusedBrowser(state.win);
+    if (
+      /** @type {any} */ (keyBrowser)?.isRemoteBrowser &&
+      !(/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) &&
+      !(/** @type {any} */ (e).defaultPreventedByChrome)
+    ) {
+      VimmaActors.keySent(keyBrowser);
+    }
     const ours =
       /** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent || editAfterPage.has(e);
     if (!ours || e.defaultPrevented) return;

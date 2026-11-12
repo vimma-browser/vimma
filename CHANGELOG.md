@@ -4,6 +4,22 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+## [0.1.18](https://github.com/vimma-browser/vimma/compare/v0.1.17...v0.1.18) · Firefox 160.0 (2026-11-11)
+
+
+### Fixed
+
+* **insert:** a key pressed right after esc keeps the focus it gave ([#883](https://github.com/vimma-browser/vimma/issues/883)) ([32908fa](https://github.com/vimma-browser/vimma/commit/32908fa838ff394dc03b9ea34f715093c525edd2)), closes [#850](https://github.com/vimma-browser/vimma/issues/850)
+* **scroll:** scroll keys move a cookie banner's settings list, not the page behind it ([#869](https://github.com/vimma-browser/vimma/issues/869)) ([72a8b2c](https://github.com/vimma-browser/vimma/commit/72a8b2c9940e232a862ac8d6f5bcd187dfd095ec)), closes [#864](https://github.com/vimma-browser/vimma/issues/864)
+* **settings:** hide firefox controls that vimma manages itself ([#880](https://github.com/vimma-browser/vimma/issues/880)) ([bf93252](https://github.com/vimma-browser/vimma/commit/bf93252820b27302544ed503cf7fe6999e190f13)), closes [#866](https://github.com/vimma-browser/vimma/issues/866)
+* **start:** open the start page for typed firefox pages without a load race ([#881](https://github.com/vimma-browser/vimma/issues/881)) ([373aaa7](https://github.com/vimma-browser/vimma/commit/373aaa728d2eb9e1f19934d19fc618fb7c181d6e)), closes [#863](https://github.com/vimma-browser/vimma/issues/863)
+* **update:** pass the app name firefox 160's make_full_update.sh requires ([#875](https://github.com/vimma-browser/vimma/issues/875)) ([7b46573](https://github.com/vimma-browser/vimma/commit/7b4657322b2de4a13d369edfd15919ccfabd7498))
+
+
+### Changed
+
+* Firefox 160.0 ([MFSA 2026-125](https://www.mozilla.org/en-US/security/advisories/mfsa2026-125/)) ([#872](https://github.com/vimma-browser/vimma/issues/872)) ([9c7eaa7](https://github.com/vimma-browser/vimma/commit/9c7eaa709f0c9a98242256b0c5d8f009a5c61084))
+
 ## [0.1.17](https://github.com/vimma-browser/vimma/compare/v0.1.16...v0.1.17) · Firefox 159.0.1 (2026-11-07)
 
 

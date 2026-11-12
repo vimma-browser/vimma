@@ -43,6 +43,9 @@ support-files = [
   "file_vimma_consent.html",
 ]
 
+["browser_vimma_hints_wizard.js"]
+support-files = ["file_vimma_hints.html"]
+
 ["browser_vimma_element.js"]
 support-files = [
   "file_vimma_element.html",
@@ -79,6 +82,8 @@ support-files = ["file_vimma_copy_motions.html"]
 
 ["browser_vimma_wake_lock.js"]
 
+["browser_vimma_app_launcher.js"]
+
 ["browser_vimma_crash_reporter.js"]
 # Artifact builds run Mozilla's libxul, built with the crash reporter (ADR-010).
 skip-if = ["artifact"]
@@ -101,6 +106,11 @@ support-files = ["file_vimma_plain.html"]
 
 ["browser_vimma_firefox_surfaces_theme.js"]
 support-files = ["file_vimma_plain.html"]
+
+["browser_vimma_firefox_wizard_theme.js"]
+support-files = ["file_vimma_plain.html"]
+
+["browser_vimma_firefoxview_theme.js"]
 
 ["browser_vimma_square_corners.js"]
 

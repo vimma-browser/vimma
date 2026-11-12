@@ -1165,6 +1165,13 @@ Written first and seen to fail.
   it under Xvfb and sees it offer and stage the new release, with no person acting in between.
   Proven twice, as M7's gate was.
 
+  (Since changed: until the rehearsal runs, the install side of it is checked by hand after a
+  release: the previous release's tarball and AppImage, from its GitHub Release, take the
+  published release from `updates.vimma.dev` with the real update key and keep their profile;
+  docs/runbook.md, "Checking an update on real installs". The rehearsal itself, the release chain
+  with no person acting and a scheduled job that installs and checks the previous release, is
+  still to be run.)
+
 ## Docs and changelog
 
 - `docs/guide.md`: a new "Updates" section (after "Privacy defaults"): how each install type
