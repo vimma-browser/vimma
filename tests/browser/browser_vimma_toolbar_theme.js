@@ -140,18 +140,21 @@ async function assertToolbarFollowsTheTheme(label, tab) {
   await until(() => gURLBar.focused, `${label}: I`);
   EventUtils.sendString("about:");
   // The heuristic row comes first, selected; the about: pages come in later. Wait for one, so
-  // the plain-row checks below always run (#893).
+  // the plain-row checks below always run (#893). A row left from the last query is [stale]
+  // until the view removes it, so it does not count.
   await until(
     () =>
       gURLBar.view.isOpen &&
       !!gURLBar.querySelector(".urlbarView-row[selected]") &&
-      !!gURLBar.querySelector(".urlbarView-row:not([selected])"),
+      !!gURLBar.querySelector(".urlbarView-row:not([selected], [stale])"),
     `${label}: the suggestions open, the first selected, more under it`,
   );
   Assert.equal(backdrop(navBar), surface, `${label}: the minimal bar is on --vimma-bg-dark`);
   Assert.equal(style(fieldBox).backgroundColor, field, `${label}: the open field is --vimma-bg`);
   const rows = gURLBar.querySelectorAll(".urlbarView-row");
-  const plain = /** @type {Element} */ ([...rows].find((r) => !r.hasAttribute("selected")));
+  const plain = /** @type {Element} */ (
+    [...rows].find((r) => !r.hasAttribute("selected") && !r.hasAttribute("stale"))
+  );
   const selected = /** @type {Element} */ (gURLBar.querySelector(".urlbarView-row[selected]"));
   Assert.equal(backdrop(plain), field, `${label}: a suggestion is on --vimma-bg`);
   Assert.equal(style(plain).color, text, `${label}: its text is --vimma-fg`);
