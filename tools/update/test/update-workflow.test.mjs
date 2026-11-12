@@ -218,12 +218,12 @@ describe("update-publish.yml", () => {
     );
     expect(call.match(/^ {6}[A-Z_]+:$/gm)).toEqual(["      UPDATES_DEPLOY_KEY:"]);
     const callers = readdirSync(new URL("../../../.github/workflows/", import.meta.url))
+      .filter((f) => f !== "update-publish.yml")
       .map((f) => readFileSync(new URL(`../../../.github/workflows/${f}`, import.meta.url), "utf8"))
       .join("\n");
     expect(callers).not.toMatch(/secrets: inherit/);
-    expect(callers.split("UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}").length - 1).toBe(
-      1,
-    );
+    expect(callers.match(/UPDATES_DEPLOY_KEY:/g)).toEqual(["UPDATES_DEPLOY_KEY:"]);
+    expect(callers).toContain("UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}");
   });
 
   it("the deploy key lives in its own environment and reaches only the push steps", () => {

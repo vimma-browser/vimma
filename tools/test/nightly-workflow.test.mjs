@@ -429,13 +429,15 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
     expect(job("build").needs).toBe("changes");
   });
 
-  it("a skipped day starts no job in the build environment and none that reads the key", () => {
+  it("a skipped day starts no job in the build environment and none that reads the Safe Browsing key", () => {
     for (const id of nightly("schedule", UNCHANGED).started) {
       expect(job(id).environment, id).toBeUndefined();
       // The deploy key passed by name to the manifest's call is the one secret named here.
       const { secrets, ...rest } = job(id);
       expect(JSON.stringify(rest), id).not.toMatch(/SAFEBROWSING|secrets\./);
-      expect(JSON.stringify(secrets ?? {}), id).not.toMatch(/SAFEBROWSING/);
+      expect(secrets ?? {}, id).toEqual(
+        id === "manifest" ? { UPDATES_DEPLOY_KEY: "${{ secrets.UPDATES_DEPLOY_KEY }}" } : {},
+      );
     }
   });
 
