@@ -47,6 +47,11 @@ Their accent was Firefox's violet, not the theme's.
 4. A prompt over a tab, a prompt in a window of its own, and the dialogs Settings opens are on
    `--vimma-bg-dark` with `--vimma-fg` text; the main button is `--vimma-mode-normal` with
    `--vimma-mode-normal-fg` text, the others the text colour tinted.
+   (Since changed: the import wizard Settings shows for Import browser data is such a dialog,
+   bordered `--vimma-muted`; its list of browsers has a menu's colours, behaviour 2, the chosen
+   browser being the active item. A hovered or pressed button that is not the main one is the
+   text colour tinted on every page and dialog, where Nova tints it violet. Issue
+   [#905](https://github.com/vimma-browser/vimma/issues/905).)
 5. Firefox's privileged pages listed in Summary, and the print settings, are on `--vimma-bg`,
    their cards on `--vimma-bg-dark` bordered `--vimma-muted`, their text `--vimma-fg` and
    `--vimma-fg-dim`, their links `--vimma-text-accent`, their accent (the selected category,
@@ -139,7 +144,11 @@ var(--vimma-color-scheme)`, so that every token left unmapped takes its own ligh
    buttons in the `<dialog>`'s shadow root, where `::part(dialog-button)` cannot select the
    default one, so one sheet is adopted into that shadow root (as the sidebar's trees get one)
    with the tinted and primary looks. It is decided by the window having no embedder, because
-   the `subdialog` attribute arrives only after the document loads.
+   the `subdialog` attribute arrives only after the document loads. (Since changed: the import
+   wizard's list of browsers is a XUL `<panel>` in the `<migration-wizard>`'s shadow root, which
+   the wizard's own sheet fills with the system's `Menu` colour, so a sheet is adopted into that
+   shadow root as well, when the wizard asks for its state (`MigrationWizard:RequestState`),
+   before its dialog shows. #905.)
 8. **`<select>` drop-downs keep the page's colours.** `#ContentSelectDropdown > menupopup` is
    excluded, because it belongs to the page and Firefox fills it from the `<select>`'s own
    styles.
@@ -161,7 +170,10 @@ documents and nothing is read from them. The system-principal check keeps web pa
   tab-modal and a window-modal alert, and `about:preferences`, `about:addons`,
   `about:downloads`, `about:support`, `about:config` (tokens, text, and the canvas painted from
   a `drawSnapshot`), and the hidden mascot.
-- Same file, `high_contrast_keeps_firefox_colours`: with `ui.useAccessibilityTheme` the find bar
+- `tests/browser/browser_vimma_firefox_wizard_theme.js` (since added, #905): the import wizard's
+  dialog, text, buttons, checkboxes and list of browsers in the same three themes, and Firefox's
+  colours with high contrast. The wizard reads only Firefox's test migrator.
+- `browser_vimma_firefox_surfaces_theme.js`, `high_contrast_keeps_firefox_colours`: with `ui.useAccessibilityTheme` the find bar
   and `about:preferences` keep Firefox's colours.
 - `tools/test/chrome-css.test.mjs`: every Firefox text-colour token the sheets set
   (`--*text-color*`, `--*link-color*`, `--*icon-color*`, `--*icon-fill*`) is set to a Vimma

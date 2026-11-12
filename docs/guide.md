@@ -1128,7 +1128,8 @@ search box, the open panel's button in the launcher and the lists' scrollbars in
 an open sidebar recolours with the rest of the window. So do Firefox's other surfaces: the find
 bar, the menu bar (`F10`) and every menu, the dialogs a page opens (`alert`, `confirm`,
 `prompt`), the print settings, the [PDF viewer](#pdf-viewer)'s toolbar, menus and the space
-around its pages, and Firefox's own pages: Settings and its dialogs, Add-ons,
+around its pages, and Firefox's own pages: Settings and its dialogs (the import wizard and its
+list of browsers included), Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
 `about:profiles` and `about:processes`. Their accent (the selected category, checkboxes, main
 buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and

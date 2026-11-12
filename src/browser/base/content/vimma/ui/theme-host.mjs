@@ -432,6 +432,56 @@ const DIALOG_BUTTON_RULES = `
   }
 }`;
 
+/**
+ * Firefox's import wizard (<migration-wizard>, in Settings' #migrationWizardDialog) shows its
+ * browser list as a XUL <panel> in its shadow root, where no document sheet reaches. The panel
+ * takes the system's Menu and MenuText (popup.css, loaded by the wizard's own sheet), and the
+ * chosen browser is a pressed button's colour (migration-wizard.css, panel-item.selected). One
+ * sheet adopted into that shadow root gives the list a menu's colours (firefox-chrome.css): the
+ * picker's surface, and the chosen browser a selected row. Custom properties inherit into the
+ * shadow tree, so it follows theme changes.
+ */
+const WIZARD_RULES = `
+@media not ((prefers-contrast) or (forced-colors)) {
+  panel {
+    --panel-background-color: var(--vimma-bg-dark) !important;
+    --panel-text-color: var(--vimma-fg) !important;
+    --panel-border-color: var(--vimma-muted) !important;
+    --panel-border-radius: var(--vimma-radius, 0) !important;
+    color-scheme: var(--vimma-color-scheme) !important;
+  }
+  panel-item.selected {
+    background-color: var(--vimma-selection) !important;
+    color: var(--vimma-fg-bright) !important;
+  }
+}`;
+
+/**
+ * The import wizard is built when Settings first opens its dialog, and asks for its state
+ * (MigrationWizard:RequestState, bubbling from the wizard) before the dialog is shown, so its
+ * shadow root gets WIZARD_RULES then, once.
+ * @param {Document} doc  one of Firefox's pages, once parsed
+ */
+function colourWizards(doc) {
+  const win = /** @type {any} */ (doc.defaultView);
+  if (!win) return;
+  /** @type {WeakSet<ShadowRoot>} */
+  const done = new WeakSet();
+  win.addEventListener(
+    "MigrationWizard:RequestState",
+    (/** @type {Event} */ event) => {
+      const wizard = /** @type {Element} */ (event.target);
+      const root = wizard?.localName === "migration-wizard" ? wizard.shadowRoot : null;
+      if (!root || done.has(root)) return;
+      done.add(root);
+      const sheet = new win.CSSStyleSheet();
+      sheet.replaceSync(WIZARD_RULES);
+      root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
+    },
+    true,
+  );
+}
+
 /** @param {Document} doc  a prompt in a window of its own, once parsed */
 function colourDialogButtons(doc) {
   const win = /** @type {any} */ (doc.defaultView);
@@ -523,6 +573,7 @@ function attachFirefoxPage(doc) {
       Services.prefs.getBoolPref("vimma.startpage.newtab", false),
     );
     colourDialogButtons(parsed);
+    colourWizards(parsed);
   });
 }
 
