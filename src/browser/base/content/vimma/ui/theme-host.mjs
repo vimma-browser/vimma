@@ -36,6 +36,8 @@ const TOOLBAR_SHEET = "chrome://browser/skin/vimma/firefox-toolbar.css";
  * firefox-surfaces-theme). */
 const CHROME_SHEET = "chrome://browser/skin/vimma/firefox-chrome.css";
 const PAGES_SHEET = "chrome://browser/skin/vimma/firefox-pages.css";
+/** Tab Overview's and the sidebar's empty states without their picture's column (#912). */
+const EMPTY_STATES_SHEET = "chrome://browser/skin/vimma/firefox-empty-states.css";
 /**
  * Firefox's pages that load in the parent process with the system principal, by about: name
  * (nsAboutRedirector.cpp, AboutRedirector.cpp: IS_SECURE_CHROME_UI without
@@ -170,6 +172,8 @@ const windows = new Map();
  * firefox-sidebar-theme), by document: the sidebar's window object outlives its documents
  */
 const pages = new Map();
+/** The documents that have firefox-empty-states.css. @type {WeakSet<Document>} */
+const emptyStateDocs = new WeakSet();
 /** Sidebar documents are found by this topic (onDocumentInserted) while a window is themed. */
 const DOCUMENT_TOPIC = "document-element-inserted";
 let observingDocuments = false;
@@ -527,6 +531,25 @@ function attachFirefoxPage(doc) {
 }
 
 /**
+ * Tab Overview and the sidebar's documents, which show Firefox's empty states (#912), get
+ * firefox-empty-states.css as an agent sheet: the picture's column sits in shadow roots, inside
+ * further shadow roots, that neither an author sheet nor ::part reaches, while a document's agent
+ * sheets apply inside its shadow trees. Only these parent-process system-principal documents, so
+ * no web page can tell Vimma by it. Whether or not a window is themed: the pictures are always
+ * empty.
+ * @param {Document} doc
+ * @param {boolean} inSidebar
+ */
+function hideEmptyStatePictures(doc, inSidebar) {
+  const win = doc?.defaultView;
+  if (!doc || !win || emptyStateDocs.has(doc)) return;
+  if (!(/** @type {any} */ (doc).nodePrincipal?.isSystemPrincipal)) return;
+  if (!inSidebar && !/^about:firefoxview(?:[#?]|$)/i.test(doc.documentURI ?? "")) return;
+  win.windowUtils.loadSheetUsingURIString(EMPTY_STATES_SHEET, win.windowUtils.AGENT_SHEET);
+  emptyStateDocs.add(doc);
+}
+
+/**
  * "document-element-inserted": a document got its root element, before it is styled or painted.
  * The sidebar documents' events do not reach the window, so this observer, not a listener on
  * <browser id="sidebar">, is how they are found: the panel's own document (not a frame inside it)
@@ -536,6 +559,7 @@ function attachFirefoxPage(doc) {
 function onDocumentInserted(subject) {
   const doc = /** @type {Document} */ (subject);
   const frame = doc.defaultView?.browsingContext?.embedderElement;
+  if (frame) hideEmptyStatePictures(doc, frame.id === "sidebar");
   if (frame?.id === "sidebar") {
     const owner = frame.ownerDocument.defaultView;
     if (owner && windows.has(owner)) attachSidebarPage(doc);
@@ -577,7 +601,9 @@ export const ThemeHost = {
       observingDocuments = true;
     }
     // A panel already open (restored with the window) has missed its document's insertion.
-    attachSidebarPage(/** @type {any} */ (win.document.getElementById("sidebar"))?.contentDocument);
+    const panel = /** @type {any} */ (win.document.getElementById("sidebar"))?.contentDocument;
+    attachSidebarPage(panel);
+    hideEmptyStatePictures(panel, true);
     start();
   },
 

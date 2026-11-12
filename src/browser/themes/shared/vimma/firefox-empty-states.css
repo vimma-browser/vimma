@@ -1,0 +1,13 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Tab Overview's and the sidebar's empty states (fxview-empty-state), as an agent sheet that
+ * ui/theme-host.mjs loads into those documents only. Every picture they load serves Vimma's empty
+ * image (jar.mn's overrides, spec firefox-surfaces-trim decision 9), so the picture's column,
+ * 150-250px beside the text on Recent browsing's cards, only pushes the text off-centre.
+ * !important: the shadow root's own author rules would otherwise win. */
+
+div.image-container[part="image-container"] {
+  display: none !important;
+}
