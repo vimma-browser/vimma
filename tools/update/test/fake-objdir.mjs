@@ -32,7 +32,9 @@ export const PACKED = [
 export function cc(out, source, args = []) {
   const src = `${out}.c`;
   writeFileSync(src, source);
-  execFileSync("cc", ["-o", out, src, ...args], { stdio: "pipe" });
+  // Ubuntu's toolchain links with --as-needed, which drops a library no symbol is taken from;
+  // these stand-ins take none, and must keep their dependencies as the real ones do.
+  execFileSync("cc", ["-o", out, src, "-Wl,--no-as-needed", ...args], { stdio: "pipe" });
   rmSync(src);
 }
 
