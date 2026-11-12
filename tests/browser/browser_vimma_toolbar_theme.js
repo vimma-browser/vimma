@@ -81,12 +81,20 @@ function colourVar(el, name) {
   return out;
 }
 
-/** The colour that shows behind `el`: its own background or the first opaque ancestor's. */
+/**
+ * The colour that shows behind `el`: its own background or the first opaque ancestor's. The
+ * suggestions' backdrop is not an ancestor: the view is a popover that paints its rows over a
+ * child of its own, `.urlbarView-background` (z-index -1, urlbar.css), so a view counts that
+ * child's background as its own (#893).
+ */
 function backdrop(/** @type {Element} */ el) {
   /** @type {Element | null} */
   let node = el;
   while (node) {
-    const bg = style(node).backgroundColor;
+    const layer = node.classList.contains("urlbarView")
+      ? node.querySelector(":scope > .urlbarView-background")
+      : null;
+    const bg = style(layer ?? node).backgroundColor;
     if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
     node = node.parentElement ?? /** @type {any} */ (node.getRootNode()).host ?? null;
   }
@@ -131,19 +139,22 @@ async function assertToolbarFollowsTheTheme(label, tab) {
   EventUtils.synthesizeKey("I", { shiftKey: true });
   await until(() => gURLBar.focused, `${label}: I`);
   EventUtils.sendString("about:");
+  // The heuristic row comes first, selected; the about: pages come in later. Wait for one, so
+  // the plain-row checks below always run (#893).
   await until(
-    () => gURLBar.view.isOpen && !!gURLBar.querySelector(".urlbarView-row[selected]"),
-    `${label}: the suggestions open, the first selected`,
+    () =>
+      gURLBar.view.isOpen &&
+      !!gURLBar.querySelector(".urlbarView-row[selected]") &&
+      !!gURLBar.querySelector(".urlbarView-row:not([selected])"),
+    `${label}: the suggestions open, the first selected, more under it`,
   );
   Assert.equal(backdrop(navBar), surface, `${label}: the minimal bar is on --vimma-bg-dark`);
   Assert.equal(style(fieldBox).backgroundColor, field, `${label}: the open field is --vimma-bg`);
   const rows = gURLBar.querySelectorAll(".urlbarView-row");
-  const plain = [...rows].find((r) => !r.hasAttribute("selected"));
+  const plain = /** @type {Element} */ ([...rows].find((r) => !r.hasAttribute("selected")));
   const selected = /** @type {Element} */ (gURLBar.querySelector(".urlbarView-row[selected]"));
-  if (plain) {
-    Assert.equal(backdrop(plain), field, `${label}: a suggestion is on --vimma-bg`);
-    Assert.equal(style(plain).color, text, `${label}: its text is --vimma-fg`);
-  }
+  Assert.equal(backdrop(plain), field, `${label}: a suggestion is on --vimma-bg`);
+  Assert.equal(style(plain).color, text, `${label}: its text is --vimma-fg`);
   Assert.equal(
     style(selected).backgroundColor,
     selection,
