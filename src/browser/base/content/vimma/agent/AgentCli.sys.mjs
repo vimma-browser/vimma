@@ -30,6 +30,7 @@ import {
   refusedText,
   shimText,
   taskPrompt,
+  VERSION_MS,
   versionText,
 } from "../core/agent-cli.mjs";
 
@@ -57,8 +58,6 @@ export const pathPref = (id) => `vimma.agent.cli.${id}.path`;
  * is checked as the CLI's own program is, since the CLI runs it with the ticket.
  */
 export const VIMMA_CTL_PREF = "vimma.agent.cli.vimmaCtl";
-/** `--version` gets this long before it is killed (Behaviour 1). */
-const VERSION_MS = 5000;
 /** How long a CLI may take to list its MCP servers before a run, and how much of it is read. */
 const SERVERS_MS = 15_000;
 const SERVERS_LIST_CHARS = 256 * 1024;
@@ -420,11 +419,12 @@ async function tail(pipe, keep = CLI_STREAM_LIMITS.stderr) {
 /**
  * A short run of a CLI's program with fixed arguments from its CLIS entry (its version, its
  * MCP servers): no shell, no stdin, in `workdir`, the last `keep` characters of its output
- * kept, killed after `ms`. Null when it could not start or took longer. Its callers pass only
- * a path `inspect` passed.
+ * kept, killed after `ms`: then `late`, with no output and no exit code. Null when it could not
+ * start. Its callers pass only a path `inspect` passed.
  * @param {string} path @param {readonly string[]} args
  * @param {{ workdir: string, keep: number, ms?: number }} o
- * @returns {Promise<{ stdout: string, stderr: string, exitCode: number } | null>}
+ * @returns {Promise<{ stdout: string, stderr: string, exitCode: number | null, late?: true }
+ *   | null>}
  */
 async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
   /** @type {any} */
@@ -448,7 +448,7 @@ async function runFixed(path, args, { workdir, keep, ms = VERSION_MS }) {
     const done = await Promise.race([Promise.all([out, err, proc.wait()]), late]);
     if (!done) {
       proc.kill();
-      return null;
+      return { stdout: "", stderr: "", exitCode: null, late: true };
     }
     const [stdout, stderr, { exitCode }] = /** @type {[string, string, any]} */ (done);
     return { stdout, stderr, exitCode };
@@ -615,7 +615,7 @@ export const AgentCli = {
       out.push({
         cli: cli.id,
         path,
-        label: versionText(cli, version ?? "", path, shim),
+        label: versionText(cli, version?.stdout ?? "", path, shim, version?.late),
         shim: r.dispatcher,
         problem: null,
       });
@@ -645,10 +645,12 @@ export const AgentCli = {
   },
 
   /**
-   * The version the program prints, or null: run with its fixed argument, no shell, in the
-   * private run folder, killed after 5 s. Only a program that passes C4's checks, and only
-   * while agent CLIs are on, whoever calls it.
+   * What the program prints as its version, `late` when it was killed for taking longer than
+   * VERSION_MS, or null when it did not run: run with its fixed argument, no shell, in the
+   * private run folder. Only a program that passes C4's checks, and only while agent CLIs are
+   * on, whoever calls it.
    * @param {string} path @param {string} [id]  its CLI, a key of CLIS: the first unless named
+   * @returns {Promise<{ stdout: string, late: boolean } | null>}
    */
   async version(path, id = CLI_IDS[0] ?? "") {
     const cli = Object.hasOwn(CLIS, id) ? CLIS[id] : null;
@@ -656,7 +658,7 @@ export const AgentCli = {
     const r = await inspect(path, { cli });
     if ("problem" in r) return null;
     const ran = await runFixed(r.path, cli.versionArgs, { workdir: await runBase(), keep: 400 });
-    return ran?.stdout ?? null;
+    return ran && { stdout: ran.stdout, late: !!ran.late };
   },
 
   /**

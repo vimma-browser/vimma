@@ -39,6 +39,7 @@ import {
   taskPrompt,
   userLine,
   versionText,
+  VERSION_MS,
 } from "../src/agent-cli.mjs";
 import { STORE_VERSION, readRecord } from "../src/agent-store.mjs";
 import { parseToml } from "../src/toml.mjs";
@@ -926,6 +927,15 @@ describe("codex's command line (C2, C3, C7)", () => {
     expect(
       versionText(/** @type {any} */ (CLIS.codex), "codex-cli 0.163.0\n", "/usr/bin/codex"),
     ).toBe("codex 0.163.0 · /usr/bin/codex");
+  });
+
+  test("a version killed for time says so, not that the version is unknown", () => {
+    const codex = /** @type {any} */ (CLIS.codex);
+    expect(VERSION_MS).toBe(5000);
+    expect(versionText(codex, "", "/usr/bin/codex", "", true)).toBe(
+      "codex gave no version in 5 s · /usr/bin/codex",
+    );
+    expect(versionText(codex, "", "/usr/bin/codex")).toBe("codex unknown version · /usr/bin/codex");
   });
 
   test("codex's suggested model is its own default", () => {

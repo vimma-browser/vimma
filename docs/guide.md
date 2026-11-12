@@ -2236,7 +2236,8 @@ to each, are under [Supported CLIs](#supported-clis); everything else here holds
 3. Press `Esc`, then `m`, for the model picker, move to `add: agent CLI (…)` with `j` and press
    `Enter`. Vimma looks for each supported CLI's program on your `PATH`, only now, and lists what
    it finds with its version and full path, such as `claude 2.1.303 · /home/you/.local/bin/claude`.
-   Press `Enter` on it.
+   A CLI slow to start, as on its first start after an install, is listed as
+   `codex gave no version in 5 s · <path>` and can still be picked. Press `Enter` on it.
 4. The prompt line asks `agent model:` with the CLI's suggested model filled in (`sonnet` for
    Claude Code). Press `Enter` to keep it, type another model the CLI takes, or clear it to leave
    the choice to the CLI's own default model. The notice confirms it, for example

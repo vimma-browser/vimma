@@ -44,6 +44,7 @@ const { chatHeader } = ChromeUtils.importESModule(
 const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
 );
+const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
 const CODEX = {
   name: "codex",
@@ -133,6 +134,22 @@ async function tidy() {
 /** @param {() => Promise<void>} task */
 const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 
+/**
+ * Starts the fake once, untimed, with the PATH its setup test gives it, so that its interpreter
+ * has started before setup's `--version` gets VERSION_MS: the first python3 start of a fresh
+ * macOS runner took 2 to 5 s, and the first fake the suite runs was listed with no version
+ * (#917). @param {string} bin @param {string} dir  the fake's folder
+ */
+async function startInterpreter(bin, dir) {
+  const proc = await Subprocess.call({
+    command: bin,
+    arguments: ["--version"],
+    environment: { PATH: `${dir}:/usr/bin:/bin` },
+    environmentAppend: true,
+  });
+  await proc.wait();
+}
+
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.mcp.askTimeoutMs", 20000]] });
   OSKeyStoreTestUtils.setup();
@@ -143,6 +160,7 @@ add_setup(async () => {
   const bin = PathUtils.join(dir, "codex");
   await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_codex.py"), bin);
   await IOUtils.setPermissions(bin, 0o700);
+  await startInterpreter(bin, dir);
   fake = { dir, bin, report: PathUtils.join(dir, "report.json") };
   Services.env.set("FAKE_CLI_REPORT", fake.report);
   Services.prefs.setStringPref(pathPref("codex"), bin);
@@ -175,6 +193,21 @@ addTidyTask(async function test_setup_finds_codex_with_its_version() {
     Assert.equal(found[0].label, `codex 0.163.0 · ${fake.bin}`, "with its version and path");
   } finally {
     Services.env.set("PATH", path);
+  }
+});
+
+addTidyTask(async function test_a_version_killed_for_time_is_said_so() {
+  const path = Services.env.get("PATH");
+  try {
+    Services.env.set("PATH", `${fake.dir}:/usr/bin:/bin`);
+    // Longer than VERSION_MS: setup waits no longer for it, and says why it lists no version.
+    Services.env.set("FAKE_CODEX_VERSION_SLEEP", "8");
+    const found = await AgentCli.find();
+    Assert.equal(found[0]?.label, `codex gave no version in 5 s · ${fake.bin}`, "the reason");
+    Assert.equal(found[0]?.problem, null, "and the CLI can still be picked");
+  } finally {
+    Services.env.set("PATH", path);
+    Services.env.set("FAKE_CODEX_VERSION_SLEEP", "");
   }
 });
 
