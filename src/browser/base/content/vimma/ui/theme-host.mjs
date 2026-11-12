@@ -36,6 +36,8 @@ const TOOLBAR_SHEET = "chrome://browser/skin/vimma/firefox-toolbar.css";
  * firefox-surfaces-theme). */
 const CHROME_SHEET = "chrome://browser/skin/vimma/firefox-chrome.css";
 const PAGES_SHEET = "chrome://browser/skin/vimma/firefox-pages.css";
+/** The History sidebar's import promo in the theme's colours, as an agent sheet (#912). */
+const SIDEBAR_PROMO_SHEET = "chrome://browser/skin/vimma/firefox-sidebar-promo.css";
 /** Tab Overview's and the sidebar's empty states without their picture's column (#912). */
 const EMPTY_STATES_SHEET = "chrome://browser/skin/vimma/firefox-empty-states.css";
 /**
@@ -52,6 +54,7 @@ const THEMED_PAGES = new Set([
   "config",
   "profiles",
   "processes",
+  "firefoxview",
 ]);
 /** A prompt's document: alert, confirm, prompt, over a tab or in a window of its own. */
 const COMMON_DIALOG = "chrome://global/content/commonDialog.xhtml";
@@ -537,11 +540,20 @@ function attachPage(doc, sheet, parsed) {
 
 /**
  * A document in Firefox's sidebar (history, bookmarks, ...), with firefox-sidebar-page.css; its
- * trees' scrollbars and rename fields get their colours once it is parsed.
+ * trees' scrollbars and rename fields get their colours once it is parsed. The History panel's
+ * import promo draws its colours from tokens on :host in its shadow root, inside
+ * sidebar-history's shadow root, which neither an author sheet nor an adopted sheet reaches
+ * before Lit renders it: firefox-sidebar-promo.css is an agent sheet, which applies inside the
+ * document's shadow trees, and sets only the promo's tokens.
  * @param {Document | null | undefined} doc
  */
 function attachSidebarPage(doc) {
-  attachPage(doc, SIDEBAR_PAGE_SHEET, colourTrees);
+  attachPage(doc, SIDEBAR_PAGE_SHEET, (parsed) => {
+    colourTrees(parsed);
+    if (!(/** @type {any} */ (parsed).nodePrincipal?.isSystemPrincipal)) return;
+    const win = /** @type {any} */ (parsed.defaultView);
+    win?.windowUtils.loadSheetUsingURIString(SIDEBAR_PROMO_SHEET, win.windowUtils.AGENT_SHEET);
+  });
 }
 
 /**

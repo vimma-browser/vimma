@@ -1,0 +1,24 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* The History sidebar's import promo (sidebar-history.mjs, a "vibrant" moz-promo), shown again
+ * once browser.tabs.firefox-view.importHistory.dismissed is false: a card on --vimma-bg, a step off
+ * the panel's --vimma-bg-dark, bordered --vimma-muted, with the theme's text, as about:vimma lays
+ * out a card, instead of Firefox's violet. An agent sheet, which ui/theme-host.mjs loads into the
+ * sidebar's documents of a themed window only: the promo's colours are tokens set on :host in its
+ * own shadow root (moz-promo.tokens.css), and the promo sits in sidebar-history's shadow root,
+ * where no author sheet of the document reaches; a document's agent sheets apply inside its shadow
+ * trees. Only the promo's own tokens are set, not the design system's --color-violet-*, which also
+ * feed Nova's buttons and accents. !important: an agent sheet's important declarations win over
+ * the shadow root's author rules. Under prefers-contrast and forced colours Firefox's own colours
+ * stay. */
+
+@media not ((prefers-contrast) or (forced-colors)) {
+  moz-promo.import-history-promo[type="vibrant"] {
+    --promo-background-color-vibrant: var(--vimma-bg) !important;
+    --promo-border-color-vibrant: var(--vimma-muted) !important;
+    --promo-message-text-color-vibrant: var(--vimma-fg) !important;
+    --promo-heading-text-color-vibrant: var(--vimma-fg) !important;
+  }
+}
