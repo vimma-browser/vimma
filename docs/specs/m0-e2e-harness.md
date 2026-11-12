@@ -77,7 +77,11 @@ npm run e2e ─► tools/e2e/e2e.mjs (CLI: flags, signals, exit code)
 - **Discovery wait**: poll `<profile>/vimma-control.json` (default 30 s); it must parse, pass
   `validateMessage(…, { kind: "discovery" })` and have mode 0600. If the browser exits first the
   wait fails at once with the exit code and the last lines of its stderr; on timeout the message
-  names the pref, the file and the stderr tail.
+  names the pref and the file. Either failure prints the browser's last 200 stderr lines, each
+  with its time since spawn, so a stalled startup phase shows as a gap (issue #901); a launch
+  that succeeds prints nothing extra. Before the scenarios, the CI job times the hostname
+  lookups that Firefox's profile lock makes (`getent hosts "$(hostname)"`), because a slow
+  resolver is the main suspect for the one stall seen in CI.
 - **Cleanup**: teardown first quits like a user, `send-keys ctrl+q` (the profile sets
   `browser.warnOnQuitShortcut=false`; an open help overlay swallows ctrl+q, so `esc` closes it
   first), so quit observers remove the discovery file; a clean quit that leaves the file fails

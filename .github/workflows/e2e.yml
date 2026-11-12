@@ -255,6 +255,26 @@ jobs:
           df -h . | tail -1
           du -sh engine engine/obj-artifact ~/.mozbuild 2>/dev/null || true
 
+      # Issue #901 (diagnostics, not a fix): one launch stalled about 29 s before its first window.
+      # A suspect is the hostname lookup nsProfileLock makes on every start (PR_GetHostByName,
+      # which goes through NSS as getent does). This times those lookups and prints the resolver
+      # setup, so that a slow resolver shows in the log. It only reads, each lookup is bounded,
+      # and every command that can fail ends in `||`, so it never fails the job.
+      - name: Hostname lookup timing before the e2e scenarios (issue #901)
+        run: |
+          lookup() {
+            start=$(date +%s%N)
+            timeout -k 5 20 getent "$1" "$2" || echo "(getent $1 $2: exit $?)"
+            echo "getent $1 $2 took $(( ($(date +%s%N) - start) / 1000000 )) ms"
+          }
+          host=$(hostname || echo localhost)
+          echo "hostname: $host"
+          lookup hosts "$host"
+          lookup ahostsv4 "$host"
+          lookup hosts localhost
+          grep -E '^hosts:' /etc/nsswitch.conf || true
+          grep -vE '^[[:space:]]*(#|$)' /etc/resolv.conf || true
+
       # Spec m0-e2e-harness. The scenarios run here on the artifact build under Xvfb, with
       # screenshots compared at 0.5 %; pending ones are a ::notice::, never a pass. CI is set, so
       # --update-baselines is refused: a baseline changes only in a reviewed commit.
