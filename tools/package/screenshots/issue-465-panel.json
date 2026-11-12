@@ -1,0 +1,24 @@
+{
+  "name": "issue-465-panel",
+  "issue": 465,
+  "description": "Flathub screenshot: the side panel's tab list.",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "https://vimma.dev/" },
+    { "open": "https://vimma.dev/docs/" },
+    { "open": "https://vimma.dev/install/" },
+    { "open": "https://vimma.dev/docs/why/" },
+    {
+      "wait-for-state": {
+        "tabs": [{}, {}, {}, {}, { "url": "https://vimma.dev/docs/why/", "selected": true }]
+      },
+      "timeoutSeconds": 30
+    },
+    { "sleep": 3 },
+    { "keys": "ctrl+b b" },
+    { "wait-for-state": { "mode": "panel" } },
+    { "sleep": 1 },
+    { "screenshot": "panel" }
+  ]
+}

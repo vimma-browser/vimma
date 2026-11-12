@@ -3402,7 +3402,10 @@ _Pages_ and _extensions_ cannot reach it.
   deploy key. The signing job is the **only** job with
   `id-token: write`, uses the `update-signing` environment (deployment branch `main` alone), and
   runs no repository code: it checks the body's shape with the shell, signs the SHA-384
-  DigestInfo with Cloud KMS and checks the signature with openssl. The job that builds the body
+  DigestInfo with Cloud KMS and checks the signature with openssl. Before any pattern, it refuses
+  a body with a byte that is not printable ASCII or a newline, or that does not end in a newline,
+  because GNU grep may end a line at a NUL byte in a file it takes for binary, and a line check
+  alone would then pass a body that hides another target or URL behind one. The job that builds the body
   holds no secret and installs no dependency. Before anything is pushed, a separate job checks
   the signed file with the verifier and the pinned key the browser uses and with openssl. Every
   file named in the manifest **must** match the release's `SHA256SUMS`, which **must** carry
@@ -3440,10 +3443,10 @@ _Pages_ and _extensions_ cannot reach it.
   decisions 42 and 43) is signed by the same key and environments, by `nightly-prepare`,
   `nightly-sign` and `nightly-publish`, which run **only** in `nightly.yml`'s call from `main`
   (`github.workflow_ref`) and only while `UPDATES_ENABLED` and `NIGHTLY_RELEASE_ENABLED` are
-  `true`. Before any pattern, both signing jobs refuse a body with a byte that is not printable
-  ASCII or a newline, or that does not end in a newline, because GNU grep ends a line at a NUL
-  byte and a line check alone would then pass a body that hides another channel or URL behind
-  one. `nightly-prepare` holds no secret; it requires the `nightly` release to be a public
+  `true`. Before any pattern, `nightly-sign` runs the signing job's byte check, the same shell
+  text: it refuses a body with a byte that is not printable ASCII or a newline, or that does not
+  end in a newline, and refuses when grep fails, since a line check alone would pass a body that
+  hides another channel or URL behind a NUL byte. `nightly-prepare` holds no secret; it requires the `nightly` release to be a public
   pre-release, checks its `SHA256SUMS` against `nightly.yml`'s cosign identity (never
   `release.yml`'s, so neither channel's sums can stand in for the other's), checks that the MAR
   verifies under the committed certificates on the channel `vimma-nightly`, and that the

@@ -776,6 +776,14 @@ esac
       (b) => b.replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
       "release",
     ],
+    ["text after </updates>", (b) => b + "<!-- x -->", "release"],
+    [
+      "more than 64 KiB",
+      (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
+      "release",
+    ],
+    // GNU grep may end a line at a NUL byte in a file it takes for binary, so a line check alone
+    // would pass either half.
     [
       "a nightly root hidden before a NUL byte",
       (b) =>
@@ -784,19 +792,53 @@ esac
           '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
         ),
       "release",
+      /not printable ASCII/,
     ],
-    ["text after </updates>", (b) => b + "<!-- x -->", "release"],
     [
-      "more than 64 KiB",
-      (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
+      "a root for another target hidden before a NUL byte",
+      (b) =>
+        b.replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
       "release",
+      /not printable ASCII/,
+    ],
+    [
+      "another tarball hidden after a NUL byte",
+      (b) =>
+        b.replace(
+          /(<vimmaTarball [^\n]*\/>)\n/,
+          `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
+        ),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a byte that is not ASCII",
+      (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a carriage return",
+      (b) => b.replace("  </update>\n", "  </update>\r\n"),
+      "release",
+      /not printable ASCII/,
+    ],
+    [
+      "a body that does not end with a newline",
+      (b) => b.replace(/\n$/, ""),
+      "release",
+      /does not end with a newline/,
     ],
   ])(
     "refuses to sign %s",
-    (_name, change, offer) => {
+    (_name, change, offer, error = /::error::/) => {
       const { dir } = setUp(change(offerBody()));
       const check = run(dir, "Check what is about to be signed", { TAG: "v0.3.1", OFFER: offer });
       expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toMatch(error);
     },
     60_000,
   );
@@ -986,7 +1028,8 @@ esac
       () => nightlyBody().replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
       {},
     ],
-    // GNU grep ends a line at a NUL byte, so `grep -x` alone would pass either half.
+    // GNU grep may end a line at a NUL byte in a file it takes for binary, so `grep -x` alone
+    // would pass either half.
     [
       "a release-channel root hidden before a NUL byte",
       () =>
@@ -995,6 +1038,7 @@ esac
           '<updates vimmaChannel="vimma" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
         ),
       {},
+      /not printable ASCII/,
     ],
     [
       "another tarball hidden after a NUL byte",
@@ -1004,11 +1048,30 @@ esac
           `linux-x86_64.tar.xz"/>\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
         ),
       {},
+      /not printable ASCII/,
+    ],
+    [
+      "a byte that is not ASCII",
+      () => nightlyBody().replace("</updates>", "<!-- \u00e9 --></updates>"),
+      {},
+      /not printable ASCII/,
+    ],
+    [
+      "a carriage return",
+      () => nightlyBody().replace("  </update>\n", "  </update>\r\n"),
+      {},
+      /not printable ASCII/,
+    ],
+    [
+      "a body that does not end with a newline",
+      () => nightlyBody().replace(/\n$/, ""),
+      {},
+      /does not end with a newline/,
     ],
     ["text after the last line", () => nightlyBody() + "<!-- x -->", {}],
   ])(
     "nightly-sign refuses to sign %s",
-    (_name, body, env) => {
+    (_name, body, env, error = /::error::/) => {
       const { dir } = setUp(body());
       const check = run(
         dir,
@@ -1017,10 +1080,24 @@ esac
         "nightly-sign",
       );
       expect(check.status).not.toBe(0);
-      expect(check.stdout + check.stderr).toMatch(/::error::/);
+      expect(check.stdout + check.stderr).toMatch(error);
     },
     60_000,
   );
+
+  it("nightly-sign's byte check is sign's, the same shell text", () => {
+    /** @param {string} id */
+    const byteCheck = (id) => {
+      const step = runOf(job(id), "Check what is about to be signed");
+      const start = step.indexOf("# Printable ASCII and newlines only");
+      const end = step.indexOf("does not end with a newline");
+      expect(start, id).toBeGreaterThan(-1);
+      expect(end, id).toBeGreaterThan(start);
+      return step.slice(start, step.indexOf("\n", end));
+    };
+    expect(byteCheck("nightly-sign")).toBe(byteCheck("sign"));
+    expect(byteCheck("sign")).toContain('[ "$rc" = 1 ]');
+  });
 
   it("sign, the release's check, refuses the nightly's body", () => {
     const { dir } = setUp(nightlyBody());
