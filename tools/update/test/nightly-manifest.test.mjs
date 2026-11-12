@@ -15,6 +15,7 @@ import {
   parseManifest,
   signatureComment,
   spkiKeyId,
+  staleDays,
 } from "../../../packages/vimma-core/src/updates.mjs";
 import {
   CHANNEL,
@@ -261,6 +262,51 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
     const same = kmsSign(buildNightlyManifest({ serial: "20261112040000", update: update() }), key);
     expect(prepare({ published: same }).version).toBe(`0.1.18-nightly.${BUILD}`);
   });
+
+  // Decision 44: on a day main did not change, nightly.yml calls the same jobs with the build
+  // already offered. The offer is byte for byte the same but for the serial, the published
+  // manifest's checks pass, and a nightly install of that build takes it as up to date: no
+  // download, no notice, and a feed that is never stale while the nightly runs.
+  it("an unchanged day's re-sign offers the same build under a newer serial, and installs stay current", async () => {
+    const dir = fakeNightly();
+    const first = kmsSign(prepare({ dir }).body, key);
+    const day = 86_400_000;
+    for (const days of [1, 6, 8]) {
+      const later = new Date(now.getTime() + days * day);
+      const { body } = prepare({ dir, published: first, now: later });
+      const lines = (/** @type {string} */ t) =>
+        t.split("\n").filter((l) => !/vimma-signature/.test(l));
+      const changed = lines(body).filter((l, i) => l !== lines(first)[i]);
+      expect(changed).toEqual([expect.stringMatching(/^<updates .* vimmaSerial="\d{14}">$/)]);
+      const signed = kmsSign(body, key);
+      const opts = {
+        keys: [key.pin],
+        buildId: BUILD,
+        version: "0.1.18",
+        dir,
+        published: first,
+        now: later,
+      };
+      const { serial } = await checkSignedNightly(signed, opts);
+      expect(BigInt(serial)).toBeGreaterThan(BigInt("20261112041207"));
+      const m = /** @type {any} */ (parseManifest(body)).manifest;
+      const running = {
+        channel: "vimma-nightly",
+        target: "Linux_x86_64-gcc3",
+        appVersion: "160.0",
+        buildId: BUILD,
+        displayVersion: `0.1.18-nightly.${BUILD}`,
+        serial: "20261112041207",
+        now: later.getTime(),
+      };
+      const compare = (/** @type {string} */ a, /** @type {string} */ b) =>
+        a === b ? 0 : a < b ? -1 : 1;
+      expect(judgeManifest(m, running, compare)).toEqual({ ok: true, serial, offer: null });
+      expect(staleDays(serial, "vimma-nightly", later.getTime())).toBeNull();
+    }
+    // Without the re-sign, the first manifest is stale after 7 days.
+    expect(staleDays("20261112041207", "vimma-nightly", now.getTime() + 8 * day)).toBe(8);
+  }, 30_000);
 
   it("checkSignedNightly accepts the signed manifest and the files it names", async () => {
     const dir = fakeNightly();

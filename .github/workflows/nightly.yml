@@ -25,6 +25,12 @@
 #             (created once, never Latest) and keeps the previous build's files.
 #   manifest  update-publish.yml's nightly-prepare, nightly-sign and nightly-publish, called:
 #             …/vimma-nightly/update.xml.
+#
+# Unchanged days (spec m6a-updater, decision 44): a scheduled run first compares main's commit
+# and Firefox version with the build the `nightly` release's notes record (`changes`, no secret,
+# contents: read). When they match it builds nothing and calls `manifest` with the recorded
+# build, which re-signs the same offer under a new serial, so nightly installs never see a feed
+# older than 7 days and are offered nothing new. A manual run always builds.
 name: nightly
 
 on:
@@ -40,13 +46,58 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    # Manual runs only from main: a branch's edited nightly.yml must not get the secret. Manual
-    # runs need NIGHTLY_ENABLED too: a build compiles in the Safe Browsing key.
+  # Decision 44: whether tonight builds. No secret and no environment, a read-only token, and
+  # only `gh release view` and tools/update/nightly-change.mjs: it reads the rolling release's
+  # notes and file names and compares them with the commit checked out here. A doubt builds.
+  changes:
     if: >-
       vars.NIGHTLY_ENABLED == 'true' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       github.event_name == 'schedule')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.decide.outputs.build }}
+      build_id: ${{ steps.decide.outputs.build_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Any answer but the release (none yet, an API error) builds, as every night did before.
+      - name: Decide whether to build
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.sha }}
+          PUBLIC: ${{ vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true' }}
+        run: |
+          release=()
+          if gh release view nightly --json body,isDraft,isPrerelease,assets > "$RUNNER_TEMP/release.json"; then
+            release=(--release "$RUNNER_TEMP/release.json")
+          fi
+          firefox=$(node -p 'require("./surfer.json").version.version')
+          node tools/update/nightly-change.mjs --event "$EVENT" --public "$PUBLIC" --sha "$SHA" \
+            --firefox "$firefox" "${release[@]}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: changes
+    # Manual runs only from main: a branch's edited nightly.yml must not get the secret. Manual
+    # runs need NIGHTLY_ENABLED too: a build compiles in the Safe Browsing key. A scheduled run
+    # builds only when `changes` found main changed; a manual run always builds.
+    if: >-
+      vars.NIGHTLY_ENABLED == 'true' &&
+      ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'schedule') &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.build == 'true')
     # The Safe Browsing key is a secret of the `build` environment, which only main may deploy
     # from (docs/security.md, B6): GitHub enforces that outside this file.
     environment: build
@@ -62,6 +113,7 @@ jobs:
     outputs:
       mar: ${{ steps.mar.outputs.mar }}
       build_id: ${{ steps.mar.outputs.build_id }}
+      firefox: ${{ steps.mar.outputs.firefox }}
     env:
       LOG: ${{ github.workspace }}/nightly.log
       # Firefox's updater with Vimma's channel, update host and certificates
@@ -216,6 +268,8 @@ jobs:
           tarball=$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)
           build_id=$(tar -xJOf "$tarball" vimma/application.ini | sed -n 's/^BuildID=//p')
           [[ $build_id =~ ^[0-9]{14}$ ]] || { echo "::error::the tarball's build ID is '$build_id'"; exit 1; }
+          # The smoke check compared it with surfer.json; the release notes record it (decision 44).
+          firefox=$(tar -xJOf "$tarball" vimma/application.ini | sed -n 's/^Version=//p')
           mar="vimma-nightly-$build_id-linux-x86_64.complete.mar"
           tools=$(mktemp -d)
           cp engine/obj-x86_64-pc-linux-gnu/dist/host/bin/mar engine/tools/update-packaging/make_full_update.sh \
@@ -227,6 +281,7 @@ jobs:
           if [ "$PUBLIC" = true ]; then
             echo "mar=$mar" >> "$GITHUB_OUTPUT"
             echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+            echo "firefox=$firefox" >> "$GITHUB_OUTPUT"
           else
             rm -rf mar
           fi
@@ -485,6 +540,7 @@ jobs:
       GH_REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
       BUILD_ID: ${{ needs.build.outputs.build_id }}
+      FIREFOX: ${{ needs.build.outputs.firefox }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -513,10 +569,14 @@ jobs:
       # A draft or a full release named nightly is someone's mistake, never overwritten: a full
       # one would be Latest. gh release view finds drafts too. A newer build already on the
       # release means this is a re-run of an older night: it must not replace that build's sums.
+      # The notes' first sentence is the record the next night's `changes` compares main with
+      # (tools/update/nightly-change.mjs); it is written last, after the files are up.
       - name: Upload to the rolling nightly release
         run: |
           [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
-          notes="Nightly build $BUILD_ID of main at $SHA. Built every night from main and checked by CI only: not a release. SHA256SUMS lists this build's files; check a download with: cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS"
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::'$SHA' is not a commit"; exit 1; }
+          [[ $FIREFOX =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?([ab][0-9]+)?$ ]] || { echo "::error::'$FIREFOX' is not a Firefox version"; exit 1; }
+          notes="Nightly build $BUILD_ID of main at $SHA, Firefox $FIREFOX. Built from main on each night it changed and checked by CI only: not a release. SHA256SUMS lists this build's files; check a download with: cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS"
           if state=$(gh release view nightly --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2> view.err); then
             [ "$state" = "false true" ] \
               || { echo "::error::the nightly release is not a public pre-release (isDraft isPrerelease: $state); nothing was uploaded"; exit 1; }
@@ -557,13 +617,18 @@ jobs:
 
   # nightly-prepare, nightly-sign and nightly-publish in update-publish.yml: the nightly
   # channel's manifest, from the files now on the nightly release. The permissions are the same
-  # ceiling as mar-sign's.
+  # ceiling as mar-sign's. On an unchanged scheduled day (decision 44) no build ran: it signs
+  # the build `changes` read from the release again, under a new serial, with every check a
+  # build's manifest gets. A manual run never takes that path: it always builds.
   manifest:
-    needs: [build, publish]
+    needs: [changes, build, publish]
     if: >-
-      vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      !cancelled() && vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
-      vars.UPDATES_ENABLED == 'true'
+      vars.UPDATES_ENABLED == 'true' && needs.changes.result == 'success' &&
+      ((needs.build.result == 'success' && needs.publish.result == 'success') ||
+      (github.event_name == 'schedule' && needs.changes.outputs.build == 'false' &&
+      needs.build.result == 'skipped' && needs.changes.outputs.build_id != ''))
     permissions:
       id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's nightly-sign job
       actions: write # ceiling only: update-publish.yml's start, which never runs in a call
@@ -572,12 +637,12 @@ jobs:
       issues: write # ceiling only: its failure
     uses: ./.github/workflows/update-publish.yml
     with:
-      nightly: ${{ needs.build.outputs.build_id }}
+      nightly: ${{ needs.build.result == 'success' && needs.build.outputs.build_id || needs.changes.outputs.build_id }}
 
   # Reads only the log the build job uploaded after scrubbing the key from it; it has no secret.
   # Any job's failure opens or updates the issue; only the build's leaves a log.
   report:
-    needs: [build, mar-sign, mar, sign, publish, manifest]
+    needs: [changes, build, mar-sign, mar, sign, publish, manifest]
     if: failure()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

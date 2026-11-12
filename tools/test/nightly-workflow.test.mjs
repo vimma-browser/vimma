@@ -4,6 +4,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 import { tempDir } from "./temp-dir.mjs";
+import { runJobs } from "./workflow-if.mjs";
+import { readRecord } from "../update/nightly-change.mjs";
 
 // Spec build-supply-chain, decision 23, and spec m6a-updater, decisions 42 and 43: the nightly's
 // build job keeps the package as a short-lived workflow artifact and holds no write token. Only
@@ -81,8 +83,9 @@ function uses(id, action, artifact) {
 }
 
 describe("nightly.yml: a workflow artifact, and a public nightly only when switched on", () => {
-  it("has the jobs: build, the MAR's signing and check, cosign, the release, the manifest, report", () => {
+  it("has the jobs: the change check, build, the MAR's signing and check, cosign, the release, the manifest, report", () => {
     expect([...JOBS.keys()]).toEqual([
+      "changes",
       "build",
       "mar-sign",
       "mar",
@@ -130,7 +133,12 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
     for (const [id, j] of JOBS) {
       const perms = /** @type {Record<string, string>} */ (j.permissions ?? {});
       expect(perms.contents ?? "read", id).toBe(id === "publish" ? "write" : "read");
-      if (id !== "publish") expect(JSON.stringify(j), id).not.toMatch(/gh release|gh api/);
+      // The change check only reads the release, with a read-only token.
+      const text = JSON.stringify(j).replace(
+        id === "changes" ? /gh release view nightly/g : /$^/,
+        "",
+      );
+      if (id !== "publish") expect(text, id).not.toMatch(/gh release|gh api/);
     }
     const publish = JSON.stringify(job("publish"));
     expect(job("publish").permissions).toEqual({ contents: "write" });
@@ -172,9 +180,8 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
   it("the manifest is update-publish.yml's, called with the build ID once the release has it", () => {
     const manifest = job("manifest");
     expect(manifest.uses).toBe("./.github/workflows/update-publish.yml");
-    expect(manifest.with).toEqual({ nightly: "${{ needs.build.outputs.build_id }}" });
-    expect(manifest.needs).toEqual(["build", "publish"]);
-    expect(oneLine(manifest.if)).toBe(PUBLIC);
+    expect(manifest.needs).toEqual(["changes", "build", "publish"]);
+    expect(oneLine(manifest.if)).toContain(`!cancelled() && ${PUBLIC} && `);
     expect(manifest.permissions).toEqual(CEILING);
     expect(manifest.secrets).toBeUndefined();
   });
@@ -238,6 +245,7 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
     expect(build.outputs).toEqual({
       mar: "${{ steps.mar.outputs.mar }}",
       build_id: "${{ steps.mar.outputs.build_id }}",
+      firefox: "${{ steps.mar.outputs.firefox }}",
     });
     const mar = step("build", "Complete MAR, for the nightly channel");
     expect(mar.id).toBe("mar");
@@ -256,7 +264,15 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
 
   it("a failure of any job is reported by its own job, from the redacted log artifact", () => {
     const report = job("report");
-    expect(report.needs).toEqual(["build", "mar-sign", "mar", "sign", "publish", "manifest"]);
+    expect(report.needs).toEqual([
+      "changes",
+      "build",
+      "mar-sign",
+      "mar",
+      "sign",
+      "publish",
+      "manifest",
+    ]);
     expect(report.if).toBe("failure()");
     expect(report.permissions).toEqual({ issues: "write" });
     const download = uses("report", "actions/download-artifact");
@@ -285,6 +301,189 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
       GH_TOKEN: "${{ github.token }}",
       GH_REPO: "${{ github.repository }}",
     });
+  });
+});
+
+// Spec m6a-updater, decision 44: a scheduled nightly builds only when main moved on since the
+// build the rolling `nightly` pre-release records; an unchanged day starts no build and re-signs
+// that build's manifest under a new serial, so nightly installs never see "no news". A manual run
+// always builds. The jobs a run starts are worked out from the workflow's own conditions.
+describe("nightly.yml: an unchanged day skips the build and re-signs the manifest", () => {
+  const RECORDED = "20261112030512";
+  const NEW = "20261113030004";
+  const VARS = {
+    NIGHTLY_ENABLED: "true",
+    NIGHTLY_RELEASE_ENABLED: "true",
+    UPDATES_ENABLED: "true",
+  };
+  /**
+   * @param {string} event
+   * @param {{ build: string, build_id: string }} changes  the change check's outputs
+   * @param {Record<string, string>} [vars]
+   */
+  function nightly(event, changes, vars = VARS) {
+    const ran = runJobs(JOBS, {
+      github: { event_name: event, ref: "refs/heads/main", repository: "vimma-browser/vimma" },
+      vars,
+      outputs: {
+        changes,
+        build: { mar: `vimma-nightly-${NEW}-linux-x86_64.complete.mar`, build_id: NEW },
+      },
+    });
+    return {
+      started: [...ran].filter(([, j]) => j.result === "success").map(([id]) => id),
+      manifest: ran.get("manifest")?.with,
+    };
+  }
+  const UNCHANGED = { build: "false", build_id: RECORDED };
+  const CHANGED = { build: "true", build_id: "" };
+  const FULL = ["changes", "build", "mar-sign", "mar", "sign", "publish", "manifest"];
+
+  it("a scheduled run on an unchanged commit builds nothing and re-signs the recorded build", () => {
+    const run = nightly("schedule", UNCHANGED);
+    expect(run.started).toEqual(["changes", "manifest"]);
+    expect(run.manifest).toEqual({ nightly: RECORDED });
+  });
+
+  it("a scheduled run on a changed commit builds, publishes and offers the new build", () => {
+    const run = nightly("schedule", CHANGED);
+    expect(run.started).toEqual(FULL);
+    expect(run.manifest).toEqual({ nightly: NEW });
+  });
+
+  it("a manual run builds, whatever the change check says", () => {
+    for (const changes of [CHANGED, UNCHANGED]) {
+      const run = nightly("workflow_dispatch", changes);
+      expect(run.started).toEqual(FULL);
+      expect(run.manifest).toEqual({ nightly: NEW });
+    }
+  });
+
+  it("re-signs nothing without public nightlies, or without a recorded build", () => {
+    expect(nightly("schedule", UNCHANGED, { NIGHTLY_ENABLED: "true" }).started).toEqual([
+      "changes",
+    ]);
+    expect(nightly("schedule", CHANGED, { NIGHTLY_ENABLED: "true" }).started).toEqual([
+      "changes",
+      "build",
+    ]);
+    expect(nightly("schedule", { build: "false", build_id: "" }).started).toEqual(["changes"]);
+    expect(nightly("schedule", UNCHANGED, {}).started).toEqual([]);
+  });
+
+  it("the change check reads with contents: read alone, no secret and no environment", () => {
+    const changes = job("changes");
+    expect(changes.permissions).toEqual({ contents: "read" });
+    expect(changes.environment).toBeUndefined();
+    const text = JSON.stringify(changes);
+    expect(text).not.toMatch(/secrets\.|id-token|SAFEBROWSING|GCP_|DEPLOY_KEY/);
+    expect(changes.outputs).toEqual({
+      build: "${{ steps.decide.outputs.build }}",
+      build_id: "${{ steps.decide.outputs.build_id }}",
+    });
+    // The same gate as the build's: NIGHTLY_ENABLED, and a manual run only from main.
+    expect(oneLine(changes.if)).toBe(
+      oneLine(job("build").if).replace(
+        / && \(github\.event_name == 'workflow_dispatch' \|\| needs\.changes\.outputs\.build == 'true'\)$/,
+        "",
+      ),
+    );
+    expect(job("build").needs).toBe("changes");
+  });
+
+  it("a skipped day starts no job in the build environment and none that reads the key", () => {
+    for (const id of nightly("schedule", UNCHANGED).started) {
+      expect(job(id).environment, id).toBeUndefined();
+      expect(JSON.stringify(job(id)), id).not.toMatch(/SAFEBROWSING|secrets\./);
+    }
+  });
+
+  it("the re-sign goes through update-publish.yml's nightly jobs, as a build's manifest does", () => {
+    const manifest = job("manifest");
+    expect(manifest.uses).toBe("./.github/workflows/update-publish.yml");
+    expect(manifest.with).toEqual({
+      nightly:
+        "${{ needs.build.result == 'success' && needs.build.outputs.build_id || needs.changes.outputs.build_id }}",
+    });
+  });
+});
+
+// The change check's step, run with a stand-in for gh.
+describe.skipIf(process.platform !== "linux")("the change check's step, run", () => {
+  const BUILD = "20261112030512";
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+  const FIREFOX = String(
+    JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8")).version.version,
+  );
+  /**
+   * @param {"pre" | "none" | "error"} release
+   * @param {string} [sha]  main's commit
+   * @param {string} [event]
+   */
+  function check(release, sha = SHA, event = "schedule") {
+    const dir = tempDir("vimma-nightly-changes-");
+    mkdirSync(join(dir, "bin"));
+    mkdirSync(join(dir, "runner"));
+    const json = JSON.stringify({
+      body: `Nightly build ${BUILD} of main at ${SHA}, Firefox ${FIREFOX}. Built from main.`,
+      isDraft: false,
+      isPrerelease: true,
+      assets: [
+        "SHA256SUMS",
+        "SHA256SUMS.sigstore.json",
+        `vimma-nightly-${BUILD}-linux-x86_64.tar.xz`,
+        `vimma-nightly-${BUILD}-linux-x86_64.complete.mar`,
+      ].map((name) => ({ name })),
+    });
+    writeFileSync(join(dir, "release.json"), json);
+    writeFileSync(
+      join(dir, "bin", "gh"),
+      `#!/bin/sh
+printf '%s\\n' "$*" >> "${join(dir, "calls.txt")}"
+case "${release}" in
+  none) echo "release not found" >&2; exit 1 ;;
+  error) echo "HTTP 502: Server Error" >&2; exit 1 ;;
+  *) cat "${join(dir, "release.json")}" ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    const s = step("changes", "Decide whether to build");
+    writeFileSync(join(dir, "out.txt"), "");
+    const result = spawnSync("bash", ["-e", "-c", String(s.run)], {
+      cwd: new URL("../..", import.meta.url).pathname,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+        GH_REPO: "vimma-browser/vimma",
+        RUNNER_TEMP: join(dir, "runner"),
+        GITHUB_OUTPUT: join(dir, "out.txt"),
+        EVENT: event,
+        SHA: sha,
+        PUBLIC: "true",
+      },
+    });
+    return { ...result, outputs: readFileSync(join(dir, "out.txt"), "utf8") };
+  }
+
+  it("on the recorded commit, outputs no build and the recorded build ID", () => {
+    const r = check("pre");
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stderr).toContain("::notice::no build");
+    expect(r.outputs).toBe(`build=false\nbuild_id=${BUILD}\n`);
+  });
+
+  it("builds on another commit, a manual run, no release, or a release it cannot read", () => {
+    for (const r of [
+      check("pre", "89abcdef0123456789abcdef0123456789abcdef"),
+      check("pre", SHA, "workflow_dispatch"),
+      check("none"),
+      check("error"),
+    ]) {
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.outputs).toBe("build=true\nbuild_id=\n");
+    }
   });
 });
 
@@ -371,6 +570,7 @@ printf '%s' ${code}
         GH_REPO: "vimma-browser/vimma",
         SHA: "0123456789abcdef0123456789abcdef01234567",
         BUILD_ID: BUILD,
+        FIREFOX: "160.0",
         CALLS: join(dir, "calls.txt"),
         STATE: join(dir, "state.txt"),
         ASSETS: join(dir, "assets.txt"),
@@ -401,6 +601,17 @@ printf '%s' ${code}
     expect(r.calls.find((c) => c.startsWith("release upload"))).toBe(
       "release upload nightly release/SHA256SUMS release/SHA256SUMS.sigstore.json release/vimma-nightly-x --clobber",
     );
+  });
+
+  it("records the build, its commit and Firefox's version first in the release notes", () => {
+    const r = run(setUp({ release: "pre", assets: files("20261111030000") }), UPLOAD);
+    expect(r.status, r.stderr).toBe(0);
+    const edit = r.calls.find((c) => c.startsWith("release edit nightly --notes "));
+    expect(readRecord(String(edit).slice("release edit nightly --notes ".length))).toEqual({
+      buildId: BUILD,
+      sha: "0123456789abcdef0123456789abcdef01234567",
+      firefox: "160.0",
+    });
   });
 
   it("uploads to the existing pre-release without creating another", () => {
