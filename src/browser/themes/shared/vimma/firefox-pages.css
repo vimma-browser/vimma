@@ -89,13 +89,14 @@
     scrollbar-color: var(--vimma-muted) var(--vimma-bg-dark) !important;
   }
 
-  /* The import wizard (Settings, Import browser data) is an HTML <dialog> in the page, which the
-   * UA paints Canvas and CanvasText with a default border: a dialog's surface, as above. Its
-   * browser list is themed from inside the wizard's shadow root (theme-host.mjs, WIZARD_RULES). */
+  /* The import wizard (Settings, Import browser data) is an HTML <dialog> in the page, painted
+   * from --dialog-background-color and --dialog-border-color (preferences.css) with the UA's
+   * CanvasText: a dialog's surface, as above. Its browser list is themed from inside the
+   * wizard's shadow root (theme-host.mjs, WIZARD_RULES). */
   #migrationWizardDialog {
-    background-color: var(--vimma-bg-dark) !important;
+    --dialog-background-color: var(--vimma-bg-dark) !important;
+    --dialog-border-color: var(--vimma-muted) !important;
     color: var(--vimma-fg) !important;
-    border-color: var(--vimma-muted) !important;
   }
 
   /* The default-browser card in Settings shows Firefox's mascot (illustrations/kit-*.svg), which

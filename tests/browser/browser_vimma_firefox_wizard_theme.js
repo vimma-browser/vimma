@@ -147,42 +147,62 @@ async function openWizard() {
   const deviceName = Services.prefs.prefHasUserValue(DEVICE_PREF)
     ? Services.prefs.getStringPref(DEVICE_PREF)
     : null;
-  sandbox
-    .stub(MigrationUtils, "availableMigratorKeys")
-    .get(() => [InternalTestingProfileMigrator.key]);
-  sandbox
-    .stub(proto, "getSourceProfiles")
-    .resolves([InternalTestingProfileMigrator.testProfile, { id: "vimma-second", name: "Second" }]);
-  sandbox.stub(proto, "getResources").callsFake(function () {
-    return resources.call(this, InternalTestingProfileMigrator.testProfile);
-  });
-  await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.internal-testing.enabled", true]] });
-  const from = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
-  const ready = BrowserTestUtils.waitForEvent(window, "MigrationWizard:Ready");
-  const opened = BrowserTestUtils.waitForNewTab(gBrowser, (url) =>
-    url.startsWith("about:preferences"),
-  );
-  /** @type {any} */ (document.getElementById("cmd_file_importFromAnotherBrowser")).doCommand();
-  const tab = await opened;
-  await ready;
-  const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
-  const dialog = /** @type {Element} */ (doc.getElementById("migrationWizardDialog"));
-  const wizard = /** @type {any} */ (dialog.querySelector("migration-wizard"));
-  const shadow = /** @type {ShadowRoot} */ (wizard.openOrClosedShadowRoot);
-  const selector = /** @type {any} */ (shadow.querySelector("#browser-profile-selector"));
-  await until(
-    () => selector.selectedPanelItem?.profile?.id === InternalTestingProfileMigrator.testProfile.id,
-    "the wizard picked the first browser",
-  );
+  /** @type {MozTabbrowserTab | undefined} */
+  let from;
+  /** @type {MozTabbrowserTab | undefined} */
+  let tab;
+  let pushed = false;
+  // Also on a failure while opening, so that no later task or file sees the stubs.
   const close = async () => {
-    BrowserTestUtils.removeTab(tab);
-    BrowserTestUtils.removeTab(from);
-    await SpecialPowers.popPrefEnv();
+    if (tab) BrowserTestUtils.removeTab(tab);
+    if (from) BrowserTestUtils.removeTab(from);
+    if (pushed) await SpecialPowers.popPrefEnv();
     sandbox.restore();
     if (deviceName === null) Services.prefs.clearUserPref(DEVICE_PREF);
     else Services.prefs.setStringPref(DEVICE_PREF, deviceName);
   };
-  return { tab, doc, dialog, wizard, shadow, selector, close };
+  try {
+    return { ...(await open()), close };
+  } catch (e) {
+    await close();
+    throw e;
+  }
+
+  async function open() {
+    sandbox
+      .stub(MigrationUtils, "availableMigratorKeys")
+      .get(() => [InternalTestingProfileMigrator.key]);
+    sandbox
+      .stub(proto, "getSourceProfiles")
+      .resolves([
+        InternalTestingProfileMigrator.testProfile,
+        { id: "vimma-second", name: "Second" },
+      ]);
+    sandbox.stub(proto, "getResources").callsFake(function () {
+      return resources.call(this, InternalTestingProfileMigrator.testProfile);
+    });
+    await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.internal-testing.enabled", true]] });
+    pushed = true;
+    from = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
+    const ready = BrowserTestUtils.waitForEvent(window, "MigrationWizard:Ready");
+    const opened = BrowserTestUtils.waitForNewTab(gBrowser, (url) =>
+      url.startsWith("about:preferences"),
+    );
+    /** @type {any} */ (document.getElementById("cmd_file_importFromAnotherBrowser")).doCommand();
+    tab = await opened;
+    await ready;
+    const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
+    const dialog = /** @type {Element} */ (doc.getElementById("migrationWizardDialog"));
+    const wizard = /** @type {any} */ (dialog.querySelector("migration-wizard"));
+    const shadow = /** @type {ShadowRoot} */ (wizard.openOrClosedShadowRoot);
+    const selector = /** @type {any} */ (shadow.querySelector("#browser-profile-selector"));
+    await until(
+      () =>
+        selector.selectedPanelItem?.profile?.id === InternalTestingProfileMigrator.testProfile.id,
+      "the wizard picked the first browser",
+    );
+    return { tab, doc, dialog, wizard, shadow, selector };
+  }
 }
 
 /**
@@ -199,8 +219,11 @@ async function openList(selector, list) {
   // it is trusted and counts as a pressed button (nsGlobalWindowInner::sMouseDown) until the
   // matching mouseup, which does not close the list.
   selector.dispatchEvent(new win.MouseEvent("mousedown", { bubbles: true }));
-  await shown;
-  selector.dispatchEvent(new win.MouseEvent("mouseup", { bubbles: true }));
+  try {
+    await shown;
+  } finally {
+    selector.dispatchEvent(new win.MouseEvent("mouseup", { bubbles: true }));
+  }
 }
 
 /**
@@ -337,9 +360,22 @@ add_task(async function import_wizard_follows_the_theme() {
         ["vimma.theme.omarchyPath", themeDir],
       ],
     });
-    await until(() => token("--vimma-bg") === "#1c1e26", "the base-only Omarchy theme applies");
-    await assertWizard("Omarchy, base colours only", w);
-    await SpecialPowers.popPrefEnv();
+    try {
+      await until(() => token("--vimma-bg") === "#1c1e26", "the base-only Omarchy theme applies");
+      await assertWizard("Omarchy, base colours only", w);
+    } finally {
+      await SpecialPowers.popPrefEnv();
+    }
+
+    // Settings keeps the wizard for its next opening, which asks for its state again: its shadow
+    // root keeps the one sheet, and the list its colours.
+    const sheets = w.shadow.adoptedStyleSheets.length;
+    /** @type {any} */ (w.dialog).close();
+    await until(() => !(/** @type {any} */ (w.dialog).open), "the wizard closed");
+    await /** @type {any} */ (w.doc.defaultView).gMainPane.showMigrationWizardDialog();
+    await until(() => /** @type {any} */ (w.dialog).open, "the wizard opened again");
+    Assert.equal(w.shadow.adoptedStyleSheets.length, sheets, "reopened: no second sheet");
+    await assertWizard("vimma, reopened", w);
   } finally {
     await w.close();
   }
@@ -355,23 +391,34 @@ add_task(async function high_contrast_keeps_the_wizards_colours() {
       () => /** @type {Window} */ (w.doc.defaultView).matchMedia("(prefers-contrast)").matches,
       "high contrast is on in the page",
     );
-    Assert.notEqual(
+    const body = /** @type {Element} */ (w.doc.body);
+    Assert.equal(
       style(w.dialog).backgroundColor,
-      tokenColour("--vimma-bg-dark"),
-      "the dialog keeps Firefox's high-contrast colours",
+      backgroundUnder(body, "var(--dialog-background-color)"),
+      "the dialog keeps Settings' dialog colour",
+    );
+    Assert.equal(
+      style(w.dialog).color,
+      backgroundUnder(w.dialog, "CanvasText"),
+      "and the UA's CanvasText",
     );
     const list = /** @type {Element} */ (w.shadow.querySelector("panel-list"));
     const panel = /** @type {any} */ (list.parentElement);
     await openList(w.selector, list);
-    Assert.notEqual(
-      colourVar(panel, "--panel-background-color"),
-      tokenColour("--vimma-bg-dark"),
-      "the browser list keeps Firefox's high-contrast colours",
+    Assert.equal(
+      style(panel).getPropertyValue("--panel-background-color").trim(),
+      "Menu",
+      "the browser list keeps the system's Menu (popup.css)",
+    );
+    Assert.equal(
+      style(/** @type {Element} */ (list.querySelector("panel-item.selected"))).backgroundColor,
+      backgroundUnder(list, "var(--button-background-color-active)"),
+      "the chosen browser keeps Firefox's pressed-button colour (migration-wizard.css)",
     );
     Assert.notEqual(
-      style(/** @type {Element} */ (list.querySelector("panel-item.selected"))).backgroundColor,
-      tokenColour("--vimma-selection"),
-      "the chosen browser keeps Firefox's high-contrast colours",
+      backgroundUnder(list, "var(--button-background-color-hover)"),
+      backgroundUnder(list, "color-mix(in srgb, currentColor 17%, transparent)"),
+      "a hovered button keeps Firefox's high-contrast colour",
     );
     const hidden = BrowserTestUtils.waitForPopupEvent(panel, "hidden");
     panel.hidePopup();
