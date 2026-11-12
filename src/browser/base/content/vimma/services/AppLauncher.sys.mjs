@@ -6,6 +6,13 @@
 
 /* global Components -- a system module's global; its component manager tells which services run */
 
+import {
+  dataDirs,
+  isDefaultThroughRouter,
+  mimeappsLists,
+  OMARCHY_ROUTER,
+} from "../core/default-browser.mjs";
+
 /**
  * nsGNOMEShellService::Init reads it once, as the browser's own command, else takes the binary's
  * path. Make Default then sets the installed desktop entry whose Exec program is that exact path
@@ -26,6 +33,10 @@ const MARKER = "is-packaged-app";
 const APPIMAGE = /^vimma-package=appimage\s*$/m;
 
 const SHELL_SERVICE = "@mozilla.org/browser/shell-service;1";
+const GIO_SERVICE = "@mozilla.org/gio-service;1";
+
+/** A mimeapps.list longer than this is not read: the check then keeps Firefox's answer. */
+const MAX_LIST_BYTES = 64 * 1024;
 
 /**
  * @param {string} path
@@ -43,9 +54,10 @@ function isExecutableFile(path) {
 
 /**
  * @param {string} path
+ * @param {number} [max]
  * @returns {string} the start of the file, or "" when it cannot be read
  */
-function readSmallFile(path) {
+function readSmallFile(path, max = 256) {
   try {
     const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
     file.initWithPath(path);
@@ -58,7 +70,7 @@ function readSmallFile(path) {
         Ci.nsIScriptableInputStream,
       );
       scriptable.init(stream);
-      return scriptable.read(256);
+      return scriptable.read(max);
     } finally {
       stream.close();
     }
@@ -74,6 +86,110 @@ function shellServiceRunning() {
     .isServiceInstantiatedByContractID(SHELL_SERVICE, Ci.nsISupports);
 }
 
+/**
+ * @param {string} path
+ * @returns {boolean} whether the file exists and can be read, as the shell's `-r` tells
+ */
+function isReadableFile(path) {
+  try {
+    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    file.initWithPath(path);
+    return file.isFile() && file.isReadable();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {string} path
+ * @returns {string | null} a whole mimeapps.list or desktop entry; "" for one that exists but is
+ *   empty or too long, which hides the copies after it as it does for Omarchy's launcher; null
+ *   when there is no readable file
+ */
+function readList(path) {
+  if (!isReadableFile(path)) {
+    return null;
+  }
+  const text = readSmallFile(path, MAX_LIST_BYTES + 1);
+  return text.length <= MAX_LIST_BYTES ? text : "";
+}
+
+/** @returns {any} the GIO service, or null where there is none */
+function gioService() {
+  try {
+    return Cc[GIO_SERVICE]?.getService(Ci.nsIGIOService) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {string} scheme
+ * @returns {string} the id of GIO's default handler, or "" (none, or a Flatpak portal handler)
+ */
+function gioDefaultFor(scheme) {
+  const gio = gioService();
+  // Under Flatpak each call is a portal round trip, and its handler is never Omarchy's router.
+  if (!gio || gio.isRunningUnderFlatpak) {
+    return "";
+  }
+  try {
+    const app = gio.getAppForURIScheme(scheme);
+    return app instanceof Ci.nsIGIOMimeApp ? app.id : "";
+  } catch {
+    // nsGIOService throws NS_ERROR_FAILURE when no app handles the scheme.
+    return "";
+  }
+}
+
+/**
+ * @param {string} program
+ * @param {string} path PATH
+ * @returns {boolean} whether the shell would find the program: an executable file by its absolute
+ *   path, or by its name in an absolute PATH dir
+ */
+function resolvesIn(program, path) {
+  if (program.startsWith("/")) {
+    return isExecutableFile(program);
+  }
+  if (program.includes("/")) {
+    return false;
+  }
+  return path
+    .split(":")
+    .some((dir) => dir.startsWith("/") && isExecutableFile(PathUtils.join(dir, program)));
+}
+
+/**
+ * Firefox's isDefaultBrowser answer, or true when isDefaultThroughRouter() says so; the original
+ * always runs first, for the side effect of its startup check (ShellService._checkedThisSession).
+ * A failure in the second look is a no, which is Firefox's answer.
+ *
+ * @param {() => boolean} check
+ * @returns {boolean}
+ */
+function safely(check) {
+  try {
+    return check();
+  } catch (e) {
+    console.error("Vimma: the default-browser check through Omarchy's router failed", e);
+    return false;
+  }
+}
+
+/**
+ * @typedef {{
+ *   platform?: string,
+ *   env?: { get(name: string): string, set(name: string, value: string): void },
+ *   exePath?: string,
+ *   exeDir?: string,
+ *   exists?: (path: string) => boolean,
+ *   marker?: string,
+ *   running?: () => boolean,
+ *   startShellService?: () => void,
+ * }} StartDeps
+ */
+
 let done = false;
 
 export const AppLauncher = {
@@ -84,6 +200,13 @@ export const AppLauncher = {
    * behaviour for that session.
    */
   startedFirst: false,
+
+  /**
+   * The absolute command the shell service takes as this browser, to compare desktop entries
+   * with; "" when it is not known (another platform, or a relative MOZ_APP_LAUNCHER, which the
+   * shell service looks up in PATH).
+   */
+  appPath: "",
 
   /**
    * Once per process, from the first window's first script: before then only those two cases
@@ -97,32 +220,127 @@ export const AppLauncher = {
    * its package marker, keeps AppRun's value (the .AppImage, which outlives the mount). Without
    * vimma-open (the tarball, a build from source) the shell service keeps Firefox's behaviour.
    *
-   * @param {{
-   *   platform?: string,
-   *   env?: { get(name: string): string, set(name: string, value: string): void },
-   *   exeDir?: string,
-   *   exists?: (path: string) => boolean,
-   *   marker?: string,
-   *   running?: () => boolean,
-   *   startShellService?: () => void,
-   * }} [deps] for tests; each defaults to the real one, and passing any runs init again
+   * @param {StartDeps} [deps] for tests; each defaults to the real one, and passing any runs init again
    * @returns {boolean} whether the shell service started with vimma-open as its command
    */
   init(deps) {
     if (deps) {
-      return start(deps);
+      return start(deps).started;
     }
     if (!done) {
       done = true;
-      this.startedFirst = start({});
+      const { started, appPath } = start({});
+      this.startedFirst = started;
+      this.appPath = appPath;
+      if (appPath) {
+        const { ShellService } = ChromeUtils.importESModule(
+          "moz-src:///browser/components/shell/ShellService.sys.mjs",
+        );
+        this.wrapIsDefault(ShellService, () => this.isDefaultThroughRouter());
+      }
     }
     return this.startedFirst;
+  },
+
+  /**
+   * init's work with test doubles, without keeping its result.
+   *
+   * @param {StartDeps} deps
+   * @returns {{ started: boolean, appPath: string }}
+   */
+  probe(deps) {
+    return start(deps);
+  },
+
+  /**
+   * Makes Settings and the startup prompt count Vimma as the default when Omarchy's router opens
+   * it (core/default-browser.mjs). Replaces the two methods on ShellService's internal object,
+   * which its proxy returns before the native service's; everything that asks (Settings'
+   * DefaultBrowserHelper, DefaultBrowserCheck, BrowserGlue) goes through them.
+   *
+   * @param {{ isDefaultBrowser: Function, isDefaultBrowserAsync: Function }} target
+   * @param {() => boolean} check
+   */
+  wrapIsDefault(target, check) {
+    const isDefault = target.isDefaultBrowser;
+    const isDefaultAsync = target.isDefaultBrowserAsync;
+    target.isDefaultBrowser = function vimmaIsDefaultBrowser(/** @type {unknown[]} */ ...args) {
+      return Boolean(isDefault.apply(this, args)) || safely(check);
+    };
+    target.isDefaultBrowserAsync = async function vimmaIsDefaultBrowserAsync(
+      /** @type {unknown[]} */ ...args
+    ) {
+      return Boolean(await isDefaultAsync.apply(this, args)) || safely(check);
+    };
+  },
+
+  /**
+   * Whether GIO's http and https handler is Omarchy's router and the router opens Vimma's own
+   * entry (core/default-browser.mjs). Reads nothing unless GIO names the router.
+   *
+   * @param {{
+   *   env?: { get(name: string): string },
+   *   appPath?: string,
+   *   readFile?: (path: string) => string | null,
+   *   defaultFor?: (scheme: string) => string,
+   *   resolves?: (program: string) => boolean,
+   * }} [deps] for tests; each defaults to the real one
+   * @returns {boolean}
+   */
+  isDefaultThroughRouter(deps = {}) {
+    const defaultFor = deps.defaultFor ?? gioDefaultFor;
+    if (defaultFor("http") !== OMARCHY_ROUTER) {
+      return false;
+    }
+    const env = deps.env ?? Services.env;
+    const readFile = deps.readFile ?? readList;
+    const dirs = dataDirs({
+      home: env.get("HOME"),
+      dataHome: env.get("XDG_DATA_HOME"),
+      dataDirs: env.get("XDG_DATA_DIRS"),
+    });
+    const lists = mimeappsLists({
+      home: env.get("HOME"),
+      configHome: env.get("XDG_CONFIG_HOME"),
+      configDirs: env.get("XDG_CONFIG_DIRS"),
+      currentDesktop: env.get("XDG_CURRENT_DESKTOP"),
+    }).map(readFile);
+    return isDefaultThroughRouter({
+      defaultFor,
+      lists,
+      // The first readable copy decides, empty or not, as in omarchy-cmd-default-browser.
+      entryFor: (id) => {
+        for (const dir of dirs) {
+          const text = readFile(PathUtils.join(dir, "applications", id));
+          if (text !== null) {
+            return text;
+          }
+        }
+        return null;
+      },
+      resolves: deps.resolves ?? ((program) => resolvesIn(program, env.get("PATH"))),
+      appPath: deps.appPath ?? this.appPath,
+    });
   },
 };
 
 /**
- * @param {Parameters<typeof AppLauncher.init>[0] & {}} deps
- * @returns {boolean} whether the shell service started with vimma-open as its command
+ * @param {string} value MOZ_APP_LAUNCHER as the shell service finds it
+ * @param {string} exePath
+ * @returns {string} the command the shell service takes from it (GetAppPathFromLauncher, else the
+ *   binary); "" for a relative value, which it looks up in PATH
+ */
+function commandFrom(value, exePath) {
+  if (!value) {
+    return exePath;
+  }
+  return value.startsWith("/") ? value : "";
+}
+
+/**
+ * @param {StartDeps} deps
+ * @returns {{ started: boolean, appPath: string }} whether the shell service started with
+ *   vimma-open as its command, and the command it takes
  */
 function start(deps) {
   const { env = Services.env, exists = isExecutableFile, running = shellServiceRunning } = deps;
@@ -130,16 +348,17 @@ function start(deps) {
     deps.platform ??
     ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs").AppConstants.platform;
   if (platform !== "linux") {
-    return false;
+    return { started: false, appPath: "" };
   }
-  const exeDir =
-    deps.exeDir ?? PathUtils.parent(Services.dirsvc.get("XREExeF", Ci.nsIFile).path) ?? "";
+  const exePath = deps.exePath ?? Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
+  const exeDir = deps.exeDir ?? PathUtils.parent(exePath) ?? "";
   const own = PathUtils.join(exeDir, LAUNCHER);
   const marker = deps.marker ?? readSmallFile(PathUtils.join(exeDir, MARKER));
   if (APPIMAGE.test(marker) || !exists(own)) {
-    return false;
+    return { started: false, appPath: commandFrom(env.get(ENV), exePath) };
   }
   const late = running();
+  const found = env.get(ENV);
   if (late) {
     console.warn(
       "Vimma: the shell service started before Vimma could name its launcher; " +
@@ -154,5 +373,5 @@ function start(deps) {
     }
   }
   env.set(ENV, "");
-  return !late;
+  return { started: !late, appPath: late ? commandFrom(found, exePath) : own };
 }
