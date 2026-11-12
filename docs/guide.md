@@ -4580,10 +4580,10 @@ updates are off. Vimma's own [update check](#updates) asks `updates.vimma.dev` o
 Mozilla's update server is for the OpenH264 and Widevine plugins, which video calls and DRM video
 need.
 
-Sites see Firefox 158's user agent, with no Vimma token, and add-ons see Firefox's version
-(`runtime.getBrowserInfo()`), so Vimma is treated like Firefox. The About dialog shows Vimma's own
-version; `vimma --version` and the start page show it with the Firefox release it is built on,
-for example `Vimma X.Y.Z · Firefox N`.
+Sites see the user agent of the Firefox release Vimma is built on, with no Vimma token, and
+add-ons see Firefox's version (`runtime.getBrowserInfo()`), so Vimma is treated like Firefox. The
+About dialog shows Vimma's own version; `vimma --version` and the start page show it with the
+Firefox release it is built on, for example `Vimma X.Y.Z · Firefox N`.
 
 ### Safe Browsing
 
