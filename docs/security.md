@@ -2789,7 +2789,7 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`a scheduled run on a changed commit builds, publishes and offers the new build`](../tools/test/nightly-workflow.test.mjs),
   [`a manual run builds, whatever the change check says`](../tools/test/nightly-workflow.test.mjs),
   [`the change check reads with contents: read alone, no secret and no environment`](../tools/test/nightly-workflow.test.mjs),
-  [`a skipped day starts no job in the build environment and none that reads the key`](../tools/test/nightly-workflow.test.mjs),
+  [`a skipped day starts no job in the build environment and none that reads the Safe Browsing key`](../tools/test/nightly-workflow.test.mjs),
   [`builds when %s`](../tools/update/test/nightly-change.test.mjs),
   [`only the nightly's failure-issue step, its publish job and its change check get GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
 - B9. Every file `release.yml` uploads to a release, the Arch Linux `PKGBUILD` and `SRCINFO`
@@ -3477,7 +3477,14 @@ _Pages_ and _extensions_ cannot reach it.
   `X.Y.Z-nightly.<buildID>`, one `<patch>` and one `<vimmaTarball>` at that build's URLs on the
   `nightly` release, and nothing else. `nightly-publish` downloads both files again, checks the
   signed file with the browser's verifier and with openssl, and pushes only
-  `…/vimma-nightly/update.xml`, never forced; a missing deploy key fails the run. The release
+  `…/vimma-nightly/update.xml`, never forced; a missing deploy key fails the run. A called job
+  reads an environment secret only when its caller passes it, so `nightly.yml`'s `manifest` call
+  passes `UPDATES_DEPLOY_KEY` by name (declared optional in `workflow_call`), never every secret
+  with `inherit`; only `nightly-publish`, deploying to `update-publish`, reads it in a call and
+  gets the environment's value, and the `mar-sign` calls pass none. **⚠ setting:** the key
+  lives only in the `update-publish` environment; a repository or organisation secret of that
+  name, readable from any branch, would also flow into the call, and none may exist
+  (`gh api repos/vimma-browser/vimma/actions/secrets`). The release
   jobs refuse a body for any channel but `vimma`, `manifest.mjs` checks each channel before a
   push, and the client refuses a manifest for another channel (UP2), so a nightly offer never
   reaches a release install, nor a release offer a nightly install. Each channel's serials and
@@ -3517,6 +3524,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../tools/update/test/update-workflow.test.mjs),
   [`the publish job verifies with the browser's verifier and with openssl before any push`](../tools/update/test/update-workflow.test.mjs),
   [`the deploy key lives in its own environment and reaches only the push steps`](../tools/update/test/update-workflow.test.mjs),
+  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../tools/update/test/update-workflow.test.mjs),
   [`pushes one commit naming the version to main, never forced, to a pinned host key`](../tools/update/test/update-workflow.test.mjs),
   [`a push the other target's run beat rebases and lands, with no git identity configured`](../tools/update/test/update-workflow.test.mjs),
   [`signs the body so that the browser's verifier accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),

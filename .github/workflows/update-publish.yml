@@ -100,6 +100,13 @@ on:
         required: false
         type: string
         default: ""
+    # A called job reads an environment secret only when the caller passes it by name, though it
+    # exists only in the environment; nightly-publish, the one job of a call in update-publish,
+    # then gets its value. nightly.yml's manifest call passes it; the mar-sign calls pass nothing.
+    secrets:
+      UPDATES_DEPLOY_KEY:
+        description: "nightly.yml's manifest call: the update-publish environment's deploy key, by name"
+        required: false
 
 permissions: {}
 
