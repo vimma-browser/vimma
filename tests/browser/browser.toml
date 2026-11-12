@@ -43,6 +43,9 @@ support-files = [
   "file_vimma_consent.html",
 ]
 
+["browser_vimma_hints_wizard.js"]
+support-files = ["file_vimma_hints.html"]
+
 ["browser_vimma_element.js"]
 support-files = [
   "file_vimma_element.html",
