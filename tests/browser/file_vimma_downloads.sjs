@@ -4,10 +4,11 @@
 
 // Fixture for browser_vimma_downloads.js. `?hold&name=<file>` answers a 20000-byte attachment,
 // sends half of it and keeps the rest until `?release` is requested; `?now&name=<file>` sends a
-// small attachment at once; `?short&name=<file>` promises 20000 bytes and sends half, so the
-// download fails, the first time for each name, and sends all of it after; `?release` lets
-// every held download finish. A held download can be resumed: its answer carries an ETag, and a
-// `Range` request gets the rest at once.
+// small attachment at once; `?short&run=<id>&name=<file>` promises 20000 bytes and sends half,
+// so the download fails, the first time for each run and name, and sends all of it after;
+// `?release` lets every held download finish. A held download can be resumed: its answer carries
+// an ETag, and a `Range` request gets the rest at once. The server's state outlives one run of
+// the test file (`--repeat` runs it again in the same harness), hence the run id.
 const SIZE = 20000;
 const HALF = "a".repeat(SIZE / 2);
 
@@ -35,8 +36,9 @@ function handleRequest(request, response) {
     response.write("hello");
     return;
   }
-  if (query.has("short") && getState(`vimma-downloads-short-${name}`) !== "1") {
-    setState(`vimma-downloads-short-${name}`, "1");
+  const shortKey = `vimma-downloads-short-${query.get("run")}-${name}`;
+  if (query.has("short") && getState(shortKey) !== "1") {
+    setState(shortKey, "1");
     // Fewer bytes than the length promised: the download fails. Asynchronous, so httpd.js
     // keeps the promised Content-Length instead of counting the body.
     response.processAsync();
