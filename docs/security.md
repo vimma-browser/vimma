@@ -3497,7 +3497,7 @@ _Pages_ and _extensions_ cannot reach it.
   restart question, or Firefox's own restart commands do. The restart question
   (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
   security release that is already in place (an AppImage that replaced its file, or a tarball
-  whose update Firefox's updater has staged for the next start), once per session and again 24
+  whose update Firefox's updater will apply at the next start), once per session and again 24
   hours after an answer, and arms, waits and refuses keys exactly as the question of UP9. It
   **never** hides a loss: while the private workspace has tabs it says they will close, and when
   session restore will bring no tab back it says `Tabs will not come back`;
