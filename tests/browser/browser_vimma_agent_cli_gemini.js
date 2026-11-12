@@ -42,6 +42,7 @@ const { CLIS, geminiArguments } = ChromeUtils.importESModule(
 const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
 );
+const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
 const GEMINI = {
   name: "gemini",
@@ -177,6 +178,22 @@ async function tidy() {
 /** @param {() => Promise<void>} task */
 const addTidyTask = (task) => add_task(tidyTask(task, tidy));
 
+/**
+ * Starts the fake once, untimed, with the PATH its setup test gives it, so that its interpreter
+ * has started before setup's `--version` gets VERSION_MS: the first python3 start of a fresh
+ * macOS runner took 2 to 5 s, and the first fake the suite runs was listed with no version
+ * (#917). @param {string} bin @param {string} dir  the fake's folder
+ */
+async function startInterpreter(bin, dir) {
+  const proc = await Subprocess.call({
+    command: bin,
+    arguments: ["--version"],
+    environment: { PATH: `${dir}:/usr/bin:/bin` },
+    environmentAppend: true,
+  });
+  await proc.wait();
+}
+
 add_setup(async () => {
   await SpecialPowers.pushPrefEnv({ set: [["vimma.mcp.askTimeoutMs", 20000]] });
   OSKeyStoreTestUtils.setup();
@@ -187,6 +204,7 @@ add_setup(async () => {
   const bin = PathUtils.join(dir, "gemini");
   await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_gemini.py"), bin);
   await IOUtils.setPermissions(bin, 0o700);
+  await startInterpreter(bin, dir);
   const home = PathUtils.join(dir, "home");
   await IOUtils.makeDirectory(home, { permissions: 0o700 });
   fake = { dir, bin, report: PathUtils.join(dir, "report.json"), home };

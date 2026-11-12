@@ -183,6 +183,8 @@ export const DEFAULT_MAX_MINUTES = 30;
 export const MAX_MINUTES = 1440;
 /** Native messaging's grace before a forced kill (C9). */
 export const KILL_GRACE_MS = 3000;
+/** `--version` gets this long before it is killed (Behaviour 1). */
+export const VERSION_MS = 5000;
 /** What a line of the transcript keeps of an own-tool step or an error (Behaviour 9, 13). */
 export const LINE_CHARS = 200;
 /** A line, and a run's whole output, past which the run is stopped (C8); stderr kept for C13. */
@@ -520,12 +522,16 @@ export function taskPrompt(messages, text, note = "") {
  * then what a shim runs (`shimText`) when it is one.
  * @param {CliInfo} cli @param {string} stdout  of `--version` @param {string} path
  * @param {string} [shim]
+ * @param {boolean} [late]  `--version` was killed after VERSION_MS: a CLI slow to start (its
+ *   first start after an install, a busy machine) is told apart from one that printed no version
  */
-export function versionText(cli, stdout, path, shim = "") {
+export function versionText(cli, stdout, path, shim = "", late = false) {
   const first = plain(stdout.split("\n")[0]).trim();
   // Codex prints `codex-cli 0.163.0`; the line names the program already.
   const named = first.startsWith(`${cli.bin}-cli `) ? first.slice(cli.bin.length + 5) : first;
-  const version = named.replace(/\s*\(.*\)\s*$/, "") || "unknown version";
+  const version = late
+    ? `gave no version in ${VERSION_MS / 1000} s`
+    : named.replace(/\s*\(.*\)\s*$/, "") || "unknown version";
   return `${cli.bin} ${cut(version, 40)} · ${path}${shim ? ` · ${shim}` : ""}`;
 }
 

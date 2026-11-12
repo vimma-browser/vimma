@@ -14,6 +14,7 @@
 #   [[foreign]]                    a call to an MCP server that is not Vimma's
 #   [[sleep S]]                    wait
 #   [[bad-key]]                    the stream of a rejected API key, then exit 1
+# FAKE_CODEX_VERSION_SLEEP: seconds `--version` waits before it answers (default 0).
 # FAKE_CODEX_SERVERS: the names `mcp list` gives (comma separated; default "vimma,other").
 # Each run appends what it was given to the JSON list FAKE_CLI_REPORT names.
 import json
@@ -27,6 +28,8 @@ REPORT = os.environ.get("FAKE_CLI_REPORT")
 args = sys.argv[1:]
 
 if args == ["--version"]:
+    # FAKE_CODEX_VERSION_SLEEP: seconds before it answers, as a CLI slow to start.
+    time.sleep(float(os.environ.get("FAKE_CODEX_VERSION_SLEEP") or 0))
     print("codex-cli 0.163.0")
     sys.exit(0)
 

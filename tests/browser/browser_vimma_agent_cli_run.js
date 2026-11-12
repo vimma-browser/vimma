@@ -117,12 +117,29 @@ async function needCtl() {
   return bin;
 }
 
+/**
+ * Starts the fake once, untimed, with the PATH its setup test gives it, so that its interpreter
+ * has started before setup's `--version` gets VERSION_MS: the first python3 start of a fresh
+ * macOS runner took 2 to 5 s, and the first fake the suite runs was listed with no version
+ * (#917). @param {string} bin @param {string} dir  the fake's folder
+ */
+async function startInterpreter(bin, dir) {
+  const proc = await Subprocess.call({
+    command: bin,
+    arguments: ["--version"],
+    environment: { PATH: `${dir}:/usr/bin:/bin` },
+    environmentAppend: true,
+  });
+  await proc.wait();
+}
+
 /** The fake CLI, copied as `claude` into a fresh 0700 folder; its report file beside it. */
 async function installFake() {
   const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-fake-cli", 0o700);
   const bin = PathUtils.join(dir, "claude");
   await IOUtils.copy(repoFile("tests", "browser", "fake_vimma_agent_cli.py"), bin);
   await IOUtils.setPermissions(bin, 0o700);
+  await startInterpreter(bin, dir);
   const report = PathUtils.join(dir, "report.json");
   Services.env.set("FAKE_CLI_REPORT", report);
   Services.prefs.setStringPref(pathPref("claude-code"), bin);
