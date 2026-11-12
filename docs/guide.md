@@ -1137,7 +1137,8 @@ bar, the menu bar (`F10`) and every menu, the dialogs a page opens (`alert`, `co
 around its pages, and Firefox's own pages: Settings and its dialogs (the import wizard and its
 list of browsers included), Add-ons,
 Downloads (`about:downloads`), Troubleshooting (`about:support`), `about:config`,
-`about:profiles` and `about:processes`. Their accent (the selected category, checkboxes, main
+`about:profiles`, `about:processes` and Tab Overview (`about:firefoxview`), its cards and its
+navigation included. Their accent (the selected category, checkboxes, main
 buttons) is the normal-mode badge's colour. Settings' default-browser card shows its text and
 button without Firefox's mascot. With your system's high-contrast setting on, these surfaces keep
 Firefox's own high-contrast colours. Pages that Firefox loads in a web content process, such as
@@ -4637,7 +4638,7 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   days old to import history from another browser; Vimma does not, and
   [Moving over from Firefox or Chrome](#moving-over-from-firefox-or-chrome) says how to import
   (`browser.tabs.firefox-view.importHistory.dismissed` = `false` brings the promo back on such a
-  profile, without Firefox's mascot).
+  profile, without Firefox's mascot and in the theme's colours).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
 - **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and
