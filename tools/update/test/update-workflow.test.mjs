@@ -637,12 +637,39 @@ esac
       (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
       "release",
     ],
+    // GNU grep ends a line at a NUL byte, so a line check alone would pass either half.
+    [
+      "a root for another target hidden before a NUL byte",
+      (b) =>
+        b.replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma" vimmaTarget="Darwin_aarch64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
+      "release",
+    ],
+    [
+      "another tarball hidden after a NUL byte",
+      (b) =>
+        b.replace(
+          /(<vimmaTarball [^\n]*\/>)\n/,
+          `$1\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
+        ),
+      "release",
+    ],
+    [
+      "a byte that is not ASCII",
+      (b) => b.replace("</updates>", "<!-- \u00e9 -->\n</updates>"),
+      "release",
+    ],
+    ["a carriage return", (b) => b.replace("</updates>\n", "</updates>\r\n"), "release"],
+    ["a body that does not end with a newline", (b) => b.replace(/\n$/, ""), "release"],
   ])(
     "refuses to sign %s",
     (_name, change, offer) => {
       const { dir } = setUp(change(offerBody()));
       const check = run(dir, "Check what is about to be signed", { TAG: "v0.3.1", OFFER: offer });
       expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toMatch(/::error::/);
     },
     60_000,
   );
