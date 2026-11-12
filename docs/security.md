@@ -2746,6 +2746,18 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   release, and when it already holds a newer build (a re-run of an older night). It removes only
   the files of builds older than this one, keeping the previous build's and those of the build
   the published nightly manifest offers, and removes none when the update host does not answer.
+  A scheduled run builds only when `main` changed (decision 44): the `changes` job, with
+  `contents: read`, no secret and no environment, runs `gh release view` and
+  `tools/update/nightly-change.mjs` to compare `main`'s commit and Firefox version with the
+  record that `publish` writes first in the release notes. On a match no job in the `build`
+  environment starts, so the Safe Browsing key is not read that day, and `manifest` re-signs the
+  recorded build (UP7); anything the record cannot vouch for builds, and a manual run always
+  builds, as does a failed change check. The record only chooses between building and re-signing:
+  whoever can edit the release's notes and files (write access) can delay a build or cause one,
+  and can choose which build is re-signed only among genuine `nightly.yml@refs/heads/main`
+  builds, since `nightly-prepare` still requires the release's `SHA256SUMS` under that cosign
+  identity, the MAR on the channel `vimma-nightly`, and a build no older than the published
+  offer.
   `SHA256SUMS` covers the newest build alone; a kept older build is still pinned by the manifest's
   SHA-512. Release and tag events made with
   `GITHUB_TOKEN` start no workflow, so `aur.yml`, `homebrew.yml`, `site-dispatch.yml` and
@@ -2770,7 +2782,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`removes nothing when the update host does not answer, nor any newer build`](../tools/test/nightly-workflow.test.mjs),
   [`a failure of any job is reported by its own job, from the redacted log artifact`](../tools/test/nightly-workflow.test.mjs),
   [`the report job names the repository, since it checks nothing out`](../tools/test/nightly-workflow.test.mjs),
-  [`only the nightly's failure-issue step and its publish job get GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
+  [`a scheduled run on an unchanged commit builds nothing and re-signs the recorded build`](../tools/test/nightly-workflow.test.mjs),
+  [`a scheduled run on a changed commit builds, publishes and offers the new build`](../tools/test/nightly-workflow.test.mjs),
+  [`a manual run builds, whatever the change check says`](../tools/test/nightly-workflow.test.mjs),
+  [`the change check reads with contents: read alone, no secret and no environment`](../tools/test/nightly-workflow.test.mjs),
+  [`a skipped day starts no job in the build environment and none that reads the key`](../tools/test/nightly-workflow.test.mjs),
+  [`builds when %s`](../tools/update/test/nightly-change.test.mjs),
+  [`only the nightly's failure-issue step, its publish job and its change check get GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
 - B9. Every file `release.yml` uploads to a release, the Arch Linux `PKGBUILD` and `SRCINFO`
   included, **must** be listed in that release's `SHA256SUMS` and get a cosign bundle from the
   `sign` job, so a user can verify any asset, and the `PKGBUILD`, which pacman runs as root, is
@@ -3464,10 +3482,17 @@ _Pages_ and _extensions_ cannot reach it.
   refused. **⚠ limit:** a nightly is always offered as `normal` (decision 43), so a nightly
   that carries a Firefox security fix gets no restart question; Firefox's updater still stages
   it and applies it at the next start.
+  On a scheduled day when `main` did not change (decision 44), `nightly.yml` makes the same call
+  with the build the `nightly` release records, and these three jobs re-sign it unchanged: the
+  same environments, permissions, Workload Identity condition, byte check and seven-line check,
+  so the body differs from that build's earlier manifest only in its serial. The client takes
+  the newer serial with an offer of its own version as up to date, with no download and no
+  notice, and the nightly feed never goes stale while the nightly runs.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
   [`grants nothing by default, and each job only what it needs`](../tools/update/test/update-workflow.test.mjs),
+  [`an unchanged day's re-sign offers the same build under a newer serial, and installs stay current`](../tools/update/test/nightly-manifest.test.mjs),
   [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
   [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../tools/update/test/update-workflow.test.mjs),
   [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../tools/update/test/update-workflow.test.mjs),

@@ -37,7 +37,9 @@
 #             and the committed certificates before it lists the MAR in SHA256SUMS.
 #
 # The nightly channel's manifest (spec m6a-updater, decisions 42 and 43): nightly.yml calls this
-# workflow again with the build ID once the rolling `nightly` pre-release has the build's files.
+# workflow again with the build ID once the rolling `nightly` pre-release has the build's files,
+# and on a scheduled day when main did not change, with the build the release already has, which
+# the same jobs re-sign under a new serial (decision 44).
 #
 #   nightly-prepare  no secret: checks the nightly release is a public pre-release, downloads its
 #                    files, checks SHA256SUMS against nightly.yml's cosign signature and the MAR's

@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PRs 1 to 4, sub-PR 5's e2e scenarios, and the nightly's signed MAR, release and manifest implemented, the last off until `NIGHTLY_RELEASE_ENABLED` is set (decision 42); the security rehearsal waits for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4, sub-PR 5's e2e scenarios, and the nightly's signed MAR, release and manifest implemented, the last off until `NIGHTLY_RELEASE_ENABLED` is set (decision 42), and its skip of unchanged days (decision 44); the security rehearsal waits for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -709,7 +709,9 @@ caller, `nightly.yml` on `main`; `mar` checks it as `release.yml`'s does and wri
 `update-publish.yml` again, whose `nightly-prepare`, `nightly-sign` and `nightly-publish` jobs
 write `…/vimma-nightly/update.xml` as `prepare`, `sign` and `publish` write the release's. The
 previous build's files stay on the release until the next build. docs/security.md B8, UP7 and
-UP14.)
+UP14.) (Since changed: a scheduled nightly builds only when `main` changed since the build the
+`nightly` release records, and otherwise re-signs that build's manifest under a new serial;
+decision 44.)
 
 **The bump and release halves of the security path** are other specs' (decision 3): spec
 upstream-bump-automation merges a green bump PR under `AUTO_MERGE_UPSTREAM`, and spec
@@ -1070,6 +1072,32 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     for a read-only tarball install from the version (`releases/download/v<version>/…`), so for a
     nightly that command names a URL that does not exist and fails at `curl -f` before anything is
     installed; a writable install, which Firefox's updater updates, is not affected.
+44. **A scheduled nightly builds only when `main`'s commit or Firefox's version differs from the
+    build the `nightly` release records; on an unchanged day it builds nothing and re-signs that
+    build's manifest under a new serial, every day. A manual run always builds**, because a build
+    of the same commit is the same code under a new build ID: every nightly install would download
+    and apply it as an update, and it costs about two hours of runner time. The record is the
+    first sentence of the release notes, which the `publish` job writes after the files are up:
+    `Nightly build <buildID> of main at <commit>, Firefox <version>.` A job with `contents: read`,
+    no secret and no environment (`changes`, `tools/update/nightly-change.mjs`) compares it with
+    `main`. Firefox's version is in the commit too; it is compared as well, so that a record in
+    another shape, or a build of another Firefox, never passes. Anything the record cannot vouch
+    for builds: no release, a draft or full release, notes without the record, or a release whose
+    newest files and `SHA256SUMS` are not the recorded build's; so does a run whose change check
+    fails. The re-sign is the build day's
+    manifest call (`nightly-prepare`, `nightly-sign`, `nightly-publish`) with the recorded build
+    ID, so it offers the same MAR, hashes and build ID with every check unchanged; a nightly
+    install of that build reads a newer serial with an offer of its own version, which the client
+    takes as up to date (rule 4 and decision 40): no download and no notice. Daily rather than
+    only when the published manifest is 5 days old, because the re-sign is no new kind of
+    signature (the body differs from the build day's only in its serial, and `nightly-sign` admits
+    nothing else), and a daily serial keeps the 7-day stale notice meaning what it meant: the
+    nightly pipeline has stopped. A `main` that changed but fails to build is never re-signed (the
+    change check says build), so its installs still see the notice after 7 days. Rejected: a
+    `force` input, because a manual run always builds; comparing with the published manifest's
+    build, because the manifest names no commit; and a record in a release asset, because every
+    asset `publish` uploads must be listed in `SHA256SUMS`, which would then change on a day
+    nothing was built.
 
 ### 9. Not in this spec
 

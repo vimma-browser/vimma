@@ -563,7 +563,7 @@ Limits:
 | -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
 | `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest` + macOS   | nothing                                    |
 | `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
-| `nightly.yml`              | 03:00 UTC, manual                                  | `ubuntu-24.04`            | nothing (`NIGHTLY_ENABLED` is set)         |
+| `nightly.yml`              | 03:00 UTC when `main` changed, manual              | `ubuntu-24.04`            | nothing (`NIGHTLY_ENABLED` is set)         |
 | `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
 | `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
 | `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
@@ -1287,6 +1287,25 @@ then the published nightly manifest still offers that build, whose files are gon
 nightly install's update fails its download (nothing is installed) until a new nightly is
 published. A release or tag named `nightly` that is not a public pre-release stops the
 `publish` job until it is removed.
+
+**Unchanged days** (spec [m6a-updater](specs/m6a-updater.md), decision 44). While public
+nightlies are on, the scheduled run first runs `changes` (about a minute, `contents: read`, no
+secret): it reads the `nightly` release's notes, whose first sentence records the last build
+(`Nightly build <buildID> of main at <commit>, Firefox <version>.`), and compares that commit and
+Firefox version with `main`'s. When both match it skips `build` and everything after it, and the
+`manifest` job signs the recorded build's manifest again under a new serial: the same MAR,
+hashes and build ID, so nightly installs see "up to date" and never `no news for N days`. The
+run's summary shows the reason as a notice (`no build: main is still …`, or `build: …`).
+Anything the record cannot vouch for (no release, a draft, notes in another shape, newer or
+missing files) builds, and so does a run whose `changes` job fails. A manual run always builds:
+
+```sh
+gh workflow run nightly.yml --ref main                # build now, even if main has not changed
+gh release view nightly --json body --jq .body        # the record the next night compares with
+```
+
+A `main` that changed but fails to build is not re-signed, so its installs see the stale notice
+after 7 days, as before: fix the build, or run a manual nightly once it is fixed.
 
 ### macOS build (`macos.yml`)
 
