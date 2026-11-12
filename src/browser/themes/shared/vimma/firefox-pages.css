@@ -56,7 +56,12 @@
     --button-text-color-primary-active: var(--vimma-mode-normal-fg) !important;
     --button-border-color-primary: transparent !important;
 
-    /* Other buttons keep Firefox's tint of the text colour; their text is the theme's. */
+    /* Other buttons keep Firefox's tint of the text colour; their text is the theme's. Hovered
+     * and pressed, Nova tints them violet (tokens-brand.css), which also marks the chosen entry
+     * of a list such as the import wizard's: they take Firefox's own tints of the text colour
+     * (tokens-platform.css) instead. */
+    --button-background-color-hover: color-mix(in srgb, currentColor 17%, transparent) !important;
+    --button-background-color-active: color-mix(in srgb, currentColor 30%, transparent) !important;
     --button-text-color: var(--vimma-fg) !important;
     --button-text-color-hover: var(--vimma-fg) !important;
     --button-text-color-active: var(--vimma-fg) !important;
@@ -82,6 +87,16 @@
     background-color: var(--vimma-bg-dark) !important;
     color: var(--vimma-fg) !important;
     scrollbar-color: var(--vimma-muted) var(--vimma-bg-dark) !important;
+  }
+
+  /* The import wizard (Settings, Import browser data) is an HTML <dialog> in the page, painted
+   * from --dialog-background-color and --dialog-border-color (preferences.css) with the UA's
+   * CanvasText: a dialog's surface, as above. Its browser list is themed from inside the
+   * wizard's shadow root (theme-host.mjs, WIZARD_RULES). */
+  #migrationWizardDialog {
+    --dialog-background-color: var(--vimma-bg-dark) !important;
+    --dialog-border-color: var(--vimma-muted) !important;
+    color: var(--vimma-fg) !important;
   }
 
   /* The default-browser card in Settings shows Firefox's mascot (illustrations/kit-*.svg), which
