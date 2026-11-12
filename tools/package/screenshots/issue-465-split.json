@@ -1,0 +1,43 @@
+{
+  "name": "issue-465-split",
+  "issue": 465,
+  "description": "Flathub screenshot: two vimma.dev pages in split panes.",
+  "timeoutSeconds": 90,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "https://vimma.dev/docs/why/" },
+    {
+      "wait-for-state": {
+        "tabs": [{}, { "url": "https://vimma.dev/docs/why/", "selected": true }]
+      },
+      "timeoutSeconds": 30
+    },
+    { "keys": "ctrl+b v" },
+    {
+      "wait-for-state": {
+        "panes": { "root": { "axis": "x", "children": [{ "index": 1 }, { "index": 2 }] } }
+      }
+    },
+    { "open": "https://vimma.dev/keys/" },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          { "url": "https://vimma.dev/docs/why/" },
+          { "url": "https://vimma.dev/keys/", "selected": true },
+          {}
+        ]
+      },
+      "timeoutSeconds": 30
+    },
+    { "keys": "ctrl+b h" },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "tabs": [{}, { "url": "https://vimma.dev/docs/why/", "selected": true }, {}, {}]
+      }
+    },
+    { "sleep": 3 },
+    { "screenshot": "split" }
+  ]
+}
