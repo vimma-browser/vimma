@@ -25,19 +25,32 @@
 # is published; the macOS run when its .dmg is on the published release, which is usually
 # later, from release.yml's macos-tap job, or here when the .dmg was there first.
 #
-# The complete MAR (spec m6a-updater §6 and §7): release.yml calls this workflow (workflow_call)
-# to sign the MAR its package job built with a zeroed signature placeholder (tools/update/mar.mjs).
+# The complete MAR (spec m6a-updater §6 and §7): release.yml and nightly.yml call this workflow
+# (workflow_call) to sign the MAR their build made with a zeroed signature placeholder
+# (tools/update/mar.mjs).
 #
 #   mar-sign  environment update-signing, id-token: write and nothing else; runs no repository
-#             code: checks that the file is the release's MAR for the release channel with one
-#             zeroed SHA-384 placeholder, signs the bytes around it with Cloud KMS, checks the
-#             signature with openssl and writes it in. release.yml then checks the result with
-#             Mozilla's signmar and the committed certificates before it lists the MAR in SHA256SUMS.
+#             code: checks that the file is the caller's MAR for the caller's channel (vimma for
+#             release.yml, vimma-nightly for nightly.yml, never an input) with one zeroed SHA-384
+#             placeholder, signs the bytes around it with Cloud KMS, checks the signature with
+#             openssl and writes it in. The caller then checks the result with Mozilla's signmar
+#             and the committed certificates before it lists the MAR in SHA256SUMS.
+#
+# The nightly channel's manifest (spec m6a-updater, decisions 42 and 43): nightly.yml calls this
+# workflow again with the build ID once the rolling `nightly` pre-release has the build's files.
+#
+#   nightly-prepare  no secret: checks the nightly release is a public pre-release, downloads its
+#                    files, checks SHA256SUMS against nightly.yml's cosign signature and the MAR's
+#                    channel, and builds the unsigned body (manifest.mjs --channel nightly).
+#   nightly-sign     as sign, with a check that admits only that body for that build.
+#   nightly-publish  as publish, for …/vimma-nightly/update.xml alone.
 #
 # A called job is this file's job on main, so its OIDC token names update-publish.yml at
 # refs/heads/main, the one job_workflow_ref Google Cloud admits (docs/runbook.md, step 7b): the
-# key gains no new workflow. The manifest's prepare, sign and publish jobs never run in a call:
-# they need this file to be the run's own workflow (github.workflow_ref is the caller's in a call).
+# key gains no new workflow. The release manifest's prepare, sign and publish jobs never run in
+# a call: they need this file to be the run's own workflow (github.workflow_ref is the caller's
+# in a call). The nightly's jobs run only in nightly.yml's call, and only while the repository
+# variable NIGHTLY_RELEASE_ENABLED is `true`.
 #
 # Nothing is pushed until the repository variable UPDATES_ENABLED is `true` and the deploy key
 # exists. A dry run (-f dry_run=true) signs and checks everything and pushes nothing. By hand:
@@ -71,13 +84,20 @@ on:
         required: false
         type: boolean
         default: false
-  # release.yml's mar-sign job: only a workflow on main can call this file's copy on main.
+  # release.yml's and nightly.yml's calls: only a workflow on main can call this file's copy on
+  # main. A call passes one of the two inputs.
   workflow_call:
     inputs:
       mar:
         description: "The complete MAR's file name in the calling run's mar-unsigned artifact"
-        required: true
+        required: false
         type: string
+        default: ""
+      nightly:
+        description: "nightly.yml: the build ID whose files the nightly release has; signs its manifest"
+        required: false
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -526,14 +546,18 @@ jobs:
           echo "::error::pushed, but $url does not serve serial $SERIAL after 10 minutes (Cloudflare Workers Builds)"
           exit 1
 
-  # release.yml's call: sign the complete MAR. Only release.yml on main may call it, so the MAR
-  # channel is the release channel and the name must be the tag's MAR; the tag is the caller's
-  # input (in a call, github.event is the caller's workflow_dispatch event).
+  # release.yml's and nightly.yml's call: sign the complete MAR. Only those two on main may call
+  # it, and the caller alone decides the MAR channel and the name: release.yml's is the tag's MAR
+  # on the release channel (the tag is the caller's input; in a call, github.event is the
+  # caller's workflow_dispatch event), nightly.yml's a build ID's MAR on the nightly channel, and
+  # only while public nightly releases are on (spec m6a-updater, decision 42).
   mar-sign:
     if: >-
       inputs.mar != '' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
-      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'
+      (github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main' ||
+      (github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main' &&
+      vars.NIGHTLY_RELEASE_ENABLED == 'true'))
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -544,6 +568,7 @@ jobs:
       KEY_VERSION: ${{ vars.GCP_KMS_KEY_VERSION }}
       MAR: ${{ inputs.mar }}
       CALLER_TAG: ${{ github.event.inputs.tag }}
+      CALLER: ${{ github.workflow_ref }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -551,17 +576,28 @@ jobs:
           path: in
 
       # The file comes from a job with no secret; before KMS signs anything, the shell alone
-      # checks that it is the tag's MAR for the release channel, with exactly one signature
+      # checks that it is the caller's MAR for the caller's channel, with exactly one signature
       # entry: RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), 512 bytes, all zero. Then what is
       # signed starts with "MAR1", which the manifest's signed bytes never do (decision 12). The
       # offsets are mar_sign.c's: the entry's header at 20, its bytes at 28 to 539, the product
-      # information block's header at 544 and its channel ID at 552 (tools/update/mar.mjs).
+      # information block's header at 544 and its channel ID at 552 (tools/update/mar.mjs). The
+      # channel is in the signed bytes, so a nightly MAR never installs on a release install, nor
+      # the reverse (the updater's error 22).
       - name: Check the MAR placeholder
         run: |
-          [[ $CALLER_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
-            || { echo "::error::'$CALLER_TAG' is not a vX.Y.Z release tag"; exit 1; }
-          [ "$MAR" = "vimma-${CALLER_TAG#v}-linux-x86_64.complete.mar" ] \
-            || { echo "::error::$MAR is not $CALLER_TAG's complete MAR"; exit 1; }
+          case "$CALLER" in
+            vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main)
+              channel=vimma
+              [[ $CALLER_TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+                || { echo "::error::'$CALLER_TAG' is not a vX.Y.Z release tag"; exit 1; }
+              [ "$MAR" = "vimma-${CALLER_TAG#v}-linux-x86_64.complete.mar" ] \
+                || { echo "::error::$MAR is not $CALLER_TAG's complete MAR"; exit 1; } ;;
+            vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main)
+              channel=vimma-nightly
+              [[ $MAR =~ ^vimma-nightly-[0-9]{14}-linux-x86_64\.complete\.mar$ ]] \
+                || { echo "::error::$MAR is not a nightly build's complete MAR"; exit 1; } ;;
+            *) echo "::error::mar-sign signs only for release.yml and nightly.yml on main, not $CALLER"; exit 1 ;;
+          esac
           mar="in/$MAR"
           [ -f "$mar" ] && [ ! -L "$mar" ] || { echo "::error::no file $mar"; exit 1; }
           size=$(stat -c %s "$mar")
@@ -576,12 +612,14 @@ jobs:
             || { echo "::error::the signature placeholder is not zeroed"; exit 1; }
           [ "$(u32 540)" -ge 1 ] && [ "$(u32 548)" = 1 ] \
             || { echo "::error::no product information block"; exit 1; }
-          # The block holds its 8-byte header, "vimma\0" and at least the version's NUL.
-          [ "$(u32 544)" -ge 15 ] || { echo "::error::the product information block is too short"; exit 1; }
-          # The channel's exact bytes, "vimma" and its NUL.
-          [ "$(od -An -v -tx1 -j 552 -N 6 "$mar" | tr -d ' \n')" = 76696d6d6100 ] \
-            || { echo "::error::the MAR's channel is not vimma"; exit 1; }
-          echo "signing $MAR ($size bytes, channel vimma)"
+          # The block holds its 8-byte header, the channel and its NUL, and at least the version's NUL.
+          [ "$(u32 544)" -ge $((8 + ${#channel} + 2)) ] \
+            || { echo "::error::the product information block is too short"; exit 1; }
+          # The channel's exact bytes and its NUL.
+          want=$(printf '%s\0' "$channel" | od -An -v -tx1 | tr -d ' \n')
+          [ "$(od -An -v -tx1 -j 552 -N $((${#channel} + 1)) "$mar" | tr -d ' \n')" = "$want" ] \
+            || { echo "::error::the MAR's channel is not $channel"; exit 1; }
+          echo "signing $MAR ($size bytes, channel $channel)"
 
       - name: The project of the key
         id: key
@@ -622,8 +660,315 @@ jobs:
           retention-days: 7 # as release.yml's artifacts, so a re-run of its later jobs finds it
           if-no-files-found: error
 
-  # The manifest's failures; a failed mar-sign fails the calling release.yml run, whose own
-  # failure job reports it.
+  # nightly.yml's second call: the nightly channel's manifest (spec m6a-updater, decisions 42 and
+  # 43), once the rolling `nightly` pre-release has the build's tarball, MAR and the SHA256SUMS
+  # nightly.yml's cosign signature covers. As the release manifest's prepare: no secret, public
+  # data only. Its files must be the build nightly.yml asked for, its MAR on the nightly channel.
+  # BUILD_TARGET is Linux's here: a call has no `target` input, and the nightly is Linux only.
+  nightly-prepare:
+    if: >-
+      inputs.nightly != '' && !inputs.mar && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BUILD_ID: ${{ inputs.nightly }}
+    steps:
+      - name: Check the build ID
+        run: |
+          [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Never a draft (its files answer 404) and never a full release, which would be Latest and
+      # which update-publish.yml's release manifest would read.
+      - name: The nightly release is a public pre-release
+        run: |
+          state=$(gh release view nightly --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease \
+            --jq '"\(.isDraft) \(.isPrerelease)"') \
+            || { echo "::error::no nightly release"; exit 1; }
+          [ "$state" = "false true" ] \
+            || { echo "::error::the nightly release is not a public pre-release (isDraft isPrerelease: $state)"; exit 1; }
+
+      - name: Download the nightly's files
+        run: |
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/nightly"
+          mkdir -p assets && cd assets
+          for f in SHA256SUMS SHA256SUMS.sigstore.json "vimma-nightly-$BUILD_ID-linux-x86_64.tar.xz" \
+            "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar"; do
+            curl -fsSL --proto =https --retry 3 -o "$f" "$base/$f" \
+              || { echo "::error::$base/$f: not found"; exit 1; }
+          done
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      # nightly.yml's identity alone: the release manifest accepts only release.yml's, so neither
+      # channel's sums can stand in for the other's.
+      - name: Verify the nightly's signature
+        run: |
+          cosign verify-blob --bundle assets/SHA256SUMS.sigstore.json \
+            --certificate-identity-regexp '^https://github\.com/vimma-browser/vimma/\.github/workflows/nightly\.yml@refs/heads/main$' \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            assets/SHA256SUMS
+
+      # nightly.yml checked this before listing the MAR; checked again here, since the manifest
+      # is what tells installs to take it.
+      - name: The MAR is the nightly channel's, signed by the update key
+        run: |
+          firefox=$(node -p 'require("./surfer.json").version.version')
+          node tools/update/mar.mjs verify --mar "assets/vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" \
+            --cert configs/updater/primary.der --cert configs/updater/secondary.der \
+            --channel vimma-nightly --product-version "$firefox"
+
+      # Both copies, as for the release manifest: the new serial must be newer than either.
+      - name: The published nightly manifest
+        run: |
+          fetch() {
+            code=$(curl -sS --proto =https --retry 3 -o "$2" -w '%{http_code}' "$1")
+            case "$code" in
+              200) ;;
+              404) rm -f "$2" ;;
+              *) echo "::error::$1 answered $code"; exit 1 ;;
+            esac
+          }
+          path=updates/browser/$BUILD_TARGET/vimma-nightly/update.xml
+          fetch "https://updates.vimma.dev/$path" served.xml
+          fetch "https://raw.githubusercontent.com/vimma-browser/vimma-updates/main/public/$path" repo.xml
+
+      # The release version the build was made from: the commit nightly.yml built, which this
+      # call checked out (github.sha is the caller's).
+      - name: Build the nightly manifest
+        run: |
+          version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
+          mkdir -p out
+          node tools/update/manifest.mjs build --channel nightly --build-id "$BUILD_ID" --version "$version" \
+            --assets assets --published served.xml --published repo.xml --out out/update.xml.body
+          cat out/update.xml.body
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-manifest-body
+          path: out/update.xml.body
+          retention-days: 7
+          if-no-files-found: error
+
+  nightly-sign:
+    needs: nightly-prepare
+    if: >-
+      inputs.nightly != '' && !inputs.mar && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
+    # As sign: main alone may deploy to it, and the key's IAM binding names it.
+    environment: update-signing
+    env:
+      KEY_VERSION: ${{ vars.GCP_KMS_KEY_VERSION }}
+      BUILD_ID: ${{ inputs.nightly }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-manifest-body
+          path: out
+
+      # As sign's check, but whole lines: exactly the seven lines buildNightlyManifest writes for
+      # the build nightly.yml asked for, on the nightly channel and the Linux target, a normal
+      # offer whose MAR and tarball are that build's on the nightly release. Nothing else is
+      # signed: no release channel, no other file, no other URL.
+      - name: Check what is about to be signed
+        id: body
+        run: |
+          body=out/update.xml.body
+          [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
+          [ "$(wc -c < "$body")" -le 65536 ] || { echo "::error::the body is over 64 KiB"; exit 1; }
+          [ "$(wc -l < "$body")" = 7 ] || { echo "::error::the body is not seven lines"; exit 1; }
+          dl='https://github\.com/vimma-browser/vimma/releases/download/nightly'
+          sha='hashFunction="sha512" hashValue="[0-9a-f]{128}"'
+          lines=(
+            '<\?xml version="1\.0"\?>'
+            "<updates vimmaChannel=\"vimma-nightly\" vimmaTarget=\"$BUILD_TARGET\" vimmaSerial=\"[0-9]{14}\">"
+            "  <update type=\"minor\" appVersion=\"([0-9.ab]+)\" platformVersion=\"\\1\" buildID=\"$BUILD_ID\" displayVersion=\"[0-9]+\\.[0-9]+\\.[0-9]+-nightly\\.$BUILD_ID\" detailsURL=\"https://github\\.com/vimma-browser/vimma/releases/tag/nightly\" vimmaUrgency=\"normal\">"
+            "    <patch type=\"complete\" size=\"[1-9][0-9]*\" $sha URL=\"$dl/vimma-nightly-$BUILD_ID-linux-x86_64\\.complete\\.mar\"/>"
+            "    <vimmaTarball size=\"[1-9][0-9]*\" $sha URL=\"$dl/vimma-nightly-$BUILD_ID-linux-x86_64\\.tar\\.xz\"/>"
+            '  </update>'
+            '</updates>'
+          )
+          for i in "${!lines[@]}"; do
+            sed -n "$((i + 1))p" "$body" | grep -Eqx "${lines[$i]}" \
+              || { echo "::error::line $((i + 1)) is not what the nightly manifest for $BUILD_ID has there"; exit 1; }
+          done
+          serial=$(sed -n 2p "$body" | sed 's/.*vimmaSerial="\([0-9]*\)">$/\1/')
+          age=$(( $(date -u +%s) - $(date -u -d "${serial:0:8} ${serial:8:2}:${serial:10:2}:${serial:12:2}" +%s) ))
+          [ "$age" -ge -300 ] && [ "$age" -le 3600 ] \
+            || { echo "::error::serial $serial is not within the last hour"; exit 1; }
+          project=$(printf '%s' "$KEY_VERSION" | sed -n 's|^projects/\([a-z][a-z0-9-]*\)/locations/.*/cryptoKeyVersions/[0-9]*$|\1|p')
+          [ -n "$project" ] || { echo "::error::GCP_KMS_KEY_VERSION is not a key version resource name"; exit 1; }
+          echo "project=$project" >> "$GITHUB_OUTPUT"
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          project_id: ${{ steps.body.outputs.project }}
+
+      # As sign's: the SHA-384 DigestInfo of `vimma-update-xml-v1\n` + body, signed by KMS's raw
+      # PKCS#1 key, checked at once against KMS's public key.
+      - name: Sign with Cloud KMS
+        run: |
+          body=out/update.xml.body
+          { printf 'vimma-update-xml-v1\n'; cat "$body"; } > signed.bin
+          { printf '\060\101\060\015\006\011\140\206\110\001\145\003\004\002\002\005\000\004\060'
+            openssl dgst -sha384 -binary signed.bin; } > digestinfo.bin
+          [ "$(wc -c < digestinfo.bin)" = 67 ] || { echo "::error::the DigestInfo is not 67 bytes"; exit 1; }
+          gcloud kms asymmetric-sign --version "$KEY_VERSION" \
+            --input-file digestinfo.bin --signature-file sig.bin
+          gcloud kms keys versions get-public-key "$KEY_VERSION" --output-file kms.pem
+          openssl dgst -sha384 -verify kms.pem -signature sig.bin signed.bin
+          id=$(openssl pkey -pubin -in kms.pem -outform DER | sha256sum | cut -c1-8)
+          { cat "$body"; printf '<!-- vimma-signature v1 key=%s sig=%s -->\n' "$id" "$(base64 -w0 sig.bin)"; } > out/update.xml
+          echo "signed with key $id"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-manifest-signed
+          path: out/update.xml
+          retention-days: 1 # pushed minutes later; kept no longer than needed
+          if-no-files-found: error
+
+  nightly-publish:
+    needs: nightly-sign
+    if: >-
+      inputs.nightly != '' && !inputs.mar && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' &&
+      vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    # Holds UPDATES_DEPLOY_KEY; its deployment branch is main alone (docs/runbook.md).
+    environment: update-publish
+    env:
+      BUILD_ID: ${{ inputs.nightly }}
+      UPDATES_DEPLOY_KEY_SET: ${{ secrets.UPDATES_DEPLOY_KEY != '' }}
+      # github.com's Ed25519 host key, as publish pins it.
+      GITHUB_HOST_KEY: github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-manifest-signed
+          path: signed
+
+      # Again, after signing: a file replaced on the release since nightly-prepare read it fails
+      # here.
+      - name: Download the nightly's files
+        run: |
+          [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
+          base="https://github.com/$GITHUB_REPOSITORY/releases/download/nightly"
+          mkdir -p assets && cd assets
+          for f in "vimma-nightly-$BUILD_ID-linux-x86_64.tar.xz" "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar"; do
+            curl -fsSL --proto =https --retry 3 -o "$f" "$base/$f" \
+              || { echo "::error::$base/$f: not found"; exit 1; }
+          done
+
+      # The verifier and the keys the browser runs, then openssl with the same pinned primary.
+      - name: Verify the signed manifest
+        id: verify
+        run: |
+          version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
+          node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
+            >> "$GITHUB_OUTPUT"
+          node tools/update/manifest.mjs pem > pinned.pem
+          head -n -1 signed/update.xml > body
+          { printf 'vimma-update-xml-v1\n'; cat body; } > signed.bin
+          tail -n 1 signed/update.xml \
+            | sed -n 's|^<!-- vimma-signature v1 key=[0-9a-f]\{8\} sig=\([A-Za-z0-9+/=]*\) -->$|\1|p' \
+            | base64 -d > sig.bin
+          openssl dgst -sha384 -verify pinned.pem -signature sig.bin signed.bin
+
+      # This job runs only with UPDATES_ENABLED, so a missing key is a failure, which nightly.yml's
+      # report job turns into the nightly-failure issue.
+      - name: No deploy key
+        if: env.UPDATES_DEPLOY_KEY_SET != 'true'
+        run: |
+          echo "::error::the update-publish environment has no UPDATES_DEPLOY_KEY; nothing was pushed (docs/runbook.md, step 7)"
+          exit 1
+
+      # As publish: one commit, on top of what vimma-updates has now, checked once more against
+      # the clone's copy as the floor, never forced.
+      - name: Push to vimma-updates
+        if: env.UPDATES_DEPLOY_KEY_SET == 'true'
+        env:
+          DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}
+          SERIAL: ${{ steps.verify.outputs.serial }}
+          VERSION: ${{ steps.verify.outputs.version }}
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"
+          GIT_COMMITTER_EMAIL: "41898282+github-actions[bot]@users.noreply.github.com"
+        run: |
+          install -d -m 700 ~/.ssh
+          (umask 077 && printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/updates)
+          printf '%s\n' "$GITHUB_HOST_KEY" > ~/.ssh/known_hosts
+          export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/updates -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          git clone -q --depth 1 --branch main git@github.com:vimma-browser/vimma-updates.git updates
+          dest=updates/public/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml
+          version=$(node -p 'require("./surfer.json").brands.vimma.release.displayVersion')
+          node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets \
+            --published "$dest"
+          mkdir -p "$(dirname "$dest")"
+          cp signed/update.xml "$dest"
+          message="vimma $VERSION: update manifest, serial $SERIAL"
+          cd updates
+          git add public/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml
+          git commit -q -m "$message"
+          for attempt in 1 2 3; do
+            if git push origin HEAD:main; then break; fi
+            [ "$attempt" -lt 3 ] || { echo "::error::vimma-updates rejected the commit three times"; exit 1; }
+            git pull -q --rebase origin main
+          done
+          rm -f ~/.ssh/updates
+          echo "pushed: $message"
+
+      - name: Wait until the update host serves it
+        if: env.UPDATES_DEPLOY_KEY_SET == 'true'
+        env:
+          SERIAL: ${{ steps.verify.outputs.serial }}
+        run: |
+          url=https://updates.vimma.dev/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml
+          for _ in $(seq 60); do
+            if curl -fsS --proto =https "$url" 2>/dev/null | grep -q "vimmaSerial=\"$SERIAL\""; then
+              echo "updates.vimma.dev serves serial $SERIAL"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::pushed, but $url does not serve serial $SERIAL after 10 minutes (Cloudflare Workers Builds)"
+          exit 1
+
+  # The release manifest's failures; a failed mar-sign or nightly manifest job fails the calling
+  # release.yml or nightly.yml run, whose own failure or report job reports it.
   failure:
     needs: [start, prepare, sign, publish]
     if: >-

@@ -15,7 +15,7 @@ import {
   spkiKeyId,
   verifyManifest,
 } from "../../../packages/vimma-core/src/updates.mjs";
-import { buildManifest, serialAt } from "../manifest.mjs";
+import { buildManifest, buildNightlyManifest, serialAt } from "../manifest.mjs";
 import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.mjs";
 
 const text = readFileSync(
@@ -82,8 +82,18 @@ const GUARD =
   "github.ref == 'refs/heads/main'";
 
 describe("update-publish.yml", () => {
-  it("has the jobs: start on publish, prepare, sign, publish, release.yml's mar-sign, failure", () => {
-    expect([...all.keys()]).toEqual(["start", "prepare", "sign", "publish", "mar-sign", "failure"]);
+  it("has the jobs: the release manifest's, mar-sign, the nightly manifest's, failure", () => {
+    expect([...all.keys()]).toEqual([
+      "start",
+      "prepare",
+      "sign",
+      "publish",
+      "mar-sign",
+      "nightly-prepare",
+      "nightly-sign",
+      "nightly-publish",
+      "failure",
+    ]);
   });
 
   it("runs when a release is published, or by hand; never on a push or a pull request", () => {
@@ -182,14 +192,17 @@ describe("update-publish.yml", () => {
     expect(permissionsOf(job("sign"))).toEqual(["id-token: write"]);
     expect(permissionsOf(job("publish"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("mar-sign"))).toEqual(["id-token: write"]);
+    expect(permissionsOf(job("nightly-prepare"))).toEqual(["contents: read"]);
+    expect(permissionsOf(job("nightly-sign"))).toEqual(["id-token: write"]);
+    expect(permissionsOf(job("nightly-publish"))).toEqual(["contents: read"]);
     expect(permissionsOf(job("failure"))).toEqual(["issues: write"]);
   });
 
   // The two signing jobs: the manifest's and the MAR's. Both are this file's, so Google Cloud's
   // job_workflow_ref condition (update-publish.yml at refs/heads/main) admits both and nothing
   // else.
-  it("only sign and mar-sign mint an OIDC token or name the signing environment", () => {
-    const signers = ["sign", "mar-sign"];
+  it("only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment", () => {
+    const signers = ["sign", "mar-sign", "nightly-sign"];
     for (const [id, block] of all) {
       expect(block.includes("id-token"), id).toBe(signers.includes(id));
       expect(block.includes("update-signing"), id).toBe(signers.includes(id));
@@ -198,22 +211,27 @@ describe("update-publish.yml", () => {
     for (const id of signers) expect(job(id)).toMatch(/^ {4}environment: update-signing$/m);
   });
 
-  it("the deploy key lives in its own environment and reaches only the push step", () => {
+  it("the deploy key lives in its own environment and reaches only the push steps", () => {
+    const pushers = ["publish", "nightly-publish"];
     for (const [id, block] of all) {
-      expect(block.includes("UPDATES_DEPLOY_KEY"), id).toBe(id === "publish");
+      expect(block.includes("UPDATES_DEPLOY_KEY"), id).toBe(pushers.includes(id));
     }
-    const publish = job("publish");
-    expect(publish).toMatch(/^ {4}environment: update-publish$/m);
-    const uses = publish.split("secrets.UPDATES_DEPLOY_KEY").length - 1;
-    // One in the job's "is it set" flag, one in the push step's env.
-    expect(uses).toBe(2);
-    expect(stepOf(publish, "Push to vimma-updates")).toContain(
-      "DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}",
-    );
-    expect(publish).toContain("UPDATES_DEPLOY_KEY_SET: ${{ secrets.UPDATES_DEPLOY_KEY != '' }}");
+    for (const id of pushers) {
+      const publish = job(id);
+      expect(publish, id).toMatch(/^ {4}environment: update-publish$/m);
+      const uses = publish.split("secrets.UPDATES_DEPLOY_KEY").length - 1;
+      // One in the job's "is it set" flag, one in the push step's env.
+      expect(uses, id).toBe(2);
+      expect(stepOf(publish, "Push to vimma-updates"), id).toContain(
+        "DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}",
+      );
+      expect(publish, id).toContain(
+        "UPDATES_DEPLOY_KEY_SET: ${{ secrets.UPDATES_DEPLOY_KEY != '' }}",
+      );
+    }
   });
 
-  it.each(["sign", "mar-sign"])(
+  it.each(["sign", "mar-sign", "nightly-sign"])(
     "the signing job %s runs no repository code: no checkout, no node, no npm",
     (id) => {
       const sign = job(id);
@@ -225,7 +243,8 @@ describe("update-publish.yml", () => {
   it("no job installs dependencies, and no checkout keeps a token in .git/config", () => {
     expect(text).not.toMatch(/npm (?:ci|install)|npx /);
     const checkouts = text.split("uses: actions/checkout@").slice(1);
-    expect(checkouts.length).toBe(2);
+    // prepare and publish, nightly-prepare and nightly-publish.
+    expect(checkouts.length).toBe(4);
     for (const c of checkouts) {
       expect(c).toMatch(
         /^\S+ # v[\d.]+\n {8}with:\n(?: {10}.*\n)*? {10}persist-credentials: false\n/,
@@ -267,16 +286,22 @@ describe("update-publish.yml", () => {
     },
   );
 
-  it("is called by release.yml alone, with the MAR's name, and signs only there", () => {
+  it("is called by release.yml and nightly.yml alone, and mar-sign signs only for those two", () => {
     const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\npermissions:"));
     expect(on).toMatch(
-      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: true\n {8}type: string\n$/m,
+      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}nightly:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n$/m,
     );
+    // The nightly's call needs NIGHTLY_RELEASE_ENABLED too: until public nightly releases, no
+    // nightly MAR is signed (spec m6a-updater, decision 42).
     expect(condition(job("mar-sign"))).toBe(
       "inputs.mar != '' && github.repository == 'vimma-browser/vimma' && " +
         "github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' && " +
-        "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main'",
+        "(github.workflow_ref == 'vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main' || " +
+        "(github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main' && " +
+        "vars.NIGHTLY_RELEASE_ENABLED == 'true'))",
     );
+    // The channel comes from who called, never from an input.
+    expect(job("mar-sign")).toContain("CALLER: ${{ github.workflow_ref }}");
     expect(condition(job("failure"))).toContain(
       "!inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')",
     );
@@ -286,7 +311,126 @@ describe("update-publish.yml", () => {
           "uses: ./.github/workflows/update-publish.yml",
         ),
     );
-    expect(callers).toEqual(["release.yml"]);
+    expect(callers).toEqual(["nightly.yml", "release.yml"]);
+  });
+
+  it.each(["nightly-prepare", "nightly-sign", "nightly-publish"])(
+    "%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED",
+    (id) => {
+      expect(condition(job(id))).toBe(
+        "inputs.nightly != '' && !inputs.mar && github.repository == 'vimma-browser/vimma' && " +
+          "github.ref == 'refs/heads/main' && vars.UPDATES_ENABLED == 'true' && " +
+          "vars.NIGHTLY_RELEASE_ENABLED == 'true' && " +
+          "github.workflow_ref == 'vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main'",
+      );
+      expect(job(id)).toContain("BUILD_ID: ${{ inputs.nightly }}");
+    },
+  );
+
+  it("nightly-sign runs after nightly-prepare, and nightly-publish after it", () => {
+    expect(job("nightly-sign")).toMatch(/^ {4}needs: nightly-prepare$/m);
+    expect(job("nightly-publish")).toMatch(/^ {4}needs: nightly-sign$/m);
+    expect(job("nightly-sign")).toMatch(/^ {4}environment: update-signing$/m);
+    expect(job("nightly-prepare")).not.toMatch(/environment:|secrets\./);
+  });
+
+  it("nightly-prepare reads the public nightly pre-release and its nightly.yml signature", () => {
+    const prepare = job("nightly-prepare");
+    const state = runOf(prepare, "The nightly release is a public pre-release");
+    expect(state).toContain("gh release view nightly");
+    expect(state).toContain('[ "$state" = "false true" ]');
+    const download = runOf(prepare, "Download the nightly's files");
+    expect(download).toContain(
+      'base="https://github.com/$GITHUB_REPOSITORY/releases/download/nightly"',
+    );
+    expect(download).toContain("curl -fsSL --proto =https");
+    for (const f of [
+      "SHA256SUMS",
+      "SHA256SUMS.sigstore.json",
+      "vimma-nightly-$BUILD_ID-linux-x86_64.tar.xz",
+      "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar",
+    ]) {
+      expect(download).toContain(f);
+    }
+    // nightly.yml's identity, never release.yml's: a nightly's sums never pass as a release's,
+    // and the release's never as a nightly's.
+    const verify = stepOf(prepare, "Verify the nightly's signature");
+    expect(verify).toContain(
+      "--certificate-identity-regexp '^https://github\\.com/vimma-browser/vimma/\\.github/workflows/nightly\\.yml@refs/heads/main$'",
+    );
+    expect(verify).toContain(
+      "--certificate-oidc-issuer https://token.actions.githubusercontent.com",
+    );
+    expect(verify).not.toContain("release");
+    expect(stepOf(job("prepare"), "Verify the release's signature")).not.toContain("nightly");
+  });
+
+  it("nightly-prepare checks the MAR's channel and builds the nightly channel's manifest", () => {
+    const prepare = job("nightly-prepare");
+    const mar = runOf(prepare, "The MAR is the nightly channel's, signed by the update key");
+    expect(mar).toContain("node tools/update/mar.mjs verify");
+    expect(mar).toContain("--channel vimma-nightly");
+    expect(mar).toContain(
+      "--cert configs/updater/primary.der --cert configs/updater/secondary.der",
+    );
+    const published = runOf(prepare, "The published nightly manifest");
+    expect(published).toContain("path=updates/browser/$BUILD_TARGET/vimma-nightly/update.xml");
+    const build = runOf(prepare, "Build the nightly manifest");
+    expect(build).toContain(
+      'node tools/update/manifest.mjs build --channel nightly --build-id "$BUILD_ID" --version "$version"',
+    );
+    expect(prepare.indexOf("- name: Verify the nightly's signature")).toBeLessThan(
+      prepare.indexOf("- name: Build the nightly manifest"),
+    );
+    expect(prepare).toContain("name: nightly-manifest-body");
+  });
+
+  it("nightly-publish checks the signed file, then pushes only the nightly channel's path", () => {
+    const publish = job("nightly-publish");
+    const verify = runOf(publish, "Verify the signed manifest");
+    expect(verify).toContain(
+      'node tools/update/manifest.mjs verify --channel nightly --signed signed/update.xml --build-id "$BUILD_ID" --version "$version" --assets assets',
+    );
+    expect(verify).toContain("openssl dgst -sha384 -verify pinned.pem");
+    const download = runOf(publish, "Download the nightly's files");
+    expect(download).toContain(
+      'base="https://github.com/$GITHUB_REPOSITORY/releases/download/nightly"',
+    );
+    const push = runOf(publish, "Push to vimma-updates");
+    expect(push).toContain(
+      "dest=updates/public/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml",
+    );
+    expect(push).not.toMatch(/\/vimma\/update\.xml/);
+    expect(push).toContain("StrictHostKeyChecking=yes");
+    expect(push).toContain("--channel nightly");
+    expect(push).toContain('--published "$dest"');
+    expect(publish).not.toMatch(/--force|--mirror|\+HEAD|\+refs|push -f/);
+    expect(publish.indexOf("- name: Verify the signed manifest")).toBeLessThan(
+      publish.indexOf("- name: Push to vimma-updates"),
+    );
+    const wait = runOf(publish, "Wait until the update host serves it");
+    expect(wait).toContain(
+      "url=https://updates.vimma.dev/updates/browser/$BUILD_TARGET/vimma-nightly/update.xml",
+    );
+    const missing = stepOf(publish, "No deploy key");
+    expect(missing).toContain("if: env.UPDATES_DEPLOY_KEY_SET != 'true'");
+    expect(missing).toContain("exit 1");
+  });
+
+  it("the release jobs never write the nightly path, nor the nightly jobs the release path", () => {
+    for (const id of ["prepare", "sign", "publish"]) {
+      expect(job(id), id).not.toContain("vimma-nightly/update.xml");
+    }
+    for (const id of ["nightly-prepare", "nightly-sign", "nightly-publish"]) {
+      expect(job(id), id).not.toMatch(/\$BUILD_TARGET\/vimma\/|Linux_x86_64-gcc3\/vimma\//);
+    }
+  });
+
+  it("keeps the nightly's signed manifest only a day", () => {
+    const sign = job("nightly-sign");
+    expect(sign.slice(sign.indexOf("name: nightly-manifest-signed"))).toMatch(
+      /retention-days: 1(?: #.*)?\n/,
+    );
   });
 
   it("downloads the MAR SHA256SUMS lists, and the one the signed manifest offers", () => {
@@ -736,6 +880,126 @@ esac
     const check = run(dir, "Check what is about to be signed", { TAG: "", OFFER: "nothing" });
     expect(check.status).toBe(0);
   }, 60_000);
+
+  // nightly-sign: the same signing steps, with a check of its own that admits exactly the body
+  // buildNightlyManifest writes for the build nightly.yml asked for, and nothing else.
+  const BUILD_ID = "20261112030512";
+  const NIGHTLY_DL = "https://github.com/vimma-browser/vimma/releases/download/nightly";
+  const nightlyBody = () =>
+    buildNightlyManifest({
+      serial: serialAt(new Date()),
+      update: {
+        appVersion: "160.0",
+        buildId: BUILD_ID,
+        version: "0.1.18",
+        tarball: { size: 1, sha512: "a".repeat(128) },
+        mar: { size: 5, sha512: "e".repeat(128) },
+      },
+    });
+
+  it("nightly-sign signs the nightly's body so that the browser's verifier accepts it", async () => {
+    const body = nightlyBody();
+    const { dir, der } = setUp(body);
+    const check = run(dir, "Check what is about to be signed", { BUILD_ID }, "nightly-sign");
+    expect(check.stderr).toBe("");
+    expect(check.status).toBe(0);
+    const signed = run(dir, "Sign with Cloud KMS", {}, "nightly-sign");
+    expect(signed.stderr).not.toMatch(/error/i);
+    expect(signed.status).toBe(0);
+    const out = readFileSync(join(dir, "out", "update.xml"), "utf8");
+    const subtle = globalThis.crypto.subtle;
+    const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
+    expect(await verifyManifest(out, [/** @type {const} */ (pin)], subtle)).toEqual({
+      ok: true,
+      body,
+      key: { id: pin.id, slot: "primary" },
+    });
+  }, 60_000);
+
+  it.each([
+    ["a release manifest", () => offerBody(), {}],
+    ["another build than the one asked for", () => nightlyBody(), { BUILD_ID: "20261112035959" }],
+    ["a build ID that is not one", () => nightlyBody(), { BUILD_ID: "2026111203051" }],
+    [
+      "the release channel",
+      () => nightlyBody().replace('vimmaChannel="vimma-nightly"', 'vimmaChannel="vimma"'),
+      {},
+    ],
+    ["another target", () => nightlyBody().replace("Linux_x86_64-gcc3", "Darwin_aarch64-gcc3"), {}],
+    [
+      "a <patch> at a release's URL",
+      () =>
+        nightlyBody().replace(
+          `${NIGHTLY_DL}/vimma-nightly-${BUILD_ID}-linux-x86_64.complete.mar`,
+          "https://github.com/vimma-browser/vimma/releases/download/v0.1.18/vimma-0.1.18-linux-x86_64.complete.mar",
+        ),
+      {},
+    ],
+    [
+      "a tarball at another URL",
+      () =>
+        nightlyBody().replace(`${NIGHTLY_DL}/vimma-nightly-`, "https://example.com/vimma-nightly-"),
+      {},
+    ],
+    [
+      "a security urgency",
+      () => nightlyBody().replace('vimmaUrgency="normal"', 'vimmaUrgency="security"'),
+      {},
+    ],
+    [
+      "a version that is not the build's",
+      () => nightlyBody().replace(`-nightly.${BUILD_ID}"`, '-nightly.20261111030000"'),
+      {},
+    ],
+    [
+      "another element",
+      () =>
+        nightlyBody().replace(
+          "  </update>",
+          `    <vimmaDeb size="1" hashFunction="sha512" hashValue="${"c".repeat(128)}" URL="${NIGHTLY_DL}/x.deb"/>\n  </update>`,
+        ),
+      {},
+    ],
+    ["no offer", () => buildNightlyManifest({ serial: serialAt(new Date()), update: null }), {}],
+    [
+      "a body already carrying a signature",
+      () => nightlyBody() + "<!-- vimma-signature v1 -->\n",
+      {},
+    ],
+    [
+      "a serial from long ago",
+      () => nightlyBody().replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="20200101000000"'),
+      {},
+    ],
+    [
+      "a serial far ahead of the clock",
+      () => nightlyBody().replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
+      {},
+    ],
+  ])(
+    "nightly-sign refuses to sign %s",
+    (_name, body, env) => {
+      const { dir } = setUp(body());
+      const check = run(
+        dir,
+        "Check what is about to be signed",
+        { BUILD_ID, ...env },
+        "nightly-sign",
+      );
+      expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toMatch(/::error::/);
+    },
+    60_000,
+  );
+
+  it("sign, the release's check, refuses the nightly's body", () => {
+    const { dir } = setUp(nightlyBody());
+    const check = run(dir, "Check what is about to be signed", {
+      TAG: "v0.1.18",
+      OFFER: "release",
+    });
+    expect(check.status).not.toBe(0);
+  }, 60_000);
 });
 
 // mar-sign, run with the same stand-in for gcloud: the placeholder MAR release.yml's package job
@@ -743,6 +1007,9 @@ esac
 // updater's check accepts it under the KMS key.
 describe.skipIf(process.platform !== "linux")("the MAR signing job's steps, run", () => {
   const NAME = "vimma-0.3.1-linux-x86_64.complete.mar";
+  const NIGHTLY_NAME = "vimma-nightly-20261112030512-linux-x86_64.complete.mar";
+  const RELEASE_CALLER = "vimma-browser/vimma/.github/workflows/release.yml@refs/heads/main";
+  const NIGHTLY_CALLER = "vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main";
   const fixture = () => readFileSync(new URL("fixtures/mar/unsigned.mar", import.meta.url));
 
   /** @param {Buffer} mar */
@@ -793,6 +1060,7 @@ esac
         GITHUB_OUTPUT: join(dir, "github-output"),
         MAR: NAME,
         CALLER_TAG: "v0.3.1",
+        CALLER: RELEASE_CALLER,
         ...env,
       },
     });
@@ -852,6 +1120,117 @@ esac
     (_name, mar, env) => {
       const { dir } = setUp(mar());
       if (env.MAR) writeFileSync(join(dir, "in", env.MAR), readFileSync(join(dir, "in", NAME)));
+      const check = run(dir, "Check the MAR placeholder", env);
+      expect(check.status).not.toBe(0);
+      expect(check.stdout + check.stderr).toMatch(/::error::/);
+    },
+    60_000,
+  );
+
+  /**
+   * The unsigned MAR with its product information block naming `channel`: the MAR Mozilla's
+   * `mar -H <channel>` writes for the same files, rebuilt here since the fixture names `vimma`.
+   * @param {Buffer} buf
+   * @param {string} channel
+   */
+  function withChannel(buf, channel) {
+    const mar = readMar(buf);
+    const product = Buffer.from(`${channel}\0${mar.productVersion}\0`, "latin1");
+    const block = Buffer.alloc(8);
+    block.writeUInt32BE(8 + product.length, 0);
+    block.writeUInt32BE(1, 4);
+    /** @type {Buffer[]} */
+    const contents = [];
+    /** @type {Buffer[]} */
+    const index = [];
+    let at = 24 + 8 + product.length;
+    for (const e of mar.entries) {
+      const entry = Buffer.alloc(12);
+      entry.writeUInt32BE(at, 0);
+      entry.writeUInt32BE(e.size, 4);
+      entry.writeUInt32BE(buf.readUInt32BE(e.offsetAt + 8), 8);
+      index.push(entry, Buffer.from(`${e.name}\0`, "utf8"));
+      contents.push(buf.subarray(e.offset, e.offset + e.size));
+      at += e.size;
+    }
+    const indexBytes = Buffer.concat(index);
+    const header = Buffer.alloc(24);
+    header.write("MAR1", 0, "latin1");
+    header.writeUInt32BE(at, 4);
+    header.writeBigUInt64BE(BigInt(at + 4 + indexBytes.length), 8);
+    header.writeUInt32BE(0, 16);
+    header.writeUInt32BE(1, 20);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(indexBytes.length);
+    return Buffer.concat([header, block, product, ...contents, length, indexBytes]);
+  }
+
+  it("signs a nightly's MAR for nightly.yml on main, on the nightly channel", () => {
+    const placeholder = addSignaturePlaceholder(withChannel(fixture(), "vimma-nightly"));
+    const { dir, publicKey } = setUp(placeholder);
+    writeFileSync(join(dir, "in", NIGHTLY_NAME), placeholder);
+    const env = { CALLER: NIGHTLY_CALLER, CALLER_TAG: "", MAR: NIGHTLY_NAME };
+    const check = run(dir, "Check the MAR placeholder", env);
+    expect(check.stderr).toBe("");
+    expect(check.status).toBe(0);
+    expect(check.stdout).toContain("channel vimma-nightly");
+    const signed = run(dir, "Sign the MAR with Cloud KMS", env);
+    expect(signed.status).toBe(0);
+    const out = readFileSync(join(dir, "out", NIGHTLY_NAME));
+    expect(
+      verifyMar(out, [publicKey], { channel: "vimma-nightly", productVersion: "159.0.1" }),
+    ).toMatchObject({ channel: "vimma-nightly" });
+    // Under the release channel the same signed MAR is refused: error 22 in the updater.
+    expect(() =>
+      verifyMar(out, [publicKey], { channel: "vimma", productVersion: "159.0.1" }),
+    ).toThrow(/channel/);
+  }, 60_000);
+
+  it.each([
+    [
+      "a release-channel MAR for nightly.yml",
+      () => addSignaturePlaceholder(fixture()),
+      { CALLER: NIGHTLY_CALLER, CALLER_TAG: "", MAR: NIGHTLY_NAME },
+    ],
+    [
+      "a nightly-channel MAR for release.yml",
+      () => addSignaturePlaceholder(withChannel(fixture(), "vimma-nightly")),
+      {},
+    ],
+    [
+      "a release's MAR name for nightly.yml",
+      () => addSignaturePlaceholder(withChannel(fixture(), "vimma-nightly")),
+      { CALLER: NIGHTLY_CALLER, CALLER_TAG: "" },
+    ],
+    [
+      "a nightly's MAR name for release.yml",
+      () => addSignaturePlaceholder(fixture()),
+      { MAR: NIGHTLY_NAME },
+    ],
+    [
+      "a channel that only starts with the nightly's",
+      () => addSignaturePlaceholder(withChannel(fixture(), "vimma-nightlyx")),
+      { CALLER: NIGHTLY_CALLER, CALLER_TAG: "", MAR: NIGHTLY_NAME },
+    ],
+    [
+      "nightly.yml on another branch",
+      () => addSignaturePlaceholder(withChannel(fixture(), "vimma-nightly")),
+      {
+        CALLER: "vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/feature",
+        CALLER_TAG: "",
+        MAR: NIGHTLY_NAME,
+      },
+    ],
+    [
+      "another workflow on main",
+      () => addSignaturePlaceholder(fixture()),
+      { CALLER: "vimma-browser/vimma/.github/workflows/ci.yml@refs/heads/main" },
+    ],
+  ])(
+    "refuses to sign %s",
+    (_name, mar, env) => {
+      const { dir } = setUp(mar());
+      writeFileSync(join(dir, "in", NIGHTLY_NAME), readFileSync(join(dir, "in", NAME)));
       const check = run(dir, "Check the MAR placeholder", env);
       expect(check.status).not.toBe(0);
       expect(check.stdout + check.stderr).toMatch(/::error::/);

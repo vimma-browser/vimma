@@ -432,11 +432,14 @@ Vimma.
   ([runbook](docs/runbook.md#releases-release-pleaseyml)). PRs that touch patches, `configs/`,
   `moz.configure` or branding must report a full-build run
   ([ADR-010](docs/adr/010-pr-artifact-builds.md), [runbook](docs/runbook.md)).
-- Nightly builds are not published as a release before the first release: each one is a
-  workflow artifact of its run, kept 7 days, with no release page or stable link. It is not
-  private: the repository is public, so anyone signed in to GitHub can download it for those 7
-  days ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml);
-  [build-supply-chain](docs/specs/build-supply-chain.md), decision 23).
+- Nightly builds are not published as a release until the repository variable
+  `NIGHTLY_RELEASE_ENABLED` is set: each one is a workflow artifact of its run, kept 7 days,
+  with no release page or stable link. It is not private: the repository is public, so anyone
+  signed in to GitHub can download it for those 7 days
+  ([runbook](docs/runbook.md#full-builds-nightlyyml-releaseyml);
+  [build-supply-chain](docs/specs/build-supply-chain.md), decision 23). With the variable set,
+  each nightly also goes to the rolling `nightly` pre-release with a signed MAR and update
+  manifest ([m6a-updater](docs/specs/m6a-updater.md), decisions 42 and 43).
 - Artifact builds depend on Mozilla's Taskcluster index for the pinned release, which expires
   after a year ([ADR-010](docs/adr/010-pr-artifact-builds.md)).
 - PRs opened by `GITHUB_TOKEN` (upstream bumps, Claude, release-please) do not trigger CI by

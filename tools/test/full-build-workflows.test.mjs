@@ -118,21 +118,22 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
   // A token that can write issues never reaches npm, Surfer, mach or the mochitests: the nightly's
   // build job holds none, and only the failure-issue step, in a job of its own that runs nothing
   // from the repository, gets GH_TOKEN. The nightly publishes no release (decision 23).
-  it("only the nightly's failure-issue step gets GH_TOKEN", () => {
+  it("only the nightly's failure-issue step and its publish job get GH_TOKEN", () => {
     const text = workflow("nightly.yml");
     const holders = [];
-    for (const id of ["build", "report"]) {
-      const steps = job(text, id)
-        .split(/\n(?= {6}- )/)
-        .slice(1);
+    for (const id of ["build", "mar", "sign", "publish", "report"]) {
+      const block = job(text, id);
+      const steps = block.split(/\n(?= {6}- )/).slice(1);
       for (const step of steps.filter((s) => /^ +GH_TOKEN:/m.test(s))) {
         holders.push(`${id}: ${/- (?:name|uses): (.*)/.exec(step)?.[1]}`);
       }
-      const head = job(text, id).slice(0, job(text, id).indexOf("\n    steps:\n"));
-      expect(head, id).not.toMatch(/^ +GH_TOKEN:/m);
+      const head = block.slice(0, block.indexOf("\n    steps:\n"));
+      if (/^ +GH_TOKEN:/m.test(head)) holders.push(`${id}: every step`);
     }
-    expect(holders).toEqual(["report: Open or update the failure issue"]);
-    expect(job(text, "build")).not.toContain("github.token");
+    // publish runs no repository code: gh, sha256sum and the checked files (B8).
+    expect(holders).toEqual(["publish: every step", "report: Open or update the failure issue"]);
+    for (const id of ["build", "mar", "sign"])
+      expect(job(text, id), id).not.toContain("github.token");
   });
 
   it.each(BUILDS)("$name stops itself before GitHub's 6-hour job limit", ({ block }) => {
