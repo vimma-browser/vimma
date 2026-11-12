@@ -134,10 +134,8 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
       const perms = /** @type {Record<string, string>} */ (j.permissions ?? {});
       expect(perms.contents ?? "read", id).toBe(id === "publish" ? "write" : "read");
       // The change check only reads the release, with a read-only token.
-      const text = JSON.stringify(j).replace(
-        id === "changes" ? /gh release view nightly/g : /$^/,
-        "",
-      );
+      const raw = JSON.stringify(j);
+      const text = id === "changes" ? raw.replace(/gh release view nightly/g, "") : raw;
       if (id !== "publish") expect(text, id).not.toMatch(/gh release|gh api/);
     }
     const publish = JSON.stringify(job("publish"));
