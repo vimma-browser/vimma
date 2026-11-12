@@ -2875,22 +2875,28 @@ caller of `mar-sign`, and its manifest under `…/vimma-nightly/update.xml`.
 
 **Checking an update on real installs.** The e2e scenarios use test keys and a local host
 (Updater scenarios); only a published release shows that the real key, `updates.vimma.dev` and
-the GitHub downloads work together. After a release whose manifest offers a MAR, start the
-previous release's tarball and AppImage, each from its GitHub Release, under Xvfb with
-`WAYLAND_DISPLAY` unset and `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`,
-`XDG_STATE_HOME` and `XDG_RUNTIME_DIR` pointed at a new directory, the tarball unpacked into
-another and `--profile` an empty one with `vimma.control.enabled` in its `user.js`, so nothing
-reaches an installed Vimma or its profile. Give the profile a bookmark (`ctrl+b a`), a few tabs,
-a `config.toml` change and a pref, then wait for `vimma-ctl --profile <dir> state --json` to
+the GitHub downloads work together. After a release whose manifest offers a MAR, take the
+previous release's tarball (one built with Firefox's updater) and AppImage from its GitHub
+Release and check each against its `SHA256SUMS`. Unpack the tarball into a new directory and
+put the AppImage in another (the update replaces that file, so never use a copy you run). Start
+each under Xvfb with `WAYLAND_DISPLAY` unset, a private session bus (`dbus-run-session`),
+`HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and
+`XDG_RUNTIME_DIR` pointed at a new directory, and `--profile` an empty one with
+`vimma.control.enabled` in its `user.js`, so nothing reaches an installed Vimma, its profile or
+its `config.toml`. Add a bookmark (`ctrl+b a`), a few tabs, a pref and a change to the new
+`XDG_CONFIG_HOME`'s `config.toml`, then wait for `vimma-ctl --profile <dir> state --json` to
 report `update.stage` `staged` (the first check runs a few seconds after startup; `:update`
-checks at once). Answer `y` to the restart question, or run `:restart`, and check:
-`vimma --version` and `application.ini` name the new versions; the profile's
-`compatibility.ini` names the new build; the tabs, the bookmark (in `places.sqlite`), the
-`config.toml` change and the pref are still there; the tarball's `updates/last-update.log` ends
-in `succeeded` (the updater checks the MAR's signature and channel before it applies anything;
-a refusal ends in `failed: 19` or `failed: 22`) and its `updates.xml` records the update
-`succeeded` on the channel `vimma`; the replaced AppImage's SHA-512 is the manifest's. Kill only
-the processes you started, by PID. Done for 0.1.17 to 0.1.18 (Firefox 159.0.1 to 160.0) on
+checks at once). For a security release answer `y` to the restart question; otherwise run
+`:restart`. Then check: `vimma --version` names the new Vimma and Firefox versions, and
+`application.ini` and the profile's `compatibility.ini` the new Firefox version and build ID;
+the tabs, the bookmark (in `places.sqlite`), the `config.toml` change and the pref are still
+there; the tarball's `updates/last-update.log` ends in `succeeded` (the updater checks the MAR's
+signature, channel and Firefox version before it applies anything; a refusal ends in
+`failed: <code>`: 19 for the signature, 22 for the channel, 23 for an older Firefox) and its
+`updates.xml` records the update `succeeded` on the channel `vimma`; the replaced AppImage's
+SHA-512 is the manifest's. Kill only the processes you started, by PID: the tarball keeps its
+PID across the update, while the AppImage's relaunch script starts a new process, whose PID the
+profile's `lock` link names. Done for 0.1.17 to 0.1.18 (Firefox 159.0.1 to 160.0) on
 2026-11-12: both installs took the update and kept the profile
 ([#456](https://github.com/vimma-browser/vimma/issues/456)).
 

@@ -1165,15 +1165,12 @@ Written first and seen to fail.
   it under Xvfb and sees it offer and stage the new release, with no person acting in between.
   Proven twice, as M7's gate was.
 
-- **Real installs** (run by hand, docs/runbook.md, "Checking an update on real installs"): the
-  previous release's tarball and AppImage, from its GitHub Release, take the published release
-  from `updates.vimma.dev` with the real update key and keep their profile. Done for 0.1.17 to
-  0.1.18 (Firefox 159.0.1 to 160.0, a security release) on 2026-11-12: the tarball staged the
-  MAR with Firefox's updater and applied it on `y` to the restart question and on `:restart`; the
-  AppImage replaced its file with one whose SHA-512 is the manifest's and started it again on
-  `y`; both came back as 0.1.18 on the channel `vimma` with their tabs, bookmark, `config.toml`
-  and prefs. This covers the install's half of the security rehearsal, by hand; the rehearsal
-  itself (no person acting, the scheduled job) still waits for decision 23.
+  (Since changed: until the rehearsal runs, the install side of it is checked by hand after a
+  release: the previous release's tarball and AppImage, from its GitHub Release, take the
+  published release from `updates.vimma.dev` with the real update key and keep their profile;
+  docs/runbook.md, "Checking an update on real installs". The rehearsal itself, the release chain
+  with no person acting and a scheduled job that installs and checks the previous release, is
+  still to be run.)
 
 ## Docs and changelog
 
