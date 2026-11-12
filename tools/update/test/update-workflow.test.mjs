@@ -211,6 +211,21 @@ describe("update-publish.yml", () => {
     for (const id of signers) expect(job(id)).toMatch(/^ {4}environment: update-signing$/m);
   });
 
+  it("a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it", () => {
+    const call = /^ {2}workflow_call:\n((?: {4}.*\n)+)/m.exec(text)?.[1] ?? "";
+    expect(call).toMatch(
+      /^ {4}secrets:\n {6}UPDATES_DEPLOY_KEY:\n(?: {8}description: .*\n)? {8}required: false\n/m,
+    );
+    expect(call.match(/^ {6}[A-Z_]+:$/gm)).toEqual(["      UPDATES_DEPLOY_KEY:"]);
+    const callers = readdirSync(new URL("../../../.github/workflows/", import.meta.url))
+      .filter((f) => f !== "update-publish.yml")
+      .map((f) => readFileSync(new URL(`../../../.github/workflows/${f}`, import.meta.url), "utf8"))
+      .join("\n");
+    expect(callers).not.toMatch(/secrets: inherit/);
+    expect(callers.match(/UPDATES_DEPLOY_KEY:/g)).toEqual(["UPDATES_DEPLOY_KEY:"]);
+    expect(callers).toContain("UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}");
+  });
+
   it("the deploy key lives in its own environment and reaches only the push steps", () => {
     const pushers = ["publish", "nightly-publish"];
     for (const [id, block] of all) {
@@ -289,7 +304,7 @@ describe("update-publish.yml", () => {
   it("is called by release.yml and nightly.yml alone, and mar-sign signs only for those two", () => {
     const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\npermissions:"));
     expect(on).toMatch(
-      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}nightly:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n$/m,
+      /^ {2}workflow_call:\n {4}inputs:\n {6}mar:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n {6}nightly:\n {8}description: .+\n {8}required: false\n {8}type: string\n {8}default: ""\n(?: {4}#.*\n)* {4}secrets:\n/m,
     );
     // The nightly's call needs NIGHTLY_RELEASE_ENABLED too: until public nightly releases, no
     // nightly MAR is signed (spec m6a-updater, decision 42).
