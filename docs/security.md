@@ -3370,7 +3370,10 @@ _Pages_ and _extensions_ cannot reach it.
   deploy key. The signing job is the **only** job with
   `id-token: write`, uses the `update-signing` environment (deployment branch `main` alone), and
   runs no repository code: it checks the body's shape with the shell, signs the SHA-384
-  DigestInfo with Cloud KMS and checks the signature with openssl. The job that builds the body
+  DigestInfo with Cloud KMS and checks the signature with openssl. Before any pattern, it refuses
+  a body with a byte that is not printable ASCII or a newline, or that does not end in a newline,
+  because GNU grep may end a line at a NUL byte in a file it takes for binary, and a line check
+  alone would then pass a body that hides another target or URL behind one. The job that builds the body
   holds no secret and installs no dependency. Before anything is pushed, a separate job checks
   the signed file with the verifier and the pinned key the browser uses and with openssl. Every
   file named in the manifest **must** match the release's `SHA256SUMS`, which **must** carry
