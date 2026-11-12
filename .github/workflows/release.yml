@@ -406,6 +406,8 @@ jobs:
           test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT
           desktop-file-validate /usr/share/applications/vimma-vimma.desktop
           test -x /usr/bin/vimma-open
+          # Firefox's shell service finds its own entry only by the Exec program's exact path (#855).
+          grep -qx 'Exec=/usr/lib/vimma/vimma-open %u' /usr/share/applications/vimma-vimma.desktop
           # The update check's install type (spec m6a-updater §3): a .deb is updated by apt, an
           # AppImage by a new AppImage; only the unmarked tarball is told to unpack over itself.
           type=$(node tools/package/install-type.mjs /usr/lib/vimma)

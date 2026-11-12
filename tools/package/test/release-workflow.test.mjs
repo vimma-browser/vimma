@@ -1169,6 +1169,13 @@ it.each([
   );
 });
 
+it("release.yml checks that the installed .deb's desktop entry runs /usr/lib/vimma/vimma-open", () => {
+  const smoke = runOf(jobs().get("package") ?? "", "Smoke test the .deb and the AppImage");
+  expect(smoke).toContain(
+    "grep -qx 'Exec=/usr/lib/vimma/vimma-open %u' /usr/share/applications/vimma-vimma.desktop",
+  );
+});
+
 // aur.yml: pushes vimma-bin to the AUR, which is public at once, so only for a published
 // release. Its only source is the published release's own files.
 describe("aur.yml", () => {
