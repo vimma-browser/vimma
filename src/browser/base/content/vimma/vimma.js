@@ -41,6 +41,13 @@
   );
   AboutVimma.register();
 
+  // The address bar's pages get 4 of its rows and the search suggestions 5 (search-engines,
+  // decision 10, since changed). Once per process, before the first query.
+  const { UrlbarRows } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/search/UrlbarRows.sys.mjs",
+  );
+  UrlbarRows.init();
+
   // Once per process, before the host dispatches page keys (m1-actor-insert-scroll).
   const { VimmaActors } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",

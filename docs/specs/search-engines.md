@@ -229,6 +229,12 @@ running it, not recalled.
     (Since changed, issue #834: Settings no longer says "Firefox Suggest" either; Vimma's generated
     `brandings.ftl` names the feature "Address Bar Suggestions", because Vimma ships it as its own
     feature; [firefox-surfaces-trim](firefox-surfaces-trim.md), decision 14.)
+    (Since changed, issue #858: the 4:5 share is set by Vimma's own
+    `search/UrlbarRows.sys.mjs`, which wraps `UrlbarPrefs.getResultGroups` for the address bar,
+    instead of `UrlbarPrefs-sys-mjs.patch`, because Firefox 161 rewrote the lines the patch
+    changed and a patch applies to one release only. It changes only the pages-first layout
+    with Firefox's 2:1, so the search bar's, the suggestions-first and Firefox 161's temporal
+    suggestions layouts stay Firefox's. Test: `browser_vimma_urlbar_suggestions.js`.)
 11. **Completion.** `ARGUMENT_KINDS` gains `open` and `tabnew` with names from
     `args.search`: the host passes every alias starting with `@` (Vimma's and Firefox's, from
     `UrlbarSearchUtils.tokenAliasEngines()`) with its engine's name as the description. It
