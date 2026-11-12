@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) (2026-11-12)
+
+
+### Added
+
+* **prompt-keys:** answer the add-on installed notice with y and p ([#884](https://github.com/vimma-browser/vimma/issues/884)) ([fa8622f](https://github.com/vimma-browser/vimma/commit/fa8622fbfda6b1fcfaf8227314374bea7ae5e192)), closes [#868](https://github.com/vimma-browser/vimma/issues/868)
+* **update:** public nightlies with a signed mar and update manifest ([#922](https://github.com/vimma-browser/vimma/issues/922)) ([33194d0](https://github.com/vimma-browser/vimma/commit/33194d051d2962953168d25dd44bd353c99cd99d))
+
+
+### Fixed
+
+* **agent:** say when an agent CLI gave no version in time ([#919](https://github.com/vimma-browser/vimma/issues/919)) ([08b2252](https://github.com/vimma-browser/vimma/commit/08b22524e33fdc9e42da715f106f45dffbadb29b)), closes [#917](https://github.com/vimma-browser/vimma/issues/917)
+* **branding:** drop Firefox's fox from Tab Overview's empty states ([#913](https://github.com/vimma-browser/vimma/issues/913)) ([ac974c8](https://github.com/vimma-browser/vimma/commit/ac974c8dd259b59dd057c5bddf78d754f2ab2ea9))
+* **branding:** drop Kit and the import promo from the History sidebar ([#904](https://github.com/vimma-browser/vimma/issues/904)) ([71c7cc9](https://github.com/vimma-browser/vimma/commit/71c7cc953b8d0873877026fc2329eb404b99e24f)), closes [#897](https://github.com/vimma-browser/vimma/issues/897)
+* **branding:** no firefox fox in about:logins' empty state ([#896](https://github.com/vimma-browser/vimma/issues/896)) ([c62f24f](https://github.com/vimma-browser/vimma/commit/c62f24fcb0fe265afc22bf4767861e7c35b32085)), closes [#894](https://github.com/vimma-browser/vimma/issues/894)
+* **ci:** pack the nightly's mar tools with their libraries, checked before upload ([#927](https://github.com/vimma-browser/vimma/issues/927)) ([2c15046](https://github.com/vimma-browser/vimma/commit/2c150462cfd9cba0a42ce9c0b579895bcaf3623e))
+* **ci:** pass the update deploy key to the nightly manifest's call ([#929](https://github.com/vimma-browser/vimma/issues/929)) ([91d36c2](https://github.com/vimma-browser/vimma/commit/91d36c24d9db90b7345bf6e2a7a41bcced979c7d))
+* **mcp:** do not offer `a always here` for a form with a value cut to fit ([#895](https://github.com/vimma-browser/vimma/issues/895)) ([1ea7b4b](https://github.com/vimma-browser/vimma/commit/1ea7b4b3192bc52207e9c143117efd4ac5dd13ef)), closes [#891](https://github.com/vimma-browser/vimma/issues/891)
+* **packaging:** make default registers the package's own desktop entry ([#898](https://github.com/vimma-browser/vimma/issues/898)) ([c232840](https://github.com/vimma-browser/vimma/commit/c2328401b05acb6eca886f3c641c19b291182cf9))
+* **shell:** count vimma as the default behind omarchy's link router ([#903](https://github.com/vimma-browser/vimma/issues/903)) ([a4e7ba5](https://github.com/vimma-browser/vimma/commit/a4e7ba54d7d026b8ea821de8dc4a7313df30ad91))
+* **theme:** the import wizard and its browser list follow the theme ([#908](https://github.com/vimma-browser/vimma/issues/908)) ([6684664](https://github.com/vimma-browser/vimma/commit/668466442c01970c267f5646607aa0135fb29a83)), closes [#905](https://github.com/vimma-browser/vimma/issues/905)
+* **theme:** theme tab overview and the history import promo ([#916](https://github.com/vimma-browser/vimma/issues/916)) ([5806fe3](https://github.com/vimma-browser/vimma/commit/5806fe3705cd940a06e4a3138a11c4d0657554cc)), closes [#912](https://github.com/vimma-browser/vimma/issues/912)
+* **update:** refuse non-printable bytes before signing the manifest ([#923](https://github.com/vimma-browser/vimma/issues/923)) ([ac68574](https://github.com/vimma-browser/vimma/commit/ac68574fa9e1a6eb24037305f48a59eb8aab8b56))
+* **urlbar:** keep the 4:5 pages-to-suggestions share without patching firefox ([#920](https://github.com/vimma-browser/vimma/issues/920)) ([4e9ada6](https://github.com/vimma-browser/vimma/commit/4e9ada6ae86cc6754cf9c50efb15663d7abde18c))
+
 ## [Unreleased]
 
 ## [0.1.18](https://github.com/vimma-browser/vimma/compare/v0.1.17...v0.1.18) · Firefox 160.0 (2026-11-11)
