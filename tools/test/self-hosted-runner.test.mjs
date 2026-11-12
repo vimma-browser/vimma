@@ -227,12 +227,13 @@ describe("self-hosted runners", () => {
 
   it("each build job runs only from main", () => {
     const nightly = jobs(workflow("nightly.yml")).get("build") ?? {};
-    // Then only when the change check found main changed, or always for a manual run (spec
+    // Then only when the change check did not say skip, or always for a manual run (spec
     // m6a-updater, decision 44): a further limit, never a wider gate.
     expect(nightly.if).toBe(
-      "vars.NIGHTLY_ENABLED == 'true' && ((github.event_name == 'workflow_dispatch' && " +
+      "!cancelled() && vars.NIGHTLY_ENABLED == 'true' && ((github.event_name == 'workflow_dispatch' && " +
         "github.ref == 'refs/heads/main') || github.event_name == 'schedule') && " +
-        "(github.event_name == 'workflow_dispatch' || needs.changes.outputs.build == 'true')",
+        "(github.event_name == 'workflow_dispatch' || needs.changes.result != 'success' || " +
+        "needs.changes.outputs.build == 'true')",
     );
     expect(triggers(workflow("nightly.yml")).sort()).toEqual(["schedule", "workflow_dispatch"]);
     const release = jobs(workflow("release.yml")).get("build") ?? {};

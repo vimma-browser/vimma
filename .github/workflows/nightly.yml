@@ -86,18 +86,23 @@ jobs:
           fi
           firefox=$(node -p 'require("./surfer.json").version.version')
           node tools/update/nightly-change.mjs --event "$EVENT" --public "$PUBLIC" --sha "$SHA" \
-            --firefox "$firefox" "${release[@]}" >> "$GITHUB_OUTPUT"
+            --firefox "$firefox" "${release[@]}" > "$RUNNER_TEMP/decision"
+          # Exactly the two lines, or no output at all: an empty `build` would skip every job.
+          grep -Exq 'build=true|build=false' <(head -n 1 "$RUNNER_TEMP/decision") \
+            || { echo "::error::nightly-change.mjs gave no decision"; exit 1; }
+          cat "$RUNNER_TEMP/decision" >> "$GITHUB_OUTPUT"
 
   build:
     needs: changes
     # Manual runs only from main: a branch's edited nightly.yml must not get the secret. Manual
     # runs need NIGHTLY_ENABLED too: a build compiles in the Safe Browsing key. A scheduled run
-    # builds only when `changes` found main changed; a manual run always builds.
+    # skips only when `changes` said so; a manual run, or a failed change check, builds.
     if: >-
-      vars.NIGHTLY_ENABLED == 'true' &&
+      !cancelled() && vars.NIGHTLY_ENABLED == 'true' &&
       ((github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       github.event_name == 'schedule') &&
-      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.build == 'true')
+      (github.event_name == 'workflow_dispatch' || needs.changes.result != 'success' ||
+      needs.changes.outputs.build == 'true')
     # The Safe Browsing key is a secret of the `build` environment, which only main may deploy
     # from (docs/security.md, B6): GitHub enforces that outside this file.
     environment: build
@@ -625,10 +630,11 @@ jobs:
     if: >-
       !cancelled() && vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
-      vars.UPDATES_ENABLED == 'true' && needs.changes.result == 'success' &&
+      vars.UPDATES_ENABLED == 'true' &&
       ((needs.build.result == 'success' && needs.publish.result == 'success') ||
-      (github.event_name == 'schedule' && needs.changes.outputs.build == 'false' &&
-      needs.build.result == 'skipped' && needs.changes.outputs.build_id != ''))
+      (github.event_name == 'schedule' && needs.changes.result == 'success' &&
+      needs.changes.outputs.build == 'false' && needs.build.result == 'skipped' &&
+      needs.changes.outputs.build_id != ''))
     permissions:
       id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's nightly-sign job
       actions: write # ceiling only: update-publish.yml's start, which never runs in a call

@@ -130,18 +130,23 @@ export function evaluate(expression, context) {
   return value;
 }
 
+/** @typedef {"success" | "failure" | "cancelled" | "skipped"} Result */
+
 /**
- * Runs a workflow's jobs in file order, as GitHub would for one event, with every job that
- * starts succeeding. A job whose `if:` names no status function gets GitHub's implicit
- * `success() &&`.
+ * Runs a workflow's jobs in file order, as GitHub would for one event. A job that starts
+ * succeeds unless `results` names another end for it; once one is cancelled, the run is. A job
+ * whose `if:` names no status function gets GitHub's implicit `success() &&`.
  * @param {Map<string, Record<string, any>>} jobs  from workflow-runners.mjs's `jobs`
  * @param {{ github: Record<string, string>, vars: Record<string, string>,
- *   outputs?: Record<string, Record<string, string>> }} run  outputs: what each job sets
- * @returns {Map<string, { result: "success" | "skipped", with: Record<string, Value> }>}
+ *   outputs?: Record<string, Record<string, string>>,
+ *   results?: Record<string, "failure" | "cancelled"> }} run  outputs: what each job sets
+ *   (also when it fails); results: how a job that starts ends, when not in success
+ * @returns {Map<string, { result: Result, with: Record<string, Value> }>}
  */
 export function runJobs(jobs, run) {
-  /** @type {Map<string, { result: "success" | "skipped", with: Record<string, Value> }>} */
+  /** @type {Map<string, { result: Result, with: Record<string, Value> }>} */
   const done = new Map();
+  let cancelled = false;
   for (const [id, job] of jobs) {
     const needs = [job.needs ?? []].flat().map(String);
     /** @type {Record<string, any>} */
@@ -151,7 +156,7 @@ export function runJobs(jobs, run) {
       if (!d) throw new Error(`${id} needs ${n}, which is not an earlier job`);
       needsContext[n] = {
         result: d.result,
-        outputs: d.result === "success" ? (run.outputs?.[n] ?? {}) : {},
+        outputs: d.result === "skipped" ? {} : (run.outputs?.[n] ?? {}),
       };
     }
     const results = needs.map((n) => needsContext[n].result);
@@ -163,7 +168,7 @@ export function runJobs(jobs, run) {
       status: {
         success: results.every((r) => r === "success"),
         failure: results.some((r) => r === "failure"),
-        cancelled: false,
+        cancelled,
       },
     };
     const condition = String(job.if ?? "");
@@ -178,7 +183,10 @@ export function runJobs(jobs, run) {
         withValues[k] = typeof v === "string" && v.includes("${{") ? evaluate(v, context) : v;
       }
     }
-    done.set(id, { result: starts ? "success" : "skipped", with: withValues });
+    /** @type {Result} */
+    const result = starts ? (run.results?.[id] ?? "success") : "skipped";
+    if (result === "cancelled") cancelled = true;
+    done.set(id, { result, with: withValues });
   }
   return done;
 }

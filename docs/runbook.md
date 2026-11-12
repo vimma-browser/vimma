@@ -1297,7 +1297,7 @@ Firefox version with `main`'s. When both match it skips `build` and everything a
 hashes and build ID, so nightly installs see "up to date" and never `no news for N days`. The
 run's summary shows the reason as a notice (`no build: main is still …`, or `build: …`).
 Anything the record cannot vouch for (no release, a draft, notes in another shape, newer or
-missing files) builds. A manual run always builds:
+missing files) builds, and so does a run whose `changes` job fails. A manual run always builds:
 
 ```sh
 gh workflow run nightly.yml --ref main                # build now, even if main has not changed

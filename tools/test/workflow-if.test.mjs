@@ -55,4 +55,12 @@ describe("runJobs", () => {
     expect(on.get("second")).toEqual({ result: "success", with: { id: "7" } });
     expect(on.get("third")?.result).toBe("skipped");
   });
+
+  it("ends a job as results says, and a cancelled job cancels the run", () => {
+    const vars = { ON: "true" };
+    const failed = runJobs(JOBS, { github: {}, vars, results: { first: "failure" } });
+    expect([...failed].map(([, j]) => j.result)).toEqual(["failure", "skipped", "success"]);
+    const stopped = runJobs(JOBS, { github: {}, vars, results: { first: "cancelled" } });
+    expect([...stopped].map(([, j]) => j.result)).toEqual(["cancelled", "skipped", "skipped"]);
+  });
 });

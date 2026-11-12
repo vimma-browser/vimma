@@ -1083,7 +1083,8 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     `main`. Firefox's version is in the commit too; it is compared as well, so that a record in
     another shape, or a build of another Firefox, never passes. Anything the record cannot vouch
     for builds: no release, a draft or full release, notes without the record, or a release whose
-    newest files and `SHA256SUMS` are not the recorded build's. The re-sign is the build day's
+    newest files and `SHA256SUMS` are not the recorded build's; so does a run whose change check
+    fails. The re-sign is the build day's
     manifest call (`nightly-prepare`, `nightly-sign`, `nightly-publish`) with the recorded build
     ID, so it offers the same MAR, hashes and build ID with every check unchanged; a nightly
     install of that build reads a newer serial with an offer of its own version, which the client

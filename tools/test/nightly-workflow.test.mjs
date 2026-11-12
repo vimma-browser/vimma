@@ -320,18 +320,20 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
    * @param {string} event
    * @param {{ build: string, build_id: string }} changes  the change check's outputs
    * @param {Record<string, string>} [vars]
+   * @param {Record<string, "failure" | "cancelled">} [results]  jobs that do not succeed
    */
-  function nightly(event, changes, vars = VARS) {
+  function nightly(event, changes, vars = VARS, results = {}) {
     const ran = runJobs(JOBS, {
       github: { event_name: event, ref: "refs/heads/main", repository: "vimma-browser/vimma" },
       vars,
+      results,
       outputs: {
         changes,
         build: { mar: `vimma-nightly-${NEW}-linux-x86_64.complete.mar`, build_id: NEW },
       },
     });
     return {
-      started: [...ran].filter(([, j]) => j.result === "success").map(([id]) => id),
+      started: [...ran].filter(([, j]) => j.result !== "skipped").map(([id]) => id),
       manifest: ran.get("manifest")?.with,
     };
   }
@@ -371,6 +373,39 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
     expect(nightly("schedule", UNCHANGED, {}).started).toEqual([]);
   });
 
+  it("a failed change check builds; a failed or cancelled build or release step offers nothing", () => {
+    // A doubt builds: a change check that fails starts the build, and report opens the issue.
+    const none = { build: "", build_id: "" };
+    for (const event of ["schedule", "workflow_dispatch"]) {
+      expect(nightly(event, none, VARS, { changes: "failure" }).started).toEqual([
+        ...FULL,
+        "report",
+      ]);
+    }
+    for (const failed of ["build", "mar-sign", "mar", "sign", "publish"]) {
+      // mar runs after a failed mar-sign only to fail on its first step ("The MAR was signed").
+      const also = failed === "mar-sign" ? { mar: /** @type {const} */ ("failure") } : {};
+      const run = nightly("schedule", CHANGED, VARS, { [failed]: "failure", ...also });
+      expect(run.started, failed).not.toContain("manifest");
+      expect(run.started, failed).toContain("report");
+      const stopped = nightly("workflow_dispatch", CHANGED, VARS, { [failed]: "cancelled" });
+      expect(stopped.started, failed).not.toContain("manifest");
+    }
+    // A cancelled change check stops the night: no build, no re-sign.
+    expect(nightly("schedule", UNCHANGED, VARS, { changes: "cancelled" }).started).toEqual([
+      "changes",
+    ]);
+    // A failed re-sign is reported too.
+    const resign = nightly("schedule", UNCHANGED, VARS, { manifest: "failure" });
+    expect(resign.started).toEqual(["changes", "manifest", "report"]);
+  });
+
+  it("the change check fails rather than hand on an empty decision", () => {
+    const run = String(step("changes", "Decide whether to build").run);
+    expect(run).toContain("grep -Exq 'build=true|build=false'");
+    expect(run.indexOf("grep -Exq")).toBeLessThan(run.indexOf('>> "$GITHUB_OUTPUT"'));
+  });
+
   it("the change check reads with contents: read alone, no secret and no environment", () => {
     const changes = job("changes");
     expect(changes.permissions).toEqual({ contents: "read" });
@@ -382,11 +417,9 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
       build_id: "${{ steps.decide.outputs.build_id }}",
     });
     // The same gate as the build's: NIGHTLY_ENABLED, and a manual run only from main.
-    expect(oneLine(changes.if)).toBe(
-      oneLine(job("build").if).replace(
-        / && \(github\.event_name == 'workflow_dispatch' \|\| needs\.changes\.outputs\.build == 'true'\)$/,
-        "",
-      ),
+    expect(oneLine(job("build").if)).toBe(
+      `!cancelled() && ${oneLine(changes.if)} && (github.event_name == 'workflow_dispatch' || ` +
+        "needs.changes.result != 'success' || needs.changes.outputs.build == 'true')",
     );
     expect(job("build").needs).toBe("changes");
   });

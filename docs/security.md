@@ -2752,11 +2752,12 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   record that `publish` writes first in the release notes. On a match no job in the `build`
   environment starts, so the Safe Browsing key is not read that day, and `manifest` re-signs the
   recorded build (UP7); anything the record cannot vouch for builds, and a manual run always
-  builds. The record only chooses between building and re-signing a build already on the
-  release: whoever edits the notes (write access) can at most delay a build by a day per edit
-  or cause one, never pick what is offered, which `nightly-prepare` still requires to be the
-  release's `SHA256SUMS`-listed build under `nightly.yml`'s cosign identity, and never older
-  than the published offer.
+  builds, as does a failed change check. The record only chooses between building and re-signing:
+  whoever can edit the release's notes and files (write access) can delay a build or cause one,
+  and can choose which build is re-signed only among genuine `nightly.yml@refs/heads/main`
+  builds, since `nightly-prepare` still requires the release's `SHA256SUMS` under that cosign
+  identity, the MAR on the channel `vimma-nightly`, and a build no older than the published
+  offer.
   `SHA256SUMS` covers the newest build alone; a kept older build is still pinned by the manifest's
   SHA-512. Release and tag events made with
   `GITHUB_TOKEN` start no workflow, so `aur.yml`, `homebrew.yml`, `site-dispatch.yml` and
