@@ -375,13 +375,13 @@ Vimma at another file.
 Vimma never makes itself your default browser; links from other apps open in it once you choose
 it. How depends on the install:
 
-| Installed from             | Make it the default                                                                                                          |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `.deb`, `.rpm`, Arch Linux | Settings → Account and sync → Make default (`:settings sync`), or `xdg-settings set default-web-browser vimma-vimma.desktop` |
-| Omarchy (Arch package)     | `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop`                               |
-| AppImage, tarball          | Settings → Account and sync → Make default (`:settings sync`); it records the file's path, so press it again after a move    |
-| Flatpak                    | your desktop's default-apps settings                                                                                         |
-| macOS                      | Settings → Account and sync → Make default, or System Settings → Desktop & Dock → Default web browser                        |
+| Installed from             | Make it the default                                                                                                                                              |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.deb`, `.rpm`, Arch Linux | Settings → Home and startup → Make default (`:settings home`), or `xdg-settings set default-web-browser vimma-vimma.desktop`                                     |
+| Omarchy (Arch package)     | Settings → Home and startup → Make default (`:settings home`), or `env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser vimma-vimma.desktop` |
+| AppImage, tarball          | Settings → Home and startup → Make default (`:settings home`); it records the file's path, so press it again after a move                                        |
+| Flatpak                    | your desktop's default-apps settings                                                                                                                             |
+| macOS                      | Settings → Home and startup → Make default, or System Settings → Desktop & Dock → Default web browser                                                            |
 
 On the Linux packages, both ways choose the package's own `vimma-vimma.desktop`, so links from
 other apps go through `vimma-open` and [routing rules](#routing-which-workspace-a-link-opens-in)
@@ -390,9 +390,14 @@ by app apply to them, and Settings says that Vimma is your default browser. A
 Settings button, which skipped `vimma-open`; once Vimma is the default again it is unused, and
 you can delete it.
 
-On Omarchy, Settings always says that Vimma is not your default browser: Omarchy answers that
-question for its own launcher, `omarchy-browser.desktop`, which then opens the browser the command
-above chose. With an AppImage or a tarball on Omarchy, use Settings' button as elsewhere.
+On Omarchy, links from other apps go to Omarchy's own launcher, `omarchy-browser.desktop`,
+which opens the browser that `mimeapps.list` names. Both ways above write that list, and Settings
+then says that Vimma is your default browser, so the startup prompt does not return. Plain
+`xdg-settings` fails there, which is why the command clears `BROWSER` and `XDG_CURRENT_DESKTOP`
+for it, as Omarchy's own `omarchy default browser` does; that command offers only the browsers it
+knows, so it cannot choose Vimma. Leave Omarchy's `BROWSER` (`omarchy-launch-browser`) as it is:
+it opens the same browser. To see which browser Omarchy will open, run
+`omarchy-cmd-default-browser`, which prints `vimma-vimma.desktop`.
 [limits.md](limits.md#platforms-and-packaging) lists what else differs on Omarchy (issue
 [#855](https://github.com/vimma-browser/vimma/issues/855)).
 

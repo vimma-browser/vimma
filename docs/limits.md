@@ -267,11 +267,9 @@ the [user guide](guide.md); planned work is on the
   fullscreen Space of its own and switching moves between Spaces.
 - The AUR package `vimma-bin` is not published yet; use the release's `PKGBUILD`.
 - On Omarchy, `xdg-settings set default-web-browser` fails unless `BROWSER` and
-  `XDG_CURRENT_DESKTOP` are cleared for it, Settings always says Vimma is not the default, and a
+  `XDG_CURRENT_DESKTOP` are cleared for it, `omarchy default browser` does not list Vimma, and a
   link from another app may not raise Vimma's window, since Omarchy's launcher looks for a window
-  named after the command it ran (issue #855). Settings' Make default button there sets the same
-  default as the command, but also turns `browser.shell.checkDefaultBrowser` back on, so the
-  startup prompt may return; set it to `false` again in `about:config`.
+  named after the command it ran (issue #855).
 - The Flatpak (`dev.vimma.browser`) is not on Flathub yet (issue #465). Once it is:
   - Links from other apps are not routed by app: its desktop entry runs `vimma` without
     `vimma-open`, whose look-up of the app that asked ends at Flatpak's own processes inside the

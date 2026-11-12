@@ -152,3 +152,188 @@ add_task(async function test_startup_named_the_launcher_before_anything_else_sta
     Assert.notEqual(Services.env.get("MOZ_APP_LAUNCHER"), own);
   }
 });
+
+// On Omarchy, GIO's http handler is Omarchy's router (hyprland-mimeapps.list), which opens the
+// browser mimeapps.list names; the native check compares the router's command with Vimma's and
+// says "not default" even after `xdg-settings set default-web-browser vimma-vimma.desktop`.
+
+add_task(async function test_the_shell_service_s_own_command_is_recorded() {
+  const exePath = "/usr/lib/vimma/vimma";
+  const probe = (/** @type {Parameters<typeof AppLauncher.probe>[0]} */ deps) =>
+    AppLauncher.probe({
+      platform: "linux",
+      exeDir: DIR,
+      exePath,
+      exists: (/** @type {string} */ path) => path === OWN,
+      marker: "",
+      running: () => false,
+      startShellService: () => {},
+      ...deps,
+    });
+  Assert.equal(probe({ env: fakeEnv() }).appPath, OWN, "vimma-open, once named");
+  Assert.equal(
+    probe({ env: fakeEnv(), exists: () => false }).appPath,
+    exePath,
+    "without vimma-open, the binary, as the shell service takes it",
+  );
+  const appimage = "/home/u/Apps/Vimma.AppImage";
+  Assert.equal(
+    probe({ env: fakeEnv({ MOZ_APP_LAUNCHER: appimage }), marker: "vimma-package=appimage\n" })
+      .appPath,
+    appimage,
+  );
+  Assert.equal(
+    probe({ env: fakeEnv({ MOZ_APP_LAUNCHER: "vimma" }), exists: () => false }).appPath,
+    "",
+    "a relative value is looked up in PATH by the shell service: unknown here, so no match",
+  );
+  Assert.equal(
+    probe({ env: fakeEnv({ MOZ_APP_LAUNCHER: "/x/late" }), running: () => true }).appPath,
+    "/x/late",
+    "a service started first took the value it found",
+  );
+  Assert.equal(probe({ env: fakeEnv(), platform: "macosx" }).appPath, "");
+});
+
+const ROUTER_LIST =
+  "[Default Applications]\nx-scheme-handler/http=omarchy-browser.desktop\nx-scheme-handler/https=omarchy-browser.desktop\n";
+/** @param {string} id */
+const browserList = (id) =>
+  `[Default Applications]\nx-scheme-handler/http=${id}\nx-scheme-handler/https=${id}\n`;
+
+const ENTRIES = {
+  "/usr/share/applications/vimma-vimma.desktop": `[Desktop Entry]\nExec=${OWN} %u\n`,
+  "/usr/share/applications/firefox.desktop": "[Desktop Entry]\nExec=/usr/lib/firefox/firefox %u\n",
+};
+
+/**
+ * @param {{ files?: Record<string, string>, router?: string, vars?: Record<string, string>, appPath?: string }} options
+ */
+function throughRouter({
+  files = {
+    "/home/u/.config/hyprland-mimeapps.list": ROUTER_LIST,
+    "/home/u/.config/mimeapps.list": browserList("vimma-vimma.desktop"),
+  },
+  router = "omarchy-browser.desktop",
+  vars = { HOME: "/home/u", XDG_CURRENT_DESKTOP: "Hyprland" },
+  appPath = OWN,
+} = {}) {
+  /** @type {string[]} */
+  const read = [];
+  /** @type {Record<string, string>} */
+  const all = { ...ENTRIES, ...files };
+  const result = AppLauncher.isDefaultThroughRouter({
+    env: fakeEnv(vars),
+    appPath,
+    readFile: (/** @type {string} */ path) => {
+      read.push(path);
+      return all[path] ?? null;
+    },
+    defaultFor: () => router,
+    resolves: (/** @type {string} */ program) =>
+      [OWN, "/usr/lib/firefox/firefox", "/usr/lib/vimma/vimma"].includes(program),
+  });
+  return { result, read };
+}
+
+add_task(async function test_omarchy_s_router_to_vimma_counts_as_default() {
+  Assert.ok(throughRouter().result, "mimeapps.list names Vimma behind Omarchy's router");
+  Assert.ok(
+    !throughRouter({
+      files: {
+        "/home/u/.config/hyprland-mimeapps.list": ROUTER_LIST,
+        "/home/u/.config/mimeapps.list": browserList("firefox.desktop"),
+      },
+    }).result,
+    "the router opens another browser",
+  );
+  Assert.ok(!throughRouter({ appPath: "/usr/lib/vimma/vimma" }).result, "another command");
+  Assert.ok(
+    throughRouter({
+      vars: {
+        HOME: "/nowhere",
+        XDG_CONFIG_HOME: "/home/u/.config",
+        XDG_CURRENT_DESKTOP: "Hyprland",
+      },
+    }).result,
+    "XDG_CONFIG_HOME is where the lists are",
+  );
+  Assert.ok(
+    throughRouter({
+      files: {
+        "/home/u/.config/hyprland-mimeapps.list": ROUTER_LIST,
+        "/home/u/.config/mimeapps.list": browserList("vimma-vimma.desktop"),
+        "/home/u/.local/share/applications/vimma-vimma.desktop":
+          "[Desktop Entry]\nExec=/usr/lib/vimma/vimma %u\n",
+      },
+    }).result === false,
+    "the user's own copy of the entry comes first, as it does for Omarchy and GIO",
+  );
+  Assert.ok(
+    throughRouter({
+      vars: {
+        HOME: "/home/u",
+        XDG_CURRENT_DESKTOP: "Hyprland",
+        XDG_DATA_HOME: "/nowhere",
+        XDG_DATA_DIRS: "/elsewhere",
+      },
+    }).result === false,
+    "XDG_DATA_DIRS is where the entries are",
+  );
+});
+
+add_task(async function test_without_omarchy_s_router_nothing_is_read() {
+  const { result, read } = throughRouter({ router: "firefox.desktop" });
+  Assert.ok(!result);
+  Assert.deepEqual(read, [], "a desktop without the router pays nothing for the check");
+});
+
+add_task(async function test_the_wrapped_check_keeps_firefox_s_answer_and_side_effects() {
+  /** @type {unknown[][]} */
+  const calls = [];
+  let native = false;
+  let routed = true;
+  const target = {
+    isDefaultBrowser(/** @type {unknown[]} */ ...args) {
+      calls.push(args);
+      return native;
+    },
+    async isDefaultBrowserAsync(/** @type {unknown[]} */ ...args) {
+      calls.push(args);
+      return native;
+    },
+  };
+  AppLauncher.wrapIsDefault(target, () => routed);
+  Assert.ok(target.isDefaultBrowser(true, false), "routed through Omarchy to Vimma");
+  Assert.ok(await target.isDefaultBrowserAsync(true, false));
+  Assert.deepEqual(
+    calls,
+    [
+      [true, false],
+      [true, false],
+    ],
+    "Firefox's own check still runs",
+  );
+  routed = false;
+  Assert.ok(!target.isDefaultBrowser(false, true));
+  Assert.ok(!(await target.isDefaultBrowserAsync(false, true)));
+  native = true;
+  let asked = false;
+  AppLauncher.wrapIsDefault(target, () => {
+    asked = true;
+    throw new Error("unreadable");
+  });
+  Assert.ok(target.isDefaultBrowser(false, true));
+  Assert.ok(!asked, "a native yes needs no second look");
+  native = false;
+  Assert.ok(!target.isDefaultBrowser(false, true), "an error in the check is a no");
+});
+
+add_task(async function test_firefox_s_shell_service_check_is_wrapped_on_linux() {
+  const { ShellService } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/shell/ShellService.sys.mjs",
+  );
+  const linux = AppConstants.platform === "linux";
+  Assert.equal(ShellService.isDefaultBrowser.name === "vimmaIsDefaultBrowser", linux);
+  Assert.equal(ShellService.isDefaultBrowserAsync.name === "vimmaIsDefaultBrowserAsync", linux);
+});

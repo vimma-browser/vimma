@@ -586,7 +586,16 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   profile on a first start, `vimma -setDefaultBrowser`), that session keeps Firefox's behaviour,
   which Vimma reports in the console. A program that can write `~/.local/share/applications` or
   `mimeapps.list` can choose the default browser itself, so a desktop entry there that also runs
-  `vimma-open` is outside this boundary (§11).
+  `vimma-open` is outside this boundary (§11). On Omarchy, where GIO names Omarchy's router
+  (`omarchy-browser.desktop`) as the http and https handler, Vimma also counts itself the
+  default when the entry the router opens (the first installed one past it in the
+  `mimeapps.list` files, as `omarchy-cmd-default-browser` reads them) runs exactly the absolute
+  command the shell service took as Vimma's own; a relative or quoted-with-escapes command never
+  matches. This changes only what Settings and the startup prompt report, never which program
+  opens a link, and nothing is read unless GIO names the router.
+  [`test_omarchy_s_router_to_vimma_counts_as_default`](../tests/browser/browser_vimma_app_launcher.js),
+  [`test_without_omarchy_s_router_nothing_is_read`](../tests/browser/browser_vimma_app_launcher.js),
+  [`matches the program by its exact absolute path, never by name or a relative one`](../packages/vimma-core/test/default-browser.test.mjs),
   [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_value_never_picks_another_program`](../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_appdir_never_keeps_another_program`](../tests/browser/browser_vimma_app_launcher.js),
