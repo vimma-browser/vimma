@@ -325,11 +325,12 @@ jobs:
   # the build's only in its signature, verifies under the committed certificates (mar.mjs and
   # Mozilla's signmar), is on the nightly channel and Firefox's version, and installs exactly the
   # nightly tarball's files. Then SHA256SUMS lists it and the tarball, both named by build ID.
-  # It runs whenever the build succeeded, so a skipped or failed mar-sign fails here, loudly.
+  # It runs whenever the build succeeded and the run was not cancelled, so a skipped or failed
+  # mar-sign fails here, loudly.
   mar:
     needs: [build, mar-sign]
     if: >-
-      always() && vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      !cancelled() && vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
       vars.UPDATES_ENABLED == 'true' && needs.build.result == 'success'
     runs-on: ubuntu-24.04
@@ -461,11 +462,14 @@ jobs:
           if-no-files-found: error
 
   # The one job that can write contents. It checks nothing out and runs no repository code: gh,
-  # sha256sum and the files the jobs before it checked. The rolling `nightly` release is a
+  # curl, sha256sum and the files the jobs before it checked. The rolling `nightly` release is a
   # pre-release, so it is never Latest, starts no workflow listening for published releases
   # (GITHUB_TOKEN's events start none anyway), and update-publish.yml's release manifest refuses
-  # it. Its tag follows the commit built. The previous build's files stay until the next build,
-  # so a client that read the previous manifest can still download its MAR (spec m6a-updater §7).
+  # it. Its tag is made once, at the first public nightly's commit, and never moved: GitHub may
+  # refuse GITHUB_TOKEN a ref update that brings in workflow changes, and the notes name each
+  # build's commit. The files of the previous build and of the build the published manifest
+  # offers stay, so a client that read that manifest can still download its MAR (spec
+  # m6a-updater §7).
   publish:
     needs: [build, sign]
     if: >-
@@ -475,7 +479,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
-      contents: write # the rolling nightly release: create it once, move its tag, replace its files
+      contents: write # the rolling nightly release: create it once, replace its files
     env:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
@@ -507,32 +511,47 @@ jobs:
           ls -l SHA256SUMS SHA256SUMS.sigstore.json
 
       # A draft or a full release named nightly is someone's mistake, never overwritten: a full
-      # one would be Latest. Any answer but the release or a 404 stops the job.
+      # one would be Latest. gh release view finds drafts too. A newer build already on the
+      # release means this is a re-run of an older night: it must not replace that build's sums.
       - name: Upload to the rolling nightly release
         run: |
           [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
-          notes="Nightly build $BUILD_ID of main at $SHA. Built every night from main and checked by CI only: not a release. Check a download with: cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS"
-          if out=$(gh api "repos/$GH_REPO/releases/tags/nightly" 2>&1); then
-            state=$(printf '%s' "$out" | jq -r '"\(.draft) \(.prerelease)"')
+          notes="Nightly build $BUILD_ID of main at $SHA. Built every night from main and checked by CI only: not a release. SHA256SUMS lists this build's files; check a download with: cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS"
+          if state=$(gh release view nightly --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2> view.err); then
             [ "$state" = "false true" ] \
-              || { echo "::error::the nightly release is not a public pre-release (draft prerelease: $state); nothing was uploaded"; exit 1; }
+              || { echo "::error::the nightly release is not a public pre-release (isDraft isPrerelease: $state); nothing was uploaded"; exit 1; }
+            newest=$(gh release view nightly --json assets --jq '.assets[].name' \
+              | sed -n 's/^vimma-nightly-\([0-9]\{14\}\)-linux-x86_64\..*$/\1/p' | sort | tail -n 1)
+            if [ -n "$newest" ] && [ "$newest" -gt "$BUILD_ID" ]; then
+              echo "::error::the nightly release already has build $newest, newer than $BUILD_ID; nothing was uploaded"
+              exit 1
+            fi
           else
-            printf '%s\n' "$out" | grep -q 'HTTP 404' \
-              || { echo "::error::could not read the nightly release: $out"; exit 1; }
+            grep -q 'release not found' view.err \
+              || { echo "::error::could not read the nightly release: $(cat view.err)"; exit 1; }
             gh release create nightly --prerelease --latest=false --target "$SHA" --title "Vimma nightly" --notes "$notes"
           fi
-          gh api -X PATCH "repos/$GH_REPO/git/refs/tags/nightly" -f sha="$SHA" -F force=true > /dev/null
           gh release upload nightly release/* --clobber
           gh release edit nightly --notes "$notes"
 
+      # Kept: this build, the one before it, and the one the published nightly manifest offers
+      # (its manifest may have failed since); never a newer build. When the update host does not
+      # answer, nothing is removed.
       - name: Remove the files of older builds
         run: |
+          url=https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma-nightly/update.xml
+          code=$(curl -sS --proto =https --retry 3 -o live.xml -w '%{http_code}' "$url") || code=000
+          case "$code" in
+            200) live=$(sed -n 's/.* buildID="\([0-9]\{14\}\)".*/\1/p' live.xml | head -n 1) ;;
+            404) live="" ;;
+            *) echo "::warning::$url answered $code; no file removed"; exit 0 ;;
+          esac
           names=$(gh release view nightly --json assets --jq '.assets[].name')
           id_of() { printf '%s\n' "$1" | sed -n 's/^vimma-nightly-\([0-9]\{14\}\)-linux-x86_64\..*$/\1/p'; }
           previous=$(for n in $names; do id_of "$n"; done | sort -u | awk -v c="$BUILD_ID" '$1 < c' | tail -n 1)
           for n in $names; do
             id=$(id_of "$n")
-            [ -n "$id" ] && [ "$id" != "$BUILD_ID" ] && [ "$id" != "$previous" ] || continue
+            [ -n "$id" ] && [ "$id" -lt "$BUILD_ID" ] && [ "$id" != "$previous" ] && [ "$id" != "$live" ] || continue
             gh release delete-asset nightly "$n" --yes
           done
 

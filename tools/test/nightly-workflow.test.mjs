@@ -141,7 +141,8 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
   it("the nightly release is a pre-release, never Latest or deleted, and no v* tag is touched", () => {
     const run = String(step("publish", "Upload to the rolling nightly release").run);
     expect(run).toContain("gh release create nightly --prerelease --latest=false");
-    expect(run).toContain('gh api -X PATCH "repos/$GH_REPO/git/refs/tags/nightly"');
+    // The tag stays where the first public nightly made it: no job moves a ref.
+    expect(TEXT).not.toMatch(/git\/refs|-X PATCH|git push/);
     expect(run).toContain("gh release upload nightly release/* --clobber");
     expect(TEXT).not.toMatch(/gh release delete (?!-asset)|refs\/tags\/v|releases\/latest/);
     expect(TEXT).not.toMatch(/--latest(?!=false)/);
@@ -181,7 +182,8 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
   it("the mar job fails, loudly, when the MAR was not signed", () => {
     const mar = job("mar");
     expect(mar.needs).toEqual(["build", "mar-sign"]);
-    expect(oneLine(mar.if)).toBe(`always() && ${PUBLIC} && needs.build.result == 'success'`);
+    // !cancelled(): a cancelled run reports no failure.
+    expect(oneLine(mar.if)).toBe(`!cancelled() && ${PUBLIC} && needs.build.result == 'success'`);
     expect(mar.permissions).toEqual({ contents: "read" });
     expect(steps("mar")[0]?.name).toBe("The MAR was signed");
     expect(String(steps("mar")[0]?.run)).toContain('[ "$MAR_SIGN" = success ]');
@@ -289,35 +291,44 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
 // The publish job's two scripts, run with a stand-in for gh that answers as GitHub would and
 // records every call.
 describe.skipIf(process.platform !== "linux")("the nightly release's steps, run", () => {
+  const BUILD = "20261112030512";
+  /** @param {string} id */
+  const files = (id) => [
+    `vimma-nightly-${id}-linux-x86_64.tar.xz`,
+    `vimma-nightly-${id}-linux-x86_64.complete.mar`,
+  ];
+
   /**
-   * @param {{ release: "none" | "pre" | "full" | "draft" | "error", assets?: string[] }} state
+   * @param {{ release: "none" | "pre" | "full" | "draft" | "error", assets?: string[],
+   *   live?: string | null | "down" }} state  live: the build ID the published nightly
+   *   manifest offers, null for a 404, "down" for an update host that does not answer
    */
-  function setUp({ release, assets = [] }) {
+  function setUp({ release, assets = [], live = null }) {
     const dir = tempDir("vimma-nightly-publish-");
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "release"));
     for (const f of ["SHA256SUMS", "SHA256SUMS.sigstore.json", "vimma-nightly-x"]) {
       writeFileSync(join(dir, "release", f), f);
     }
-    const json = {
+    const state = {
       none: "",
-      pre: '{"draft":false,"prerelease":true}',
-      full: '{"draft":false,"prerelease":false}',
-      draft: '{"draft":true,"prerelease":true}',
+      pre: "false true",
+      full: "false false",
+      draft: "true true",
       error: "",
     }[release];
-    writeFileSync(join(dir, "release.json"), json);
+    writeFileSync(join(dir, "state.txt"), state);
     writeFileSync(join(dir, "assets.txt"), assets.map((a) => `${a}\n`).join(""));
     writeFileSync(
       join(dir, "bin", "gh"),
       `#!/bin/sh
 printf '%s\\n' "$*" >> "$CALLS"
 case "$*" in
-  "api repos/$GH_REPO/releases/tags/nightly")
+  release\\ view\\ nightly\\ --json\\ isDraft,isPrerelease*)
     case "${release}" in
-      none) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
-      error) echo "gh: Server Error (HTTP 502)" >&2; exit 1 ;;
-      *) cat "$STATE" ;;
+      none) echo "release not found" >&2; exit 1 ;;
+      error) echo "HTTP 502: Server Error" >&2; exit 1 ;;
+      *) cat "$STATE"; echo ;;
     esac ;;
   "release view nightly --json assets --jq .assets[].name") cat "$ASSETS" ;;
   *) exit 0 ;;
@@ -325,16 +336,33 @@ esac
 `,
       { mode: 0o755 },
     );
+    const body =
+      live === null || live === "down" ? "" : `<update type="minor" buildID="${live}">\n`;
+    const code = live === null ? "404" : live === "down" ? "502" : "200";
+    writeFileSync(
+      join(dir, "bin", "curl"),
+      `#!/bin/sh
+out=""
+while [ $# -gt 0 ]; do
+  case "$1" in -o) out=$2; shift ;; esac
+  shift
+done
+[ -n "$out" ] && printf '%s' '${body}' > "$out"
+printf '%s' ${code}
+`,
+      { mode: 0o755 },
+    );
     return dir;
   }
 
   /**
+   * As GitHub runs a step with no `shell:`: bash -e, without pipefail.
    * @param {string} dir
    * @param {string} name
    */
   function run(dir, name) {
     const script = String(step("publish", name).run);
-    const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", script], {
+    const result = spawnSync("bash", ["-e", "-c", script], {
       cwd: dir,
       encoding: "utf8",
       env: {
@@ -342,9 +370,9 @@ esac
         PATH: `${join(dir, "bin")}:${process.env.PATH}`,
         GH_REPO: "vimma-browser/vimma",
         SHA: "0123456789abcdef0123456789abcdef01234567",
-        BUILD_ID: "20261112030512",
+        BUILD_ID: BUILD,
         CALLS: join(dir, "calls.txt"),
-        STATE: join(dir, "release.json"),
+        STATE: join(dir, "state.txt"),
         ASSETS: join(dir, "assets.txt"),
       },
     });
@@ -358,16 +386,17 @@ esac
   }
 
   const UPLOAD = "Upload to the rolling nightly release";
+  const PRUNE = "Remove the files of older builds";
+  /** @param {{ calls: string[] }} r */
+  const deleted = (r) =>
+    r.calls.filter((c) => c.startsWith("release delete-asset")).map((c) => c.split(" ")[3]);
 
-  it("creates the nightly pre-release the first time, then moves its tag and uploads", () => {
+  it("creates the nightly pre-release the first time, at the commit built, and uploads", () => {
     const r = run(setUp({ release: "none" }), UPLOAD);
     expect(r.stdout + r.stderr).not.toMatch(/::error::/);
     expect(r.status).toBe(0);
-    expect(r.calls[1]).toMatch(
+    expect(r.calls.find((c) => c.startsWith("release create"))).toMatch(
       /^release create nightly --prerelease --latest=false --target 0123456789abcdef0123456789abcdef01234567 --title Vimma nightly --notes /,
-    );
-    expect(r.calls).toContain(
-      "api -X PATCH repos/vimma-browser/vimma/git/refs/tags/nightly -f sha=0123456789abcdef0123456789abcdef01234567 -F force=true",
     );
     expect(r.calls.find((c) => c.startsWith("release upload"))).toBe(
       "release upload nightly release/SHA256SUMS release/SHA256SUMS.sigstore.json release/vimma-nightly-x --clobber",
@@ -375,8 +404,8 @@ esac
   });
 
   it("uploads to the existing pre-release without creating another", () => {
-    const r = run(setUp({ release: "pre" }), UPLOAD);
-    expect(r.status).toBe(0);
+    const r = run(setUp({ release: "pre", assets: files("20261111030000") }), UPLOAD);
+    expect(r.status, r.stderr).toBe(0);
     expect(r.calls.some((c) => c.startsWith("release create"))).toBe(false);
     expect(r.calls.some((c) => c.startsWith("release upload nightly"))).toBe(true);
   });
@@ -387,27 +416,44 @@ esac
       const r = run(setUp({ release: /** @type {any} */ (release) }), UPLOAD);
       expect(r.status).not.toBe(0);
       expect(r.stdout + r.stderr).toMatch(/::error::/);
-      expect(r.calls.some((c) => /^release (upload|create)|PATCH/.test(c))).toBe(false);
+      expect(r.calls.some((c) => /^release (upload|create|edit)/.test(c))).toBe(false);
     },
   );
 
-  it("keeps this build's files and the previous build's, and removes older ones", () => {
+  it("refuses a re-run of an older night once a newer build is on the release", () => {
+    const r = run(setUp({ release: "pre", assets: files("20261113030000") }), UPLOAD);
+    expect(r.status).not.toBe(0);
+    expect(r.stdout + r.stderr).toMatch(/::error::.*20261113030000/);
+    expect(r.calls.some((c) => /^release (upload|edit)/.test(c))).toBe(false);
+  });
+
+  it("keeps this build, the previous one and the one the live manifest offers", () => {
     const assets = [
       "SHA256SUMS",
       "SHA256SUMS.sigstore.json",
-      "vimma-nightly-20261110030000-linux-x86_64.tar.xz",
-      "vimma-nightly-20261110030000-linux-x86_64.complete.mar",
-      "vimma-nightly-20261111030000-linux-x86_64.tar.xz",
-      "vimma-nightly-20261111030000-linux-x86_64.complete.mar",
-      "vimma-nightly-20261112030512-linux-x86_64.tar.xz",
-      "vimma-nightly-20261112030512-linux-x86_64.complete.mar",
+      ...files("20261109030000"),
+      ...files("20261110030000"),
+      ...files("20261111030000"),
+      ...files(BUILD),
       "notes.txt",
     ];
-    const r = run(setUp({ release: "pre", assets }), "Remove the files of older builds");
+    const r = run(setUp({ release: "pre", assets, live: "20261109030000" }), PRUNE);
     expect(r.status, r.stderr).toBe(0);
-    expect(r.calls.filter((c) => c.startsWith("release delete-asset"))).toEqual([
-      "release delete-asset nightly vimma-nightly-20261110030000-linux-x86_64.tar.xz --yes",
-      "release delete-asset nightly vimma-nightly-20261110030000-linux-x86_64.complete.mar --yes",
-    ]);
+    expect(deleted(r)).toEqual(files("20261110030000"));
+  });
+
+  it("with no published manifest keeps this build and the previous one", () => {
+    const assets = [...files("20261110030000"), ...files("20261111030000"), ...files(BUILD)];
+    const r = run(setUp({ release: "pre", assets, live: null }), PRUNE);
+    expect(r.status, r.stderr).toBe(0);
+    expect(deleted(r)).toEqual(files("20261110030000"));
+  });
+
+  it("removes nothing when the update host does not answer, nor any newer build", () => {
+    const assets = [...files("20261110030000"), ...files(BUILD), ...files("20261113030000")];
+    expect(deleted(run(setUp({ release: "pre", assets, live: "down" }), PRUNE))).toEqual([]);
+    const r = run(setUp({ release: "pre", assets, live: BUILD }), PRUNE);
+    expect(r.status, r.stderr).toBe(0);
+    expect(deleted(r)).toEqual([]);
   });
 });

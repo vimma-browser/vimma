@@ -777,6 +777,16 @@ esac
       "release",
     ],
     [
+      "a nightly root hidden before a NUL byte",
+      (b) =>
+        b.replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma-nightly" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
+      "release",
+    ],
+    ["text after </updates>", (b) => b + "<!-- x -->", "release"],
+    [
       "more than 64 KiB",
       (b) => b.replace("</updates>", `<!-- ${"x".repeat(70_000)} -->\n</updates>`),
       "release",
@@ -976,6 +986,26 @@ esac
       () => nightlyBody().replace(/vimmaSerial="\d{14}"/, 'vimmaSerial="29990101000000"'),
       {},
     ],
+    // GNU grep ends a line at a NUL byte, so `grep -x` alone would pass either half.
+    [
+      "a release-channel root hidden before a NUL byte",
+      () =>
+        nightlyBody().replace(
+          "<updates ",
+          '<updates vimmaChannel="vimma" vimmaTarget="Linux_x86_64-gcc3" vimmaSerial="20261112000000">\0<updates ',
+        ),
+      {},
+    ],
+    [
+      "another tarball hidden after a NUL byte",
+      () =>
+        nightlyBody().replace(
+          'linux-x86_64.tar.xz"/>\n',
+          `linux-x86_64.tar.xz"/>\0<vimmaTarball size="1" hashFunction="sha512" hashValue="${"f".repeat(128)}" URL="https://example.com/x.tar.xz"/>\n`,
+        ),
+      {},
+    ],
+    ["text after the last line", () => nightlyBody() + "<!-- x -->", {}],
   ])(
     "nightly-sign refuses to sign %s",
     (_name, body, env) => {

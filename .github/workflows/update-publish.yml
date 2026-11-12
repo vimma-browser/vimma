@@ -336,6 +336,11 @@ jobs:
         run: |
           body=out/update.xml.body
           [ "$(wc -c < "$body")" -le 65536 ] || { echo "::error::the body is over 64 KiB"; exit 1; }
+          # Printable ASCII and newlines only, ending in a newline, before any pattern: GNU grep
+          # ends a line at a NUL byte, so a line check alone would pass a body that hides another
+          # line, another channel or another URL, behind one.
+          ! LC_ALL=C grep -qav '^[ -~]*$' "$body" || { echo "::error::the body has a byte that is not printable ASCII"; exit 1; }
+          [ "$(tail -c 1 "$body" | od -An -tx1 | tr -d ' \n')" = 0a ] || { echo "::error::the body does not end with a newline"; exit 1; }
           [ "$(sed -n 1p "$body")" = '<?xml version="1.0"?>' ] || { echo "::error::no XML declaration"; exit 1; }
           sed -n 2p "$body" | grep -Eqx "<updates vimmaChannel=\"vimma\" vimmaTarget=\"$BUILD_TARGET\" vimmaSerial=\"[0-9]{14}\">" \
             || { echo "::error::not a release-channel manifest for $BUILD_TARGET"; exit 1; }
@@ -795,6 +800,11 @@ jobs:
           body=out/update.xml.body
           [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
           [ "$(wc -c < "$body")" -le 65536 ] || { echo "::error::the body is over 64 KiB"; exit 1; }
+          # Printable ASCII and newlines only, ending in a newline, before any pattern: GNU grep
+          # ends a line at a NUL byte, so a line check alone would pass a body that hides another
+          # line, another channel or another URL, behind one.
+          ! LC_ALL=C grep -qav '^[ -~]*$' "$body" || { echo "::error::the body has a byte that is not printable ASCII"; exit 1; }
+          [ "$(tail -c 1 "$body" | od -An -tx1 | tr -d ' \n')" = 0a ] || { echo "::error::the body does not end with a newline"; exit 1; }
           [ "$(wc -l < "$body")" = 7 ] || { echo "::error::the body is not seven lines"; exit 1; }
           dl='https://github\.com/vimma-browser/vimma/releases/download/nightly'
           sha='hashFunction="sha512" hashValue="[0-9a-f]{128}"'
@@ -808,7 +818,7 @@ jobs:
             '</updates>'
           )
           for i in "${!lines[@]}"; do
-            sed -n "$((i + 1))p" "$body" | grep -Eqx "${lines[$i]}" \
+            sed -n "$((i + 1))p" "$body" | LC_ALL=C grep -aEqx "${lines[$i]}" \
               || { echo "::error::line $((i + 1)) is not what the nightly manifest for $BUILD_ID has there"; exit 1; }
           done
           serial=$(sed -n 2p "$body" | sed 's/.*vimmaSerial="\([0-9]*\)">$/\1/')

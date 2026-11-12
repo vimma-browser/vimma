@@ -1262,6 +1262,11 @@ job (the one job with `contents: write`, which runs no repository code), and off
 are named by build ID (`vimma-nightly-<buildID>-linux-x86_64.tar.xz` and
 `….complete.mar`); the previous build's stay until the next build replaces them. The release is
 a pre-release, never Latest, so the release page, the AUR, Homebrew and vimma.dev never show it.
+Its `nightly` tag stays at the first public nightly's commit; each build's commit is in the
+release notes. `SHA256SUMS` lists the newest build's files only. The files of the build the
+published nightly manifest offers are kept even when that is not the previous build (a failed
+manifest step), and a re-run of an older night's `publish` refuses once a newer build is on the
+release.
 
 ```sh
 gh variable set NIGHTLY_RELEASE_ENABLED --body true   # from the next nightly; or now:
@@ -1277,7 +1282,10 @@ To check a download: `cosign verify-blob --bundle SHA256SUMS.sigstore.json
 `gh workflow run nightly.yml --ref main`, whose newer build replaces the offer (an older build
 never can); there is no `offer=nothing` for the nightly channel. Deleting the variable stops
 further nightlies from publishing and leaves the last one offered. To withdraw the release,
-`gh release delete nightly --cleanup-tag --yes`; the next public nightly creates it again. A release or tag named `nightly` that is not a public pre-release stops the
+`gh release delete nightly --cleanup-tag --yes`; the next public nightly creates it again. Until
+then the published nightly manifest still offers that build, whose files are gone, so every
+nightly install's update fails its download (nothing is installed) until a new nightly is
+published. A release or tag named `nightly` that is not a public pre-release stops the
 `publish` job until it is removed.
 
 ### macOS build (`macos.yml`)

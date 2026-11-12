@@ -649,7 +649,10 @@ its manifest. The nightly sets its channel with `tools/update/channel.mjs` rathe
 `package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
 packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
 none until public nightly releases (decision 23). docs/runbook.md, "Update signing keys and the
-update host", step 8; docs/security.md UP14.)
+update host", step 8; docs/security.md UP14. The `nightly` tag is made once and never moved, because GitHub may refuse `GITHUB_TOKEN` a
+ref update that brings in workflow changes; the release notes name each build's commit. Besides
+the previous build, the files of the build the published nightly manifest offers stay too, so a
+failed manifest step never leaves installs with a MAR that is gone.)
 
 (Since changed: the release manifest is published by a workflow of its own,
 `update-publish.yml`, on `release: released`, because a release has no MAR until sub-PR 2 and

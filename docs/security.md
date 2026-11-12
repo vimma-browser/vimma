@@ -2725,8 +2725,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`test_an_unchanged_key_reports_nothing`](../tools/upstream/test_mozilla_key_check.py),
   [`detect compares Mozilla's KEY with the pinned key; a change opens a security issue`](../tools/test/upstream-workflow.test.mjs)
 - B8. Unless the repository variables `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` are both
-  `true`, the nightly **never** creates, replaces or deletes a release, and every job of it that
-  runs holds a read-only token. Its `build` job, which runs npm, Surfer, `mach` and the
+  `true`, the nightly **never** creates, replaces or deletes a release, and no job of it can
+  write contents. Its `build` job, which runs npm, Surfer, `mach` and the
   mochitests, holds `contents: read` only, whatever the variables, and keeps its package as a
   workflow artifact for 7 days. The failure issue comes from a `report` job with
   `issues: write`, which checks out and runs no repository code, reads no secret, and quotes
@@ -2741,9 +2741,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   release manifest's check never accept; and `publish`, the **only** job with
   `contents: write`, checks out and runs no repository code. It uploads only files that
   `SHA256SUMS` lists (and the sums and their signature) to the rolling `nightly` release, which
-  it creates as a pre-release that is never Latest, refuses to touch when it is a draft or a full
-  release, and never deletes; it moves the `nightly` tag, never a `v*` one, to the commit built,
-  and removes the files of builds older than the previous one. Release and tag events made with
+  it creates as a pre-release that is never Latest, with its `nightly` tag at that commit, and
+  never deletes; no job moves a tag. It refuses to touch the release when it is a draft or a full
+  release, and when it already holds a newer build (a re-run of an older night). It removes only
+  the files of builds older than this one, keeping the previous build's and those of the build
+  the published nightly manifest offers, and removes none when the update host does not answer.
+  `SHA256SUMS` covers the newest build alone; a kept older build is still pinned by the manifest's
+  SHA-512. Release and tag events made with
   `GITHUB_TOKEN` start no workflow, so `aur.yml`, `homebrew.yml`, `site-dispatch.yml` and
   `update-publish.yml`'s `start` never run for it. **⚠ limit:** the artifact is not private. The
   repository is public, so anyone signed in to GitHub can download it for the 7 days it is
@@ -2761,7 +2765,9 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`publish uploads only files SHA256SUMS lists, after checking them`](../tools/test/nightly-workflow.test.mjs),
   [`cosign signs SHA256SUMS as nightly.yml on main, running no repository code`](../tools/test/nightly-workflow.test.mjs),
   [`refuses a nightly release whose state is %s, and uploads nothing`](../tools/test/nightly-workflow.test.mjs),
-  [`keeps this build's files and the previous build's, and removes older ones`](../tools/test/nightly-workflow.test.mjs),
+  [`refuses a re-run of an older night once a newer build is on the release`](../tools/test/nightly-workflow.test.mjs),
+  [`keeps this build, the previous one and the one the live manifest offers`](../tools/test/nightly-workflow.test.mjs),
+  [`removes nothing when the update host does not answer, nor any newer build`](../tools/test/nightly-workflow.test.mjs),
   [`a failure of any job is reported by its own job, from the redacted log artifact`](../tools/test/nightly-workflow.test.mjs),
   [`the report job names the repository, since it checks nothing out`](../tools/test/nightly-workflow.test.mjs),
   [`only the nightly's failure-issue step and its publish job get GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
@@ -3434,7 +3440,10 @@ _Pages_ and _extensions_ cannot reach it.
   decisions 42 and 43) is signed by the same key and environments, by `nightly-prepare`,
   `nightly-sign` and `nightly-publish`, which run **only** in `nightly.yml`'s call from `main`
   (`github.workflow_ref`) and only while `UPDATES_ENABLED` and `NIGHTLY_RELEASE_ENABLED` are
-  `true`. `nightly-prepare` holds no secret; it requires the `nightly` release to be a public
+  `true`. Before any pattern, both signing jobs refuse a body with a byte that is not printable
+  ASCII or a newline, or that does not end in a newline, because GNU grep ends a line at a NUL
+  byte and a line check alone would then pass a body that hides another channel or URL behind
+  one. `nightly-prepare` holds no secret; it requires the `nightly` release to be a public
   pre-release, checks its `SHA256SUMS` against `nightly.yml`'s cosign identity (never
   `release.yml`'s, so neither channel's sums can stand in for the other's), checks that the MAR
   verifies under the committed certificates on the channel `vimma-nightly`, and that the
