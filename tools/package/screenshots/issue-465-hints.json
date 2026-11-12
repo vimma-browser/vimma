@@ -1,0 +1,19 @@
+{
+  "name": "issue-465-hints",
+  "issue": 465,
+  "description": "Flathub screenshot: link hints on vimma.dev.",
+  "timeoutSeconds": 90,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "https://vimma.dev/" },
+    {
+      "wait-for-state": { "tabs": [{}, { "url": "https://vimma.dev/", "selected": true }] },
+      "timeoutSeconds": 30
+    },
+    { "sleep": 3 },
+    { "keys": "f" },
+    { "wait-for-state": { "mode": "hint" } },
+    { "sleep": 1 },
+    { "screenshot": "hints" }
+  ]
+}

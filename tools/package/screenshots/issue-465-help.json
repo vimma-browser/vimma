@@ -1,0 +1,19 @@
+{
+  "name": "issue-465-help",
+  "issue": 465,
+  "description": "Flathub screenshot: the key bindings overlay.",
+  "timeoutSeconds": 90,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "https://vimma.dev/keys/" },
+    {
+      "wait-for-state": { "tabs": [{}, { "url": "https://vimma.dev/keys/", "selected": true }] },
+      "timeoutSeconds": 30
+    },
+    { "sleep": 3 },
+    { "keys": "ctrl+b ?" },
+    { "wait-for-state": { "mode": "help" } },
+    { "sleep": 1 },
+    { "screenshot": "help" }
+  ]
+}

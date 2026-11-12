@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
 import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates.mjs";
+import { loadScenarios } from "../../e2e/scenario.mjs";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
   APP_ID,
@@ -221,6 +222,32 @@ describe("Flatpak metainfo", () => {
       const [w, h] = [png.readUInt32BE(16), png.readUInt32BE(20)];
       expect(w, file).toBeGreaterThan(h);
       expect(w, file).toBeLessThanOrEqual(1920);
+    }
+  });
+
+  // A retake runs these scenarios (docs/assets/screenshots/README.md), so every screenshot can be
+  // taken again on a new build in the same way, and the pages they open are vimma.dev's public
+  // pages only: nothing from a person's own profile, logins or browsing reaches Flathub.
+  it("takes each screenshot with a scenario that opens only vimma.dev's pages", () => {
+    // loadScenarios validates each file as the e2e runner does: CI's e2e jobs never load these,
+    // since they reach the live site.
+    const scenarios = loadScenarios(join(repo, "tools/package/screenshots"));
+    /** @type {any[]} */
+    const steps = scenarios.flatMap((s) => s.steps);
+    // No step that types, runs a program or reaches the browser other than by keys and URLs.
+    const kinds = ["open", "keys", "wait-for-state", "sleep", "screenshot"];
+    for (const step of steps) {
+      const kind = Object.keys(step).filter((k) => k !== "timeoutSeconds");
+      expect(kind.length === 1 && kinds.includes(kind[0]), JSON.stringify(step)).toBe(true);
+    }
+    const taken = steps.filter((s) => "screenshot" in s).map((s) => `${s.screenshot}.png`);
+    expect(taken.sort()).toEqual(SCREENSHOTS.map((s) => s.file).sort());
+    const opened = steps.filter((s) => "open" in s).map((s) => s.open);
+    expect(opened.length).toBeGreaterThan(0);
+    for (const url of opened) expect(url).toMatch(/^https:\/\/vimma\.dev\//);
+    for (const s of scenarios) {
+      expect(s.prefs ?? {}, s.name).toEqual({});
+      expect("programs" in s || "update" in s, s.name).toBe(false);
     }
   });
 

@@ -1,0 +1,27 @@
+{
+  "name": "issue-465-grep",
+  "issue": 465,
+  "description": "Flathub screenshot: live grep through the workspace's tabs.",
+  "timeoutSeconds": 120,
+  "steps": [
+    { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
+    { "open": "https://vimma.dev/docs/why/" },
+    { "open": "https://vimma.dev/keys/" },
+    {
+      "wait-for-state": {
+        "tabs": [
+          {},
+          { "url": "https://vimma.dev/docs/why/" },
+          { "url": "https://vimma.dev/keys/", "selected": true }
+        ]
+      },
+      "timeoutSeconds": 30
+    },
+    { "sleep": 3 },
+    { "keys": "ctrl+b f g" },
+    { "wait-for-state": { "mode": "help" } },
+    { "keys": "w o r k s p a c e" },
+    { "sleep": 2 },
+    { "screenshot": "grep" }
+  ]
+}
