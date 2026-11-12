@@ -4632,6 +4632,11 @@ Vimma changes these Firefox defaults for workspaces; each one can be changed bac
   `identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed` = `false`,
   `extensions.getAddons.showPane` and `extensions.htmlaboutaddons.recommendations.enabled` =
   `true` bring them back).
+- **No import promo in the History sidebar or Tab Overview.** Firefox asks a profile less than 8
+  days old to import history from another browser; Vimma does not, and
+  [Moving over from Firefox or Chrome](#moving-over-from-firefox-or-chrome) says how to import
+  (`browser.tabs.firefox-view.importHistory.dismissed` = `false` brings the promo back on such a
+  profile, without Firefox's mascot).
 - **Help → Share Ideas opens Vimma's GitHub discussions** (`app.feedback.baseURL`), and a
   backup's download link points at Vimma's releases.
 - **Help links open vimma.dev.** Settings' "Learn more" links, its "Vimma support" button and

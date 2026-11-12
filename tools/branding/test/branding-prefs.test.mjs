@@ -92,6 +92,7 @@ describe("Firefox and Mozilla surfaces (firefox-surfaces-trim, step 2)", () => {
     "sidebar.main.tools": '"opentabs,bookmarks,history,syncedtabs,passwords"',
     "signon.firefoxRelay.feature": '"disabled"',
     "browser.shell.checkDefaultBrowser": "false",
+    "browser.tabs.firefox-view.importHistory.dismissed": "true",
     "extensions.getAddons.showPane": "false",
     "extensions.htmlaboutaddons.recommendations.enabled": "false",
     "toolkit.datacollection.infoURL": '""',

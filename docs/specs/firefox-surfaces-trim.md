@@ -204,6 +204,7 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
 | AI chatbot, link preview, AI controls pane, launcher tools | prefs `browser.ml.chat.enabled` false, `browser.ml.linkPreview.enabled` false, `browser.preferences.aiControls` false, `sidebar.main.tools` Firefox's list without `aichat`                                                                                                | 2    |
 | Relay masks                                                | pref `signon.firefoxRelay.feature` `"disabled"`                                                                                                                                                                                                                            | 2    |
 | Default-browser prompt                                     | pref `browser.shell.checkDefaultBrowser` false                                                                                                                                                                                                                             | 2    |
+| History sidebar and Tab Overview import promos             | pref `browser.tabs.firefox-view.importHistory.dismissed` true (#897)                                                                                                                                                                                                       | 2    |
 | Onboarding infobars, about:addons recommendations          | prefs `…asrouter.providers.onboarding` with `enabled:false`, `extensions.getAddons.showPane` false, `extensions.htmlaboutaddons.recommendations.enabled` false                                                                                                             | 2    |
 | Leftover Mozilla URLs                                      | prefs `toolkit.datacollection.infoURL`, `datareporting.policy.firstRunURL`, `browser.uitour.url`, `breakpad.reportURL` empty; `browser.backup.template.fallback-download.*` to Vimma's releases; `identity.mobilepromo.*` kept (decision 2)                                | 2    |
 | `-brand-shortcut-name`                                     | `src/browser/branding/vimma/locales/en-US/brand.ftl` replacing Surfer's generated file                                                                                                                                                                                     | 3    |
@@ -321,6 +322,11 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    page's `fox-tail.svg` with an empty SVG. `privatebrowsing/pbm-logo.svg` stays, because it is
    the indicator that marks a private window and carries no Firefox or Mozilla logo;
    `logos/lockwise.svg` stays with `about:protections`, which this spec does not change.
+   #897 adds the sidebar's `kit-history-import.svg` (the History sidebar's import promo) and
+   `foxy.svg` (the vertical tabs' pinning promo), both Kit; the import promo is also off by
+   default (the design table's step 2 row), so the empty image shows only to a user who turns
+   it back on. The pinning promo shows only with Nova off and vertical tabs on, where its fox's
+   tile keeps its coloured background without the fox.
    Step 4c adds the error pages' illustrations (`error-malformed-url.svg`, `no-connection.svg`,
    `security-error.svg`, all of them Firefox's fox), and sets
    `browser.netError.illustration.enabled` false so that the error text does not sit below an
@@ -380,7 +386,13 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     Firefox's voice, show the Kit mascot and promote Mozilla accounts, and Vimma has its own first
     run ([first-run-setup](first-run-setup.md)). Setting the default browser stays in Settings >
     General. This changes [m0-mozilla-services](m0-mozilla-services.md), which left these as
-    Firefox has them; that spec carries a "Since changed" note.
+    Firefox has them; that spec carries a "Since changed" note. The History sidebar's import
+    promo (`browser.tabs.firefox-view.importHistory.dismissed` true, #897), which Firefox shows
+    for a profile's first 8 days, is onboarding too and goes the same way, with Tab Overview's
+    import banner, which reads the same pref (`firefoxview/history.mjs`): the guide's "Moving
+    over from Firefox or Chrome" covers importing, and Settings > Account and sync and
+    `:firefox cmd_file_importFromAnotherBrowser` still open the import wizard. Rejected: keeping
+    the promo with an empty image, a blank box above the user's history.
 14. **Product names come from a generated `brandings.ftl`.** `tools/branding/brandings.mjs`
     reads upstream's `toolkit/locales/en-US/toolkit/branding/brandings.ftl`, applies Vimma's
     mapping and writes `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl`, which
