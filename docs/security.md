@@ -3496,10 +3496,11 @@ _Pages_ and _extensions_ cannot reach it.
 - UP11. Vimma **never** restarts by itself: only `:restart` (action `app.restart`), `y` in the
   restart question, or Firefox's own restart commands do. The restart question
   (`Security update 0.3.1 is ready. Restart now? Tabs come back. (y/N)`) is asked **only** for a
-  security release that is already in place (an AppImage that replaced its file), once per
-  session and again 24 hours after an answer, and arms, waits and refuses keys exactly as the
-  question of UP9. It **never** hides a loss: while the private workspace has tabs it says they
-  will close, and when session restore will bring no tab back it says `Tabs will not come back`;
+  security release that is already in place (an AppImage that replaced its file, or a tarball
+  whose update Firefox's updater will apply at the next start), once per session and again 24
+  hours after an answer, and arms, waits and refuses keys exactly as the question of UP9. It
+  **never** hides a loss: while the private workspace has tabs it says they will close, and when
+  session restore will bring no tab back it says `Tabs will not come back`;
   a loss that appears while the line is open (a private tab opened since) makes `y` ask
   `:restart`'s `y/N` before anything restarts. `:restart` asks that `y/N` first whenever tabs
   would be lost. A restart asks Firefox's `quit-application-requested` observers with
@@ -3523,6 +3524,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`an_appimage_whose_file_cannot_run_restarts_through_firefox`](../tests/browser/browser_vimma_restart.js),
   [`private_tabs_ask_before_they_close`](../tests/browser/browser_vimma_restart.js),
   [`a_replaced_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_appimage.js),
+  [`a_staged_security_update_asks_to_restart`](../tests/browser/browser_vimma_update_verify.js),
   [`an_ordinary_replaced_update_asks_nothing`](../tests/browser/browser_vimma_update_appimage.js),
   [`answered in this session: asked again 24 hours later, not sooner`](../packages/vimma-core/test/update-notices.test.mjs),
   [`the_restart_question_says_what_a_restart_loses`](../tests/browser/browser_vimma_update_appimage.js),
