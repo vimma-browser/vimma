@@ -40,7 +40,8 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const SJS = DIR + "file_vimma_downloads.sjs";
 const PAGE = DIR + "file_vimma_plain.html";
-const saveDir = PathUtils.join(PathUtils.tempDir, `vimma-downloads-${Date.now()}`);
+const RUN = Date.now();
+const saveDir = PathUtils.join(PathUtils.tempDir, `vimma-downloads-${RUN}`);
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg, tries = 100) {
@@ -59,6 +60,9 @@ function shown() {
   return segment()?.querySelector("[aria-hidden]")?.textContent ?? null;
 }
 
+/** What the fixture sends of a held download before `?release`: half of its 20000 bytes. */
+const HELD_BYTES = 10000;
+
 /**
  * A download of `name` that stops half way until `release`. `resumable` keeps its `.part` file
  * on a pause, as Firefox does for a download from a page (DownloadLegacy.sys.mjs).
@@ -75,7 +79,13 @@ async function held(name, { resumable = false } = {}) {
   });
   await list.add(download);
   const done = download.start();
-  await until(() => download.currentBytes > 0 && download.hasProgress, `${name} has started`);
+  // Wait for the whole first half, not its first progress: httpd.js sends it as 8192 + 1808
+  // bytes (its write segments), and Firefox throttles progress to every 400 ms, so the first
+  // update can be 8192 bytes, and a test that reads the state word once would see 40%.
+  await until(
+    () => download.hasProgress && download.currentBytes === HELD_BYTES,
+    `${name} is held half way`,
+  );
   return { download, done };
 }
 
@@ -239,7 +249,7 @@ add_task(async function test_the_status_bar_shows_progress_then_done_failed_or_b
   // A failed download stays until the picker opens, in the error colour.
   const list = await Downloads.getList(Downloads.PUBLIC);
   const bad = await Downloads.createDownload({
-    source: `${SJS}?short&name=short.bin`,
+    source: `${SJS}?short&run=${RUN}&name=short.bin`,
     target: PathUtils.join(saveDir, "short.bin"),
   });
   await list.add(bad);
@@ -629,10 +639,10 @@ add_task(async function test_pause_resume_and_retry() {
   Assert.ok(isOpen(), "the picker stays open");
   await closePicker();
 
-  // The first answer for this name is short, so it fails; a retry gets all of it.
+  // The first answer for this name in this run is short, so it fails; a retry gets all of it.
   const list = await Downloads.getList(Downloads.PUBLIC);
   const failing = await Downloads.createDownload({
-    source: `${SJS}?short&name=retry-me.bin`,
+    source: `${SJS}?short&run=${RUN}&name=retry-me.bin`,
     target: PathUtils.join(saveDir, "retry-me.bin"),
   });
   await list.add(failing);
