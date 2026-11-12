@@ -224,8 +224,8 @@ pref("vimma.theme.omarchyHook", true);
 
 // Address bar (spec search-engines, decision 10, since changed): your own pages (open tabs,
 // bookmarks, history) come right after the first row, before the engine's search suggestions,
-// because you revisit your own pages more than you search; UrlbarPrefs-sys-mjs.patch caps them
-// at 4 of the 9 rows so the suggestions stay a few keys away. Settings > Search ("Show search
+// because you revisit your own pages more than you search; vimma/search/UrlbarRows.sys.mjs caps
+// them at 4 of the 9 rows so the suggestions stay a few keys away. Settings > Search ("Show search
 // suggestions before browsing history") turns Firefox's order back on.
 pref("browser.urlbar.showSearchSuggestionsFirst", false);
 // `tab` moves row to row and skips each row's "…" result-menu button, so the first search

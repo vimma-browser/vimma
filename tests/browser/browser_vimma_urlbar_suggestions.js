@@ -171,3 +171,35 @@ add_task(async function pages_are_capped_so_the_suggestions_stay_close() {
   );
   await closeList();
 });
+
+add_task(async function only_the_pages_first_layout_gets_four_to_five() {
+  const { pagesFirstFlex } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/search/UrlbarRows.sys.mjs",
+  );
+  const { GENERAL_PARENT } = UrlbarShared.RESULT_GROUP;
+  const root = (first, second) => ({
+    children: [{ maxResultCount: 1 }, { flexChildren: true, children: [first, second] }],
+  });
+  const flexes = (r) => r.children[1].children.map((c) => c.flex);
+
+  const pagesFirst = root({ group: GENERAL_PARENT, flex: 2 }, { flex: 1 });
+  Assert.deepEqual(
+    flexes(pagesFirstFlex(pagesFirst)),
+    [4, 5],
+    "pages first: 4 pages, 5 suggestions",
+  );
+  Assert.deepEqual(
+    flexes(pagesFirstFlex(pagesFirst)),
+    [4, 5],
+    "the groups Firefox caches and returns again stay 4:5",
+  );
+  const suggestionsFirst = root({ flex: 2 }, { group: GENERAL_PARENT, flex: 1 });
+  Assert.deepEqual(
+    flexes(pagesFirstFlex(suggestionsFirst)),
+    [2, 1],
+    "suggestions first: Firefox's",
+  );
+  // Firefox 161's zero-prefix layout with temporal search suggestions (UrlbarPrefs.sys.mjs).
+  const temporal = root({ group: GENERAL_PARENT, flex: 7 }, { flex: 6 });
+  Assert.deepEqual(flexes(pagesFirstFlex(temporal)), [7, 6], "temporal suggestions: Firefox's");
+});

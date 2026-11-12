@@ -20,6 +20,7 @@ browser.jar:
         content/browser/vimma/agent/AgentStore.sys.mjs    (agent/AgentStore.sys.mjs)
         content/browser/vimma/config/ConfigHost.sys.mjs   (config/ConfigHost.sys.mjs)
         content/browser/vimma/search/SearchHost.sys.mjs   (search/SearchHost.sys.mjs)
+        content/browser/vimma/search/UrlbarRows.sys.mjs   (search/UrlbarRows.sys.mjs)
         content/browser/vimma/updates/VimmaUpdates.sys.mjs (updates/VimmaUpdates.sys.mjs)
         content/browser/vimma/host/tab-ops.mjs            (host/tab-ops.mjs)
         content/browser/vimma/host/firefox-keys.mjs       (host/firefox-keys.mjs)
