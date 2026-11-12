@@ -88,15 +88,12 @@ describe("release.yml: the updater and the complete MAR", () => {
 
   it("hands this build's MAR tools to the later jobs, and nothing that holds a secret", () => {
     const run = runOf(job("build"), "MAR tools for the package and mar jobs");
-    for (const tool of [
-      '"$MOZ_OBJDIR/dist/host/bin/mar"',
-      "engine/tools/update-packaging/make_full_update.sh",
-      "engine/tools/update-packaging/common.sh",
-      '"$MOZ_OBJDIR/dist/bin/signmar"',
-      "engine/toolkit/mozapps/update/updater/*.der mar-tools/mozilla-certs/",
-    ]) {
-      expect(run).toContain(tool);
-    }
+    // tools/update/mar-tools.mjs packs the host mar, make_full_update.sh and common.sh, signmar
+    // with its libraries and Mozilla's certificates, then checks that they start from mar-tools
+    // (tools/update/test/mar-tools.test.mjs); nightly.yml runs the same script.
+    expect(run.trim()).toBe(
+      'node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
+    );
     expect(run).not.toMatch(/safebrowsing|SAFEBROWSING/);
     const build = job("build");
     expect(build.indexOf("- name: MAR tools for the package and mar jobs")).toBeGreaterThan(

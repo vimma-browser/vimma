@@ -1247,9 +1247,10 @@ run=$(gh run list -w nightly.yml -s success -L 1 --json databaseId --jq '.[0].da
 gh run download "$run" -n vimma-nightly -D ~/Downloads/vimma-nightly
 ```
 
-The `build` job holds a read-only token. Only the `report` job (`issues: write`) can write, and
-it checks out and runs nothing from the repository: it opens the failure issue from the
-redacted log. While `NIGHTLY_RELEASE_ENABLED` is unset, no job can write contents.
+The `build` job holds a read-only token. Only the `report` job (`issues: write`, and
+`actions: read` for the names of the failed jobs and steps) can write, and it checks out and
+runs nothing from the repository: it opens the failure issue, or comments on the open one,
+with the failed jobs and steps and the redacted log. While `NIGHTLY_RELEASE_ENABLED` is unset, no job can write contents.
 
 **Public nightlies** (spec [m6a-updater](specs/m6a-updater.md), decisions 42 and 43;
 docs/security.md B8). With `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` both `true`, each

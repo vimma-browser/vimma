@@ -638,7 +638,10 @@ the key gains no new workflow; the job runs no repository code, as the manifest'
 The MAR is built in `package`, not `build`, from the release tarball, because `package` adds
 `vimma-ctl` to that tarball after the build and the MAR must install what the tarball does; the
 build hands over its host `mar`, Mozilla's `make_full_update.sh` and `signmar`
-(`tools/update/mar.mjs build` runs the script as `./mach repackage mar` does). `mar.mjs` gives
+(`tools/update/mar.mjs build` runs the script as `./mach repackage mar` does), packed by
+`tools/update/mar-tools.mjs` in both `release.yml` and `nightly.yml`, which checks that they
+start from the packed directory before the upload, because the first public nightly's own copy
+of that step packed `signmar` without its libraries and failed only after the MAR was signed. `mar.mjs` gives
 the MAR a signature block whose one signature is zero, laid out as `signmar -s` lays it out,
 and `mar-sign` signs every byte but those: the bytes start with `MAR1`, so the manifest's
 domain prefix keeps the two uses apart (decision 12). A job with no secret, `mar`, then checks

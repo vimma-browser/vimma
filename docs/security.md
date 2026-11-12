@@ -2729,9 +2729,10 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   write contents. Its `build` job, which runs npm, Surfer, `mach` and the
   mochitests, holds `contents: read` only, whatever the variables, and keeps its package as a
   workflow artifact for 7 days. The failure issue comes from a `report` job with
-  `issues: write`, which checks out and runs no repository code, reads no secret, and quotes
-  only the log the build job redacted before uploading it, with backticks escaped so no log
-  line can end its code fence. With both variables `true` (spec
+  `issues: write` and `actions: read`, which checks out and runs no repository code, reads no
+  secret, and quotes only the log the build job redacted before uploading it, with backticks
+  escaped so no log line can end its code fence, and the names of the run's failed jobs and
+  steps (run metadata, never another job's log). With both variables `true` (spec
   [m6a-updater](specs/m6a-updater.md), decisions 42 and 43), a nightly is also public:
   `mar-sign` signs its MAR on the channel `vimma-nightly` (UP14); `mar`, with no secret and a
   read-only token, checks the signed MAR as `release.yml`'s `mar` does and writes a
@@ -2782,6 +2783,8 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`removes nothing when the update host does not answer, nor any newer build`](../tools/test/nightly-workflow.test.mjs),
   [`a failure of any job is reported by its own job, from the redacted log artifact`](../tools/test/nightly-workflow.test.mjs),
   [`the report job names the repository, since it checks nothing out`](../tools/test/nightly-workflow.test.mjs),
+  [`names the failed job and step in the issue`](../tools/test/nightly-workflow.test.mjs),
+  [`reads the run's jobs with a read-only actions token, beside its issues one`](../tools/test/nightly-workflow.test.mjs),
   [`a scheduled run on an unchanged commit builds nothing and re-signs the recorded build`](../tools/test/nightly-workflow.test.mjs),
   [`a scheduled run on a changed commit builds, publishes and offers the new build`](../tools/test/nightly-workflow.test.mjs),
   [`a manual run builds, whatever the change check says`](../tools/test/nightly-workflow.test.mjs),
@@ -3758,7 +3761,14 @@ _Pages_ and _extensions_ cannot reach it.
   it against the signed manifest. `nightly.yml`'s `mar` job checks a nightly's signed MAR the same
   way, on the channel `vimma-nightly`, before its `SHA256SUMS` lists it (B8); without
   `NIGHTLY_RELEASE_ENABLED` the nightly builds its MAR as a check and keeps none
-  ([m6a-updater](specs/m6a-updater.md), decision 42).
+  ([m6a-updater](specs/m6a-updater.md), decision 42). Both workflows' build jobs pack the MAR
+  tools the `mar` job runs (`signmar`, the NSS libraries of the objdir it loads, the host `mar`)
+  with one script, `tools/update/mar-tools.mjs`, which fails the build, before anything is
+  uploaded, unless `signmar` and `mar` start from the packed directory with every library of
+  the objdir that ldd lists found there; a pack that missed a library would otherwise surface only in `mar`, after
+  `mar-sign` had signed. It runs the build's own tools only in the build job, which built them and
+  already runs the build's code, after the Safe Browsing key file is deleted; no other job that
+  holds a secret runs them.
   **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox with
   the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as it can
   produce a malicious tarball that cosign signs; it cannot copy the key out, and every signature is
@@ -3796,6 +3806,10 @@ _Pages_ and _extensions_ cannot reach it.
   [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../tools/update/test/pipeline-workflows.test.mjs),
   [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../tools/update/test/update-workflow.test.mjs),
   [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`packs with the script release.yml uses, on every nightly`](../tools/test/nightly-workflow.test.mjs),
+  [`packs after the key file is gone, before the MAR is built and anything is uploaded`](../tools/test/nightly-workflow.test.mjs),
+  [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../tools/update/test/mar-tools.test.mjs),
+  [`fails, naming it, when a library signmar loads is missing`](../tools/update/test/mar-tools.test.mjs),
   [`cosign signs the MAR with the other assets, after it is checked`](../tools/update/test/pipeline-workflows.test.mjs),
   [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../tools/update/test/pipeline-workflows.test.mjs),
   [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../tools/update/test/pipeline-workflows.test.mjs),

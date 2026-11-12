@@ -728,7 +728,9 @@ New surface:
   `gpg --show-keys --with-colons` in a temporary `GNUPGHOME`; it imports nothing into a
   persistent keyring, and its only effect is an issue, written by the existing `publish` job.
 - The nightly's `report` job holds `issues: write`; it downloads the redacted log artifact and
-  calls `gh`, and checks out nothing (decision 23). The `build` job, which runs all third-party
+  calls `gh`, and checks out nothing (decision 23). (Since changed: it also holds
+  `actions: read`, to name the run's failed jobs and steps in the issue from the run's metadata;
+  it reads no job's log but the redacted artifact.) The `build` job, which runs all third-party
   code, holds `contents: read` only, and no job can write contents. Its package is a workflow
   artifact that anyone signed in to GitHub can download for 7 days.
 - Building on GitHub-hosted runners puts the Safe Browsing key on GitHub's virtual machines for
