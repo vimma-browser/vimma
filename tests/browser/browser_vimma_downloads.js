@@ -79,8 +79,9 @@ async function held(name, { resumable = false } = {}) {
   });
   await list.add(download);
   const done = download.start();
-  // Wait for the whole first half, not its first chunk: the half arrives in several chunks (the
-  // first one often 8192 bytes, 40%), and a test that reads the state word once would see 40%.
+  // Wait for the whole first half, not its first progress: httpd.js sends it as 8192 + 1808
+  // bytes (its write segments), and Firefox throttles progress to every 400 ms, so the first
+  // update can be 8192 bytes, and a test that reads the state word once would see 40%.
   await until(
     () => download.hasProgress && download.currentBytes === HELD_BYTES,
     `${name} is held half way`,
