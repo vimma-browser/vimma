@@ -20,6 +20,16 @@
 // refuses, and the key would be lost. For the same reason the keys line keeps its place in the
 // panel while hidden: showing it must not resize the panel and so restart Firefox's delay.
 //
+// The notice Firefox shows after an add-on install ("<name> was added", an app menu notification,
+// ExtensionsUI.showInstallNotification) takes them too (issue #868): `y` presses its OK button and
+// `p` toggles its "Pin extension to toolbar" checkbox (its access key in Firefox's English
+// strings), and `Tab` moves focus onto that checkbox, where Firefox's Space toggles it; `n` stays
+// Vimma's, since the notice has no second button and stays open until answered. Firefox gives the
+// app menu's notices no delay of their own (PanelUI._onNotificationButtonEvent), so the clock is
+// ours: from when the notice showed, changed in place, or took the keys back from a prompt over
+// it, or the window was last activated, or the last key since. Only that notice takes the keys:
+// the same panel shows the update notices, whose main button restarts the browser.
+//
 // Firefox's pop-up blocked bar takes the same keys with the same guards while no prompt is open
 // (docs/specs/popup-blocked.md), with Esc to close it. Firefox gives the bar no delay of its own,
 // so its clock is ours: from when the selected page's bar was first seen, or the last key since.
@@ -38,6 +48,11 @@ import { answerPopupBar, inAgentTab, popupBar, popupLocked } from "./popup-ops.m
 const DELAY_PREF = "security.notification_enable_delay";
 const DEFAULT_DELAY_MS = 500;
 const PANEL_ID = "notification-popup";
+/** The app menu's notices (panelUI.inc.xhtml). */
+const NOTICE_PANEL_ID = "appMenu-notification-popup";
+/** The one of them that takes the keys: after an add-on install (browser-addons.js). */
+const NOTICE_ID = "addon-installed";
+const PIN_ID = "addon-pin-toolbarbutton-checkbox";
 const HINT_CLASS = "vimma-prompt-keys";
 /** On the keys line once the prompt is armed; without it the line is invisible, not gone. */
 const ARMED_ATTR = "armed";
@@ -73,6 +88,12 @@ export class PromptKeys {
     this.host = host;
     /** the last key while it was open, on ChromeUtils.now()'s clock as `timeShown` is */
     this.lastKeyAt = 0;
+    /** when the add-on notice last showed or the window was activated, its `timeShown` */
+    this.noticeShownAt = Infinity;
+    /** the AppMenuNotifications notice `noticeShownAt` was stamped for */
+    this.noticeSeen = null;
+    /** @type {MutationObserver | null} watches the notice panel's content change in place */
+    this.noticeChanged = null;
     this.armTimer = 0;
     /** @type {{ bar: any, at: number } | null} the bar last seen, and when it was first seen */
     this.barSeen = null;
@@ -96,6 +117,7 @@ export class PromptKeys {
     this.win.clearTimeout(this.armTimer);
     this.win.clearTimeout(this.barTimer);
     this.barGone?.disconnect();
+    this.noticeChanged?.disconnect();
   }
 
   get delay() {
@@ -105,6 +127,41 @@ export class PromptKeys {
   /** The prompt shown in the open doorhanger panel, or null. @returns {any} */
   get notification() {
     return this.topmost("open");
+  }
+
+  /** The prompt the keys answer: the doorhanger's first, then the add-on notice. @returns {any} */
+  get current() {
+    return this.notification ?? this.noticeIn("open");
+  }
+
+  /**
+   * The add-on notice while the app menu's notice panel is in `state`, or null.
+   * @param {string} state
+   * @returns {any}
+   */
+  noticeIn(state) {
+    const panel = /** @type {any} */ (this.win.document.getElementById(NOTICE_PANEL_ID));
+    if (panel?.state !== state) return null;
+    for (const n of panel.children) {
+      if (!n.hidden && n.getAttribute("popupid") === NOTICE_ID) return n;
+    }
+    return null;
+  }
+
+  /** @param {any} n */
+  isNotice(n) {
+    return n.getAttribute("popupid") === NOTICE_ID && n.parentNode?.id === NOTICE_PANEL_ID;
+  }
+
+  /**
+   * The checkbox `p` toggles in `n` while it shows: the add-on notice's pin, else null.
+   * @param {any} n
+   * @returns {any}
+   */
+  toggleOf(n) {
+    if (!this.isNotice(n)) return null;
+    const box = n.querySelector(`#${PIN_ID}`);
+    return box && !box.hidden ? box : null;
   }
 
   /**
@@ -126,7 +183,7 @@ export class PromptKeys {
    * @param {any} n
    */
   armedAt(n) {
-    const shown = n.notification?.timeShown;
+    const shown = this.isNotice(n) ? this.noticeShownAt : n.notification?.timeShown;
     if (typeof shown !== "number") return Infinity;
     return Math.max(shown, this.lastKeyAt) + this.delay;
   }
@@ -134,14 +191,28 @@ export class PromptKeys {
   /** @param {Event} e */
   popup(e) {
     if (e.type === "activate") {
-      // Firefox restarts its delay for an open prompt when the window is activated.
-      const n = this.notification;
+      // Firefox restarts its delay for an open prompt when the window is activated; the add-on
+      // notice's clock does the same.
+      if (this.noticeIn("open")) this.noticeShownAt = ChromeUtils.now();
+      const n = this.current;
       if (n) this.arm(n);
       return;
     }
-    if (/** @type {Element} */ (e.target).id !== PANEL_ID) return;
+    const id = /** @type {Element} */ (e.target).id;
+    if (id === NOTICE_PANEL_ID) {
+      this.noticePopup(e);
+      return;
+    }
+    if (id !== PANEL_ID) return;
     if (e.type === "popuphidden") {
       this.win.clearTimeout(this.armTimer);
+      // An add-on notice under the prompt takes the keys now, and waits from now: keys typed
+      // while the prompt was up counted for the prompt's clock alone.
+      const notice = this.noticeIn("open");
+      if (notice) {
+        this.noticeShownAt = ChromeUtils.now();
+        this.arm(notice);
+      }
       // The pop-up blocked bar's keys line and cue follow whether a prompt is open.
       this.host.changed();
       return;
@@ -152,12 +223,63 @@ export class PromptKeys {
       this.lastKeyAt = 0;
       const n = this.topmost("showing");
       if (n) this.hintFor(n);
+      // The prompt takes the keys from an add-on notice under it; the notice's line goes.
+      this.noticeIn("open")?.querySelector(`.${HINT_CLASS}`)?.removeAttribute(ARMED_ATTR);
       return;
     }
     // popupshown, and popuppositioned: Firefox has just restarted its delay.
     const n = this.notification;
     if (n) this.arm(n);
     if (e.type === "popupshown") this.host.changed();
+  }
+
+  /**
+   * The app menu's notice panel: the add-on notice's keys line and its own clock.
+   * @param {Event} e
+   */
+  noticePopup(e) {
+    const panel = /** @type {Element} */ (e.target);
+    if (e.type === "popupshowing") {
+      const n = this.noticeIn("showing");
+      if (n) this.hintFor(n);
+      this.watchNotices(panel);
+    } else if (e.type === "popupshown") {
+      this.noticeShown();
+      this.host.changed();
+    } else if (e.type === "popuphidden") {
+      this.noticeShownAt = Infinity;
+      this.noticeSeen = null;
+      if (!this.notification) this.win.clearTimeout(this.armTimer);
+      this.host.changed();
+    }
+  }
+
+  /** The add-on notice is seen anew: its wait starts now. */
+  noticeShown() {
+    const n = this.noticeIn("open");
+    this.noticeShownAt = n ? ChromeUtils.now() : Infinity;
+    this.noticeSeen = n?.notification ?? null;
+    const current = this.current;
+    if (current) this.arm(current);
+  }
+
+  /**
+   * Watches the notice panel's content while it stays open: Firefox fills the open panel with a
+   * new notice in place, with no popup event (PanelUI._showNotificationPanel returns early when
+   * the panel is open), and shows the pin checkbox only once the add-on's toolbar button exists,
+   * which may be after the notice opens (browser-addons.js, BrowserActionWidgetObserver). Either
+   * changes what a key does, so the wait starts again and the keys line follows.
+   * @param {Element} panel
+   */
+  watchNotices(panel) {
+    if (this.noticeChanged) return;
+    const observer = new /** @type {any} */ (this.win).MutationObserver(() => {
+      if (!this.noticeIn("open") && this.noticeSeen === null) return;
+      this.noticeShown();
+      this.host.changed();
+    });
+    observer.observe(panel, { subtree: true, attributes: true, attributeFilter: ["hidden"] });
+    this.noticeChanged = observer;
   }
 
   /**
@@ -178,8 +300,10 @@ export class PromptKeys {
     const secondaryHidden = n.hasAttribute("secondarybuttonhidden");
     const focus = this.focusIn(n);
     const text = doorhangerHint({
-      main: n.getAttribute("buttonlabel") ?? "",
+      // The add-on notice keeps Firefox's default label on the button itself (OK).
+      main: n.getAttribute("buttonlabel") || n.button?.getAttribute("label") || "",
       secondary: secondaryHidden ? "" : (n.getAttribute("secondarybuttonlabel") ?? ""),
+      toggle: this.toggleOf(n)?.getAttribute("label") ?? "",
       // Hint, copy and element mode keep y and n as well; Esc leaves them too.
       inField: (focus.inField || this.host.modeKeys()) && !focus.inPrompt,
     });
@@ -220,7 +344,7 @@ export class PromptKeys {
    * open prompt follows.
    */
   refresh() {
-    const n = this.notification;
+    const n = this.current;
     const hint = n?.querySelector(`.${HINT_CLASS}`);
     if (!hint) return;
     const before = hint.textContent;
@@ -237,7 +361,8 @@ export class PromptKeys {
     const check = () => {
       // Firefox may have restarted its delay meanwhile; wait for the later deadline.
       const left = this.armedAt(n) - ChromeUtils.now();
-      if (left <= 0) hint.setAttribute(ARMED_ATTR, "");
+      // Labels Firefox fills in late (Fluent) are in by now.
+      if (left <= 0) this.hintFor(n).setAttribute(ARMED_ATTR, "");
       else if (left !== Infinity) this.armTimer = this.win.setTimeout(check, Math.ceil(left));
     };
     hint.removeAttribute(ARMED_ATTR);
@@ -252,7 +377,7 @@ export class PromptKeys {
    * @returns {any}
    */
   bar() {
-    const bar = this.notification ? null : popupBar(this.win);
+    const bar = this.current ? null : popupBar(this.win);
     if (this.barSeen?.bar !== bar) {
       this.barSeen = bar ? { bar, at: ChromeUtils.now() } : null;
       this.watchBar(bar);
@@ -389,19 +514,26 @@ export class PromptKeys {
     if (!chord) return false; // a bare modifier
     const dialog = this.dialogKeys.dialogOf(e);
     if (dialog) return this.dialogKeys.onKey(e, dialog, formatKey(chord));
-    const n = this.notification;
+    const n = this.current;
     if (!n) return this.onBarKey(e, chord);
+    // A notice whose content changed in place (another add-on's) unseen by the panel's watcher
+    // is seen anew: its wait starts now.
+    if (this.isNotice(n) && n.notification !== this.noticeSeen) this.noticeShown();
     const now = ChromeUtils.now();
     const armed = now >= this.armedAt(n);
     this.lastKeyAt = now;
     this.arm(n);
     if (this.host.otherOpen()) return false;
+    const toggle = this.toggleOf(n);
     const result = doorhangerKey(formatKey(chord), {
       open: true,
       armed,
       ...this.focusIn(n),
       pending: this.host.pending(),
       repeat: e.repeat,
+      toggle: !!toggle,
+      // Only the notice leaves `n` to Vimma: it stays open until answered.
+      secondary: !this.isNotice(n) || !n.hasAttribute("secondarybuttonhidden"),
     });
     if (result.kind === "pass") return false;
     e.preventDefault();
@@ -409,7 +541,9 @@ export class PromptKeys {
     if (result.kind === "allow") n.button?.click();
     else if (result.kind === "block") {
       if (!n.hasAttribute("secondarybuttonhidden")) n.secondaryButton?.click();
-    } else if (result.kind === "focus") n.footerFocusableButtons?.[0]?.focus();
+    } else if (result.kind === "toggle") toggle.click();
+    // The add-on notice's checkbox comes first: Space toggles it there, and Tab goes on to OK.
+    else if (result.kind === "focus") (toggle ?? n.footerFocusableButtons?.[0])?.focus();
     return true;
   }
 }

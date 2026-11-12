@@ -50,6 +50,8 @@ update segment (spec [m6a-updater](m6a-updater.md) §5) stays the lasting remind
      1,500 ms without a key, with no picker, prompt, panel, command line, agent question or
      Firefox permission prompt open,
      and not over a page in DOM full screen. Otherwise it waits.
+     (Since changed: nor while the notice after an add-on install is open, which takes `y` too,
+     because one key must never answer two questions; issue #868.)
    - It never takes focus. Focus moving into a field, or a picker or prompt opening over it,
      closes it back to waiting.
    - When it opens, the message is hidden, since the question says the same and the two would

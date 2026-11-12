@@ -447,6 +447,17 @@ text that pages, add-ons and bookmarks choose.
     `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
     its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
     under the same delay; no text field has focus then.
+    The notice after an add-on install ("<name> was added", Firefox's app menu notification)
+    takes `y` (OK) and `p` (its "Pin extension to toolbar" checkbox) under the same rules, and
+    `Tab` focuses that checkbox; `n` stays Vimma's, since the notice has no second button.
+    Firefox gives that notice no delay of its own, so the wait counts from when Vimma sees it
+    shown, filled with another add-on's notice in place, or the window activated, or from the
+    last key, and it starts again when the checkbox appears or goes and when a permission prompt
+    over it closes. A page cannot raise the notice: it follows only an add-on install or enable
+    answered in Firefox's own install prompt or add-ons manager. It grants nothing: `p` moves the
+    add-on's button between the toolbar and the extensions menu, and private-window access is
+    asked in the install prompt, not here. No other notice of that panel takes the keys (the
+    update notices' main button restarts the browser).
     [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
     [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
     [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
@@ -454,6 +465,7 @@ text that pages, add-ons and bookmarks choose.
     [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
     [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
     [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+    [`the_addon_installed_notice_answers_p_and_y`](../tests/browser/browser_vimma_toolbar.js),
     [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
   - Firefox's pop-up blocked bar takes the same keys (`y` allows the site, `n` blocks it, `Esc`
     closes the bar; docs/specs/popup-blocked.md) under the same rules. They count only from the
@@ -461,8 +473,8 @@ text that pages, add-ons and bookmarks choose.
     `security.notification_enable_delay` (0.5 s by default), so any key restarts the wait, and a
     held (repeated) key never answers. They **never** answer from a text field, while a picker,
     the command line or a search holds the keyboard, or in hint, copy or element mode, and
-    **never** while a permission prompt is open, whose keys come first; Vimma never moves focus
-    onto the bar. In the agent workspace no key answers the bar and `:popups` refuses, and
+    **never** while a permission prompt or the add-on installed notice is open, whose keys come
+    first; Vimma never moves focus onto the bar. In the agent workspace no key answers the bar and `:popups` refuses, and
     `runPopupRow` checks again when a row runs, so neither the keys nor any row (allow, block,
     reset, open, redirect, hide, settings) does anything there (M10). A row runs only on the
     page it was listed for: the picker keeps the page's principal when it opens and refuses a row

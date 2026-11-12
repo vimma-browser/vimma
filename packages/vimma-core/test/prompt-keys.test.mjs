@@ -67,6 +67,30 @@ describe("doorhangerKey", () => {
     }
   });
 
+  // Issue #868: the post-install notice ("<name> was added") has a checkbox, "Pin extension to
+  // toolbar", that p toggles under the same guards as y.
+  test("p toggles the prompt's checkbox, once armed, only where the prompt has one", () => {
+    const pin = { ...base, toggle: true };
+    expect(doorhangerKey("p", pin)).toEqual({ kind: "toggle" });
+    expect(doorhangerKey("p", { ...pin, inField: true, inPrompt: true })).toEqual({
+      kind: "toggle",
+    });
+    expect(doorhangerKey("p", { ...pin, armed: false })).toEqual({ kind: "wait" });
+    expect(doorhangerKey("p", { ...pin, repeat: true })).toEqual({ kind: "wait" });
+    expect(doorhangerKey("p", { ...pin, inField: true })).toEqual({ kind: "pass" });
+    expect(doorhangerKey("p", { ...pin, pending: true })).toEqual({ kind: "pass" });
+    expect(doorhangerKey("P", pin)).toEqual({ kind: "pass" });
+    expect(doorhangerKey("p", base)).toEqual({ kind: "pass" });
+  });
+
+  test("a notice with no secondary button leaves n to Vimma", () => {
+    expect(doorhangerKey("n", { ...base, secondary: false })).toEqual({ kind: "pass" });
+    expect(doorhangerKey("n", { ...base, secondary: false, armed: false })).toEqual({
+      kind: "pass",
+    });
+    expect(doorhangerKey("y", { ...base, secondary: false })).toEqual({ kind: "allow" });
+  });
+
   test("no prompt open, or a key sequence under way: every key passes", () => {
     for (const key of ["y", "n", "tab"]) {
       expect(doorhangerKey(key, { ...base, open: false })).toEqual({ kind: "pass" });
@@ -87,6 +111,15 @@ describe("doorhangerHint", () => {
 
   test("a prompt without a secondary button offers only y", () => {
     expect(doorhangerHint({ main: "OK", secondary: "" })).toBe("y ok · Tab buttons");
+  });
+
+  test("a prompt with a checkbox names p after the checkbox's label", () => {
+    expect(doorhangerHint({ main: "OK", secondary: "", toggle: "Pin extension to toolbar" })).toBe(
+      "y ok · p pin extension to toolbar · Tab buttons",
+    );
+    expect(
+      doorhangerHint({ main: "OK", secondary: "", toggle: "Pin to toolbar", inField: true }),
+    ).toBe("Esc, then y ok · p pin to toolbar");
   });
 
   test("with focus in a field outside the prompt, it says to leave the field first", () => {
