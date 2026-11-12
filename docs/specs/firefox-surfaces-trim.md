@@ -341,6 +341,19 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
    fox (`ipprotection/assets/vpn-settings-get-started.svg`) stay, because those sections are off:
    Vimma sets `browser.preferences.aiControls` false, and `browser.ipProtection.enabled` is false
    by default with the experiments that could turn it on switched off.)
+   (Since changed: issue [#912](https://github.com/vimma-browser/vimma/issues/912) adds Tab
+   Overview's own empty and error pictures, `firefoxview/history-empty.svg`,
+   `synced-tabs-empty.svg` and `synced-tabs-error.svg`, Firefox's fox, which Tab Overview and the
+   History and synced tabs sidebars show in place of the `kit-*.svg` pictures with
+   `browser.nova.enabled` off. With every picture of these empty states empty, Recent browsing's
+   cards still kept the picture's 150-250px column beside the text, a blank space before the
+   text, so `firefox-empty-states.css` hides that column and the text starts at the card's edge,
+   as the other cards' lists do. It sits in shadow roots nested
+   in others, which neither a document sheet nor `::part` reaches, so `ui/theme-host.mjs` loads
+   the sheet as an agent sheet, which applies inside a document's shadow trees, into Tab
+   Overview and the sidebar's documents only: registered for every document, it would also
+   reach web pages and let them tell Vimma from Firefox. `firefoxview/callout-tab-pickup.svg`
+   stays: it shows devices, not a mascot.)
 10. **Typed Firefox pages open the start page.** Vimma's start page module redirects a top-level
     load of `about:home`, `about:newtab` or `about:welcome` to the start
     page, so a user who types them sees Vimma's page as every new tab does. The module's tab
