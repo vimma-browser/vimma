@@ -4,7 +4,8 @@
 //   serve (default)  start the fake control server after FAKE_BROWSER_DELAY_MS
 //   never            run without ever writing the discovery file (control socket off)
 //   exit             write to stderr and exit with code 7 at once
-// FAKE_BROWSER_STDERR is written to stderr at start. FAKE_BROWSER_CHILD=1 also starts a
+// FAKE_BROWSER_STDERR is written to stderr at start, FAKE_BROWSER_LATE_STDERR after
+// FAKE_BROWSER_LATE_STDERR_MS (a startup phase that stalls, issue #901). FAKE_BROWSER_CHILD=1 also starts a
 // long-lived child (like a content process) and writes its pid to <profile>/grandchild.pid.
 // FAKE_BROWSER_IGNORE_TERM=1 ignores SIGTERM.
 import { spawn } from "node:child_process";
@@ -34,6 +35,13 @@ writeFileSync(
 );
 process.stderr.write(`fake browser starting (${mode})\n`);
 if (process.env.FAKE_BROWSER_STDERR) process.stderr.write(`${process.env.FAKE_BROWSER_STDERR}\n`);
+if (process.env.FAKE_BROWSER_LATE_STDERR) {
+  const late = process.env.FAKE_BROWSER_LATE_STDERR;
+  setTimeout(
+    () => process.stderr.write(`${late}\n`),
+    Number(process.env.FAKE_BROWSER_LATE_STDERR_MS ?? 0),
+  );
+}
 if (process.env.FAKE_BROWSER_IGNORE_TERM) process.on("SIGTERM", () => {});
 
 if (process.env.FAKE_BROWSER_CHILD) {

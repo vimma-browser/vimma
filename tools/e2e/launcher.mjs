@@ -33,6 +33,10 @@ export const ARTIFACT_OBJDIR = "obj-artifact";
 export const WINDOW = Object.freeze({ width: 1280, height: 800 });
 export const DISCOVERY_FILE = "vimma-control.json";
 export const DEFAULT_DISCOVERY_TIMEOUT_MS = 30_000;
+/** How many of the browser's last stderr lines a failed launch prints with their times. */
+export const STDERR_TIMELINE_LINES = 200;
+/** Longer stderr lines are cut to this many characters in that report. */
+export const STDERR_TIMELINE_CHARS = 1000;
 
 /**
  * Prefs for the throwaway profile. The control socket on; everything that would pop up a first
@@ -436,13 +440,82 @@ function readWithMode(path) {
 }
 
 /**
+ * Issue #901: the browser's stderr since its spawn, each line stamped with the time its first
+ * byte arrived, kept in a bounded buffer (the last `maxLines` lines, each cut to `maxChars`).
+ * A launch that fails prints `format()`, so a stalled startup phase shows as a gap between two
+ * lines (Firefox writes `Failed to create DBus proxy for org.a11y.Bus` from its first window).
+ * Nothing is printed for a launch that succeeds.
+ * @param {{ now?: () => number, maxLines?: number, maxChars?: number }} [options]
+ */
+export function stderrTimeline({
+  now = () => performance.now(),
+  maxLines = STDERR_TIMELINE_LINES,
+  maxChars = STDERR_TIMELINE_CHARS,
+} = {}) {
+  const spawnedAt = now();
+  const wallClock = new Date().toISOString();
+  /** @type {Array<{ ms: number, text: string }>} */
+  const lines = [];
+  /** @type {{ ms: number, text: string } | null} */
+  let partial = null;
+  let dropped = 0;
+  const cut = (/** @type {string} */ text) =>
+    text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+  const add = (/** @type {{ ms: number, text: string }} */ line) => {
+    lines.push({ ms: line.ms, text: cut(line.text.replace(/\r$/, "")) });
+    if (lines.length > maxLines) {
+      lines.shift();
+      dropped++;
+    }
+  };
+  const secs = (/** @type {number} */ ms) => (ms / 1000).toFixed(3);
+  return {
+    /** @param {string | Buffer} chunk */
+    push(chunk) {
+      const ms = now() - spawnedAt;
+      const parts = String(chunk).split("\n");
+      const rest = /** @type {string} */ (parts.pop());
+      for (const part of parts) {
+        add(partial ? { ms: partial.ms, text: partial.text + part } : { ms, text: part });
+        partial = null;
+      }
+      // An unfinished line keeps its first byte's time; it is cut here so it cannot grow.
+      if (rest) {
+        partial = partial
+          ? { ms: partial.ms, text: (partial.text + rest).slice(0, maxChars + 1) }
+          : { ms, text: rest.slice(0, maxChars + 1) };
+      }
+    },
+    /** @returns {string} */
+    format() {
+      const elapsed = now() - spawnedAt;
+      const all = partial ? [...lines, { ms: partial.ms, text: cut(partial.text) }] : lines;
+      const last = all.at(-1);
+      if (!last) {
+        return `browser stderr: nothing in the ${secs(elapsed)} s since spawn (spawned at ${wallClock})`;
+      }
+      const head =
+        `browser stderr with the time since spawn (spawned at ${wallClock}` +
+        `${dropped ? `; ${dropped} earlier lines dropped` : ""}):`;
+      return [
+        head,
+        ...all.map((l) => `  +${secs(l.ms)} s  ${l.text}`),
+        `  (${secs(elapsed)} s since spawn, ${secs(elapsed - last.ms)} s since the last line)`,
+      ].join("\n");
+    },
+  };
+}
+
+/**
  * Wait for the control server's discovery file: present, valid protocol v1, mode 0600. After a
  * crash-style kill the dead browser's file is still there: `stalePid` (its pid) makes the wait
- * skip it until the new browser replaces it.
+ * skip it until the new browser replaces it. A failure ends with `stderrReport` (the timed lines
+ * of stderrTimeline) when it is given, else with `stderrTail`.
  * @param {string} profile
  * @param {{ timeoutMs?: number, intervalMs?: number,
  *   exited?: () => { code: number | null, signal: string | null } | null,
- *   stderrTail?: () => string, stalePid?: number | null }} [options]
+ *   stderrTail?: () => string, stderrReport?: (() => string) | null,
+ *   stalePid?: number | null }} [options]
  * @returns {Promise<{ protocol: number, port: number, token: string, pid: number }>}
  */
 export async function waitForDiscovery(
@@ -452,12 +525,14 @@ export async function waitForDiscovery(
     intervalMs = 50,
     exited = () => null,
     stderrTail = () => "",
+    stderrReport = null,
     stalePid = null,
   } = {},
 ) {
   const path = join(profile, DISCOVERY_FILE);
   const deadline = Date.now() + timeoutMs;
   const tail = () => {
+    if (stderrReport) return `\n${stderrReport()}`;
     const t = stderrTail().trim();
     return t ? `\nbrowser stderr (last lines):\n${t}` : "";
   };
@@ -950,7 +1025,11 @@ export async function launch({
     let spawnError = null;
     spawned.on("exit", (code, sig) => (exit = { code, signal: sig }));
     spawned.on("error", (e) => (spawnError = e));
+    const timeline = stderrTimeline();
+    // Decoded as a stream, so a character split across two chunks stays whole.
+    spawned.stderr?.setEncoding("utf8");
     spawned.stderr?.on("data", (d) => {
+      timeline.push(d);
       stderr = (stderr + d).slice(-8000);
       loadFailure ??= VIMMA_LOAD_FAILURE.exec(stderr)?.[0] ?? null;
     });
@@ -965,7 +1044,7 @@ export async function launch({
           );
         return exit;
       },
-      stderrTail,
+      stderrReport: timeline.format,
       stalePid,
     });
     return { spawned, discovery };

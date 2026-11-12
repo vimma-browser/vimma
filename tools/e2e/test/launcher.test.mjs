@@ -29,6 +29,7 @@ import {
   launch,
   quitBrowser,
   startSessionBus,
+  stderrTimeline,
   userJs,
   waitForDiscovery,
   waitForSessionSaved,
@@ -721,6 +722,99 @@ describe("launch and teardown (fake browser)", () => {
     expect(readdirSync(tmpRoot)).toEqual([]);
     expect(pids).toHaveLength(1);
     expect(alive(/** @type {number} */ (pids[0]))).toBe(false);
+  });
+});
+
+describe("browser stderr with the time since spawn (issue #901)", () => {
+  it("on a timeout, prints every stderr line with its time since spawn", async () => {
+    const err = await launch({
+      build: {
+        binary: FAKE_BROWSER,
+        env: {
+          FAKE_BROWSER: "never",
+          FAKE_BROWSER_STDERR: "early line",
+          FAKE_BROWSER_LATE_STDERR: "late line",
+          FAKE_BROWSER_LATE_STDERR_MS: "600",
+        },
+      },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 4000,
+      graceMs: 300,
+    }).catch((/** @type {unknown} */ e) => e);
+    expect(err).toBeInstanceOf(Error);
+    const message = /** @type {Error} */ (err).message;
+    expect(message).toMatch(/no usable control socket within 4000 ms/);
+    expect(message).toMatch(/browser stderr with the time since spawn \(spawned at \d{4}-/);
+    const at = (/** @type {string} */ text) => {
+      const m = new RegExp(`^ {2}\\+(\\d+\\.\\d{3}) s {2}${text}$`, "m").exec(message);
+      expect(m, `${text} in:\n${message}`).not.toBeNull();
+      return Number(/** @type {RegExpExecArray} */ (m)[1]);
+    };
+    const early = at("early line");
+    const late = at("late line");
+    expect(late).toBeGreaterThanOrEqual(0.6);
+    expect(early).toBeLessThan(late);
+  });
+
+  it("stamps a line split across chunks with the time its first byte came", () => {
+    let t = 1000;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 1010;
+    timeline.push("first\nsec");
+    t = 1500;
+    timeline.push("ond\nthird\n");
+    t = 2000;
+    timeline.push("unfinished");
+    t = 3000;
+    const report = timeline.format();
+    expect(report.split("\n").slice(1)).toEqual([
+      "  +0.010 s  first",
+      "  +0.010 s  second",
+      "  +0.500 s  third",
+      "  +1.000 s  unfinished",
+      "  (2.000 s since spawn, 1.000 s since the last line)",
+    ]);
+  });
+
+  it("keeps only the last lines, cut to a bounded length, and says how many it dropped", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t, maxLines: 3, maxChars: 5 });
+    for (const line of ["one", "two", "three", "four", "fivefivefive"]) {
+      t += 100;
+      timeline.push(`${line}\n`);
+    }
+    const report = timeline.format();
+    expect(report.split("\n")[0]).toMatch(/2 earlier lines dropped/);
+    expect(report.split("\n").slice(1, 4)).toEqual([
+      "  +0.300 s  three",
+      "  +0.400 s  four",
+      "  +0.500 s  fivef…",
+    ]);
+  });
+
+  it("says so when the browser wrote nothing", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 30_000;
+    expect(timeline.format()).toMatch(/^browser stderr: nothing in the 30\.000 s since spawn/);
+  });
+
+  it("a launch that reaches its socket logs nothing extra", async () => {
+    /** @type {string[]} */
+    const logged = [];
+    const session = await launch({
+      build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER_STDERR: "noise" } },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 300,
+      log: (line) => logged.push(line),
+    });
+    cleanups.push(() => session.teardown());
+    expect(logged).toEqual([]);
   });
 });
 
