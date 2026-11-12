@@ -704,6 +704,14 @@ download --force` gave `--force` to npm, and `npx --no commitlint --from A --to 
     endpoint 401 without a token, and the artifact list, with names and sizes, is public), so a
     nightly is unpublished and short-lived, not secret. The Safe Browsing key it contains ships
     in every keyed binary anyway (decision 18).
+    (Since changed: public nightlies are delivered by the reviewed change this decision asks
+    for, and the repository variable `NIGHTLY_RELEASE_ENABLED`, together with
+    `UPDATES_ENABLED`, then decides when they start ([m6a-updater](m6a-updater.md), decisions 42
+    and 43), because merging the pipeline and opening the release gate to nightly users are
+    separate decisions, and the variable stops publishing at once. Unset, the nightly is as this
+    decision says. Set, one job, `publish`, holds `contents: write`; it checks out and runs no
+    repository code, so the write token still never reaches npm, Surfer, `mach` or the
+    mochitests. docs/security.md B8.)
 
 ## Security and privacy
 

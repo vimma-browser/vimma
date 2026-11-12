@@ -22,6 +22,12 @@
  *       checks a signed manifest; prints serial=, version= and key= lines for $GITHUB_OUTPUT
  *   build and verify take --target linux|macos (linux when absent): the manifest's build
  *   target, its files and its path (spec macos-homebrew, decisions 16 to 18)
+ *   manifest.mjs build --channel nightly --build-id ID --version X.Y.Z --assets DIR
+ *       [--published FILE]... --out FILE
+ *   manifest.mjs verify --channel nightly --signed FILE --build-id ID --version X.Y.Z
+ *       --assets DIR [--published FILE]...
+ *       the nightly channel's manifest (decisions 42 and 43): the build on the rolling `nightly`
+ *       release, its MAR and tarball in DIR with SHA256SUMS; Linux only
  *   manifest.mjs pem
  *       the pinned primary key as PEM, for openssl
  *
@@ -47,6 +53,10 @@ import { UPDATE_KEYS } from "../../packages/vimma-core/src/update-keys.mjs";
 
 /** The release channel (`app.update.channel` in channel-prefs.js). */
 export const CHANNEL = "vimma";
+/** The nightly's channel, which `tools/update/channel.mjs` writes into its package. */
+export const NIGHTLY_CHANNEL = "vimma-nightly";
+/** The rolling GitHub Release every nightly is uploaded to. */
+export const NIGHTLY_TAG = "nightly";
 /**
  * Each build target with a manifest: Firefox's `%BUILD_TARGET%` (`OS_TARGET` + `_` + the XPCOM
  * ABI), the release files it lists and the sums file they are checked against. The .dmg has its
@@ -69,10 +79,14 @@ export const TARGET = TARGETS.linux.target;
 /**
  * Where a target's manifest lives in vimma-browser/vimma-updates: the Worker serves `public/`,
  * at the path Firefox's update URL template gives (`/updates/browser/%BUILD_TARGET%/%CHANNEL%/…`).
+ * The nightly is built for Linux alone.
  * @param {Os} os
+ * @param {"release" | "nightly"} [channel]
  */
-export function manifestPath(os) {
-  return `public/updates/browser/${targetOf(os).target}/${CHANNEL}/update.xml`;
+export function manifestPath(os, channel = "release") {
+  need(channel === "release" || os === "linux", `no ${channel} channel for ${os}`);
+  const id = channel === "nightly" ? NIGHTLY_CHANNEL : CHANNEL;
+  return `public/updates/browser/${targetOf(os).target}/${id}/update.xml`;
 }
 export const MANIFEST_PATH = manifestPath("linux");
 /** DER prefix of a SHA-384 DigestInfo (RFC 8017 §9.2, note 1). */
@@ -424,11 +438,11 @@ function hashFile(path) {
 }
 
 /**
- * The published manifest's channel, serial and offered version (read, not verified: it only
+ * The published manifest's serial, offered version and build ID (read, not verified: it only
  * sets the floor the new manifest must clear). A file that is there but unreadable stops the
  * run: the floor would be unknown.
  * @param {string | null} text
- * @returns {{ serial: string, version: string | null } | null}
+ * @returns {{ serial: string, version: string | null, buildId?: string | null } | null}
  */
 export function publishedState(text) {
   if (text === null || text === "") return null;
@@ -439,6 +453,7 @@ export function publishedState(text) {
   return {
     serial: parsed.manifest.serial,
     version: parsed.manifest.update?.displayVersion ?? null,
+    buildId: parsed.manifest.update?.buildId ?? null,
   };
 }
 
@@ -448,7 +463,10 @@ export function publishedState(text) {
  * @param {readonly (string | null)[]} texts
  */
 function floorOf(texts) {
-  let floor = /** @type {{ serial: string, version: string | null } | null} */ (null);
+  let floor =
+    /** @type {{ serial: string, version: string | null, buildId?: string | null } | null} */ (
+      null
+    );
   for (const t of texts) {
     const s = publishedState(t);
     if (s && (!floor || BigInt(s.serial) > BigInt(floor.serial))) floor = s;
@@ -608,6 +626,193 @@ function patchOf(body) {
     );
   need(!!m, "<patch> is not in the form buildManifest writes");
   return { size: Number(m[1]), sha512: m[2] ?? "" };
+}
+
+/**
+ * The nightly's file names on the rolling `nightly` release: by build ID, because the release
+ * replaces its assets with each build, and a client that read the previous manifest must still
+ * find the previous MAR (spec §7).
+ * @param {string} buildId
+ */
+export function nightlyNames(buildId) {
+  need(BUILD_ID.test(buildId), `${buildId} is not a build ID`);
+  return {
+    tarball: `vimma-nightly-${buildId}-linux-x86_64.tar.xz`,
+    mar: `vimma-nightly-${buildId}-linux-x86_64.complete.mar`,
+  };
+}
+
+/**
+ * A nightly's displayVersion: the release version it was built from, then its build ID, so that
+ * each build has its own (spec §2, decision 40).
+ * @param {string} version  X.Y.Z, surfer.json's displayVersion
+ * @param {string} buildId
+ */
+export function nightlyVersion(version, buildId) {
+  need(VERSION.test(version), `${version} is not a Vimma version (X.Y.Z)`);
+  need(BUILD_ID.test(buildId), `${buildId} is not a build ID`);
+  return `${version}-nightly.${buildId}`;
+}
+
+const NIGHTLY_URL = `${RELEASES_URL}/download/${NIGHTLY_TAG}`;
+const NIGHTLY_DETAILS = `${RELEASES_URL}/tag/${NIGHTLY_TAG}`;
+
+/**
+ * @typedef {object} Nightly
+ * @property {string} appVersion  Firefox's version (application.ini `Version`)
+ * @property {string} buildId     application.ini `BuildID`
+ * @property {string} version     the Vimma release version it was built from (X.Y.Z)
+ * @property {{ size: number, sha512: string }} tarball
+ * @property {{ size: number, sha512: string }} mar
+ */
+
+/**
+ * The nightly channel's manifest body (decision 42): one `<update>` with the complete MAR as
+ * `<patch>`, which Firefox's updater applies to a tarball install, and the tarball, whose hash
+ * the commands for an install Vimma cannot write use. Both on the `nightly` release. A nightly
+ * is always `normal`: it has no previous release to count security commits from (decision 43).
+ * @param {{ serial: string, update: Nightly | null }} input
+ */
+export function buildNightlyManifest({ serial, update }) {
+  need(SERIAL.test(serial), `serial ${serial} is not a UTC time (YYYYMMDDhhmmss)`);
+  let body =
+    '<?xml version="1.0"?>\n' +
+    `<updates vimmaChannel="${NIGHTLY_CHANNEL}" vimmaTarget="${TARGET}" vimmaSerial="${serial}">\n`;
+  if (update) {
+    const display = nightlyVersion(update.version, update.buildId);
+    need(FIREFOX_VERSION.test(update.appVersion), `${update.appVersion} is not a Firefox version`);
+    const names = nightlyNames(update.buildId);
+    const { mar, tarball } = update;
+    need(Number.isSafeInteger(mar.size) && mar.size > 0, `MAR: size ${mar.size}`);
+    need(SHA512_HEX.test(mar.sha512), `MAR: ${mar.sha512} is not a SHA-512`);
+    need(Number.isSafeInteger(tarball.size) && tarball.size > 0, `tarball: size ${tarball.size}`);
+    need(SHA512_HEX.test(tarball.sha512), `tarball: ${tarball.sha512} is not a SHA-512`);
+    body +=
+      `  <update type="minor" appVersion="${update.appVersion}"` +
+      ` platformVersion="${update.appVersion}" buildID="${update.buildId}"` +
+      ` displayVersion="${display}" detailsURL="${NIGHTLY_DETAILS}" vimmaUrgency="normal">\n` +
+      `    <patch type="complete" size="${mar.size}" hashFunction="sha512"` +
+      ` hashValue="${mar.sha512}" URL="${NIGHTLY_URL}/${names.mar}"/>\n` +
+      `    <${ASSET_ELEMENTS.tarball} size="${tarball.size}" hashFunction="sha512"` +
+      ` hashValue="${tarball.sha512}" URL="${NIGHTLY_URL}/${names.tarball}"/>\n` +
+      "  </update>\n";
+  }
+  return body + "</updates>\n";
+}
+
+/**
+ * A nightly is never older than the one the published nightly manifest offers. The same build
+ * again is a re-run of its run, which publishes it under a newer serial.
+ * @param {string} buildId
+ * @param {{ buildId?: string | null } | null} floor
+ */
+function noOlderBuild(buildId, floor) {
+  if (floor?.buildId && BigInt(buildId) < BigInt(floor.buildId)) {
+    throw new Error(
+      `build ${buildId} is older than ${floor.buildId}, which the published manifest offers`,
+    );
+  }
+}
+
+/**
+ * The unsigned nightly manifest: the tarball and MAR in `dir`, checked against SHA256SUMS (which
+ * nightly.yml's cosign signature covers; the job checks that before this runs), Firefox's version
+ * and the build ID from the tarball, which must be the build asked for, and a serial newer than
+ * the published one.
+ * @param {{ buildId: string, version: string, dir: string,
+ *   published: string | readonly (string | null)[] | null, now: Date }} input
+ */
+export function prepareNightly({ buildId, version, dir, published, now }) {
+  const display = nightlyVersion(version, buildId);
+  const names = nightlyNames(buildId);
+  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  noOlderBuild(buildId, floor);
+  /** @type {Record<"tarball" | "mar", { name: string, size: number, sha256: string, sha512: string }>} */
+  const files = /** @type {any} */ ({});
+  for (const kind of /** @type {const} */ (["tarball", "mar"])) {
+    const path = join(dir, names[kind]);
+    if (!existsSync(path)) throw new Error(`${names[kind]} was not downloaded`);
+    files[kind] = { name: names[kind], ...hashFile(path) };
+  }
+  checkAssets(parseSums(readFileSync(join(dir, "SHA256SUMS"), "utf8")), files);
+  const info = releaseInfo(join(dir, names.tarball));
+  need(
+    info.buildId === buildId,
+    `the tarball's application.ini names build ${info.buildId}, not ${buildId}`,
+  );
+  const body = buildNightlyManifest({
+    serial: nextSerial(now, floor?.serial ?? null),
+    update: {
+      appVersion: info.appVersion,
+      buildId,
+      version,
+      tarball: { size: files.tarball.size, sha512: files.tarball.sha512 },
+      mar: { size: files.mar.size, sha512: files.mar.sha512 },
+    },
+  });
+  return { body, version: display };
+}
+
+/**
+ * The nightly's checks before a push, as checkSigned's for a release: the signature under a
+ * pinned key, the nightly channel and the Linux target, a serial newer than the published one
+ * and not ahead of the clock, the build and version asked for, and exactly the MAR and tarball
+ * on the `nightly` release, each matching the file downloaded again.
+ * @param {string} text  the signed manifest
+ * @param {{ keys: readonly import("../../packages/vimma-core/src/updates.mjs").PinnedKey[],
+ *   buildId: string, version: string, dir: string,
+ *   published: string | readonly (string | null)[] | null, now: Date }} options
+ */
+export async function checkSignedNightly(text, { keys, buildId, version, dir, published, now }) {
+  const display = nightlyVersion(version, buildId);
+  const names = nightlyNames(buildId);
+  const verified = await verifyManifest(text, keys, globalThis.crypto.subtle);
+  if (!verified.ok) throw new Error(verified.reason);
+  const parsed = parseManifest(verified.body);
+  if (!parsed.ok) throw new Error(parsed.reason);
+  const m = parsed.manifest;
+  need(
+    m.channel === NIGHTLY_CHANNEL && m.target === TARGET,
+    `for ${m.channel} ${m.target}, not ${NIGHTLY_CHANNEL} ${TARGET}`,
+  );
+  const floor = floorOf(Array.isArray(published) ? published : [/** @type {any} */ (published)]);
+  if (floor && BigInt(m.serial) <= BigInt(floor.serial)) {
+    throw new Error(`serial ${m.serial} is not newer than the published ${floor.serial}`);
+  }
+  const issued = Date.parse(
+    m.serial.replace(/^(\d{4})(\d\d)(\d\d)(\d\d)(\d\d)(\d\d)$/, "$1-$2-$3T$4:$5:$6Z"),
+  );
+  need(issued <= now.getTime() + FUTURE_SERIAL_MS, `serial ${m.serial} is ahead of the clock`);
+  const u = m.update;
+  need(!!u, "the manifest offers nothing");
+  need(u.buildId === buildId, `the manifest offers build ${u.buildId}, not ${buildId}`);
+  need(u.displayVersion === display, `the manifest offers ${u.displayVersion}, not ${display}`);
+  need(u.detailsUrl === NIGHTLY_DETAILS, `details page ${u.detailsUrl}`);
+  need(!u.urgent, "a nightly is never a security update");
+  noOlderBuild(buildId, floor);
+  const kinds = Object.keys(u.assets);
+  need(
+    kinds.length === 1 && kinds[0] === "tarball",
+    `the manifest names ${kinds.join(", ") || "no file"}, not the tarball alone`,
+  );
+  const marUrl = `${NIGHTLY_URL}/${names.mar}`;
+  need(u.marUrl === marUrl, `<patch> URL ${u.marUrl}, not ${marUrl}`);
+  const tarball = u.assets.tarball;
+  need(
+    tarball?.url === `${NIGHTLY_URL}/${names.tarball}`,
+    `the tarball's URL is ${tarball?.url}, not the nightly release's`,
+  );
+  for (const [name, want] of [
+    [names.tarball, { size: tarball.size, sha512: tarball.sha512 }],
+    [names.mar, patchOf(verified.body)],
+  ]) {
+    const path = join(dir, /** @type {string} */ (name));
+    need(existsSync(path), `${name} was not downloaded`);
+    const f = hashFile(path);
+    const w = /** @type {{ size: number, sha512: string }} */ (want);
+    need(f.size === w.size && f.sha512 === w.sha512, `${name} does not match the manifest`);
+  }
+  return { serial: m.serial, version: display, key: verified.key.id };
 }
 
 /** @param {string} path */
@@ -788,6 +993,9 @@ async function main() {
       out: { type: "string" },
       signed: { type: "string" },
       target: { type: "string", default: "linux" },
+      channel: { type: "string", default: "release" },
+      "build-id": { type: "string" },
+      version: { type: "string" },
     },
   });
   const os = /** @type {Os} */ (values.target ?? "linux");
@@ -795,6 +1003,36 @@ async function main() {
   const published = (values.published ?? []).map(readOrNull);
   const nothing = values.offer === "nothing";
   if (values.offer !== undefined && !nothing) throw new Error("--offer takes only `nothing`");
+  const channel = values.channel ?? "release";
+  need(channel === "release" || channel === "nightly", "--channel takes release or nightly");
+  if (channel === "nightly") {
+    need(os === "linux" && !nothing && !values.tag, "a nightly is one Linux build, not a tag");
+    const buildId = values["build-id"] ?? "";
+    const version = values.version ?? "";
+    need(!!values.assets, `${command} --channel nightly needs --assets`);
+    const dir = values.assets;
+    if (command === "build") {
+      need(!!values.out, "build needs --out");
+      const r = prepareNightly({ buildId, version, dir, published, now: new Date() });
+      writeFileSync(values.out, r.body);
+      console.error(`manifest: nightly ${r.version}`);
+      return;
+    }
+    if (command === "verify") {
+      need(!!values.signed, "verify needs --signed");
+      const r = await checkSignedNightly(readFileSync(values.signed, "utf8"), {
+        keys: UPDATE_KEYS,
+        buildId,
+        version,
+        dir,
+        published,
+        now: new Date(),
+      });
+      process.stdout.write(`serial=${r.serial}\nversion=${r.version}\nkey=${r.key}\n`);
+      return;
+    }
+    throw new Error("--channel nightly is for build and verify");
+  }
   switch (command) {
     case "commits": {
       need(!!values.tag && !!values.repo, "commits needs --tag and --repo");

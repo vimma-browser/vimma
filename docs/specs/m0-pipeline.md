@@ -19,7 +19,9 @@ new Firefox releases arrive as PRs.
 - `nightly.yml` (03:00 UTC): full Linux x86_64 build via Surfer on a large or self-hosted runner,
   publish rolling `nightly` release; on failure open an issue with logs. (Since changed: the
   nightly keeps its package as a 7-day workflow artifact and publishes no release until the
-  release gate; spec build-supply-chain, decision 23.)
+  release gate; spec build-supply-chain, decision 23. Since changed again: with the repository
+  variable `NIGHTLY_RELEASE_ENABLED` set, it publishes the rolling `nightly` pre-release; spec
+  m6a-updater, decisions 42 and 43.)
 - `upstream.yml` (every 6 h): `tools/upstream/check-release.py` polls
   `https://product-details.mozilla.org/1.0/firefox_versions.json` (`LATEST_FIREFOX_VERSION`);
   on change, `bump-surfer-json.py` + PR `chore(upstream): Firefox X.Y`. (Since replaced by the

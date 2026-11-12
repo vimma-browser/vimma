@@ -1249,9 +1249,44 @@ gh run download "$run" -n vimma-nightly -D ~/Downloads/vimma-nightly
 
 The `build` job holds a read-only token. Only the `report` job (`issues: write`) can write, and
 it checks out and runs nothing from the repository: it opens the failure issue from the
-redacted log. No job can write contents. Publishing nightlies as a release again is a workflow
-change, reviewed in its own PR, when the release gate lifts. A `nightly` release published
-before this change stays until `gh release delete nightly --cleanup-tag --yes` removes it.
+redacted log. While `NIGHTLY_RELEASE_ENABLED` is unset, no job can write contents.
+
+**Public nightlies** (spec [m6a-updater](specs/m6a-updater.md), decisions 42 and 43;
+docs/security.md B8). With `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` both `true`, each
+nightly also goes to the rolling `nightly` pre-release, where tarball installs of it take the
+next one through Firefox's updater: its MAR is signed by `update-publish.yml`'s `mar-sign` on the
+channel `vimma-nightly` (step 8 of "Update signing keys and the update host"), checked, listed
+with the tarball in a `SHA256SUMS` that cosign signs as `nightly.yml`, uploaded by the `publish`
+job (the one job with `contents: write`, which runs no repository code), and offered at
+`https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma-nightly/update.xml`. The files
+are named by build ID (`vimma-nightly-<buildID>-linux-x86_64.tar.xz` and
+`….complete.mar`); the previous build's stay until the next build replaces them. The release is
+a pre-release, never Latest, so the release page, the AUR, Homebrew and vimma.dev never show it.
+Its `nightly` tag stays at the first public nightly's commit; each build's commit is in the
+release notes. `SHA256SUMS` lists the newest build's files only. The files of the build the
+published nightly manifest offers are kept even when that is not the previous build (a failed
+manifest step), and a re-run of an older night's `publish` refuses once a newer build is on the
+release.
+
+```sh
+gh variable set NIGHTLY_RELEASE_ENABLED --body true   # from the next nightly; or now:
+gh workflow run nightly.yml --ref main
+gh release view nightly                               # the build's files, SHA256SUMS and its bundle
+curl -s https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma-nightly/update.xml
+```
+
+To check a download: `cosign verify-blob --bundle SHA256SUMS.sigstore.json
+--certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main
+--certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS`, then
+`sha256sum -c --ignore-missing SHA256SUMS`. A nightly that breaks: merge the fix and run
+`gh workflow run nightly.yml --ref main`, whose newer build replaces the offer (an older build
+never can); there is no `offer=nothing` for the nightly channel. Deleting the variable stops
+further nightlies from publishing and leaves the last one offered. To withdraw the release,
+`gh release delete nightly --cleanup-tag --yes`; the next public nightly creates it again. Until
+then the published nightly manifest still offers that build, whose files are gone, so every
+nightly install's update fails its download (nothing is installed) until a new nightly is
+published. A release or tag named `nightly` that is not a public pre-release stops the
+`publish` job until it is removed.
 
 ### macOS build (`macos.yml`)
 
@@ -2869,9 +2904,16 @@ node tools/update/mar.mjs verify --mar vimma-X.Y.Z-linux-x86_64.complete.mar \
 
 The nightly is built with the updater too, set to its own update channel `vimma-nightly`
 (`tools/update/channel.mjs`) and checked with `check-build.mjs`; it builds its MAR as a check of
-the release's MAR step and keeps it nowhere. Nightly MARs are signed and offered only once
-public nightly releases start (spec decision 23); that pull request adds `nightly.yml` as a
-caller of `mar-sign`, and its manifest under `…/vimma-nightly/update.xml`.
+the release's MAR step and, unless public nightlies are on, keeps it nowhere. Nightly MARs are signed and offered only once
+public nightly releases start (spec decisions 23 and 42). With `NIGHTLY_RELEASE_ENABLED` set
+("Full builds", "Public nightlies"), `nightly.yml` calls `mar-sign` as `release.yml` does: the job
+takes the channel from its caller, `vimma-nightly` for `nightly.yml` on `main`, and requires the
+name `vimma-nightly-<buildID>-linux-x86_64.complete.mar`; nothing in Google Cloud or the
+environments changes, since the called job's token names `update-publish.yml` as before.
+`nightly.yml` then calls `update-publish.yml` with the build ID, and its `nightly-prepare`,
+`nightly-sign` and `nightly-publish` jobs sign and push `…/vimma-nightly/update.xml` with the
+same key, environments and deploy key. A failed nightly opens the `nightly-failure` issue;
+re-run the failed jobs of that run.
 
 **Checking an update on real installs.** The e2e scenarios use test keys and a local host
 (Updater scenarios); only a published release shows that the real key, `updates.vimma.dev` and

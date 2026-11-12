@@ -10,8 +10,21 @@
 # on: docs/runbook.md, "Full builds".
 # Spec m6a-updater: the build has Firefox's updater (VIMMA_UPDATES=1), and the package is set to
 # the nightly update channel, vimma-nightly, and checked with tools/update/check-build.mjs. The
-# nightly's MAR and manifest are neither signed nor published until public nightly releases
-# start (decision 23); the MAR step runs here as a check of the release's.
+# MAR step runs on every nightly as a check of the release's.
+#
+# Public nightlies (spec m6a-updater, decisions 42 and 43; build-supply-chain, decision 23's
+# note): only while the repository variables NIGHTLY_RELEASE_ENABLED and UPDATES_ENABLED are both
+# `true`, a nightly also goes to the rolling `nightly` pre-release and its update manifest:
+#
+#   mar-sign  update-publish.yml's mar-sign, called: signs the MAR on the nightly channel.
+#   mar       no secret, read-only: checks the signed MAR as release.yml's mar does, and lists it
+#             and the tarball, named by build ID, in SHA256SUMS.
+#   sign      cosign keyless, id-token: write only, no repository code: signs SHA256SUMS as
+#             nightly.yml at refs/heads/main, an identity release.yml's checks never accept.
+#   publish   contents: write only, no repository code: uploads to the `nightly` pre-release
+#             (created once, never Latest) and keeps the previous build's files.
+#   manifest  update-publish.yml's nightly-prepare, nightly-sign and nightly-publish, called:
+#             …/vimma-nightly/update.xml.
 name: nightly
 
 on:
@@ -45,6 +58,10 @@ jobs:
     # issue is a job of its own (`report`).
     permissions:
       contents: read
+    # For a public nightly: the unsigned MAR's name and the build ID, for the jobs after it.
+    outputs:
+      mar: ${{ steps.mar.outputs.mar }}
+      build_id: ${{ steps.mar.outputs.build_id }}
     env:
       LOG: ${{ github.workspace }}/nightly.log
       # Firefox's updater with Vimma's channel, update host and certificates
@@ -186,17 +203,66 @@ jobs:
           rm -rf "$unpacked"
 
       # release.yml's MAR step, with this build's host mar and Mozilla's make_full_update.sh, so
-      # a change that breaks it fails a nightly before it can fail a release. Not kept: a
-      # nightly MAR is neither signed nor offered until public nightly releases (decision 23).
-      - name: Complete MAR (a check of the release's MAR step; not kept)
+      # a change that breaks it fails a nightly before it can fail a release. For a public nightly
+      # it is kept, unsigned, with its zeroed placeholder and named by the build ID (the rolling
+      # release replaces its files; spec m6a-updater §7); otherwise it is thrown away. Never in
+      # dist/: the package artifact stays the tarball alone.
+      - name: Complete MAR, for the nightly channel
+        id: mar
+        env:
+          PUBLIC: ${{ vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true' }}
         run: |
           set -o pipefail
+          tarball=$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)
+          build_id=$(tar -xJOf "$tarball" vimma/application.ini | sed -n 's/^BuildID=//p')
+          [[ $build_id =~ ^[0-9]{14}$ ]] || { echo "::error::the tarball's build ID is '$build_id'"; exit 1; }
+          mar="vimma-nightly-$build_id-linux-x86_64.complete.mar"
           tools=$(mktemp -d)
           cp engine/obj-x86_64-pc-linux-gnu/dist/host/bin/mar engine/tools/update-packaging/make_full_update.sh \
             engine/tools/update-packaging/common.sh "$tools/"
-          node tools/update/mar.mjs build --tarball "$(echo dist/vimma-*.en-US.linux-x86_64.tar.xz)" \
-            --tools "$tools" --channel vimma-nightly --out "$RUNNER_TEMP/nightly.complete.mar" 2>&1 | tee -a "$LOG"
-          rm -rf "$tools" "$RUNNER_TEMP/nightly.complete.mar"
+          mkdir -p mar
+          node tools/update/mar.mjs build --tarball "$tarball" \
+            --tools "$tools" --channel vimma-nightly --out "mar/$mar" 2>&1 | tee -a "$LOG"
+          rm -rf "$tools"
+          if [ "$PUBLIC" = true ]; then
+            echo "mar=$mar" >> "$GITHUB_OUTPUT"
+            echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
+          else
+            rm -rf mar
+          fi
+
+      # As release.yml's build: the host mar, Mozilla's update scripts' tools and signmar with
+      # the NSS libraries it loads from beside it, for the mar job's checks.
+      - name: MAR tools for the mar job
+        if: vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true'
+        run: |
+          set -o pipefail
+          obj=engine/obj-x86_64-pc-linux-gnu
+          rm -rf mar-tools && mkdir -p mar-tools
+          cp "$obj/dist/host/bin/mar" "$obj/dist/bin/signmar" mar-tools/
+          for lib in $(ldd "$obj/dist/bin/signmar" | awk -v d="$obj/dist/bin/" 'index($3, d) == 1 { print $3 }') \
+            "$obj/dist/bin/libsoftokn3.so" "$obj/dist/bin/libfreeblpriv3.so"; do
+            cp "$lib" mar-tools/
+          done
+          ls -l mar-tools
+
+      - name: Upload the unsigned MAR
+        if: vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mar-unsigned
+          path: mar/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload the MAR tools
+        if: vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mar-tools
+          path: mar-tools/
+          retention-days: 7
+          if-no-files-found: error
 
       - name: Delete the Safe Browsing key file
         if: always()
@@ -233,9 +299,285 @@ jobs:
           path: nightly.log
           retention-days: 14
 
-  # Reads only the log the build job uploaded after scrubbing the key from it; it has no secret.
-  report:
+  # The update key signs the MAR in update-publish.yml's mar-sign job, called here as release.yml
+  # calls it: its token names update-publish.yml at refs/heads/main, the one workflow Google
+  # Cloud admits for the key (docs/runbook.md, "Update signing keys and the update host", step
+  # 7b), and the caller, nightly.yml on main, fixes the channel to vimma-nightly. These
+  # permissions are a ceiling, not a grant (release.yml's mar-sign says why): the one job that
+  # runs in the call asks only for its OIDC token.
+  mar-sign:
     needs: build
+    if: >-
+      vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      vars.UPDATES_ENABLED == 'true' && needs.build.outputs.mar != ''
+    permissions:
+      id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's mar-sign job
+      actions: write # ceiling only: update-publish.yml's start, which never runs in a call
+      contents: read # ceiling only: its prepare and publish jobs
+      pull-requests: read # ceiling only: its prepare
+      issues: write # ceiling only: its failure
+    uses: ./.github/workflows/update-publish.yml
+    with:
+      mar: ${{ needs.build.outputs.mar }}
+
+  # As release.yml's mar job, with no secret and a read-only token: the signed MAR differs from
+  # the build's only in its signature, verifies under the committed certificates (mar.mjs and
+  # Mozilla's signmar), is on the nightly channel and Firefox's version, and installs exactly the
+  # nightly tarball's files. Then SHA256SUMS lists it and the tarball, both named by build ID.
+  # It runs whenever the build succeeded and the run was not cancelled, so a skipped or failed
+  # mar-sign fails here, loudly.
+  mar:
+    needs: [build, mar-sign]
+    if: >-
+      !cancelled() && vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      vars.UPDATES_ENABLED == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      MAR: ${{ needs.build.outputs.mar }}
+      BUILD_ID: ${{ needs.build.outputs.build_id }}
+      MAR_SIGN: ${{ needs.mar-sign.result }}
+    steps:
+      - name: The MAR was signed
+        run: |
+          [ "$MAR_SIGN" = success ] \
+            || { echo "::error::mar-sign ended '$MAR_SIGN', so the MAR is not signed and nothing is published"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: vimma-nightly
+          path: dist
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-unsigned
+          path: mar-unsigned
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-signed
+          path: mar-signed
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: mar-tools
+          path: mar-tools
+
+      - name: Check the signed MAR
+        run: |
+          [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
+          [ "$MAR" = "vimma-nightly-$BUILD_ID-linux-x86_64.complete.mar" ] \
+            || { echo "::error::'$MAR' is not build $BUILD_ID's complete MAR"; exit 1; }
+          [ -f "mar-signed/$MAR" ] || { echo "::error::mar-sign left no signed MAR"; exit 1; }
+          node tools/update/mar.mjs same-content --placeholder "mar-unsigned/$MAR" --signed "mar-signed/$MAR"
+          firefox=$(node -p 'require("./surfer.json").version.version')
+          node tools/update/mar.mjs verify --mar "mar-signed/$MAR" --cert configs/updater/primary.der --cert configs/updater/secondary.der --channel vimma-nightly --product-version "$firefox"
+          sudo apt-get update -q
+          sudo apt-get install -y -q libnss3-tools
+          chmod 755 mar-tools/signmar
+          # A database per slot, as release.yml's (spec decision 39).
+          for slot in primary secondary; do
+            db=$(mktemp -d)
+            certutil -N -d "sql:$db" --empty-password
+            certutil -A -n "$slot" -t ,, -i "configs/updater/$slot.der" -d "sql:$db"
+            LD_LIBRARY_PATH=mar-tools mar-tools/signmar -d "sql:$db" -n "$slot" -v "mar-signed/$MAR"
+          done
+          echo "signmar: $MAR verifies under primary.der and secondary.der"
+
+      - name: The MAR installs the nightly tarball's files
+        run: |
+          chmod 755 mar-tools/mar
+          from_mar=$(mktemp -d)
+          from_tarball=$(mktemp -d)
+          root=$PWD
+          (cd "$from_mar" && "$root/mar-tools/mar" -x "$root/mar-signed/$MAR")
+          find "$from_mar" -type f -print0 | while IFS= read -r -d '' f; do
+            xz -dc "$f" > "$f.plain" && mv "$f.plain" "$f"
+          done
+          rm "$from_mar/updatev3.manifest"
+          tar -xJf dist/vimma-*.en-US.linux-x86_64.tar.xz -C "$from_tarball"
+          find "$from_tarball" -type d -empty -delete
+          diff -r --no-dereference "$from_mar" "$from_tarball/vimma"
+          echo "$MAR installs the $(find "$from_mar" -type f | wc -l) files of the nightly tarball"
+
+      - name: The nightly's files and SHA256SUMS
+        run: |
+          rm -rf release && mkdir release
+          cp dist/vimma-*.en-US.linux-x86_64.tar.xz "release/vimma-nightly-$BUILD_ID-linux-x86_64.tar.xz"
+          cp "mar-signed/$MAR" release/
+          (cd release && sha256sum vimma-nightly-* > SHA256SUMS && cat SHA256SUMS)
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-release
+          path: release/
+          retention-days: 7
+          compression-level: 0 # already compressed
+          if-no-files-found: error
+
+  # cosign keyless, as release.yml's sign: the certificate names nightly.yml at refs/heads/main,
+  # which release.yml's identity check (IDENTITY_REGEXP) and the release manifest refuse. It runs
+  # no repository code. Its OIDC token names nightly.yml, which Google Cloud's condition on the
+  # update key refuses.
+  sign:
+    needs: [build, mar]
+    if: >-
+      vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      vars.UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      id-token: write # cosign keyless (Sigstore), nothing else
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-release
+          path: release
+
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+
+      - name: Sign SHA256SUMS
+        run: |
+          (cd release && sha256sum -c SHA256SUMS)
+          cosign sign-blob --yes --bundle release/SHA256SUMS.sigstore.json release/SHA256SUMS
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-signature
+          path: release/SHA256SUMS.sigstore.json
+          retention-days: 7
+          if-no-files-found: error
+
+  # The one job that can write contents. It checks nothing out and runs no repository code: gh,
+  # curl, sha256sum and the files the jobs before it checked. The rolling `nightly` release is a
+  # pre-release, so it is never Latest, starts no workflow listening for published releases
+  # (GITHUB_TOKEN's events start none anyway), and update-publish.yml's release manifest refuses
+  # it. Its tag is made once, at the first public nightly's commit, and never moved: GitHub may
+  # refuse GITHUB_TOKEN a ref update that brings in workflow changes, and the notes name each
+  # build's commit. The files of the previous build and of the build the published manifest
+  # offers stay, so a client that read that manifest can still download its MAR (spec
+  # m6a-updater §7).
+  publish:
+    needs: [build, sign]
+    if: >-
+      vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      vars.UPDATES_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # the rolling nightly release: create it once, replace its files
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      BUILD_ID: ${{ needs.build.outputs.build_id }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-release
+          path: release
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: nightly-signature
+          path: release
+
+      - name: Check the files against SHA256SUMS
+        run: |
+          cd release
+          sha256sum -c SHA256SUMS
+          # Nothing is uploaded that SHA256SUMS does not list, but the sums and their signature.
+          for f in *; do
+            case "$f" in
+              SHA256SUMS|SHA256SUMS.sigstore.json) ;;
+              *) awk -v f="$f" '$2 == f { found = 1 } END { exit !found }' SHA256SUMS \
+                   || { echo "::error::$f is not in SHA256SUMS"; exit 1; } ;;
+            esac
+          done
+          ls -l SHA256SUMS SHA256SUMS.sigstore.json
+
+      # A draft or a full release named nightly is someone's mistake, never overwritten: a full
+      # one would be Latest. gh release view finds drafts too. A newer build already on the
+      # release means this is a re-run of an older night: it must not replace that build's sums.
+      - name: Upload to the rolling nightly release
+        run: |
+          [[ $BUILD_ID =~ ^[0-9]{14}$ ]] || { echo "::error::'$BUILD_ID' is not a build ID"; exit 1; }
+          notes="Nightly build $BUILD_ID of main at $SHA. Built every night from main and checked by CI only: not a release. SHA256SUMS lists this build's files; check a download with: cosign verify-blob --bundle SHA256SUMS.sigstore.json --certificate-identity https://github.com/vimma-browser/vimma/.github/workflows/nightly.yml@refs/heads/main --certificate-oidc-issuer https://token.actions.githubusercontent.com SHA256SUMS && sha256sum -c --ignore-missing SHA256SUMS"
+          if state=$(gh release view nightly --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2> view.err); then
+            [ "$state" = "false true" ] \
+              || { echo "::error::the nightly release is not a public pre-release (isDraft isPrerelease: $state); nothing was uploaded"; exit 1; }
+            newest=$(gh release view nightly --json assets --jq '.assets[].name' \
+              | sed -n 's/^vimma-nightly-\([0-9]\{14\}\)-linux-x86_64\..*$/\1/p' | sort | tail -n 1)
+            if [ -n "$newest" ] && [ "$newest" -gt "$BUILD_ID" ]; then
+              echo "::error::the nightly release already has build $newest, newer than $BUILD_ID; nothing was uploaded"
+              exit 1
+            fi
+          else
+            grep -q 'release not found' view.err \
+              || { echo "::error::could not read the nightly release: $(cat view.err)"; exit 1; }
+            gh release create nightly --prerelease --latest=false --target "$SHA" --title "Vimma nightly" --notes "$notes"
+          fi
+          gh release upload nightly release/* --clobber
+          gh release edit nightly --notes "$notes"
+
+      # Kept: this build, the one before it, and the one the published nightly manifest offers
+      # (its manifest may have failed since); never a newer build. When the update host does not
+      # answer, nothing is removed.
+      - name: Remove the files of older builds
+        run: |
+          url=https://updates.vimma.dev/updates/browser/Linux_x86_64-gcc3/vimma-nightly/update.xml
+          code=$(curl -sS --proto =https --retry 3 -o live.xml -w '%{http_code}' "$url") || code=000
+          case "$code" in
+            200) live=$(sed -n 's/.* buildID="\([0-9]\{14\}\)".*/\1/p' live.xml | head -n 1) ;;
+            404) live="" ;;
+            *) echo "::warning::$url answered $code; no file removed"; exit 0 ;;
+          esac
+          names=$(gh release view nightly --json assets --jq '.assets[].name')
+          id_of() { printf '%s\n' "$1" | sed -n 's/^vimma-nightly-\([0-9]\{14\}\)-linux-x86_64\..*$/\1/p'; }
+          previous=$(for n in $names; do id_of "$n"; done | sort -u | awk -v c="$BUILD_ID" '$1 < c' | tail -n 1)
+          for n in $names; do
+            id=$(id_of "$n")
+            [ -n "$id" ] && [ "$id" -lt "$BUILD_ID" ] && [ "$id" != "$previous" ] && [ "$id" != "$live" ] || continue
+            gh release delete-asset nightly "$n" --yes
+          done
+
+  # nightly-prepare, nightly-sign and nightly-publish in update-publish.yml: the nightly
+  # channel's manifest, from the files now on the nightly release. The permissions are the same
+  # ceiling as mar-sign's.
+  manifest:
+    needs: [build, publish]
+    if: >-
+      vars.NIGHTLY_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
+      github.ref == 'refs/heads/main' && vars.NIGHTLY_RELEASE_ENABLED == 'true' &&
+      vars.UPDATES_ENABLED == 'true'
+    permissions:
+      id-token: write # GitHub OIDC for Cloud KMS, in update-publish.yml's nightly-sign job
+      actions: write # ceiling only: update-publish.yml's start, which never runs in a call
+      contents: read # its nightly-prepare and nightly-publish jobs
+      pull-requests: read # ceiling only: its prepare
+      issues: write # ceiling only: its failure
+    uses: ./.github/workflows/update-publish.yml
+    with:
+      nightly: ${{ needs.build.outputs.build_id }}
+
+  # Reads only the log the build job uploaded after scrubbing the key from it; it has no secret.
+  # Any job's failure opens or updates the issue; only the build's leaves a log.
+  report:
+    needs: [build, mar-sign, mar, sign, publish, manifest]
     if: failure()
     runs-on: ubuntu-24.04
     timeout-minutes: 5

@@ -2724,21 +2724,53 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`test_a_signing_subkey_expiring_within_60_days_is_reported`](../tools/upstream/test_mozilla_key_check.py),
   [`test_an_unchanged_key_reports_nothing`](../tools/upstream/test_mozilla_key_check.py),
   [`detect compares Mozilla's KEY with the pinned key; a change opens a security issue`](../tools/test/upstream-workflow.test.mjs)
-- B8. The nightly **never** creates, replaces or deletes a release, and no job of it can write
-  contents. Its `build` job, which runs npm, Surfer, `mach` and the mochitests, holds
-  `contents: read` only and keeps its package as a workflow artifact for 7 days. The failure
-  issue comes from a `report` job with `issues: write`, which checks out and runs no repository
-  code, reads no secret, and quotes only the log the build job redacted before uploading it,
-  with backticks escaped so no log line can end its code fence. **⚠ limit:** the artifact is
-  not private. The repository is public, so anyone signed in to GitHub can download it for the
-  7 days it is kept, and its name and size are listed without signing in. It holds the same
-  package, and the same compiled-in Safe Browsing key, as a keyed release build.
+- B8. Unless the repository variables `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` are both
+  `true`, the nightly **never** creates, replaces or deletes a release, and no job of it can
+  write contents. Its `build` job, which runs npm, Surfer, `mach` and the
+  mochitests, holds `contents: read` only, whatever the variables, and keeps its package as a
+  workflow artifact for 7 days. The failure issue comes from a `report` job with
+  `issues: write`, which checks out and runs no repository code, reads no secret, and quotes
+  only the log the build job redacted before uploading it, with backticks escaped so no log
+  line can end its code fence. With both variables `true` (spec
+  [m6a-updater](specs/m6a-updater.md), decisions 42 and 43), a nightly is also public:
+  `mar-sign` signs its MAR on the channel `vimma-nightly` (UP14); `mar`, with no secret and a
+  read-only token, checks the signed MAR as `release.yml`'s `mar` does and writes a
+  `SHA256SUMS` that lists exactly the tarball and the MAR, named by build ID; `sign`, holding
+  only `id-token: write` and running no repository code, signs that `SHA256SUMS` with cosign as
+  `nightly.yml@refs/heads/main`, an identity that `release.yml`'s `IDENTITY_REGEXP` and the
+  release manifest's check never accept; and `publish`, the **only** job with
+  `contents: write`, checks out and runs no repository code. It uploads only files that
+  `SHA256SUMS` lists (and the sums and their signature) to the rolling `nightly` release, which
+  it creates as a pre-release that is never Latest, with its `nightly` tag at that commit, and
+  never deletes; no job moves a tag. It refuses to touch the release when it is a draft or a full
+  release, and when it already holds a newer build (a re-run of an older night). It removes only
+  the files of builds older than this one, keeping the previous build's and those of the build
+  the published nightly manifest offers, and removes none when the update host does not answer.
+  `SHA256SUMS` covers the newest build alone; a kept older build is still pinned by the manifest's
+  SHA-512. Release and tag events made with
+  `GITHUB_TOKEN` start no workflow, so `aur.yml`, `homebrew.yml`, `site-dispatch.yml` and
+  `update-publish.yml`'s `start` never run for it. **⚠ limit:** the artifact is not private. The
+  repository is public, so anyone signed in to GitHub can download it for the 7 days it is
+  kept, and its name and size are listed without signing in. It holds the same package, and the
+  same compiled-in Safe Browsing key, as a keyed release build. **⚠ limit:** a public nightly
+  is `main` as it was that night, reviewed through pull requests and checked by CI and the full
+  mochitest suite, not soaked as a release is; whether that may go public is the release gate,
+  decided by setting the variable. **⚠ setting:** `NIGHTLY_RELEASE_ENABLED` is unset until
+  public nightly releases start (`gh variable list`; docs/runbook.md, "Full builds").
   [`the workflow and its build job can only read the repository`](../tools/test/nightly-workflow.test.mjs),
   [`the build job keeps the package as a workflow artifact for 7 days`](../tools/test/nightly-workflow.test.mjs),
-  [`no job creates, edits or deletes a release, and none can write contents`](../tools/test/nightly-workflow.test.mjs),
-  [`a failure is reported by its own job, from the redacted log artifact`](../tools/test/nightly-workflow.test.mjs),
+  [`every job after the build runs only with NIGHTLY_RELEASE_ENABLED and UPDATES_ENABLED`](../tools/test/nightly-workflow.test.mjs),
+  [`only publish can write contents, and it runs no repository code`](../tools/test/nightly-workflow.test.mjs),
+  [`the nightly release is a pre-release, never Latest or deleted, and no v* tag is touched`](../tools/test/nightly-workflow.test.mjs),
+  [`publish uploads only files SHA256SUMS lists, after checking them`](../tools/test/nightly-workflow.test.mjs),
+  [`cosign signs SHA256SUMS as nightly.yml on main, running no repository code`](../tools/test/nightly-workflow.test.mjs),
+  [`refuses a nightly release whose state is %s, and uploads nothing`](../tools/test/nightly-workflow.test.mjs),
+  [`refuses a re-run of an older night once a newer build is on the release`](../tools/test/nightly-workflow.test.mjs),
+  [`keeps this build, the previous one and the one the live manifest offers`](../tools/test/nightly-workflow.test.mjs),
+  [`removes nothing when the update host does not answer, nor any newer build`](../tools/test/nightly-workflow.test.mjs),
+  [`a failure of any job is reported by its own job, from the redacted log artifact`](../tools/test/nightly-workflow.test.mjs),
   [`the report job names the repository, since it checks nothing out`](../tools/test/nightly-workflow.test.mjs),
-  [`only the nightly's failure-issue step gets GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
+  [`only the nightly's failure-issue step and its publish job get GH_TOKEN`](../tools/test/full-build-workflows.test.mjs)
 - B9. Every file `release.yml` uploads to a release, the Arch Linux `PKGBUILD` and `SRCINFO`
   included, **must** be listed in that release's `SHA256SUMS` and get a cosign bundle from the
   `sign` job, so a user can verify any asset, and the `PKGBUILD`, which pacman runs as root, is
@@ -3225,7 +3257,7 @@ Rules:
   a frame that has navigated since gets nothing, and the notice says the match is gone.
   [`a_jump_never_reaches_a_document_the_frame_navigated_to`](../tests/browser/browser_vimma_live_grep.js)
 
-## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`, the MAR in `release.yml`)
+## 16. Update check (`updates/VimmaUpdates.sys.mjs`, `update-publish.yml`, the MAR in `release.yml` and `nightly.yml`)
 
 Spec: [m6a-updater](specs/m6a-updater.md) (delivery 1) and [update-notices](specs/update-notices.md).
 Vimma fetches one signed manifest from `updates.vimma.dev` every 12 hours, at startup when a check
@@ -3407,18 +3439,56 @@ _Pages_ and _extensions_ cannot reach it.
   release, which the starting jobs learn from the release's metadata as in B11; `prepare` then
   checks again that the release is published and downloads the `.dmg` itself. Each target has its own concurrency group, so its serials only
   grow; a push that the other target's push beat is rebased onto it (another file), never forced.
+  The nightly channel's manifest (`…/vimma-nightly/update.xml`, [m6a-updater](specs/m6a-updater.md)
+  decisions 42 and 43) is signed by the same key and environments, by `nightly-prepare`,
+  `nightly-sign` and `nightly-publish`, which run **only** in `nightly.yml`'s call from `main`
+  (`github.workflow_ref`) and only while `UPDATES_ENABLED` and `NIGHTLY_RELEASE_ENABLED` are
+  `true`. Before any pattern, `nightly-sign` runs the signing job's byte check, the same shell
+  text: it refuses a body with a byte that is not printable ASCII or a newline, or that does not
+  end in a newline, and refuses when grep fails, since a line check alone would pass a body that
+  hides another channel or URL behind a NUL byte. `nightly-prepare` holds no secret; it requires the `nightly` release to be a public
+  pre-release, checks its `SHA256SUMS` against `nightly.yml`'s cosign identity (never
+  `release.yml`'s, so neither channel's sums can stand in for the other's), checks that the MAR
+  verifies under the committed certificates on the channel `vimma-nightly`, and that the
+  tarball's `application.ini` names the build asked for. `nightly-sign` runs no repository code
+  and signs only the seven lines a nightly manifest for that build has: the channel
+  `vimma-nightly`, the Linux target, a serial within the last hour, a `normal` offer of
+  `X.Y.Z-nightly.<buildID>`, one `<patch>` and one `<vimmaTarball>` at that build's URLs on the
+  `nightly` release, and nothing else. `nightly-publish` downloads both files again, checks the
+  signed file with the browser's verifier and with openssl, and pushes only
+  `…/vimma-nightly/update.xml`, never forced; a missing deploy key fails the run. The release
+  jobs refuse a body for any channel but `vimma`, `manifest.mjs` checks each channel before a
+  push, and the client refuses a manifest for another channel (UP2), so a nightly offer never
+  reaches a release install, nor a release offer a nightly install. Each channel's serials and
+  offers only grow: an offer of an older build than the published nightly manifest's is
+  refused. **⚠ limit:** a nightly is always offered as `normal` (decision 43), so a nightly
+  that carries a Firefox security fix gets no restart question; Firefox's updater still stages
+  it and applies it at the next start.
   **⚠ limit:** without a required reviewer on `update-signing`, anyone with write access can
   start a run on `main` that re-signs a published release or offers nothing (withholding
   updates).
   [`grants nothing by default, and each job only what it needs`](../tools/update/test/update-workflow.test.mjs),
-  [`only sign and mar-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`%s runs only in nightly.yml's call on main, with UPDATES_ENABLED and NIGHTLY_RELEASE_ENABLED`](../tools/update/test/update-workflow.test.mjs),
+  [`nightly-prepare reads the public nightly pre-release and its nightly.yml signature`](../tools/update/test/update-workflow.test.mjs),
+  [`nightly-prepare checks the MAR's channel and builds the nightly channel's manifest`](../tools/update/test/update-workflow.test.mjs),
+  [`nightly-publish checks the signed file, then pushes only the nightly channel's path`](../tools/update/test/update-workflow.test.mjs),
+  [`the release jobs never write the nightly path, nor the nightly jobs the release path`](../tools/update/test/update-workflow.test.mjs),
+  [`nightly-sign signs the nightly's body so that the browser's verifier accepts it`](../tools/update/test/update-workflow.test.mjs),
+  [`nightly-sign refuses to sign %s`](../tools/update/test/update-workflow.test.mjs),
+  [`sign, the release's check, refuses the nightly's body`](../tools/update/test/update-workflow.test.mjs),
+  [`checkSigned, the release's check, refuses a nightly manifest`](../tools/update/test/nightly-manifest.test.mjs),
+  [`checkSignedNightly refuses a release manifest, whatever it offers`](../tools/update/test/nightly-manifest.test.mjs),
+  [`checkSignedNightly refuses another key, a changed file, another build and a moved MAR`](../tools/update/test/nightly-manifest.test.mjs),
+  [`refuses an older build than the published nightly manifest offers, and an old serial`](../tools/update/test/nightly-manifest.test.mjs),
+  [`is offered to a nightly install of an older build, and to no release install`](../tools/update/test/nightly-manifest.test.mjs),
   [`the signing job %s runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),
   [`a published release only starts the run on main, and only with UPDATES_ENABLED`](../tools/update/test/update-workflow.test.mjs),
   [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../tools/update/test/update-workflow.test.mjs),
   [`checks that the release is published, not a pre-release, and on main`](../tools/update/test/update-workflow.test.mjs),
   [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../tools/update/test/update-workflow.test.mjs),
   [`the publish job verifies with the browser's verifier and with openssl before any push`](../tools/update/test/update-workflow.test.mjs),
-  [`the deploy key lives in its own environment and reaches only the push step`](../tools/update/test/update-workflow.test.mjs),
+  [`the deploy key lives in its own environment and reaches only the push steps`](../tools/update/test/update-workflow.test.mjs),
   [`pushes one commit naming the version to main, never forced, to a pinned host key`](../tools/update/test/update-workflow.test.mjs),
   [`a push the other target's run beat rebases and lands, with no git identity configured`](../tools/update/test/update-workflow.test.mjs),
   [`signs the body so that the browser's verifier accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
@@ -3620,21 +3690,27 @@ _Pages_ and _extensions_ cannot reach it.
   [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../packages/vimma-core/test/updates.test.mjs)
 
 - UP14. A complete MAR is **only** signed by `update-publish.yml`'s `mar-sign` job, which
-  `release.yml` run from `main` calls (`workflow_call`), and **only** for that release's own MAR on
-  the release channel. A called job is the called file's job, so its OIDC token names
+  `release.yml` or `nightly.yml` run from `main` calls (`workflow_call`), and **only** for that
+  caller's own MAR on that caller's channel: a release's MAR on `vimma`, and a nightly build's on
+  `vimma-nightly` only while `NIGHTLY_RELEASE_ENABLED` is `true` (B8). The caller
+  (`github.workflow_ref`) picks the channel and the name the file must have, never an input. A
+  called job is the called file's job, so its OIDC token names
   `update-publish.yml` at `refs/heads/main`: the Workload Identity condition on `job_workflow_ref`
-  (UP7) admits no new workflow, and the key is reached by no job of `release.yml` itself. The job
-  refuses to run unless its caller is `release.yml` at `refs/heads/main` (`github.workflow_ref`) and
-  `UPDATES_ENABLED` is `true`, uses the `update-signing` environment (deployment branch `main`
-  alone), holds only `id-token: write` and runs no repository code. `release.yml`'s calling job
+  (UP7) admits no new workflow, and the key is reached by no job of `release.yml` or `nightly.yml`
+  itself. The job refuses to run unless its caller is `release.yml` or `nightly.yml` at
+  `refs/heads/main` and `UPDATES_ENABLED` is `true`, uses the `update-signing` environment
+  (deployment branch `main` alone), holds only `id-token: write` and runs no repository code. `release.yml`'s calling job
   allows the union of what `update-publish.yml`'s jobs ask for (`actions: write`, `contents: read`,
   `pull-requests: read`, `issues: write`, `id-token: write`), because GitHub refuses a call whose
   jobs, skipped ones included, ask for more than the caller allows; that is a ceiling, and in a call
   no job but `mar-sign` runs (`start` needs the release event, the others no `mar` input). Before
   Cloud KMS signs anything it checks with the shell alone that the file is named as the caller's
-  tag's MAR, that its size field is its size, that it has exactly one signature entry, 512 bytes of
-  RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), all zero, and that its product information block names
-  the channel `vimma`. It signs every byte but that placeholder, bytes that start with `MAR1`, while
+  MAR (the tag's for `release.yml`, `vimma-nightly-<buildID>-linux-x86_64.complete.mar` for
+  `nightly.yml`), that its size field is its size, that it has exactly one signature entry, 512
+  bytes of RSA-PKCS#1 v1.5 with SHA-384 (algorithm 2), all zero, and that its product information
+  block names the caller's channel, byte for byte with its NUL. The channel is in the signed
+  bytes, so a nightly MAR never installs on a release install, nor a release MAR on a nightly
+  install (the updater's error 22). It signs every byte but that placeholder, bytes that start with `MAR1`, while
   a manifest's signed bytes start with `vimma-update-xml-v1\n`, so under the one key (spec decision 12) a MAR signature can never pass as a manifest's or back. It checks KMS's signature with openssl
   and writes in only the signature bytes. The MAR is built in `package`, a job with no secret, from
   the release tarball with the build's own host `mar` and Mozilla's `make_full_update.sh`
@@ -3654,9 +3730,10 @@ _Pages_ and _extensions_ cannot reach it.
   **only** when the release's cosign-signed `SHA256SUMS` lists it, with its size and SHA-512 and at
   the release's own download URL; the manifest's signing job refuses a `<patch>` at any other URL, a
   second one, or one in the macOS manifest, and the publish job downloads the MAR again and checks
-  it against the signed manifest. The nightly builds its MAR with the same step, as a check, and
-  neither signs nor keeps it until public nightly releases ([m6a-updater](specs/m6a-updater.md),
-  decision 23).
+  it against the signed manifest. `nightly.yml`'s `mar` job checks a nightly's signed MAR the same
+  way, on the channel `vimma-nightly`, before its `SHA256SUMS` lists it (B8); without
+  `NIGHTLY_RELEASE_ENABLED` the nightly builds its MAR as a check and keeps none
+  ([m6a-updater](specs/m6a-updater.md), decision 42).
   **⚠ limit:** the key signs what the build job built: a compromised build (it compiles Firefox with
   the Safe Browsing key in reach) can produce a malicious MAR that `mar-sign` then signs, as it can
   produce a malicious tarball that cosign signs; it cannot copy the key out, and every signature is
@@ -3672,8 +3749,12 @@ _Pages_ and _extensions_ cannot reach it.
   `update-publish.yml@main` and its token then names that file too, the condition's
   `assertion.repository` clause and the IAM member's subject, which names the repository by its ID,
   **must** never be dropped.
-  [`is called by release.yml alone, with the MAR's name, and signs only there`](../tools/update/test/update-workflow.test.mjs),
-  [`only sign and mar-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../tools/update/test/update-workflow.test.mjs),
+  [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../tools/update/test/update-workflow.test.mjs),
+  [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../tools/update/test/update-workflow.test.mjs),
+  [`the MAR is signed by update-publish.yml's mar-sign, with this run's MAR`](../tools/test/nightly-workflow.test.mjs),
+  [`the mar job checks the signed MAR for the nightly channel, against the tarball`](../tools/test/nightly-workflow.test.mjs),
+  [`the mar job fails, loudly, when the MAR was not signed`](../tools/test/nightly-workflow.test.mjs),
   [`the signing job %s runs no repository code: no checkout, no node, no npm`](../tools/update/test/update-workflow.test.mjs),
   [`signs the placeholder so that the updater's check accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
   [`refuses to sign %s`](../tools/update/test/update-workflow.test.mjs),
@@ -3692,14 +3773,14 @@ _Pages_ and _extensions_ cannot reach it.
   [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../tools/update/test/pipeline-workflows.test.mjs),
   [`cosign signs the MAR with the other assets, after it is checked`](../tools/update/test/pipeline-workflows.test.mjs),
   [`publish uploads the MAR and the new SHA256SUMS, never a release that lost its MAR`](../tools/update/test/pipeline-workflows.test.mjs),
-  [`runs the release's MAR step for the nightly channel, and keeps no MAR`](../tools/update/test/pipeline-workflows.test.mjs),
+  [`runs the release's MAR step for the nightly channel, and keeps it only for a public nightly`](../tools/update/test/pipeline-workflows.test.mjs),
   [`prepareRelease offers the MAR SHA256SUMS lists, with its size and SHA-512`](../tools/update/test/manifest.test.mjs),
   [`checkSigned checks the MAR the manifest offers against the downloaded file`](../tools/update/test/manifest.test.mjs),
   [`checkSigned refuses a <patch> at any URL but the release's MAR`](../tools/update/test/manifest.test.mjs)
 
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can
-ask to sign, through GitHub OIDC: `sign` for manifests (UP7) and `mar-sign`, called by `release.yml`, for MARs (UP14); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
+ask to sign, through GitHub OIDC: `sign` and `nightly-sign` for manifests (UP7) and `mar-sign`, called by `release.yml` and `nightly.yml`, for MARs (UP14); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
 setup is in [runbook.md](runbook.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by

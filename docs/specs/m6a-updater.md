@@ -1,6 +1,6 @@
 # Spec: m6a-updater
 
-Status: accepted (sub-PRs 1 to 4 and sub-PR 5's e2e scenarios implemented; the nightly's signed MAR and manifest wait for public nightly releases and the security rehearsal for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
+Status: accepted (sub-PRs 1 to 4, sub-PR 5's e2e scenarios, and the nightly's signed MAR, release and manifest implemented, the last off until `NIGHTLY_RELEASE_ENABLED` is set (decision 42); the security rehearsal waits for the release gate (decision 23), tracked in [#456](https://github.com/vimma-browser/vimma/issues/456)) · Area: `configs/common/mozconfig`, `src/browser/branding/vimma/pref/firefox-branding.js`,
 `src/browser/base/content/vimma/updates/` (new), `packages/vimma-core/src/updates.mjs` (new),
 `packages/vimma-core/src/update-keys.mjs` (new), `vimma/about/`,
 `config.mjs`, `actions.mjs`, `cmdline.mjs`, `statusbar.mjs`, `tools/package/`, `tools/update/`
@@ -649,7 +649,10 @@ its manifest. The nightly sets its channel with `tools/update/channel.mjs` rathe
 `package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
 packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
 none until public nightly releases (decision 23). docs/runbook.md, "Update signing keys and the
-update host", step 8; docs/security.md UP14.)
+update host", step 8; docs/security.md UP14. The `nightly` tag is made once and never moved, because GitHub may refuse `GITHUB_TOKEN` a
+ref update that brings in workflow changes; the release notes name each build's commit. Besides
+the previous build, the files of the build the published nightly manifest offers stay too, so a
+failed manifest step never leaves installs with a MAR that is gone.)
 
 (Since changed: the release manifest is published by a workflow of its own,
 `update-publish.yml`, on `release: released`, because a release has no MAR until sub-PR 2 and
@@ -693,6 +696,20 @@ so a client that just read the old manifest can still download it.
 While the release gate holds, `nightly.yml` publishes no `nightly` release: it keeps each build
 as a private workflow artifact (`docs/runbook.md`). The nightly manifest jobs
 above therefore start only when public nightly releases do (decision 23).
+
+(Since changed: delivered as decisions 42 and 43 say, behind the repository variable
+`NIGHTLY_RELEASE_ENABLED`. The nightly keeps `./mach package` and `channel.mjs` rather than
+`package.mjs --channel nightly`, as the note on `mar-sign` above says. Its `build` job keeps the
+MAR, with a zeroed placeholder, named `vimma-nightly-<buildID>-linux-x86_64.complete.mar`;
+`mar-sign` (the job `release.yml` calls) signs it, choosing the channel `vimma-nightly` from its
+caller, `nightly.yml` on `main`; `mar` checks it as `release.yml`'s does and writes a
+`SHA256SUMS` for the MAR and the tarball, renamed `vimma-nightly-<buildID>-linux-x86_64.tar.xz`;
+`sign` signs that `SHA256SUMS` with cosign as `nightly.yml`; and `publish`, the one job with
+`contents: write`, uploads them to the rolling `nightly` pre-release. Then `nightly.yml` calls
+`update-publish.yml` again, whose `nightly-prepare`, `nightly-sign` and `nightly-publish` jobs
+write `…/vimma-nightly/update.xml` as `prepare`, `sign` and `publish` write the release's. The
+previous build's files stay on the release until the next build. docs/security.md B8, UP7 and
+UP14.)
 
 **The bump and release halves of the security path** are other specs' (decision 3): spec
 upstream-bump-automation merges a green bump PR under `AUTO_MERGE_UPSTREAM`, and spec
@@ -1021,6 +1038,39 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     command for the agent role's closed list to keep out and a new request for scripts that already
     poll `state`.
 
+42. **Public nightlies start when the repository variable `NIGHTLY_RELEASE_ENABLED` is `true`,
+    and need `UPDATES_ENABLED` too; until then a nightly is a workflow artifact, as before**,
+    because merging the pipeline and opening the release gate to nightly users are separate
+    decisions: the workflow is reviewed in its pull request, and the variable is the maintainer's
+    choice of when daily builds of `main` become a public download that installs follow, and the
+    switch that stops them again at once. Both variables are needed because a public nightly
+    without its signed MAR and manifest would leave tarball installs on the build they started
+    with, and turning `UPDATES_ENABLED` off, the off switch for every update, must stop nightly
+    updates as well. Each nightly is offered as `X.Y.Z-nightly.<buildID>`, the release version it
+    was built from and its build ID, on the rolling `nightly` pre-release, which is never Latest,
+    so a release's page, the AUR and Homebrew never see it. The channel of a MAR is set by the
+    workflow that calls `mar-sign`, never by an input, and is in the signed bytes, so a nightly MAR
+    cannot be signed for, or applied to, a release install, nor the reverse. The nightly's cosign
+    identity is `nightly.yml`'s, which `release.yml`'s users and the release manifest's check
+    never accept. Rejected: publishing on merge with no variable, as build-supply-chain decision
+    23 would have it for any release path, because the merge would then publish the next night
+    with no step left to the maintainer, and stopping it would take another pull request; a tag per
+    nightly (`v0.1.18-nightly.<buildID>`), because hundreds of tags and releases would bury the
+    real ones, and the commands the client builds for a release's files already name the version
+    tag, so they would have to change too.
+43. **A nightly manifest offers one build: its complete MAR as `<patch>` and its tarball as
+    `<vimmaTarball>`, always `normal`, and never a build older than the published one**, because
+    a nightly is a tarball only (no AppImage, `.deb` or `.rpm`), and Firefox's updater applies
+    the MAR to a tarball Vimma can write, while the tarball's SHA-512 is what the commands for a
+    read-only install check. The urgency is `normal` because a nightly has no previous published
+    release to count security commits from, and a nightly install takes a new build every day
+    anyway. Order is by build ID, not version: the published nightly manifest's build ID is the
+    floor, so a re-run of the same night may publish its build again under a newer serial, and an
+    older build never replaces a newer one. **⚠ limit:** the client builds the download command
+    for a read-only tarball install from the version (`releases/download/v<version>/…`), so for a
+    nightly that command names a URL that does not exist and fails at `curl -f` before anything is
+    installed; a writable install, which Firefox's updater updates, is not affected.
+
 ### 9. Not in this spec
 
 Partial MARs; macOS (now [macos-homebrew](macos-homebrew.md)), Windows and aarch64 manifests; an apt repository (decision 20); Flatpak;
@@ -1266,11 +1316,12 @@ tested:
    `update-publish.yml`): workflow tests and a dry run. Lands after the
    build-supply-chain implementation, whose full builds this extends (decision 4).
    (Since changed: delivered as §7's note on `mar-sign` says; the nightly's signed MAR, its manifest
-   and the rolling `nightly` release come with public nightly releases, decision 23.)
+   and the rolling `nightly` release are delivered behind `NIGHTLY_RELEASE_ENABLED`, decisions 42
+   and 43.)
 5. **e2e and the security rehearsal**: the scenarios above; the M6a gate.
    (Since changed: the e2e scenarios landed on their own; the rehearsal waits for the release gate,
    decision 23.)
 
 ## Open questions
 
-None. The questions this spec raised are answered in §8, decisions 16 to 23.
+None. The questions this spec raised are answered in §8, decisions 16 to 23 and 42.

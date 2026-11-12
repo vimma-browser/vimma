@@ -313,13 +313,15 @@ describe("nightly.yml: the updater, its channel, and the MAR step", () => {
     );
   });
 
-  it("runs the release's MAR step for the nightly channel, and keeps no MAR", () => {
-    const run = runOf(build, "Complete MAR (a check of the release's MAR step; not kept)");
+  it("runs the release's MAR step for the nightly channel, and keeps it only for a public nightly", () => {
+    const run = runOf(build, "Complete MAR, for the nightly channel");
     expect(run).toContain("--channel vimma-nightly");
     expect(run).toContain("node tools/update/mar.mjs build");
-    expect(run).toContain('--out "$RUNNER_TEMP/nightly.complete.mar"');
+    expect(run).toContain('--out "mar/$mar"');
     expect(run).not.toMatch(/--out "?dist/);
-    // No signature until public nightly releases (decision 23): no key, no environment.
-    expect(text).not.toMatch(/update-signing|id-token|update-publish\.yml/);
+    // Without public nightly releases (decision 42) the MAR is a check and is thrown away.
+    expect(run).toMatch(/if \[ "\$PUBLIC" = true \]; then\n[\s\S]*\nelse\n {2}rm -rf mar\nfi/);
+    // The build job holds no key; update-publish.yml's mar-sign signs, in a call.
+    expect(build).not.toMatch(/update-signing|id-token/);
   });
 });
