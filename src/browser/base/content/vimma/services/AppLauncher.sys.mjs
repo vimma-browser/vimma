@@ -88,12 +88,30 @@ function shellServiceRunning() {
 
 /**
  * @param {string} path
- * @returns {string | null} a whole mimeapps.list or desktop entry, or null when it is missing or
- *   too long
+ * @returns {boolean} whether the file exists and can be read, as the shell's `-r` tells
+ */
+function isReadableFile(path) {
+  try {
+    const file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+    file.initWithPath(path);
+    return file.isFile() && file.isReadable();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {string} path
+ * @returns {string | null} a whole mimeapps.list or desktop entry; "" for one that exists but is
+ *   empty or too long, which hides the copies after it as it does for Omarchy's launcher; null
+ *   when there is no readable file
  */
 function readList(path) {
+  if (!isReadableFile(path)) {
+    return null;
+  }
   const text = readSmallFile(path, MAX_LIST_BYTES + 1);
-  return text && text.length <= MAX_LIST_BYTES ? text : null;
+  return text.length <= MAX_LIST_BYTES ? text : "";
 }
 
 /** @returns {any} the GIO service, or null where there is none */
@@ -110,8 +128,18 @@ function gioService() {
  * @returns {string} the id of GIO's default handler, or "" (none, or a Flatpak portal handler)
  */
 function gioDefaultFor(scheme) {
-  const app = gioService()?.getAppForURIScheme(scheme);
-  return app instanceof Ci.nsIGIOMimeApp ? app.id : "";
+  const gio = gioService();
+  // Under Flatpak each call is a portal round trip, and its handler is never Omarchy's router.
+  if (!gio || gio.isRunningUnderFlatpak) {
+    return "";
+  }
+  try {
+    const app = gio.getAppForURIScheme(scheme);
+    return app instanceof Ci.nsIGIOMimeApp ? app.id : "";
+  } catch {
+    // nsGIOService throws NS_ERROR_FAILURE when no app handles the scheme.
+    return "";
+  }
 }
 
 /**
@@ -280,6 +308,7 @@ export const AppLauncher = {
     return isDefaultThroughRouter({
       defaultFor,
       lists,
+      // The first readable copy decides, empty or not, as in omarchy-cmd-default-browser.
       entryFor: (id) => {
         for (const dir of dirs) {
           const text = readFile(PathUtils.join(dir, "applications", id));

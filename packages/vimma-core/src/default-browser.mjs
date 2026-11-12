@@ -77,54 +77,39 @@ export function mimeappsLists({ home, configHome, configDirs, currentDesktop }) 
  * @returns {string[]}
  */
 export function defaultHandlers(text, mimeType) {
-  const value = keyValue(text, "[Default Applications]", mimeType);
-  return value === null
-    ? []
-    : value
-        .split(";")
-        .map((entry) => entry.trim())
-        .filter(Boolean);
+  if (!text) {
+    return [];
+  }
+  // Read as omarchy-cmd-default-browser's awk does: a group header at column 1, the key and `=`
+  // at column 1 with no spaces, entries split on `;` and not trimmed. A line written any other
+  // way is one Omarchy's launcher skips, so it must not count for Vimma either.
+  let inGroup = false;
+  const prefix = `${mimeType}=`;
+  for (const line of text.split("\n")) {
+    if (line.startsWith("[")) {
+      inGroup = line.startsWith("[Default Applications]");
+      continue;
+    }
+    if (inGroup && line.startsWith(prefix)) {
+      return line.slice(prefix.length).split(";").filter(Boolean);
+    }
+  }
+  return [];
 }
 
 /**
- * The Exec line of a desktop entry's [Desktop Entry] group.
+ * The first `Exec=` line of a desktop entry, at column 1 as Omarchy's launcher reads it (sed
+ * `^Exec=`, first match in the file).
  *
  * @param {string | null} text
  * @returns {string | null}
  */
 export function desktopEntryExec(text) {
-  return keyValue(text, "[Desktop Entry]", "Exec");
-}
-
-/**
- * The value of the first `key=` line in a key file's group, as GKeyFile reads it (spaces around
- * the `=` trimmed, `#` lines skipped).
- *
- * @param {string | null} text
- * @param {string} group with its brackets
- * @param {string} key
- * @returns {string | null}
- */
-function keyValue(text, group, key) {
   if (!text) {
     return null;
   }
-  let inGroup = false;
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (line.startsWith("[")) {
-      inGroup = line === group;
-      continue;
-    }
-    if (!inGroup || line.startsWith("#")) {
-      continue;
-    }
-    const eq = line.indexOf("=");
-    if (eq > 0 && line.slice(0, eq).trim() === key) {
-      return line.slice(eq + 1).trim();
-    }
-  }
-  return null;
+  const line = text.split("\n").find((l) => l.startsWith("Exec="));
+  return line === undefined ? null : line.slice("Exec=".length);
 }
 
 /**
@@ -147,20 +132,14 @@ export function routedBrowser(lists, mimeType, installed) {
 }
 
 /**
- * The program of a desktop entry's command line (its argv[0]). A quoted program with a backslash
- * or no closing quote returns "", so it never matches.
+ * The program of a desktop entry's command line as Omarchy's launcher takes it: everything up to
+ * the first space, quotes and tabs included, so a quoted program never resolves there or here.
  *
  * @param {string} command
  * @returns {string}
  */
 export function commandProgram(command) {
-  const text = command.trimStart();
-  if (text.startsWith('"')) {
-    const end = text.indexOf('"', 1);
-    const program = end > 0 ? text.slice(1, end) : "";
-    return program.includes("\\") ? "" : program;
-  }
-  return text.split(/\s/, 1)[0] ?? "";
+  return command.split(" ", 1)[0] ?? "";
 }
 
 /**
@@ -181,6 +160,11 @@ export function commandProgram(command) {
  * }} options `defaultFor` gives GIO's handler id; `entryFor` the text of the first desktop
  *   entry file by that id in the data dirs; `resolves` whether a program is an executable file
  *   (an absolute path) or found in PATH
+ * Two differences from Omarchy are deliberate and can only give "not default": https must route
+ * to Vimma as well as http (Omarchy routes both by the http line), and when no list names an
+ * installed browser this says no rather than falling back to xdg-settings or mimeinfo.cache.
+ * `resolves` uses Vimma's own PATH, which a wrapper may have changed from the session's.
+ *
  * @returns {boolean}
  */
 export function isDefaultThroughRouter({ defaultFor, lists, entryFor, resolves, appPath }) {

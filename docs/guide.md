@@ -397,7 +397,8 @@ then says that Vimma is your default browser, so the startup prompt does not ret
 for it, as Omarchy's own `omarchy default browser` does; that command offers only the browsers it
 knows, so it cannot choose Vimma. Leave Omarchy's `BROWSER` (`omarchy-launch-browser`) as it is:
 it opens the same browser. To see which browser Omarchy will open, run
-`omarchy-cmd-default-browser`, which prints `vimma-vimma.desktop`.
+`omarchy-cmd-default-browser`, which prints Vimma's desktop entry (`vimma-vimma.desktop` for the
+packages).
 [limits.md](limits.md#platforms-and-packaging) lists what else differs on Omarchy (issue
 [#855](https://github.com/vimma-browser/vimma/issues/855)).
 

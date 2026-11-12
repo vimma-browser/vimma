@@ -590,11 +590,14 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   (`omarchy-browser.desktop`) as the http and https handler, Vimma also counts itself the
   default when the entry the router opens (the first installed one past it in the
   `mimeapps.list` files, as `omarchy-cmd-default-browser` reads them) runs exactly the absolute
-  command the shell service took as Vimma's own; a relative or quoted-with-escapes command never
-  matches. This changes only what Settings and the startup prompt report, never which program
-  opens a link, and nothing is read unless GIO names the router.
+  command the shell service took as Vimma's own, read line by line exactly as Omarchy's launcher
+  reads it, so a relative or quoted command, or a line Omarchy skips, never matches. This
+  changes only what Firefox's default-browser check reports (Settings, the startup prompt,
+  messaging targeting), never which program opens a link, and nothing is read unless GIO names
+  the router.
   [`test_omarchy_s_router_to_vimma_counts_as_default`](../tests/browser/browser_vimma_app_launcher.js),
   [`test_without_omarchy_s_router_nothing_is_read`](../tests/browser/browser_vimma_app_launcher.js),
+  [`a quoted Exec never counts, since Omarchy's launcher cannot run it`](../packages/vimma-core/test/default-browser.test.mjs),
   [`matches the program by its exact absolute path, never by name or a relative one`](../packages/vimma-core/test/default-browser.test.mjs),
   [`test_the_shell_service_starts_with_the_launcher_next_to_the_binary`](../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_inherited_value_never_picks_another_program`](../tests/browser/browser_vimma_app_launcher.js),

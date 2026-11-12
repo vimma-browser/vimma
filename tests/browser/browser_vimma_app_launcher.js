@@ -172,6 +172,11 @@ add_task(async function test_the_shell_service_s_own_command_is_recorded() {
     });
   Assert.equal(probe({ env: fakeEnv() }).appPath, OWN, "vimma-open, once named");
   Assert.equal(
+    probe({ env: fakeEnv({ MOZ_APP_LAUNCHER: "/x/other" }) }).appPath,
+    OWN,
+    "an inherited value is replaced before the service reads it",
+  );
+  Assert.equal(
     probe({ env: fakeEnv(), exists: () => false }).appPath,
     exePath,
     "without vimma-open, the binary, as the shell service takes it",
@@ -271,6 +276,16 @@ add_task(async function test_omarchy_s_router_to_vimma_counts_as_default() {
   );
   Assert.ok(
     throughRouter({
+      files: {
+        "/home/u/.config/hyprland-mimeapps.list": ROUTER_LIST,
+        "/home/u/.config/mimeapps.list": browserList("vimma-vimma.desktop"),
+        "/home/u/.local/share/applications/vimma-vimma.desktop": "",
+      },
+    }).result === false,
+    "an empty copy there hides the system's, as it does for Omarchy's launcher",
+  );
+  Assert.ok(
+    throughRouter({
       vars: {
         HOME: "/home/u",
         XDG_CURRENT_DESKTOP: "Hyprland",
@@ -336,4 +351,43 @@ add_task(async function test_firefox_s_shell_service_check_is_wrapped_on_linux()
   const linux = AppConstants.platform === "linux";
   Assert.equal(ShellService.isDefaultBrowser.name === "vimmaIsDefaultBrowser", linux);
   Assert.equal(ShellService.isDefaultBrowserAsync.name === "vimmaIsDefaultBrowserAsync", linux);
+});
+
+add_task(async function test_an_empty_entry_on_disk_hides_the_copies_after_it() {
+  const root = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-router");
+  try {
+    const config = PathUtils.join(root, "config");
+    const userApps = PathUtils.join(root, "data", "applications");
+    const systemApps = PathUtils.join(root, "sys", "applications");
+    await IOUtils.writeUTF8(PathUtils.join(config, "hyprland-mimeapps.list"), ROUTER_LIST, {
+      mode: "create",
+    });
+    await IOUtils.writeUTF8(
+      PathUtils.join(config, "mimeapps.list"),
+      browserList("vimma-vimma.desktop"),
+    );
+    await IOUtils.writeUTF8(
+      PathUtils.join(systemApps, "vimma-vimma.desktop"),
+      `[Desktop Entry]\nExec=${OWN} %u\n`,
+    );
+    const check = () =>
+      AppLauncher.isDefaultThroughRouter({
+        env: fakeEnv({
+          HOME: root,
+          XDG_CONFIG_HOME: config,
+          XDG_CONFIG_DIRS: PathUtils.join(root, "none"),
+          XDG_DATA_HOME: PathUtils.join(root, "data"),
+          XDG_DATA_DIRS: PathUtils.join(root, "sys"),
+          XDG_CURRENT_DESKTOP: "Hyprland",
+        }),
+        appPath: OWN,
+        defaultFor: () => "omarchy-browser.desktop",
+        resolves: (/** @type {string} */ program) => program === OWN,
+      });
+    Assert.ok(check(), "the system's entry, read from disk");
+    await IOUtils.writeUTF8(PathUtils.join(userApps, "vimma-vimma.desktop"), "");
+    Assert.ok(!check(), "an empty user copy comes first, so Omarchy finds no Exec");
+  } finally {
+    await IOUtils.remove(root, { recursive: true });
+  }
 });

@@ -93,10 +93,27 @@ describe("defaultHandlers", () => {
     ]);
     expect(
       defaultHandlers(
-        "[Default Applications]\nx-scheme-handler/http = a.desktop;b.desktop;\nx-scheme-handler/http=c.desktop\n",
+        "[Default Applications]\nx-scheme-handler/http=a.desktop;b.desktop;\nx-scheme-handler/http=c.desktop\n",
         "x-scheme-handler/http",
       ),
     ).toEqual(["a.desktop", "b.desktop"]);
+  });
+
+  test("reads a line only as Omarchy's launcher does: the key at column 1, no spaces", () => {
+    for (const line of [
+      "x-scheme-handler/http = vimma-vimma.desktop",
+      " x-scheme-handler/http=vimma-vimma.desktop",
+    ]) {
+      expect(defaultHandlers(`[Default Applications]\n${line}\n`, "x-scheme-handler/http")).toEqual(
+        [],
+      );
+    }
+    expect(
+      defaultHandlers(
+        "[Default Applications]\nx-scheme-handler/http= vimma-vimma.desktop\n",
+        "x-scheme-handler/http",
+      ),
+    ).toEqual([" vimma-vimma.desktop"]);
   });
 
   test("ignores comments, other sections and other types", () => {
@@ -134,15 +151,14 @@ describe("routedBrowser", () => {
 });
 
 describe("commandProgram", () => {
-  test("takes the program of a desktop entry's command line", () => {
+  test("takes the command line up to its first space, as Omarchy's launcher does", () => {
     expect(commandProgram("/opt/vimma/vimma-open %u")).toBe(OWN);
-    expect(commandProgram('"/opt/my apps/vimma-open" %u')).toBe("/opt/my apps/vimma-open");
-    expect(commandProgram("  vimma-open")).toBe("vimma-open");
+    expect(commandProgram("vimma-open")).toBe("vimma-open");
   });
 
-  test("returns empty for a quoted program with escapes or no closing quote", () => {
-    expect(commandProgram('"/opt/a\\"b" %u')).toBe("");
-    expect(commandProgram('"/opt/vimma')).toBe("");
+  test("keeps quotes and tabs, so a quoted program never matches", () => {
+    expect(commandProgram('"/opt/vimma/vimma-open" %u')).toBe('"/opt/vimma/vimma-open"');
+    expect(commandProgram(`${OWN}\t%u`)).toBe(`${OWN}\t%u`);
     expect(commandProgram("")).toBe("");
   });
 });
@@ -162,7 +178,7 @@ describe("dataDirs", () => {
 });
 
 describe("desktopEntryExec", () => {
-  test("reads Exec from the [Desktop Entry] group only", () => {
+  test("takes the first Exec= line, as Omarchy's launcher does", () => {
     const text = [
       "[Desktop Entry]",
       "Name=Vimma",
@@ -172,8 +188,13 @@ describe("desktopEntryExec", () => {
       "Exec=/usr/bin/other --new-window",
     ].join("\n");
     expect(desktopEntryExec(text)).toBe(`${OWN} %u`);
-    expect(desktopEntryExec("[Desktop Action x]\nExec=/x\n")).toBeNull();
     expect(desktopEntryExec(null)).toBeNull();
+    expect(desktopEntryExec("")).toBeNull();
+  });
+
+  test("never reads an indented or spaced Exec, which Omarchy's sed skips", () => {
+    expect(desktopEntryExec(`[Desktop Entry]\n Exec=${OWN} %u\n`)).toBeNull();
+    expect(desktopEntryExec(`[Desktop Entry]\nExec = ${OWN} %u\n`)).toBeNull();
   });
 });
 
@@ -231,6 +252,12 @@ describe("isDefaultThroughRouter", () => {
     expect(check({ entryFor: exec("/usr/bin/vimma-open %u") })).toBe(false);
     expect(check({ entryFor: exec(`${OWN}x %u`), resolves: () => true })).toBe(false);
     expect(check({ appPath: "" })).toBe(false);
+  });
+
+  test("a quoted Exec never counts, since Omarchy's launcher cannot run it", () => {
+    expect(
+      check({ entryFor: () => `[Desktop Entry]\nExec="${OWN}" %u\n`, resolves: () => true }),
+    ).toBe(false);
   });
 
   test("is false when Vimma's entry or its program is missing", () => {
