@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 import { tempDir } from "./temp-dir.mjs";
 import { runJobs } from "./workflow-if.mjs";
 import { readRecord } from "../update/nightly-change.mjs";
+import { PACKED, fakeTree } from "../update/test/fake-objdir.mjs";
 
 // Spec build-supply-chain, decision 23, and spec m6a-updater, decisions 42 and 43: the nightly's
 // build job keeps the package as a short-lived workflow artifact and holds no write token. Only
@@ -272,7 +274,7 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
       "manifest",
     ]);
     expect(report.if).toBe("failure()");
-    expect(report.permissions).toEqual({ issues: "write" });
+    expect(report.permissions).toEqual({ actions: "read", issues: "write" });
     const download = uses("report", "actions/download-artifact");
     expect(download.with).toMatchObject({ name: "nightly-log" });
     const text = JSON.stringify(report);
@@ -697,5 +699,177 @@ printf '%s' ${code}
     const r = run(setUp({ release: "pre", assets, live: BUILD }), PRUNE);
     expect(r.status, r.stderr).toBe(0);
     expect(deleted(r)).toEqual([]);
+  });
+});
+
+// Spec m6a-updater §7: the build packs the MAR tools with tools/update/mar-tools.mjs, as
+// release.yml's build does, so the two cannot drift apart again: the first public nightly packed
+// signmar without its NSS libraries (an ldd filter of its own, against a relative objdir), and
+// its mar job failed after the MAR had been signed. The pack checks that signmar and mar start
+// from the packed directory, so a broken pack fails the build before anything is uploaded, and
+// it runs on every nightly, public or not, as a check of the release's.
+describe("nightly.yml: the MAR tools, packed and checked as release.yml's", () => {
+  const PACK = "MAR tools, packed and checked";
+  const RELEASE = jobs(
+    readFileSync(new URL("../../.github/workflows/release.yml", import.meta.url), "utf8"),
+  );
+  /** @param {string} name */
+  const releaseStep = (name) => {
+    const found = /** @type {Record<string, any>[]} */ (RELEASE.get("build")?.steps ?? []).find(
+      (s) => s.name === name,
+    );
+    if (!found) throw new Error(`release.yml build: no step ${name}`);
+    return found;
+  };
+
+  it("packs with the script release.yml uses, on every nightly", () => {
+    const pack = step("build", PACK);
+    expect(pack.if).toBeUndefined();
+    expect(oneLine(pack.run)).toContain(
+      "node tools/update/mar-tools.mjs pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools",
+    );
+    expect(oneLine(releaseStep("MAR tools for the package and mar jobs").run)).toContain(
+      'node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools',
+    );
+    // Neither workflow filters ldd's output itself any more.
+    expect(TEXT).not.toContain("ldd");
+    expect(JSON.stringify([...RELEASE.values()])).not.toContain("ldd");
+  });
+
+  it("packs after the key file is gone, before the MAR is built and anything is uploaded", () => {
+    const names = steps("build").map((s) => s.name ?? s.uses);
+    const pack = names.indexOf(PACK);
+    expect(pack).toBeGreaterThan(names.indexOf("Delete the Safe Browsing key file"));
+    expect(pack).toBeLessThan(names.indexOf("Complete MAR, for the nightly channel"));
+    for (const artifact of ["mar-unsigned", "mar-tools", "vimma-nightly"]) {
+      const upload = uses("build", "actions/upload-artifact", artifact);
+      expect(names.indexOf(upload.name ?? upload.uses)).toBeGreaterThan(pack);
+    }
+    // No mach call follows the key file's removal: mach re-reads the mozconfig, which needs it.
+    const after = steps("build").slice(names.indexOf("Delete the Safe Browsing key file") + 1);
+    expect(JSON.stringify(after)).not.toMatch(/\bmach\b|surfer (build|import|package)|npm run/);
+  });
+
+  it("builds the nightly's MAR with the packed tools", () => {
+    const run = String(step("build", "Complete MAR, for the nightly channel").run);
+    expect(oneLine(run)).toContain(
+      'node tools/update/mar.mjs build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar"',
+    );
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "the step, run in a checkout, packs signmar's libraries from the relative objdir",
+    () => {
+      const root = tempDir("vimma-nightly-mar-tools-");
+      fakeTree(root);
+      // The checkout's tools/, as the step finds them in the runner's workspace.
+      symlinkSync(fileURLToPath(new URL("..", import.meta.url)), join(root, "tools"));
+      const result = spawnSync("bash", ["-e", "-c", String(step("build", PACK).run)], {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, LOG: join(root, "nightly.log"), LD_LIBRARY_PATH: "" },
+      });
+      expect(result.status, result.stderr).toBe(0);
+      expect(readdirSync(join(root, "mar-tools")).sort()).toEqual(PACKED);
+    },
+  );
+});
+
+// A failure names the jobs and steps that failed, from the run's metadata (never a job's log,
+// which only the build redacts), so the issue says where to look without opening the run.
+describe.skipIf(process.platform !== "linux")("nightly.yml: the failure report, run", () => {
+  const JOBS_JSON = JSON.stringify({
+    jobs: [
+      { name: "build", conclusion: "success", steps: [{ name: "Build", conclusion: "success" }] },
+      {
+        name: "mar",
+        conclusion: "failure",
+        steps: [
+          { name: "The MAR was signed", conclusion: "success" },
+          { name: "Check the signed MAR", conclusion: "failure" },
+          { name: "The nightly's files and SHA256SUMS", conclusion: "skipped" },
+        ],
+      },
+      { name: "publish", conclusion: "skipped", steps: [] },
+    ],
+  });
+
+  /**
+   * @param {{ open: string, runView: "ok" | "fail" }} o
+   */
+  function report({ open, runView }) {
+    const dir = tempDir("vimma-nightly-report-");
+    mkdirSync(join(dir, "bin"));
+    writeFileSync(join(dir, "jobs.json"), JOBS_JSON);
+    writeFileSync(
+      join(dir, "bin/gh"),
+      `#!/bin/bash
+echo "$*" >> "$CALLS"
+case "$1 $2" in
+  "run view")
+    ${runView === "ok" ? "" : "exit 1"}
+    shift 2
+    jq_filter=""
+    while [ $# -gt 0 ]; do case "$1" in --jq) jq_filter=$2; shift ;; esac; shift; done
+    jq -r "$jq_filter" "$JOBS" ;;
+  "issue list") printf '%s\\n' "${open}" ;;
+  "issue comment"|"issue create")
+    while [ $# -gt 0 ]; do case "$1" in --body-file) cp "$2" "$BODY" ;; esac; shift; done ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    const s = step("report", "Open or update the failure issue");
+    const result = spawnSync("bash", ["-e", "-c", String(s.run)], {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PATH: `${join(dir, "bin")}:${process.env.PATH}`,
+        GH_REPO: "vimma-browser/vimma",
+        RUN_ID: "43207796514",
+        RUN_URL: "https://github.com/vimma-browser/vimma/actions/runs/43207796514",
+        CALLS: join(dir, "calls.txt"),
+        BODY: join(dir, "body.md"),
+        JOBS: join(dir, "jobs.json"),
+      },
+    });
+    const body = (() => {
+      try {
+        return readFileSync(join(dir, "body.md"), "utf8");
+      } catch {
+        return "";
+      }
+    })();
+    return { ...result, body, calls: readFileSync(join(dir, "calls.txt"), "utf8") };
+  }
+
+  it("names the failed job and step in the issue", () => {
+    const r = report({ open: "847", runView: "ok" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.calls).toContain("issue comment 847");
+    expect(r.body).toContain("43207796514");
+    expect(r.body).toContain("Failed: mar, step Check the signed MAR");
+    expect(r.body).not.toMatch(/Failed: (build|publish)/);
+  });
+
+  it("opens an issue when none is open", () => {
+    const r = report({ open: "", runView: "ok" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.calls).toMatch(/issue create --title Nightly build failed \d{4}-\d\d-\d\d/);
+    expect(r.body).toContain("Failed: mar, step Check the signed MAR");
+  });
+
+  it("still reports when the run's jobs cannot be read", () => {
+    const r = report({ open: "847", runView: "fail" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.calls).toContain("issue comment 847");
+    expect(r.body).toContain("43207796514");
+  });
+
+  it("reads the run's jobs with a read-only actions token, beside its issues one", () => {
+    expect(job("report").permissions).toEqual({ actions: "read", issues: "write" });
+    const s = step("report", "Open or update the failure issue");
+    expect(s.env).toMatchObject({ RUN_ID: "${{ github.run_id }}" });
   });
 });

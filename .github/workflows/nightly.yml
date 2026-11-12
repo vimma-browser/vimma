@@ -243,6 +243,11 @@ jobs:
           node tools/release/build-id.mjs --binary "$unpacked/vimma/vimma" --ini "$unpacked/vimma/application.ini"
           rm -rf "$unpacked"
 
+      # The last mach call is behind: the key file goes before any step runs the build's tools.
+      - name: Delete the Safe Browsing key file
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vimma-safebrowsing.key"
+
       # Spec m6a-updater §1: the build's channel stays vimma, which picks the updater's
       # certificates; the package gets the nightly's own update channel, in both files that
       # name it. Then sub-PR 2's done criteria on what is uploaded: it asks updates.vimma.dev,
@@ -258,6 +263,16 @@ jobs:
           tar -xJf "$tarball" -C "$unpacked"
           node tools/update/check-build.mjs "$unpacked/vimma" --channel vimma-nightly 2>&1 | tee -a "$LOG"
           rm -rf "$unpacked"
+
+      # As release.yml's build, with the same script: the host mar, Mozilla's update scripts,
+      # signmar with the libraries of the objdir it loads, and Mozilla's update certificates,
+      # checked to start from mar-tools as the mar job runs them. On every nightly, so a change
+      # that breaks the pack fails a nightly before it can fail a release; uploaded only for a
+      # public nightly.
+      - name: MAR tools, packed and checked
+        run: |
+          set -o pipefail
+          node tools/update/mar-tools.mjs pack --objdir engine/obj-x86_64-pc-linux-gnu --engine engine --out mar-tools 2>&1 | tee -a "$LOG"
 
       # release.yml's MAR step, with this build's host mar and Mozilla's make_full_update.sh, so
       # a change that breaks it fails a nightly before it can fail a release. For a public nightly
@@ -276,13 +291,8 @@ jobs:
           # The smoke check compared it with surfer.json; the release notes record it (decision 44).
           firefox=$(tar -xJOf "$tarball" vimma/application.ini | sed -n 's/^Version=//p')
           mar="vimma-nightly-$build_id-linux-x86_64.complete.mar"
-          tools=$(mktemp -d)
-          cp engine/obj-x86_64-pc-linux-gnu/dist/host/bin/mar engine/tools/update-packaging/make_full_update.sh \
-            engine/tools/update-packaging/common.sh "$tools/"
           mkdir -p mar
-          node tools/update/mar.mjs build --tarball "$tarball" \
-            --tools "$tools" --channel vimma-nightly --out "mar/$mar" 2>&1 | tee -a "$LOG"
-          rm -rf "$tools"
+          node tools/update/mar.mjs build --tarball "$tarball" --tools mar-tools --channel vimma-nightly --out "mar/$mar" 2>&1 | tee -a "$LOG"
           if [ "$PUBLIC" = true ]; then
             echo "mar=$mar" >> "$GITHUB_OUTPUT"
             echo "build_id=$build_id" >> "$GITHUB_OUTPUT"
@@ -290,21 +300,6 @@ jobs:
           else
             rm -rf mar
           fi
-
-      # As release.yml's build: the host mar, Mozilla's update scripts' tools and signmar with
-      # the NSS libraries it loads from beside it, for the mar job's checks.
-      - name: MAR tools for the mar job
-        if: vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true'
-        run: |
-          set -o pipefail
-          obj=engine/obj-x86_64-pc-linux-gnu
-          rm -rf mar-tools && mkdir -p mar-tools
-          cp "$obj/dist/host/bin/mar" "$obj/dist/bin/signmar" mar-tools/
-          for lib in $(ldd "$obj/dist/bin/signmar" | awk -v d="$obj/dist/bin/" 'index($3, d) == 1 { print $3 }') \
-            "$obj/dist/bin/libsoftokn3.so" "$obj/dist/bin/libfreeblpriv3.so"; do
-            cp "$lib" mar-tools/
-          done
-          ls -l mar-tools
 
       - name: Upload the unsigned MAR
         if: vars.NIGHTLY_RELEASE_ENABLED == 'true' && vars.UPDATES_ENABLED == 'true'
@@ -323,10 +318,6 @@ jobs:
           path: mar-tools/
           retention-days: 7
           if-no-files-found: error
-
-      - name: Delete the Safe Browsing key file
-        if: always()
-        run: rm -f "$RUNNER_TEMP/vimma-safebrowsing.key"
 
       # Kept a week, then deleted by GitHub. Not a release: no release page, no tag. The
       # repository is public, so anyone signed in to GitHub can still download it from the run.
@@ -645,14 +636,16 @@ jobs:
     with:
       nightly: ${{ needs.build.result == 'success' && needs.build.outputs.build_id || needs.changes.outputs.build_id }}
 
-  # Reads only the log the build job uploaded after scrubbing the key from it; it has no secret.
-  # Any job's failure opens or updates the issue; only the build's leaves a log.
+  # Reads only the log the build job uploaded after scrubbing the key from it, and the names and
+  # results of the run's jobs and steps; it has no secret. Any job's failure opens or updates the
+  # issue, which names the jobs and steps that failed; only the build's leaves a log.
   report:
     needs: [changes, build, mar-sign, mar, sign, publish, manifest]
     if: failure()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
+      actions: read # the run's jobs and steps, and their results (no logs)
       issues: write # create or comment on the one open `nightly-failure` issue, and its label
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -665,13 +658,21 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           gh label create nightly-failure --color B60205 \
             --description "nightly.yml failed" --force
+          # "Failed: <job>, step <step>" for each failed step, from the run's metadata. A run that
+          # cannot be read still gets its issue, with the link alone.
+          failed=$(gh run view "$RUN_ID" --json jobs --jq '.jobs[] | select(.conclusion == "failure" or .conclusion == "cancelled" or .conclusion == "timed_out") | .name as $job | ([.steps[]? | select(.conclusion == "failure" or .conclusion == "cancelled") | .name] | if length == 0 then ["Failed: \($job)"] else map("Failed: \($job), step \(.)") end)[]') \
+            || failed="(the run's jobs could not be read)"
           {
             echo "Nightly run failed: ${RUN_URL} (the build's full log, if it got that far, is the"
             echo "run's \`nightly-log\` artifact)."
+            echo
+            # Job and step names are this workflow's own; backticks are escaped as in the log.
+            printf '%s\n' "${failed:-(no failed job found)}" | sed 's/`/\\`/g; s/^/- /'
             echo
             echo "Last 150 log lines:"
             echo

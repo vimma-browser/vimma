@@ -227,20 +227,12 @@ jobs:
       # and Mozilla's make_full_update.sh and common.sh, which `./mach repackage mar` runs;
       # signmar with the NSS libraries it loads from beside it, for Mozilla's own check of the
       # signature; and Mozilla's update certificates, which check-build.mjs makes sure the
-      # updater does not embed. No job that holds a secret runs any of them.
+      # updater does not embed. tools/update/mar-tools.mjs packs them, as nightly.yml's build
+      # does, and checks that signmar and mar start from mar-tools, so a broken pack fails here,
+      # before the upload. No job that holds a secret runs any of them.
       - name: MAR tools for the package and mar jobs
         run: |
-          rm -rf mar-tools && mkdir -p mar-tools/mozilla-certs
-          cp "$MOZ_OBJDIR/dist/host/bin/mar" engine/tools/update-packaging/make_full_update.sh \
-            engine/tools/update-packaging/common.sh mar-tools/
-          cp "$MOZ_OBJDIR/dist/bin/signmar" mar-tools/
-          # NSS opens softokn3 and freeblpriv3 itself at startup, so ldd does not list them.
-          for lib in $(ldd "$MOZ_OBJDIR/dist/bin/signmar" | awk -v d="$MOZ_OBJDIR/dist/bin/" 'index($3, d) == 1 { print $3 }') \
-            "$MOZ_OBJDIR/dist/bin/libsoftokn3.so" "$MOZ_OBJDIR/dist/bin/libfreeblpriv3.so"; do
-            cp "$lib" mar-tools/
-          done
-          cp engine/toolkit/mozapps/update/updater/*.der mar-tools/mozilla-certs/
-          ls -l mar-tools mar-tools/mozilla-certs
+          node tools/update/mar-tools.mjs pack --objdir "$MOZ_OBJDIR" --engine engine --out mar-tools
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
