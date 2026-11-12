@@ -38,6 +38,7 @@ const STEP2_PREFS = [
   ["sidebar.main.tools", LAUNCHER_TOOLS],
   ["signon.firefoxRelay.feature", "disabled"],
   ["browser.shell.checkDefaultBrowser", false],
+  ["browser.tabs.firefox-view.importHistory.dismissed", true],
   ["extensions.getAddons.showPane", false],
   ["extensions.htmlaboutaddons.recommendations.enabled", false],
   ["toolkit.datacollection.infoURL", ""],
@@ -134,6 +135,35 @@ add_task(async function account_panel_has_no_monitor_promo() {
   gSync.updateCTAPanel();
   const monitor = PanelMultiView.getViewNode(document, "PanelUI-fxa-menu-monitor-button");
   Assert.ok(monitor.hidden, "the account panel does not promote Mozilla Monitor");
+});
+
+add_task(async function history_sidebar_has_no_import_promo() {
+  // Firefox shows it on profiles under 8 days old (HistoryController.shouldShowImportBanner);
+  // the harness profile is new. Pin its other conditions so that the dismissed pref is what hides it.
+  await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.interactions.history", false]] });
+  registerCleanupFunction(async () => {
+    SidebarController.hide();
+    await PlacesUtils.history.clear();
+  });
+  Assert.ok(Services.policies.isAllowed("profileImport"), "importing is allowed");
+  await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
+  await SidebarController.show("viewHistorySidebar");
+  /** @type {any} */
+  let history;
+  await TestUtils.waitForCondition(() => {
+    history = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
+    return history?.controller && !history.controller.isHistoryPending;
+  }, "the History sidebar loads");
+  history.controller.profileAge = 0;
+  await history.updateComplete;
+  Assert.ok(!history.controller.shouldShowImportBanner, "a new profile gets no import promo");
+  Assert.ok(
+    !history.shadowRoot.querySelector(".import-history-promo"),
+    "the History sidebar shows no import promo",
+  );
+  SidebarController.hide();
+  await PlacesUtils.history.clear();
+  await SpecialPowers.popPrefEnv();
 });
 
 /**
