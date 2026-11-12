@@ -635,6 +635,12 @@ jobs:
     uses: ./.github/workflows/update-publish.yml
     with:
       nightly: ${{ needs.build.result == 'success' && needs.build.outputs.build_id || needs.changes.outputs.build_id }}
+    # By name, though it exists only in the update-publish environment: a called job gets an
+    # environment secret only when its caller passes it (GitHub's reusable-workflow rules), and
+    # only nightly-publish, which deploys to that environment, receives the value. Never
+    # inherited wholesale, which would hand the call every secret this workflow can name.
+    secrets:
+      UPDATES_DEPLOY_KEY: ${{ secrets.UPDATES_DEPLOY_KEY }}
 
   # Reads only the log the build job uploaded after scrubbing the key from it, and the names and
   # results of the run's jobs and steps; it has no secret. Any job's failure opens or updates the

@@ -183,7 +183,12 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
     expect(manifest.needs).toEqual(["changes", "build", "publish"]);
     expect(oneLine(manifest.if)).toContain(`!cancelled() && ${PUBLIC} && `);
     expect(manifest.permissions).toEqual(CEILING);
-    expect(manifest.secrets).toBeUndefined();
+    // A called job reads an environment secret only when its caller passes it, by name, even
+    // though it exists only in the environment; without it nightly-publish saw an empty key (run
+    // 43264245008). Only the deploy key, never `inherit`: the call gets no other secret, and
+    // only nightly-publish, in the update-publish environment, receives its value.
+    expect(manifest.secrets).toEqual({ UPDATES_DEPLOY_KEY: "${{ secrets.UPDATES_DEPLOY_KEY }}" });
+    expect(TEXT).not.toMatch(/secrets: inherit/);
   });
 
   it("the mar job fails, loudly, when the MAR was not signed", () => {
@@ -427,7 +432,10 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
   it("a skipped day starts no job in the build environment and none that reads the key", () => {
     for (const id of nightly("schedule", UNCHANGED).started) {
       expect(job(id).environment, id).toBeUndefined();
-      expect(JSON.stringify(job(id)), id).not.toMatch(/SAFEBROWSING|secrets\./);
+      // The deploy key passed by name to the manifest's call is the one secret named here.
+      const { secrets, ...rest } = job(id);
+      expect(JSON.stringify(rest), id).not.toMatch(/SAFEBROWSING|secrets\./);
+      expect(JSON.stringify(secrets ?? {}), id).not.toMatch(/SAFEBROWSING/);
     }
   });
 

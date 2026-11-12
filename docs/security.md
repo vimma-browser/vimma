@@ -3477,7 +3477,11 @@ _Pages_ and _extensions_ cannot reach it.
   `X.Y.Z-nightly.<buildID>`, one `<patch>` and one `<vimmaTarball>` at that build's URLs on the
   `nightly` release, and nothing else. `nightly-publish` downloads both files again, checks the
   signed file with the browser's verifier and with openssl, and pushes only
-  `…/vimma-nightly/update.xml`, never forced; a missing deploy key fails the run. The release
+  `…/vimma-nightly/update.xml`, never forced; a missing deploy key fails the run. A called job
+  reads an environment secret only when its caller passes it, so `nightly.yml`'s `manifest` call
+  passes `UPDATES_DEPLOY_KEY` by name (declared optional in `workflow_call`), never every secret
+  with `inherit`, and only `nightly-publish`, deploying to `update-publish`, receives its value;
+  the `mar-sign` calls pass none. The release
   jobs refuse a body for any channel but `vimma`, `manifest.mjs` checks each channel before a
   push, and the client refuses a manifest for another channel (UP2), so a nightly offer never
   reaches a release install, nor a release offer a nightly install. Each channel's serials and
@@ -3517,6 +3521,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`checks SHA256SUMS against release.yml's signature, and refuses an unsigned release`](../tools/update/test/update-workflow.test.mjs),
   [`the publish job verifies with the browser's verifier and with openssl before any push`](../tools/update/test/update-workflow.test.mjs),
   [`the deploy key lives in its own environment and reaches only the push steps`](../tools/update/test/update-workflow.test.mjs),
+  [`a call receives the deploy key only by name, optional, and only nightly.yml's manifest passes it`](../tools/update/test/update-workflow.test.mjs),
   [`pushes one commit naming the version to main, never forced, to a pinned host key`](../tools/update/test/update-workflow.test.mjs),
   [`a push the other target's run beat rebases and lands, with no git identity configured`](../tools/update/test/update-workflow.test.mjs),
   [`signs the body so that the browser's verifier accepts it under the KMS key`](../tools/update/test/update-workflow.test.mjs),
