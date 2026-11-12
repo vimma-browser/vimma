@@ -86,6 +86,25 @@ describe("mimeappsLists", () => {
   });
 });
 
+describe("trailing slashes", () => {
+  test("are trimmed in linear time, however many an environment value has", () => {
+    const slashes = "/".repeat(200_000);
+    const start = performance.now();
+    const lists = mimeappsLists({
+      home: `/a${slashes}x${slashes}`,
+      configHome: "",
+      configDirs: `/b${slashes}y${slashes}`,
+      currentDesktop: "",
+    });
+    const dirs = dataDirs({ home: `/a${slashes}x${slashes}`, dataHome: "", dataDirs: "/" });
+    expect(performance.now() - start).toBeLessThan(500);
+    expect(lists[0].endsWith("x/.config/mimeapps.list")).toBe(true);
+    expect(lists[1].endsWith("y/mimeapps.list")).toBe(true);
+    expect(dirs[0].endsWith("x/.local/share")).toBe(true);
+    expect(dirs[1]).toBe("/");
+  });
+});
+
 describe("defaultHandlers", () => {
   test("lists the entries of the first matching line in [Default Applications] only", () => {
     expect(defaultHandlers(plainList("vimma-vimma.desktop"), "x-scheme-handler/http")).toEqual([

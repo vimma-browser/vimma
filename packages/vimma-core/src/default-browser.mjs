@@ -27,11 +27,27 @@ const DESKTOP_NAME = /^[A-Za-z0-9_.-]+$/;
 const ENTRY_ID = /^[A-Za-z0-9_+-][A-Za-z0-9_.+-]*\.desktop$/;
 
 /**
+ * Trims trailing slashes with a loop, not a regex: the value comes from the environment, and
+ * `/(.)\/+$/` backtracks polynomially on a long run of slashes.
+ *
+ * @param {string} dir
+ * @param {number} keep how many leading characters to keep even when they are slashes
+ * @returns {string}
+ */
+function trimSlashes(dir, keep = 0) {
+  let end = dir.length;
+  while (end > keep && dir.charCodeAt(end - 1) === 0x2f) {
+    end--;
+  }
+  return dir.slice(0, end);
+}
+
+/**
  * @param {string[]} dirs
  * @returns {string[]} the absolute ones, without a trailing slash (the XDG spec ignores the rest)
  */
 const absolute = (dirs) =>
-  dirs.filter((dir) => dir.startsWith("/")).map((dir) => dir.replace(/(.)\/+$/, "$1"));
+  dirs.filter((dir) => dir.startsWith("/")).map((dir) => trimSlashes(dir, 1));
 
 /**
  * The data dirs whose applications/ hold desktop entries, in XDG order.
@@ -41,7 +57,7 @@ const absolute = (dirs) =>
  */
 export function dataDirs({ home, dataHome, dataDirs: dirs }) {
   return absolute([
-    dataHome || (home ? `${home.replace(/\/+$/, "")}/.local/share` : ""),
+    dataHome || (home ? `${trimSlashes(home)}/.local/share` : ""),
     ...(dirs || "/usr/local/share:/usr/share").split(":"),
   ]);
 }
@@ -56,7 +72,7 @@ export function dataDirs({ home, dataHome, dataDirs: dirs }) {
  */
 export function mimeappsLists({ home, configHome, configDirs, currentDesktop }) {
   const dirs = absolute([
-    configHome || (home ? `${home.replace(/\/+$/, "")}/.config` : ""),
+    configHome || (home ? `${trimSlashes(home)}/.config` : ""),
     ...(configDirs || "/etc/xdg").split(":"),
   ]);
   const desktops = currentDesktop
