@@ -361,7 +361,9 @@ add_task(async function deleting_a_workspace_asks_what_becomes_of_its_bookmarks(
   await until(() => !def("deleter"), "d closes the workspace");
   await until(async () => !(await PlacesUtils.bookmarks.fetch(delGuid)), "and deletes the folder");
   Assert.equal(await placeOf(`${PAGE}?deleter`), null, "with its bookmark");
-  Assert.stringContains(noticeText(), "deleted its 1 bookmark", "and says so");
+  // The notice comes once remove() resolves, after Places' own notifications: later than the
+  // folder's row is gone from the database, which is what the wait above sees.
+  await until(() => noticeText().includes("deleted its 1 bookmark"), "and says so");
 });
 
 add_task(async function a_workspace_with_an_empty_or_no_folder_asks_nothing_more() {
