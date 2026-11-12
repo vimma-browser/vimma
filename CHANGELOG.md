@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) (2026-11-12)
+## [Unreleased]
+
+## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) · Firefox 160.0 (2026-11-12)
 
 
 ### Added
@@ -26,8 +28,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **theme:** theme tab overview and the history import promo ([#916](https://github.com/vimma-browser/vimma/issues/916)) ([5806fe3](https://github.com/vimma-browser/vimma/commit/5806fe3705cd940a06e4a3138a11c4d0657554cc)), closes [#912](https://github.com/vimma-browser/vimma/issues/912)
 * **update:** refuse non-printable bytes before signing the manifest ([#923](https://github.com/vimma-browser/vimma/issues/923)) ([ac68574](https://github.com/vimma-browser/vimma/commit/ac68574fa9e1a6eb24037305f48a59eb8aab8b56))
 * **urlbar:** keep the 4:5 pages-to-suggestions share without patching firefox ([#920](https://github.com/vimma-browser/vimma/issues/920)) ([4e9ada6](https://github.com/vimma-browser/vimma/commit/4e9ada6ae86cc6754cf9c50efb15663d7abde18c))
-
-## [Unreleased]
 
 ## [0.1.18](https://github.com/vimma-browser/vimma/compare/v0.1.17...v0.1.18) · Firefox 160.0 (2026-11-11)
 
