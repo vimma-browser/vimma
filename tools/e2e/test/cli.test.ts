@@ -5,10 +5,10 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { E2E_FONTCONFIG } from "../launcher.mjs";
+import { E2E_FONTCONFIG } from "../launcher.ts";
 import { defined } from "../../test/defined.ts";
 
-const CLI = fileURLToPath(new URL("../e2e.mjs", import.meta.url));
+const CLI = fileURLToPath(new URL("../e2e.ts", import.meta.url));
 // macOS has no /bin/false or /bin/true, only /usr/bin's.
 const BIN = process.platform === "darwin" ? "/usr/bin" : "/bin";
 
@@ -113,7 +113,7 @@ describe("npm run e2e -- --headless", () => {
       ].join("\n"),
       { mode: 0o755 },
     );
-    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.mjs", import.meta.url));
+    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.ts", import.meta.url));
     const shots = join(dir, "shots");
     const out = join(dir, "o");
     const r = spawnSync(
@@ -161,7 +161,7 @@ describe("npm run e2e: the scenarios' fonts", () => {
       ].join("\n"),
       { mode: 0o755 },
     );
-    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.mjs", import.meta.url));
+    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.ts", import.meta.url));
     // --keep leaves the profile (with the fake browser's record of its env) in TMPDIR, and the
     // run folder in XDG_RUNTIME_DIR: both inside this test's temp dir, removed with it.
     const tmp = join(dir, "tmp");

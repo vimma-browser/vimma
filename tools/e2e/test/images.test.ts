@@ -3,17 +3,15 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { decodePng, encodePng } from "../png.mjs";
+import { decodePng, encodePng } from "../png.ts";
 import fc from "fast-check";
-import { decodeXwd } from "../xwd.mjs";
-import { CHANNEL_TOLERANCE, MAX_DIFF_RATIO, checkBaseline, diffImages } from "../screenshot.mjs";
+import { decodeXwd } from "../xwd.ts";
+import { CHANNEL_TOLERANCE, MAX_DIFF_RATIO, checkBaseline, diffImages } from "../screenshot.ts";
 import { defined } from "../../test/defined.ts";
 
-const fixture = (/** @type {string} */ name) =>
-  readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
+const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
 
-/** @param {number} width @param {number} height @param {(x: number, y: number) => number[]} f */
-function image(width, height, f) {
+function image(width: number, height: number, f: (x: number, y: number) => number[]) {
   const data = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) data.set(f(x, y), (y * width + x) * 4);
@@ -21,8 +19,7 @@ function image(width, height, f) {
   return { width, height, data };
 }
 
-/** @type {string[]} */
-const dirs = [];
+const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
@@ -38,9 +35,9 @@ describe("PNG", () => {
       ["rgba.png", "rgba.raw"],
       ["rgb.png", "rgb.raw"],
     ]) {
-      const img = decodePng(fixture(/** @type {string} */ (png)));
+      const img = decodePng(fixture(png as string));
       expect([img.width, img.height]).toEqual([17, 13]);
-      expect(Buffer.from(img.data).equals(fixture(/** @type {string} */ (raw)))).toBe(true);
+      expect(Buffer.from(img.data).equals(fixture(raw as string))).toBe(true);
     }
   });
 
@@ -51,20 +48,20 @@ describe("PNG", () => {
     const rows = [0, 1, 2, 3, 4].map((r) =>
       Uint8Array.from({ length: w * bpp }, (_, i) => (r * 37 + i * 53) & 0xff),
     );
-    const paeth = (/** @type {number} */ a, /** @type {number} */ b, /** @type {number} */ c) => {
+    const paeth = (a: number, b: number, c: number) => {
       const p = a + b - c;
       const [pa, pb, pc] = [Math.abs(p - a), Math.abs(p - b), Math.abs(p - c)];
       return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
     };
     const raw = [];
     for (let y = 0; y < rows.length; y++) {
-      const row = /** @type {Uint8Array} */ (rows[y]);
+      const row = rows[y] as Uint8Array;
       const prev = rows[y - 1] ?? new Uint8Array(w * bpp);
       raw.push(y);
       for (let i = 0; i < row.length; i++) {
-        const a = i >= bpp ? /** @type {number} */ (row[i - bpp]) : 0;
-        const b = /** @type {number} */ (prev[i]);
-        const c = i >= bpp ? /** @type {number} */ (prev[i - bpp]) : 0;
+        const a = i >= bpp ? (row[i - bpp] as number) : 0;
+        const b = prev[i] as number;
+        const c = i >= bpp ? (prev[i - bpp] as number) : 0;
         const pred = [0, a, b, (a + b) >> 1, paeth(a, b, c)][y] ?? 0;
         raw.push((defined(row[i]) - pred) & 0xff);
       }
@@ -134,8 +131,7 @@ describe("XWD (Xvfb -fbdir)", () => {
 
   // A hostile or corrupt header must fail fast, never hang or misread.
   const black = () => xvfbXwd(3, 2, [[0, 0, 0]], false);
-  /** @param {number} field @param {number} value */
-  const patched = (field, value) => {
+  const patched = (field: number, value: number) => {
     const buf = Buffer.from(black());
     buf.writeUInt32BE(value >>> 0, field * 4);
     return buf;
@@ -177,8 +173,7 @@ describe("diffImages (plan §4: 0.5 % tolerance)", () => {
   const W = 100;
   const H = 100; // 10 000 pixels: 0.5 % is exactly 50
   const base = image(W, H, () => [200, 200, 200, 255]);
-  /** @param {number} n */
-  const withDiffs = (n) =>
+  const withDiffs = (n: number) =>
     image(W, H, (x, y) => (y * W + x < n ? [0, 0, 0, 255] : [200, 200, 200, 255]));
 
   it("uses 0.5 % and a per-channel tolerance of 2", () => {
@@ -259,12 +254,8 @@ describe("checkBaseline", () => {
   });
 });
 
-/**
- * A PNG with the given already-filtered scanlines.
- * @param {number} w @param {number} h @param {number} colourType @param {Uint8Array} raw
- * @param {number} [depth]
- */
-function rawPng(w, h, colourType, raw, depth = 8) {
+/** A PNG with the given already-filtered scanlines. */
+function rawPng(w: number, h: number, colourType: number, raw: Uint8Array, depth: number = 8) {
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w, 0);
   ihdr.writeUInt32BE(h, 4);
@@ -278,8 +269,7 @@ function rawPng(w, h, colourType, raw, depth = 8) {
   ]);
 }
 
-/** @param {string} type @param {Buffer} data */
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const head = Buffer.alloc(8);
   head.writeUInt32BE(data.length, 0);
   head.write(type, 4, "latin1");
@@ -288,8 +278,7 @@ function chunk(type, data) {
   return Buffer.concat([head, data, crc]);
 }
 
-/** @param {Buffer} buf */
-function crc32(buf) {
+function crc32(buf: Buffer) {
   let c = 0xffffffff;
   for (const byte of buf) {
     c ^= byte;
@@ -301,9 +290,8 @@ function crc32(buf) {
 /**
  * An XWD as Xvfb writes it for `-screen 0 WxHx24`: TrueColor, 32 bits per pixel, pixels
  * LSB-first, a window name and 256 colormap entries before the pixels.
- * @param {number} w @param {number} h @param {number[][]} pixels @param {boolean} littleHeader
  */
-function xvfbXwd(w, h, pixels, littleHeader) {
+function xvfbXwd(w: number, h: number, pixels: number[][], littleHeader: boolean) {
   const name = Buffer.from("Xvfb main window\0");
   const headerSize = 100 + name.length;
   const ncolors = 256;

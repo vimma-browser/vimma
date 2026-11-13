@@ -2,27 +2,21 @@ import { describe, expect, it } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { exitCode, formatReport, githubAnnotations, runScenarios } from "../runner.mjs";
+import { exitCode, formatReport, githubAnnotations, runScenarios } from "../runner.ts";
 
-/** @param {string} name @param {object} [over] */
-const scn = (name, over = {}) => ({
+const scn = (name: string, over: object = {}) => ({
   name,
   description: name,
   steps: [{ "assert-state": { mode: "insert" } }],
   ...over,
 });
 
-/**
- * A session factory over a scripted fake ctl; records launches and teardowns.
- * @param {Record<string, object>} [statesByName]
- */
-function sessions(statesByName = {}) {
-  /** @type {string[]} */
-  const events = [];
+/** A session factory over a scripted fake ctl; records launches and teardowns. */
+function sessions(statesByName: Record<string, object> = {}) {
+  const events: string[] = [];
   return {
     events,
-    /** @param {{ name: string }} s */
-    startSession: async (s) => {
+    startSession: async (s: { name: string }) => {
       events.push(`launch ${s.name}`);
       if (s.name.includes("nolaunch")) throw new Error("no control socket within 30000 ms");
       const state = statesByName[s.name] ?? { mode: "insert" };
@@ -141,7 +135,7 @@ describe("runScenarios", () => {
     const { events, startSession } = sessions();
     let t = 0;
     const now = () => t;
-    const slowStart = async (/** @type {{ name: string }} */ s) => {
+    const slowStart = async (s: { name: string }) => {
       t += 4000;
       return startSession(s);
     };
@@ -172,8 +166,7 @@ describe("runScenarios", () => {
 
   // Timeouts must be hard: a hanging launch or vimma-ctl must not overrun.
   it("aborts a hanging launch at the timeout and returns on time", async () => {
-    /** @type {AbortSignal[]} */
-    const signals = [];
+    const signals: AbortSignal[] = [];
     const started = Date.now();
     const results = await runScenarios([scn("m0-hang", { timeoutSeconds: 0.3 })], {
       startSession: (_s, { signal }) => {
@@ -188,8 +181,7 @@ describe("runScenarios", () => {
   });
 
   it("tears down a session that arrives after the timeout", async () => {
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     const results = await runScenarios([scn("m0-late", { timeoutSeconds: 0.2 })], {
       startSession: () =>
         new Promise((resolve) =>
@@ -211,8 +203,7 @@ describe("runScenarios", () => {
   });
 
   it("does not wait on a step that ignores the abort, and still tears down", async () => {
-    /** @type {string[]} */
-    const events = [];
+    const events: string[] = [];
     const started = Date.now();
     const results = await runScenarios([scn("m0-stuck", { timeoutSeconds: 0.3 })], {
       startSession: async () => ({
@@ -243,13 +234,13 @@ describe("report", () => {
     { name: "m1-b", status: "pending", ms: 0, error: "needs the server" },
   ];
   it("lists each scenario and the totals", () => {
-    const text = formatReport(/** @type {any} */ (results));
+    const text = formatReport(results as any);
     expect(text).toMatch(/PASS\s+m0-a\s+1\.2 s/);
     expect(text).toMatch(/FAIL\s+issue-7-x[^]*step 2 \(keys\): boom/);
     expect(text).toMatch(/1 passed, 1 failed, 1 pending/);
   });
   it("emits GitHub annotations: errors for failures, a notice for pending", () => {
-    expect(githubAnnotations(/** @type {any} */ (results))).toEqual([
+    expect(githubAnnotations(results as any)).toEqual([
       "::error title=e2e issue-7-x::step 2 (keys): boom",
       "::notice title=e2e pending::m1-b is pending, not run and not passed: needs the server",
     ]);

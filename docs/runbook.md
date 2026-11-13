@@ -22,7 +22,7 @@ npx surfer download
 npm run verify-source      # the tarball against Mozilla's signed SHA512SUMS (ADR-021)
 npx surfer bootstrap
 npx surfer build
-npm start                  # tools/start.mjs: the build with ~/.cache/vimma-dev-profile
+npm start                  # tools/start.ts: the build with ~/.cache/vimma-dev-profile
 ```
 
 ## Smoke check
@@ -209,7 +209,7 @@ In a local objdir the chrome files are symlinks into `engine/`, which `surfer im
 repo's `src/`, outside the Firefox tree; the content sandbox then refuses them and the console
 says `Failed to load chrome://browser/content/vimma/actors/VimmaChild.sys.mjs` (no hints, no
 insert mode). Mochitests relax the sandbox, so they never see it. The e2e harness writes the same
-pref (`devPrefs` from `tools/start.mjs`) and keeps the default sandbox, and its
+pref (`devPrefs` from `tools/start.ts`) and keeps the default sandbox, and its
 `m0-content-actor` scenario fails without it (checked: `normal` instead of `insert`). Any scenario
 also fails when the browser logs a `Failed to load chrome://browser/content/vimma/…`.
 
@@ -300,7 +300,7 @@ local URL and, after the update, N+1's build ID are what it runs with. With
 `MOZ_DISABLE_NONLOCAL_CONNECTIONS` any connection off 127.0.0.1 crashes the browser ("FATAL
 ERROR: Non-local network connections are disabled", in the failure's teardown output); the
 scenario profile turns off the ones Firefox makes on its own (`updatePrefs` in
-`tools/e2e/update-host.mjs`), and a scenario types `:update` only once a page has focus, since
+`tools/e2e/update-host.ts`), and a scenario types `:update` only once a page has focus, since
 in the address bar it is a search. The updater applies the update by `execv` in the browser's
 own process, so a `restart` step follows it with nothing extra. `serve-update` picks the
 manifest (`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`);

@@ -38,21 +38,21 @@ import {
   waitForDiscovery,
   waitForSessionSaved,
   xvfbArgs,
-} from "../launcher.mjs";
-import { READ_PATH_PREF, devPrefs } from "../../start.mjs";
-import { startFakeServer } from "./fake-server.mjs";
+} from "../launcher.ts";
+import { READ_PATH_PREF, devPrefs } from "../../start.ts";
+import { startFakeServer } from "./fake-server.ts";
 import { defined } from "../../test/defined.ts";
+import type { FakeServer } from "./fake-server.ts";
+import type { ChildProcess } from "node:child_process";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
-const FAKE_BROWSER = fileURLToPath(new URL("./fixtures/fake-browser.mjs", import.meta.url));
-const FAKE_XVFB = fileURLToPath(new URL("./fixtures/fake-xvfb.mjs", import.meta.url));
-const E2E_CLI = fileURLToPath(new URL("../e2e.mjs", import.meta.url));
+const FAKE_BROWSER = fileURLToPath(new URL("./fixtures/fake-browser.ts", import.meta.url));
+const FAKE_XVFB = fileURLToPath(new URL("./fixtures/fake-xvfb.ts", import.meta.url));
+const E2E_CLI = fileURLToPath(new URL("../e2e.ts", import.meta.url));
 
-/** @type {string[]} */
-const dirs = [];
-/** @type {Array<() => Promise<void>>} */
-const cleanups = [];
+const dirs: string[] = [];
+const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0)) await c();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
@@ -64,19 +64,18 @@ const tempDir = () => {
   return d;
 };
 
-/** @param {number} pid @returns {string} ps's state letters, "" once the pid is gone */
-const psState = (pid) => {
+/** @returns ps's state letters, "" once the pid is gone */
+const psState = (pid: number): string => {
   try {
     return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
   } catch (err) {
     // ps exits 1 with no output for a pid that does not exist; anything else is a real error.
-    if (/** @type {{ status?: number }} */ (err).status === 1) return "";
+    if ((err as { status?: number }).status === 1) return "";
     throw err;
   }
 };
 
-/** @param {number} pid */
-const alive = (pid) => {
+const alive = (pid: number) => {
   try {
     process.kill(pid, 0);
   } catch {
@@ -108,17 +107,15 @@ describe("alive", () => {
         // Already gone.
       }
     });
-    /** @param {number} pid */
-    const command = (pid) =>
+    const command = (pid: number) =>
       execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
-    for (let i = 0; i < 200 && !/sleep$/.test(command(/** @type {number} */ (parent.pid))); i++)
-      await sleep(25);
+    for (let i = 0; i < 200 && !/sleep$/.test(command(parent.pid as number)); i++) await sleep(25);
     process.kill(zombie, "SIGKILL");
     for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
     expect(psState(zombie)).toMatch(/^Z/);
     expect(() => process.kill(zombie, 0)).not.toThrow();
     expect(alive(zombie)).toBe(false);
-    expect(alive(/** @type {number} */ (parent.pid))).toBe(true);
+    expect(alive(parent.pid as number)).toBe(true);
   });
 });
 
@@ -127,8 +124,7 @@ describe("findBuild", () => {
   const full = "/repo/engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma";
   const art = "/repo/engine/obj-artifact/dist/bin/vimma";
   const artIni = "/repo/engine/obj-artifact/dist/bin/browser/application.ini";
-  /** @param {string[]} present */
-  const exists = (present) => (/** @type {string} */ p) => present.includes(p);
+  const exists = (present: string[]) => (p: string) => present.includes(p);
 
   it("prefers an explicit --build binary, or the vimma inside a dist/bin directory", () => {
     expect(findBuild({ build: "/x/vimma", engine, exists: exists(["/x/vimma"]) })).toEqual({
@@ -467,8 +463,7 @@ describe("displayMode", () => {
 describe("waitForDiscovery", () => {
   it("returns the discovery file once the server writes it", async () => {
     const profile = tempDir();
-    /** @type {import("./fake-server.mjs").FakeServer | undefined} */
-    let fake;
+    let fake: FakeServer | undefined;
     setTimeout(async () => {
       fake = await startFakeServer(profile);
     }, 300);
@@ -533,8 +528,7 @@ describe("waitForDiscovery", () => {
 });
 
 describe("launch and teardown (fake browser)", () => {
-  /** @param {Record<string, string>} env @param {object} [opts] */
-  const start = (env, opts = {}) =>
+  const start = (env: Record<string, string>, opts: object = {}) =>
     launch({
       build: { binary: FAKE_BROWSER, env },
       xvfb: false,
@@ -571,12 +565,11 @@ describe("launch and teardown (fake browser)", () => {
 
   // The update scenarios trust their host's CA in the profile before the browser opens it.
   it("lets the caller change the profile before the browser first starts on it", async () => {
-    /** @type {string[]} */
-    const seen = [];
+    const seen: string[] = [];
     const session = await start(
       {},
       {
-        onProfile: (/** @type {string} */ p) => {
+        onProfile: (p: string) => {
           seen.push(p);
           writeFileSync(join(p, "cert9.db"), "before");
         },
@@ -690,7 +683,7 @@ describe("launch and teardown (fake browser)", () => {
   it("kills the whole process tree and removes the profile on teardown", async () => {
     const session = await start({ FAKE_BROWSER_CHILD: "1" });
     const grandchild = Number(readFileSync(join(session.profile, "grandchild.pid"), "utf8"));
-    const pid = /** @type {number} */ (session.child.pid);
+    const pid = session.child.pid as number;
     expect(alive(pid) && alive(grandchild)).toBe(true);
     await session.teardown();
     expect(alive(pid)).toBe(false);
@@ -701,7 +694,7 @@ describe("launch and teardown (fake browser)", () => {
   it("relaunches in the same profile once the browser has exited (a restart)", async () => {
     const session = await start({ FAKE_BROWSER_DELAY_MS: "100" });
     cleanups.push(() => session.teardown());
-    const first = /** @type {number} */ (session.child.pid);
+    const first = session.child.pid as number;
     await expect(session.relaunch()).rejects.toThrow(/still running/);
     const exited = new Promise((resolve) => session.child.once("exit", resolve));
     process.kill(first, "SIGTERM");
@@ -709,7 +702,7 @@ describe("launch and teardown (fake browser)", () => {
     rmSync(join(session.profile, "vimma-control.json"), { force: true });
     writeFileSync(join(session.profile, "kept.txt"), "x");
     await session.relaunch();
-    const second = /** @type {number} */ (session.child.pid);
+    const second = session.child.pid as number;
     expect(second).not.toBe(first);
     expect(session.discovery.pid).toBe(second);
     expect(existsSync(join(session.profile, "kept.txt"))).toBe(true);
@@ -724,7 +717,7 @@ describe("launch and teardown (fake browser)", () => {
   it("crashBrowser SIGKILLs the browser alone, reaps its children, keeps its files", async () => {
     const session = await start({ FAKE_BROWSER_CHILD: "1", FAKE_BROWSER_IGNORE_TERM: "1" });
     cleanups.push(() => session.teardown());
-    const pid = /** @type {number} */ (session.child.pid);
+    const pid = session.child.pid as number;
     const grandchild = Number(readFileSync(join(session.profile, "grandchild.pid"), "utf8"));
     const killed = await crashBrowser(session.child, { reapMs: 300 });
     expect(killed).toBe(pid);
@@ -740,7 +733,7 @@ describe("launch and teardown (fake browser)", () => {
 
   it("escalates to SIGKILL when the browser ignores SIGTERM", async () => {
     const session = await start({ FAKE_BROWSER_IGNORE_TERM: "1" });
-    const pid = /** @type {number} */ (session.child.pid);
+    const pid = session.child.pid as number;
     await session.teardown();
     expect(alive(pid)).toBe(false);
   });
@@ -767,19 +760,16 @@ describe("launch and teardown (fake browser)", () => {
 
   it("hands out teardown before waiting, so a signal mid-launch cleans up (manual check bug)", async () => {
     const tmpRoot = tempDir();
-    /** @type {Array<() => Promise<void>>} */
-    const registered = [];
-    /** @type {number[]} */
-    const pids = [];
+    const registered: Array<() => Promise<void>> = [];
+    const pids: number[] = [];
     const launching = launch({
       build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never" } },
       xvfb: false,
       tmpRoot,
       discoveryTimeoutMs: 20_000,
       graceMs: 300,
-      onTeardown: (/** @type {() => Promise<void>} */ t) => registered.push(t),
-      onSpawn: (/** @type {import("node:child_process").ChildProcess} */ child) =>
-        pids.push(/** @type {number} */ (child.pid)),
+      onTeardown: (t: () => Promise<void>) => registered.push(t),
+      onSpawn: (child: ChildProcess) => pids.push(child.pid as number),
     });
     const outcome = launching.catch((e) => e);
     await new Promise((r) => setTimeout(r, 300));
@@ -788,14 +778,13 @@ describe("launch and teardown (fake browser)", () => {
     await Promise.all([registered[0]?.(), registered[0]?.()]); // idempotent
     expect(await outcome).toBeInstanceOf(Error);
     expect(Date.now() - started).toBeLessThan(5000);
-    expect(alive(/** @type {number} */ (pids[0]))).toBe(false);
+    expect(alive(pids[0] as number)).toBe(false);
     expect(readdirSync(tmpRoot)).toEqual([]);
   });
 
   it("cleans up when the launch fails: no control socket, process tree killed", async () => {
     const tmpRoot = tempDir();
-    /** @type {number[]} */
-    const pids = [];
+    const pids: number[] = [];
     await expect(
       launch({
         build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never", FAKE_BROWSER_CHILD: "1" } },
@@ -803,13 +792,12 @@ describe("launch and teardown (fake browser)", () => {
         tmpRoot,
         discoveryTimeoutMs: 500,
         graceMs: 300,
-        onSpawn: (/** @type {import("node:child_process").ChildProcess} */ child) =>
-          pids.push(/** @type {number} */ (child.pid)),
+        onSpawn: (child: ChildProcess) => pids.push(child.pid as number),
       }),
     ).rejects.toThrow(/vimma\.control\.enabled/);
     expect(readdirSync(tmpRoot)).toEqual([]);
     expect(pids).toHaveLength(1);
-    expect(alive(/** @type {number} */ (pids[0]))).toBe(false);
+    expect(alive(pids[0] as number)).toBe(false);
   });
 });
 
@@ -830,15 +818,15 @@ describe("browser stderr with the time since spawn (issue #901)", () => {
       runtimeRoot: tempDir(),
       discoveryTimeoutMs: 4000,
       graceMs: 300,
-    }).catch((/** @type {unknown} */ e) => e);
+    }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(Error);
-    const message = /** @type {Error} */ (err).message;
+    const message = (err as Error).message;
     expect(message).toMatch(/no usable control socket within 4000 ms/);
     expect(message).toMatch(/browser stderr with the time since spawn \(spawned at \d{4}-/);
-    const at = (/** @type {string} */ text) => {
+    const at = (text: string) => {
       const m = new RegExp(`^ {2}\\+(\\d+\\.\\d{3}) s {2}${text}$`, "m").exec(message);
       expect(m, `${text} in:\n${message}`).not.toBeNull();
-      return Number(/** @type {RegExpExecArray} */ (m)[1]);
+      return Number((m as RegExpExecArray)[1]);
     };
     const early = at("early line");
     const late = at("late line");
@@ -890,8 +878,7 @@ describe("browser stderr with the time since spawn (issue #901)", () => {
   });
 
   it("a launch that reaches its socket logs nothing extra", async () => {
-    /** @type {string[]} */
-    const logged = [];
+    const logged: string[] = [];
     const session = await launch({
       build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER_STDERR: "noise" } },
       xvfb: false,
@@ -908,9 +895,8 @@ describe("browser stderr with the time since spawn (issue #901)", () => {
 
 // Ctrl+C while Xvfb was still starting must leave no live Xvfb and no fbdir.
 describe("cancelling while Xvfb starts (fake Xvfb)", () => {
-  /** @param {string} record */
-  const readRecord = (record) =>
-    /** @type {{ pid: number, fbdir: string }} */ (JSON.parse(readFileSync(record, "utf8")));
+  const readRecord = (record: string) =>
+    JSON.parse(readFileSync(record, "utf8")) as { pid: number; fbdir: string };
 
   // The tests below wait for the record to exist and then read it, so it has to appear whole:
   // a file written in place exists, empty or half written, before its JSON is all there. A
@@ -942,8 +928,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
   it("teardown during Xvfb startup stops Xvfb and removes its fbdir", async () => {
     const tmpRoot = tempDir();
     const record = join(tempDir(), "xvfb.json");
-    /** @type {Array<() => Promise<void>>} */
-    const registered = [];
+    const registered: Array<() => Promise<void>> = [];
     const launching = launch({
       build: { binary: FAKE_BROWSER, env: {} },
       xvfb: true,
@@ -951,7 +936,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
       tmpRoot,
       graceMs: 300,
       xvfbEnv: { ...process.env, FAKE_XVFB_DELAY_MS: "1500", FAKE_XVFB_RECORD: record },
-      onTeardown: (/** @type {() => Promise<void>} */ t) => registered.push(t),
+      onTeardown: (t: () => Promise<void>) => registered.push(t),
     });
     const outcome = launching.catch((e) => e);
     for (let i = 0; i < 100 && !existsSync(record); i++) await sleep(20);
@@ -988,16 +973,14 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
 
   it("an abort during the discovery wait kills the browser at once", async () => {
     const controller = new AbortController();
-    /** @type {number[]} */
-    const pids = [];
+    const pids: number[] = [];
     const launching = launch({
       build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never" } },
       xvfb: false,
       tmpRoot: tempDir(),
       discoveryTimeoutMs: 60_000,
       graceMs: 300,
-      onSpawn: (/** @type {import("node:child_process").ChildProcess} */ c) =>
-        pids.push(/** @type {number} */ (c.pid)),
+      onSpawn: (c: ChildProcess) => pids.push(c.pid as number),
       signal: controller.signal,
     }).catch((e) => e);
     await sleep(300);
@@ -1005,7 +988,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
     controller.abort();
     expect(String(await launching)).toMatch(/abort/);
     expect(Date.now() - started).toBeLessThan(3000);
-    expect(alive(/** @type {number} */ (pids[0]))).toBe(false);
+    expect(alive(pids[0] as number)).toBe(false);
   });
 
   it("SIGINT to the CLI while Xvfb starts leaves no Xvfb, fbdir or profile", async () => {
@@ -1053,8 +1036,7 @@ describe("cancelling while Xvfb starts (fake Xvfb)", () => {
 });
 
 describe("waitForSessionSaved (before a crash-style kill)", () => {
-  /** @param {string} profile */
-  const recovery = (profile) => join(profile, "sessionstore-backups", "recovery.jsonlz4");
+  const recovery = (profile: string) => join(profile, "sessionstore-backups", "recovery.jsonlz4");
 
   it("waits for SessionStore's recovery file to exist and go quiet", async () => {
     const profile = tempDir();
@@ -1090,12 +1072,11 @@ describe("waitForSessionSaved (before a crash-style kill)", () => {
 describe("quitBrowser (ctrl+q first, so the discovery file is removed)", () => {
   /** A child that exits when told to, like the browser after ctrl+q. */
   const fakeChild = () => {
-    /** @type {Array<() => void>} */
-    const waiters = [];
+    const waiters: Array<() => void> = [];
     const child = {
-      exitCode: /** @type {number | null} */ (null),
+      exitCode: null as number | null,
       signalCode: null,
-      once: (/** @type {string} */ _e, /** @type {() => void} */ f) => void waiters.push(f),
+      once: (_e: string, f: () => void) => void waiters.push(f),
       exit() {
         child.exitCode = 0;
         for (const f of waiters.splice(0)) f();
@@ -1103,12 +1084,15 @@ describe("quitBrowser (ctrl+q first, so the discovery file is removed)", () => {
     };
     return child;
   };
-  /**
-   * @param {{ mode?: string, quits?: boolean, fail?: boolean }} o
-   */
-  const fakeCtl = ({ mode = "normal", quits = true, fail = false }, child = fakeChild()) => {
-    /** @type {string[]} */
-    const sent = [];
+  const fakeCtl = (
+    {
+      mode = "normal",
+      quits = true,
+      fail = false,
+    }: { mode?: string; quits?: boolean; fail?: boolean },
+    child = fakeChild(),
+  ) => {
+    const sent: string[] = [];
     let current = mode;
     const ctl = {
       sent,
@@ -1116,7 +1100,7 @@ describe("quitBrowser (ctrl+q first, so the discovery file is removed)", () => {
         if (fail) throw new Error("not running");
         return { mode: current, pending: null };
       },
-      async sendKeys(/** @type {string} */ keys) {
+      async sendKeys(keys: string) {
         sent.push(keys);
         if (keys === "esc" && current === "help") current = "normal";
         if (keys === "ctrl+q" && quits) setTimeout(() => child.exit(), 5);

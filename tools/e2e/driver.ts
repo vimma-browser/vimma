@@ -10,10 +10,8 @@ import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
-/**
- * @typedef {"server" | "usage" | "not-running" | "busy" | "auth" | "protocol" | "spawn" | "aborted"}
- *   CtlErrorKind
- */
+export type CtlErrorKind =
+  "server" | "usage" | "not-running" | "busy" | "auth" | "protocol" | "spawn" | "aborted";
 
 /**
  * A server still starting up: it listens before its first browser window exists and answers
@@ -22,11 +20,19 @@ const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const STARTING_UP = /^vimma-ctl: failed: no browser window\b/m;
 
 export class CtlError extends Error {
-  /**
-   * @param {string} message
-   * @param {{ kind: CtlErrorKind, code: string | null, exitCode: number | null, stderr: string }} details
-   */
-  constructor(message, { kind, code, exitCode, stderr }) {
+  declare kind: CtlErrorKind;
+  declare code: string | null;
+  declare exitCode: number | null;
+  declare stderr: string;
+  constructor(
+    message: string,
+    {
+      kind,
+      code,
+      exitCode,
+      stderr,
+    }: { kind: CtlErrorKind; code: string | null; exitCode: number | null; stderr: string },
+  ) {
     super(message);
     this.name = "CtlError";
     this.kind = kind;
@@ -39,11 +45,12 @@ export class CtlError extends Error {
 /**
  * Map a vimma-ctl exit code and stderr to an error kind and, when there is one, the protocol
  * error code.
- * @param {number | null} exitCode null: the process did not run or was killed
- * @param {string} stderr
- * @returns {{ kind: CtlErrorKind, code: string | null }}
+ * @param exitCode null: the process did not run or was killed
  */
-export function classify(exitCode, stderr) {
+export function classify(
+  exitCode: number | null,
+  stderr: string,
+): { kind: CtlErrorKind; code: string | null } {
   const line =
     stderr
       .trim()
@@ -69,10 +76,18 @@ export function classify(exitCode, stderr) {
 
 /**
  * The vimma-ctl binary: `flag` (--vimma-ctl), else VIMMA_CTL, else a cargo build in the repo.
- * @param {{ flag?: string, env?: Record<string, string | undefined>, root?: string,
- *   exists?: (path: string) => boolean }} [options]
  */
-export function findVimmaCtl({ flag, env = {}, root = REPO_ROOT, exists = existsSync } = {}) {
+export function findVimmaCtl({
+  flag,
+  env = {},
+  root = REPO_ROOT,
+  exists = existsSync,
+}: {
+  flag?: string;
+  env?: Record<string, string | undefined>;
+  root?: string;
+  exists?: (path: string) => boolean;
+} = {}) {
   const explicit = flag ?? env.VIMMA_CTL;
   if (explicit) {
     if (!exists(explicit)) throw new Error(`vimma-ctl not found at ${explicit}`);
@@ -90,11 +105,24 @@ export function findVimmaCtl({ flag, env = {}, root = REPO_ROOT, exists = exists
 }
 
 export class Ctl {
+  declare bin: string;
+  declare profile: string;
+  declare timeoutSecs: number;
+  declare signal: AbortSignal | undefined;
   /**
-   * @param {{ bin: string, profile: string, timeoutSecs?: number, signal?: AbortSignal }} options
-   *   `signal` (the scenario's timeout) kills a running vimma-ctl and stops ready() at once.
+   * @param options `signal` (the scenario's timeout) kills a running vimma-ctl and stops ready() at once.
    */
-  constructor({ bin, profile, timeoutSecs = 5, signal }) {
+  constructor({
+    bin,
+    profile,
+    timeoutSecs = 5,
+    signal,
+  }: {
+    bin: string;
+    profile: string;
+    timeoutSecs?: number;
+    signal?: AbortSignal;
+  }) {
     this.bin = bin;
     this.profile = profile;
     this.timeoutSecs = timeoutSecs;
@@ -103,10 +131,9 @@ export class Ctl {
 
   /**
    * Run vimma-ctl once.
-   * @param {string[]} args
-   * @returns {Promise<string>} stdout
+   * @returns stdout
    */
-  run(args) {
+  run(args: string[]): Promise<string> {
     const argv = ["--profile", this.profile, "--timeout", String(this.timeoutSecs), ...args];
     return new Promise((resolve, reject) => {
       execFile(
@@ -123,7 +150,7 @@ export class Ctl {
           if (!error) return resolve(stdout);
           const exitCode = typeof error.code === "number" ? error.code : null;
           const { kind, code } = this.signal?.aborted
-            ? { kind: /** @type {CtlErrorKind} */ ("aborted"), code: null }
+            ? { kind: "aborted" as CtlErrorKind, code: null }
             : classify(exitCode, stderr);
           const why = stderr.trim() || error.message;
           reject(
@@ -139,8 +166,8 @@ export class Ctl {
     });
   }
 
-  /** @returns {Promise<Record<string, any>>} the `state` result */
-  async state() {
+  /** @returns the `state` result */
+  async state(): Promise<Record<string, any>> {
     const out = await this.run(["state", "--json"]);
     let state;
     try {
@@ -156,13 +183,13 @@ export class Ctl {
     return state;
   }
 
-  /** @param {string} keys Herdr chords, space-separated */
-  async sendKeys(keys) {
+  /** @param keys Herdr chords, space-separated */
+  async sendKeys(keys: string) {
     await this.run(["send-keys", keys]);
   }
 
-  /** @param {string} url @returns {Promise<string>} the new tab's id */
-  async open(url) {
+  /** @returns the new tab's id */
+  async open(url: string): Promise<string> {
     return (await this.run(["open", url])).trim();
   }
 
@@ -170,9 +197,11 @@ export class Ctl {
    * Connection setup: call `state` until it answers, retrying only while the socket is not up
    * yet (`not-running`), `busy`, or the server is still starting up (`failed: no browser
    * window`), and only until `timeoutMs`. Anything else fails at once.
-   * @param {{ timeoutMs?: number, intervalMs?: number }} [options]
    */
-  async ready({ timeoutMs = 10_000, intervalMs = 100 } = {}) {
+  async ready({
+    timeoutMs = 10_000,
+    intervalMs = 100,
+  }: { timeoutMs?: number; intervalMs?: number } = {}) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       try {

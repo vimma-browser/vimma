@@ -5,7 +5,8 @@ Status: implemented · Area: `configs/macos/mozconfig`,
 `tools/package/macos-dmg-unpack.sh`, `macos-sign-app.sh`, `macos-dmg-pack.sh` and
 `macos-developer-id-check.sh` (new),
 `configs/branding/vimma/`, `tools/artifact-build/`,
-`tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs`, `tools/vimma-ctl/src/discovery.rs`,
+`tools/e2e/`, `tools/mochitest.mjs`, `tools/start.mjs` (since changed: `tools/e2e/*.ts` and
+`tools/start.ts`, ADR-025), `tools/vimma-ctl/src/discovery.rs`,
 `tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new),
 `release.yml`;
 `docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none

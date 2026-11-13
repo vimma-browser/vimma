@@ -11,7 +11,7 @@
 import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { startFakeServer } from "../fake-server.mjs";
+import { startFakeServer } from "../fake-server.ts";
 
 const argv = process.argv.slice(2);
 const profile = argv[argv.indexOf("-profile") + 1];

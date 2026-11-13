@@ -27,7 +27,7 @@
  *
  * A scenario with `update` (docs/specs/m6a-updater.md, "Tests", e2e) runs only with --updater,
  * the objdir of a VIMMA_UPDATES=1 build after `./mach package`: each gets its own install of that
- * tarball, updated from a local host (update-host.mjs). Without --updater it is reported pending.
+ * tarball, updated from a local host (update-host.ts). Without --updater it is reported pending.
  *
  * Exit 0 when nothing failed (pending scenarios are reported, not passed), 1 on failures,
  * 2 on usage errors.
@@ -44,8 +44,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { ControlSessions } from "./control-client.mjs";
-import { Ctl, findVimmaCtl } from "./driver.mjs";
+import { ControlSessions } from "./control-client.ts";
+import { Ctl, findVimmaCtl } from "./driver.ts";
 import {
   DISCOVERY_FILE,
   crashBrowser,
@@ -58,19 +58,22 @@ import {
   scenarioFontconfig,
   unpackTarball,
   waitForSessionSaved,
-} from "./launcher.mjs";
-import { fixtureText, fixtureUrl, startPageServer } from "./pages.mjs";
-import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.mjs";
-import { loadScenarios, scenarioLaunch } from "./scenario.mjs";
-import { capture, checkBaseline } from "./screenshot.mjs";
-import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.mjs";
+} from "./launcher.ts";
+import { fixtureText, fixtureUrl, startPageServer } from "./pages.ts";
+import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.ts";
+import { loadScenarios, scenarioLaunch } from "./scenario.ts";
+import { capture, checkBaseline } from "./screenshot.ts";
+import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.ts";
+import type { Build } from "./launcher.ts";
+import type { UpdateRun } from "./update-host.ts";
+import type { Scenario, UpdateServe } from "./scenario.ts";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 /** Why an update scenario does not run without --updater. */
 const NEEDS_UPDATER =
   "needs a VIMMA_UPDATES=1 build: --updater <objdir> after ./mach package (docs/runbook.md)";
 
-const OPTIONS = /** @type {const} */ ({
+const OPTIONS = {
   filter: { type: "string" },
   build: { type: "string" },
   artifact: { type: "boolean", default: false },
@@ -89,14 +92,10 @@ const OPTIONS = /** @type {const} */ ({
   "report-json": { type: "string" },
   updater: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
-});
+} as const;
 
-/**
- * @param {string} message
- * @returns {never}
- */
-function usage(message) {
-  process.stderr.write(`e2e: ${message}\nSee the comment at the top of tools/e2e/e2e.mjs.\n`);
+function usage(message: string): never {
+  process.stderr.write(`e2e: ${message}\nSee the comment at the top of tools/e2e/e2e.ts.\n`);
   process.exit(2);
 }
 
@@ -105,7 +104,7 @@ async function main() {
   try {
     ({ values } = parseArgs({ options: OPTIONS, allowPositionals: false }));
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
   if (values.help) {
     process.stdout.write(`${readHelp()}\n`);
@@ -122,12 +121,11 @@ async function main() {
   if ([values.build, values.artifact || undefined, values.tarball].filter(Boolean).length > 1) {
     return usage("pass at most one of --build, --artifact, --tarball");
   }
-  /** @type {"xvfb" | "display" | "headless"} */
-  let mode;
+  let mode: "xvfb" | "display" | "headless";
   try {
     mode = displayMode({ xvfb: values.xvfb, headless: values.headless });
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
 
   const scenarios = loadScenarios(values.scenarios, { filter: values.filter }).map((s) =>
@@ -138,28 +136,25 @@ async function main() {
     return usage("--updater: Firefox's updater is built for Linux tarballs only");
   }
 
-  /** @type {Array<() => Promise<void>>} */
-  const cleanups = [];
+  const cleanups: Array<() => Promise<void>> = [];
   const cleanupAll = async () => {
     for (const c of cleanups.splice(0).reverse()) await c().catch(() => {});
   };
-  for (const [sig, code] of /** @type {const} */ ([
+  for (const [sig, code] of [
     ["SIGINT", 130],
     ["SIGTERM", 143],
-  ])) {
+  ] as const) {
     process.once(sig, () => {
       process.stderr.write(`\ne2e: ${sig}, cleaning up\n`);
       cleanupAll().finally(() => process.exit(code));
     });
   }
 
-  /** @type {{ base: string, close: () => Promise<void> } | null} `open "fixture:<name>"` */
-  let pages = null;
+  /** `open "fixture:<name>"` */
+  let pages: { base: string; close: () => Promise<void> } | null = null;
   try {
-    /** @type {import("./launcher.mjs").Build | null} */
-    let build = null;
-    /** @type {string} */
-    let ctlBin = "";
+    let build: Build | null = null;
+    let ctlBin: string = "";
     if (runnable.some((s) => !s.update)) {
       if (values.tarball) {
         const dir = mkdtempSync(join(tmpdir(), "vimma-e2e-build-"));
@@ -175,15 +170,15 @@ async function main() {
       pages = await startPageServer(join(REPO, "tests/e2e/fixtures"));
       console.log(`build: ${build?.binary ?? "none"}\nvimma-ctl: ${ctlBin}`);
     }
-    /** @type {Promise<import("./update-host.mjs").UpdateRun> | null} the update scenarios' */
-    let updateRun = null;
+    /** the update scenarios' */
+    let updateRun: Promise<UpdateRun> | null = null;
     const updateWork = () => {
       const work = mkdtempSync(join(tmpdir(), "vimma-e2e-update-"));
       cleanups.push(async () => rmSync(work, { recursive: true, force: true }));
       return work;
     };
     const startUpdateRun = () => {
-      const objdir = resolve(/** @type {string} */ (values.updater));
+      const objdir = resolve(values.updater as string);
       const work = updateWork();
       const run = prepareUpdateRun({
         objdir,
@@ -202,15 +197,10 @@ async function main() {
     }
     if (runnable.length && mode === "headless") console.log("headless: screenshots are skipped");
 
-    /** @type {string[]} */
-    const rewritten = [];
-    /**
-     * @param {import("./scenario.mjs").Scenario} scenario
-     * @param {{ signal: AbortSignal }} options the scenario's timeout
-     */
-    const startSession = async (scenario, { signal }) => {
-      /** @type {() => Promise<void>} */
-      let registered = async () => {};
+    const rewritten: string[] = [];
+    /** @param options the scenario's timeout */
+    const startSession = async (scenario: Scenario, { signal }: { signal: AbortSignal }) => {
+      let registered: () => Promise<void> = async () => {};
       const teardown = async () => {
         const i = cleanups.indexOf(registered);
         if (i >= 0) cleanups.splice(i, 1);
@@ -220,10 +210,8 @@ async function main() {
         root: REPO,
         vimmaCtl: ctlBin ? resolve(ctlBin) : null,
       });
-      /** @type {import("./update-host.mjs").UpdateRun | null} */
-      let run = null;
-      /** @type {import("./launcher.mjs").Build} */
-      let sessionBuild = /** @type {import("./launcher.mjs").Build} */ (build);
+      let run: UpdateRun | null = null;
+      let sessionBuild: Build = build as Build;
       let install = "";
       if (scenario.update) {
         run = await (updateRun ??= startUpdateRun());
@@ -269,8 +257,7 @@ async function main() {
       // Quit with ctrl+q first (quit observers remove the discovery file); signals stay the
       // fallback, and the only way out once the scenario's deadline has fired.
       const quitThenTeardown = async () => {
-        /** @type {string | null} */
-        let problem = null;
+        let problem: string | null = null;
         // A browser that died on its own (MOZ_CRASH ends in SIGSEGV) says why on stderr only.
         const died = session.child.signalCode;
         if (died) problem = `the browser died (${died}); its last output:\n${session.stderrTail()}`;
@@ -286,8 +273,7 @@ async function main() {
         if (failed) problem = `the browser logged "${failed}"`;
         if (problem) throw new Error(problem);
       };
-      /** @param {string} name */
-      const screenshot = async (name) => {
+      const screenshot = async (name: string) => {
         if (mode === "headless") {
           console.log(`        screenshot ${name}: skipped: headless, nothing to capture`);
           return;
@@ -312,15 +298,15 @@ async function main() {
       };
       const stepCtl = {
         state: () => ctl.state(),
-        sendKeys: (/** @type {string} */ keys) => ctl.sendKeys(keys),
-        open: (/** @type {string} */ url) => ctl.open(fixtureUrl(url, pages?.base ?? null)),
+        sendKeys: (keys: string) => ctl.sendKeys(keys),
+        open: (url: string) => ctl.open(fixtureUrl(url, pages?.base ?? null)),
       };
       // A `restart` step: quit the way a user does (ctrl+q, so SessionStore writes the session
       // and the quit observers remove the discovery file), then start again on the profile.
       // `restart: "kill"` instead crashes it: once SessionStore's recovery file has settled,
       // SIGKILL to the browser's pid (no quit observers, so the discovery file stays), then a
       // start on the same profile that ignores the dead browser's discovery file.
-      const restart = async (/** @type {"quit" | "kill"} */ how) => {
+      const restart = async (how: "quit" | "kill") => {
         if (how === "kill") {
           await waitForSessionSaved(session.profile);
           const pid = await crashBrowser(session.child);
@@ -343,11 +329,10 @@ async function main() {
         hold: () => sessions.hold(),
         held: {
           state: () => sessions.held.state(),
-          sendKeys: (/** @type {string} */ keys) => sessions.held.sendKeys(keys),
-          open: (/** @type {string} */ url) =>
-            sessions.held.open(fixtureUrl(url, pages?.base ?? null)),
+          sendKeys: (keys: string) => sessions.held.sendKeys(keys),
+          open: (url: string) => sessions.held.open(fixtureUrl(url, pages?.base ?? null)),
         },
-        agentSend: (/** @type {any} */ spec) => {
+        agentSend: (spec: any) => {
           const url = spec.args?.url;
           const args =
             typeof url === "string"
@@ -355,15 +340,14 @@ async function main() {
               : spec.args;
           sessions.agentSend({ ...spec, args });
         },
-        agentResult: (/** @type {string} */ name) => sessions.agentResult(name),
-        ctlSpawn: (/** @type {string[]} */ args, /** @type {string} */ as) =>
-          sessions.ctlSpawn(args, as),
-        ctlResult: (/** @type {string} */ name) => sessions.ctlResult(name),
-        mcpSend: (/** @type {any} */ spec) =>
+        agentResult: (name: string) => sessions.agentResult(name),
+        ctlSpawn: (args: string[], as: string) => sessions.ctlSpawn(args, as),
+        ctlResult: (name: string) => sessions.ctlResult(name),
+        mcpSend: (spec: any) =>
           sessions.mcpSend({ ...spec, ...(spec.params ? { params: fixtures(spec.params) } : {}) }),
-        mcpResult: (/** @type {string} */ name) => sessions.mcpResult(name),
+        mcpResult: (name: string) => sessions.mcpResult(name),
         // vimma-open run as another program runs it; its `vimma` is the build on this profile.
-        external: async (/** @type {string[]} */ args) => {
+        external: async (args: string[]) => {
           const wrapper = join(session.profile, ".e2e-vimma");
           const binary = sessionBuild.binary;
           writeFileSync(wrapper, externalWrapper(binary, session.profile), { mode: 0o700 });
@@ -373,8 +357,8 @@ async function main() {
           );
         },
       };
-      /** `fixture:` URLs anywhere in an mcp step's params. @param {unknown} v @returns {any} */
-      const fixtures = (v) => {
+      /** `fixture:` URLs anywhere in an mcp step's params. */
+      const fixtures = (v: unknown): any => {
         if (typeof v === "string")
           return v.startsWith("fixture:") ? fixtureUrl(v, pages?.base ?? null) : v;
         if (Array.isArray(v)) return v.map(fixtures);
@@ -394,13 +378,12 @@ async function main() {
       const since = run?.host.marRequests() ?? 0;
       const update = run
         ? {
-            serve: async (/** @type {import("./scenario.mjs").UpdateServe} */ spec) =>
-              /** @type {import("./update-host.mjs").UpdateRun} */ (run).serve(spec),
+            serve: async (spec: UpdateServe) => (run as UpdateRun).serve(spec),
             install: async () =>
               installState({
                 install,
                 profile: session.profile,
-                run: /** @type {import("./update-host.mjs").UpdateRun} */ (run),
+                run: run as UpdateRun,
                 since,
               }),
           }
@@ -412,7 +395,7 @@ async function main() {
         control,
         update,
         profile: session.profile,
-        text: (/** @type {string} */ t) => fixtureText(t, pages?.base ?? null),
+        text: (t: string) => fixtureText(t, pages?.base ?? null),
         teardown: teardownAll,
       };
     };

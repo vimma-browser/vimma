@@ -1,48 +1,33 @@
 // Runs e2e scenarios one after another, each in a fresh session, with a per-scenario timeout
 // and a total budget (plan §5: suite < 5 min). Pending scenarios are reported, never passed.
-import { runSteps } from "./scenario.mjs";
+import { runSteps } from "./scenario.ts";
+import type { Control, Scenario, StepContext, UpdateControl } from "./scenario.ts";
 
-/** @typedef {import("./scenario.mjs").Scenario} Scenario */
-/** @typedef {"pass" | "fail" | "timeout" | "pending" | "skipped"} Status */
-/** @typedef {{ name: string, status: Status, ms: number, error?: string }} Result */
-/**
- * @typedef {{
- *   ctl: import("./scenario.mjs").StepContext["ctl"],
- *   screenshot: (name: string) => Promise<void>,
- *   restart?: (how: "quit" | "kill") => Promise<void>,
- *   control?: import("./scenario.mjs").Control,
- *   profile?: string,
- *   text?: (text: string) => string,
- *   update?: import("./scenario.mjs").UpdateControl,
- *   teardown: () => Promise<void>,
- * }} Session
- */
+export type Status = "pass" | "fail" | "timeout" | "pending" | "skipped";
+export type Result = { name: string; status: Status; ms: number; error?: string };
+export type Session = {
+  ctl: StepContext["ctl"];
+  screenshot: (name: string) => Promise<void>;
+  restart?: (how: "quit" | "kill") => Promise<void>;
+  control?: Control;
+  profile?: string;
+  text?: (text: string) => string;
+  update?: UpdateControl;
+  teardown: () => Promise<void>;
+};
 
 /** Plan §5: the whole suite stays under 5 minutes. */
 export const DEFAULT_BUDGET_MS = 5 * 60 * 1000;
 export const DEFAULT_SCENARIO_SECONDS = 60;
 /** How long a timed-out scenario may take to stop before the runner moves on. */
 export const DEFAULT_SETTLE_MS = 10_000;
-/**
- * @typedef {(scenario: Scenario, options: { signal: AbortSignal }) => Promise<Session>}
- *   StartSession
- */
+export type StartSession = (
+  scenario: Scenario,
+  options: { signal: AbortSignal },
+) => Promise<Session>;
 
-/**
- * @param {Scenario[]} scenarios
- * @param {{
- *   startSession: StartSession,
- *   budgetMs?: number,
- *   settleMs?: number,
- *   runPending?: boolean,
- *   pollMs?: number,
- *   now?: () => number,
- *   log?: (line: string) => void,
- * }} options
- * @returns {Promise<Result[]>}
- */
 export async function runScenarios(
-  scenarios,
+  scenarios: Scenario[],
   {
     startSession,
     budgetMs = DEFAULT_BUDGET_MS,
@@ -51,11 +36,18 @@ export async function runScenarios(
     pollMs,
     now = Date.now,
     log = () => {},
+  }: {
+    startSession: StartSession;
+    budgetMs?: number;
+    settleMs?: number;
+    runPending?: boolean;
+    pollMs?: number;
+    now?: () => number;
+    log?: (line: string) => void;
   },
-) {
+): Promise<Result[]> {
   const budgetEnd = now() + budgetMs;
-  /** @type {Result[]} */
-  const results = [];
+  const results: Result[] = [];
   for (const scenario of scenarios) {
     if (scenario.pending && !runPending) {
       results.push({ name: scenario.name, status: "pending", ms: 0, error: scenario.pending });
@@ -85,21 +77,23 @@ export async function runScenarios(
  * which cancels the launch (Xvfb, browser) and kills a running vimma-ctl; the runner then waits
  * at most `settleMs` for the scenario to notice before it moves on, and a session that only
  * arrives after that is torn down when it does.
- * @param {Scenario} scenario
- * @param {{ startSession: StartSession, timeoutMs: number, pollMs?: number, settleMs: number }} o
- * @returns {Promise<Result>}
  */
-async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
+async function runOne(
+  scenario: Scenario,
+  {
+    startSession,
+    timeoutMs,
+    pollMs,
+    settleMs,
+  }: { startSession: StartSession; timeoutMs: number; pollMs?: number; settleMs: number },
+): Promise<Result> {
   const started = Date.now();
   const controller = new AbortController();
-  /** @type {Session | null} */
-  let session = null;
+  let session: Session | null = null;
   let movedOn = false;
-  /** @type {Promise<void> | null} */
-  let tornDown = null;
-  const teardown = (/** @type {Session} */ s) => (tornDown ??= s.teardown());
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
+  let tornDown: Promise<void> | null = null;
+  const teardown = (s: Session) => (tornDown ??= s.teardown());
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = new Promise((resolve) => {
     timer = setTimeout(() => {
       controller.abort();
@@ -107,12 +101,11 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
     }, timeoutMs);
   });
   const work = (async () => {
-    /** @type {Session} */
-    let s;
+    let s: Session;
     try {
       s = await startSession(scenario, { signal: controller.signal });
     } catch (e) {
-      throw new Error(`launch: ${/** @type {Error} */ (e).message}`, { cause: e });
+      throw new Error(`launch: ${(e as Error).message}`, { cause: e });
     }
     session = s;
     if (movedOn) {
@@ -132,8 +125,7 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
       signal: controller.signal,
     });
   })();
-  /** @type {Result} */
-  let result;
+  let result: Result;
   try {
     const outcome = await Promise.race([work.then(() => "done"), timedOut]);
     result =
@@ -150,27 +142,26 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
       name: scenario.name,
       status: "fail",
       ms: Date.now() - started,
-      error: /** @type {Error} */ (e).message,
+      error: (e as Error).message,
     };
   } finally {
     clearTimeout(timer);
   }
   // After a timeout, give the aborted steps or launch a moment to stop, but never wait longer
   // than settleMs: a hard deadline cannot depend on the scenario cooperating.
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let settle;
+  let settle: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
     work.catch(() => {}),
     new Promise((resolve) => (settle = setTimeout(resolve, settleMs))),
   ]);
   clearTimeout(settle);
   movedOn = true;
-  const s = /** @type {Session | null} */ (session);
+  const s = session as Session | null;
   if (s) {
     try {
       await teardown(s);
     } catch (e) {
-      const why = `teardown: ${/** @type {Error} */ (e).message}`;
+      const why = `teardown: ${(e as Error).message}`;
       // A failed step's own message stays first; the teardown's (a crash's output) follows it.
       result =
         result.status === "pass"
@@ -181,8 +172,7 @@ async function runOne(scenario, { startSession, timeoutMs, pollMs, settleMs }) {
   return result;
 }
 
-/** @param {Result[]} results */
-export function exitCode(results) {
+export function exitCode(results: Result[]) {
   if (results.length === 0) return 1;
   return results.some(
     (r) => r.status === "fail" || r.status === "timeout" || r.status === "skipped",
@@ -191,8 +181,7 @@ export function exitCode(results) {
     : 0;
 }
 
-/** @param {Result[]} results */
-export function formatReport(results) {
+export function formatReport(results: Result[]) {
   const lines = results.map((r) => {
     const label = r.status === "pass" ? "PASS" : r.status.toUpperCase();
     const time =
@@ -200,8 +189,7 @@ export function formatReport(results) {
     const why = r.error ? `\n          ${r.error}` : "";
     return `${label.padEnd(8)}${r.name}${time}${why}`;
   });
-  /** @param {Status[]} s */
-  const count = (...s) => results.filter((r) => s.includes(r.status)).length;
+  const count = (...s: Status[]) => results.filter((r) => s.includes(r.status)).length;
   lines.push(
     "",
     `${count("pass")} passed, ${count("fail", "timeout", "skipped")} failed, ${count("pending")} pending`,
@@ -212,14 +200,12 @@ export function formatReport(results) {
 /**
  * The results for `--report-json` (spec upstream-beta-canary, decision 4): e2e.yml's Beta mode
  * puts the failures into suite-results.json. Failed means what exitCode counts as failed.
- * @param {Result[]} results
- * @returns {{
- *   passed: number,
- *   failed: Array<{ name: string, status: Status, error: string }>,
- *   pending: Array<{ name: string, reason: string }>,
- * }}
  */
-export function reportJson(results) {
+export function reportJson(results: Result[]): {
+  passed: number;
+  failed: Array<{ name: string; status: Status; error: string }>;
+  pending: Array<{ name: string; reason: string }>;
+} {
   return {
     passed: results.filter((r) => r.status === "pass").length,
     failed: results
@@ -231,12 +217,9 @@ export function reportJson(results) {
   };
 }
 
-/**
- * GitHub Actions workflow commands: an error per failure, a notice per pending scenario.
- * @param {Result[]} results
- */
-export function githubAnnotations(results) {
-  const clean = (/** @type {string} */ s) => s.replace(/\r?\n/g, " ");
+/** GitHub Actions workflow commands: an error per failure, a notice per pending scenario. */
+export function githubAnnotations(results: Result[]) {
+  const clean = (s: string) => s.replace(/\r?\n/g, " ");
   return results.flatMap((r) => {
     if (r.status === "pending") {
       return [

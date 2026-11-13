@@ -2,8 +2,7 @@
 // with `-fbdir DIR` (DIR/Xvfb_screen0), and what `xwd` writes. Spec m0-e2e-harness: this is how
 // the harness captures the screen until the control protocol's `screenshot` command exists.
 // Only TrueColor/DirectColor ZPixmaps (Xvfb at depth 16/24/32) are supported.
-
-/** @typedef {import("./png.mjs").Image} Image */
+import type { Image } from "./png.ts";
 
 const XWD_FILE_VERSION = 7;
 const HEADER_FIELDS = 25;
@@ -17,10 +16,8 @@ const MAX_DIMENSION = 16384;
  * Shift and maximum of a colour mask, to scale its channel to 8 bits. The mask must be one run
  * of 1 to 16 set bits inside `bpp` bits. The loops are bounded by 32 iterations, so a hostile
  * mask (0xFFFFFFFF: `>>> 32` is `>>> 0`) cannot spin forever.
- * @param {number} mask
- * @param {number} bpp
  */
-function maskInfo(mask, bpp) {
+function maskInfo(mask: number, bpp: number) {
   let shift = 0;
   while (shift < 32 && ((mask >>> shift) & 1) === 0) shift++;
   let bits = 0;
@@ -32,11 +29,7 @@ function maskInfo(mask, bpp) {
   return { shift, max: 2 ** bits - 1 };
 }
 
-/**
- * @param {Uint8Array} file
- * @returns {Image}
- */
-export function decodeXwd(file) {
+export function decodeXwd(file: Uint8Array): Image {
   const buf = Buffer.from(file.buffer, file.byteOffset, file.byteLength);
   if (buf.length < HEADER_FIELDS * 4) throw new Error("not an XWD file (too short)");
   // The header is written MSB-first by xwd and Xvfb; accept either order, decided by the version.
@@ -44,16 +37,14 @@ export function decodeXwd(file) {
   if (!big && buf.readUInt32LE(4) !== XWD_FILE_VERSION) {
     throw new Error("not an XWD file (file_version is not 7)");
   }
-  /** @param {number} i */
-  const field = (i) => (big ? buf.readUInt32BE(i * 4) : buf.readUInt32LE(i * 4));
+  const field = (i: number) => (big ? buf.readUInt32BE(i * 4) : buf.readUInt32LE(i * 4));
   const [headerSize, , format, , width, height, , byteOrder, , , , bpp, bytesPerLine] = Array.from(
     { length: 13 },
     (_, i) => field(i),
   );
-  /** @type {[number, number, number]} */
-  const masks = [field(14), field(15), field(16)];
+  const masks: [number, number, number] = [field(14), field(15), field(16)];
   const ncolors = field(19);
-  if (/** @type {number} */ (headerSize) < HEADER_FIELDS * 4) {
+  if ((headerSize as number) < HEADER_FIELDS * 4) {
     throw new Error(
       `XWD: header_size ${headerSize} is smaller than the ${HEADER_FIELDS * 4}-byte header`,
     );
@@ -66,21 +57,18 @@ export function decodeXwd(file) {
       throw new Error(`XWD: implausible dimensions ${width}×${height} (max ${MAX_DIMENSION})`);
     }
   }
-  if (
-    /** @type {number} */ (bytesPerLine) <
-    /** @type {number} */ (width) * /** @type {number} */ (bpp / 8)
-  ) {
+  if ((bytesPerLine as number) < (width as number) * ((bpp / 8) as number)) {
     throw new Error(`XWD: bytes_per_line ${bytesPerLine} is less than width × bytes per pixel`);
   }
-  const w = /** @type {number} */ (width);
-  const h = /** @type {number} */ (height);
-  const bpl = /** @type {number} */ (bytesPerLine);
-  const bytes = /** @type {number} */ (bpp) / 8;
-  const offset = /** @type {number} */ (headerSize) + ncolors * COLOR_ENTRY_SIZE;
+  const w = width as number;
+  const h = height as number;
+  const bpl = bytesPerLine as number;
+  const bytes = (bpp as number) / 8;
+  const offset = (headerSize as number) + ncolors * COLOR_ENTRY_SIZE;
   if (offset + bpl * h > buf.length) {
     throw new Error(`XWD truncated: ${buf.length} bytes, need ${offset + bpl * h}`);
   }
-  const [r, g, b] = masks.map((m) => maskInfo(m, /** @type {number} */ (bpp)));
+  const [r, g, b] = masks.map((m) => maskInfo(m, bpp as number));
   if ((masks[0] & masks[1]) | (masks[0] & masks[2]) | (masks[1] & masks[2])) {
     throw new Error("XWD: overlapping colour masks");
   }
@@ -89,9 +77,9 @@ export function decodeXwd(file) {
     // Xvfb at depth 24 on a little-endian host: bytes are B, G, R, X. A fast path for 1 Mpx.
     for (let y = 0; y < h; y++) {
       for (let x = 0, p = offset + y * bpl, o = y * w * 4; x < w; x++, p += 4, o += 4) {
-        out[o] = /** @type {number} */ (buf[p + 2]);
-        out[o + 1] = /** @type {number} */ (buf[p + 1]);
-        out[o + 2] = /** @type {number} */ (buf[p]);
+        out[o] = buf[p + 2] as number;
+        out[o + 1] = buf[p + 1] as number;
+        out[o + 2] = buf[p] as number;
         out[o + 3] = 255;
       }
     }
@@ -103,12 +91,12 @@ export function decodeXwd(file) {
       let v = 0;
       for (let k = 0; k < bytes; k++) {
         // byte_order 0 = LSBFirst, 1 = MSBFirst
-        const byte = /** @type {number} */ (buf[byteOrder === 0 ? p + bytes - 1 - k : p + k]);
+        const byte = buf[byteOrder === 0 ? p + bytes - 1 - k : p + k] as number;
         v = v * 256 + byte;
       }
       const o = (y * w + x) * 4;
       for (const [c, info] of [r, g, b].entries()) {
-        const { shift, max } = /** @type {{ shift: number, max: number }} */ (info);
+        const { shift, max } = info as { shift: number; max: number };
         out[o + c] = Math.round(((Math.floor(v / 2 ** shift) & max) * 255) / max);
       }
       out[o + 3] = 255;

@@ -23,7 +23,9 @@ import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control.mjs";
-import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.mjs";
+import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.ts";
+import type { ChildProcess } from "node:child_process";
+import type { Readable } from "node:stream";
 
 const ENGINE = fileURLToPath(new URL("../../engine/", import.meta.url));
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -48,10 +50,8 @@ export const GTK_SETTINGS = "[Settings]\ngtk-font-name = Sans 10\n";
  * text with Core Text rather than fontconfig and takes no screenshots (headless). Only the
  * scenarios pin their fonts: the site suite and the agent bench load real pages, which need the
  * machine's fonts for the scripts DejaVu lacks.
- * @param {string} [platform]
- * @returns {string | null}
  */
-export function scenarioFontconfig(platform = process.platform) {
+export function scenarioFontconfig(platform: string = process.platform): string | null {
   return platform === "darwin" ? null : E2E_FONTCONFIG;
 }
 /** What the browser prints when a module of ours cannot be loaded (e.g. by the content sandbox). */
@@ -66,14 +66,15 @@ export const STDERR_TIMELINE_LINES = 200;
 /** Longer stderr lines are cut to this many characters in that report. */
 export const STDERR_TIMELINE_CHARS = 1000;
 
+type Pref = readonly [string, boolean | number | string];
+
 /**
  * Prefs for the throwaway profile. The control socket on; everything that would pop up a first
  * run page, a dialog or reach the network off. Mostly the engine's
  * remote/shared/RecommendedPreferences.sys.mjs (what Marionette applies), plus telemetry and
  * stable-pixel settings for screenshots.
- * @type {ReadonlyArray<readonly [string, boolean | number | string]>}
  */
-export const PROFILE_PREFS = Object.freeze([
+export const PROFILE_PREFS: ReadonlyArray<Pref> = Object.freeze([
   ["vimma.control.enabled", true],
   // The browser runs outside a test harness here, so the first-run setup would open a tab of
   // its own in every scenario (docs/specs/first-run-setup.md decision 1).
@@ -156,11 +157,8 @@ export const PROFILE_PREFS = Object.freeze([
   ["layout.css.prefers-color-scheme.content-override", 1],
 ]);
 
-/**
- * @param {ReadonlyArray<readonly [string, boolean | number | string]>} prefs
- * @returns {string} user.js
- */
-export function userJs(prefs) {
+/** @returns user.js */
+export function userJs(prefs: ReadonlyArray<readonly [string, boolean | number | string]>): string {
   return prefs
     .map(([name, value]) => `user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});\n`)
     .join("");
@@ -168,19 +166,22 @@ export function userJs(prefs) {
 
 /**
  * A new private profile directory under `tmpRoot` with our user.js.
- * @param {string} [tmpRoot]
- * @param {Record<string, boolean | number | string | null>} [overrides] a scenario's `prefs`:
+ * @param [overrides] a scenario's `prefs`:
  *   a value replaces ours; null leaves the pref out, so the build's own default applies (e.g.
  *   Vimma's `browser.startup.page = 3`, which a restart scenario needs)
- * @param {{ readPaths?: readonly string[] }} [o] more folders content processes may read (the
+ * @param [o] more folders content processes may read (the
  *   pinned fonts': the Linux content sandbox reads fonts only from the system's font folders)
  */
-export function createProfile(tmpRoot = tmpdir(), overrides = {}, { readPaths = [] } = {}) {
+export function createProfile(
+  tmpRoot: string = tmpdir(),
+  overrides: Record<string, boolean | number | string | null> = {},
+  { readPaths = [] }: { readPaths?: readonly string[] } = {},
+) {
   const dir = mkdtempSync(join(tmpRoot, "vimma-e2e-profile-"));
   // plus npm start's dev prefs: content processes may read the repo's src/, where a local
-  // objdir's chrome files lead (tools/start.mjs); harmless for a packaged build
+  // objdir's chrome files lead (tools/start.ts); harmless for a packaged build
   const prefs = new Map([...PROFILE_PREFS, ...devPrefs(REPO)]);
-  // A config.toml of the profile's own, whatever HOME the browser is given (tools/start.mjs).
+  // A config.toml of the profile's own, whatever HOME the browser is given (tools/start.ts).
   prefs.set(CONFIG_PATH_PREF, join(dir, "vimma", "config.toml"));
   for (const [name, value] of Object.entries(overrides)) {
     if (value === null) prefs.delete(name);
@@ -195,28 +196,28 @@ export function createProfile(tmpRoot = tmpdir(), overrides = {}, { readPaths = 
   return dir;
 }
 
-/** @typedef {{ binary: string, env: Record<string, string> }} Build */
+export type Build = { binary: string; env: Record<string, string> };
 
-/**
- * Which build to run; see the spec's Launcher section for the order.
- * @param {{ build?: string, artifact?: boolean, engine?: string,
- *   env?: Record<string, string | undefined>, exists?: (path: string) => boolean }} options
- * @returns {Build}
- */
+/** Which build to run; see the spec's Launcher section for the order. */
 export function findBuild({
   build,
   artifact = false,
   engine = ENGINE,
   env = {},
   exists = existsSync,
-}) {
+}: {
+  build?: string;
+  artifact?: boolean;
+  engine?: string;
+  env?: Record<string, string | undefined>;
+  exists?: (path: string) => boolean;
+}): Build {
   const artifactBin = join(engine, ARTIFACT_OBJDIR, "dist/bin/vimma");
   const artifactBuild = {
     binary: artifactBin,
     env: { XUL_APP_FILE: join(engine, ARTIFACT_OBJDIR, "dist/bin/browser/application.ini") },
   };
-  /** @param {string} p */
-  const explicit = (p) => {
+  const explicit = (p: string) => {
     if (exists(join(p, "vimma"))) return { binary: join(p, "vimma"), env: {} }; // dist/bin
     const app = join(p, "Contents/MacOS/vimma");
     if (exists(app)) return { binary: app, env: {} }; // Vimma.app
@@ -244,13 +245,8 @@ export function findBuild({
   );
 }
 
-/**
- * Unpack a `./mach package` tarball (vimma-*.tar.xz) into `dir`; returns the build in it.
- * @param {string} tarball
- * @param {string} dir
- * @returns {Build}
- */
-export function unpackTarball(tarball, dir) {
+/** Unpack a `./mach package` tarball (vimma-*.tar.xz) into `dir`; returns the build in it. */
+export function unpackTarball(tarball: string, dir: string): Build {
   execFileSync("tar", ["-xJf", tarball, "-C", dir]);
   const binary = join(dir, "vimma", "vimma");
   if (!existsSync(binary))
@@ -259,14 +255,16 @@ export function unpackTarball(tarball, dir) {
 }
 
 /**
- * @param {string} profile
- * @param {{ width: number, height: number }} window
- * @param {{ url?: string | null, extra?: readonly string[] }} [options] `url`: the page to open;
+ * @param [options] `url`: the page to open;
  *   null on a restart, where a URL would open beside the restored session, which a user's plain
  *   restart never does. `extra`: more switches, before the URL (the site suite's
  *   --start-debugger-server, docs/specs/site-compat.md)
  */
-export function browserArgs(profile, { width, height }, { url = "about:blank", extra = [] } = {}) {
+export function browserArgs(
+  profile: string,
+  { width, height }: { width: number; height: number },
+  { url = "about:blank", extra = [] }: { url?: string | null; extra?: readonly string[] } = {},
+) {
   return [
     "-no-remote",
     "-profile",
@@ -299,17 +297,26 @@ const DISPLAY_PASSTHROUGH = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "X
  * Headless (macOS), it gets MOZ_HEADLESS=1 and no display at all.
  * With `fontconfig`, fontconfig reads that file instead of the system's /etc/fonts, so the
  * machine's installed fonts and its choice for monospace or sans-serif do not reach the pixels.
- * @param {Record<string, string | undefined>} base
- * @param {{ display?: string, headless?: boolean, home?: string, tmp?: string,
- *   fontconfig?: string | null, extra?: Record<string, string> }} o
- * @returns {Record<string, string>}
  */
 export function browserEnv(
-  base,
-  { display, headless = false, home, tmp, fontconfig = null, extra = {} },
-) {
-  /** @type {Record<string, string>} */
-  const env = {};
+  base: Record<string, string | undefined>,
+  {
+    display,
+    headless = false,
+    home,
+    tmp,
+    fontconfig = null,
+    extra = {},
+  }: {
+    display?: string;
+    headless?: boolean;
+    home?: string;
+    tmp?: string;
+    fontconfig?: string | null;
+    extra?: Record<string, string>;
+  },
+): Record<string, string> {
+  const env: Record<string, string> = {};
   const keep = display || headless ? ENV_PASSTHROUGH : [...ENV_PASSTHROUGH, ...DISPLAY_PASSTHROUGH];
   for (const k of keep) {
     const v = base[k];
@@ -331,28 +338,30 @@ export function browserEnv(
   return { ...env, ...extra };
 }
 
-/** @param {string} [pathEnv] @returns {string | null} the Xvfb binary on PATH */
 /**
  * Where the browser draws: our own Xvfb ("xvfb"), the caller's display ("display"), or nowhere
  * ("headless", MOZ_HEADLESS=1). macOS defaults to headless, even with a DISPLAY (XQuartz sets
  * one): the macOS build draws with Cocoa, not X11, so Xvfb has nothing to show.
- * @param {{ platform?: string, xvfb?: boolean, headless?: boolean,
- *   env?: Record<string, string | undefined> }} options
- * @returns {"xvfb" | "display" | "headless"}
  */
 export function displayMode({
   platform = process.platform,
   xvfb = false,
   headless = false,
   env = process.env,
-}) {
+}: {
+  platform?: string;
+  xvfb?: boolean;
+  headless?: boolean;
+  env?: Record<string, string | undefined>;
+}): "xvfb" | "display" | "headless" {
   if (xvfb && headless) throw new Error("pass either --xvfb or --headless, not both");
   if (xvfb) return "xvfb";
   if (headless || platform === "darwin") return "headless";
   return env.DISPLAY ? "display" : "xvfb";
 }
 
-export function findXvfb(pathEnv = process.env.PATH ?? "") {
+/** @returns the Xvfb binary on PATH */
+export function findXvfb(pathEnv: string = process.env.PATH ?? ""): string | null {
   for (const dir of pathEnv.split(delimiter)) {
     if (dir && existsSync(join(dir, "Xvfb"))) return join(dir, "Xvfb");
   }
@@ -362,16 +371,21 @@ export function findXvfb(pathEnv = process.env.PATH ?? "") {
 const XVFB_PACKAGES =
   "install Xvfb: package xvfb (Ubuntu/Debian), xorg-server-xvfb (Arch), xorg-x11-server-Xvfb (Fedora)";
 
-/**
- * @typedef {{ display: string, fbFile: string, stop: () => Promise<void> }} Display
- */
+export type Display = { display: string; fbFile: string; stop: () => Promise<void> };
 
 /**
  * Xvfb's arguments: a free display reported on fd 3, the screen at 24-bit depth and 96 dpi,
  * black root, no cursor, the framebuffer kept as an XWD file in `fbdir` (the capture path).
- * @param {{ width: number, height: number, fbdir: string }} o
  */
-export function xvfbArgs({ width, height, fbdir }) {
+export function xvfbArgs({
+  width,
+  height,
+  fbdir,
+}: {
+  width: number;
+  height: number;
+  fbdir: string;
+}) {
   return [
     "-displayfd",
     "3",
@@ -393,9 +407,6 @@ export function xvfbArgs({ width, height, fbdir }) {
 /**
  * Start Xvfb (see xvfbArgs). An abort `signal` while it starts kills it and removes the fbdir;
  * every failure path does too, so nothing outlives a cancelled launch.
- * @param {{ width: number, height: number, bin?: string | null, timeoutMs?: number,
- *   signal?: AbortSignal, env?: Record<string, string | undefined> }} options
- * @returns {Promise<Display>}
  */
 export async function startXvfb({
   width,
@@ -404,13 +415,19 @@ export async function startXvfb({
   timeoutMs = 10_000,
   signal,
   env = process.env,
-}) {
+}: {
+  width: number;
+  height: number;
+  bin?: string | null;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  env?: Record<string, string | undefined>;
+}): Promise<Display> {
   if (!bin || !existsSync(bin))
     throw new Error(`Xvfb not found (${bin ?? "not on PATH"}); ${XVFB_PACKAGES}`);
   signal?.throwIfAborted();
   const fbdir = mkdtempSync(join(tmpdir(), "vimma-e2e-xvfb-"));
-  /** @type {import("node:child_process").ChildProcess} */
-  let child;
+  let child: ChildProcess;
   try {
     child = spawn(bin, xvfbArgs({ width, height, fbdir }), {
       stdio: ["ignore", "ignore", "pipe", "pipe"],
@@ -423,16 +440,15 @@ export async function startXvfb({
   }
   let stderr = "";
   child.stderr?.on("data", (d) => (stderr = (stderr + d).slice(-4000)));
-  const fd3 = /** @type {import("node:stream").Readable} */ (child.stdio[3]);
-  /** @type {Promise<void> | null} */
-  let stopping = null;
+  const fd3 = child.stdio[3] as Readable;
+  let stopping: Promise<void> | null = null;
   const stop = () =>
     (stopping ??= (async () => {
       await killTree(child, { graceMs: 2000 });
       rmSync(fbdir, { recursive: true, force: true });
     })());
   try {
-    const display = await new Promise((resolve, reject) => {
+    const display = await new Promise<string>((resolve, reject) => {
       let out = "";
       const done = () => {
         clearTimeout(timer);
@@ -474,10 +490,8 @@ export async function startXvfb({
 /**
  * A file's permission bits and text, both from one open descriptor: the mode checked is the mode
  * of the file read, even if the path is replaced in between (CodeQL js/file-system-race).
- * @param {string} path
- * @returns {{ mode: number, text: string }}
  */
-function readWithMode(path) {
+function readWithMode(path: string): { mode: number; text: string } {
   const fd = openSync(path, "r");
   try {
     return { mode: fstatSync(fd).mode & 0o777, text: readFileSync(fd, "utf8") };
@@ -492,36 +506,31 @@ function readWithMode(path) {
  * A launch that fails prints `format()`, so a stalled startup phase shows as a gap between two
  * lines (Firefox writes `Failed to create DBus proxy for org.a11y.Bus` from its first window).
  * Nothing is printed for a launch that succeeds.
- * @param {{ now?: () => number, maxLines?: number, maxChars?: number }} [options]
  */
 export function stderrTimeline({
   now = () => performance.now(),
   maxLines = STDERR_TIMELINE_LINES,
   maxChars = STDERR_TIMELINE_CHARS,
-} = {}) {
+}: { now?: () => number; maxLines?: number; maxChars?: number } = {}) {
   const spawnedAt = now();
   const wallClock = new Date().toISOString();
-  /** @type {Array<{ ms: number, text: string }>} */
-  const lines = [];
-  /** @type {{ ms: number, text: string } | null} */
-  let partial = null;
+  const lines: Array<{ ms: number; text: string }> = [];
+  let partial: { ms: number; text: string } | null = null;
   let dropped = 0;
-  const cut = (/** @type {string} */ text) =>
-    text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
-  const add = (/** @type {{ ms: number, text: string }} */ line) => {
+  const cut = (text: string) => (text.length > maxChars ? `${text.slice(0, maxChars)}…` : text);
+  const add = (line: { ms: number; text: string }) => {
     lines.push({ ms: line.ms, text: cut(line.text.replace(/\r$/, "")) });
     if (lines.length > maxLines) {
       lines.shift();
       dropped++;
     }
   };
-  const secs = (/** @type {number} */ ms) => (ms / 1000).toFixed(3);
+  const secs = (ms: number) => (ms / 1000).toFixed(3);
   return {
-    /** @param {string | Buffer} chunk */
-    push(chunk) {
+    push(chunk: string | Buffer) {
       const ms = now() - spawnedAt;
       const parts = String(chunk).split("\n");
-      const rest = /** @type {string} */ (parts.pop());
+      const rest = parts.pop() as string;
       for (const part of parts) {
         add(partial ? { ms: partial.ms, text: partial.text + part } : { ms, text: part });
         partial = null;
@@ -533,8 +542,7 @@ export function stderrTimeline({
           : { ms, text: rest.slice(0, maxChars + 1) };
       }
     },
-    /** @returns {string} */
-    format() {
+    format(): string {
       const elapsed = now() - spawnedAt;
       const all = partial ? [...lines, { ms: partial.ms, text: cut(partial.text) }] : lines;
       const last = all.at(-1);
@@ -558,15 +566,9 @@ export function stderrTimeline({
  * crash-style kill the dead browser's file is still there: `stalePid` (its pid) makes the wait
  * skip it until the new browser replaces it. A failure ends with `stderrReport` (the timed lines
  * of stderrTimeline) when it is given, else with `stderrTail`.
- * @param {string} profile
- * @param {{ timeoutMs?: number, intervalMs?: number,
- *   exited?: () => { code: number | null, signal: string | null } | null,
- *   stderrTail?: () => string, stderrReport?: (() => string) | null,
- *   stalePid?: number | null }} [options]
- * @returns {Promise<{ protocol: number, port: number, token: string, pid: number }>}
  */
 export async function waitForDiscovery(
-  profile,
+  profile: string,
   {
     timeoutMs = DEFAULT_DISCOVERY_TIMEOUT_MS,
     intervalMs = 50,
@@ -574,8 +576,15 @@ export async function waitForDiscovery(
     stderrTail = () => "",
     stderrReport = null,
     stalePid = null,
+  }: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    exited?: () => { code: number | null; signal: string | null } | null;
+    stderrTail?: () => string;
+    stderrReport?: (() => string) | null;
+    stalePid?: number | null;
   } = {},
-) {
+): Promise<{ protocol: number; port: number; token: string; pid: number }> {
   const path = join(profile, DISCOVERY_FILE);
   const deadline = Date.now() + timeoutMs;
   const tail = () => {
@@ -590,13 +599,12 @@ export async function waitForDiscovery(
       const how = exit.signal ? `signal ${exit.signal}` : `code ${exit.code}`;
       throw new Error(`the browser exited with ${how} before its control socket came up${tail()}`);
     }
-    /** @type {{ mode: number, text: string } | null} */
-    let file = null;
+    let file: { mode: number; text: string } | null = null;
     try {
       file = readWithMode(path);
     } catch (e) {
-      if (/** @type {NodeJS.ErrnoException} */ (e).code !== "ENOENT") {
-        problem = `it cannot be read yet: ${/** @type {Error} */ (e).message}`;
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
+        problem = `it cannot be read yet: ${(e as Error).message}`;
       }
     }
     if (file) {
@@ -610,7 +618,7 @@ export async function waitForDiscovery(
           problem = `it is the one left by the killed browser (pid ${stalePid})`;
         } else return body;
       } catch (e) {
-        problem = `it cannot be read yet: ${/** @type {Error} */ (e).message}`; // mid-rename
+        problem = `it cannot be read yet: ${(e as Error).message}`; // mid-rename
       }
     }
     if (Date.now() >= deadline) {
@@ -623,8 +631,7 @@ export async function waitForDiscovery(
   }
 }
 
-/** @param {number} pgid */
-function groupAlive(pgid) {
+function groupAlive(pgid: number) {
   try {
     process.kill(-pgid, 0);
     return true;
@@ -636,18 +643,15 @@ function groupAlive(pgid) {
 /**
  * Kill a process started with `detached: true` and everything in its process group (Firefox's
  * content processes): SIGTERM, then SIGKILL after `graceMs`, then wait until the group is gone.
- * @param {import("node:child_process").ChildProcess} child
- * @param {{ graceMs?: number }} [options]
  */
-export async function killTree(child, { graceMs = 5000 } = {}) {
+export async function killTree(child: ChildProcess, { graceMs = 5000 }: { graceMs?: number } = {}) {
   const pid = child.pid;
   if (!pid) return;
   const exited = new Promise((resolve) => {
     if (child.exitCode !== null || child.signalCode !== null) resolve(undefined);
     else child.once("exit", () => resolve(undefined));
   });
-  /** @param {NodeJS.Signals} signal */
-  const signal = (signal) => {
+  const signal = (signal: NodeJS.Signals) => {
     try {
       process.kill(-pid, signal);
     } catch {
@@ -669,11 +673,12 @@ export async function killTree(child, { graceMs = 5000 } = {}) {
  * notice the dead parent and exit; any still in the harness's process group after `reapMs` are
  * SIGKILLed so the relaunch starts clean. Never a name-based kill (pkill -f): only this pid
  * and its group.
- * @param {import("node:child_process").ChildProcess} child
- * @param {{ reapMs?: number }} [options]
- * @returns {Promise<number>} the killed pid (the stale discovery file names it)
+ * @returns the killed pid (the stale discovery file names it)
  */
-export async function crashBrowser(child, { reapMs = 5000 } = {}) {
+export async function crashBrowser(
+  child: ChildProcess,
+  { reapMs = 5000 }: { reapMs?: number } = {},
+): Promise<number> {
   const pid = child.pid;
   if (!pid) throw new Error("crashBrowser: the browser has no pid");
   if (child.exitCode !== null || child.signalCode !== null) {
@@ -704,18 +709,19 @@ export const RECOVERY_FILE = join("sessionstore-backups", "recovery.jsonlz4");
  * for `quietMs`, counted from this call at the earliest. SessionStore writes it at most every
  * `browser.sessionstore.interval` ms while the session is dirty, so a quiet period of a few
  * intervals means everything the scenario did before is on disk, which is what a crash keeps.
- * @param {string} profile
- * @param {{ quietMs?: number, timeoutMs?: number, pollMs?: number }} [options]
  */
 export async function waitForSessionSaved(
-  profile,
-  { quietMs = 3000, timeoutMs = 30_000, pollMs = 100 } = {},
+  profile: string,
+  {
+    quietMs = 3000,
+    timeoutMs = 30_000,
+    pollMs = 100,
+  }: { quietMs?: number; timeoutMs?: number; pollMs?: number } = {},
 ) {
   const path = join(profile, RECOVERY_FILE);
   const started = Date.now();
   const deadline = started + timeoutMs;
-  /** @type {number | null} */
-  let mtime = null;
+  let mtime: number | null = null;
   let since = started;
   for (;;) {
     const now = existsSync(path) ? statSync(path).mtimeMs : null;
@@ -738,22 +744,28 @@ export async function waitForSessionSaved(
  * the discovery file; a signal skips them (spec m0-control-server). The help overlay swallows
  * ctrl+q, so it is closed with `esc` first. Never throws: on any trouble, or when the browser has
  * not exited within `timeoutMs`, it returns false and the caller falls back to killTree.
- * @param {{
- *   ctl: { state: () => Promise<Record<string, any>>, sendKeys: (keys: string) => Promise<void> },
- *   child: { exitCode: number | null, signalCode: string | null,
- *     once: (event: "exit", f: () => void) => unknown },
- *   timeoutMs?: number,
- *   pollMs?: number,
- * }} options
- * @returns {Promise<boolean>} whether the browser exited
+ * @returns whether the browser exited
  */
-export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 }) {
+export async function quitBrowser({
+  ctl,
+  child,
+  timeoutMs = 10_000,
+  pollMs = 50,
+}: {
+  ctl: { state: () => Promise<Record<string, any>>; sendKeys: (keys: string) => Promise<void> };
+  child: {
+    exitCode: number | null;
+    signalCode: string | null;
+    once: (event: "exit", f: () => void) => unknown;
+  };
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<boolean> {
   const gone = () => child.exitCode !== null || child.signalCode !== null;
   if (gone()) return true;
   const exited = new Promise((resolve) => child.once("exit", () => resolve(true)));
   const deadline = Date.now() + timeoutMs;
-  /** @type {ReturnType<typeof setTimeout> | undefined} */
-  let timer;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs)));
   const attempt = async () => {
     let state = await ctl.state();
@@ -769,7 +781,7 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
     return exited;
   };
   try {
-    return /** @type {boolean} */ (await Promise.race([attempt().catch(() => false), timeout]));
+    return (await Promise.race([attempt().catch(() => false), timeout])) as boolean;
   } finally {
     clearTimeout(timer);
   }
@@ -779,15 +791,14 @@ export async function quitBrowser({ ctl, child, timeoutMs = 10_000, pollMs = 50 
  * A private D-Bus session bus for one browser, so the D-Bus remote that a second `vimma` (the
  * `external` step's vimma-open) forwards its command line over reaches the browser under test,
  * never the developer's own Vimma.
- * @typedef {{ address: string, stop: () => Promise<void> }} Bus
  */
+export type Bus = { address: string; stop: () => Promise<void> };
 
 /**
  * A session bus configuration with no service directories, so nothing is activated on it (a
  * portal or the accessibility bus would otherwise start under the harness).
- * @param {string} socket
  */
-export function sessionBusConfig(socket) {
+export function sessionBusConfig(socket: string) {
   return `<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
  "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
 <busconfig>
@@ -805,13 +816,11 @@ export function sessionBusConfig(socket) {
 `;
 }
 
-/**
- * Starts dbus-daemon on a socket in `dir` and waits for the address it prints.
- * @param {string} dir
- * @param {{ bin?: string, timeoutMs?: number }} [options]
- * @returns {Promise<Bus>}
- */
-export async function startSessionBus(dir, { bin = "dbus-daemon", timeoutMs = 10_000 } = {}) {
+/** Starts dbus-daemon on a socket in `dir` and waits for the address it prints. */
+export async function startSessionBus(
+  dir: string,
+  { bin = "dbus-daemon", timeoutMs = 10_000 }: { bin?: string; timeoutMs?: number } = {},
+): Promise<Bus> {
   const config = join(dir, ".e2e-bus.conf");
   writeFileSync(config, sessionBusConfig(join(dir, ".e2e-bus")));
   const child = spawn(
@@ -850,7 +859,7 @@ export async function startSessionBus(dir, { bin = "dbus-daemon", timeoutMs = 10
       });
     });
     return {
-      address: /** @type {string} */ (address),
+      address: address as string,
       stop: () => killTree(child, { graceMs: 1000 }),
     };
   } catch (e) {
@@ -862,11 +871,9 @@ export async function startSessionBus(dir, { bin = "dbus-daemon", timeoutMs = 10
 /**
  * The `vimma` an `external` step's vimma-open runs (VIMMA_BIN): the build on the profile under
  * test, so the forwarded command line reaches that browser.
- * @param {string} binary
- * @param {string} profile
  */
-export function externalWrapper(binary, profile) {
-  const q = (/** @type {string} */ s) => `'${s.replaceAll("'", `'\\''`)}'`;
+export function externalWrapper(binary: string, profile: string) {
+  const q = (s: string) => `'${s.replaceAll("'", `'\\''`)}'`;
   return `#!/bin/sh\nexec ${q(binary)} -profile ${q(profile)} "$@"\n`;
 }
 
@@ -876,11 +883,15 @@ export const VIMMA_OPEN = join(REPO, "tools/package/vimma-open.sh");
 /**
  * Runs vimma-open with `args` in `env`, as another program does; it hands the link off and
  * returns at once, so a non-zero exit or a hang is a failure.
- * @param {readonly string[]} args
- * @param {{ env: Record<string, string>, timeoutMs?: number, signal?: AbortSignal }} options
- * @returns {Promise<void>}
  */
-export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
+export function runVimmaOpen(
+  args: readonly string[],
+  {
+    env,
+    timeoutMs = 10_000,
+    signal,
+  }: { env: Record<string, string>; timeoutMs?: number; signal?: AbortSignal },
+): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn("/bin/sh", [VIMMA_OPEN, ...args], {
       env,
@@ -899,19 +910,17 @@ export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
   });
 }
 
-/**
- * @typedef {{
- *   profile: string,
- *   child: import("node:child_process").ChildProcess,
- *   display: Display | null,
- *   env: () => Record<string, string>,
- *   discovery: { protocol: number, port: number, token: string, pid: number },
- *   stderrTail: () => string,
- *   loadFailure: () => string | null,
- *   relaunch: (options?: { stalePid?: number }) => Promise<void>,
- *   teardown: () => Promise<void>,
- * }} Session
- */
+export type Session = {
+  profile: string;
+  child: ChildProcess;
+  display: Display | null;
+  env: () => Record<string, string>;
+  discovery: { protocol: number; port: number; token: string; pid: number };
+  stderrTail: () => string;
+  loadFailure: () => string | null;
+  relaunch: (options?: { stalePid?: number }) => Promise<void>;
+  teardown: () => Promise<void>;
+};
 
 /**
  * Launch a build and wait for its control socket. On any failure everything started so far is
@@ -933,33 +942,8 @@ export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
  * CLI's run folder (C6) refuses one with an ancestor others can write, such as the profile's
  * /tmp. `fontconfig` is the fontconfig file the browser reads instead of the system's
  * (scenarioFontconfig), and with it GTK gets GTK_SETTINGS; null leaves the system's.
- * @param {{
- *   build: Build,
- *   headless?: boolean,
- *   xvfb?: boolean,
- *   xvfbBin?: string | null,
- *   xvfbEnv?: Record<string, string | undefined>,
- *   window?: { width: number, height: number },
- *   tmpRoot?: string,
- *   programs?: Record<string, string>,
- *   programPath?: readonly string[],
- *   runtimeRoot?: string,
- *   prefs?: Record<string, boolean | number | string | null>,
- *   fontconfig?: string | null,
- *   keep?: boolean,
- *   sessionBus?: boolean,
- *   args?: readonly string[],
- *   discoveryTimeoutMs?: number,
- *   graceMs?: number,
- *   baseEnv?: Record<string, string | undefined>,
- *   signal?: AbortSignal,
- *   onSpawn?: (child: import("node:child_process").ChildProcess) => void,
- *   onTeardown?: (teardown: () => Promise<void>) => void,
- *   onProfile?: (profile: string) => void,
- *   log?: (line: string) => void,
- * }} options  `onProfile` changes the new profile before the browser first starts on it (the
+ * @param options `onProfile` changes the new profile before the browser first starts on it (the
  *   update scenarios trust their host's CA in it)
- * @returns {Promise<Session>}
  */
 export async function launch({
   build,
@@ -985,18 +969,37 @@ export async function launch({
   onTeardown = () => {},
   onProfile = () => {},
   log = () => {},
-}) {
-  /** @type {Display | null} */
-  let display = null;
-  /** @type {Promise<Display> | null} */
-  let displayStarting = null;
-  /** @type {import("node:child_process").ChildProcess | null} */
-  let child = null;
-  /** @type {Bus | null} */
-  let bus = null;
+}: {
+  build: Build;
+  headless?: boolean;
+  xvfb?: boolean;
+  xvfbBin?: string | null;
+  xvfbEnv?: Record<string, string | undefined>;
+  window?: { width: number; height: number };
+  tmpRoot?: string;
+  programs?: Record<string, string>;
+  programPath?: readonly string[];
+  runtimeRoot?: string;
+  prefs?: Record<string, boolean | number | string | null>;
+  fontconfig?: string | null;
+  keep?: boolean;
+  sessionBus?: boolean;
+  args?: readonly string[];
+  discoveryTimeoutMs?: number;
+  graceMs?: number;
+  baseEnv?: Record<string, string | undefined>;
+  signal?: AbortSignal;
+  onSpawn?: (child: ChildProcess) => void;
+  onTeardown?: (teardown: () => Promise<void>) => void;
+  onProfile?: (profile: string) => void;
+  log?: (line: string) => void;
+}): Promise<Session> {
+  let display: Display | null = null;
+  let displayStarting: Promise<Display> | null = null;
+  let child: ChildProcess | null = null;
+  let bus: Bus | null = null;
   /** The browser's environment at its last start, for programs that talk to it. */
-  /** @type {Record<string, string>} */
-  let lastEnv = {};
+  let lastEnv: Record<string, string> = {};
   const cancel = new AbortController();
   // The sandbox resolves symlinks before it compares paths, hence the real path.
   const profile = createProfile(tmpRoot, prefs, {
@@ -1019,13 +1022,10 @@ export async function launch({
       chmodSync(join(bin, name), 0o700);
     }
   }
-  /** @type {string | null} */
-  let runDir = null;
+  let runDir: string | null = null;
   let stderr = "";
-  /** @type {string | null} */
-  let loadFailure = null;
-  /** @type {Promise<void> | null} */
-  let tearingDown = null;
+  let loadFailure: string | null = null;
+  let tearingDown: Promise<void> | null = null;
   const teardown = () =>
     (tearingDown ??= (async () => {
       cancel.abort();
@@ -1047,10 +1047,7 @@ export async function launch({
   const stderrTail = () => stderr.split("\n").slice(-15).join("\n");
 
   /** Spawn the browser on the profile (with `url` on the command line) and wait for its socket. */
-  const start = async (
-    /** @type {string | null} */ url,
-    /** @type {number | null} */ stalePid = null,
-  ) => {
+  const start = async (url: string | null, stalePid: number | null = null) => {
     const env = browserEnv(baseEnv, {
       display: display?.display,
       headless,
@@ -1080,10 +1077,8 @@ export async function launch({
     });
     child = spawned;
     onSpawn(spawned);
-    /** @type {{ code: number | null, signal: string | null } | null} */
-    let exit = null;
-    /** @type {Error | null} */
-    let spawnError = null;
+    let exit: { code: number | null; signal: string | null } | null = null;
+    let spawnError: Error | null = null;
     spawned.on("exit", (code, sig) => (exit = { code, signal: sig }));
     spawned.on("error", (e) => (spawnError = e));
     const timeline = stderrTimeline();
@@ -1100,9 +1095,7 @@ export async function launch({
         const stopped = cancelled();
         if (stopped) throw stopped;
         if (spawnError)
-          throw new Error(
-            `cannot start ${build.binary}: ${/** @type {Error} */ (spawnError).message}`,
-          );
+          throw new Error(`cannot start ${build.binary}: ${(spawnError as Error).message}`);
         return exit;
       },
       stderrReport: timeline.format,
@@ -1125,8 +1118,7 @@ export async function launch({
     if (stop) throw stop;
     const first = await start("about:blank");
     signal?.removeEventListener("abort", onAbort);
-    /** @type {Session} */
-    const session = {
+    const session: Session = {
       profile,
       child: first.spawned,
       display,

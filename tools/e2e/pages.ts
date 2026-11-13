@@ -8,19 +8,18 @@ import { extname, join } from "node:path";
 const NAME = /^[\w-][\w.-]*$/;
 /** A fragment the page may read (`fixture:cookie.html#work`); the server never sees it. */
 const FRAGMENT = /^#[\w.=-]*$/;
-const TYPES = /** @type {Record<string, string>} */ ({
+const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".pdf": "application/pdf",
-});
+} as Record<string, string>;
 
 /**
- * @param {string} url a scenario's `open` value: `fixture:<name>[#fragment]` or a URL
- * @param {string | null} base the page server's base URL (with a trailing slash)
- * @returns {string}
+ * @param url a scenario's `open` value: `fixture:<name>[#fragment]` or a URL
+ * @param base the page server's base URL (with a trailing slash)
  */
-export function fixtureUrl(url, base) {
+export function fixtureUrl(url: string, base: string | null): string {
   if (!url.startsWith("fixture:")) return url;
   const rest = url.slice("fixture:".length);
   const hash = rest.indexOf("#");
@@ -36,20 +35,15 @@ export function fixtureUrl(url, base) {
 /**
  * A typed text with each `fixture:<name>[#fragment]` in it mapped onto the server; a name ends
  * at a space or `]`, so a fake agent CLI's `[[open fixture:shop.html]]` works.
- * @param {string} text
- * @param {string | null} base
- * @returns {string}
  */
-export function fixtureText(text, base) {
+export function fixtureText(text: string, base: string | null): string {
   return text.replace(/fixture:[^\s\]]*/g, (url) => fixtureUrl(url, base));
 }
 
-/**
- * Serve the plain files of `dir` (no subdirectories) on 127.0.0.1 at an ephemeral port.
- * @param {string} dir
- * @returns {Promise<{ base: string, close: () => Promise<void> }>}
- */
-export async function startPageServer(dir) {
+/** Serve the plain files of `dir` (no subdirectories) on 127.0.0.1 at an ephemeral port. */
+export async function startPageServer(
+  dir: string,
+): Promise<{ base: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     let name = "";
     try {

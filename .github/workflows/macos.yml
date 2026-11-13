@@ -227,7 +227,7 @@ jobs:
         timeout-minutes: 10
         run: |
           for scenario in m0-happy-path m0-content-actor; do
-            node tools/e2e/e2e.mjs --headless --build "$APP" \
+            node tools/e2e/e2e.ts --headless --build "$APP" \
               --vimma-ctl tools/vimma-ctl/target/release/vimma-ctl --filter "$scenario"
           done
 

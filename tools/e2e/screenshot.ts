@@ -4,25 +4,22 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { decodePng, encodePng } from "./png.mjs";
-import { decodeXwd } from "./xwd.mjs";
-
-/** @typedef {import("./png.mjs").Image} Image */
+import { decodePng, encodePng } from "./png.ts";
+import { decodeXwd } from "./xwd.ts";
+import type { Image } from "./png.ts";
 
 /** Plan §4: screenshot diffs with 0.5 % tolerance (share of pixels that may differ). */
 export const MAX_DIFF_RATIO = 0.005;
 /** A pixel differs when any RGBA channel differs by more than this (absorbs rounding). */
 export const CHANNEL_TOLERANCE = 2;
 
-/**
- * @param {Image} expected
- * @param {Image} actual
- * @param {{ channelTolerance?: number, maxRatio?: number }} [options]
- */
 export function diffImages(
-  expected,
-  actual,
-  { channelTolerance = CHANNEL_TOLERANCE, maxRatio = MAX_DIFF_RATIO } = {},
+  expected: Image,
+  actual: Image,
+  {
+    channelTolerance = CHANNEL_TOLERANCE,
+    maxRatio = MAX_DIFF_RATIO,
+  }: { channelTolerance?: number; maxRatio?: number } = {},
 ) {
   if (expected.width !== actual.width || expected.height !== actual.height) {
     return {
@@ -40,8 +37,8 @@ export function diffImages(
   for (let p = 0; p < total * 4; p += 4) {
     let differs = false;
     for (let c = 0; c < 4; c++) {
-      const e = /** @type {number} */ (expected.data[p + c]);
-      const a = /** @type {number} */ (actual.data[p + c]);
+      const e = expected.data[p + c] as number;
+      const a = actual.data[p + c] as number;
       if (Math.abs(e - a) > channelTolerance) differs = true;
     }
     if (differs) {
@@ -65,16 +62,25 @@ export function diffImages(
   };
 }
 
-/**
- * @typedef {{ status: "match" | "updated" | "missing" | "mismatch", message: string }} BaselineResult
- */
+export type BaselineResult = {
+  status: "match" | "updated" | "missing" | "mismatch";
+  message: string;
+};
 
-/**
- * Compare `image` with `<baselineDir>/<name>.png`, or write it there with `update`.
- * @param {{ name: string, image: Image, baselineDir: string, outDir: string, update?: boolean }} o
- * @returns {BaselineResult}
- */
-export function checkBaseline({ name, image, baselineDir, outDir, update = false }) {
+/** Compare `image` with `<baselineDir>/<name>.png`, or write it there with `update`. */
+export function checkBaseline({
+  name,
+  image,
+  baselineDir,
+  outDir,
+  update = false,
+}: {
+  name: string;
+  image: Image;
+  baselineDir: string;
+  outDir: string;
+  update?: boolean;
+}): BaselineResult {
   const path = join(baselineDir, `${name}.png`);
   if (update) {
     mkdirSync(baselineDir, { recursive: true });
@@ -107,8 +113,7 @@ export function checkBaseline({ name, image, baselineDir, outDir, update = false
   mkdirSync(outDir, { recursive: true });
   const actualPath = join(outDir, `${name}.actual.png`);
   writeFileSync(actualPath, encodePng(image));
-  /** @type {string} */
-  let detail;
+  let detail: string;
   if (result.sizeMismatch) {
     detail = `size differs from the baseline (got ${image.width}×${image.height})`;
   } else {
@@ -124,11 +129,12 @@ export function checkBaseline({ name, image, baselineDir, outDir, update = false
  * Capture the screen of the harness's Xvfb from its `-fbdir` framebuffer file. Waits until two
  * frames `settleMs` apart are identical (at most `maxWaitMs`), so a half-painted frame is not
  * compared. The protocol's `screenshot` command (reserved in v1) replaces this once it exists.
- * @param {string} fbFile `<fbdir>/Xvfb_screen0`
- * @param {{ settleMs?: number, maxWaitMs?: number }} [options]
- * @returns {Promise<Image>}
+ * @param fbFile `<fbdir>/Xvfb_screen0`
  */
-export async function capture(fbFile, { settleMs = 200, maxWaitMs = 2000 } = {}) {
+export async function capture(
+  fbFile: string,
+  { settleMs = 200, maxWaitMs = 2000 }: { settleMs?: number; maxWaitMs?: number } = {},
+): Promise<Image> {
   const deadline = Date.now() + maxWaitMs;
   let last = readFileSync(fbFile);
   for (;;) {
