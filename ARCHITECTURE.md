@@ -58,8 +58,9 @@ file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Com
 </picture>
 
 The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
-dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows go
-through the control socket's token or the agent gate. In words:
+dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows
+reach `ctl/`: those from outside past the control socket's token, the built-in agent's in
+process through the agent gate. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is
@@ -83,15 +84,18 @@ through the control socket's token or the agent gate. In words:
   `agent` role.
 - **The built-in agent.** A chat window inside Vimma. Its model calls go straight to the
   provider's HTTP API; its tool calls go through the same gate, grants and log as an outside
-  agent's, in process. It can also run an agent CLI as a subprocess, whose only MCP server is
+  agent's, in process, with no socket or token; a task sent with `Enter` grants its own
+  conversation's connection without a question, until the task ends. It can also run an agent CLI as a subprocess, whose only MCP server is
   `vimma-ctl mcp` with a one-time ticket ([builtin-agent](docs/specs/builtin-agent.md),
   [builtin-agent-cli](docs/specs/builtin-agent-cli.md)).
 - **Outside the browser.** The update check reads a signed manifest from updates.vimma.dev,
-  where the release pipeline publishes it ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
+  where the release pipeline publishes it; the update file (MAR) it names is downloaded from the
+  release on GitHub (not drawn). A model provider is reached over HTTPS, or over HTTP when it
+  runs on this machine ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
   `config.toml` and the Omarchy theme file are polled every 2 s, because Firefox has no portable
   file watcher. Omarchy's theme-set hook makes the theme reload at once through Firefox's
   command-line remoting. On Hyprland, the private workspace can swap in place of the window
-  through Hyprland's IPC socket ([ADR-017](docs/adr/017-window-manager-ipc.md)).
+  through Hyprland's IPC sockets, one for requests and one for the events Vimma listens to ([ADR-017](docs/adr/017-window-manager-ipc.md)).
 
 ## How a key is handled
 
@@ -270,8 +274,9 @@ from it, so the picture, the rule and the code cannot disagree.
 
 In words, as the code stands:
 
-- Every folder sits in the row of its layer. `vimma.js` imports every folder, to start it, and
-  every folder but `omarchy/` and `start/` imports core; neither is drawn.
+- Every folder drawn sits in the row of its layer. `vimma.js` imports every folder drawn, to
+  start it, and every folder drawn but `omarchy/` and `start/` imports core; neither is drawn,
+  and nor is `licence/`, which holds no module.
 - Grey arrows go down the layers, as the rule allows. An importer that reaches two or more of
   layer 1's folders has one arrow to the layer, labelled with how many: `about/`, `config/` and
   `host/` import four of them, `ctl/` three.
@@ -401,6 +406,7 @@ The two pictures follow the same rule. `npm run diagrams` regenerates the module
 source from the imports and renders every source in `docs/assets/diagrams/` to a light and a
 dark SVG with a pinned D2 release (`tools/diagrams/render.ts` names its version and checksums,
 and downloads it into `~/.cache/vimma/` on first use). Each SVG records a hash of the source it
-was drawn from, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
+was drawn from and one of itself, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
 `ci.yml`) fails without D2 when an import or a `.d2` file changed and the pictures were not
-rendered again.
+rendered again, when an SVG was edited by hand, and when one holds a script or an outside
+address ([docs/security.md](docs/security.md), B17).

@@ -1,6 +1,13 @@
 import { describe, expect, test } from "vitest";
 import type { Edge as FileEdge, Exception } from "../../layering/layering.ts";
-import { type Edge, cycleGroups, folderEdges, toD2 } from "../module-graph.ts";
+import {
+  type Edge,
+  cycleGroups,
+  folderEdges,
+  inputErrors,
+  lineDiff,
+  toD2,
+} from "../module-graph.ts";
 
 const file = (from: string, to: string, kind: FileEdge["kind"] = "eager"): FileEdge => ({
   from,
@@ -140,7 +147,9 @@ describe("toD2", () => {
   });
 
   test("the legend counts the exceptions, names the cycle and says what vimma.js and core/ import", () => {
-    expect(d2).toContain("Orange: one of the 2 upward imports tools/layering/layers.ts lists");
+    expect(d2).toContain(
+      "Orange: the 2 upward imports tools/layering/layers.ts lists, one arrow per pair of folders",
+    );
     expect(d2).toContain("(#936 removes them)");
     expect(d2).toContain("Eager cycle, closed only by orange arrows: actors/, host/.");
     expect(d2).toContain("vimma.js imports every folder drawn here.");
@@ -186,5 +195,55 @@ describe("toD2", () => {
 
   test("the same edges in any order give the same text", () => {
     expect(toD2([...edges].reverse(), layers, exceptions)).toBe(d2);
+  });
+
+  test("refuses an upward import that no exception lists, rather than colour it as listed", () => {
+    expect(() => toD2([...edges, e("split", "host")], layers, exceptions)).toThrow(
+      "split/ imports host/ upwards, and no exception in tools/layering/layers.ts lists it: npm run layering says more",
+    );
+  });
+});
+
+describe("inputErrors", () => {
+  const layers = { core: 0, split: 1, host: 3 };
+  const listed: Exception[] = [
+    {
+      from: "split/a.mjs",
+      to: "host/H.sys.mjs",
+      kind: "lazy",
+      reason: "r",
+      fate: "goes",
+      issue: 1,
+    },
+  ];
+
+  test("passes edges that follow the layers or are listed", () => {
+    expect(
+      inputErrors(
+        [file("host/H.sys.mjs", "split/a.mjs"), file("split/a.mjs", "host/H.sys.mjs", "lazy")],
+        [],
+        layers,
+        listed,
+      ),
+    ).toEqual([]);
+  });
+
+  test("reports what npm run layering would, so the picture is never drawn from a broken tree", () => {
+    const errors = inputErrors(
+      [file("split/a.mjs", "host/H.sys.mjs", "lazy"), file("split/b.mjs", "host/H.sys.mjs")],
+      ["split/c.mjs:3: an import specifier is not a fixed string"],
+      layers,
+      listed,
+    );
+    expect(errors[0]).toBe("split/c.mjs:3: an import specifier is not a fixed string");
+    expect(errors[1]).toMatch(/^split\/b\.mjs:1 imports host\/H\.sys\.mjs \(eager\)/);
+    expect(errors).toHaveLength(2);
+  });
+});
+
+describe("lineDiff", () => {
+  test("names the lines only the committed file has, then those only the imports give", () => {
+    expect(lineDiff("a\nb\nc\n", "a\nc\nd\n")).toEqual(["- b", "+ d"]);
+    expect(lineDiff("a\n", "a\n")).toEqual([]);
   });
 });

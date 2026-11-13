@@ -23,6 +23,7 @@ import {
   type Exception,
   ROOT_FOLDER,
   folderOf,
+  layerErrors,
   treeScan,
 } from "../layering/layering.ts";
 import { EXCEPTIONS, LAYERS } from "../layering/layers.ts";
@@ -54,6 +55,30 @@ export function folderEdges(input: readonly FileEdge[]): Edge[] {
     else if (e.kind === "eager") seen.kind = "eager";
   }
   return [...edges.values()].sort(byEnds);
+}
+
+/**
+ * What `npm run layering` would report about the scanned tree: unreadable specifiers and imports
+ * that break the layers. The picture is drawn only from a tree with none, so an orange arrow is
+ * always a listed exception.
+ */
+export function inputErrors(
+  edges: FileEdge[],
+  problems: readonly string[],
+  layers: Record<string, number>,
+  exceptions: Exception[],
+): string[] {
+  return [...problems, ...layerErrors(edges, layers, exceptions)];
+}
+
+/** The lines only `committed` has ("- "), then those only `generated` has ("+ "). */
+export function lineDiff(committed: string, generated: string): string[] {
+  const a = committed.split("\n");
+  const b = generated.split("\n");
+  return [
+    ...a.filter((l) => !b.includes(l)).map((l) => `- ${l}`),
+    ...b.filter((l) => !a.includes(l)).map((l) => `+ ${l}`),
+  ];
 }
 
 function byEnds(a: Edge, b: Edge): number {
@@ -150,6 +175,12 @@ export function toD2(
   };
   const layersDrawn = [...new Set(drawn.map(layerOf))].sort((x, y) => y - x);
   const isUp = (e: Edge) => layerOf(e.to) >= layerOf(e.from);
+  const listedPairs = new Set(exceptions.map((x) => `${folderOf(x.from)}\0${folderOf(x.to)}`));
+  for (const e of drawnEdges)
+    if (isUp(e) && !listedPairs.has(`${e.from}\0${e.to}`))
+      throw new Error(
+        `${e.from}/ imports ${e.to}/ upwards, and no exception in tools/layering/layers.ts lists it: npm run layering says more`,
+      );
 
   // A layer of three or more folders would gather a fan of arrows from each importer, so an
   // importer that reaches two or more of its folders gets one arrow to the layer's band,
@@ -243,7 +274,7 @@ export function toD2(
       "module (eager), dashed when a getter or a call loads it later (lazy).",
       "Grey: down the layers, as ADR-026 allows.",
       ...(mergedKeys.size ? ["An arrow to a band: imports that many of its folders."] : []),
-      `Orange: one of the ${exceptions.length} upward imports tools/layering/layers.ts lists` +
+      `Orange: the ${exceptions.length} upward imports tools/layering/layers.ts lists, one arrow per pair of folders` +
         (issues.length ? ` (${listed(issues)} removes them).` : "."),
       ...cycles.map((c) => `Eager cycle, closed only by orange arrows: ${c}.`),
       `vimma.js imports ${everyExcept(drawn, fromEntry)}.`,
@@ -255,9 +286,10 @@ export function toD2(
 
 function main(): void {
   const { edges: fileEdges, problems } = treeScan(ROOT);
-  if (problems.length) {
-    for (const p of problems) console.error(`${VIMMA}${p}`);
-    console.error("\nModule graph: imports that cannot be read; npm run layering says more.");
+  const errors = inputErrors(fileEdges, problems, LAYERS, EXCEPTIONS);
+  if (errors.length) {
+    for (const e of errors) console.error(e);
+    console.error("\nModule graph: not drawn until npm run layering passes.");
     process.exit(1);
   }
   const edges = folderEdges(fileEdges);
@@ -274,8 +306,9 @@ function main(): void {
       // Missing: reported below like a stale file.
     }
     if (committed !== d2) {
+      for (const line of lineDiff(committed, d2)) console.error(line);
       console.error(
-        `${MODULES_D2} does not match the imports under ${VIMMA}: run npm run diagrams ` +
+        `\n${MODULES_D2} does not match the imports under ${VIMMA}: run npm run diagrams ` +
           "and commit the result.",
       );
       process.exit(1);

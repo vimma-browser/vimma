@@ -89,7 +89,7 @@ west: {
     grid-gap: 24
     files: "config.toml, Omarchy\ncolors.toml (polled)" { class: outside }
     hook: "Omarchy theme-set hook\n(-vimma-reload-theme)" { class: outside }
-    hypr: "Hyprland\n(IPC socket)" { class: outside }
+    hypr: "Hyprland (IPC:\nrequests and events)" { class: outside }
   }
   local: "Local programs: token on 127.0.0.1" {
     class: zone
@@ -140,9 +140,9 @@ east: {
     grid-gap: 40
     updates: "updates.vimma.dev\n(signed manifest)" { class: outside }
     release: "Release pipeline\n(GitHub Actions)" { class: outside }
-    models: "Model providers\n(Anthropic, OpenAI-\ncompatible, or local)" { class: outside }
+    models: "Model providers\n(Anthropic, OpenAI-\ncompatible; HTTP\nonly when local)" { class: outside }
   }
-  legend: "Blue arrow: through the control\nsocket's token and the agent gate\nYellow box: sandboxed, beside\nuntrusted pages\nDashed box: a trust boundary" {
+  legend: "Blue arrow: to ctl/, past the\nsocket's token or the agent gate\nYellow box: sandboxed, beside\nuntrusted pages\nDashed box: a trust boundary" {
     shape: text
     style: { font-color: ${muted}; font-size: 20 }
   }
@@ -161,4 +161,4 @@ app.parent.chrome -> east.net.updates { class: flow }
 east.net.release -> east.net.updates: "publishes" { class: flow }
 west.desktop.files -> app.parent.chrome { class: flow }
 west.desktop.hook -> app.parent.chrome { class: flow }
-app.parent.chrome -> west.desktop.hypr { class: flow }
+app.parent.chrome <-> west.desktop.hypr { class: flow }

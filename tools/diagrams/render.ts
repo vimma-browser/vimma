@@ -22,8 +22,17 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -207,93 +216,198 @@ export function composeSource(source: string, palette: Palette): string {
   ].join("\n");
 }
 
-/** What an SVG records: the hash of the D2 version, its flags and the composed source. */
-export function sourceHash(source: string, variant: Variant): string {
-  return createHash("sha256")
-    .update(`d2 ${D2.version} ${D2_ARGS.join(" ")}\n${composeSource(source, PALETTES[variant])}`)
-    .digest("hex");
+const sha256 = (data: string | Uint8Array): string =>
+  createHash("sha256").update(data).digest("hex");
+
+/** What an SVG records of its inputs: the hash of the D2 version, its flags and the composed source. */
+export function sourceHash(
+  source: string,
+  variant: Variant,
+  pin: { version: string; args: readonly string[] } = { version: D2.version, args: D2_ARGS },
+): string {
+  return sha256(
+    `d2 ${pin.version} ${pin.args.join(" ")}\n${composeSource(source, PALETTES[variant])}`,
+  );
 }
 
-const STAMP = /^<!-- Rendered by tools\/diagrams\/render\.ts from source sha256:([0-9a-f]{64})\b/m;
+// The stamp is the SVG's second line, after the XML declaration, and holds two hashes: of the
+// inputs, which says whether the SVG is behind its source, and of everything after the stamp,
+// which says whether the SVG was edited by hand since it was rendered.
+const STAMP =
+  /^<!-- Rendered by tools\/diagrams\/render\.ts from source sha256:([0-9a-f]{64}), svg sha256:([0-9a-f]{64}); regenerate with npm run diagrams, do not edit\. -->$/;
 
 export function stamp(svg: string, hash: string): string {
+  const decl = /^<\?xml[^>]*\?>/.exec(svg)?.[0] ?? `<?xml version="1.0" encoding="utf-8"?>`;
+  const body = `${svg.slice(svg.startsWith(decl) ? decl.length : 0).replace(/^\s+|\s+$/g, "")}\n`;
   const comment =
-    `<!-- Rendered by tools/diagrams/render.ts from source sha256:${hash}; ` +
-    "regenerate with npm run diagrams, do not edit. -->";
-  const decl = /^<\?xml[^>]*\?>/.exec(svg)?.[0] ?? "";
-  const body = svg.slice(decl.length).replace(/\s+$/, "");
-  return `${decl ? `${decl}\n` : ""}${comment}\n${body}\n`;
+    `<!-- Rendered by tools/diagrams/render.ts from source sha256:${hash}, ` +
+    `svg sha256:${sha256(body)}; regenerate with npm run diagrams, do not edit. -->`;
+  return `${decl}\n${comment}\n${body}`;
 }
 
-export function readStamp(svg: string): string | null {
-  return STAMP.exec(svg)?.[1] ?? null;
+/** The two recorded hashes and the body they cover, or null when line 2 is no stamp. */
+export function readStamp(svg: string): { source: string; svg: string; body: string } | null {
+  const first = svg.indexOf("\n");
+  const second = svg.indexOf("\n", first + 1);
+  if (first < 0 || second < 0 || !svg.slice(0, first).startsWith("<?xml")) return null;
+  const m = STAMP.exec(svg.slice(first + 1, second));
+  if (!m) return null;
+  return { source: m[1] ?? "", svg: m[2] ?? "", body: svg.slice(second + 1) };
+}
+
+// What D2's SVGs hold and nothing more: no script, no foreign HTML, no event handler, and no
+// address but the SVG and XLink namespaces and the data: fonts D2 embeds. GitHub shows these
+// files through <img>, which runs no script, but a reader may open one on its own.
+const NAMESPACES = new Set(["http://www.w3.org/2000/svg", "http://www.w3.org/1999/xlink"]);
+
+/** Each kind of content an SVG of ours must not hold, once, in a fixed order. */
+export function unsafeContent(svg: string): string[] {
+  const found: string[] = [];
+  if (/<script\b/i.test(svg)) found.push("a <script> element");
+  if (/<foreignObject\b/i.test(svg)) found.push("a foreignObject element");
+  for (const m of new Set([...svg.matchAll(/\s(on[a-z]+)\s*=/gi)].map((x) => x[1] ?? "")))
+    found.push(`an ${m}= attribute`);
+  // Base64 font data holds slashes, so only a scheme or an href/src names an address.
+  for (const url of new Set(
+    [...svg.matchAll(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'()<>]+/gi)].map((x) => x[0]),
+  ))
+    if (!NAMESPACES.has(url)) found.push(`a URL other than the SVG namespaces: ${url}`);
+  for (const m of svg.matchAll(/\b(?:href|src)\s*=\s*["'](?!#|data:)([^"']*)/gi))
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(m[1] ?? "")) found.push(`a link to ${m[1]}`);
+  for (const m of svg.matchAll(/url\(\s*["']?([^"')\s]+)/gi)) {
+    const target = m[1] ?? "";
+    if (!target.startsWith("data:") && !target.startsWith("#"))
+      found.push(`a url() other than data: ${target}`);
+  }
+  return found;
 }
 
 const svgPath = (d: Diagram, variant: Variant) =>
   join(dirname(d.source), `${d.name}-${variant}.svg`);
 
-/** What is stale or missing, as messages; empty when every SVG matches its source. */
+/** What is stale, edited, unsafe, missing or unlisted, as messages; empty when all is well. */
 export function checkDiagrams(root: string, diagrams: readonly Diagram[]): string[] {
   const errors: string[] = [];
+  const listed = new Set<string>();
   for (const d of diagrams) {
+    listed.add(d.source);
+    if (!existsSync(join(root, d.source))) {
+      errors.push(`${d.source} is missing: DIAGRAMS in tools/diagrams/render.ts names it`);
+      continue;
+    }
     const source = readFileSync(join(root, d.source), "utf8");
     for (const variant of ["light", "dark"] as const) {
       const svg = svgPath(d, variant);
+      listed.add(svg);
       if (!existsSync(join(root, svg))) {
         errors.push(`${svg} is missing: run npm run diagrams`);
         continue;
       }
-      const recorded = readStamp(readFileSync(join(root, svg), "utf8"));
-      if (recorded !== sourceHash(source, variant))
+      const text = readFileSync(join(root, svg), "utf8");
+      const recorded = readStamp(text);
+      if (!recorded) errors.push(`${svg} has no stamp on its second line: run npm run diagrams`);
+      else if (recorded.source !== sourceHash(source, variant))
         errors.push(`${svg} was rendered from another ${d.source}: run npm run diagrams`);
+      else if (recorded.svg !== sha256(recorded.body))
+        errors.push(`${svg} was edited after it was rendered: run npm run diagrams`);
+      for (const bad of unsafeContent(text)) errors.push(`${svg} holds ${bad}`);
+    }
+  }
+  // Every source and SVG in the diagrams' folders belongs to a listed diagram.
+  for (const dir of [...new Set(diagrams.map((d) => dirname(d.source)))]) {
+    if (!existsSync(join(root, dir))) continue;
+    for (const f of readdirSync(join(root, dir)).sort()) {
+      const path = join(dir, f);
+      if (listed.has(path)) continue;
+      if (f.endsWith(".d2"))
+        errors.push(`${path} is not in DIAGRAMS (tools/diagrams/render.ts): add it`);
+      else if (f.endsWith(".svg")) errors.push(`${path} has no source in DIAGRAMS: remove it`);
     }
   }
   return errors;
 }
 
-function cacheDir(): string {
-  const base = process.env.XDG_CACHE_HOME || join(homedir(), ".cache");
+function cacheDir(env: NodeJS.ProcessEnv = process.env): string {
+  const base = env.XDG_CACHE_HOME || join(homedir(), ".cache");
   return join(base, "vimma", "d2", D2.version);
 }
 
+const binIn = (dir: string) => join(dir, `d2-${D2.version}`, "bin", "d2");
+const HASH_FILE = "d2.sha256";
+
+/**
+ * The cached binary, when its SHA-256 is the one recorded when it was installed; null for a
+ * missing, half-unpacked or changed one, which is then downloaded again.
+ */
+export function cachedBinary(dir: string): string | null {
+  const bin = binIn(dir);
+  if (!existsSync(bin) || !existsSync(join(dir, HASH_FILE))) return null;
+  const recorded = readFileSync(join(dir, HASH_FILE), "utf8").trim();
+  return sha256(readFileSync(bin)) === recorded ? bin : null;
+}
+
+/**
+ * Unpacks a checked release tarball into `dir`: into a folder beside it first, then moved into
+ * place, so an interrupted run leaves no binary that looks installed; the binary's own SHA-256 is
+ * recorded last, for cachedBinary.
+ */
+export function installD2(dir: string, tarball: Uint8Array): string {
+  mkdirSync(dir, { recursive: true });
+  const staging = mkdtempSync(join(dir, ".unpack-"));
+  try {
+    // Unpacked straight from the checked bytes: no copy of the download lands on disk first.
+    execFileSync("tar", ["-xzf", "-", "-C", staging], { input: tarball });
+    const folder = `d2-${D2.version}`;
+    if (!existsSync(join(staging, folder, "bin", "d2")))
+      throw new Error(`the D2 tarball holds no ${folder}/bin/d2`);
+    rmSync(join(dir, HASH_FILE), { force: true });
+    rmSync(join(dir, folder), { recursive: true, force: true });
+    renameSync(join(staging, folder), join(dir, folder));
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+  const bin = binIn(dir);
+  writeFileSync(join(dir, HASH_FILE), `${sha256(readFileSync(bin))}\n`);
+  return bin;
+}
+
 /** A d2 binary of the pinned version: VIMMA_D2, the cached one, or a verified download. */
-async function d2Binary(): Promise<string> {
+export async function d2Binary(env: NodeJS.ProcessEnv = process.env): Promise<string> {
   const version = (bin: string) => execFileSync(bin, ["--version"], { encoding: "utf8" }).trim();
-  const override = process.env.VIMMA_D2;
+  const override = env.VIMMA_D2;
   if (override) {
-    if (version(override) !== D2.version)
-      throw new Error(`VIMMA_D2 is ${version(override)}, the pin is ${D2.version}`);
+    // A binary the person chose: only its reported version is checked.
+    const got = version(override);
+    if (got !== D2.version) throw new Error(`VIMMA_D2 is ${got}, the pin is ${D2.version}`);
     return override;
   }
-  const dir = cacheDir();
-  const bin = join(dir, `d2-${D2.version}`, "bin", "d2");
-  if (existsSync(bin)) return bin;
+  const dir = cacheDir(env);
+  const cached = cachedBinary(dir);
+  if (cached) return cached;
   const asset = d2Asset(process.platform, process.arch);
   console.log(`Downloading ${asset.url}`);
   const res = await fetch(asset.url);
   if (!res.ok) throw new Error(`${asset.url}: HTTP ${res.status}`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   verifyChecksum(bytes, asset.sha256);
-  mkdirSync(dir, { recursive: true });
-  // Unpacked straight from the checked bytes: no copy of the download lands on disk first.
-  execFileSync("tar", ["-xzf", "-", "-C", dir], { input: bytes });
+  const bin = installD2(dir, bytes);
   if (version(bin) !== D2.version) throw new Error(`${bin} does not report ${D2.version}`);
   return bin;
 }
 
-async function render(): Promise<void> {
-  const bin = await d2Binary();
-  const tmp = mkdtempSync(join(cacheDir(), "render-"));
+/** Renders each diagram, light and dark, into `root`; scratch files go to the system's temp. */
+export function renderDiagrams(root: string, bin: string, diagrams: readonly Diagram[]): void {
+  const tmp = mkdtempSync(join(tmpdir(), "vimma-d2-render-"));
   try {
-    for (const d of DIAGRAMS) {
-      const source = readFileSync(join(ROOT, d.source), "utf8");
+    for (const d of diagrams) {
+      const source = readFileSync(join(root, d.source), "utf8");
       for (const variant of ["light", "dark"] as const) {
         const input = join(tmp, `${d.name}-${variant}.d2`);
         const output = join(tmp, `${d.name}-${variant}.svg`);
         writeFileSync(input, composeSource(source, PALETTES[variant]));
         execFileSync(bin, [...D2_ARGS, input, output], { stdio: ["ignore", "ignore", "inherit"] });
         const svg = stamp(readFileSync(output, "utf8"), sourceHash(source, variant));
-        writeFileSync(join(ROOT, svgPath(d, variant)), svg);
+        writeFileSync(join(root, svgPath(d, variant)), svg);
         console.log(`Rendered ${svgPath(d, variant)}`);
       }
     }
@@ -307,13 +421,13 @@ async function main(): Promise<void> {
     const errors = checkDiagrams(ROOT, DIAGRAMS);
     if (errors.length) {
       for (const e of errors) console.error(e);
-      console.error(`\nDiagrams: ${errors.length} SVG(s) behind their source.`);
+      console.error(`\nDiagrams: ${errors.length} problem(s).`);
       process.exit(1);
     }
     console.log("Diagrams: every SVG matches its D2 source.");
     return;
   }
-  await render();
+  renderDiagrams(ROOT, await d2Binary(), DIAGRAMS);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
