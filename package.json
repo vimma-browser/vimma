@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "typecheck": "npm run sync-core && tsc -p tsconfig.json && tsc -p tools/tsconfig.json",
+    "typecheck": "npm run sync-core && tsc -p tsconfig.json && tsc -p tools/tsconfig.json && tsc -p packages/vimma-core/test/tsconfig.json",
     "lint": "eslint . && prettier --check . && npm run md-wording && npm run comment-wording && npm run spec-lint && npm run arch-lint && npm run layering && npm run changelog-lint",
     "md-wording": "node tools/md-wording/process-wording.ts",
     "comment-wording": "node tools/md-wording/comment-wording.ts",
