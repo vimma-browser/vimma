@@ -329,8 +329,8 @@ add_task(async function unloaded_private_tabs_are_listed_apart_and_enter_selects
   const listed = options(priv).filter((r) => titles.includes(titleOf(r)));
   Assert.deepEqual(listed.map(titleOf), titles, "each tab is listed with its own title");
   Assert.deepEqual(
-    listed.map((r) => r.textContent.includes("example.org")),
-    [true, true, true],
+    listed.map((r) => r.querySelector(".vimma-picker-host")?.textContent),
+    ["example.org", "example.org", "example.org"],
     "and its host",
   );
   const ids = options(priv).map((r) => r.dataset.id);
