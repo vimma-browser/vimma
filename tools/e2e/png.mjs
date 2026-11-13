@@ -98,7 +98,7 @@ export function decodePng(png) {
         default:
           throw new Error(`PNG row ${y}: unknown filter type ${filter}`);
       }
-      row[i] = /** @type {number} */ (row[i] + pred) & 0xff;
+      row[i] = ((row[i] ?? 0) + pred) & 0xff; // i < row.length: ?? never applies
     }
     for (let x = 0; x < width; x++) {
       const o = (y * width + x) * 4;
@@ -159,7 +159,7 @@ export function encodePng({ width, height, data }) {
             : f === 2
               ? /** @type {number} */ (prev[i])
               : 0;
-        const v = /** @type {number} */ (row[i] - pred) & 0xff;
+        const v = ((row[i] ?? 0) - pred) & 0xff;
         cand[i] = v;
         score += v < 128 ? v : 256 - v;
       }

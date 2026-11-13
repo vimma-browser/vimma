@@ -116,4 +116,17 @@ describe("check-build: an updater-enabled package", () => {
     expect(err).toMatch(/AppUpdate/);
     expect(err).toMatch(/dep1\.der/);
   });
+
+  it("CLI: a flag without its value is an error, not an undefined setting", () => {
+    const ok = fixture();
+    for (const flag of ["--certs", "--mozilla-certs", "--channel"]) {
+      let err = "";
+      try {
+        execFileSync(process.execPath, [SCRIPT, ok.install, flag], { stdio: "pipe" });
+      } catch (e) {
+        err = String(/** @type {{ stderr: string }} */ (e).stderr);
+      }
+      expect(err, flag).toContain(`${flag} needs a value`);
+    }
+  });
 });

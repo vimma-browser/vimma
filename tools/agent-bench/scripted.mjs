@@ -138,7 +138,7 @@ export function findLabel(text, match, messages = []) {
   const found = buttonIn(text, match);
   const repeated = REPEATED.exec(text);
   if (found || !repeated) return found;
-  const labels = new Set(repeated[1].split(", "));
+  const labels = new Set((repeated[1] ?? "").split(", "));
   const earlier = messages.filter((m) => m.role === "tool").slice(0, -1);
   for (let i = earlier.length - 1; i >= 0; i--) {
     const label = buttonIn(String(earlier[i].content ?? ""), match, labels);
@@ -181,7 +181,7 @@ export function shopper({ base, list, path = "search", catalog }) {
             times: i.qty,
           };
         }
-        const p = byId.get(i.accept[0]);
+        const p = byId.get(i.accept[0] ?? "");
         if (!p) throw new Error(`the catalog has no ${i.accept[0]}`);
         const full = fullName(p);
         const q = new URLSearchParams({ q: p.name.replace(/,/g, "").toLowerCase() });
@@ -229,7 +229,7 @@ export function shopper({ base, list, path = "search", catalog }) {
       if (batch === "opened") {
         const m = /^Opened .* in tab (\d+)\b/m.exec(r.text);
         if (!m) return { text: `I could not open ${item.page.url}.` };
-        item.tab = m[1];
+        item.tab = m[1] ?? "";
       }
       item.label = findLabel(r.text, item.page.button, r.upTo) ?? "";
       if (!item.label && !(r.text.startsWith("Error: ") || batch === "opened"))
@@ -270,7 +270,7 @@ export function shopper({ base, list, path = "search", catalog }) {
     if (sub === "opened") {
       const m = /^Opened .* in tab (\d+)\b/m.exec(result);
       if (!m) return { text: `I could not open ${page.url}.` };
-      tab = m[1];
+      tab = m[1] ?? "";
       sub = "listed";
       // An open with elements lists the page it loaded; one that could not list it (the page
       // never loaded, or navigated meanwhile) leaves the list to vimma_elements, as below.

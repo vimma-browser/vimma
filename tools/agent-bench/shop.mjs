@@ -37,7 +37,7 @@ export const esc = (s) =>
         ">": "&gt;",
         '"': "&quot;",
         "'": "&#39;",
-      })[c],
+      })[c] ?? c,
   );
 
 /** @param {number} n */
@@ -218,7 +218,7 @@ ${body}
     }
     const prod = /^\/product\/([\w-]+)$/.exec(path);
     if (prod) {
-      const p = byId.get(prod[1]);
+      const p = byId.get(prod[1] ?? "");
       if (!p) return send(res, 404, page("Not found", "<p>No such product.</p>"));
       const reviews = p.reviews.length
         ? `<h2>Reviews</h2><ul class="reviews">${p.reviews.map((r) => `<li>${esc(withHosts(r))}</li>`).join("")}</ul>`

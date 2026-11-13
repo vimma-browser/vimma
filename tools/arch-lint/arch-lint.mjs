@@ -61,7 +61,7 @@ export function namedEntries(md) {
   const named = { vimma: [], tools: [], workflows: [] };
   for (const m of md.matchAll(/`([^`\n]+)`/g)) {
     for (const kind of KINDS) {
-      const name = kind.span.exec(m[1])?.[1];
+      const name = kind.span.exec(m[1] ?? "")?.[1];
       if (name && !named[kind.key].includes(name)) named[kind.key].push(name);
     }
   }
@@ -108,7 +108,7 @@ export function listEntries(root) {
     ...new Set(
       files
         .filter((f) => f.startsWith(prefix) && f.slice(prefix.length).includes("/"))
-        .map((f) => f.slice(prefix.length).split("/")[0]),
+        .map((f) => f.slice(prefix.length).split("/")[0] ?? ""),
     ),
   ];
   const workflows = files

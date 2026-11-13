@@ -24,7 +24,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 ## Commands
 
 - `npm test`: Vitest for `packages/vimma-core` and `tools/` (fast, run constantly).
-- `npm run typecheck`: `tsc --checkJs` over `src/**/vimma/**` and `packages/**`.
+- `npm run typecheck`: `tsc --checkJs` over `src/**/vimma/**` and `packages/**` (`tsconfig.json`,
+  no Node types), then over `tools/` without its tests (`tools/tsconfig.json`, with Node's).
 - `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`),
   spec-lint, and arch-lint (`ARCHITECTURE.md` names every `vimma/` folder, `tools/` folder and
   workflow).

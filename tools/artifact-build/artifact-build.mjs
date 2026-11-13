@@ -291,6 +291,7 @@ async function main(root) {
   if (process.platform === "darwin") {
     linkLauncher(engine, JSON.parse(readFileSync(join(root, "surfer.json"), "utf8")).binaryName);
   }
+  /** @type {NodeJS.ProcessEnv} */
   const env = { ...process.env, MOZCONFIG: mozconfig, ...artifactEnv };
   if (!("MOZ_ARTIFACT_REVISION" in artifactEnv)) delete env.MOZ_ARTIFACT_REVISION;
   const res = spawnSync("./mach", ["--no-interactive", "build"], {

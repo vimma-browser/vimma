@@ -147,6 +147,16 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(() => run(["--check"])).toThrow(/gen-update-keys/);
   }, 60_000);
 
+  it("a flag without its value is an error, not an undefined path", () => {
+    for (const args of [["--out"], ["--check", "--out"], ["--certs"]]) {
+      expect(
+        () =>
+          execFileSync(process.execPath, [SCRIPT, ...args], { encoding: "utf8", stdio: "pipe" }),
+        args.join(" "),
+      ).toThrow(`${args.at(-1)} needs a value`);
+    }
+  });
+
   it("the repository: update-keys.mjs is what the committed certificates give", async () => {
     const certs = join(ROOT, CERT_DIR);
     // The KMS-signed certificate is committed (docs/runbook.md step 5b): a missing one is a move

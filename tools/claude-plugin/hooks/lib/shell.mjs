@@ -53,6 +53,8 @@ class Parser {
     let target = "";
     let depth = 0;
     const cur = () => (word ??= { text: "", dynamic: false });
+    // A closure, so that tsc reads `word` as declared: it does not follow the closures that set it.
+    const fdNumber = () => !!word && !word.dynamic && /^\d+$/.test(word.text);
     const endWord = () => {
       if (!word) return;
       if (target === "out") writes.push(word);
@@ -128,7 +130,7 @@ class Parser {
         } else endSeg(";");
       } else if (c === "<" || c === ">") {
         // A file descriptor number before a redirection (2>&1) is not an argument.
-        if (word && !word.dynamic && /^\d+$/.test(word.text)) word = null;
+        if (fdNumber()) word = null;
         endWord();
         if (s[this.i + 1] === "(") {
           this.i += 2;

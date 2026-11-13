@@ -109,7 +109,7 @@ const SHA512_HEX = /^[0-9a-f]{128}$/;
  * @property {string} displayVersion  Vimma's version
  * @property {"normal" | "security"} urgency
  * @property {string[]} advisories    MFSA IDs
- * @property {Required<Assets>} assets
+ * @property {Assets} assets        the target's kinds (TARGETS); buildManifest checks each is there
  * @property {{ size: number, sha512: string }} [mar]  the complete MAR (Linux only), offered to
  *   Firefox's updater as `<patch>`; a release built before the updater has none
  */

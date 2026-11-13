@@ -32,7 +32,7 @@ function textLength(content) {
 const isAnthropicResults = (m) =>
   m?.role === "user" &&
   Array.isArray(m.content) &&
-  m.content.some((c) => c?.type === "tool_result");
+  m.content.some((/** @type {{ type?: string } | null} */ c) => c?.type === "tool_result");
 
 /**
  * Splits an OpenAI-compatible or Anthropic request body into its parts.
