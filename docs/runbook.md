@@ -1032,6 +1032,15 @@ changed files. Because that cannot see new tests, the first Sunday of the month 
 `gh workflow run mutation.yml -f full=true`) re-tests everything. The job running Stryker has no
 write token; the separate report job alone has `issues: write`.
 
+Stryker runs the tests in a copy of the repository without `stryker.config.mjs`'s
+`ignorePatterns` (the engine, `src/`, mochitests, git-ignored output). A core test that reads or
+imports a file there passes `npm test` and fails Stryker's dry run, so the run is red and tests no
+mutant. `tools/mutation/test/sandbox.test.ts` fails in every pull request on such a read that it
+can see: a path written in a core test or in a module the test imports. A path built at run time
+shows only in the dry run. Tests that assert a tight speed budget carry the Vitest tag `timing`,
+which the mutation run leaves out: Stryker's instrumented code runs several times slower. To
+check the setup without testing any mutant: `npx stryker run --dryRunOnly` (about a minute).
+
 ### Fuzzing (`fuzz.yml`, spec m7-fuzzing)
 
 The parsers of outside input (control protocol, `config.toml`, routing rules, key notation, the

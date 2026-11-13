@@ -10,5 +10,11 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["test/**/*.test.mjs"],
     exclude: [...configDefaults.exclude, "test/fuzz/**"],
+    // `timing`: a test that asserts a tight speed budget. Stryker's command leaves these out
+    // (`--tagsFilter '!timing'`): its instrumented copy of the code runs several times slower, so
+    // the budget would fail the dry run and count every mutant of the file as killed.
+    tags: [
+      { name: "timing", description: "Asserts a speed budget of the real, uninstrumented code" },
+    ],
   },
 });
