@@ -182,13 +182,14 @@ export function createProfile(tmpRoot = tmpdir(), overrides = {}, { readPaths = 
   const prefs = new Map([...PROFILE_PREFS, ...devPrefs(REPO)]);
   // A config.toml of the profile's own, whatever HOME the browser is given (tools/start.mjs).
   prefs.set(CONFIG_PATH_PREF, join(dir, "vimma", "config.toml"));
-  if (readPaths.length) {
-    const own = prefs.get(READ_PATH_PREF);
-    prefs.set(READ_PATH_PREF, [...(own ? [own] : []), ...readPaths].join(","));
-  }
   for (const [name, value] of Object.entries(overrides)) {
     if (value === null) prefs.delete(name);
     else prefs.set(name, value);
+  }
+  // After a scenario's prefs, so its own read paths add to the list rather than drop these.
+  if (readPaths.length) {
+    const own = prefs.get(READ_PATH_PREF);
+    prefs.set(READ_PATH_PREF, [...(own ? [own] : []), ...readPaths].join(","));
   }
   writeFileSync(join(dir, "user.js"), userJs([...prefs]));
   return dir;

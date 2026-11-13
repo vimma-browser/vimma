@@ -246,6 +246,18 @@ describe("profile", () => {
     const list = name === READ_PATH_PREF ? `${src},${fonts}` : fonts;
     expect(js).toContain(`user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(list)});`);
   });
+
+  it("keeps the pinned fonts' folder readable when a scenario sets its own read paths", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const dir = createProfile(
+      tempDir(),
+      { [READ_PATH_PREF]: "/scenario/" },
+      { readPaths: [fonts] },
+    );
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      `user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(`/scenario/,${fonts}`)});`,
+    );
+  });
 });
 
 describe("browser command line and environment", () => {

@@ -7,6 +7,11 @@ drawn with the hinting and antialiasing settings of CI's ubuntu-24.04. The basel
 distribution compares with them without installing a font package (issue #944). macOS runs the
 scenarios headless and takes no screenshots, so it does not use this folder.
 
+What a local run still differs by (about 0.1 to 0.4 %) is not the fonts: the fixture server's
+random port, the system's FreeType version (the browser does not bundle one), and baselines older
+than later product changes; the runbook's "Baselines" section has the numbers, and issue #953
+tracks re-recording the baselines from CI with a fixed port.
+
 ## Which fonts, and why
 
 - **DejaVu Sans, Sans Mono and Serif 2.37**, regular and bold: what `sans-serif`, `monospace`
@@ -32,8 +37,10 @@ ship:
   `fa9ca4d13871dd122f61258a80d01751d603b4d3ee14095d65453b4e846e17d7`, the same bytes as the
   SourceForge mirror (`https://sourceforge.net/projects/dejavu/files/dejavu/2.37/`). Ubuntu
   (`fonts-dejavu-core`, `fonts-dejavu-mono` 2.37-8) builds its files from the same source with
-  its own FontForge: its Latin glyphs and every advance width are the release's, and the other
-  glyphs differ only by repeated outline points.
+  its own FontForge: every advance width is the release's, and so are Sans Regular's glyphs
+  below U+0250; other glyphs differ in their outlines, mostly by repeated points, a few such as
+  ¼, ¾ and U+01AA in Bold and Mono by more. With these files instead of its own, CI's diff
+  against each baseline stayed within 0.02 percentage points.
 - Liberation: `liberation-fonts-ttf-2.1.5.tar.gz`, linked from
   `https://github.com/liberationfonts/liberation-fonts/releases/tag/2.1.5`
   (`https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz`),
