@@ -9,12 +9,12 @@ import {
   promoShopper,
   startModelServer,
   textKeys,
-} from "../agent.mjs";
+} from "../agent.ts";
 
 const BASE = "http://shop.example/";
 
 /** A tool message as the OpenAI-compatible adapter sends it. */
-const tool = (/** @type {string} */ content) => ({ role: "tool", tool_call_id: "c", content });
+const tool = (content: string) => ({ role: "tool", tool_call_id: "c", content });
 
 describe("PROMO_LIST and PROMO_TASK", () => {
   it("names products the promo's shop sells, one of each", () => {
@@ -53,7 +53,7 @@ describe("promoShopper", () => {
   it("finds the unbranded basket buttons", () => {
     const script = promoShopper({ base: BASE });
     script({ messages: [{ role: "user", content: PROMO_TASK }], tools: [] });
-    const list = (/** @type {string} */ id, /** @type {string} */ label) =>
+    const list = (id: string, label: string) =>
       `Opened ${BASE} in tab ${id}\n{"label":"${label}","kind":"button","text":"Add ${
         { 1: "Oat drink, 1 l", 2: "Rye bread, 500 g", 3: "Ground coffee, 500 g" }[id]
       } to basket"}`;
@@ -111,8 +111,7 @@ describe("textKeys", () => {
 });
 
 describe("startModelServer", () => {
-  /** @type {{ close: () => Promise<void> } | null} */
-  let server = null;
+  let server: { close: () => Promise<void> } | null = null;
   afterEach(async () => {
     await server?.close();
     server = null;
@@ -120,7 +119,7 @@ describe("startModelServer", () => {
 
   it("answers OpenAI-compatible chat requests from the script", async () => {
     server = await startModelServer({ port: 0, script: () => ({ text: "hello" }) });
-    const res = await fetch(`${/** @type {any} */ (server).endpoint}/chat/completions`, {
+    const res = await fetch(`${(server as any).endpoint}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "scripted", messages: [{ role: "user", content: "hi" }] }),
@@ -129,7 +128,7 @@ describe("startModelServer", () => {
     const json = await res.json();
     expect(json.choices[0].message.content).toBe("hello");
     // the turns it answered, for the shot to wait on
-    expect(/** @type {any} */ (server).replies).toEqual([{ text: "hello" }]);
+    expect((server as any).replies).toEqual([{ text: "hello" }]);
   });
   it("answers a failing script with a 500 that names no detail of the error", async () => {
     const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -140,7 +139,7 @@ describe("startModelServer", () => {
           throw new Error("secret detail at /home/someone/script.mjs:12");
         },
       });
-      const res = await fetch(`${/** @type {any} */ (server).endpoint}/chat/completions`, {
+      const res = await fetch(`${(server as any).endpoint}/chat/completions`, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ model: "scripted", messages: [{ role: "user", content: "hi" }] }),
@@ -157,12 +156,12 @@ describe("startModelServer", () => {
   });
   it("lists its one model, as an OpenAI-compatible server does", async () => {
     server = await startModelServer({ port: 0, script: () => ({ text: "hello" }) });
-    const res = await fetch(`${/** @type {any} */ (server).endpoint}/models`);
-    expect((await res.json()).data.map((/** @type {any} */ m) => m.id)).toEqual(["scripted"]);
+    const res = await fetch(`${(server as any).endpoint}/models`);
+    expect((await res.json()).data.map((m: any) => m.id)).toEqual(["scripted"]);
   });
   it("answers 404 to anything else", async () => {
     server = await startModelServer({ port: 0, script: () => ({ text: "hello" }) });
-    const res = await fetch(`${/** @type {any} */ (server).endpoint}/embeddings`);
+    const res = await fetch(`${(server as any).endpoint}/embeddings`);
     expect(res.status).toBe(404);
   });
 });

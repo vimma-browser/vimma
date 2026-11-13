@@ -2,42 +2,46 @@
 /**
  * Licence check of our Rust crates (ADR-011): every package `cargo metadata` resolves for each
  * manifest in CRATE_MANIFESTS (dependencies of every kind and platform, and the crate itself)
- * must carry a licence expression satisfied by license-check.mjs's ALLOWED, or a reviewed
+ * must carry a licence expression satisfied by license-check.ts's ALLOWED, or a reviewed
  * exception in cargo-exceptions.json keyed by exact name@version. Usage:
- *   node tools/license-check/cargo-license-check.mjs [--metadata file.json] [--exceptions f.json]
+ *   node tools/license-check/cargo-license-check.ts [--metadata file.json] [--exceptions f.json]
  * Without --metadata it runs `cargo metadata --locked` on each manifest.
  * Exit 0 clean, 1 on violations or unused exceptions, 2 on bad input or a failing cargo.
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { ALLOWED, spdxAllowed } from "./license-check.mjs";
+import { ALLOWED, spdxAllowed } from "./license-check.ts";
 
 export const CRATE_MANIFESTS = ["tools/vimma-ctl/Cargo.toml"];
 
-/**
- * @typedef {{ license: string | null, reason: string }} Exception
- * @typedef {{ name: string, version: string, license: string | null }} Violation
- * @typedef {{ packages: Array<{ name: string, version: string, license?: string | null }> }} Metadata
- */
+export interface Exception {
+  license: string | null;
+  reason: string;
+}
+export interface Violation {
+  name: string;
+  version: string;
+  license: string | null;
+}
+export interface Metadata {
+  packages: Array<{ name: string; version: string; license?: string | null }>;
+}
 
-/**
- * Cargo still accepts the pre-SPDX `MIT/Apache-2.0`, which means OR.
- * @param {string | null | undefined} license
- */
-export function normaliseCargoLicense(license) {
+/** Cargo still accepts the pre-SPDX `MIT/Apache-2.0`, which means OR. */
+export function normaliseCargoLicense(license: string | null | undefined) {
   if (typeof license !== "string") return null;
   return license.replace(/\s*\/\s*/g, " OR ");
 }
 
-/**
- * @param {Metadata} metadata
- * @param {{ allow?: Set<string>, exceptions?: Record<string, Exception> }} [options]
- * @returns {{ violations: Violation[], unusedExceptions: string[] }}
- */
-export function checkCargoMetadata(metadata, { allow = ALLOWED, exceptions = {} } = {}) {
-  /** @type {Violation[]} */
-  const violations = [];
+export function checkCargoMetadata(
+  metadata: Metadata,
+  {
+    allow = ALLOWED,
+    exceptions = {},
+  }: { allow?: Set<string>; exceptions?: Record<string, Exception> } = {},
+): { violations: Violation[]; unusedExceptions: string[] } {
+  const violations: Violation[] = [];
   const used = new Set();
   for (const { name, version, license: raw } of metadata.packages) {
     const license = raw ?? null;
@@ -53,8 +57,7 @@ export function checkCargoMetadata(metadata, { allow = ALLOWED, exceptions = {} 
   return { violations, unusedExceptions };
 }
 
-/** @param {string} manifest @returns {Metadata} */
-function cargoMetadata(manifest) {
+function cargoMetadata(manifest: string): Metadata {
   const out = spawnSync(
     "cargo",
     ["metadata", "--format-version", "1", "--locked", "--manifest-path", manifest],
@@ -66,19 +69,15 @@ function cargoMetadata(manifest) {
   return JSON.parse(out.stdout);
 }
 
-/** @param {string[]} argv */
-function main(argv) {
-  /** @type {string | null} */
-  let metadataPath = null;
+function main(argv: string[]) {
+  let metadataPath: string | null = null;
   let exceptionsPath = fileURLToPath(new URL("cargo-exceptions.json", import.meta.url));
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--metadata") metadataPath = argv[++i] ?? "";
     else if (argv[i] === "--exceptions") exceptionsPath = argv[++i] ?? "";
   }
-  /** @type {Metadata} */
-  const merged = { packages: [] };
-  /** @type {Record<string, Exception>} */
-  let exceptions = {};
+  const merged: Metadata = { packages: [] };
+  let exceptions: Record<string, Exception> = {};
   try {
     const sources = metadataPath
       ? [JSON.parse(readFileSync(metadataPath, "utf8"))]

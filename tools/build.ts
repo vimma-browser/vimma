@@ -14,13 +14,17 @@ import { fileURLToPath } from "node:url";
 import { machEnv, machPythonOrExit, writePythonShim } from "./mach-python.mjs";
 
 /**
- * @param {string[]} argv arguments after `npm run build --`
- * @param {string} root absolute path of the checkout
- * @param {string} engine absolute path of engine/
- * @param {string} python the interpreter for `./mach`
- * @returns {{ command: string, args: string[], cwd: string, dryRun: boolean }}
+ * @param argv arguments after `npm run build --`
+ * @param root absolute path of the checkout
+ * @param engine absolute path of engine/
+ * @param python the interpreter for `./mach`
  */
-export function buildCommand(argv, root, engine, python) {
+export function buildCommand(
+  argv: string[],
+  root: string,
+  engine: string,
+  python: string,
+): { command: string; args: string[]; cwd: string; dryRun: boolean } {
   const dryRun = argv.includes("--dry-run");
   const mach = argv.includes("--mach");
   const rest = argv.filter((a) => a !== "--dry-run" && a !== "--mach");

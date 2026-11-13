@@ -289,6 +289,16 @@ function checkMerge(args, ctx) {
   }
   if (!body.trim()) return { reason: `${REASONS.merge} The body file ${file} is empty.` };
   const lint = ctx.commitlint(`${subject.text}\n\n${body}`, ctx.cwd ?? process.cwd());
+  if (!lint.ok && lint.output.includes("ERR_UNKNOWN_FILE_EXTENSION")) {
+    // commitlint's config loads TypeScript from tools/ (ADR-025), which a Node older than
+    // package.json's engines cannot run: still a block, but the message is not what to fix.
+    return {
+      reason:
+        "Blocked: commitlint could not run, so the squash message is unchecked. This Node " +
+        `(${process.version}) is older than package.json's engines; use .nvmrc's Node.\n` +
+        lint.output.trim(),
+    };
+  }
   if (!lint.ok) {
     return {
       reason:

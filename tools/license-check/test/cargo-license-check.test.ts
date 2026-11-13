@@ -7,13 +7,12 @@ import {
   CRATE_MANIFESTS,
   checkCargoMetadata,
   normaliseCargoLicense,
-} from "../cargo-license-check.mjs";
+} from "../cargo-license-check.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-const script = fileURLToPath(new URL("../cargo-license-check.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../cargo-license-check.ts", import.meta.url));
 
-/** @param {Array<{ name: string, version: string, license?: string | null }>} packages */
-const metadata = (packages) => ({
+const metadata = (packages: Array<{ name: string; version: string; license?: string | null }>) => ({
   packages: packages.map((p) => ({ license: null, ...p })),
 });
 
@@ -71,7 +70,7 @@ describe("checkCargoMetadata", () => {
 });
 
 describe("CLI", () => {
-  const run = (/** @type {object} */ meta) => {
+  const run = (meta: object) => {
     const dir = tempDir("cargo-license-");
     const file = join(dir, "metadata.json");
     writeFileSync(file, JSON.stringify(meta));

@@ -22,7 +22,7 @@ import {
   removeForeignLinks,
   resetEngine,
   teardownTarget,
-} from "../lanes.mjs";
+} from "../lanes.ts";
 import { execFileSync } from "node:child_process";
 import { readFileSync, rmSync } from "node:fs";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -65,10 +65,8 @@ function fakeCheckouts() {
 
 /** cp that runs nothing and remembers its arguments; fails `--reflink=always` when asked. */
 function fakeCp(reflink = true) {
-  /** @type {string[][]} */
-  const calls = [];
-  /** @param {string[]} args */
-  const cp = async (args) => {
+  const calls: string[][] = [];
+  const cp = async (args: string[]) => {
     calls.push(args);
     if (!reflink && args.includes("--reflink=always")) {
       return { code: 1, stderr: "cp: failed to clone 'x': Operation not supported" };
@@ -235,7 +233,7 @@ describe("resetEngine", () => {
     const { main, lane } = fakeCheckouts();
     const engine = join(lane, "engine");
     mkdirSync(join(engine, "browser"), { recursive: true });
-    const git = (/** @type {string[]} */ ...args) =>
+    const git = (...args: string[]) =>
       execFileSync("git", ["-C", engine, ...args], { encoding: "utf8" });
     git("init", "-q");
     writeFileSync(join(engine, ".gitignore"), "/mozconfig*\n/obj-*\n*.pyc\n");
@@ -315,11 +313,11 @@ describe("teardownTarget", () => {
 
 describe("review follow-ups", () => {
   /** A real git repo at `dir` with one commit; returns a git runner with a clean env. */
-  function gitRepo(/** @type {string} */ dir) {
+  function gitRepo(dir: string) {
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
     );
-    const git = (/** @type {string[]} */ ...args) =>
+    const git = (...args: string[]) =>
       execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env });
     git("init", "-q");
     git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x");

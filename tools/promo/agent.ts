@@ -1,4 +1,4 @@
-// The promo's agent shot (tools/promo/shots.mjs, `agent`): the task typed into Vimma's chat
+// The promo's agent shot (tools/promo/shots.ts, `agent`): the task typed into Vimma's chat
 // window, the agent bench's scripted shopper as its model, and a small OpenAI-compatible server
 // on this machine that the chat window's provider points at. The script makes every take the
 // same, offline and without a key; the window names the endpoint as it is configured, so the
@@ -6,6 +6,9 @@
 import { createServer } from "node:http";
 import { readBody } from "../agent-bench/shop.mjs";
 import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../agent-bench/scripted.mjs";
+import type { Script, ScriptTurn } from "../agent-bench/scripted.mjs";
+import type { ShoppingList } from "../agent-bench/score.mjs";
+import type { Catalog, Product } from "../agent-bench/shop.mjs";
 
 /** The model name the provider lists, and the chat window's first line shows. */
 export const MODEL = "scripted";
@@ -16,12 +19,14 @@ export const PROMO_TASK = "Put oat drink, rye bread and coffee in the basket, th
 /** The promo's shop: a neutral name, never a real shop's. */
 export const SHOP_NAME = "Corner Grocer";
 
-/**
- * @param {string} id @param {string} category @param {string} name @param {string} size
- * @param {number} price @param {string} description
- * @returns {import("../agent-bench/shop.mjs").Product}
- */
-const product = (id, category, name, size, price, description) => ({
+const product = (
+  id: string,
+  category: string,
+  name: string,
+  size: string,
+  price: number,
+  description: string,
+): Product => ({
   id,
   category,
   name,
@@ -36,9 +41,8 @@ const product = (id, category, name, size, price, description) => ({
 /**
  * The promo shop's catalog: the bench shop's kinds of product, with no brands, so no real
  * company shows in the video. The bench's own catalog stays as its scoring needs it.
- * @type {import("../agent-bench/shop.mjs").Catalog}
  */
-export const PROMO_CATALOG = Object.freeze({
+export const PROMO_CATALOG: Catalog = Object.freeze({
   categories: [
     { id: "dairy", name: "Dairy and alternatives" },
     { id: "bakery", name: "Bakery" },
@@ -54,8 +58,7 @@ export const PROMO_CATALOG = Object.freeze({
   ],
 });
 
-/** @type {import("../agent-bench/score.mjs").ShoppingList} */
-export const PROMO_LIST = Object.freeze({
+export const PROMO_LIST: ShoppingList = Object.freeze({
   id: "promo",
   items: [
     { text: "oat drink", accept: ["oat-drink"], qty: 1 },
@@ -75,10 +78,8 @@ const DENIED = /^(Error: )?The user denied this request in Vimma\./;
  * The bench's shopper on the parallel path (every search in one turn, every basket button in
  * the next), whose closing reply follows the answer at the payment: the bench's own reply says
  * the payment still waits, which a `n` has already settled.
- * @param {{ base: string, inner?: import("../agent-bench/scripted.mjs").Script }} o
- * @returns {import("../agent-bench/scripted.mjs").Script}
  */
-export function promoShopper({ base, inner }) {
+export function promoShopper({ base, inner }: { base: string; inner?: Script }): Script {
   const script =
     inner ?? shopper({ base, list: PROMO_LIST, path: "parallel", catalog: PROMO_CATALOG });
   return (req) => {
@@ -94,10 +95,8 @@ export function promoShopper({ base, inner }) {
 /**
  * Text as vimma-ctl send-keys arguments, a word and its space at a time, so the shot types at
  * a readable speed without a call per character.
- * @param {string} text
- * @returns {string[]}
  */
-export function textKeys(text) {
+export function textKeys(text: string): string[] {
   return (text.match(/\S+\s*/g) ?? []).map((word) =>
     [...word.replace(/\s+$/, "")].concat(/\s$/.test(word) ? ["space"] : []).join(" "),
   );
@@ -108,11 +107,17 @@ export function textKeys(text) {
  * scriptedFetch, so its replies are what the bench's runs get): POST /v1/chat/completions, and
  * GET /v1/models naming MODEL. `paceMs` delays each answer, as a model's turn takes time.
  * `replies` lists the turns answered, so a shot can wait on the agent's progress.
- * @param {{ port: number, script: import("../agent-bench/scripted.mjs").Script, paceMs?: number }} o
  */
-export async function startModelServer({ port, script, paceMs = 0 }) {
-  /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[]} */
-  const replies = [];
+export async function startModelServer({
+  port,
+  script,
+  paceMs = 0,
+}: {
+  port: number;
+  script: Script;
+  paceMs?: number;
+}) {
+  const replies: ScriptTurn[] = [];
   const answer = scriptedFetch(
     (req) => {
       const out = script(req);
@@ -124,7 +129,7 @@ export async function startModelServer({ port, script, paceMs = 0 }) {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url ?? "/", "http://x").pathname;
     const body = await readBody(req);
-    const json = (/** @type {number} */ status, /** @type {string} */ text) => {
+    const json = (status: number, text: string) => {
       res.writeHead(status, { "content-type": "application/json" });
       res.end(text);
     };
@@ -152,8 +157,7 @@ export async function startModelServer({ port, script, paceMs = 0 }) {
     endpoint: `http://127.0.0.1:${bound}/v1`,
     /** every turn the script answered, oldest first */
     replies,
-    /** @returns {Promise<void>} */
-    close: () =>
+    close: (): Promise<void> =>
       new Promise((resolve) => {
         server.closeAllConnections();
         server.close(() => resolve());

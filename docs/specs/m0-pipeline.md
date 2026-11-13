@@ -49,7 +49,9 @@ new Firefox releases arrive as PRs.
   build: too big for hosted runners). The schedule is gated by `vars.NIGHTLY_ENABLED == 'true'`;
   `workflow_dispatch` bypasses the gate so the runner can be tested first. `clean: false` keeps
   `engine/` between runs; Firefox is re-downloaded only when `surfer.json` changes. Full e2e on
-  the nightly waits for the build-strategy ADR (TODO in the workflow). (Since changed: no self-hosted runner is used or planned; full builds move to GitHub-hosted runners with [#224](https://github.com/vimma-browser/vimma/issues/224), spec build-supply-chain decision 6.)
+  the nightly waits for the build-strategy ADR (TODO in the workflow). (Since changed: no
+  self-hosted runner is used or planned; full builds move to GitHub-hosted runners with
+  [#224](https://github.com/vimma-browser/vimma/issues/224), spec build-supply-chain decision 6.)
 - **e2e.yml** was a no-op job naming the build-strategy ADR until `docs/adr/010-*` and
   m0-build-strategy.
 - **claude.yml** follows anthropics/claude-code-action v1.0.247 (`examples/claude.yml`,
@@ -81,21 +83,22 @@ status`, `gh issue view`); no `Bash(git:*)`, `Bash(node:*)`, `Bash(npm:*)`. Its 
   branch from a failed or closed run is rebuilt and force-pushed, so failures are retried. The
   PR is a draft; marking it ready starts CI (optional `UPSTREAM_PR_TOKEN` secret instead).
 - **Licence check is a small script**, not a dependency: `tools/license-check/license-check.mjs`
-  (SPDX `AND`/`OR`, spec allowlist). At first, four permissive dev-only packages were outside the
-  allowlist and listed with reasons in `tools/license-check/exceptions.json`, pinned to
-  `name@version`: argparse (Python-2.0), minimatch (BlueOak-1.0.0), os-shim (MIT in its LICENSE,
-  none in the lockfile), pako (MIT AND Zlib); later dependencies added more. Stale exceptions
-  fail the check.
+  (Since changed: `license-check.ts`, ADR-025) (SPDX `AND`/`OR`, spec allowlist). At first, four
+  permissive dev-only packages were outside the allowlist and listed with reasons in
+  `tools/license-check/exceptions.json`, pinned to `name@version`: argparse (Python-2.0), minimatch
+  (BlueOak-1.0.0), os-shim (MIT in its LICENSE, none in the lockfile), pako (MIT AND Zlib); later
+  dependencies added more. Stale exceptions fail the check.
 - **PSF-2.0 joined the allowlist**, under both its SPDX ids (`PSF-2.0`, and `Python-2.0`, the id
   SPDX retired in its favour). It is a permissive licence with no copyleft: it asks only for the
   copyright notice and a summary of changes in redistributed copies. Every argparse release had
   needed its own exception, although each was the same licence.
-- **commitlint rule** `body-required-for-types` lives in `tools/commitlint/body-required.mjs` as
-  a local plugin; every commit on `main` passes it. It applies to `feat`, `fix` and `revert`.
-  Footers and trailers (`Closes #3`, `BREAKING CHANGE: …`, `Co-Authored-By: …`) do not count as
-  a body. commitlint's default ignores skip every `Revert "…"` commit, so they are replaced
-  (`defaultIgnores: false`, `ignores: [ignoreCommit]`): a git-style revert is linted unless it
-  has a body, merges and fixup!/squash!/amend! stay ignored. Vitest now also runs `tools/**/test/`.
+- **commitlint rule** `body-required-for-types` lives in `tools/commitlint/body-required.mjs` (Since
+  changed: `body-required.ts`, ADR-025) as a local plugin; every commit on `main` passes it. It
+  applies to `feat`, `fix` and `revert`. Footers and trailers (`Closes #3`, `BREAKING CHANGE: …`,
+  `Co-Authored-By: …`) do not count as a body. commitlint's default ignores skip every `Revert "…"`
+  commit, so they are replaced (`defaultIgnores: false`, `ignores: [ignoreCommit]`): a git-style
+  revert is linted unless it has a body, merges and fixup!/squash!/amend! stay ignored. Vitest now
+  also runs `tools/**/test/`.
 - **CI also runs** `npm run test:py` and `npx surfer license-check` (MPL headers, exits 1 on a
   missing header). Actions are pinned to commit SHAs; Dependabot keeps them pinned.
 - **Renovate** (since replaced by Dependabot) used `platformAutomerge: false` so Renovate itself

@@ -8,22 +8,19 @@ import {
   compare,
   median,
   minOfMedians,
-} from "../compare.mjs";
+} from "../compare.ts";
 
 const MACHINE = "AMD EPYC 7763 64-Core Processor | x64 | node 22.23.3";
 
-/**
- * A bench result as bench.mjs writes it.
- * @param {Record<string, { us: number, ratio: number }>} cases
- * @param {string} [machine]
- */
-const result = (cases, machine = MACHINE) => ({ machine, referenceUs: 0.5, cases });
+/** A bench result as bench.ts writes it. */
+const result = (cases: Record<string, { us: number; ratio: number }>, machine = MACHINE) => ({
+  machine,
+  referenceUs: 0.5,
+  cases,
+});
 
-/**
- * The baseline commit's cases, measured in the same processes as the run (bench.mjs).
- * @param {Record<string, { us: number, ratio: number }>} cases
- */
-const baseline = (cases) => result(cases);
+/** The baseline commit's cases, measured in the same processes as the run (bench.ts). */
+const baseline = (cases: Record<string, { us: number; ratio: number }>) => result(cases);
 
 describe("median and minOfMedians", () => {
   it("takes the middle sample of an odd count and the mean of the middle two of an even one", () => {
@@ -88,7 +85,7 @@ describe("combine", () => {
 
 describe("combinePaired", () => {
   it("cancels a load-order shift that differs between processes", () => {
-    // Process p loads the working tree first when p is even (bench.mjs, childArgs); whichever side
+    // Process p loads the working tree first when p is even (bench.ts, childArgs); whichever side
     // a process loads first reads 7 % slower here, and the code is otherwise the same.
     const heads = [];
     const bases = [];

@@ -30,10 +30,8 @@ const BUS_NAMES = [
   "org.freedesktop.Notifications 104 mako juuso :1.14 user@1000.service - -",
 ];
 
-/** @type {string} */
-let dir;
-/** @type {string} */
-let bin;
+let dir: string;
+let bin: string;
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "vimma-theme-hook-"));
   bin = join(dir, "bin");
@@ -44,11 +42,9 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 /**
  * A fake program in `bin` that appends its arguments, one per line and a blank line after, to
  * `<dir>/<name>.calls`, prints noise on both streams and exits with `code`.
- * @param {string} name
- * @param {number} code
- * @param {string} [stdout]  printed instead of the noise
+ * @param stdout  printed instead of the noise
  */
-function fake(name, code, stdout) {
+function fake(name: string, code: number, stdout?: string) {
   const path = join(bin, name);
   writeFileSync(
     path,
@@ -60,12 +56,8 @@ function fake(name, code, stdout) {
   return path;
 }
 
-/**
- * A fake busctl: `list` prints `names`, `call` records and exits with `callCode`.
- * @param {string[]} names
- * @param {number} [callCode]
- */
-function fakeBusctl(names, callCode = 0) {
+/** A fake busctl: `list` prints `names`, `call` records and exits with `callCode`. */
+function fakeBusctl(names: string[], callCode = 0) {
   const path = join(bin, "busctl");
   const list = names.join("\n");
   writeFileSync(
@@ -85,11 +77,8 @@ exit 1
   chmodSync(path, 0o755);
 }
 
-/**
- * @param {Record<string, string>} [env]
- * @param {string[]} [args]  what omarchy-hook passes: the theme name
- */
-function runHook(env = {}, args = ["tokyo-night"]) {
+/** @param args  what omarchy-hook passes: the theme name */
+function runHook(env: Record<string, string> = {}, args: string[] = ["tokyo-night"]) {
   return spawnSync("/bin/bash", [HOOK, ...args], {
     env: { HOME: dir, PATH: `${bin}:/usr/bin:/bin`, ...env },
     encoding: "utf8",
@@ -97,8 +86,8 @@ function runHook(env = {}, args = ["tokyo-night"]) {
   });
 }
 
-/** @param {string} name  each call's argument list */
-function calls(name) {
+/** @param name  each call's argument list */
+function calls(name: string) {
   const file = join(dir, `${name}.calls`);
   if (!existsSync(file)) return [];
   return readFileSync(file, "utf8")
@@ -110,18 +99,17 @@ function calls(name) {
 /**
  * nsUnixRemoteServer::HandleCommandLine's buffer, decoded: [argc][offset of each argv]
  * <workingdir>\0<argv[0]>\0<argv[1]>\0..., integers little-endian 32-bit.
- * @param {Buffer} buf
  */
-function decode(buf) {
+function decode(buf: Buffer) {
   const argc = buf.readUInt32LE(0);
-  const cstr = (/** @type {number} */ at) => buf.toString("latin1", at, buf.indexOf(0, at));
+  const cstr = (at: number) => buf.toString("latin1", at, buf.indexOf(0, at));
   const argv = [];
   for (let i = 0; i < argc; i++) argv.push(cstr(buf.readUInt32LE(4 * (i + 1))));
   return { argc, workingDir: cstr(4 * (argc + 1)), argv, last: buf[buf.length - 1] };
 }
 
 /** The `ay` argument of a recorded `busctl call`: its count, then that many bytes. */
-function payload(/** @type {string[]} */ call) {
+function payload(call: string[]) {
   const at = call.indexOf("ay");
   const count = Number(call[at + 1]);
   const bytes = call.slice(at + 2, at + 2 + count).map(Number);

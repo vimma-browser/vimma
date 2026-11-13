@@ -9,12 +9,11 @@ import { pathToFileURL } from "node:url";
 // dispatcher through this module, so the injected cost lands in the measured hot path.
 const slow = vi.hoisted(() => ({ iterations: 0, sink: 0 }));
 vi.mock("../../../packages/vimma-core/src/dispatcher.mjs", async (importOriginal) => {
-  /** @type {typeof import("../../../packages/vimma-core/src/dispatcher.mjs")} */
-  const real = await importOriginal();
+  const real: typeof import("../../../packages/vimma-core/src/dispatcher.mjs") =
+    await importOriginal();
   return {
     ...real,
-    /** @type {typeof real.createDispatcher} */
-    createDispatcher: (...args) => {
+    createDispatcher: (...args: Parameters<typeof real.createDispatcher>) => {
       const d = real.createDispatcher(...args);
       const dispatch = d.dispatch;
       d.dispatch = (mode, chord) => {
@@ -30,8 +29,8 @@ vi.mock("../../../packages/vimma-core/src/dispatcher.mjs", async (importOriginal
 
 const { CASES, reference } = await import("../../../packages/vimma-core/bench/cases.mjs");
 const { childArgs, extractCommit, measure, PROCESSES, ROUNDS, run, SAMPLES, sides } =
-  await import("../bench.mjs");
-const { combinePaired, compare, formatTable } = await import("../compare.mjs");
+  await import("../bench.ts");
+const { combinePaired, compare, formatTable } = await import("../compare.ts");
 const { tempDir } = await import("../../test/temp-dir.mjs");
 
 const MACHINE = "test machine | x64 | node 22.0.0";
@@ -63,10 +62,8 @@ describe("measure", () => {
     // change in the runner's load between two blocks (another test file starting on the sibling
     // hyperthread) moved one variant against the other: unchanged code read +26.8 % on a sequence
     // and +31.2 % on the apply case against its own baseline in the coverage pool.
-    /** @type {string[]} */
-    const order = [];
-    /** @param {string} name */
-    const probe = (name) => ({
+    const order: string[] = [];
+    const probe = (name: string) => ({
       name,
       run: () => {
         if (order.at(-1) !== name) order.push(name);
@@ -87,9 +84,8 @@ describe("measure", () => {
  * sibling hyperthread slows an allocating case more than the reference (issue #342). Busy about
  * half of the time, as a test pool next door can be, each side's median of 51 samples falls on
  * whichever mode has one more sample (issue #667).
- * @param {number} seed
  */
-function noisyMachine(seed) {
+function noisyMachine(seed: number) {
   const BUSY = 1.5;
   let t = 0;
   let busy = false;
@@ -99,16 +95,15 @@ function noisyMachine(seed) {
     state = (state * 1103515245 + 12345) % 2 ** 31;
     return state / 2 ** 31;
   };
-  /** @param {number} ns */
-  const work = (ns) => {
+  const work = (ns: number) => {
     while (t >= until) {
       busy = !busy;
       until += 1_000_000 + random() * 10_000_000;
     }
     return busy ? ns * BUSY : ns;
   };
-  /** @param {number} ns the case's cost on a quiet machine */
-  const cases = (ns) => ({
+  /** @param ns the case's cost on a quiet machine */
+  const cases = (ns: number) => ({
     CASES: [
       {
         name: "case",
@@ -155,8 +150,9 @@ describe("extractCommit", () => {
     const head = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).stdout.trim();
     const dir = tempDir("vimma-bench-base-");
     const cases = extractCommit(head, dir);
-    /** @type {typeof import("../../../packages/vimma-core/bench/cases.mjs")} */
-    const base = await import(pathToFileURL(cases).href);
+    const base: typeof import("../../../packages/vimma-core/bench/cases.mjs") = await import(
+      pathToFileURL(cases).href
+    );
     expect(base.CASES.map((c) => c.name)).toEqual(CASES.map((c) => c.name));
     for (const c of base.CASES) expect(c.run()).toEqual(c.expected);
   });
@@ -207,15 +203,12 @@ describe("the gate on a real measurement", () => {
   // hosted runners under the coverage pool, unchanged code read from -21 % to +40 % on one case;
   // sample by sample, from -14 % to +12 %. Gated on each side's own median, a load that came and
   // went in phases still read unchanged code at +25.0 % on a hosted macOS runner (#667): the gate
-  // now pairs the variants sweep by sweep (bench.mjs, sides), as the bench does.
+  // now pairs the variants sweep by sweep (bench.ts, sides), as the bench does.
   /**
    * The cases with the dispatcher slowed by `n` iterations, named `tag` + the case's name. Every
    * variant runs through the same closure, so they differ only in the work the flag injects.
-   * @param {string} tag
-   * @param {number} n
-   * @param {typeof CASES} cases
    */
-  const variant = (tag, n, cases) =>
+  const variant = (tag: string, n: number, cases: typeof CASES) =>
     cases.map((c) => ({
       name: `${tag}${c.name}`,
       run: () => {
@@ -225,13 +218,10 @@ describe("the gate on a real measurement", () => {
     }));
   /**
    * `tag`'s cases against the baseline variant's, as the gate reads a bench run: per measurement,
-   * the change of each sweep (bench.mjs, sides), and over the measurements, the median change, as
+   * the change of each sweep (bench.ts, sides), and over the measurements, the median change, as
    * the bench combines its processes (combinePaired).
-   * @param {ReturnType<typeof measure>[]} runs
-   * @param {string} tag
-   * @param {string} [baseTag]
    */
-  const against = (runs, tag, baseTag = "base|") => {
+  const against = (runs: ReturnType<typeof measure>[], tag: string, baseTag = "base|") => {
     const pairs = runs.map((m) => sides(m, tag, baseTag, MACHINE));
     return combinePaired(
       pairs.map((p) => p.head),
@@ -239,8 +229,7 @@ describe("the gate on a real measurement", () => {
       runs.map(() => true),
     );
   };
-  /** @param {ReturnType<typeof against>} r */
-  const keyChange = (r) =>
+  const keyChange = (r: ReturnType<typeof against>) =>
     (r.head.cases[KEY_CASE]?.ratio ?? NaN) / (r.base.cases[KEY_CASE]?.ratio ?? NaN) - 1;
   const keyCase = CASES.filter((c) => c.name === KEY_CASE);
 
@@ -285,7 +274,7 @@ describe("the gate on a real measurement", () => {
     // the suite (geometric mean of five cases) moves about 1.2 ** (4 / 5), +15.7 %, over the 10 %
     // gate. The multi-key cases move a little less than a single key does.
     // The gate under test is the ratio gate. The 50 µs budget is for the code as it ships, and
-    // compare.test.mjs covers it; under coverage, the instrumented apply case can read over it
+    // compare.test.ts covers it; under coverage, the instrumented apply case can read over it
     // in all three A/Bs, which says nothing about the gate (issue #202).
     const gate = { budgetUs: Infinity };
     expect(keyChange(slower)).toBeGreaterThanOrEqual(0.15);

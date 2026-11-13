@@ -1,4 +1,4 @@
-// The Python interpreter tools/mochitest.mjs and tools/build.mjs run mach with (#436, #458).
+// The Python interpreter tools/mochitest.mjs and tools/build.ts run mach with (#436, #458).
 import { describe, expect, it } from "vitest";
 import { existsSync, readlinkSync } from "node:fs";
 import { join } from "node:path";

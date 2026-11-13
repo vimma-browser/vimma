@@ -18,13 +18,11 @@ const TRAILER = /^(BREAKING[ -]CHANGE|[A-Za-z][\w-]*)(: | #)/;
  */
 const DEPENDABOT_HEADER = /^(build|ci)\(deps(-dev)?\): [Bb]ump \S/;
 
-/**
- * @param {{ type?: string | null, header?: string | null, body?: string | null }} parsed
- * @param {"always" | "never"} [when]
- * @param {string[]} [types]
- * @returns {[boolean, string?]}
- */
-export function bodyRequiredForTypes(parsed, when = "always", types = []) {
+export function bodyRequiredForTypes(
+  parsed: { type?: string | null; header?: string | null; body?: string | null },
+  when: "always" | "never" = "always",
+  types: string[] = [],
+): [boolean, string?] {
   const type = parsed.type || (GIT_REVERT.test(parsed.header ?? "") ? "revert" : null);
   if (when !== "always" || !type || !types.includes(type)) return [true];
   if ((parsed.body ?? "").trim() !== "") return [true];
@@ -41,9 +39,8 @@ export function bodyRequiredForTypes(parsed, when = "always", types = []) {
  * fixup!/squash!/amend! commits stay ignored. Dependabot's commits, and the squash of its pull
  * requests (title and body), are skipped when the header is Dependabot's and the body names it
  * (its `Signed-off-by` trailer, or the PR description's "Dependabot will resolve…").
- * @param {string} message
  */
-export function ignoreCommit(message) {
+export function ignoreCommit(message: string) {
   const [header = "", ...rest] = message.split("\n");
   if (/^(Merge (pull request|branch|tag|remote-tracking branch)|Merge .+ into )/.test(header)) {
     return true;

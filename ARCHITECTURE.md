@@ -243,8 +243,8 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/safebrowsing-smoke/` | A manual check that a build's Safe Browsing key fetches lists.                                              |
 | `tools/claude-plugin/`      | The Claude Code plugin whose hooks enforce the repository's contributor rules.                              |
 
-The scripts at the top of `tools/` are the `npm run` entry points (`build.mjs`, `start.mjs`,
-`mochitest.mjs`, `sync-core.mjs`, `gen-docs.mjs` and others).
+The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.mjs`,
+`mochitest.mjs`, `sync-core.mjs`, `gen-docs.ts` and others).
 
 ## Dependency direction
 

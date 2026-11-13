@@ -118,8 +118,9 @@ rewriting `colors.toml` and then a request before `hello`, a request after `hell
 no waiting; again `{ changed: false }`; `args.path` is `invalid-args`. `test_vimma_ctl_end_to_end`
 runs the real `vimma-ctl reload-theme` (`unchanged`). Vitest: the contract fixtures
 (`request-`/`response-reload-theme`), the validator, and `tools/omarchy/test/theme-hook.test.mjs`
-(the hook run as `omarchy-hook` runs it, with a fake `vimma-ctl` in a temp `HOME`). Cargo: CLI
-parsing, result decoding, an integration test against the fake server.
+(Since changed: `theme-hook.test.ts`, ADR-025) (the hook run as `omarchy-hook` runs it, with a fake
+`vimma-ctl` in a temp `HOME`). Cargo: CLI parsing, result decoding, an integration test against the
+fake server.
 
 Red: mochitest 4 failures (`"unknown-command" == "invalid-args"`, `"rgb(16, 24, 32)" ==
 "rgb(48, 16, 48)"`, the results `undefined`); Vitest 5 (control) + 4 (hook, no script); cargo
@@ -181,12 +182,13 @@ tab counts unchanged (also 200 ms later), the bar shows the new colour. `test_in
 temp HOMEs: no Omarchy, missing (written, 0644), unchanged (not rewritten), an old unedited copy
 (updated), an edited one (left alone, also on opt-out), opt-out (removed, then nothing), on again
 (written), deleted by the user (not again), and startup blocked under automation. Vitest
-`tools/omarchy/test/theme-hook.test.mjs` with fake `busctl`, `vimma-ctl` and `vimma`: the decoded
-`OpenURL` buffer to each `org.mozilla.vimma.*` name only, no Vimma (no call, `vimma` never run),
-both fallbacks, silence and exit 0. `tools/test/start.test.mjs`: no `--no-remote`. By hand, an
-artifact build with a temp HOME: the hook appeared at startup; after a `colors.toml` change the
-installed hook (bus list narrowed to that instance) made a following `vimma-ctl reload-theme`
-answer `unchanged` (a control round answered `changed`), still one tab.
+`tools/omarchy/test/theme-hook.test.mjs` (Since changed: `theme-hook.test.ts`, ADR-025) with fake
+`busctl`, `vimma-ctl` and `vimma`: the decoded `OpenURL` buffer to each `org.mozilla.vimma.*` name
+only, no Vimma (no call, `vimma` never run), both fallbacks, silence and exit 0.
+`tools/test/start.test.mjs`: no `--no-remote`. By hand, an artifact build with a temp HOME: the hook
+appeared at startup; after a `colors.toml` change the installed hook (bus list narrowed to that
+instance) made a following `vimma-ctl reload-theme` answer `unchanged` (a control round answered
+`changed`), still one tab.
 
 Red: Vitest 1 (no `busctl call`), `start.test.mjs` 1, the mochitest crashed (no module). Green:
 Vitest 6/6 and 22/22, the mochitest 30/30. Mutation: without `preventDefault` the mochitest failed

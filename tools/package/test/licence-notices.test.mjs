@@ -55,6 +55,6 @@ describe("about:license notices", () => {
     const head = readFileSync(join(SMOL, "smol-toml.mjs"), "utf8").split("\n").slice(0, 40);
     const line = head.find((l) => l.startsWith("// Modified for vimma:"));
     expect(line).toBeTruthy();
-    expect(read("tools/vendor-smol-toml.mjs")).toContain("// Modified for vimma:");
+    expect(read("tools/vendor-smol-toml.ts")).toContain("// Modified for vimma:");
   });
 });

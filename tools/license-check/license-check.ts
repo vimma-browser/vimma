@@ -4,7 +4,7 @@
  * SPDX licence expression satisfied by ALLOWED, or have an exception for its exact name@version
  * and licence in exceptions.json (with a reason). Exceptions that no longer match anything are
  * reported too, so the list cannot go stale. Usage:
- *   node tools/license-check/license-check.mjs [package-lock.json] [--exceptions file.json]
+ *   node tools/license-check/license-check.ts [package-lock.json] [--exceptions file.json]
  * Exit 0 clean, 1 on violations or unused exceptions, 2 on bad input.
  */
 import { existsSync, readFileSync } from "node:fs";
@@ -21,23 +21,25 @@ export const ALLOWED = new Set([
   "Python-2.0",
 ]);
 
-/**
- * @typedef {{ license: string, reason: string }} Exception
- * @typedef {{ name: string, version: string | null, license: string | null }} Violation
- */
+export interface Exception {
+  license: string;
+  reason: string;
+}
+export interface Violation {
+  name: string;
+  version: string | null;
+  license: string | null;
+}
 
 /**
  * True when the SPDX expression is satisfied by `allow` (OR: any branch, AND: every term).
  * Anything unparseable (missing, `SEE LICENSE IN`, `WITH`, unbalanced parens) is false.
- * @param {unknown} expression
- * @param {Set<string>} [allow]
  */
-export function spdxAllowed(expression, allow = ALLOWED) {
+export function spdxAllowed(expression: unknown, allow: Set<string> = ALLOWED) {
   if (typeof expression !== "string") return false;
   const tokens = expression.match(/[()]|[^\s()]+/g) ?? [];
   let i = 0;
-  /** @returns {boolean} */
-  const parseOr = () => {
+  const parseOr = (): boolean => {
     let ok = parseAnd();
     while (tokens[i] === "OR") {
       i++;
@@ -45,8 +47,7 @@ export function spdxAllowed(expression, allow = ALLOWED) {
     }
     return ok;
   };
-  /** @returns {boolean} */
-  const parseAnd = () => {
+  const parseAnd = (): boolean => {
     let ok = parseAtom();
     while (tokens[i] === "AND") {
       i++;
@@ -54,8 +55,7 @@ export function spdxAllowed(expression, allow = ALLOWED) {
     }
     return ok;
   };
-  /** @returns {boolean} */
-  const parseAtom = () => {
+  const parseAtom = (): boolean => {
     const token = tokens[i++];
     if (token === "(") {
       const ok = parseOr();
@@ -75,20 +75,20 @@ export function spdxAllowed(expression, allow = ALLOWED) {
   }
 }
 
-/** @param {string} lockPath a `packages` key such as `node_modules/a/node_modules/@s/b` */
-export function packageName(lockPath) {
+/** @param lockPath a `packages` key such as `node_modules/a/node_modules/@s/b` */
+export function packageName(lockPath: string) {
   const at = lockPath.lastIndexOf("node_modules/");
   return lockPath.slice(at + "node_modules/".length);
 }
 
-/**
- * @param {{ packages?: Record<string, { version?: string, license?: unknown, link?: boolean }> }} lock
- * @param {{ allow?: Set<string>, exceptions?: Record<string, Exception> }} [options]
- * @returns {{ violations: Violation[], unusedExceptions: string[] }}
- */
-export function checkLock(lock, { allow = ALLOWED, exceptions = {} } = {}) {
-  /** @type {Violation[]} */
-  const violations = [];
+export function checkLock(
+  lock: { packages?: Record<string, { version?: string; license?: unknown; link?: boolean }> },
+  {
+    allow = ALLOWED,
+    exceptions = {},
+  }: { allow?: Set<string>; exceptions?: Record<string, Exception> } = {},
+): { violations: Violation[]; unusedExceptions: string[] } {
+  const violations: Violation[] = [];
   const used = new Set();
   for (const [path, entry] of Object.entries(lock.packages ?? {})) {
     if (!path.startsWith("node_modules/") || entry.link) continue;
@@ -108,8 +108,7 @@ export function checkLock(lock, { allow = ALLOWED, exceptions = {} } = {}) {
   return { violations, unusedExceptions };
 }
 
-/** @param {string[]} argv */
-function main(argv) {
+function main(argv: string[]) {
   let lockPath = "package-lock.json";
   let exceptionsPath = fileURLToPath(new URL("exceptions.json", import.meta.url));
   for (let i = 0; i < argv.length; i++) {
@@ -117,8 +116,7 @@ function main(argv) {
     else lockPath = argv[i] ?? lockPath;
   }
   let lock;
-  /** @type {Record<string, Exception>} */
-  let exceptions = {};
+  let exceptions: Record<string, Exception> = {};
   try {
     lock = JSON.parse(readFileSync(lockPath, "utf8"));
     if (existsSync(exceptionsPath)) {
