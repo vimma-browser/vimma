@@ -12,6 +12,8 @@ import { addonChanged, addonItems, bestAddon, removeAddonQuestion } from "../cor
 import { Toolbar } from "../ui/toolbar.mjs";
 
 /** @import { AddonItem, AddonRecord } from "../core/addons.mjs" */
+/** @import { AddonOp } from "../core/picker.mjs" */
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -307,4 +309,59 @@ export async function togglePrivateAccess(id) {
   return item.privateAllowed
     ? `${item.display}: not in private windows`
     : `${item.display}: runs in private windows`;
+}
+
+/**
+ * Shows an add-on op's answer, if any, as the notice; a failure too.
+ * @param {WindowState} s
+ * @param {Promise<string | null>} op
+ * @returns {Promise<void>}
+ */
+export function sayAddon(s, op) {
+  return op.then(
+    (text) => {
+      if (text) s.notice.show(text);
+    },
+    (e) => {
+      console.error("vimma: add-on", e);
+      s.notice.show(`add-on: ${e?.message ?? e}`, { error: true });
+    },
+  );
+}
+
+/**
+ * A key in the add-on picker (docs/specs/addon-manager.md): `o` and `d` close it first (a tab,
+ * the y/N prompt); `x`, `shift+p` and `u` keep it open and refresh its rows.
+ * @param {WindowState} s
+ * @param {AddonOp} op
+ * @param {string} id
+ */
+export function addonOp(s, op, id) {
+  const refresh = () => s.addonPicker.refresh().catch((e) => console.error("vimma: add-ons", e));
+  switch (op) {
+    case "options":
+      s.addonPicker.close();
+      sayAddon(s, openAddonOptions(s.win, id));
+      return;
+    case "remove":
+      s.addonPicker.close();
+      sayAddon(
+        s,
+        removeAddon(
+          id,
+          (question, yes) => s.rename.ask(question, yes),
+          (said) => s.notice.show(said),
+        ),
+      );
+      return;
+    case "toggle":
+      sayAddon(s, toggleAddon(id)).then(refresh);
+      return;
+    case "private":
+      sayAddon(s, togglePrivateAccess(id)).then(refresh);
+      return;
+    case "update":
+      s.notice.show("checking for updates…");
+      sayAddon(s, checkAddonUpdate(id)).then(refresh);
+  }
 }

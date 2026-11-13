@@ -3,12 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Normal-mode page keys on the focused page (spec: docs/specs/m1-actor-insert-scroll.md,
-// "Follow-up: normal-mode extras"): yy, p / P, gi, gu / gU, gf. VimmaHost spreads these into
+// "Follow-up: normal-mode extras"): yy, p / P, gi, gu / gU, gf. runners.mjs spreads these into
 // CONTENT_RUNNERS, so each acts on the focused <browser>: in a split, the focused pane's.
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { classifyClipboard, urlRoot, urlUp } from "../core/pageurl.mjs";
 import { openUrl } from "./tab-ops.mjs";
+import { PdfOps } from "./pdf-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 
@@ -91,4 +92,24 @@ export function pageRunners(enterInsert, notify) {
     // Firefox's ctrl+u, on this pane's page.
     "page.view_source": (b) => b.ownerDocument.defaultView.BrowserCommands.viewSource(b),
   };
+}
+
+/**
+ * Moves `browser` `delta` entries through its session history, clamped to the first and last
+ * entry (`5H` on the third page lands on the first). One step goes through goBack/goForward,
+ * which skip entries the user never interacted with, like the toolbar buttons; in the PDF viewer
+ * a step to another jump inside the PDF goes there directly (PdfOps.jumpIndex).
+ * @param {any} browser
+ * @param {number} delta  negative goes back
+ */
+export function goHistory(browser, delta) {
+  const jump = PdfOps.jumpIndex(browser, delta);
+  if (jump !== null) return browser.gotoIndex(jump);
+  if (delta === -1) return browser.goBack();
+  if (delta === 1) return browser.goForward();
+  const history = browser.browsingContext?.sessionHistory;
+  if (!history) return undefined;
+  const index = Math.min(Math.max(history.index + delta, 0), history.count - 1);
+  if (index !== history.index) browser.gotoIndex(index);
+  return undefined;
 }

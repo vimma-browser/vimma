@@ -62,8 +62,9 @@ function addRoute(win, tab, name, say) {
       : `:route add: route ${earlier.index} already sends ${domain} to "${earlier.workspace}" ` +
           `(${describeRoute(earlier)}); edit it in config.toml (:config)`;
   }
-  // ConfigHost imports VimmaHost, which imports this: imported on use, as the host does with
-  // CONFIG_RELOAD_TOPIC, so module evaluation never runs in a cycle.
+  // ConfigHost imports VimmaHost, which reaches this module through runners.mjs: imported on
+  // use (runners.mjs reaches ConfigHost only through CONFIG_RELOAD_TOPIC), so module evaluation
+  // never runs in a cycle.
   const { ConfigHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
   );
