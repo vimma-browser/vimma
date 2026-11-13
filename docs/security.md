@@ -3182,6 +3182,28 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.mjs),
   [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.mjs),
   [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.mjs)
+- B17. D2 draws the two SVG pictures in `ARCHITECTURE.md` (issue #943). It is a build tool from
+  outside the project (terrastruct/d2, MPL-2.0) that runs on a contributor's machine and is
+  never shipped. `tools/diagrams/render.ts` **must** pin its release by version (v0.9.0) and by
+  the SHA-256 of each platform's tarball, copied from the release's `SHA256SUMS`, and **must**
+  check the downloaded bytes in memory before handing them to `tar` on stdin. It unpacks into a
+  folder beside the cache and moves it into place, and records the binary's own SHA-256, so an
+  interrupted or altered install is downloaded again rather than run. D2 **must** run only when
+  a person runs `npm run diagrams`: no workflow, no other npm script, `npm ci`, lint or test
+  renders. CI runs only `npm run diagrams:check`, which needs no D2 and fails on an SVG that is
+  behind its source, was edited by hand, or holds a script, `foreignObject`, an event handler or
+  an address other than the SVG namespaces and D2's embedded `data:` fonts.
+  `VIMMA_D2=<path>` uses a binary the person chose; only the version it reports is checked.
+  The SVGs embed subsets of D2's default fonts, Source Sans Pro and Source Code Pro (SIL OFL
+  1.1). **⚠ limit:** the pin trusts the release that GitHub served when the sums were copied.
+  [`is a fixed release, with a SHA-256 for each platform contributors use`](../tools/diagrams/test/render.test.ts),
+  [`a download whose checksum differs is refused`](../tools/diagrams/test/render.test.ts),
+  [`is unpacked aside and moved into place, with its hash recorded and checked on use`](../tools/diagrams/test/render.test.ts),
+  [`a half-unpacked cache, with no recorded hash, is not used`](../tools/diagrams/test/render.test.ts),
+  [`VIMMA_D2 of the pinned version is used, with no cache folder needed`](../tools/diagrams/test/render.test.ts),
+  [`no workflow and no npm script but diagrams renders: CI only checks`](../tools/diagrams/test/render.test.ts),
+  [`fails when an SVG was edited after the render`](../tools/diagrams/test/render.test.ts),
+  [`the committed SVGs hold none of them`](../tools/diagrams/test/render.test.ts)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
