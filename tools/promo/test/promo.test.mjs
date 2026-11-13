@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "../../../packages/vimma-core/src/config.mjs";
 import {
@@ -175,6 +176,26 @@ describe("servedModule", () => {
       text: 'import { a } from "./blocks.js";\nimport { b, c } from "./agent-element.js";\n',
       imports: ["blocks", "agent-element"],
     });
+  });
+  it("serves hints.mjs and every module it reaches, each import naming a served .js", () => {
+    // record.mjs (serveCore) serves vimma-core's hints.mjs to probe.js with what it imports.
+    // vimma-core stays .mjs (ADR-025) while tools/ moves to .ts, so the rewrite reads `./x.mjs`.
+    const served = new Map();
+    const queue = ["hints"];
+    for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
+      if (served.has(name)) continue;
+      const src = new URL(`../../../packages/vimma-core/src/${name}.mjs`, import.meta.url);
+      const { text, imports } = servedModule(readFileSync(src, "utf8"));
+      served.set(name, text);
+      queue.push(...imports);
+    }
+    expect(served.size).toBeGreaterThan(1);
+    for (const [name, text] of served) {
+      for (const [, spec] of text.matchAll(/\b(?:from|import)\s*\(?\s*["']([^"']+)["']/g)) {
+        const target = /^\.\/([\w-]+)\.js$/.exec(spec ?? "")?.[1];
+        expect(target && served.has(target), `${name}.js imports ${spec}`).toBe(true);
+      }
+    }
   });
   it("leaves a module without imports as it is", () => {
     expect(servedModule("export const x = 1;\n")).toEqual({
