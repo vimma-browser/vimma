@@ -6,6 +6,12 @@ Status: implemented · Area: `packages/vimma-core/src/control.mjs` (contract val
 [ADR-007](../adr/007-control-socket.md), [ADR-011](../adr/011-vimma-ctl-rust.md),
 [ADR-019](../adr/019-agents-over-mcp.md)
 
+Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
+([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
+`INSTRUCTIONS` in `instructions.rs`, the tool list in `tool_list.rs`, the argument checks in
+`args.rs`, the agent commands in `command.rs`, the result texts in `render.rs` and the JSON-RPC side
+in `server.rs`, each file with its tests.
+
 ## Summary
 
 Vimma's control socket lets scripts, window-manager bindings and the e2e harness drive a running

@@ -10,7 +10,7 @@ const root = new URL("../../../", import.meta.url);
 const fixture = JSON.parse(
   readFileSync(new URL("tools/vimma-ctl/tests/fixtures/mcp/tools-list.json", root), "utf8"),
 );
-const mcpRs = readFileSync(new URL("tools/vimma-ctl/src/mcp.rs", root), "utf8");
+const mcpRs = readFileSync(new URL("tools/vimma-ctl/src/mcp/instructions.rs", root), "utf8");
 const regen = "out of date: run `npm run gen-agent-tools`";
 
 describe("agent tools", () => {

@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Generated from tools/vimma-ctl/tests/fixtures/mcp/tools-list.json
-// and INSTRUCTIONS in tools/vimma-ctl/src/mcp.rs by `npm run gen-agent-tools`; do not edit.
+// and INSTRUCTIONS in tools/vimma-ctl/src/mcp/instructions.rs by `npm run gen-agent-tools`; do not edit.
 
 /** @type {string} */
 export const AGENT_INSTRUCTIONS =

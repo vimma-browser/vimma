@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
 const FIXTURE = "tools/vimma-ctl/tests/fixtures/mcp/tools-list.json";
-const MCP_RS = "tools/vimma-ctl/src/mcp.rs";
+const MCP_RS = "tools/vimma-ctl/src/mcp/instructions.rs";
 const OUT = "packages/vimma-core/src/agent-tools-data.mjs";
 
 /** @type {Record<string, string>} */

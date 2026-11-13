@@ -7,6 +7,12 @@ Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-pro
 Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate stays
 in the browser; this spec changes how long one answer lasts). No new dependency.
 
+Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
+([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
+`INSTRUCTIONS` in `instructions.rs`, the tool list in `tool_list.rs`, the argument checks in
+`args.rs`, the agent commands in `command.rs`, the result texts in `render.rs` and the JSON-RPC side
+in `server.rs`, each file with its tests.
+
 Issue: [#578](https://github.com/vimma-browser/vimma/issues/578)
 
 Builds on [vimma-mcp](vimma-mcp.md) (the gate, grants and their limits, decisions 20-22 and 40),
