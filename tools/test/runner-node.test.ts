@@ -28,18 +28,6 @@ const RUNNER_NODE = [
   "upstream.yml track",
 ];
 
-// Jobs that set up `node-version: 22` rather than .nvmrc's version: the newest 22.x that the
-// runner's tool cache or the version manifest has, not the pinned one. Their tools move with the
-// last group (#946), which pins them first.
-const MAJOR_ONLY = [
-  "macos.yml smoke",
-  "release.yml ctl",
-  "release.yml macos-ctl",
-  "release.yml macos-smoke",
-  "release.yml mar",
-  "release.yml package",
-];
-
 // Steps that print a command for a person to run rather than run it.
 const PRINTS_ONLY = ["fuzz.yml report"];
 
@@ -146,12 +134,17 @@ describe("the Node a workflow job runs its tools on", () => {
     expect(onRunnerNode()).toEqual([...RUNNER_NODE, ...BASE_GUARDS].sort());
   });
 
-  it("every setup-node step takes .nvmrc's version, but in the listed jobs", () => {
+  // `node-version: 22` would take the newest 22.x in the runner's tool cache or the version
+  // manifest, not .nvmrc's: a job that runs a .ts tool on it depends on what the runner has. The
+  // last six such jobs (release.yml ctl, package, mar, macos-ctl and macos-smoke, macos.yml smoke)
+  // moved to .nvmrc before their tools did (#946); each checks out the built commit first, and
+  // every release tag has .nvmrc.
+  it("every setup-node step takes .nvmrc's version", () => {
     const loose = workflowJobs()
       .filter(({ job }) => (job.steps ?? []).some((s) => isAnySetupNode(s) && !isSetupNode(s)))
       .map(({ name }) => name)
       .sort();
-    expect(loose).toEqual(MAJOR_ONLY);
+    expect(loose).toEqual([]);
   });
 
   it("the command a step only prints is still not run on the runner's Node", () => {
