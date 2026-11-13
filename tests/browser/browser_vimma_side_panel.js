@@ -495,6 +495,54 @@ add_task(async function x_never_closes_a_pinned_tab() {
   BrowserTestUtils.removeTab(pinned);
 });
 
+// The private side panel lists the private window's tabs by the picker's ids: each unloaded tab
+// is a row of its own with its own title, and Enter on one selects that tab (#958, #938).
+add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const names = ["Private one", "Private two", "Private three"];
+  const tabs = [];
+  for (const name of names) {
+    const tab = await BrowserTestUtils.openNewForegroundTab(
+      priv.gBrowser,
+      `${PAGE}?${encodeURIComponent(name)}`,
+    );
+    await SpecialPowers.spawn(tab.linkedBrowser, [name], (t) => {
+      content.document.title = t;
+    });
+    await until(() => tab.linkedBrowser.contentTitle === name, "the page has its title");
+    tabs.push(tab);
+  }
+  priv.gBrowser.selectedTab = tabs[0];
+  // Firefox's "Unload Tab" (tab context menu): the browser goes lazy, its panel is gone.
+  await priv.gBrowser.explicitUnloadTabs([tabs[1], tabs[2]]);
+  await until(() => !tabs[1].linkedPanel && !tabs[2].linkedPanel, "two tabs unloaded");
+  // focusContent checks this window's focus; the private window is another.
+  await SimpleTest.promiseFocus(priv.gBrowser.selectedBrowser);
+  const privPanel = () => priv.document.getElementById(PANEL_ID);
+  EventUtils.synthesizeKey("b", { ctrlKey: true }, priv);
+  EventUtils.synthesizeKey("b", {}, priv);
+  await until(() => privPanel() && !privPanel().hidden, "ctrl+b b opens the private panel");
+  const privRows = () => [...privPanel().querySelectorAll("[role=option]")];
+  Assert.deepEqual(
+    privRows()
+      .map((r) => text(r, "title"))
+      .filter((t) => names.includes(t)),
+    names,
+    "each tab is a row with its own title",
+  );
+  const ids = privRows().map((r) => r.dataset.tabId);
+  Assert.equal(new Set(ids).size, ids.length, "every row names a tab of its own");
+  const privSelected = () => privPanel().querySelector("[role=option][aria-selected=true]");
+  Assert.equal(text(privSelected(), "title"), "Private one", "the highlight starts on it");
+  for (let i = 0; i < 2; i++) EventUtils.synthesizeKey("j", {}, priv);
+  Assert.equal(text(privSelected(), "title"), "Private three", "j reaches the third tab");
+  EventUtils.synthesizeKey("KEY_Enter", {}, priv);
+  await until(() => priv.gBrowser.selectedTab === tabs[2], "Enter selects the third tab");
+  Assert.ok(!tabs[1].linkedPanel, "the second stays unloaded");
+  await BrowserTestUtils.closeWindow(priv);
+  await SimpleTest.promiseFocus(window);
+});
+
 add_task(async function sidebar_command_opens_it() {
   await focusPage();
   EventUtils.synthesizeKey(":", { shiftKey: true });

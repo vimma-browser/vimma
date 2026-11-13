@@ -343,6 +343,70 @@ add_task(async function unloaded_private_tabs_are_listed_apart_and_enter_selects
   await SimpleTest.promiseFocus(window);
 });
 
+// Tab search lists both private windows together and keys its rows by tab id: an unloaded tab's
+// id never repeats in the other window, Enter on the other window's unloaded tab selects that
+// tab there, and the search opens on this window's selected tab (#938).
+add_task(async function two_private_windows_list_their_unloaded_tabs_apart() {
+  const first = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const second = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const firstTitles = ["First one", "First two", "First three"];
+  const secondTitles = ["Second one", "Second two", "Second three"];
+  const firstTabs = [];
+  for (const title of firstTitles) firstTabs.push(await openTitled(title, { win: first }));
+  const secondTabs = [];
+  for (const title of secondTitles) secondTabs.push(await openTitled(title, { win: second }));
+  first.gBrowser.selectedTab = firstTabs[2];
+  second.gBrowser.selectedTab = secondTabs[0];
+  // Firefox's "Unload Tab" (tab context menu): the browser goes lazy, its panel is gone.
+  await first.gBrowser.explicitUnloadTabs([firstTabs[0], firstTabs[1]]);
+  await second.gBrowser.explicitUnloadTabs([secondTabs[1], secondTabs[2]]);
+  await until(
+    () => [firstTabs[0], firstTabs[1], secondTabs[1], secondTabs[2]].every((t) => !t.linkedPanel),
+    "two tabs unloaded in each window",
+  );
+  await SimpleTest.promiseFocus(first.gBrowser.selectedBrowser);
+  prefix("g", {}, first);
+  await until(() => isOpen(first), "open");
+  const all = [...firstTitles, ...secondTitles];
+  const listed = options(first).filter((r) => all.includes(titleOf(r)));
+  Assert.deepEqual(listed.map(titleOf).sort(), [...all].sort(), "each tab is listed once");
+  const ids = options(first).map((r) => r.dataset.id);
+  Assert.equal(new Set(ids).size, ids.length, "no id repeats across the two windows");
+  Assert.equal(titleOf(selected(first)), "First three", "it opens on this window's tab");
+  Assert.notEqual(options(first)[0], selected(first), "which is not merely the first row");
+  selectRow(
+    listed.find((r) => titleOf(r) === "Second three"),
+    first,
+  );
+  EventUtils.synthesizeKey("KEY_Enter", {}, first);
+  await until(
+    () => second.gBrowser.selectedTab === secondTabs[2],
+    "Enter selects the other window's third tab",
+  );
+  Assert.ok(!secondTabs[1].linkedPanel, "its second stays unloaded");
+  Assert.equal(first.gBrowser.selectedTab, firstTabs[2], "this window's selection is unchanged");
+  await BrowserTestUtils.closeWindow(second);
+  await BrowserTestUtils.closeWindow(first);
+  await SimpleTest.promiseFocus(window);
+});
+
+// The search opens on the selected tab in a window with workspaces too (#938).
+add_task(async function tab_search_opens_on_the_selected_tab() {
+  const here = await openTitled("Selected here");
+  const after = await openTitled("After it");
+  gBrowser.selectedTab = here;
+  await focusPage();
+  prefix("g");
+  await until(isOpen, "open");
+  Assert.equal(titleOf(selected()), "Selected here", "the selected tab's row is selected");
+  Assert.notEqual(options()[0], selected(), "which is not merely the first row");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !isOpen(), "closed");
+  gBrowser.removeTab(after);
+  gBrowser.removeTab(here);
+  forgetClosed();
+});
+
 add_task(async function audio_and_mute_are_marked_and_searchable() {
   const loud = await openTitled("Loud tab");
   const quiet = await openTitled("Quiet tab");

@@ -55,7 +55,7 @@ import { AgentChatWindow } from "../ui/agent-chat.mjs";
 import { giveSelectedTab } from "./agent-chat-ops.mjs";
 import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
-import { pickerWorkspaces, tabById } from "./goto.mjs";
+import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
 import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
@@ -643,10 +643,7 @@ export const VimmaHost = {
           tabWindows = windowOf;
           return items;
         },
-        activeId: () =>
-          /** @type {{ gBrowser: { selectedTab: { linkedPanel: string } } }} */ (
-            /** @type {unknown} */ (win)
-          ).gBrowser.selectedTab.linkedPanel,
+        activeId: () => selectedTabId(win),
         select: (tabId) => goToTab(win, tabWindows.get(tabId), tabId),
         reopen: (id) => reopenClosed(win, id),
       }),
