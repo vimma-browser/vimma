@@ -319,7 +319,7 @@ export async function startTwoShops(fixture = loadTwoShops()) {
 
 /**
  * The wordings that tell the agent requests are waiting for the user: Vimma's `busy` as
- * vimma-ctl and the built-in agent word it (mcp.rs `failure_text`, agent-results.mjs
+ * vimma-ctl and the built-in agent word it (mcp/render.rs `failure_text`, agent-results.mjs
  * `failureText`), and vimma-ctl's own full hold queue. In this task no question waits before
  * the checkout, so a result worded so is the misreading that ended the task of issue #693. The
  * wording of a used-up rate says that no question is waiting and does not match.

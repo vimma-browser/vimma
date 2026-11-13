@@ -9,6 +9,12 @@ Status: implemented · Area: `packages/vimma-core/src/` (`agent-act.mjs` and `ag
 clicks, form filling and screenshots to a spec with its own threat review, which this is). No new
 dependency.
 
+Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
+([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
+`INSTRUCTIONS` in `instructions.rs`, the tool list in `tool_list.rs`, the argument checks in
+`args.rs`, the agent commands in `command.rs`, the result texts in `render.rs` and the JSON-RPC side
+in `server.rs`, each file with its tests.
+
 Issue: [#231](https://github.com/vimma-browser/vimma/issues/231)
 
 Builds on [mcp-drive](mcp-drive.md) (per-tab hint sessions, agent-tab confinement, the `in-use`

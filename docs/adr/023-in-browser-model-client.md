@@ -22,6 +22,8 @@ calls reach the gate, where its requests may go, and where an API key is kept.
    agent's calls run, so the gate, the grants, the checkpoints, the rates, `:mcp log` and the
    checks after a yes are shared. Results become the text `vimma-ctl mcp` gives an MCP agent,
    from vimma-core's `agent-results.mjs`, whose fixed sentences a test keeps equal to `mcp.rs`.
+   (Since changed: `mcp.rs` is now vimma-ctl's `src/mcp/` module,
+   [#934](https://github.com/vimma-browser/vimma/issues/934); the test reads every file of it.)
    It needs no `:mcp on`.
 2. **A conversation's grant is made by the user's own send.** Sending a task with `Enter` in
    Vimma's chat window grants the conversation's connection for its lifetime, with no question;

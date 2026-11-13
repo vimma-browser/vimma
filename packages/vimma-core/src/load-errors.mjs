@@ -4,7 +4,7 @@
 
 // Firefox's error pages, as an agent's open or step names them (issue #643): a load that ended on
 // one is an error the model reads in Vimma's fixed words, so that it stops instead of opening the
-// same address again. vimma-ctl has the same list (tools/vimma-ctl/src/mcp.rs, `LOAD_ERRORS`).
+// same address again. vimma-ctl has the same list (tools/vimma-ctl/src/mcp/render.rs, `LOAD_ERRORS`).
 
 /**
  * The `e=` codes of Firefox's error pages that come of a top-level load (nsDocShell.cpp,
@@ -59,7 +59,7 @@ export const LOAD_ERRORS = Object.freeze({
 export const NOT_LOADED = "the page did not load: ";
 
 /**
- * A load error in Vimma's words, as the model reads it (mcp.rs, `with_load_error`).
+ * A load error in Vimma's words, as the model reads it (mcp/render.rs, `with_load_error`).
  * @param {string} code  a LOAD_ERRORS code
  */
 export function errorPageText(code) {

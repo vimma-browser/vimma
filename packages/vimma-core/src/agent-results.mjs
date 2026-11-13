@@ -4,10 +4,10 @@
 
 // The built-in agent's tool calls as agent commands, and the commands' results as the text the
 // model reads (docs/specs/builtin-agent.md B2, B4, B6). `vimma-ctl mcp` does the same for MCP
-// agents (tools/vimma-ctl/src/mcp.rs, `ToolCall::command`, `success`, `failure_text`); the words
-// here are its words, so that a model reads the same results whichever way it reaches Vimma and
-// what the bench measures over MCP is what the built-in agent runs. agent-results.test.mjs
-// fails when a sentence here is not in mcp.rs.
+// agents (tools/vimma-ctl/src/mcp/: `ToolCall::command` in command.rs, `success` and
+// `failure_text` in render.rs); the words here are its words, so that a model reads the same
+// results whichever way it reaches Vimma and what the bench measures over MCP is what the
+// built-in agent runs. agent-results.test.mjs fails when a sentence here is not in src/mcp/.
 
 import { UNTRUSTED_CLOSE, UNTRUSTED_OPEN, untrustedHeader } from "./agent.mjs";
 import { MAX_RETRY_AFTER } from "./control.mjs";
@@ -21,7 +21,7 @@ import { LOAD_ERRORS, NOT_LOADED, errorPageText } from "./load-errors.mjs";
  *   | { kind: "refused", code: string, message: string }} Failure
  */
 
-/** Each agent tool's command (mcp.rs, `ToolCall::command`). */
+/** Each agent tool's command (mcp/command.rs, `ToolCall::command`). */
 export const TOOL_COMMANDS = Object.freeze({
   vimma_tabs: "agent-tabs",
   vimma_read_page: "agent-read",
@@ -36,7 +36,7 @@ export const TOOL_COMMANDS = Object.freeze({
   vimma_console: "agent-console",
 });
 
-/** Flags left out of the command when false, as mcp.rs's `flag_into` does. */
+/** Flags left out of the command when false, as mcp/command.rs's `flag_into` does. */
 const FLAGS = new Set(["elements", "labels", "full"]);
 
 /**
@@ -123,12 +123,12 @@ function listItems(tab, filtered, result) {
   return items;
 }
 
-/** A JSON string, as mcp.rs prints a title or a query: quoted, its quotes escaped. */
+/** A JSON string, as mcp/render.rs prints a title or a query: quoted, its quotes escaped. */
 const quoted = (/** @type {string} */ s) => JSON.stringify(s);
 
 /**
- * The model's view of a command's result (mcp.rs, `success`); a result Vimma should never send
- * becomes the protocol failure mcp.rs reports.
+ * The model's view of a command's result (mcp/render.rs, `success`); a result Vimma should never send
+ * becomes the protocol failure mcp/render.rs reports.
  * @param {string} name  the tool @param {Record<string, any>} args  as the model sent them
  * @param {any} result  the agent command's
  * @returns {CallToolResult}
@@ -319,7 +319,7 @@ export const LOAD_FAILED = "The page did not load in tab ";
 const LOAD_FAILED_REFUSAL = `Vimma could not do it: ${NOT_LOADED}`;
 
 /**
- * Why a step's page did not load, as the error result's first line (mcp.rs, `load_failed`), or
+ * Why a step's page did not load, as the error result's first line (mcp/render.rs, `load_failed`), or
  * null for a page that loaded: the step ran, but its page is Firefox's error page, so the same
  * step meets it again. A model that read only that its elements were not listed opened the same
  * address in tab after tab (issue #643).
@@ -357,7 +357,7 @@ const UNLISTED = Object.freeze({
 });
 
 /**
- * A step's element list as items, or why there is none (mcp.rs, `step_list`).
+ * A step's element list as items, or why there is none (mcp/render.rs, `step_list`).
  * @param {string} tab @param {boolean} asked @param {boolean} filtered @param {any} result
  * @returns {{ list: ToolContent[], unlisted: string | null }}
  */
@@ -433,7 +433,7 @@ function consoleText(tab, result) {
   return [item(untrustedHeader(url, title)), item(said), item(errors.wrapped), item(requests)];
 }
 
-/** vimma-core's AGENT_SCREENSHOT bounds, as mcp.rs checks them (mcp-forms F18, F19). */
+/** vimma-core's AGENT_SCREENSHOT bounds, as mcp/render.rs checks them (mcp-forms F18, F19). */
 const SCREENSHOT = Object.freeze({ width: 1280, height: 16384, base64: 700 * 1024 });
 
 /** @param {string} tab @param {boolean} asked @param {any} result @returns {ToolContent[]} */
@@ -445,7 +445,7 @@ function screenshotItems(tab, asked, result) {
     throw new Broken("Vimma's screenshot is not a PNG or JPEG");
   }
   const data = field(result, "data");
-  // Padded base64 of at least one byte, as mcp.rs's `is_base64`.
+  // Padded base64 of at least one byte, as mcp/render.rs's `is_base64`.
   const base64 = data.length > 0 && data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/.test(data);
   if (data.length > SCREENSHOT.base64 || !base64) {
     throw new Broken("Vimma's screenshot is not base64 within its size limit");
@@ -558,7 +558,7 @@ function inPlace(changed, listed) {
 const HOST = /^[A-Za-z0-9.\-[\]:]{1,253}$/;
 
 /**
- * The page after a click or a fill (mcp.rs, `after_step`).
+ * The page after a click or a fill (mcp/render.rs, `after_step`).
  * @param {string} tab @param {boolean} elements @param {boolean} filtered @param {any} result
  * @param {string[]} lines
  * @returns {ToolContent[]}
@@ -645,7 +645,7 @@ export function isFinalRefusal(result) {
 }
 
 /**
- * The text a refusal becomes, for the model and the user reading along (mcp.rs, `failure_text`).
+ * The text a refusal becomes, for the model and the user reading along (mcp/render.rs, `failure_text`).
  * @param {Failure} failure
  * @returns {CallToolResult}
  */
@@ -671,7 +671,7 @@ export function rateWaitMs(failure) {
 /** @param {Failure} failure */
 export function failureText(failure) {
   if (failure.kind === "denied" && failure.reason === "busy" && failure.retryAfterMs) {
-    // mcp.rs, `Failure::RateLimited` (issue #592): a used-up rate, not questions waiting.
+    // mcp/render.rs, `Failure::RateLimited` (issue #592): a used-up rate, not questions waiting.
     return (
       `Vimma's rate limit for this agent: ${failure.message}. No question is waiting for the ` +
       `user. The next call is allowed in ${Math.ceil(failure.retryAfterMs / 1000)} s.`

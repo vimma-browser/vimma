@@ -1,6 +1,6 @@
 // docs/specs/builtin-agent.md B2, B4, B6: the built-in agent's tool calls become agent commands,
-// and their results the text vimma-ctl mcp gives MCP agents (tools/vimma-ctl/src/mcp.rs).
-import { readFileSync } from "node:fs";
+// and their results the text vimma-ctl mcp gives MCP agents (tools/vimma-ctl/src/mcp/).
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import {
   TOOL_COMMANDS,
@@ -354,8 +354,13 @@ describe("refusals", () => {
   });
 });
 
-/** mcp.rs's string literals with their line continuations joined. */
-const MCP_RS = readFileSync(new URL("../../../tools/vimma-ctl/src/mcp.rs", import.meta.url), "utf8")
+/** The string literals of vimma-ctl's `mcp` module, its line continuations joined. */
+const MCP_DIR = new URL("../../../tools/vimma-ctl/src/mcp/", import.meta.url);
+const MCP_RS = readdirSync(MCP_DIR)
+  .filter((name) => name.endsWith(".rs"))
+  .sort()
+  .map((name) => readFileSync(new URL(name, MCP_DIR), "utf8"))
+  .join("\n")
   .replace(/\\\n\s*/g, "")
   .replace(/\\"/g, '"');
 
@@ -433,7 +438,7 @@ describe("the same words as vimma-ctl", () => {
     "Vimma has muted this agent after repeated denials (for a minute, or until it reconnects). Stop, and ask the user what they want.",
     "The tab changed after the user was asked (it navigated, closed or moved), so nothing was done. List the tabs again with vimma_tabs.",
     "The user is using this tab in Vimma (typing in it, or in hint mode or a key sequence), so nothing was done. Try again later, or work in another agent tab.",
-  ])("mcp.rs says %j", (sentence) => {
+  ])("vimma-ctl's mcp module says %j", (sentence) => {
     expect(MCP_RS).toContain(sentence);
   });
 });

@@ -1,4 +1,4 @@
-# Plan §4 step 6 / §7: release-please keeps one release PR open with the next version and its
+# Spec release-versioning: release-please keeps one release PR open with the next version and its
 # CHANGELOG.md entry, built from the Conventional Commits on main. It opens as a draft, whose
 # rebuilds skip the slow checks; marking it ready runs them once (issue #443). Merging that PR is
 # the release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and

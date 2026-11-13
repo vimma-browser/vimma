@@ -157,7 +157,7 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
-Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. Plan §5: no
+Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. No
 retries in CI; a flaky test gets quarantined and an issue the same day.
 
 ### The control socket (spec m0-control-server)
@@ -954,7 +954,7 @@ tested builds and 3 hours a month. One run uses one hosted runner at a time.
 
 ### Mutation testing (`mutation.yml`)
 
-Plan §5: Stryker mutates `packages/vimma-core/src` (not `vendor/`) every Sunday and runs the core's
+Stryker mutates `packages/vimma-core/src` (not `vendor/`) every Sunday and runs the core's
 tests against each mutant. A mutant that no test fails on **survived**: the tests would not notice
 that change to the code. Survivors never fail the workflow; they go into one open issue labelled
 `mutation`, which each run rewrites (and closes when none are left). Only a broken run is red.
@@ -967,7 +967,7 @@ Reading the issue and the report:
 - `NoCoverage` means no test runs that code at all (rare: the coverage gate is 90 %).
 - `Timeout` counts as killed: the mutant made the tests hang (usually a loop condition). Under
   heavy local parallelism a slow survivor can time out instead; CI's two workers are the reference.
-- For each survivor: write a test that fails on the mutant, red first (plan §5), naming the
+- For each survivor: write a test that fails on the mutant, red first, naming the
   behaviour, not the mutant. If the mutant cannot change behaviour (an equivalent mutant, e.g. a
   redundant guard or a log message), mark it in the source with
   `// Stryker disable next-line <Mutator>: <why it is equivalent>`; the reason is required.
@@ -1036,7 +1036,7 @@ packages/vimma-core/test/fuzz` (about a minute).
 
 ### Bench baseline (`ci.yml`)
 
-Plan §5, issue #17: key-to-action in core must stay under 50 µs and must not regress by more
+Issue #17: key-to-action in core must stay under 50 µs and must not regress by more
 than 10 %. `npm run bench` measures five cases (a single key, the prefix plus a key, a count plus
 a motion, a two-key sequence, and applying a pane-focus action to a 30-tab workspace) from
 `packages/vimma-core/bench/cases.mjs`, twice: as the working tree has them and as the **baseline
@@ -1052,7 +1052,7 @@ The gate is the same on every machine: there are no per-runner numbers to fall b
 `--base <commit>` measures against another commit, for example `--base origin/main` to see what
 a branch costs before opening a pull request.
 
-Why it does not flake (plan §5: no retries; flaky means quarantine):
+Why it does not flake (CI never retries; a flaky test means quarantine):
 
 - **The baseline is measured in the same run (issue #342).** Until issue #342 the baseline was
   numbers, one entry per runner class, recorded by other jobs. Unchanged code then read up to
@@ -1110,7 +1110,7 @@ Why it does not flake (plan §5: no retries; flaky means quarantine):
   read +15.2 % on the suite against `--base HEAD` and the step exited 1.
 - **The budget has headroom.** The slowest case is about 17 µs on CI, the key cases under 1 µs.
 
-If the step does fail without a slowing change, that is a flake: quarantine per plan §5 (open an
+If the step does fail without a slowing change, that is a flake: quarantine it (open an
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, release-please and claude
@@ -1138,10 +1138,11 @@ leader lookup" }`. The gate then compares the case with the baseline commit's ti
 
 ### Key-to-paint timings (`browser_vimma_perf.js`)
 
-Plan §5's second perf line, key-to-paint in the window, and plan §9's 200-tab risk, measured
-read-only in a mochitest (no paint timestamp on the control socket): `performance.now()` just
-before `EventUtils.synthesizeKey`, again when the synchronous key handling returns (**action**),
-and at the first `MozAfterPaint` of the chrome window after which the result holds (**paint**).
+The second performance budget, key-to-paint in the window, and the 200-tab risk in
+[roadmap.md](roadmap.md), measured read-only in a mochitest (no paint timestamp on the control
+socket): `performance.now()` just before `EventUtils.synthesizeKey`, again when the synchronous key
+handling returns (**action**), and at the first `MozAfterPaint` of the chrome window after which the
+result holds (**paint**).
 21 presses per case; each case logs one line:
 
 ```sh
@@ -1174,7 +1175,7 @@ takes one or two frames more on CI than locally.
 **Budgets** (`BUDGETS` in the test, on medians, about twice the higher CI median): action 25
 ms for all three cases; paint 85 ms for pane-focus, 150 ms for workspace-200-in, 115 ms for
 workspace-200-out. Past one means a doubled action or about two extra frames, not runner noise.
-The floors are not gated. Plan §5's "< 5 ms key-to-paint" cannot be checked as an absolute in
+The floors are not gated. The "< 5 ms key-to-paint" budget cannot be checked as an absolute in
 a headless run whose paints come every ~35 ms; the closest gated reading is the action time,
 8 to 13 ms today, mostly Firefox's own tab selection. Re-record from CI
 numbers only, with a changelog line in the commit body; two CI samples back them so far, so add
@@ -1741,7 +1742,7 @@ m0-mozilla-services, m0-safebrowsing-key). `tools/upstream/upstream-prefs.mjs` c
 and lists them, so check only that the old and new values in its "Refreshed prefs" look right. A
 pref gone upstream leaves the PR a draft that names it. Before a release, run
 `tools/safebrowsing-smoke/safebrowsing-smoke.sh` on a keyed full build. Patch-size review
-(plan §4, Sunday): `python3 tools/upstream/patch-audit.py`.
+(quarterly, `patch-audit.yml`): `python3 tools/upstream/patch-audit.py`.
 
 ### Firefox Beta canary (`upstream-beta.yml`)
 
@@ -1830,7 +1831,7 @@ push runs of CI, Semgrep and release-please wait for the next ordinary push to `
 
 ### Releases (`release-please.yml`)
 
-Plan §4/§7: [release-please](https://github.com/googleapis/release-please-action) (v5.0.0, pinned
+[release-please](https://github.com/googleapis/release-please-action) (v5.0.0, pinned
 by SHA) keeps one release PR open, `chore(main): release X.Y.Z`, updated on every push to `main`.
 It holds the next version and that release's `CHANGELOG.md` entry, and opens as a draft
 (`"draft-pull-request": true`). **Merging it is the release**:
@@ -2393,9 +2394,9 @@ gh run list -R vimma-browser/vimma -w release.yml -L 1   # the new run
 If the draft has lost its tag (`gh release view v0.1.2` does not find it, and the releases list
 shows `untagged-…`), reattach it first, as in "Releases" above, so the upload finds it.
 
-**When it fails:** a `release-failure` issue links the run, while the release is still a draft.
-Fix on `main`, then re-run for the same tag. The tag is not deleted (plan §4 said so): release-please has already moved its
-manifest and changelog past it, and the release notes stay valid. If the fix changes what is
+**When it fails:** a `release-failure` issue links the run, while the release is still a draft. Fix
+on `main`, then re-run for the same tag. The tag is not deleted: release-please has already moved
+its manifest and changelog past it, and the release notes stay valid. If the fix changes what is
 built, release a patch version instead. A manual run, `gh workflow run release.yml -f tag=vX.Y.Z`,
 runs the workflow file from `main` (the jobs refuse any other branch) but checks out and builds
 the tag's source: a fix to the workflow file reaches the re-run, while a fix to the source or to a

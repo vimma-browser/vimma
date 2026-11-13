@@ -1,4 +1,4 @@
-# Spec m0-pipeline, plan §8 "Unattended runs". Follows anthropics/claude-code-action v1
+# Spec m0-pipeline. Follows anthropics/claude-code-action v1
 # (docs/setup.md, docs/security.md, examples/claude.yml).
 #
 # Security model (see the spec's Settled section and docs/runbook.md):
