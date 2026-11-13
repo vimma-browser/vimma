@@ -812,9 +812,9 @@ export function updateVersionLine(offer) {
  * with errors whose `check` can be read applies it as a valid file would, true when missing, so
  * a value from a newer build never keeps the user from the release that accepts it; that can
  * turn checks on that the config in force had off. Only when `check` cannot be read, since the
- * file may then say `check = false`, does the config in force before keep its value, and when
- * only the defaults stand in for the file (at startup) checks are held, `:update` aside, until
- * it is fixed.
+ * file may then say `check = false`, does it keep the value of the config in force, and when
+ * only the defaults stand in for the file (at startup) it holds checks (`:update` aside) until
+ * the file is fixed.
  * @param {{ errors: number, inForce: boolean, raw: boolean | "missing" | null,
  *   hadConfig: boolean }} read
  *   `inForce`: `updates.check` of the config in force after the read; `raw`: rawUpdatesCheck;

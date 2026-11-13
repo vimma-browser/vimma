@@ -95,7 +95,9 @@ trees (sub-spec 6).
     `layout: tiled`.
 13. **Persistence:** the snapshot already stores each workspace's tree; `layout` rides along as an
     optional field of `panes` (`toSnapshot` copies the tree). `fromSnapshot` keeps it when it is
-    one of `LAYOUTS` and drops anything else without failing the restore. **No schema bump:** the
+    one of `LAYOUTS` and drops anything else without failing the restore. (Since changed:
+    `fromSnapshot` is removed; `readSnapshot` in `snapshot.mjs` does this,
+    [#956](https://github.com/vimma-browser/vimma/issues/956).) **No schema bump:** the
     shape only gains an optional field that schema-1 readers already ignore (`readPanes` reads
     named fields), as `alternate` and `tabLabels` did, so no migration is needed and an older
     build reads a newer file unchanged.

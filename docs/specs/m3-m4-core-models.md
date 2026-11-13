@@ -29,9 +29,9 @@ Status: implemented (core); the host wiring followed in the milestone's host spe
 |                  | `SNAPSHOT_MIGRATIONS`, `SnapshotError`                                                |
 | `index.mjs`      | re-exports                                                                            |
 
-(Since changed: `readSnapshot` reads a snapshot with its tab renames and is what the host uses;
-`fromSnapshot`, which returned only its workspace state, had no caller outside its tests and was
-removed, [#956](https://github.com/vimma-browser/vimma/issues/956).)
+(Since changed: `fromSnapshot` is removed, because only its tests called it; `readSnapshot` in
+`packages/vimma-core/src/snapshot.mjs` parses, migrates and validates a snapshot and returns its
+state with the tab renames, [#956](https://github.com/vimma-browser/vimma/issues/956).)
 
 Contract fixtures: `tests/contract/state/v1/valid.json`, `tests/contract/state/v1/invalid.json`.
 Bench: `packages/vimma-core/bench/cases.mjs`, run by `tools/bench/bench.mjs` (Since changed:
@@ -190,6 +190,10 @@ previous, add, delete and rename.
 5. The pane invariants above hold for every workspace's layout (checked by `fromSnapshot`'s
    validation inside property 6).
 6. `fromSnapshot(toSnapshot(s))` deep-equals `s`.
+
+(Since changed: for this list and the next section, `fromSnapshot` is removed; `readSnapshot` in
+`packages/vimma-core/src/snapshot.mjs` does its validation, and `readSnapshot(toSnapshot(s)).state`
+deep-equals `s`, [#956](https://github.com/vimma-browser/vimma/issues/956).)
 
 ## Persistence (`snapshot.mjs`)
 

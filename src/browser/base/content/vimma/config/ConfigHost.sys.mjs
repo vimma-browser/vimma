@@ -234,9 +234,9 @@ function use(path, text) {
   active = r.active;
   if (active !== previous) apply(active, text);
   // A file with errors still decides update checks when its `check` can be read, as a valid file
-  // does, so a value only a newer build accepts never keeps the user from that release; only an
-  // unreadable `check` keeps the previous value, or holds checks for `:update` when the defaults
-  // stand in (docs/specs/m6a-updater.md decision 31 and its since-changed note, #741).
+  // does, so a value only a newer build accepts never keeps the user from that release; an
+  // unreadable `check` keeps the value of the config in force, or, when the defaults stand in,
+  // holds checks (`:update` aside) (docs/specs/m6a-updater.md decision 31 and its note, #741).
   VimmaUpdates.configure(
     updatesCheckAfterRead({
       errors: r.errors.length,
