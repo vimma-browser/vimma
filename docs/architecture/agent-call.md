@@ -22,7 +22,7 @@ sequenceDiagram
   Host->>Ctl: tools/call vimma_activate (JSON-RPC on stdin)
   Ctl->>Ctl: check the arguments (mcp/args.rs)
   Ctl->>Srv: hello, role agent, nonce (first call only)
-  Srv-->>Ctl: challenge, HMAC-SHA256(token, nonce)
+  Srv-->>Ctl: challenge, HMAC-SHA256(token, vimma-server NUL + nonce)
   Ctl->>Srv: auth with the token
   Srv-->>Ctl: welcome
   Ctl->>Srv: agent-hello, then request agent-activate
@@ -42,9 +42,11 @@ sequenceDiagram
 
 ## Before the call: MCP is on
 
-Nothing listens until the user turns MCP on (`:mcp on`, or `[mcp] enabled` in `config.toml`).
-`ctl/VimmaControl.sys.mjs` then starts its server (`startServer`) on 127.0.0.1 and a random port,
-makes a 256-bit token, and writes the discovery file `<profile>/vimma-control.json` through
+The control socket is off by default. Three things start it: MCP for agents (`:mcp on`, or
+`[mcp] enabled` in `config.toml`), the pref `vimma.control.enabled` for `vimma-ctl`'s own commands,
+and a live ticket of an agent CLI the built-in agent runs (see the last section). With MCP on,
+`ctl/VimmaControl.sys.mjs` starts its server (`startServer`) on 127.0.0.1 and a random port, makes a
+256-bit token, and writes the discovery file `<profile>/vimma-control.json` through
 `writeDiscovery`: created with mode 0600, written, then renamed into place, so no reader ever sees
 it readable by others. `discoveryOf` puts in the protocol (2), the port, the token, the process id,
 the roles served (`agent` here; `full` only with the pref `vimma.control.enabled`) and Vimma's
@@ -83,8 +85,8 @@ longest wait so that Vimma's answer normally comes first.
 ## 3. The connection and the handshake
 
 The first call opens the connection (`Server::connect`). `find` reads the discovery file through
-`discovery::read_discovery`, which refuses a file that group or others can read, one over 64 KiB,
-and one whose process has exited (`check_mode`, `check_pid`). `Client::connect_as` with
+`discovery::read_discovery`, which refuses a file with any permission bit for group or others, one
+over 64 KiB, and one whose process has exited (`check_mode`, `check_pid`). `Client::connect_as` with
 `Role::Agent` (`client.rs`) first checks the file: no `agent` role means "run `:mcp on`" without
 connecting, and protocol 1 means the browser is too old (`check_role`).
 
@@ -105,7 +107,8 @@ nothing:
    `welcome` with the role and Vimma's version.
 
 `connect` then sends `agent-hello` with the client's self-reported name and version, the parent
-process's name (`parent_name`, read from `/proc`), `vimma-ctl`'s version and a session id unique
+process's name as `via` (`parent_name`: `/proc` on Linux, `/bin/ps` on macOS; it stands in for the
+client name only when the client gave none), `vimma-ctl`'s version and a session id unique
 to this process. These are labels for the question, never proof of identity. In the browser,
 `COMMANDS["agent-hello"]` in `ctl/agent-commands.mjs` registers the connection with
 `AgentGate.connect` and answers with the agent workspace's name.
@@ -121,23 +124,27 @@ S14 in security.md §1.
 ## 4. The request reaches the agent commands
 
 The request line goes out with an id (`Server::send`). On the server, `Connection.request` lets a
-connection run only its role's commands: an agent connection asking for `send-keys` or `state`
-gets `unknown-command`, and a full one gets the same for any agent command
+connection run only its role's commands: an agent connection asking for `send-keys` or `state` gets
+`unknown-command`, and a full one gets the same for any agent command
 (`test_each_role_runs_only_its_commands`). `agentRequest` validates the arguments again, refuses a
-fifth request in flight as `denied` with reason `busy`, and calls `runAgentCommand`, which
-requires `agent-hello` first and raises the named tab to foreground priority until the reply.
+fifth request in flight (an `agent-cancel` is not counted) as `denied` with reason `busy`, and calls
+`runAgentCommand`, which requires `agent-hello` first and raises the named tab to foreground
+priority until the reply.
 
 `COMMANDS["agent-activate"]` then decides everything it can before the user is asked:
 
 - `agentWorkspace` fails when there is no agent workspace (containers off); `findAgentTab` answers
   `invalid-args` for any tab outside it, in the same words whether the tab is in another
   workspace, another window or another conversation's, so nothing leaks (M2).
-- The click rate and the open rate are taken (`CallRate`, `OpenRate` in core `agent.mjs`); a
-  used-up rate is `denied` with `busy` and a retry time (M32, M3).
+- The click rate is taken first (`actCalls`, a `CallRate` of core `agent.mjs`), before anything
+  else is learnt, so a refused call cannot loop; a used-up rate is `denied` with `busy` and a
+  retry time (M32).
 - `inUse` refuses a tab the user is working in (`in-use`). `AgentDrive.element` resolves the label
   from this connection's last `vimma_elements` list, and `AgentAct.clickable` checks the element
   in its frame: fields, file inputs, disabled controls and links to another site are refused
   here, before any question (M29).
+- The open rate (`opens`, an `OpenRate`) is only checked here, since a click may load a page; it
+  is taken after the click, and only when the click navigated (M3).
 - `AgentAct.payment` and `AgentAct.sent` read whether the click may pay and what a submission
   would send. Core's `isConsequential`, `mayAllowHere` and `allowanceKey`
   (`packages/vimma-core/src/agent-checkpoint.mjs`) decide whether a grant covers the form, and
@@ -236,9 +243,10 @@ The built-in agent ([builtin-agent](../specs/builtin-agent.md),
 `builtin:<n>`, opened with `builtinHello`; its model's tool calls go through `runOnce`, which calls
 `runAgentCommand` directly in the browser process. From there the path is the same code: the same
 checks, gate, log and actors. Sending a task with Enter grants that connection through
-`AgentGate.grantConnection` until the task ends, with no question (M37), and an MCP client cannot
-pass as the built-in agent: `mcpClientName` adds ` (mcp)` to any client name that starts with
-`built-in` (M38). Test: `test_enter_grants_and_the_transcript_shows_each_step` in
+`AgentGate.grantConnection` until the task ends, with no question; submissions that M28 makes ask,
+payment steps, `vimma_show` and the downloads that always ask still ask under it (M37), and an MCP
+client cannot pass as the built-in agent: `mcpClientName` adds ` (mcp)` to any client name that
+starts with `built-in` (M38). Test: `test_enter_grants_and_the_transcript_shows_each_step` in
 [browser_vimma_agent_chat.js](../../tests/browser/browser_vimma_agent_chat.js).
 
 An agent CLI that the built-in agent runs ([builtin-agent-cli](../specs/builtin-agent-cli.md))

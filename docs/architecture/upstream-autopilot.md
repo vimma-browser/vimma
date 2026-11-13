@@ -68,8 +68,9 @@ so that the two checks cannot drift apart. It accepts only a version of digits, 
 
 1. One copy goes to `sha512sum`. The other goes to `patch-check.py --tarball - --drain`, which
    extracts only the files Vimma patches and dry-runs every `src/**/*.patch` with
-   `git apply --check` and Surfer's flags. Each patch gets a verdict: `clean`, `offset`, `applied`, `fuzz` or
-   `failed` (the last two fail `surfer import`), and a failing patch is checked hunk by hunk.
+   `git apply --check` and Surfer's flags. Each patch gets a verdict: `clean`, `offset`,
+   `applied`, `fuzz` or `failed` (the last two fail `surfer import`), and a failing patch is
+   checked hunk by hunk.
 2. `verify-sha512.py` checks with `gpgv` that `SHA512SUMS.asc` is a good signature by the pinned
    key (by its fingerprint, `PINNED_FINGERPRINT`), then that the tarball's SHA-512 matches its line
    in `SHA512SUMS`. A bad signature, a mismatch or a file that cannot be fetched exits 1, and no
@@ -163,12 +164,13 @@ again (G13). Tests: [merge-ready.test.mjs](../../tools/upstream/test/merge-ready
 ## 6. After the merge: a security release
 
 The squash merge is a push to `main`, so `release-please.yml` runs and adds the bump to the open
-release pull request. When the merged bump carried the `security` label and the repository
-variable `AUTO_SECURITY_RELEASE` is on, its `security-release` job runs
-`tools/release/security-release.mjs`: `decide()` checks every condition on what `gather()` read
-from the API (never the first release, only the autopilot's merged `security` pull request) and
-sets the release pull request to auto-merge, pinned to its head, through the release-please
-token. The release then follows
+release pull request. While the repository variable `AUTO_SECURITY_RELEASE` is on, its
+`security-release` job runs on every push to `main` and calls `tools/release/security-release.mjs`.
+`decide()` checks every condition on what `gather()` read from the API and skips, with a notice,
+unless the pushed commit is the squash merge of exactly one autopilot pull request from this
+repository's `upstream/firefox-X.Y.Z`, labelled `upstream` and `security`, and exactly one release
+pull request is open (never the first release). Then it sets the release pull request to
+auto-merge, pinned to its head, through the release-please token. The release then follows
 [From a release tag to an offered update](updates-and-release.md); publishing its draft stays a
 person's click ([ADR-020](../adr/020-security-release-without-a-person.md), G11, G12). Tests:
 [security-release.test.mjs](../../tools/release/test/security-release.test.mjs).

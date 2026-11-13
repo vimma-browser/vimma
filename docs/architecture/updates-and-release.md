@@ -45,8 +45,9 @@ here. `firefox-notes` names the Firefox the release builds on in the changelog h
 
 Merging that pull request is the release: release-please tags `vX.Y.Z` and creates a draft GitHub
 Release. A tag pushed with `GITHUB_TOKEN` starts no workflow, so the `release-build` job checks the
-tag's form and dispatches `release.yml` on `main` with it. Nothing runs while the repository
-variable `RELEASE_ENABLED` is not `true`.
+tag's form and dispatches `release.yml` on `main` with it. While the repository variable
+`RELEASE_ENABLED` is not `true`, the release pull request, the tag and the draft still happen,
+but no build starts: `release-build` and every job of `release.yml` require it.
 
 ## 2. The build: `release.yml`
 
@@ -184,7 +185,8 @@ Tests: [updates.test.mjs](../../packages/vimma-core/test/updates.test.mjs),
 [browser_vimma_update_check.js](../../tests/browser/browser_vimma_update_check.js),
 [browser_vimma_update_verify.js](../../tests/browser/browser_vimma_update_verify.js),
 [browser_vimma_update_appimage.js](../../tests/browser/browser_vimma_update_appimage.js) and
-[browser_vimma_updater.js](../../tests/browser/browser_vimma_updater.js); rules UP1 to UP13.
+[browser_vimma_updater.js](../../tests/browser/browser_vimma_updater.js); rules UP1 to UP6, UP8 to
+UP11 and UP13.
 
 ## The nightly channel
 

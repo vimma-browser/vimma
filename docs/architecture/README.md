@@ -12,10 +12,3 @@ procedures rather than repeating them.
 | [The life of an agent call](agent-call.md)                        | An MCP tool call: `vimma-ctl mcp`, the control socket, the agent gate, the page, and back |
 | [From a release tag to an offered update](updates-and-release.md) | A Vimma release: release-please, `release.yml`, signing, the manifest, the client's check |
 | [From a Firefox release to a merged bump](upstream-autopilot.md)  | A Firefox release: detection, source verification, the patch check, the suites, the merge |
-
-Planned pages ([#932](https://github.com/vimma-browser/vimma/issues/932)):
-
-- The life of a keypress: `keydown`, the dispatcher, the action runners, the actor.
-- Workspaces and panes: vimma-core's model, the window's mirror of it, and SessionStore.
-- Config and theme: `config.toml`, validation, theme tokens, CSS, and the Omarchy adapter.
-- The test pyramid: Vitest, contract fixtures, mochitests, e2e scenarios and the site suites.

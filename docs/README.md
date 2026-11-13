@@ -10,10 +10,7 @@ Where to read about what. Users start with the guide; contributors with
 | What Vimma does and how to use it                      | [guide.md](guide.md), and [bindings.md](bindings.md) for every key (generated)                |
 | What Vimma does not do yet, or cannot                  | [limits.md](limits.md)                                                                        |
 | How the code is organised, and what talks to what      | [ARCHITECTURE.md](../ARCHITECTURE.md)                                                         |
-| How one flow runs through the code, step by step       | [architecture/](architecture/): the walkthroughs listed there                                 |
-| How an agent's tool call reaches a page and comes back | [architecture/agent-call.md](architecture/agent-call.md)                                      |
-| How a release goes from its tag to an offered update   | [architecture/updates-and-release.md](architecture/updates-and-release.md)                    |
-| How a Firefox release becomes a merged bump            | [architecture/upstream-autopilot.md](architecture/upstream-autopilot.md)                      |
+| How one flow runs through the code, step by step       | [architecture/](architecture/): an agent call, a release and update, a Firefox bump           |
 | How to build, test and contribute                      | [CONTRIBUTING.md](../CONTRIBUTING.md)                                                         |
 | Where the project stands and what comes next           | [roadmap.md](roadmap.md)                                                                      |
 | Why a past decision was made                           | [adr/](adr/), the decision records below                                                      |
