@@ -1,10 +1,7 @@
 # `vimma/config/`
 
-`config.toml`: `ConfigHost.sys.mjs` reads and polls the file, has vimma-core parse and validate
-it, hands each valid part to the module that uses it (keymap, theme, workspaces and routes,
-search engines, toolbar, private workspace, MCP and agent settings, updates), keeps the last good
-config on an error, and writes the file only when asked (first-run setup, `:config` on a missing
-file, `:route add`).
+`config.toml`: `ConfigHost.sys.mjs` reads, validates and applies it, and writes it only when
+asked ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** `ConfigHost.init(window)`, called by `vimma.js`; a reload is announced with
 `CONFIG_RELOAD_TOPIC`.

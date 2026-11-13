@@ -7,10 +7,15 @@ import {
   type Edge,
   type Exception,
   eagerCycles,
+  exceptionErrors,
+  htmlImports,
   importsOf,
+  jarErrors,
   layerErrors,
   missingReadmes,
+  scanModule,
 } from "../layering.ts";
+import { EXCEPTIONS } from "../layers.ts";
 
 const V = "chrome://browser/content/vimma/";
 
@@ -137,6 +142,201 @@ describe("importsOf: every way a module reaches another", () => {
   });
 });
 
+describe("scanModule: a specifier that is not a fixed string is an error", () => {
+  /** What `scanModule` reports, edges as `to (kind)` and problems as they are. */
+  function scanned(source: string, file = "host/a.mjs") {
+    const { edges, problems } = scanModule(source, file);
+    return { edges: edges.map((e) => `${e.to} (${e.kind})`), problems };
+  }
+
+  test("a template literal without ${} is a plain string", () => {
+    expect(
+      scanned(
+        [
+          "const a = import(`" + V + "host/VimmaHost.sys.mjs`);",
+          "const { B } = ChromeUtils.importESModule(`" + V + "ui/b.mjs`);",
+        ].join("\n"),
+      ),
+    ).toEqual({ edges: ["host/VimmaHost.sys.mjs (lazy)", "ui/b.mjs (eager)"], problems: [] });
+  });
+
+  test("import() and importESModule with a computed specifier fail", () => {
+    expect(
+      scanned(
+        [
+          "const n = 'VimmaHost';",
+          "const a = import(`" + V + "host/${n}.sys.mjs`);",
+          `const b = ChromeUtils.importESModule("${V}" + "host/VimmaHost.sys.mjs");`,
+          "const P = 'x';",
+          `const c = ChromeUtils.importESModule(P + "host/VimmaHost.sys.mjs");`,
+          "const d = import(n);",
+        ].join("\n"),
+      ).problems,
+    ).toEqual([
+      "host/a.mjs:2: an import specifier is not a fixed string",
+      "host/a.mjs:3: an import specifier is not a fixed string",
+      "host/a.mjs:5: an import specifier is not a fixed string",
+      "host/a.mjs:6: an import specifier is not a fixed string",
+    ]);
+  });
+
+  test("a lazy getter map's value must be a fixed string", () => {
+    expect(
+      scanned(
+        [
+          "const lazy = {};",
+          "const P = 'x';",
+          "ChromeUtils.defineESModuleGetters(lazy, {",
+          `  A: "${V}agent/AgentChat.sys.mjs",`,
+          "  B: P + 'ctl/AgentGate.sys.mjs',",
+          "});",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      edges: ["agent/AgentChat.sys.mjs (lazy)"],
+      problems: ["host/a.mjs:5: an import specifier is not a fixed string"],
+    });
+  });
+
+  test("a string that is only part of a Vimma URL fails, unless it names a folder", () => {
+    expect(
+      scanned(
+        [
+          `const ROOT = "${V}";`,
+          `const HOST = "${V}host/";`,
+          "const n = 'x';",
+          "const t = `" + V + "ctl/${n}.sys.mjs`;",
+          "const u = `" + V + "${n}`;",
+        ].join("\n"),
+      ),
+    ).toEqual({
+      edges: ["host/ (lazy)", "ctl/ (lazy)"],
+      problems: [
+        "host/a.mjs:1: a string names part of a Vimma module URL, not a module or a folder",
+        "host/a.mjs:5: a string names part of a Vimma module URL, not a module or a folder",
+      ],
+    });
+  });
+
+  test("a moz-src:/// URL into vimma/ is an edge like its chrome:// twin", () => {
+    expect(
+      scanned(
+        `const { H } = ChromeUtils.importESModule("moz-src:///browser/base/content/vimma/host/VimmaHost.sys.mjs");`,
+        "ui/x.mjs",
+      ),
+    ).toEqual({ edges: ["host/VimmaHost.sys.mjs (eager)"], problems: [] });
+  });
+
+  test("Firefox's own computed imports are not Vimma's business", () => {
+    expect(
+      scanned(
+        `const n = "Timer"; const T = ChromeUtils.importESModule(\`resource://gre/modules/\${n}.sys.mjs\`);`,
+      ),
+    ).toEqual({ edges: [], problems: [] });
+  });
+});
+
+describe("importsOf: what runs while the module evaluates is eager", () => {
+  test("an immediately called function at module level is eager", () => {
+    expect(
+      found(
+        [
+          `(() => ChromeUtils.importESModule("${V}ctl/a.mjs"))();`,
+          `(function () { ChromeUtils.importESModule("${V}ctl/b.mjs"); })();`,
+          `const later = () => (() => ChromeUtils.importESModule("${V}ctl/c.mjs"))();`,
+        ].join("\n"),
+      ),
+    ).toEqual(["ctl/a.mjs (eager)", "ctl/b.mjs (eager)", "ctl/c.mjs (lazy)"]);
+  });
+
+  test("a static block and a static field are eager, an instance field lazy", () => {
+    expect(
+      found(
+        [
+          "class K {",
+          `  static { ChromeUtils.importESModule("${V}ctl/a.mjs"); }`,
+          `  static s = ChromeUtils.importESModule("${V}ctl/b.mjs");`,
+          `  i = ChromeUtils.importESModule("${V}ctl/c.mjs");`,
+          "}",
+        ].join("\n"),
+      ),
+    ).toEqual(["ctl/a.mjs (eager)", "ctl/b.mjs (eager)", "ctl/c.mjs (lazy)"]);
+  });
+});
+
+describe("htmlImports", () => {
+  test("a page's script and stylesheet URLs into vimma/ are eager edges", () => {
+    expect(
+      htmlImports(
+        [
+          `<link rel="stylesheet" href="chrome://browser/skin/vimma/about.css" />`,
+          `<script type="module" src="${V}about/about.mjs"></script>`,
+          `<script src="../ui/x.js"></script>`,
+        ].join("\n"),
+        "about/about.html",
+      ),
+    ).toEqual({
+      edges: [
+        { from: "about/about.html", to: "about/about.mjs", kind: "eager", line: 2 },
+        { from: "about/about.html", to: "ui/x.js", kind: "eager", line: 3 },
+      ],
+      problems: [],
+    });
+  });
+
+  test("an inline script is an error: its imports would go unread", () => {
+    expect(
+      htmlImports(
+        `<p>\n<script type="module">\n  import "../host/a.mjs";\n</script>`,
+        "about/a.html",
+      ).problems,
+    ).toEqual(["about/a.html:2: an inline <script> is not read; load the code from a module file"]);
+  });
+});
+
+describe("jarErrors", () => {
+  test("every module is packaged at its own path, so the URL's folder is the source folder", () => {
+    expect(
+      jarErrors(
+        [
+          "browser.jar:",
+          "        content/browser/vimma/vimma.js                    (vimma.js)",
+          "        content/browser/vimma/host/VimmaHost.sys.mjs      (host/VimmaHost.sys.mjs)",
+          "        content/browser/vimma/core                        (core/**/*.mjs)",
+          "        content/browser/vimma/about/patches.json          (/browser/config/vimma/patches.json)",
+          "        content/browser/vimma/ui/moved.mjs                (host/moved.mjs)",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "jar.mn:6: content/browser/vimma/ui/moved.mjs is packaged from host/moved.mjs; a module's URL must be its source path",
+    ]);
+  });
+});
+
+describe("exceptionErrors", () => {
+  const base = { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy" as const, reason: "r" };
+
+  test("each exception says whether it stays or goes, and a leaving one names its issue", () => {
+    expect(
+      exceptionErrors([
+        { ...base, fate: "stays" },
+        { ...base, to: "host/b.mjs", fate: "goes", issue: 936 },
+        { ...base, to: "host/c.mjs", fate: "goes" },
+      ]),
+    ).toEqual(["exception ui/x.mjs -> host/c.mjs (lazy) goes but names no issue"]);
+  });
+
+  test("the list does not grow without a change to ADR-026", () => {
+    // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
+    // why it cannot be avoided. Lower it whenever an exception goes.
+    const PINNED = 17;
+    expect(
+      EXCEPTIONS.length,
+      `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,
+    ).toBeLessThanOrEqual(PINNED);
+  });
+});
+
 /** A small tree: core at the bottom, ui above it, host above ui, ctl above host. */
 const layers = { core: 0, ui: 1, split: 1, host: 2, ctl: 3, "(root)": 4 };
 
@@ -198,7 +398,7 @@ describe("layerErrors", () => {
 
   test("an exception lets exactly its edge through, with its kind", () => {
     const exceptions: Exception[] = [
-      { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: "a reason" },
+      { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: "a reason", fate: "stays" },
     ];
     expect(layerErrors([edge("ui/x.mjs", "host/a.mjs", "lazy")], layers, exceptions)).toEqual([]);
     const listed = edge("ui/x.mjs", "host/a.mjs", "lazy");
@@ -214,8 +414,14 @@ describe("layerErrors", () => {
 
   test("a stale exception fails: its edge is gone, or no longer crosses a layer upwards", () => {
     const exceptions: Exception[] = [
-      { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: "gone" },
-      { from: "ctl/C.sys.mjs", to: "host/a.mjs", kind: "eager", reason: "allowed anyway" },
+      { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: "gone", fate: "stays" },
+      {
+        from: "ctl/C.sys.mjs",
+        to: "host/a.mjs",
+        kind: "eager",
+        reason: "allowed anyway",
+        fate: "stays",
+      },
     ];
     expect(layerErrors([edge("ctl/C.sys.mjs", "host/a.mjs")], layers, exceptions)).toEqual([
       "stale exception: ui/x.mjs -> host/a.mjs (lazy) is no longer imported; remove it from tools/layering/layers.ts",
@@ -226,7 +432,7 @@ describe("layerErrors", () => {
   test("an exception without a reason fails", () => {
     expect(
       layerErrors([edge("ui/x.mjs", "host/a.mjs", "lazy")], layers, [
-        { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: " " },
+        { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy", reason: " ", fate: "stays" },
       ]),
     ).toEqual(["exception ui/x.mjs -> host/a.mjs (lazy) gives no reason"]);
   });

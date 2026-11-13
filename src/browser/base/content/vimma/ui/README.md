@@ -1,9 +1,7 @@
 # `vimma/ui/`
 
-Vimma's own interface inside the browser window: the status bar, command line, help overlay,
-hint overlay, pickers, side panel, bookmarks panel and toolbar, prompts, notices, the PDF
-outline, the tab strip, the agent chat window and the theme (`theme-host.mjs`, which applies the
-built-in or Omarchy theme to every window and start page).
+Vimma's own interface in the browser window: status bar, command line, overlays, pickers, panels,
+prompts and the theme ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** one class or object per widget, built by the host for its window (`StatusBar`,
 `CommandLine`, `Picker`, `SidePanel` and the others); `ThemeHost`, used by every page that

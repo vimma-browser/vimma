@@ -267,11 +267,12 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 ```
 
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
-passed in, as `host/runners.mjs` is passed the host. Seventeen older imports still point upwards
-(the host reading the agent gate, running a few `:` commands of `config/` and `agent/`, and
-recording keys for `about:vimma`; the parent actor reporting to the host; the agent chat window
-driving the agent): each is listed with its reason in `tools/layering/layers.ts`, the list can
-only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
+passed in, as `host/runners.mjs` is passed the host. Seventeen older imports still point upwards:
+the host reading the agent gate, running a few commands of `config/`, `agent/` and `ctl/`
+(`:route add`, `:agent give`, the downloads picker's agent mark) and recording keys for
+`about:vimma`; the workspace snapshot reading tab labels from `host/`; the parent actor
+reporting to the host; the agent chat window driving the agent. Each is listed with its reason
+in `tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
 
 ## State and where it lives
 

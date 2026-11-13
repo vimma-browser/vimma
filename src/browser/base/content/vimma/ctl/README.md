@@ -1,10 +1,8 @@
 # `vimma/ctl/`
 
-The control socket and what agents may do through it. `VimmaControl.sys.mjs` is the server
-(protocol 2, full and agent roles); `AgentGate.sys.mjs` asks the user and keeps the grants and
-the log; `agent-commands.mjs` runs the agent commands (open, read, keys, elements, fill,
-activate, screenshot, console, downloads) in the agent workspace, through the `Agent*.sys.mjs`
-modules beside it.
+The control socket (`VimmaControl.sys.mjs`, protocols 1 and 2), the agent gate
+(`AgentGate.sys.mjs`) and the agent commands (`agent-commands.mjs` and the `Agent*.sys.mjs`
+modules) ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** `VimmaControl.init(window)`, `AgentPages.init()` and `AgentConsole.init()`,
 called by `vimma.js`; `runAgentCommand`, which the built-in agent calls too.

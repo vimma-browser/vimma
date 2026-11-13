@@ -1,10 +1,8 @@
 # `vimma/host/`
 
-The orchestrator of each browser window. `VimmaHost.sys.mjs` captures keys in the chrome window,
-asks vimma-core's dispatcher what they mean, keeps the window's mode and state, and runs the
-action. `runners.mjs` holds the action tables; each `*-ops.mjs` module applies one area's
-actions to Firefox (tabs, panes, workspaces, bookmarks, downloads, permissions, the PDF viewer,
-MCP and the private workspace). `hypr/HyprIpc.sys.mjs` talks to Hyprland's sockets (ADR-017).
+The orchestrator of each browser window: key capture and dispatch in `VimmaHost.sys.mjs`, the
+action tables in `runners.mjs`, one area's actions per `*-ops.mjs` module
+([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** `VimmaHost.init(win)` and `VimmaHost.uninit(win)`, called by `vimma.js`;
 `runners.mjs`, which takes the host as an argument instead of importing it.

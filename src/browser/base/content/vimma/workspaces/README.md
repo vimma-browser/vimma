@@ -5,8 +5,8 @@ definitions and their file (`<profile>/vimma-workspaces.json`); `WindowWorkspace
 keeps each window's tab membership, hidden tabs and snapshot; `WorkspaceRouter.sys.mjs` applies
 the `[[routes]]` rules that send a URL to a workspace, and the `-vimma-from` command line.
 
-**Entry points:** `WorkspaceStore` (one per app), `WindowWorkspaces.get(win)` (one per window),
-`WorkspaceRouter`. `vimma.js` starts them.
+**Entry points:** `WorkspaceStore.init()` and `WorkspaceRouter.init()`, called by `vimma.js`;
+`WindowWorkspaces.get(win)`, one per window.
 
 **May import (layer 2, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` and the layer 1
 folders (`split/` for the pane trees). `WindowWorkspaces.sys.mjs` imports

@@ -14,13 +14,16 @@
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
 // So each module is parsed and every string that names a Vimma module is an edge:
 //
-//   eager  an `import` or `export … from` declaration, or ChromeUtils.importESModule called
-//          outside any function: the module is loaded with its importer.
+//   eager  an `import` or `export … from` declaration, a page's `<script src>`, or
+//          ChromeUtils.importESModule run while the module evaluates (outside any function, in
+//          a function called on the spot, a static block or a static field).
 //   lazy   anything else: a defineESModuleGetters map, importESModule inside a function,
 //          import(), an actor's esModuleURI, a worker's URL. Loaded on first use.
 //
-// Type-only references (`@import`, `import("…")` in JSDoc) are comments and never load a module,
-// so they are not edges. The files come from `git ls-files`, so vimma/core/ (a git-ignored copy
+// A specifier where a module is loaded must be a fixed string, so that no import escapes the
+// check; a string holding only part of a Vimma URL is refused too. Type-only references
+// (`@import`, `import("…")` in JSDoc) are comments and never load a module, so they are not
+// edges. ADR-026, "Limits of the check", lists what it does not see. The files come from `git ls-files`, so vimma/core/ (a git-ignored copy
 // that sync-core makes) is not read; imports of it are always allowed, as layer 0.
 //
 //   node tools/layering/layering.ts
@@ -49,12 +52,24 @@ export interface Edge {
   line: number;
 }
 
-/** An import that crosses the layering upwards and stays, for the reason given. */
+/** An import that crosses the layering upwards, kept for the reason given. */
 export interface Exception {
   from: string;
   to: string;
   kind: "eager" | "lazy";
+  /** why the import cannot be avoided today */
   reason: string;
+  /** "stays": ADR-026 keeps it; "goes": a follow-up removes it */
+  fate: "stays" | "goes";
+  /** the issue that tracks its removal, for one that goes */
+  issue?: number;
+}
+
+/** What one file imports, and what in it could not be read. */
+export interface Scan {
+  edges: Edge[];
+  /** `file:line: message`, for a specifier the check cannot resolve */
+  problems: string[];
 }
 
 interface AstNode {
@@ -66,46 +81,121 @@ interface AstNode {
 const isNode = (v: unknown): v is AstNode =>
   typeof v === "object" && v !== null && typeof (v as { type?: unknown }).type === "string";
 
+/** The URL prefixes that name a file of vimma/: its chrome:// URL and its source path URL. */
+const PREFIXES = [URL_PREFIX, "moz-src:///browser/base/content/vimma/"];
+
+const NOT_FIXED = "an import specifier is not a fixed string";
+const PARTIAL = "a string names part of a Vimma module URL, not a module or a folder";
+
+type Resolved = { to: string } | "partial" | null;
+
 /**
- * The Vimma module a specifier names, relative to vimma/, or null for anything else: a Firefox
- * module, a page or a data file. A URL ending in `/` (a base the importer appends names to)
- * names that folder. A relative specifier counts only where a module is imported: elsewhere a
- * string like "./x.mjs" is just text.
+ * What a specifier names: a Vimma module or folder (relative to vimma/), "partial" for a URL
+ * cut short before its folder, or null for anything else (a Firefox module, a page, a data
+ * file). A path ending inside a folder without a file extension names that folder: a base the
+ * importer appends a module name to. A relative specifier counts only where a module is
+ * imported; elsewhere a string like "./x.mjs" is just text.
  */
-function target(spec: string, file: string, relativeAllowed: boolean): string | null {
-  let path: string;
-  if (spec.startsWith(URL_PREFIX)) path = spec.slice(URL_PREFIX.length);
-  else if (relativeAllowed && (spec.startsWith("./") || spec.startsWith("../")))
+function resolveSpec(spec: string, file: string, relativeAllowed: boolean): Resolved {
+  let path: string | null = null;
+  for (const prefix of PREFIXES) if (spec.startsWith(prefix)) path = spec.slice(prefix.length);
+  if (path === null && relativeAllowed && (spec.startsWith("./") || spec.startsWith("../")))
     path = posix.normalize(posix.join(posix.dirname(file), spec));
-  else return null;
-  if (path.startsWith("../")) return null;
-  return /\.m?js$/.test(path) || (path.endsWith("/") && !path.slice(0, -1).includes("/"))
-    ? path
-    : null;
+  if (path === null || path.startsWith("../")) return null;
+  if (/\.m?js$/.test(path)) return { to: path };
+  const slash = path.indexOf("/");
+  if (slash < 0) return "partial";
+  const rest = path.slice(slash + 1).replace(/[?#].*$/, "");
+  if (/\.[a-z0-9]+$/i.test(rest)) return null;
+  return { to: path.slice(0, slash + 1) };
+}
+
+/** The value of a string literal, or of a template literal without `${}`; else null. */
+function fixedString(node: AstNode): string | null {
+  if (node.type === "Literal" && typeof node["value"] === "string") return node["value"];
+  const quasis = node["quasis"];
+  const expressions = node["expressions"];
+  if (node.type === "TemplateLiteral" && Array.isArray(expressions) && !expressions.length) {
+    const head: unknown = Array.isArray(quasis) ? quasis[0] : undefined;
+    return isNode(head) ? ((head["value"] as { cooked?: string }).cooked ?? null) : null;
+  }
+  return null;
 }
 
 /**
- * Every edge from one module to another Vimma module, in source order.
+ * The fixed text a computed string starts with ("" when it starts with a name or a call): the
+ * head of a template literal, or the left end of a `+` chain.
+ */
+function leadingText(node: AstNode): string {
+  const fixed = fixedString(node);
+  if (fixed !== null) return fixed;
+  if (node.type === "TemplateLiteral") {
+    const quasis = node["quasis"];
+    const head: unknown = Array.isArray(quasis) ? quasis[0] : undefined;
+    return isNode(head) ? ((head["value"] as { cooked?: string }).cooked ?? "") : "";
+  }
+  const left = node["left"];
+  if (node.type === "BinaryExpression" && node["operator"] === "+" && isNode(left))
+    return leadingText(left);
+  return "";
+}
+
+/** True when a computed specifier may name a Vimma module: it does not start with another URL. */
+function mayBeVimma(node: AstNode): boolean {
+  const text = leadingText(node);
+  if (PREFIXES.some((p) => text.startsWith(p) || (text.length > 0 && p.startsWith(text))))
+    return true;
+  return !/^[a-z-]+:\/\//.test(text);
+}
+
+const isFunction = (n: AstNode) =>
+  n.type === "FunctionExpression" ||
+  n.type === "ArrowFunctionExpression" ||
+  n.type === "FunctionDeclaration";
+
+/**
+ * Every edge from one module to another Vimma module, in source order, and every specifier it
+ * cannot read. An import that runs while the module evaluates is eager: a declaration, and
+ * ChromeUtils.importESModule outside any function, in a function called on the spot, in a
+ * static block or in a static field. Anything that runs later is lazy.
  * @param source  the module's text
  * @param file  its path relative to vimma/ (`host/VimmaHost.sys.mjs`, `vimma.js`)
  */
-export function importsOf(source: string, file: string): Edge[] {
+export function scanModule(source: string, file: string): Scan {
   const ast = espree.parse(source, {
     ecmaVersion: "latest",
     sourceType: file.endsWith(".js") ? "script" : "module",
     loc: true,
   }) as unknown as AstNode;
   const edges: Edge[] = [];
-  /** Specifier nodes already counted by the form that holds them. */
-  const counted = new Set<AstNode>();
-  const add = (spec: string, kind: Edge["kind"], node: AstNode, relative = false) => {
-    const to = target(spec, file, relative);
-    if (to) edges.push({ from: file, to, kind, line: node.loc?.start.line ?? 0 });
+  const problems: string[] = [];
+  /** Nodes already read by the form that holds them. */
+  const done = new Set<AstNode>();
+  const lineOf = (node: AstNode) => node.loc?.start.line ?? 0;
+  const problem = (node: AstNode, message: string) =>
+    problems.push(`${file}:${lineOf(node)}: ${message}`);
+  /** A string in any position: a module URL in it is a lazy reference. */
+  const reference = (spec: string, node: AstNode) => {
+    const r = resolveSpec(spec, file, false);
+    if (r === "partial") problem(node, PARTIAL);
+    else if (r) edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
+  };
+  /** A specifier where a module is loaded: it must be a fixed string. */
+  const specifier = (node: AstNode, kind: Edge["kind"], relative: boolean, at: AstNode) => {
+    done.add(node);
+    const spec = fixedString(node);
+    if (spec === null) {
+      if (mayBeVimma(node)) problem(node, NOT_FIXED);
+      return;
+    }
+    const r = resolveSpec(spec, file, relative);
+    if (r === "partial") problem(node, PARTIAL);
+    else if (r) edges.push({ from: file, to: r.to, kind, line: lineOf(at) });
   };
 
-  const walk = (node: AstNode, inFunction: boolean): void => {
-    if (counted.has(node)) return;
-    const nested = inFunction || /Function/.test(node.type);
+  const walk = (node: AstNode, lazy: boolean, invoked = false): void => {
+    if (done.has(node)) return;
+    let inner = lazy || (isFunction(node) && !invoked);
     const source = node["source"];
     if (
       (node.type === "ImportDeclaration" ||
@@ -113,44 +203,123 @@ export function importsOf(source: string, file: string): Edge[] {
         node.type === "ExportAllDeclaration") &&
       isNode(source)
     ) {
-      counted.add(source);
-      add(String(source["value"]), "eager", node, true);
+      specifier(source, "eager", true, node);
     } else if (node.type === "ImportExpression" && isNode(source)) {
-      counted.add(source);
-      if (source.type === "Literal") add(String(source["value"]), "lazy", node, true);
+      specifier(source, "lazy", true, node);
     } else if (node.type === "CallExpression") {
       const callee = node["callee"];
-      const args = node["arguments"];
-      const first: unknown = Array.isArray(args) ? args[0] : undefined;
-      if (
-        isNode(callee) &&
-        callee.type === "MemberExpression" &&
-        isNode(callee["property"]) &&
-        callee["property"]["name"] === "importESModule" &&
-        isNode(first) &&
-        first.type === "Literal" &&
-        typeof first["value"] === "string"
-      ) {
-        counted.add(first);
-        add(first["value"], inFunction ? "lazy" : "eager", first);
+      const args = Array.isArray(node["arguments"]) ? (node["arguments"] as unknown[]) : [];
+      const method =
+        isNode(callee) && callee.type === "MemberExpression" && isNode(callee["property"])
+          ? callee["property"]["name"]
+          : null;
+      const [first, second] = args;
+      if (method === "importESModule" && isNode(first)) {
+        specifier(first, lazy ? "lazy" : "eager", false, first);
+      } else if (method === "defineESModuleGetters" && isNode(second)) {
+        if (second.type !== "ObjectExpression") specifier(second, "lazy", false, second);
+        else
+          for (const prop of (second["properties"] as unknown[]) ?? [])
+            if (isNode(prop) && isNode(prop["value"]))
+              specifier(prop["value"], "lazy", false, prop["value"]);
+      }
+      // A function called on the spot runs now, as its caller does.
+      if (isNode(callee) && isFunction(callee)) {
+        walk(callee, lazy, true);
       }
     } else if (node.type === "Literal" && typeof node["value"] === "string") {
-      add(node["value"], "lazy", node);
+      reference(node["value"], node);
     } else if (node.type === "TemplateLiteral") {
-      const quasis = node["quasis"];
-      const head: unknown = Array.isArray(quasis) ? quasis[0] : undefined;
-      const cooked = isNode(head) ? (head["value"] as { cooked?: string }).cooked : undefined;
-      if (cooked) add(cooked, "lazy", node);
+      const fixed = fixedString(node);
+      if (fixed !== null) reference(fixed, node);
+      else {
+        const r = resolveSpec(leadingText(node), file, false);
+        if (r === "partial" || (r && !r.to.endsWith("/"))) problem(node, PARTIAL);
+        else if (r) edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
+      }
+    } else if (node.type === "PropertyDefinition" && !node["static"]) {
+      // An instance field's initialiser runs when the class is constructed.
+      inner = true;
     }
     for (const [k, value] of Object.entries(node)) {
       if (k === "loc" || k === "range") continue;
       if (Array.isArray(value)) {
-        for (const child of value) if (isNode(child)) walk(child, nested);
-      } else if (isNode(value)) walk(value, nested);
+        for (const child of value) if (isNode(child)) walk(child, inner);
+      } else if (isNode(value)) walk(value, inner);
     }
+    done.add(node);
   };
   walk(ast, false);
-  return edges;
+  return { edges, problems };
+}
+
+/**
+ * Every edge from one module to another Vimma module, in source order: `scanModule` without
+ * its problems. tools/diagrams draws the module graph from it, so the picture and this check
+ * read the same edges.
+ */
+export function importsOf(source: string, file: string): Edge[] {
+  return scanModule(source, file).edges;
+}
+
+/**
+ * The modules a page under vimma/ loads (`<script src>`, `<link href>`), as eager edges. An
+ * inline `<script>` is a problem: its imports would go unread.
+ * @param html  the page's text
+ * @param file  its path relative to vimma/
+ */
+export function htmlImports(html: string, file: string): Scan {
+  const edges: Edge[] = [];
+  const problems: string[] = [];
+  html.split("\n").forEach((text, i) => {
+    for (const m of text.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
+      const r = resolveSpec(m[1] ?? "", file, true);
+      if (r && r !== "partial" && !r.to.endsWith("/"))
+        edges.push({ from: file, to: r.to, kind: "eager", line: i + 1 });
+    }
+  });
+  for (const m of html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/g)) {
+    if (!(m[1] ?? "").trim()) continue;
+    const line = html.slice(0, m.index).split("\n").length;
+    problems.push(
+      `${file}:${line}: an inline <script> is not read; load the code from a module file`,
+    );
+  }
+  return { edges, problems };
+}
+
+/**
+ * Where jar.mn packages a module somewhere other than its source path. The check reads a
+ * module's folder from its chrome:// URL, which is right only while the two agree.
+ * @param jar  jar.mn's text
+ */
+export function jarErrors(jar: string): string[] {
+  const errors: string[] = [];
+  jar.split("\n").forEach((text, i) => {
+    const m = /^\s*content\/browser\/vimma\/(\S+)\s+\((\S+)\)/.exec(text);
+    if (!m) return;
+    const [, url = "", from = ""] = m;
+    const moved = from.includes("*")
+      ? !from.startsWith(`${url}/`)
+      : /\.m?js$/.test(url) && from !== url;
+    if (moved)
+      errors.push(
+        `jar.mn:${i + 1}: content/browser/vimma/${url} is packaged from ${from}; a module's URL must be its source path`,
+      );
+  });
+  return errors;
+}
+
+/** Exceptions without a fate, and leaving ones without the issue that removes them. */
+export function exceptionErrors(exceptions: Exception[]): string[] {
+  const errors: string[] = [];
+  for (const x of exceptions) {
+    const k = key(x);
+    if (x.fate !== "stays" && x.fate !== "goes")
+      errors.push(`exception ${k} says neither "stays" nor "goes"`);
+    else if (x.fate === "goes" && !x.issue) errors.push(`exception ${k} goes but names no issue`);
+  }
+  return errors;
 }
 
 /** The folder a path relative to vimma/ belongs to. */
@@ -285,22 +454,28 @@ export function eagerCycles(edges: Edge[]): string[] {
     .sort();
 }
 
-/** Every module of vimma/ that git tracks, relative to vimma/. */
-export function trackedModules(root: string): string[] {
-  return execFileSync("git", ["ls-files", "-z", "--", `${VIMMA}*.mjs`, `${VIMMA}*.js`], {
-    cwd: root,
-    encoding: "utf8",
-  })
+/** Every module and page of vimma/ that git tracks, relative to vimma/. */
+export function trackedFiles(root: string): string[] {
+  return execFileSync(
+    "git",
+    ["ls-files", "-z", "--", `${VIMMA}*.mjs`, `${VIMMA}*.js`, `${VIMMA}*.html`],
+    { cwd: root, encoding: "utf8" },
+  )
     .split("\0")
     .filter(Boolean)
     .map((f) => f.slice(VIMMA.length));
 }
 
-/** Every edge of the tree. */
-export function treeEdges(root: string): Edge[] {
-  return trackedModules(root).flatMap((f) =>
-    importsOf(readFileSync(join(root, VIMMA, f), "utf8"), f),
-  );
+/** Every edge of the tree, and every specifier in it that cannot be read. */
+export function treeScan(root: string): Scan {
+  const scans = trackedFiles(root).map((f) => {
+    const text = readFileSync(join(root, VIMMA, f), "utf8");
+    return f.endsWith(".html") ? htmlImports(text, f) : scanModule(text, f);
+  });
+  return {
+    edges: scans.flatMap((s) => s.edges),
+    problems: scans.flatMap((s) => s.problems),
+  };
 }
 
 /** Folders of vimma/ that git tracks and that have no README.md. */
@@ -317,8 +492,11 @@ export function missingReadmes(root: string): string[] {
 }
 
 function main(): void {
-  const edges = treeEdges(ROOT);
+  const { edges, problems } = treeScan(ROOT);
   const errors = [
+    ...problems,
+    ...jarErrors(readFileSync(join(ROOT, VIMMA, "jar.mn"), "utf8")),
+    ...exceptionErrors(EXCEPTIONS),
     ...layerErrors(edges, LAYERS, EXCEPTIONS),
     ...eagerCycles(edges),
     ...missingReadmes(ROOT).map(

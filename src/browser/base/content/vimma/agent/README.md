@@ -9,8 +9,12 @@ keyring; `AgentStore.sys.mjs` stores conversations encrypted in the profile.
 line); `AgentCli.init()`, called by `vimma.js`.
 
 **May import (layer 5, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** everything below it:
-`core/`, the layer 1 and 2 folders, `host/`, `config/` and `ctl/`. It acts on pages only
-through `ctl/agent-commands.mjs`, so it meets the agent gate as any agent does.
+`core/`, the layer 1 and 2 folders, `host/`, `config/` and `ctl/`. Its tools act on pages
+through `ctl/agent-commands.mjs` (`runAgentCommand`), under the same rules as an MCP agent's.
+`AgentChat.sys.mjs` also calls `ctl/AgentGate.sys.mjs` directly: sending a task with `Enter`
+in the chat window grants that conversation's connection until the task ends, and it labels
+the connection; it uses `ctl/VimmaControl.sys.mjs` for the connection itself. `AgentCli.sys.mjs`
+uses `ctl/VimmaControl.sys.mjs` and `ctl/AgentDownloads.sys.mjs` for the CLIs it starts.
 
 **Security:** [docs/security.md](../../../../../../docs/security.md) section 12, "The built-in agent".
 

@@ -10,8 +10,8 @@ the functions the host and the agent commands use to send a request to a page an
 answer.
 
 **May import (layer 2, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` and the layer 1
-folders. `VimmaParent.sys.mjs` imports `host/`, a listed exception: Firefox constructs the
-parent actor from its URL, so it cannot be passed the host.
+folders. `VimmaParent.sys.mjs` imports `host/`, a listed exception until the parent actor,
+which only forwards reports to the host, moves to `host/`.
 
 **Security:** pages are untrusted; what the actors take from them is checked as
 [docs/security.md](../../../../../../docs/security.md) sections 13, 15 and 20 say.
