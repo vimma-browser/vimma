@@ -1,11 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { commentStyle, findCommentWording } from "../comment-wording.mjs";
+import { commentStyle, findCommentWording } from "../comment-wording.ts";
 
-/**
- * @param {string} src
- * @param {"slash" | "hash"} [style]
- */
-const phrases = (src, style = "slash") =>
+const phrases = (src: string, style: "slash" | "hash" = "slash") =>
   findCommentWording(src, style).map((f) => f.phrase.toLowerCase());
 
 describe("findCommentWording", () => {

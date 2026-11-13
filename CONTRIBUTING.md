@@ -225,7 +225,11 @@ TypeScript that Node runs as it is ([ADR-025](docs/adr/025-typescript-for-tools.
 folder of `tools/`) per pull request. `npm run typecheck`, `npm run lint` and `npm test` treat a
 `.ts` file as they treat a `.mjs` one, and also type-check `.ts` tests. Write only syntax Node can
 erase (`tsc` rejects the rest), `import type` for a type-only import, and the real file name in a
-relative import: `./x.ts`.
+relative import: `./x.ts`. New Node code under `tools/` is written as `.ts`; Rust, shell and Python
+stay as they are. `tools/test/mjs-ratchet.test.ts` fails on a `.mjs`, `.js` or `.cjs` file missing
+from `tools/test/mjs-allowlist.txt`; a script a browser page loads is a `.js` file in a `fixtures/`
+folder, which it does not count. `ERR_UNKNOWN_FILE_EXTENSION` for a `.ts` file, from commitlint or
+any tool, means the Node running it is older than `package.json`'s `engines`: use `.nvmrc`'s.
 
 Moving an area, in a pull request that does only this (`Part of #946`). `tools/claude-plugin`
 stays `.mjs` (ADR-025 says why).
@@ -237,7 +241,10 @@ stays `.mjs` (ADR-025 says why).
    - the npm scripts that run it, and the scripts that run those (`npm run import` runs
      `sync-core`, `version-files` and two `tools/import/` scripts), followed to every
      `npm run <script>` in a workflow;
-   - the areas that import it, which reach it in every job that reaches them.
+   - the areas that import it, which reach it in every job that reaches them;
+   - a job that hands an agent the npm scripts (claude.yml `spec` lets it run `npm run lint`,
+     `npm test`, `npm run typecheck` and `npm run gen-docs`) reaches every area those scripts
+     reach, and counts with its secrets.
 2. **Check every job that reaches it,** step by step, not workflow by workflow:
    - A job that holds secrets (`secrets.*`) makes the area one of the last, with a security
      review by a fresh session that did not write it and a manual nightly run before the next
@@ -258,8 +265,10 @@ stays `.mjs` (ADR-025 says why).
    `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
    `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
    check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
-   in the same pull request.
-6. **Update every caller** from step 1. An implemented spec that names a renamed file gets a
+   in the same pull request. A property a constructor assigns becomes a `declare` field
+   (`declare keys: string[];`), which Node erases, as it does the cast.
+6. **Update every caller** from step 1, and take the area's files off
+   `tools/test/mjs-allowlist.txt`. An implemented spec that names a renamed file gets a
    `(Since changed: …)` note, not a rewrite.
 7. **Prove it.** The same test names and count as in step 3 (diff the two lists); the
    typecheck, lint and test scripts green; each command-line tool printing the same output

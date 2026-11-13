@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The code comments' counterpart of process-wording.mjs: a comment says why the code is the way
+// The code comments' counterpart of process-wording.ts: a comment says why the code is the way
 // it is, for readers who were not part of the work. This check (npm run lint, and CI) fails on a
 // comment that records the process instead: the Markdown check's phrases (review attributions
 // and pointers to the contributor instructions file among them), plus dated and quoted answers
@@ -14,13 +14,13 @@
 // carry a comment; a block that has to name the phrases carries `process-wording: <reason>`. A
 // marker without a reason exempts nothing.
 //
-//   node tools/md-wording/comment-wording.mjs [file ...]   (default: the tracked files in SCOPE)
+//   node tools/md-wording/comment-wording.ts [file ...]   (default: the tracked files in SCOPE)
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PATTERNS, matchPatterns } from "./process-wording.mjs";
+import { PATTERNS, matchPatterns } from "./process-wording.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -47,24 +47,15 @@ const SCOPE = [
 /** The checks' own tests: their strings quote the phrases, and the line scan reads strings. */
 const OUT_OF_SCOPE = [/^tools\/md-wording\/test\//];
 
-/**
- * How a file writes its comments, by extension; null for a file without comments to read.
- * @param {string} path
- * @returns {"slash" | "hash" | null}
- */
-export function commentStyle(path) {
+/** How a file writes its comments, by extension; null for a file without comments to read. */
+export function commentStyle(path: string): "slash" | "hash" | null {
   if (/\.(?:[cm]?js|jsx|ts|rs|css)$/.test(path)) return "slash";
   if (/\.(?:sh|bash|ya?ml|py|toml)$/.test(path)) return "hash";
   return null;
 }
 
-/**
- * The comment text on each line (null where the line carries none).
- * @param {string} src
- * @param {"slash" | "hash"} style
- * @returns {(string | null)[]}
- */
-function commentText(src, style) {
+/** The comment text on each line (null where the line carries none). */
+function commentText(src: string, style: "slash" | "hash"): (string | null)[] {
   const lines = src.split("\n");
   if (style === "hash") {
     return lines.map((line) => {
@@ -74,8 +65,7 @@ function commentText(src, style) {
   }
   let inBlock = false;
   return lines.map((line) => {
-    /** @type {string[]} */
-    const parts = [];
+    const parts: string[] = [];
     let pos = 0;
     let any = false;
     while (pos <= line.length) {
@@ -105,13 +95,11 @@ function commentText(src, style) {
   });
 }
 
-/**
- * Process wording in a source file's comments, outside blocks exempted by a marker with a reason.
- * @param {string} src
- * @param {"slash" | "hash"} style
- * @returns {{ line: number, phrase: string }[]}
- */
-export function findCommentWording(src, style) {
+/** Process wording in a source file's comments, outside blocks exempted by a marker with a reason. */
+export function findCommentWording(
+  src: string,
+  style: "slash" | "hash",
+): { line: number; phrase: string }[] {
   const texts = commentText(src, style);
   const found = [];
   let start = 0;
@@ -122,7 +110,7 @@ export function findCommentWording(src, style) {
     }
     let end = start;
     while (end < texts.length && texts[end] !== null) end++;
-    const block = /** @type {string[]} */ (texts.slice(start, end));
+    const block = texts.slice(start, end) as string[];
     if (!MARKER.test(block.join(" ")))
       found.push(...matchPatterns(block, start + 1, CODE_PATTERNS));
     start = end;
@@ -130,8 +118,8 @@ export function findCommentWording(src, style) {
   return found;
 }
 
-/** @returns {string[]} the tracked files in SCOPE that have comments to read, repo-relative */
-function trackedSources() {
+/** @returns the tracked files in SCOPE that have comments to read, repo-relative */
+function trackedSources(): string[] {
   const out = execFileSync("git", ["ls-files", "-z"], { cwd: ROOT, encoding: "utf8" });
   return out
     .split("\0")
@@ -160,7 +148,7 @@ function main() {
   if (problems > 0) {
     console.error(
       `${problems} process wording problem(s) in comments. Keep the reason, drop who said it; ` +
-        "see tools/md-wording/comment-wording.mjs for the marker that exempts a block.",
+        "see tools/md-wording/comment-wording.ts for the marker that exempts a block.",
     );
     process.exit(1);
   }

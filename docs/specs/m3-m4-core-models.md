@@ -30,11 +30,12 @@ Status: implemented (core); the host wiring followed in the milestone's host spe
 | `index.mjs`      | re-exports                                                                            |
 
 Contract fixtures: `tests/contract/state/v1/valid.json`, `tests/contract/state/v1/invalid.json`.
-Bench: `packages/vimma-core/bench/cases.mjs`, run by `tools/bench/bench.mjs` (`npm run bench`). It
-is a **core-only smoke test**: dispatcher and model updates in Node (≈ 1.3 µs per key sequence,
-≈ 3 µs pane focus, ≈ 11 µs `withPanes` + `selectTab`, against plan §5's 50 µs core budget). It is
-not key-to-action latency in the window. The plan §5 gate (a regression above 10 % fails CI) runs
-in CI as `npm run bench -- --check` against `packages/vimma-core/bench/baseline.json` (issue #17).
+Bench: `packages/vimma-core/bench/cases.mjs`, run by `tools/bench/bench.mjs` (Since changed:
+`bench.ts`, ADR-025) (`npm run bench`). It is a **core-only smoke test**: dispatcher and model
+updates in Node (≈ 1.3 µs per key sequence, ≈ 3 µs pane focus, ≈ 11 µs `withPanes` + `selectTab`,
+against plan §5's 50 µs core budget). It is not key-to-action latency in the window. The plan §5
+gate (a regression above 10 % fails CI) runs in CI as `npm run bench -- --check` against
+`packages/vimma-core/bench/baseline.json` (issue #17).
 
 All state is plain, frozen, JSON-shaped data. Every operation is a pure function
 `(state, ...args) → newState`; the input is never mutated. Ids are opaque strings: the host owns

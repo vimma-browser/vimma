@@ -15,7 +15,7 @@
 #                               not verified for surfer.json's version; offline, reads no tarball
 #
 # The record lives in engine/.git so that it goes when `surfer download --force` deletes
-# engine/, survives the `git clean` a lane runs on its copy (tools/lanes/lanes.mjs), and is
+# engine/, survives the `git clean` a lane runs on its copy (tools/lanes/lanes.ts), and is
 # copied with engine/ into a lane. firefox-source.sh writes the same record for CI and builds.
 # It is a guard against building a download nobody verified, not against someone who can write
 # to engine/: they could change the source itself.

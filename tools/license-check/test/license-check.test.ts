@@ -3,13 +3,14 @@ import { spawnSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ALLOWED, checkLock, packageName, spdxAllowed } from "../license-check.mjs";
+import { ALLOWED, checkLock, packageName, spdxAllowed } from "../license-check.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-const script = fileURLToPath(new URL("../license-check.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../license-check.ts", import.meta.url));
 
-/** @param {Record<string, object>} packages */
-const lock = (packages) => ({
+const lock = (
+  packages: Record<string, object>,
+): { lockfileVersion: number; packages: Record<string, object> } => ({
   lockfileVersion: 3,
   packages: { "": { name: "vimma" }, ...packages },
 });
@@ -139,8 +140,7 @@ describe("checkLock", () => {
 });
 
 describe("CLI", () => {
-  /** @param {object} data */
-  function runOn(data) {
+  function runOn(data: object) {
     const dir = tempDir("licence-");
     const file = join(dir, "package-lock.json");
     writeFileSync(file, JSON.stringify(data));

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { bodyRequiredForTypes, ignoreCommit } from "../body-required.mjs";
-import { cliPath, commitlint, root } from "./repo-commitlint.mjs";
+import { bodyRequiredForTypes, ignoreCommit } from "../body-required.ts";
+import { cliPath, commitlint, root } from "./repo-commitlint.ts";
 
 describe("body-required-for-types rule", () => {
   const types = ["feat", "fix"];
@@ -61,11 +61,10 @@ describe("ignoreCommit (replaces commitlint's default ignores)", () => {
 });
 
 describe("the commitlint CLI", () => {
-  // The other tests lint in-process (repo-commitlint.mjs); this one runs the installed CLI on
+  // The other tests lint in-process (repo-commitlint.ts); this one runs the installed CLI on
   // stdin from the repository root, as CI and the merge check do, so a change in how the CLI
   // finds the config or reports a failure still shows here.
-  /** @param {string} input */
-  const run = (input) =>
+  const run = (input: string) =>
     spawnSync(process.execPath, [cliPath], { cwd: root, input, encoding: "utf8" });
 
   it("finds commitlint.config.mjs and exits 1 on a bodyless feat", () => {

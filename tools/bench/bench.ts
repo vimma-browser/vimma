@@ -3,7 +3,7 @@
  * Key-to-action bench for vimma-core (spec ci-quality-gates, plan §5 "Performance", issues #17
  * and #342). Measures each case in packages/vimma-core/bench/cases.mjs twice, as the working tree
  * has it and as the baseline commit (baseline.json) has it, in the same processes, and gates the
- * working tree against the baseline commit (tools/bench/compare.mjs).
+ * working tree against the baseline commit (tools/bench/compare.ts).
  *
  * Why the baseline is a commit measured alongside, not numbers recorded once: a recorded number
  * carries the recording job's runner, image and load, and GitHub's hosted runners differ by more
@@ -23,14 +23,14 @@
  *     baseline commit is paired: per sweep, the working tree's ratio over the baseline's, the
  *     median of those per round and the median of the rounds (sides, issue #667);
  *   - PROCESSES fresh processes, each with its own fixed V8 hash seed (childArgs), combined by
- *     compare.mjs: the lowest µs, and the median of the processes' own changes against the baseline
+ *     compare.ts: the lowest µs, and the median of the processes' own changes against the baseline
  *     per load order, and the mean of the two orders (combinePaired), which cancels the load
  *     order's lean. The seed decides the bucket layout of every
  *     string-keyed Map (the dispatcher's trie), which moves a case by a few per cent from one
  *     process to the next; fixed seeds measure the same layouts on every run (issue #125).
  *
- * Usage: node tools/bench/bench.mjs [--check] [--base <commit>] [--json out.json]
- *   --check  exit 1 on a regression over 10 % or a case over 50 µs (compare.mjs)
+ * Usage: node tools/bench/bench.ts [--check] [--base <commit>] [--json out.json]
+ *   --check  exit 1 on a regression over 10 % or a case over 50 µs (compare.ts)
  *   --base   measure against this commit instead of baseline.json's (e.g. origin/main)
  */
 import { spawnSync } from "node:child_process";
@@ -45,13 +45,14 @@ import {
   median,
   minOfMedians,
   pairedChange,
-} from "./compare.mjs";
+} from "./compare.ts";
+import type { CaseResult, Result } from "./compare.ts";
 
 const WARMUP_MS = 200;
 const SAMPLE_NS = 100_000;
 export const SAMPLES = 51;
 export const ROUNDS = 5;
-// Fresh processes per run, combined by compare.mjs's combine().
+// Fresh processes per run, combined by compare.ts's combine().
 export const PROCESSES = 15;
 const REPO = fileURLToPath(new URL("../..", import.meta.url));
 export const BASELINE = join(REPO, "packages/vimma-core/bench/baseline.json");
@@ -59,8 +60,7 @@ const CASES_PATH = "packages/vimma-core/bench/cases.mjs";
 // What a baseline commit needs to run its cases: the pure core and the cases themselves.
 const CORE_PATHS = ["packages/vimma-core/src", "packages/vimma-core/bench"];
 
-/** @type {unknown} */
-let sink;
+let sink: unknown;
 
 /**
  * Node arguments for bench process `p` (0-based): this script as a child, with hash seed p + 1,
@@ -68,10 +68,8 @@ let sink;
  * process loads and lists the baseline first: two copies of identical code in one process differ
  * by several per cent on the sub-microsecond cases, and which one was loaded first leaned that
  * difference one way on a given machine (unchanged code read +6 % to +8 % on the suite).
- * @param {number} p
- * @param {string} baseDir
  */
-export function childArgs(p, baseDir) {
+export function childArgs(p: number, baseDir: string) {
   const order = p % 2 ? "--base-first" : "--head-first";
   return [`--hash-seed=${p + 1}`, fileURLToPath(import.meta.url), "--child", baseDir, order];
 }
@@ -80,12 +78,10 @@ export function childArgs(p, baseDir) {
  * Writes `commit`'s core and bench cases under `dir`, so one process can import both versions.
  * A shallow clone may lack the commit; a full commit id is fetched then, as CI's checkout of a
  * pull request only has the history it asked for.
- * @param {string} commit
- * @param {string} dir
- * @returns {string} the path of the commit's cases.mjs
+ * @returns the path of the commit's cases.mjs
  */
-export function extractCommit(commit, dir) {
-  const git = (/** @type {string[]} */ ...args) =>
+export function extractCommit(commit: string, dir: string): string {
+  const git = (...args: string[]) =>
     spawnSync("git", args, { cwd: REPO, maxBuffer: 256 * 1024 * 1024 });
   // Only a full id can be fetched by itself; any other name that does not resolve here is refused
   // without a network round trip, which on a hosted runner can take longer than a test's timeout.
@@ -107,20 +103,17 @@ export function machineKey() {
   return `${model} | ${process.arch} | node ${process.versions.node}`;
 }
 
-/**
- * @typedef {import("./compare.mjs").CaseResult & { samples: number[][] }} Measured a case's
- *   result and, per round, its ratio in each sweep
- */
-/** @typedef {() => bigint} Clock ns, monotonic; tests pass a fake one to script the machine's noise */
+/** A case's result and, per round, its ratio in each sweep */
+export type Measured = CaseResult & { samples: number[][] };
+/** ns, monotonic; tests pass a fake one to script the machine's noise */
+export type Clock = () => bigint;
 
 /**
  * A timing loop of its own per case: one shared loop would see every case's `run` at the same
  * call site, go megamorphic, and make each case's number depend on which cases ran before it.
- * @param {() => unknown} run
- * @param {Clock} clock
- * @returns {(n: number) => number} ns for n runs
+ * @returns ns for n runs
  */
-function timer(run, clock) {
+function timer(run: () => unknown, clock: Clock): (n: number) => number {
   const loop = new Function(
     "run",
     "hrtime",
@@ -134,16 +127,12 @@ function timer(run, clock) {
       return Number(t1 - t0);
     };`,
   );
-  return loop(run, clock, (/** @type {unknown} */ v) => {
+  return loop(run, clock, (v: unknown) => {
     sink = v;
   });
 }
 
-/**
- * @param {(n: number) => number} time
- * @param {Clock} clock
- */
-function calibrate(time, clock) {
+function calibrate(time: (n: number) => number, clock: Clock) {
   const until = clock() + BigInt(WARMUP_MS * 1e6);
   while (clock() < until) time(100);
   let batch = 1;
@@ -159,35 +148,29 @@ function calibrate(time, clock) {
  * tree's and the baseline commit's version of one case) see the same runner state: measured case
  * after case, a change in load between their blocks of samples did not cancel, since a busy
  * sibling hyperthread slows an allocating case more than the reference (issue #342).
- * @param {{ name: string, run: () => unknown }[]} cases
- * @param {() => unknown} ref
- * @param {{ clock?: Clock }} [opts]
- * @returns {{ referenceUs: number, cases: Map<string, Measured> }}
  */
-export function measure(cases, ref, { clock = process.hrtime.bigint } = {}) {
+export function measure(
+  cases: { name: string; run: () => unknown }[],
+  ref: () => unknown,
+  { clock = process.hrtime.bigint }: { clock?: Clock } = {},
+): { referenceUs: number; cases: Map<string, Measured> } {
   const refTime = timer(ref, clock);
   const refBatch = calibrate(refTime, clock);
   const timers = cases.map((c) => timer(c.run, clock));
   const batches = timers.map((t) => calibrate(t, clock));
   const n = cases.length;
-  /** @type {number[][][]} */
-  const us = cases.map(() => []);
-  /** @type {number[][][]} */
-  const ratios = cases.map(() => []);
-  /** @type {number[][]} */
-  const refUs = [];
+  const us: number[][][] = cases.map(() => []);
+  const ratios: number[][][] = cases.map(() => []);
+  const refUs: number[][] = [];
   for (let r = 0; r < ROUNDS; r++) {
-    /** @type {number[][]} */
-    const t = cases.map(() => []);
-    /** @type {number[][]} */
-    const q = cases.map(() => []);
-    /** @type {number[]} */
-    const refRound = [];
+    const t: number[][] = cases.map(() => []);
+    const q: number[][] = cases.map(() => []);
+    const refRound: number[] = [];
     for (let s = 0; s < SAMPLES; s++) {
       for (let k = 0; k < n; k++) {
         const i = (k + s + r) % n;
-        const time = /** @type {(n: number) => number} */ (timers[i]);
-        const batch = /** @type {number} */ (batches[i]);
+        const time = timers[i] as (n: number) => number;
+        const batch = batches[i] as number;
         const caseNs = time(batch) / batch;
         const refNs = refTime(refBatch) / refBatch;
         t[i]?.push(caseNs / 1000);
@@ -222,30 +205,28 @@ export function measure(cases, ref, { clock = process.hrtime.bigint } = {}) {
 const HEAD = "head|";
 const BASE = "base|";
 
-/** @typedef {typeof import("../../packages/vimma-core/bench/cases.mjs")} CasesModule */
+export type CasesModule = typeof import("../../packages/vimma-core/bench/cases.mjs");
 
 /**
  * Two variants of the cases from one measurement, tagged `headTag` and `baseTag` in it, as the
  * gate reads them: the head's own ratios, and the base's as the head's over the paired change
  * (pairedChange), so compare() gates the change of each sweep, not of each side's own median.
  * The base's µs is its own (budget only).
- * @param {ReturnType<typeof measure>} m
- * @param {string} headTag
- * @param {string} baseTag
- * @param {string} [machine]
- * @returns {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }}
  */
-export function sides(m, headTag, baseTag, machine = machineKey()) {
-  /** @param {string} tag */
-  const of = (tag) =>
+export function sides(
+  m: ReturnType<typeof measure>,
+  headTag: string,
+  baseTag: string,
+  machine: string = machineKey(),
+): { head: Result; base: Result } {
+  const of = (tag: string) =>
     new Map(
       [...m.cases]
         .filter(([name]) => name.startsWith(tag))
         .map(([n, c]) => [n.slice(tag.length), c]),
     );
   const heads = of(headTag);
-  /** @type {Record<string, import("./compare.mjs").CaseResult>} */
-  const base = {};
+  const base: Record<string, CaseResult> = {};
   for (const [name, b] of of(baseTag)) {
     const h = heads.get(name);
     base[name] = { us: b.us, ratio: h ? h.ratio / pairedChange(h.samples, b.samples) : b.ratio };
@@ -262,14 +243,15 @@ export function sides(m, headTag, baseTag, machine = machineKey()) {
 
 /**
  * One child's measurement: the working tree's cases and the baseline commit's, interleaved.
- * @param {CasesModule} head
- * @param {CasesModule} base
- * @param {boolean} headFirst which side comes first in the list of cases
- * @param {{ clock?: Clock }} [opts]
- * @returns {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }}
+ * @param headFirst which side comes first in the list of cases
  */
-export function run(head, base, headFirst, opts) {
-  const tagged = (/** @type {string} */ tag, /** @type {CasesModule} */ m) =>
+export function run(
+  head: CasesModule,
+  base: CasesModule,
+  headFirst: boolean,
+  opts?: { clock?: Clock },
+): { head: Result; base: Result } {
+  const tagged = (tag: string, m: CasesModule) =>
     m.CASES.map((c) => ({ name: tag + c.name, run: c.run }));
   const both = [tagged(HEAD, head), tagged(BASE, base)];
   if (!headFirst) both.reverse();
@@ -279,10 +261,8 @@ export function run(head, base, headFirst, opts) {
 /**
  * Exits 2 unless every case produces what it should: a case that measures the wrong work would
  * gate nothing.
- * @param {string} which
- * @param {{ name: string, run: () => unknown, expected: unknown }[]} cases
  */
-function verify(which, cases) {
+function verify(which: string, cases: { name: string; run: () => unknown; expected: unknown }[]) {
   for (const c of cases) {
     if (JSON.stringify(c.run()) !== JSON.stringify(c.expected)) {
       console.error(`bench: ${which} "${c.name}" does not produce ${JSON.stringify(c.expected)}`);
@@ -293,24 +273,20 @@ function verify(which, cases) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
-  /** @param {string} flag */
-  const valueOf = (flag) => {
+  const valueOf = (flag: string) => {
     const i = args.indexOf(flag);
     const v = i < 0 ? undefined : args[i + 1];
     return v && !v.startsWith("--") ? v : undefined;
   };
-  /** @param {string} root @returns {Promise<CasesModule>} */
-  const load = (root) => import(pathToFileURL(join(root, CASES_PATH)).href);
+  const load = (root: string): Promise<CasesModule> =>
+    import(pathToFileURL(join(root, CASES_PATH)).href);
   if (args.includes("--child")) {
     const dir = valueOf("--child");
     if (!dir) process.exit(2);
     const headFirst = args.includes("--head-first");
-    /** @type {CasesModule[]} */
-    const loaded = [];
+    const loaded: CasesModule[] = [];
     for (const root of headFirst ? [REPO, dir] : [dir, REPO]) loaded.push(await load(root));
-    const [head, base] = /** @type {[CasesModule, CasesModule]} */ (
-      headFirst ? loaded : loaded.reverse()
-    );
+    const [head, base] = (headFirst ? loaded : loaded.reverse()) as [CasesModule, CasesModule];
     verify("working tree", head.CASES);
     verify("baseline", base.CASES);
     const result = run(head, base, headFirst);
@@ -326,8 +302,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // Accepted costs are relative to the stored commit; against another commit they mean nothing.
   const accepted = override ? {} : (stored.accepted ?? {});
   const dir = mkdtempSync(join(tmpdir(), "vimma-bench-base-"));
-  /** @type {{ head: import("./compare.mjs").Result, base: import("./compare.mjs").Result }[]} */
-  const results = [];
+  const results: { head: Result; base: Result }[] = [];
   try {
     extractCommit(commit, dir);
     for (let p = 0; p < PROCESSES; p++) {

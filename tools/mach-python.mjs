@@ -1,4 +1,4 @@
-// The Python interpreter mach runs with, for tools/mochitest.mjs and tools/build.mjs. mach runs
+// The Python interpreter mach runs with, for tools/mochitest.mjs and tools/build.ts. mach runs
 // under the first python3 on PATH, and a Python newer than engine/mach supports (for example 3.15
 // from mise) breaks the build and the test manifests in places far from the cause.
 import { spawnSync } from "node:child_process";

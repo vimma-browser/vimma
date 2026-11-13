@@ -1,11 +1,12 @@
-// The promo video's shots (tools/promo/record.mjs): what each clip shows and the keys that do
+// The promo video's shots (tools/promo/record.ts): what each clip shows and the keys that do
 // it. `setup` runs before the recording starts; `run` is what the camera sees. Every step
 // waits on Vimma's state through vimma-ctl; the only sleeps are `hold`, the pacing pauses
 // that let a viewer follow (a multiple of --pace). `theme` is the shot's `[theme] source`:
 // "file" (the default) shows the built-in palette, "omarchy" the recorder's temp theme
 // directory, which starts empty, so the built-in palette shows there too until a shot sets one.
-import { PROMO_TASK } from "./agent.mjs";
-import { HOSTS } from "./promo.mjs";
+import { PROMO_TASK } from "./agent.ts";
+import { HOSTS } from "./promo.ts";
+import type { Director } from "./record.ts";
 
 const ARTICLE = `${HOSTS.handbook}modal-browsing.html`;
 const ARTICLE_TITLE = "Leave the mouse in the drawer · Handbook";
@@ -27,60 +28,46 @@ const STANDUP = `${HOSTS.notes}standup.html`;
 const STANDUP_TITLE = "Standup, Tuesday · Notes";
 const START_URL = "chrome://browser/content/vimma/start/start.html";
 
-/** @typedef {import("./record.mjs").Director} Director */
-/** @typedef {{ name: string, theme?: "file" | "omarchy", agent?: boolean,
- *   setup: (d: Director) => Promise<void>, run: (d: Director) => Promise<void> }} Shot */
+export interface Shot {
+  name: string;
+  theme?: "file" | "omarchy";
+  agent?: boolean;
+  setup: (d: Director) => Promise<void>;
+  run: (d: Director) => Promise<void>;
+}
 
-/** @param {any} s */
-const selected = (s) => s.tabs.find((/** @type {any} */ t) => t.selected);
+const selected = (s: any) => s.tabs.find((t: any) => t.selected);
 
-/** @param {string} who */
-const inbox = (who) => `Inbox (${who}) · mail.example`;
+const inbox = (who: string) => `Inbox (${who}) · mail.example`;
 
-/**
- * The panes in the window's split: 1 without one.
- * @param {any} s
- */
-function paneCount(s) {
-  /** @param {any} n @returns {number} */
-  const leaves = (n) =>
-    n.children
-      ? n.children.reduce((/** @type {number} */ a, /** @type {unknown} */ c) => a + leaves(c), 0)
-      : 1;
+/** The panes in the window's split: 1 without one. */
+function paneCount(s: any) {
+  const leaves = (n: any): number =>
+    n.children ? n.children.reduce((a: number, c: unknown) => a + leaves(c), 0) : 1;
   return s.panes?.root ? leaves(s.panes.root) : 1;
 }
 
-/**
- * The split's shape (axes, nesting and sizes), to see a layout change.
- * @param {any} s
- */
-function shape(s) {
-  /** @param {any} n @returns {any} */
-  const strip = (n) =>
+/** The split's shape (axes, nesting and sizes), to see a layout change. */
+function shape(s: any) {
+  const strip = (n: any): any =>
     n.children ? { axis: n.axis, ratios: n.ratios, children: n.children.map(strip) } : 0;
   return JSON.stringify(s.panes?.root ? strip(s.panes.root) : null);
 }
 
-/**
- * tmux's tiled layout at four panes: two splits of two, a 2x2 grid.
- * @param {any} s
- */
-function isGrid(s) {
+/** tmux's tiled layout at four panes: two splits of two, a 2x2 grid. */
+function isGrid(s: any) {
   const root = s.panes?.root;
   return (
     root?.children?.length === 2 &&
-    root.children.every((/** @type {any} */ c) => c.children?.length === 2 && c.axis !== root.axis)
+    root.children.every((c: any) => c.children?.length === 2 && c.axis !== root.axis)
   );
 }
 
 /**
  * Open `url` in a new tab, wait for `title`, then close every other tab, so the status bar
  * says `tab 1/1`.
- * @param {Director} d
- * @param {string} url
- * @param {string} title
  */
-async function only(d, url, title) {
+async function only(d: Director, url: string, title: string) {
   await d.open(url);
   await d.until((s) => selected(s)?.title === title && s.mode === "normal", `"${title}" loaded`);
   while ((await d.state()).tabs.length > 1) {
@@ -95,23 +82,14 @@ async function only(d, url, title) {
   await d.until((s) => selected(s)?.title === title && s.mode === "normal", `back on "${title}"`);
 }
 
-/**
- * Open `url` in another tab (off camera) and wait for `title`.
- * @param {Director} d
- * @param {string} url
- * @param {string} title
- */
-async function also(d, url, title) {
+/** Open `url` in another tab (off camera) and wait for `title`. */
+async function also(d: Director, url: string, title: string) {
   await d.open(url);
   await d.until((s) => selected(s)?.title === title && s.mode === "normal", `"${title}" loaded`);
 }
 
-/**
- * Make a workspace (off camera) and go to it: `ctrl+b shift+n` and its name.
- * @param {Director} d
- * @param {string} name
- */
-async function newWorkspace(d, name) {
+/** Make a workspace (off camera) and go to it: `ctrl+b shift+n` and its name. */
+async function newWorkspace(d: Director, name: string) {
   await d.send("ctrl+b shift+n");
   await d.until((s) => s.mode === "command", "the new-workspace prompt");
   await d.send(`${[...name].join(" ")} enter`);
@@ -121,11 +99,8 @@ async function newWorkspace(d, name) {
 /**
  * Load `url` in the selected tab with `:open` (off camera), so no tab is closed and nothing
  * extra lands under tab search's Recently closed; wait for `title`.
- * @param {Director} d
- * @param {string} url
- * @param {string} title
  */
-async function openHere(d, url, title) {
+async function openHere(d: Director, url: string, title: string) {
   await d.send("esc");
   await d.send("esc");
   await d.until((s) => s.mode === "normal", "focus in the page");
@@ -144,10 +119,8 @@ async function openHere(d, url, title) {
  * The team's tabs for tab search and live grep (off camera): four in main, the standup notes
  * selected; a postmortem and the news in a second workspace, "reading"; and, with `closed`, the
  * rollback drill opened and closed again, so it is under Recently closed.
- * @param {Director} d
- * @param {{ closed: boolean }} o
  */
-async function teamTabs(d, { closed }) {
+async function teamTabs(d: Director, { closed }: { closed: boolean }) {
   await only(d, RUNBOOK, RUNBOOK_TITLE);
   await also(d, CHECKLIST, CHECKLIST_TITLE);
   await also(d, INCIDENT, INCIDENT_TITLE);
@@ -169,10 +142,10 @@ async function teamTabs(d, { closed }) {
 }
 
 /**
- * @type {Shot} the hook, link hints over the article and a label typed; then on the followed
+ * the hook, link hints over the article and a label typed; then on the followed
  * page j/k/d, / find with its match count, and gF opening a link in a background tab
  */
-const keys = {
+const keys: Shot = {
   name: "keys",
   async setup(d) {
     const article = await d.probeHintLabel(ARTICLE);
@@ -227,8 +200,8 @@ const keys = {
   },
 };
 
-/** @type {Shot} ctrl+b enter three times: a dwindle spiral; ctrl+b space through the presets */
-const tiling = {
+/** ctrl+b enter three times: a dwindle spiral; ctrl+b space through the presets */
+const tiling: Shot = {
   name: "tiling",
   async setup(d) {
     await only(d, ARTICLE, ARTICLE_TITLE);
@@ -257,8 +230,8 @@ const tiling = {
   },
 };
 
-/** @type {Shot} the side panel: space marks three tabs, Enter shows them together as panes */
-const marks = {
+/** the side panel: space marks three tabs, Enter shows them together as panes */
+const marks: Shot = {
   name: "marks",
   async setup(d) {
     // the team's pages that tab search and live grep search later in the video
@@ -291,10 +264,10 @@ const marks = {
 };
 
 /**
- * @type {Shot} ctrl+^ flips between two workspaces, signed in differently in each; then a beat
+ * ctrl+^ flips between two workspaces, signed in differently in each; then a beat
  * of the private workspace, and back
  */
-const flip = {
+const flip: Shot = {
   name: "flip",
   async setup(d) {
     await only(d, `${HOSTS.mail}signin.html#personal`, inbox("personal"));
@@ -312,10 +285,10 @@ const flip = {
   },
   async run(d) {
     await d.hold(1.0);
-    for (const [ws, who] of /** @type {const} */ ([
+    for (const [ws, who] of [
       ["work", "work"],
       ["main", "personal"],
-    ])) {
+    ] as const) {
       await d.key("ctrl+^", 0);
       await d.until(
         (s) => s.workspace === ws && selected(s)?.title === inbox(who),
@@ -347,11 +320,11 @@ export const ROSE_PINE = Object.freeze({
 });
 
 /**
- * @type {Shot} the theme from config.toml: over a split of the article and the start page, the
+ * the theme from config.toml: over a split of the article and the start page, the
  * built-in aqua palette, then Rosé Pine's colours saved into `[theme.colors]`. The video's config
  * card types the same lines before the save.
  */
-const theme = {
+const theme: Shot = {
   name: "theme",
   async setup(d) {
     await only(d, ARTICLE, ARTICLE_TITLE);
@@ -373,8 +346,8 @@ const theme = {
   },
 };
 
-/** @type {Shot} tab search: every workspace's tabs and the recently closed; one reopened */
-const tabs = {
+/** tab search: every workspace's tabs and the recently closed; one reopened */
+const tabs: Shot = {
   name: "tabs",
   async setup(d) {
     await teamTabs(d, { closed: true });
@@ -398,10 +371,10 @@ const tabs = {
 };
 
 /**
- * @type {Shot} live grep: "rollback" across the tabs, ctrl+s widening the scope to the window,
+ * live grep: "rollback" across the tabs, ctrl+s widening the scope to the window,
  * ctrl+p and the preview, Enter to that match
  */
-const grep = {
+const grep: Shot = {
   name: "grep",
   async setup(d) {
     await teamTabs(d, { closed: false });
@@ -434,11 +407,11 @@ const grep = {
 };
 
 /**
- * @type {Shot} Vimma's own agent: ctrl+b i, a shopping task sent with Enter (a grant for the
+ * Vimma's own agent: ctrl+b i, a shopping task sent with Enter (a grant for the
  * task), the agent's steps in the agent workspace while the user's page stays as it was, then
  * the payment checkpoint, answered n
  */
-const agent = {
+const agent: Shot = {
   name: "agent",
   agent: true,
   async setup(d) {
@@ -464,8 +437,8 @@ const agent = {
   },
 };
 
-/** @type {Shot} the ctrl+b ? overlay, filtered */
-const help = {
+/** the ctrl+b ? overlay, filtered */
+const help: Shot = {
   name: "help",
   async setup(d) {
     await only(d, ARTICLE, ARTICLE_TITLE);
@@ -481,5 +454,15 @@ const help = {
   },
 };
 
-/** @type {readonly Shot[]} in storyboard order */
-export const SHOTS = Object.freeze([keys, tiling, flip, marks, tabs, grep, agent, theme, help]);
+/** in storyboard order */
+export const SHOTS: readonly Shot[] = Object.freeze([
+  keys,
+  tiling,
+  flip,
+  marks,
+  tabs,
+  grep,
+  agent,
+  theme,
+  help,
+]);

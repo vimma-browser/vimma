@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// For the promo recorder (tools/promo/record.mjs): on <page>#probe, work out the hint label
+// For the promo recorder (tools/promo/record.ts): on <page>#probe, work out the hint label
 // Vimma will give the link marked data-promo="target", with vimma-core's own hints.mjs (the
 // recorder serves a copy of it next to the fixtures), and title the page `probe:<label>`, or
 // `probe-error:<why>`. The page has links and nothing else clickable, so the links in the

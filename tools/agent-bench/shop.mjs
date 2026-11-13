@@ -45,7 +45,7 @@ const euros = (n) => `${n.toFixed(2)} €`;
 
 /**
  * A product as its buttons and pages name it; a product without a brand (a catalog of the
- * promo video's, tools/promo/agent.mjs) is its name and size.
+ * promo video's, tools/promo/agent.ts) is its name and size.
  * @param {Pick<Product, "name" | "brand" | "size">} p
  */
 export const fullName = (p) =>
