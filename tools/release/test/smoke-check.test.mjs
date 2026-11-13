@@ -63,7 +63,7 @@ function stub(bin, body) {
 function workdir() {
   const dir = tempDir("vimma-smoke-");
   // Copies, not symlinks: version-line.mjs runs only when argv[1] is its own (real) path.
-  for (const sub of ["tools/release/version-line.mjs", "tools/version-files/version-files.mjs"]) {
+  for (const sub of ["tools/release/version-line.mjs", "tools/version-files/version-files.ts"]) {
     mkdirSync(dirname(join(dir, sub)), { recursive: true });
     cpSync(join(repo, sub), join(dir, sub));
   }

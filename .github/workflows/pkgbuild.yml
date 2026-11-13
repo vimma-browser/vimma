@@ -13,7 +13,7 @@ on:
     paths:
       - tools/package/**
       - tools/release/version-line.mjs
-      - tools/version-files/version-files.mjs
+      - tools/version-files/version-files.ts
       - tools/repo.mjs
       - surfer.json
       - .github/workflows/pkgbuild.yml
@@ -22,7 +22,7 @@ on:
     paths:
       - tools/package/**
       - tools/release/version-line.mjs
-      - tools/version-files/version-files.mjs
+      - tools/version-files/version-files.ts
       - tools/repo.mjs
       - surfer.json
       - .github/workflows/pkgbuild.yml

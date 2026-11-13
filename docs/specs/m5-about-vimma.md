@@ -41,10 +41,11 @@ IS_SECURE_CHROME_UI`; no `URI_*_IN_CHILD` flag, so it loads in the parent proces
   - Version: `MOZ_APP_VERSION_DISPLAY`, `appinfo.version`, `appinfo.appBuildID`,
     `MOZ_UPDATE_CHANNEL`.
   - Upstream patches: `chrome://browser/content/vimma/about/patches.json`, written by
-    `tools/version-files/version-files.mjs` (`patchManifest`: every `src/**/*.patch`, sorted, with
-    its `@@ -` hunk count) into the git-ignored `src/browser/config/vimma/` during `npm run
-import`, and packaged by `jar.mn`. So the list is the one the build was imported from.
-    `tools/upstream/patch-audit.py` stays the full audit (sizes, ADR-003 register).
+    `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025)
+    (`patchManifest`: every `src/**/*.patch`, sorted, with its `@@ -` hunk count) into the
+    git-ignored `src/browser/config/vimma/` during `npm run import`, and packaged by `jar.mn`. So
+    the list is the one the build was imported from. `tools/upstream/patch-audit.py` stays the full
+    audit (sizes, ADR-003 register).
   - Modes: `VimmaHost.status(win).mode` for each window (`BrowserWindowTracker`).
   - Last key events: `about/key-log.mjs`, a 20-entry ring buffer. The host's `_dispatch` records
     each key with core's `describeOutcome` (the action id, `pass`, `cancel`, `…` pending); a
@@ -77,8 +78,9 @@ overridden row; the workspace count and the last three keys after `j k j` on a p
 (`j → scroll.down`…) and the window's mode; with the control socket on, its port shows and the
 token (from the discovery file) is nowhere in the page's HTML; `:bug` puts a report on the
 clipboard with the Firefox version and no `$HOME/` path or URL; `j` / `k` scroll the page.
-Vitest: `report.test.mjs` (redaction, outcomes), `cmdline.test.mjs` (`:about`, `:vimma`, `:bug`,
-no argument), `version-files.test.mjs` (`patchManifest` on fixtures and on the repository).
+Vitest: `report.test.mjs` (redaction, outcomes), `cmdline.test.mjs` (`:about`, `:vimma`, `:bug`, no
+argument), `version-files.test.mjs` (Since changed: `version-files.test.ts`, ADR-025)
+(`patchManifest` on fixtures and on the repository).
 
 Red: the mochitest timed out in its first task (`about:vimma` unknown; "The window unloaded while
 we were waiting for the browser to load"); vitest `Cannot find module '../src/report.mjs'`,
