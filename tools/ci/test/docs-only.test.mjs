@@ -8,7 +8,15 @@
 
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+  mkdirSync,
+  statSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
@@ -229,7 +237,10 @@ describe("workflow wiring", () => {
   /** @param {string} block */
   function expectClassifyStep(block) {
     const step = steps(block).find((s) => s.text.includes("id: classify"));
-    expect(step?.cond).toBe("github.event_name == 'pull_request'");
+    // Only on a pull request, and only once the base's .nvmrc was found (the step before it).
+    expect(step?.cond).toBe("steps.base-node.outputs.found == 'true'");
+    const baseNode = steps(block).find((s) => s.text.includes("id: base-node"));
+    expect(baseNode?.cond).toBe("github.event_name == 'pull_request'");
     // ADR-025: the base's copy under either name, .ts first, so the pull request that renames
     // the classifier is still classified by the base's .mjs (tests below run the step).
     expect(step?.text).toContain("for ext in ts mjs; do");
@@ -402,34 +413,38 @@ describe("the classify step, run as the workflows have it", () => {
   const git = (cwd, ...args) =>
     execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_ENV } });
 
-  /** @param {string} file @param {string} jobId */
-  function classifyScript(file, jobId) {
+  /** @param {string} file @param {string} jobId @param {string} [id] */
+  function classifyScript(file, jobId, id = "classify") {
     const doc =
       /** @type {{ jobs: Record<string, { steps: { id?: string, run?: string }[] }> }} */ (
         load(readFileSync(join(ROOT, ".github", "workflows", file), "utf8"), {
           schema: CORE_SCHEMA,
         })
       );
-    const run = doc.jobs[jobId]?.steps.find((s) => s.id === "classify")?.run;
-    if (!run) throw new Error(`${file} ${jobId}: no classify step`);
+    const run = doc.jobs[jobId]?.steps.find((s) => s.id === id)?.run;
+    if (!run) throw new Error(`${file} ${jobId}: no ${id} step`);
     return run;
   }
 
   /**
-   * A base commit with `base` files under tools/ci/, a head commit that changes the guide and
-   * writes `head` files, and the step run with the head checked out, as actions/checkout leaves it.
+   * A base commit with `base` files under tools/ci/ (a name starting with "." at the root), a head
+   * commit that changes the guide and writes `head` files, and the step run with the head checked
+   * out, as actions/checkout leaves it. The directories are real paths, as the runner's are:
+   * macOS's temporary directory is under /var, a symlink to /private/var, and the classifier
+   * runs only when started by its real path (below, "through a symlinked path").
    * @param {string} script
    * @param {Record<string, string>} base
    * @param {Record<string, string>} [head]
+   * @param {string} [runnerTemp] RUNNER_TEMP, a real temporary directory by default
    */
-  function runStep(script, base, head = {}) {
-    const dir = tempDir("vimma-classify-step-");
+  function runStep(script, base, head = {}, runnerTemp) {
+    const dir = realpathSync(tempDir("vimma-classify-step-"));
     git(dir, "init", "-q", "-b", "main");
     mkdirSync(join(dir, "docs"));
     mkdirSync(join(dir, "tools", "ci"), { recursive: true });
     writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n");
     for (const [name, text] of Object.entries(base))
-      writeFileSync(join(dir, "tools", "ci", name), text);
+      writeFileSync(name.startsWith(".") ? join(dir, name) : join(dir, "tools", "ci", name), text);
     git(dir, "add", "-A");
     git(dir, "commit", "-q", "-m", "base");
     const BASE = git(dir, "rev-parse", "HEAD").trim();
@@ -441,7 +456,7 @@ describe("the classify step, run as the workflows have it", () => {
     git(dir, "add", "-A");
     git(dir, "commit", "-q", "-m", "head");
     const HEAD = git(dir, "rev-parse", "HEAD").trim();
-    const temp = tempDir("vimma-classify-temp-");
+    const temp = runnerTemp ?? realpathSync(tempDir("vimma-classify-temp-"));
     const output = join(temp, "github-output");
     writeFileSync(output, "");
     const res = spawnSync("bash", ["-e", "-c", script], {
@@ -453,6 +468,7 @@ describe("the classify step, run as the workflows have it", () => {
       status: res.status,
       stdout: res.stdout,
       written: readFileSync(output, "utf8"),
+      temp,
       copies: readdirSync(temp)
         .filter((f) => f.startsWith("docs-only"))
         .sort(),
@@ -513,5 +529,51 @@ describe("the classify step, run as the workflows have it", () => {
       expect(res.status).not.toBe(0);
       expect(res.written).toBe("");
     });
+  });
+
+  // The classifier, like most tools here, runs its main() only when process.argv[1] is the real
+  // path of the module (fileURLToPath(import.meta.url), which Node resolves). Started through a
+  // symlinked directory it does nothing and exits 0: no output, so every check runs. The runners'
+  // RUNNER_TEMP is a real path; this pins the fail-safe result, and the tools/ci rename gives
+  // docs-only the symlink handling key-guard.mjs has.
+  it("through a symlinked RUNNER_TEMP the classifier does nothing, so everything runs", () => {
+    const real = realpathSync(tempDir("vimma-classify-real-"));
+    const link = join(realpathSync(tempDir("vimma-classify-link-")), "temp");
+    symlinkSync(real, link);
+    const res = runStep(
+      classifyScript("ci.yml", "check"),
+      { "docs-only.mjs": CLASSIFIER },
+      {},
+      link,
+    );
+    expect(res.status).toBe(0);
+    expect(res.written).toBe("");
+  });
+
+  describe.each(JOBS)("%s %s: the base's .nvmrc", (file, jobId) => {
+    const script = classifyScript(file, jobId, "base-node");
+
+    it("writes the base's .nvmrc for setup-node, whatever the pull request's says", () => {
+      const res = runStep(script, { ".nvmrc": "22.23.3\n" }, { ".nvmrc": "18.0.0\n" });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("found=true\n");
+      expect(readFileSync(join(res.temp, "base.nvmrc"), "utf8")).toBe("22.23.3\n");
+    });
+
+    it("finds nothing on a base without .nvmrc, so the classifier skips and everything runs", () => {
+      const res = runStep(script, { "docs-only.mjs": CLASSIFIER }, { ".nvmrc": "22.23.3\n" });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("");
+      expect(res.stdout).toContain("No .nvmrc on the base: running everything");
+    });
+  });
+
+  // ci.yml and e2e.yml read the .ts name first: a branch that held both would run the .ts and
+  // leave the .mjs unseen, so the rename deletes the .mjs in the same change (ADR-025).
+  it("this branch holds each tools/ci tool under one name only", () => {
+    const tracked = git(ROOT, "ls-files", "tools/ci").split("\n").filter(Boolean);
+    for (const f of tracked.filter((t) => t.endsWith(".ts")))
+      expect(tracked, f).not.toContain(f.replace(/\.ts$/, ".mjs"));
+    expect(tracked.some((t) => /^tools\/ci\/docs-only\.(?:mjs|ts)$/.test(t))).toBe(true);
   });
 });

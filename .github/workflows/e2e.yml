@@ -86,17 +86,35 @@ jobs:
           fetch-depth: 0 # base...head needs the merge base
           persist-credentials: false
 
-      # .nvmrc's Node: the runner image's own may be older than the 22.18 a .ts tool needs
-      # (ADR-025). Only on a pull request, as the checkout: a call or a manual run classifies
-      # nothing. docs-only.ts first, then docs-only.mjs, as in ci.yml's check job.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      # As in ci.yml's check job, and only on a pull request, as the checkout: a call or a manual
+      # run classifies nothing. docs-only.ts first, then docs-only.mjs.
+      # The Node the classifier runs on comes from the base's .nvmrc, as the classifier does, so
+      # the pull request chooses neither (ADR-025: the runner image's own Node may be older than
+      # the 22.18 a .ts tool needs). A base without .nvmrc leaves `found` empty: the classifier
+      # skips and everything runs.
+      - name: The base's .nvmrc
+        id: base-node
         if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git show "$BASE:.nvmrc" > "$RUNNER_TEMP/base.nvmrc" 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No .nvmrc on the base: running everything"
+          fi
+
+      # No cache, automatic or named, so nothing of the pull request's (package.json, .npmrc, the
+      # lockfile) is read before the classifier answers.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.base-node.outputs.found == 'true'
         with:
-          node-version-file: .nvmrc
+          node-version-file: ${{ runner.temp }}/base.nvmrc
+          package-manager-cache: false
 
       - name: Docs-only pull request? (tools/ci/docs-only.mjs, from the base)
         id: classify
-        if: github.event_name == 'pull_request'
+        if: steps.base-node.outputs.found == 'true'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}

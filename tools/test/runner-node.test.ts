@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 // .nvmrc runs on the runner image's own Node, which this repository does not choose and which may
 // be older than 22.18, where a .ts tool fails with ERR_UNKNOWN_FILE_EXTENSION. Such a job gets the
 // step before its tool can move (#946). RUNNER_NODE lists the jobs that still lack it; the list
-// only shrinks, as each area's move adds the step.
+// only shrinks, as each area's move adds the step. Only `run:` text is read: a tools/**/*.sh
+// wrapper that starts node is not followed, so a job that runs one is checked by hand.
 const WORKFLOWS = fileURLToPath(new URL("../../.github/workflows/", import.meta.url));
 
 const RUNNER_NODE = [
@@ -43,6 +44,30 @@ const MAJOR_ONLY = [
 // Steps that print a command for a person to run rather than run it.
 const PRINTS_ONLY = ["fuzz.yml report"];
 
+// Jobs whose setup-node runs before a guard (the docs-only classifier, tree-covered) or before a
+// tool that holds a write token, with no npm install after it. actions/setup-node caches
+// automatically when package.json names npm in packageManager or devEngines.packageManager
+// (package-manager-cache, true by default), which would read the checkout's package.json and
+// .npmrc before the guard, restore ~/.npm and save a cache in the post step. Each says
+// package-manager-cache: false, so that a field added to package.json later changes nothing here.
+const NO_AUTO_CACHE = [
+  "ci.yml check",
+  "ci.yml covered",
+  "ci.yml vimma-ctl-macos",
+  "downloads.yml collect",
+  "e2e.yml changes",
+  "mutation.yml report",
+  "pkgbuild.yml covered",
+  "semgrep.yml covered",
+  "spec-status.yml check",
+];
+
+// The jobs that run the base branch's docs-only classifier: they set up the base's .nvmrc, written
+// by an earlier step from `git show "$BASE:.nvmrc"`, so the pull request does not choose the Node
+// that judges it.
+const BASE_NODE = ["ci.yml check", "ci.yml vimma-ctl-macos", "e2e.yml changes"];
+const BASE_NVMRC = "${{ runner.temp }}/base.nvmrc";
+
 type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 type Job = { steps?: Step[] };
 
@@ -60,7 +85,7 @@ function workflowJobs(): { name: string; job: Job }[] {
 }
 
 /** A shell line that starts Node: `node`, `npm` or `npx` as a command, not inside a word. */
-const RUNS_NODE = /(?:^|[\s;&|(`])(?:node|npm|npx)\s/;
+const RUNS_NODE = /(?:^|[\s;&|(`])(?:node|npm|npx)(?:\s|$)/;
 
 function runsNode(step: Step): boolean {
   return (step.run ?? "")
@@ -69,7 +94,9 @@ function runsNode(step: Step): boolean {
 }
 
 const isAnySetupNode = (s: Step) => (s.uses ?? "").startsWith("actions/setup-node@");
-const isSetupNode = (s: Step) => isAnySetupNode(s) && s.with?.["node-version-file"] === ".nvmrc";
+const isSetupNode = (s: Step) =>
+  isAnySetupNode(s) &&
+  (s.with?.["node-version-file"] === ".nvmrc" || s.with?.["node-version-file"] === BASE_NVMRC);
 
 /** The jobs whose first Node step comes before any setup-node step. */
 function onRunnerNode(): string[] {
@@ -131,15 +158,52 @@ describe("the Node a workflow job runs its tools on", () => {
   });
 
   // A setup-node step that skips while the Node step after it runs leaves that step on the
-  // runner's Node again.
-  it("the setup-node step before a job's first Node step runs whenever that step runs", () => {
+  // runner's Node again: every Node step needs a setup-node before it that runs at least whenever
+  // it does (no `if:`, or the same one).
+  it("every Node step has a setup-node before it that runs whenever it runs", () => {
     for (const { name, job } of workflowJobs()) {
+      if (RUNNER_NODE.includes(name) || PRINTS_ONLY.includes(name)) continue;
+      const steps = job.steps ?? [];
+      steps.forEach((step, i) => {
+        if (!runsNode(step)) return;
+        const covered = steps
+          .slice(0, i)
+          .some((s) => isAnySetupNode(s) && (s.if === undefined || s.if === step.if));
+        expect(`${name} step ${i} (${step.if ?? "always"}): ${covered}`).toMatch(/: true$/);
+      });
+    }
+  });
+
+  it("finds node, npm or npx at the end of a line too", () => {
+    expect(runsNode({ run: "node" })).toBe(true);
+    expect(runsNode({ run: "cat x | npx" })).toBe(true);
+    expect(runsNode({ run: "nodes x\n# node x" })).toBe(false);
+  });
+
+  it("a setup-node before a guard or a token-holding tool never caches by itself", () => {
+    for (const { name, job } of workflowJobs()) {
+      if (!NO_AUTO_CACHE.includes(name)) continue;
       const steps = job.steps ?? [];
       const first = steps.findIndex(runsNode);
       const setup = steps.findIndex(isAnySetupNode);
-      if (first < 0 || setup < 0 || setup > first) continue;
-      const cond = steps[setup]?.if;
-      if (cond !== undefined) expect(`${name}: ${cond}`).toBe(`${name}: ${steps[first]?.if}`);
+      expect(setup, name).toBeGreaterThanOrEqual(0);
+      expect(setup, name).toBeLessThan(first);
+      expect(steps[setup]?.with?.cache, name).toBeUndefined();
+      expect(steps[setup]?.with?.["package-manager-cache"], name).toBe(false);
+    }
+  });
+
+  it("the docs-only classifier runs on the base's .nvmrc, not the pull request's", () => {
+    for (const { name, job } of workflowJobs()) {
+      if (!BASE_NODE.includes(name)) continue;
+      const steps = job.steps ?? [];
+      const classify = steps.findIndex((s) => (s as { id?: string }).id === "classify");
+      const write = steps.findIndex((s) => (s.run ?? "").includes('git show "$BASE:.nvmrc"'));
+      const setup = steps.findIndex(
+        (s) => isAnySetupNode(s) && s.with?.["node-version-file"] === BASE_NVMRC,
+      );
+      expect([name, write >= 0, write < setup, setup < classify]).toEqual([name, true, true, true]);
+      expect(steps[write]?.run, name).toContain('> "$RUNNER_TEMP/base.nvmrc"');
     }
   });
 

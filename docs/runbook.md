@@ -660,9 +660,13 @@ A pull request whose every changed file is prose Markdown skips the work Markdow
 `tools/ci/docs-only.mjs` decides from `git diff --name-only --no-renames base...head` (never the
 title or body); ci.yml and e2e.yml run it as the base branch has it, so a pull
 request cannot change the classifier that judges it. They read the base's `docs-only.ts` first
-and `docs-only.mjs` second, and run the copy under the name it had, on `.nvmrc`'s Node (ADR-025):
-the pull request that renames the classifier is still judged by the base's `.mjs`. A base with
-neither runs everything; a copy that fails fails the step.
+and `docs-only.mjs` second, and run the copy under the name it had (ADR-025): the pull request
+that renames the classifier is still judged by the base's `.mjs`. The Node it runs on is the
+base's too: a step writes `git show "$BASE:.nvmrc"` to `$RUNNER_TEMP/base.nvmrc` for
+`actions/setup-node`, with `package-manager-cache: false`, so nothing of the pull request is read
+before the answer. A base with neither name, or without `.nvmrc`, runs everything; a copy that
+fails fails the step. Started through a symlinked path the classifier does nothing and exits 0,
+which also runs everything; the runners' `$RUNNER_TEMP` is a real path.
 
 **Docs-only** means all of these hold:
 
@@ -1127,12 +1131,15 @@ If the step does fail without a slowing change, that is a flake: quarantine it (
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
-pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc`, and so do the
-nightly and release build jobs. release.yml's package job checks out a release tag (tags from
-before `.nvmrc` lack it) and stays on major 22. `tools/test/runner-node.test.ts` lists the jobs
-that still set up major 22 only, and those that still run `node` or `npm` on the runner image's
-own Node, whose version this repository does not choose; both lists only shrink (#946). A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major
-also moves `@types/node` to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
+pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the docs-only
+classifier steps use the base branch's `.nvmrc`), and so do the nightly build jobs and most
+release jobs. Five release.yml jobs (`ctl`, `package`, `mar`, `macos-ctl`, `macos-smoke`) and
+macos.yml's `smoke` set up `node-version: 22`, the newest 22.x the runner has; the package job
+checks out a release tag, and tags from before `.nvmrc` lack it. `tools/test/runner-node.test.ts`
+lists those jobs, and the ones that still run `node` or `npm` on the runner image's own Node,
+whose version this repository does not choose; both lists only shrink (#946). A Node bump is its
+own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node` to it
+(`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
 without a flag or a warning (ADR-025). The bench needs nothing for it: both sides of the
 comparison run on the same Node.

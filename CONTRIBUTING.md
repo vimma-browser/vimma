@@ -258,7 +258,16 @@ stays `.mjs` (ADR-025 says why).
    - A `sparse-checkout:` that names a file of the area names the new file.
    - A step that runs the base branch's copy (`git show "$BASE:tools/…" > "$RUNNER_TEMP/…"`)
      first learns to read the `.ts` name and fall back to the `.mjs` one, and keeps the extension
-     it read on the temporary copy, in its own pull request.
+     it read on the temporary copy, in its own pull request. Its Node comes from the base's
+     `.nvmrc` too, and its setup-node says `package-manager-cache: false`. Because the `.ts` name
+     wins, the rename deletes the `.mjs` in the same change: a branch that held both would run the
+     `.ts` and leave the `.mjs` unseen (`tools/ci/test/docs-only.test.mjs` fails on both names).
+     `tools/ci/docs-only.*` is in no guard's paths, so review is what catches a `.ts` added
+     beside it. A tool started through a symlinked path runs its `main()` only if it resolves
+     `process.argv[1]` as `key-guard.mjs` does; the rename gives `docs-only` that handling.
+   - A setup-node that runs before a guard (a `covered` job, a classifier) or before a tool that
+     holds a write token has no cache and says `package-manager-cache: false`
+     (`tools/test/runner-node.test.ts`).
 3. **Record the tests.** `npx vitest run --reporter=json --outputFile=before.json` (the whole
    suite: other areas' tests import the area or read it as text), and the output of each
    command-line tool on the real tree. Compare names from the JSON reporter, not `vitest list`,
