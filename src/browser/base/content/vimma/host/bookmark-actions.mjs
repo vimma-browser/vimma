@@ -28,6 +28,7 @@ import { splitPane } from "./pane-ops.mjs";
 /** @import { BookmarksEffect, Folder } from "../core/bookmarks.mjs" */
 /** @import { Scope } from "./bookmark-ops.mjs" */
 /** @import { RenamePrompt } from "../ui/rename-prompt.mjs" */
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 /** @import { BookmarksPanel } from "../ui/bookmarks-panel.mjs" */
 
 /**
@@ -244,4 +245,17 @@ export function runBookmarkEffect(ctx, effect) {
       ctx.prompt.ask(`delete ${what}? y/N`, () => apply(ctx, () => removeItem(effect.guid)));
     }
   }
+}
+
+/**
+ * What the bookmark effects run with.
+ * @param {WindowState} s
+ */
+export function bookmarkContext(s) {
+  return {
+    win: s.win,
+    prompt: s.rename,
+    panel: s.bookmarks,
+    say: (/** @type {string} */ text) => s.notice.show(text),
+  };
 }

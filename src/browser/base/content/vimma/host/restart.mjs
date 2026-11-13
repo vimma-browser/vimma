@@ -13,8 +13,12 @@
 // `$APPIMAGE`, on the same profile, with the session resumed once, as Firefox's restart would.
 
 import { relaunchCommand, restartKeepsTabs, restartPlan } from "../core/restart.mjs";
+import { restartConfirmation } from "../core/restart.mjs";
+import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
+import { privateTabCount } from "./private-ops.mjs";
 
 /** @import { InstallType } from "../core/updates.mjs" */
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -186,3 +190,38 @@ export const Restart = {
     return relaunchPath !== null;
   },
 };
+
+/**
+ * Restarts Vimma now (docs/specs/m6a-updater.md §5); says so when something cancelled it. An
+ * AppImage starts its own file again, and only when this Vimma is the AppImage `$APPIMAGE`
+ * names, never one it inherited the variable from.
+ * @param {WindowState} s
+ */
+export async function restartNow(s) {
+  const appImage = await VimmaUpdates.ownAppImage();
+  const going = restartVimma({ installType: appImage ? "appimage" : null, appImage });
+  if (!going) s.notice.show("restart cancelled");
+}
+
+/** @param {WindowState} s */
+export function restartOrSay(s) {
+  restartNow(s).catch((e) => {
+    console.error("vimma: :restart failed", e);
+    s.notice.show(`restart failed: ${e?.message ?? e}`, { error: true });
+  });
+}
+
+/**
+ * `:restart`: asks first when tabs would be lost (core restartConfirmation), as `:private close`
+ * asks before it closes the private workspace.
+ * @param {WindowState} s
+ */
+export async function restartAsking(s) {
+  const appImage = await VimmaUpdates.ownAppImage();
+  const question = restartConfirmation({
+    privateTabs: privateTabCount(),
+    tabsKept: tabsKeptBy(appImage),
+  });
+  if (question) s.rename.ask(question, () => restartOrSay(s));
+  else restartOrSay(s);
+}

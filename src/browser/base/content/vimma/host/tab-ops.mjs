@@ -8,8 +8,10 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { tabTarget } from "../core/tabs.mjs";
+import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -179,3 +181,40 @@ export async function openTyped(win, text, where) {
 
 export const BLOCKED_URL_TEXT =
   "blocked: javascript: and data: URLs can't be opened from the command line";
+
+/**
+ * `:open` / `:tabnew` text, or the notice saying why not.
+ * @param {WindowState} s
+ * @param {string} text
+ * @param {"current" | "tab"} where
+ */
+export function openOrSay(s, text, where) {
+  const refused = () => s.notice.show(BLOCKED_URL_TEXT, { error: true });
+  // Said at once for the text as typed; a keyword resolving to one is known after the lookup.
+  if (refusedScheme(text)) {
+    refused();
+    return;
+  }
+  openTyped(s.win, text, where)
+    .then((opened) => {
+      if (!opened) refused();
+    })
+    .catch((e) => console.error("vimma: cannot open", e));
+}
+
+/**
+ * `tab.rename`: with a name (`:tabrename foo`) sets the label at once, else opens the prompt.
+ * @param {WindowState} s
+ * @param {string | undefined} text
+ * @param {(s: WindowState) => void} emit  the host's redraw
+ */
+export function renameTab(s, text, emit) {
+  const tab = /** @type {{ gBrowser: { selectedTab: Element } }} */ (/** @type {unknown} */ (s.win))
+    .gBrowser.selectedTab;
+  if (text) {
+    setTabLabel(tab, text);
+    emit(s);
+  } else {
+    s.rename.open(tab, getTabLabel(tab) ?? "");
+  }
+}
