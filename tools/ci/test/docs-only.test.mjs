@@ -333,6 +333,7 @@ describe("workflow wiring", () => {
       /npm run security-links/,
       /npm run arch-lint/,
       /npm run layering/,
+      /npm run diagrams:check/,
       /npm run test:py/,
       /npm run gen-docs/,
       /npx --no -- commitlint --from "\$FROM"/,
