@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fixtureText, fixtureUrl, startPageServer } from "../pages.mjs";
+import { createServer } from "node:net";
+import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "../pages.mjs";
 
 /** @type {Array<() => unknown>} */
 const cleanups = [];
@@ -74,5 +75,54 @@ describe("startPageServer", () => {
     cleanups.push(() => server.close());
     const res = await fetch(`${server.base}doc.pdf`);
     expect(res.headers.get("content-type")).toBe("application/pdf");
+  });
+});
+
+// Issue #953: the URL and status bars show the page server's port, so the e2e scenarios serve
+// their fixtures on one fixed port: two runs then draw the same pixels.
+describe("the page server's port", () => {
+  it("is fixed, below Linux's ephemeral range, so the kernel never hands it to another socket", () => {
+    expect(Number.isInteger(PAGE_PORT)).toBe(true);
+    expect(PAGE_PORT).toBeGreaterThan(1024);
+    expect(PAGE_PORT).toBeLessThan(32768);
+  });
+
+  it("is PAGE_PORT unless --port or VIMMA_E2E_PORT names another (the flag first)", () => {
+    expect(pagePort({ flag: undefined, env: {} })).toBe(PAGE_PORT);
+    expect(pagePort({ flag: undefined, env: { VIMMA_E2E_PORT: "8123" } })).toBe(8123);
+    expect(pagePort({ flag: "9000", env: { VIMMA_E2E_PORT: "8123" } })).toBe(9000);
+    expect(pagePort({ flag: "0", env: {} })).toBe(0);
+  });
+
+  it.each(["", "x", "-1", "65536", "80.5", " 80"])("refuses %j as a port", (bad) => {
+    expect(() => pagePort({ flag: bad, env: {} })).toThrow(/--port/);
+    expect(() => pagePort({ flag: undefined, env: { VIMMA_E2E_PORT: bad } })).toThrow(
+      /VIMMA_E2E_PORT/,
+    );
+  });
+
+  it("listens on the port it is given", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vimma-pages-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const probe = await startPageServer(dir);
+    const port = Number(new URL(probe.base).port);
+    await probe.close();
+    const server = await startPageServer(dir, { port });
+    cleanups.push(() => server.close());
+    expect(server.base).toBe(`http://127.0.0.1:${port}/`);
+  });
+
+  it("fails, naming the port, when another process holds it, and never moves to another", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "vimma-pages-"));
+    cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+    const other = createServer();
+    await new Promise((resolve) => other.listen(0, "127.0.0.1", () => resolve(undefined)));
+    cleanups.push(() => new Promise((resolve) => other.close(() => resolve(undefined))));
+    const address = other.address();
+    const port = typeof address === "object" && address ? address.port : 0;
+    await expect(startPageServer(dir, { port })).rejects.toMatchObject({
+      code: "EADDRINUSE",
+      message: expect.stringContaining(`127.0.0.1:${port}`),
+    });
   });
 });

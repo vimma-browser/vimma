@@ -138,6 +138,9 @@ export const PROFILE_PREFS = Object.freeze([
   // #deferUpdatePlaceholder), so a screenshot showed either (issue #944). Google is the default
   // with the region unknown (browser.region.network.url is off).
   ["browser.urlbar.placeholderName", "Google"],
+  // A private window reads its own copy (SearchUIUtils.updatePlaceholderNamePreference), with the
+  // same race (issue #953).
+  ["browser.urlbar.placeholderName.private", "Google"],
   ["browser.topsites.contile.enabled", false],
   ["browser.translations.enable", false],
   ["browser.ml.enable", false],

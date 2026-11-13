@@ -64,7 +64,7 @@ import { setTimeout as sleep } from "node:timers/promises";
  * @typedef {{
  *   ctl: { state: () => Promise<any>, sendKeys: (keys: string) => Promise<void>,
  *     open: (url: string) => Promise<string> },
- *   screenshot: (name: string) => Promise<void>,
+ *   screenshot: (name: string) => Promise<string | void>,
  *   restart?: (how: "quit" | "kill") => Promise<void>,
  *   control?: Control,
  *   profile?: string,
@@ -519,7 +519,10 @@ function checkAborted(signal) {
 }
 
 /**
- * Run a scenario's steps against a session. Throws on the first failing step, naming it.
+ * Run a scenario's steps against a session. Throws on the first failing step, naming it. A
+ * screenshot that differs from its baseline, or has none (`screenshot` returns why), lets the
+ * steps go on, so that one run writes every image that differs, and the scenario fails at its end
+ * (issue #953: a CI run then supplies every baseline of a re-record at once).
  * @param {Scenario} scenario
  * @param {StepContext} context
  */
@@ -549,6 +552,8 @@ export async function runSteps(
     if (!update) throw new Error("this session has no update host");
     return update;
   };
+  /** The screenshots that failed so far, each with its step. @type {string[]} */
+  const shots = [];
   for (const [i, step] of scenario.steps.entries()) {
     const kind = /** @type {string} */ (Object.keys(step).find((k) => k !== "timeoutSeconds"));
     const at = `step ${i + 1} (${kind})`;
@@ -611,8 +616,10 @@ export async function runSteps(
         for (let at = 0; at < chords.length; at += MAX_CHORDS) {
           await ctl.sendKeys(chords.slice(at, at + MAX_CHORDS).join(" "));
         }
-      } else if (step.screenshot !== undefined) await screenshot(step.screenshot);
-      else if (step.restart !== undefined) {
+      } else if (step.screenshot !== undefined) {
+        const failed = await screenshot(step.screenshot);
+        if (failed) shots.push(`${at}: ${failed}`);
+      } else if (step.restart !== undefined) {
         if (!restart) throw new Error("this session cannot restart");
         await restart(step.restart);
       } else if (step["assert-state"] !== undefined) {
@@ -644,9 +651,11 @@ export async function runSteps(
         }
       }
     } catch (e) {
-      throw new Error(`${at}: ${/** @type {Error} */ (e).message}`, { cause: e });
+      const message = [`${at}: ${/** @type {Error} */ (e).message}`, ...shots].join("\n");
+      throw new Error(message, { cause: e });
     }
   }
+  if (shots.length) throw new Error(shots.join("\n"));
 }
 
 /**

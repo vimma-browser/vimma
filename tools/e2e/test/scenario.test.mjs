@@ -512,6 +512,43 @@ describe("runSteps", () => {
     ]);
   });
 
+  // Issue #953: a screenshot that differs from its baseline (or has none) fails the scenario only
+  // at its end, so one run writes every image that differs, and a CI run can supply every
+  // baseline of a re-record at once. The steps after it still run and can fail on their own.
+  it("a screenshot that fails lets the steps go on and fails the scenario at its end", async () => {
+    const { ctl, calls } = fakeCtl([{ mode: "normal" }]);
+    /** @type {string[]} */
+    const shots = [];
+    const screenshot = async (/** @type {string} */ name) => {
+      shots.push(name);
+      return name === "ok" ? undefined : `${name}: 1.00 % of pixels differ`;
+    };
+    await expect(
+      runSteps(
+        scenario({
+          steps: [{ screenshot: "a" }, { keys: "j" }, { screenshot: "ok" }, { screenshot: "b" }],
+        }),
+        { ctl, screenshot },
+      ),
+    ).rejects.toThrow(
+      /^step 1 \(screenshot\): a: 1\.00 % of pixels differ\nstep 4 \(screenshot\): b: 1\.00 %/,
+    );
+    expect(shots).toEqual(["a", "ok", "b"]);
+    expect(calls).toEqual(["keys j"]);
+  });
+
+  it("a later step's failure names the screenshots that failed before it", async () => {
+    const { ctl } = fakeCtl([{ mode: "normal" }]);
+    await expect(
+      runSteps(scenario({ steps: [{ screenshot: "a" }, { "assert-state": { mode: "insert" } }] }), {
+        ctl,
+        screenshot: async () => "a: no baseline",
+      }),
+    ).rejects.toThrow(
+      /^step 2 \(assert-state\): .*mode.*\nstep 1 \(screenshot\): a: no baseline$/s,
+    );
+  });
+
   it("sleep waits", async () => {
     const { ctl } = fakeCtl([{ mode: "normal" }]);
     const started = Date.now();

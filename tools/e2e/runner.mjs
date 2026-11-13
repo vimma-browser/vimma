@@ -8,7 +8,7 @@ import { runSteps } from "./scenario.mjs";
 /**
  * @typedef {{
  *   ctl: import("./scenario.mjs").StepContext["ctl"],
- *   screenshot: (name: string) => Promise<void>,
+ *   screenshot: (name: string) => Promise<string | void>,
  *   restart?: (how: "quit" | "kill") => Promise<void>,
  *   control?: import("./scenario.mjs").Control,
  *   profile?: string,
