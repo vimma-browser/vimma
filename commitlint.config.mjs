@@ -1,4 +1,4 @@
-import bodyRequired, { ignoreCommit } from "./tools/commitlint/body-required.mjs";
+import bodyRequired, { ignoreCommit } from "./tools/commitlint/body-required.ts";
 
 export default {
   extends: ["@commitlint/config-conventional"],
