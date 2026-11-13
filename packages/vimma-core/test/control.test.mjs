@@ -24,8 +24,17 @@ const fixture = (name) => JSON.parse(readFileSync(FIXTURES + name, "utf8"));
 const TOKEN = "0123456789abcdef".repeat(4);
 const NONCE = "fedcba9876543210".repeat(4);
 const hello = (extra = {}) => ({ type: "hello", protocol: 1, nonce: NONCE, ...extra });
+/**
+ * @param {string} command
+ * @param {Record<string, unknown>} [args]
+ */
 const req = (command, args = {}, id = 1) => ({ type: "request", id, command, args });
+/** @param {unknown} result */
 const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
+/**
+ * @param {unknown} message
+ * @param {import("../src/control.mjs").ValidateOptions} [options]
+ */
 const errorsOf = (message, options) => validateMessage(message, options).errors;
 
 describe("contract fixtures (tests/contract/control/v1)", () => {
@@ -43,7 +52,8 @@ describe("contract fixtures (tests/contract/control/v1)", () => {
     const { nonce } = fixture("hello.valid.json").message;
     const { token } = fixture("auth.valid.json").message;
     const { proof } = fixture("challenge.valid.json").message;
-    const mac = (text) => createHmac("sha256", token).update(text).digest("hex");
+    const mac = (/** @type {string} */ text) =>
+      createHmac("sha256", token).update(text).digest("hex");
     expect(mac(`vimma-server\0${nonce}`)).toBe(proof);
     expect(mac(nonce)).not.toBe(proof); // domain-separated
   });

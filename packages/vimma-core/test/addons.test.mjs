@@ -15,6 +15,17 @@ import { DEFAULT_CONFIG } from "../src/defaults.mjs";
 /** @import { AddonRecord } from "../src/addons.mjs" */
 
 /**
+ * `value`, failing the test where it is missing.
+ * @template T
+ * @param {T | undefined} value
+ * @returns {T}
+ */
+const defined = (value) => {
+  if (value === undefined) throw new Error("expected a value");
+  return value;
+};
+
+/**
  * @param {Partial<AddonRecord>} over
  * @returns {AddonRecord}
  */
@@ -54,21 +65,22 @@ describe("which add-ons the picker lists", () => {
   });
 
   test("an item is selected by its add-on id", () => {
-    const [item] = addonItems([records[1]]);
+    const item = defined(addonItems([defined(records[1])])[0]);
     expect(itemId(item)).toBe("bw@x");
   });
 });
 
 describe("row text", () => {
   test("version, enabled state, private ok, pending update", () => {
-    const [off, bw, ub] = addonItems(records);
+    const items = addonItems(records);
+    const [off, bw, ub] = [defined(items[0]), defined(items[1]), defined(items[2])];
     expect(addonRowText(bw)).toBe("2024.1 · enabled · private ok");
     expect(addonRowText(ub)).toBe("1.60.0 · enabled");
     expect(addonRowText(off)).toBe("1.0 · disabled · update");
   });
 
   test("a name with markup stays text in the item", () => {
-    const [item] = addonItems([rec({ name: "<b>bold</b>" })]);
+    const item = defined(addonItems([rec({ name: "<b>bold</b>" })])[0]);
     expect(item.display).toBe("<b>bold</b>");
   });
 });
@@ -128,7 +140,7 @@ describe("picker keys on an add-on", () => {
 });
 
 describe("remove: the question and the stale-answer guard", () => {
-  const [, bw] = addonItems(records);
+  const bw = defined(addonItems(records)[1]);
 
   test("the question names the add-on and its version", () => {
     expect(removeAddonQuestion(bw)).toBe('remove "Bitwarden" 2024.1? (y/N)');

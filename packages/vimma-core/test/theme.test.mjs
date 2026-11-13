@@ -728,7 +728,9 @@ describe("tokens", () => {
       theme: themeCfg({ source: "omarchy" }),
       omarchy: fixture("mono.colors.toml"),
     });
-    for (const [name, r] of [...badgeThemes(), ["mono.colors.toml", mono]]) {
+    /** @type {[string, ReturnType<typeof resolveTheme>][]} */
+    const themes = [...badgeThemes(), ["mono.colors.toml", mono]];
+    for (const [name, r] of themes) {
       for (const b of BADGES) {
         const fg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}-fg`]);
         const bg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}`]);
@@ -769,19 +771,26 @@ describe("tokens", () => {
 
   // The normal badge is the aqua: insert's green and help's cyan must stay apart from it, and from
   // each other, without badgeColors having to move them.
-  test.each([
+  /** @type {Array<["dark" | "light", typeof VIMMA_DARK]>} */
+  const vimmaVariants = [
     ["dark", VIMMA_DARK],
     ["light", VIMMA_LIGHT],
-  ])("vimma %s keeps insert and help apart from the aqua normal badge", (appearance, palette) => {
-    const t = resolveTheme({ theme: themeCfg({ name: "vimma", appearance }) }).tokens;
-    expect(t["--vimma-mode-normal"]).toBe(palette.accent);
-    expect(t["--vimma-mode-insert"]).toBe(palette.green);
-    expect(t["--vimma-mode-help"]).toBe(palette.cyan);
-    const apart = 2 * MIN_BADGE_DISTANCE;
-    expect(colorDistance(palette.accent, palette.green)).toBeGreaterThanOrEqual(apart);
-    expect(colorDistance(palette.accent, palette.cyan)).toBeGreaterThanOrEqual(apart);
-    expect(colorDistance(palette.green, palette.cyan)).toBeGreaterThanOrEqual(apart);
-  });
+  ];
+  test.each(vimmaVariants)(
+    "vimma %s keeps insert and help apart from the aqua normal badge",
+    (appearance, palette) => {
+      const t = resolveTheme({ theme: themeCfg({ name: "vimma", appearance }) }).tokens;
+      expect(t["--vimma-mode-normal"]).toBe(palette.accent);
+      expect(t["--vimma-mode-insert"]).toBe(palette.green);
+      expect(t["--vimma-mode-help"]).toBe(palette.cyan);
+      const apart = 2 * MIN_BADGE_DISTANCE;
+      const { accent, green, cyan } = palette;
+      if (!accent || !green || !cyan) throw new Error(`vimma ${appearance} lacks a badge colour`);
+      expect(colorDistance(accent, green)).toBeGreaterThanOrEqual(apart);
+      expect(colorDistance(accent, cyan)).toBeGreaterThanOrEqual(apart);
+      expect(colorDistance(green, cyan)).toBeGreaterThanOrEqual(apart);
+    },
+  );
 
   test("colorDistance is CIE76 delta E: 0 for one colour, 100 from black to white", () => {
     expect(colorDistance("#cba6f7", "#CBA6F7")).toBe(0);
@@ -910,6 +919,7 @@ describe("themeStylesheet", () => {
   });
 
   test("a fixed scheme is passed to web pages; one that follows the system is not", () => {
+    /** @type {[ReturnType<typeof themeStylesheet>, string][]} */
     const fixed = [
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "light" }) }), "light"],
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "dark" }) }), "dark"],

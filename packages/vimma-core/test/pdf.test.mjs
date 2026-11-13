@@ -73,6 +73,10 @@ describe("pdfPageText", () => {
 
 // Delivery PR 3: zathura's page, zoom and layout keys (decisions 6 to 8; security.md V7).
 describe("pdfPageTarget", () => {
+  /**
+   * @param {Parameters<typeof pdfPageTarget>[0]} op
+   * @param {number} count
+   */
   const at = (op, count, page = 3, pages = 12) => pdfPageTarget(op, count, page, pages);
   test("G and gg go to the last and first page, with a count to that page", () => {
     expect(at("last", 0)).toBe(12);

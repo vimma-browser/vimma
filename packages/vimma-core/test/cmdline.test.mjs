@@ -14,7 +14,20 @@ import {
   parseSettingsCommand,
 } from "../src/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/actions.mjs";
+/** @import { History } from "../src/cmdline.mjs" */
 
+/**
+ * The error a command line gives; throws when it gives none.
+ * @param {string} text
+ * @param {Parameters<typeof parseCommandLine>[1]} [options]
+ */
+const errorOf = (text, options) => {
+  const r = parseCommandLine(text, options);
+  if (r.kind !== "error") throw new Error(`${text} parsed as ${r.kind}`);
+  return r.error;
+};
+
+/** @param {string} command @param {string} id @param {{ arg?: number, text?: string }} [extra] */
 const run = (command, id, extra = {}) => ({
   kind: "run",
   command,
@@ -146,13 +159,14 @@ describe("parseCommandLine: plan §2 commands", () => {
   ])("%j → %s", (text, code) => {
     const r = parseCommandLine(text);
     expect(r.kind).toBe("error");
+    if (r.kind !== "error") return;
     expect(r.error.code).toBe(code);
     expect(r.error.message).toEqual(expect.any(String));
     expect(r.error.suggestions).toEqual(expect.any(Array));
   });
 
   test(":map with arguments says bindings live in config.toml", () => {
-    expect(parseCommandLine(":map j k").error.message).toMatch(/config\.toml/);
+    expect(errorOf(":map j k").message).toMatch(/config\.toml/);
   });
 
   test.each(["", ":", "  :  ", "::"])("%j is empty", (text) => {
@@ -171,11 +185,11 @@ describe("parseCommandLine: actions, abbreviations, errors", () => {
   });
 
   test("actions take no arguments", () => {
-    expect(parseCommandLine(":scroll_down 3").error.code).toBe("unexpected-argument");
+    expect(errorOf(":scroll_down 3").code).toBe("unexpected-argument");
   });
 
   test("an ambiguous dotted id is unknown", () => {
-    expect(parseCommandLine(":tab.goto").error.code).toBe("unknown-command");
+    expect(errorOf(":tab.goto").code).toBe("unknown-command");
   });
 
   test.each([
@@ -187,9 +201,9 @@ describe("parseCommandLine: actions, abbreviations, errors", () => {
   });
 
   test(":w is ambiguous and lists the candidates", () => {
-    const r = parseCommandLine(":w");
-    expect(r.error.code).toBe("ambiguous-command");
-    expect([...r.error.suggestions].sort()).toEqual([
+    const r = errorOf(":w");
+    expect(r.code).toBe("ambiguous-command");
+    expect([...r.suggestions].sort()).toEqual([
       "workspace",
       "workspaces",
       "wsdelete",
@@ -202,24 +216,24 @@ describe("parseCommandLine: actions, abbreviations, errors", () => {
   });
 
   test(":tabnwe is unknown and suggests tabnew", () => {
-    const r = parseCommandLine(":tabnwe");
-    expect(r.error.code).toBe("unknown-command");
-    expect(r.error.suggestions).toEqual(["tabnew"]);
-    expect(r.error.message).toContain("tabnwe");
+    const r = errorOf(":tabnwe");
+    expect(r.code).toBe("unknown-command");
+    expect(r.suggestions).toEqual(["tabnew"]);
+    expect(r.message).toContain("tabnwe");
   });
 
   test(":scroll_dwn suggests scroll_down", () => {
-    expect(parseCommandLine(":scroll_dwn").error.suggestions).toEqual(["scroll_down"]);
+    expect(errorOf(":scroll_dwn").suggestions).toEqual(["scroll_down"]);
   });
 
   test("an unknown word with no near match suggests nothing", () => {
-    expect(parseCommandLine(":xyzzyplugh").error.suggestions).toEqual([]);
+    expect(errorOf(":xyzzyplugh").suggestions).toEqual([]);
   });
 
   test("results are frozen", () => {
     const r = parseCommandLine(":tabnew x");
     expect(Object.isFrozen(r)).toBe(true);
-    expect(Object.isFrozen(r.action)).toBe(true);
+    expect(r.kind === "run" && Object.isFrozen(r.action)).toBe(true);
   });
 });
 
@@ -228,14 +242,14 @@ describe("command table", () => {
 
   test("every command maps to an action in actions.mjs or in PENDING_ACTIONS", () => {
     for (const c of COMMANDS) {
-      for (const id of [c.action, c.textAction].filter(Boolean)) {
+      for (const id of [c.action, c.textAction].flatMap((a) => (a ? [a] : []))) {
         expect(ids.has(id) || PENDING_ACTIONS.includes(id), `${c.name} → ${id}`).toBe(true);
       }
     }
   });
 
   test(":q's action says the last pane closes the tab (plan §2)", () => {
-    expect(getAction("close_pane").description).toBe("Close pane; the last pane closes the tab");
+    expect(getAction("close_pane")?.description).toBe("Close pane; the last pane closes the tab");
   });
 
   test("PENDING_ACTIONS are exactly the missing ones, not yet in actions.mjs", () => {
@@ -256,13 +270,14 @@ describe("command table", () => {
 });
 
 describe("completeCommandLine", () => {
+  /** @param {string} text @param {{ limit?: number }} [opts] */
   const values = (text, opts) => completeCommandLine(text, opts).candidates.map((c) => c.value);
 
   test("tab → tabnew, tabrename, tabsearch first, then actions", () => {
     const v = values(":tab");
     expect(v.slice(0, 3)).toEqual(["tabnew", "tabrename", "tabsearch"]);
     expect(completeCommandLine(":tab").word).toBe("tab");
-    expect(completeCommandLine(":tab").candidates[3].kind).toBe("action");
+    expect(completeCommandLine(":tab").candidates[3]?.kind).toBe("action");
   });
 
   test("wsp → wsprev", () => {
@@ -306,7 +321,7 @@ describe("completeCommandLine", () => {
       expect(c.description.length).toBeGreaterThan(0);
     }
     const vs = completeCommandLine(":vs").candidates.find((c) => c.value === "vs");
-    expect(vs.description).toContain("vsplit");
+    expect(vs?.description).toContain("vsplit");
   });
 
   test(":theme completes dark, light and system", () => {
@@ -378,8 +393,8 @@ describe(":settings [pane]", () => {
       kind: "open",
       url: "about:preferences#privacy",
     });
-    expect(parseSettingsCommand("home").url).toBe("about:preferences#home");
-    expect(parseSettingsCommand("sync").url).toBe("about:preferences#sync");
+    expect(parseSettingsCommand("home")).toHaveProperty("url", "about:preferences#home");
+    expect(parseSettingsCommand("sync")).toHaveProperty("url", "about:preferences#sync");
   });
 
   test("an unknown pane is refused, with the nearest name", () => {
@@ -434,6 +449,7 @@ describe("parseBookmarksToolbarCommand: :bookmarkstoolbar [show|hide|newtab]", (
 });
 
 describe("history", () => {
+  /** @param {History} h @param {string[]} lines */
   const push = (h, ...lines) => lines.reduce(pushHistory, h);
 
   test("push trims, drops empty lines, dedupes to newest, honours limit", () => {
@@ -518,7 +534,7 @@ describe("workspace commands like Vim's buffer commands", () => {
   });
 
   test.each([":wn x", ":wp x", ":workspaces x"])("%j takes no argument", (text) => {
-    expect(parseCommandLine(text).error.code).toBe("unexpected-argument");
+    expect(errorOf(text).code).toBe("unexpected-argument");
   });
 
   test("no command word is two commands' (aliases included)", () => {
@@ -536,7 +552,7 @@ describe("workspace commands like Vim's buffer commands", () => {
     expect(parseCommandLine(":addo")).toEqual(run("addon", "addons.popup"));
     expect(parseCommandLine(":wsr")).toEqual(run("wsrename", "workspace.rename"));
     // still ambiguous when no candidate begins all the others
-    expect(parseCommandLine(":s").error.code).toBe("ambiguous-command");
+    expect(errorOf(":s").code).toBe("ambiguous-command");
   });
 
   test("Tab completes workspace names after :ws, :workspace, :wd, :wsdelete and :wsmove", () => {
@@ -602,7 +618,7 @@ describe(":agent (docs/specs/builtin-agent.md Behaviour 14)", () => {
       kind: "error",
       error: { code: "unknown-command" },
     });
-    const error = /** @type {any} */ (parseCommandLine(":agen", { hidden })).error;
+    const error = errorOf(":agen", { hidden });
     expect(error.suggestions).not.toContain("agent");
     const words = completeCommandLine(":agen", { hidden }).candidates.map((c) => c.value);
     expect(words).not.toContain("agent");

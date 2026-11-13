@@ -39,6 +39,16 @@ const MIN = 60_000;
 const READ = "vimma_read_page";
 const OPEN = "vimma_open";
 
+/**
+ * The request `ask` queued; throws when it ran or was denied instead, so a test never answers a
+ * request that does not exist.
+ * @param {import("../src/agent.mjs").Admission | undefined} admission
+ */
+function waiting(admission) {
+  if (admission?.kind !== "wait") throw new Error(`not queued: ${JSON.stringify(admission)}`);
+  return admission;
+}
+
 /** A queue with connections 1 and 2. */
 function queue() {
   const q = new AgentQueue();
@@ -80,7 +90,7 @@ describe("queueing (decision 17)", () => {
       { kind: "deny", reason: "busy" },
     ]);
     expect(q.waiting.map((r) => r.conn)).toEqual([1, 2, 1, 2, 1, 2, 1, 2]);
-    expect(q.head()?.id).toBe(out[0].id);
+    expect(q.head()?.id).toBe(waiting(out[0]).id);
   });
 
   test("at most 16 wait in all", () => {
@@ -94,9 +104,9 @@ describe("queueing (decision 17)", () => {
 
   test("answers go oldest first; a closed connection takes its waiting requests with it", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(2, READ, 0);
-    const c = q.ask(1, OPEN, 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(2, READ, 0));
+    const c = waiting(q.ask(1, OPEN, 0));
     expect(q.disconnect(1)).toEqual([a.id, c.id]);
     expect(q.waiting.map((r) => r.id)).toEqual([b.id]);
     expect(q.ask(1, READ, 0)).toEqual({ kind: "deny", reason: "busy" }); // not connected
@@ -104,8 +114,8 @@ describe("queueing (decision 17)", () => {
 
   test("a cancelled request leaves the queue", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(1, READ, 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(1, READ, 0));
     expect(q.cancel(a.id)).toBe(true);
     expect(q.cancel(a.id)).toBe(false);
     expect(q.head()?.id).toBe(b.id);
@@ -115,8 +125,8 @@ describe("queueing (decision 17)", () => {
 describe("answers", () => {
   test("once allows only the request asked", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(1, READ, 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(1, READ, 0));
     expect(q.answer(a.id, { kind: "once" }, 0)).toEqual({
       resolved: [{ id: a.id, allow: true }],
     });
@@ -125,8 +135,8 @@ describe("answers", () => {
 
   test("a denial is the user's; a timeout is the clock's", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(1, READ, 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(1, READ, 0));
     expect(q.answer(a.id, { kind: "deny" }, 0).resolved).toEqual([
       { id: a.id, allow: false, reason: "user" },
     ]);
@@ -138,9 +148,9 @@ describe("answers", () => {
 
   test("x denies, denies everything queued from that connection, and mutes it", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(2, READ, 0);
-    const c = q.ask(1, OPEN, 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(2, READ, 0));
+    const c = waiting(q.ask(1, OPEN, 0));
     expect(q.answer(a.id, { kind: "mute" }, 0).resolved).toEqual([
       { id: a.id, allow: false, reason: "user" },
       { id: c.id, allow: false, reason: "muted" },
@@ -157,7 +167,7 @@ describe("answers", () => {
     const q = queue();
     expect(MUTE_MS).toBe(60_000);
     for (let i = 0; i < 3; i++) {
-      const r = q.ask(1, READ, i);
+      const r = waiting(q.ask(1, READ, i));
       q.answer(r.id, { kind: "deny" }, 1000);
     }
     expect(q.ask(1, READ, 2000)).toEqual({ kind: "deny", reason: "muted" });
@@ -167,7 +177,8 @@ describe("answers", () => {
 
   test("a yes between denials starts the count again", () => {
     const q = queue();
-    const say = (kind) => q.answer(q.ask(1, READ, 0).id, { kind }, 0);
+    const say = (/** @type {"once" | "deny"} */ kind) =>
+      q.answer(waiting(q.ask(1, READ, 0)).id, { kind }, 0);
     say("deny");
     say("deny");
     say("once");
@@ -180,7 +191,7 @@ describe("answers", () => {
 describe("grants (decisions 20-22, mcp-grants G1)", () => {
   test("a grant covers every tool of its connection, not another connection's", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
+    const a = waiting(q.ask(1, READ, 0));
     expect(q.answer(a.id, { kind: "grant", minutes: 15 }, 0)).toEqual({
       resolved: [{ id: a.id, allow: true }],
       grant: { conn: 1, until: 15 * MIN },
@@ -198,11 +209,11 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
 
   test("a grant lets the connection's queued calls of every tool run, not an always-ask one", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(1, OPEN, 0);
-    const c = q.ask(1, "vimma_activate", 0, { always: true });
-    const d = q.ask(2, READ, 0);
-    const e = q.ask(1, "vimma_show", 0);
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(1, OPEN, 0));
+    const c = waiting(q.ask(1, "vimma_activate", 0, { always: true }));
+    const d = waiting(q.ask(2, READ, 0));
+    const e = waiting(q.ask(1, "vimma_show", 0));
     expect(q.answer(a.id, { kind: "grant", minutes: 5 }, 0).resolved).toEqual([
       { id: a.id, allow: true },
       { id: b.id, allow: true },
@@ -212,7 +223,7 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
 
   test("a connection without a session asks again after a reconnect", () => {
     const q = queue();
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 5 }, 0);
     q.disconnect(1);
     q.connect(1);
     expect(q.ask(1, READ, 1000).kind).toBe("wait");
@@ -221,7 +232,7 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
   // docs/specs/mcp-session-grants.md S1: a grant for the whole connection has no end.
   test("a grant for the whole connection runs until the connection closes", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
+    const a = waiting(q.ask(1, READ, 0));
     expect(q.answer(a.id, { kind: "grant", minutes: Infinity }, 0).grant).toEqual({
       conn: 1,
       until: Infinity,
@@ -240,7 +251,7 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     function granted(minutes = Infinity) {
       const q = new AgentQueue();
       q.connect(1, { session: S, now: 0 });
-      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes }, 0);
+      q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes }, 0);
       return q;
     }
 
@@ -314,7 +325,7 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
 
     test("a muted connection's grant is not kept for a reconnect", () => {
       const q = granted();
-      const d = q.ask(1, "vimma_download", 0, { always: true });
+      const d = waiting(q.ask(1, "vimma_download", 0, { always: true }));
       q.answer(d.id, { kind: "mute" }, 0);
       q.disconnect(1, 0);
       q.connect(3, { session: S, now: 0 });
@@ -326,13 +337,13 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
       q.forgetSessions();
       // A connection that said hello while :mcp off was closing the others.
       q.connect(1, { session: S, now: 0 });
-      q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: Infinity }, 0);
       q.disconnect(1, 0);
       q.resumeSessions();
       q.connect(2, { session: S, now: 0 });
       expect(q.ask(2, READ, 0).kind).toBe("wait");
       // On again, sessions work as before.
-      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.answer(waiting(q.ask(2, READ, 0)).id, { kind: "grant", minutes: Infinity }, 0);
       q.disconnect(2, 0);
       q.connect(3, { session: S, now: 0 });
       expect(q.ask(3, READ, 0).kind).toBe("run");
@@ -341,7 +352,7 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
     test("turning MCP off ends the parked grants and those of the open connections", () => {
       const q = granted();
       q.connect(2, { session: "c".repeat(64), now: 0 });
-      q.answer(q.ask(2, READ, 0).id, { kind: "grant", minutes: Infinity }, 0);
+      q.answer(waiting(q.ask(2, READ, 0)).id, { kind: "grant", minutes: Infinity }, 0);
       q.disconnect(1, 0);
       q.forgetSessions();
       // :mcp off closes the open ones afterwards: they must not park what they held.
@@ -355,16 +366,16 @@ describe("grants (decisions 20-22, mcp-grants G1)", () => {
 
   test("a connection holds at most one grant", () => {
     const q = queue();
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 5 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 5 }, 0);
     expect(q.grants(0)).toEqual([{ conn: 1, until: 5 * MIN }]);
-    q.answer(q.ask(1, OPEN, 6 * MIN).id, { kind: "grant", minutes: 10 }, 6 * MIN);
+    q.answer(waiting(q.ask(1, OPEN, 6 * MIN)).id, { kind: "grant", minutes: 10 }, 6 * MIN);
     expect(q.grants(6 * MIN)).toEqual([{ conn: 1, until: 16 * MIN }]);
   });
 
   test("grants end on revoke and on disconnect, and are listed shortest first", () => {
     const q = queue();
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 30 }, 0);
-    q.answer(q.ask(2, OPEN, 0).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 30 }, 0);
+    q.answer(waiting(q.ask(2, OPEN, 0)).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.grants(0).map((g) => g.until)).toEqual([10 * MIN, 30 * MIN]);
     expect(q.grants(11 * MIN).map((g) => g.conn)).toEqual([1]); // expired ones drop out
     q.disconnect(1);
@@ -546,11 +557,11 @@ describe("clicks and submissions (mcp-forms F15, F25, F26)", () => {
     const q = new AgentQueue();
     q.connect(1);
     const a = q.ask(1, "vimma_activate", 0);
-    q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_activate", 1000).kind).toBe("run");
     const submit = q.ask(1, "vimma_activate", 2000, { always: true });
     expect(submit.kind).toBe("wait");
-    q.answer(/** @type {any} */ (submit).id, { kind: "grant", minutes: 60 }, 2000);
+    q.answer(waiting(submit).id, { kind: "grant", minutes: 60 }, 2000);
     // The yes to a submit is that one submission: the grant is still the first one's.
     expect(q.grants(3000)).toEqual([expect.objectContaining({ conn: 1, until: 600_000 })]);
     expect(q.ask(1, "vimma_activate", 4000, { always: true }).kind).toBe("wait");
@@ -564,11 +575,11 @@ describe("checkpoints (mcp-checkpoints C1, C4)", () => {
   test("a checkpoint asks under a grant, its yes leaves the grant as it was", () => {
     const q = new AgentQueue();
     q.connect(1);
-    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     const pay = q.ask(1, "vimma_activate", 1000, { always: true });
     expect(pay.kind).toBe("wait");
-    expect(q.answer(/** @type {any} */ (pay).id, { kind: "once" }, 2000).resolved).toEqual([
-      { id: /** @type {any} */ (pay).id, allow: true },
+    expect(q.answer(waiting(pay).id, { kind: "once" }, 2000).resolved).toEqual([
+      { id: waiting(pay).id, allow: true },
     ]);
     expect(q.grants(3000)).toEqual([{ conn: 1, until: 10 * MIN }]);
     expect(q.ask(1, "vimma_activate", 3000).kind).toBe("run");
@@ -577,13 +588,9 @@ describe("checkpoints (mcp-checkpoints C1, C4)", () => {
   test("a no stops only the step: the grant stays, and three in a row mute", () => {
     const q = new AgentQueue();
     q.connect(1);
-    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     const no = (/** @type {number} */ at) =>
-      q.answer(
-        /** @type {any} */ (q.ask(1, "vimma_fill", at, { always: true })).id,
-        { kind: "deny" },
-        at,
-      );
+      q.answer(waiting(q.ask(1, "vimma_fill", at, { always: true })).id, { kind: "deny" }, at);
     no(1000);
     expect(q.grants(1000)).toEqual([{ conn: 1, until: 10 * MIN }]);
     expect(q.ask(1, READ, 1500).kind).toBe("run");
@@ -594,16 +601,18 @@ describe("checkpoints (mcp-checkpoints C1, C4)", () => {
 
   test("property: no answer to a checkpoint makes, lengthens or ends a grant", () => {
     const answer = fc.oneof(
-      fc.constant(/** @type {any} */ ({ kind: "once" })),
-      fc.constant(/** @type {any} */ ({ kind: "deny" })),
-      fc.integer({ min: 1, max: 1440 }).map((minutes) => ({ kind: "grant", minutes })),
+      fc.constant(/** @type {const} */ ({ kind: "once" })),
+      fc.constant(/** @type {const} */ ({ kind: "deny" })),
+      fc
+        .integer({ min: 1, max: 1440 })
+        .map((minutes) => ({ kind: /** @type {const} */ ("grant"), minutes })),
     );
     fc.assert(
       fc.property(fc.boolean(), fc.array(answer, { maxLength: 8 }), (granted, answers) => {
         const q = new AgentQueue();
         q.connect(1);
         if (granted) {
-          q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+          q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
         }
         const before = q.grants(1);
         let at = 1;
@@ -626,7 +635,7 @@ describe("fills (mcp-forms F15, F25)", () => {
     const q = new AgentQueue();
     q.connect(1);
     const click = q.ask(1, "vimma_activate", 0);
-    q.answer(/** @type {any} */ (click).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(click).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_fill", 1000).kind).toBe("run");
     expect(q.ask(1, "vimma_fill", 4000, { always: true }).kind).toBe("wait");
   });
@@ -651,7 +660,7 @@ describe("the screenshot rate (mcp-forms F21)", () => {
     const q = new AgentQueue();
     q.connect(1);
     const a = q.ask(1, "vimma_screenshot", 0);
-    q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_screenshot", 1000).kind).toBe("run");
     expect(q.ask(1, "vimma_activate", 1000).kind).toBe("run");
   });
@@ -676,7 +685,7 @@ describe("the console rate (mcp-forms F26)", () => {
     const q = new AgentQueue();
     q.connect(1);
     const a = q.ask(1, "vimma_console", 0);
-    q.answer(/** @type {any} */ (a).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(a).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, "vimma_console", 1000).kind).toBe("run");
     expect(q.ask(1, "vimma_screenshot", 1000).kind).toBe("run");
   });
@@ -716,7 +725,8 @@ describe(":mcp log (mcp-drive D14)", () => {
     expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
       "17:05:09 claude-code vimma_open https://a.example/x · allowed",
     );
-    for (const [outcome, said] of [
+    /** @type {[import("../src/agent.mjs").LogOutcome, string][]} */
+    const outcomes = [
       ["user", "denied"],
       ["timeout", "no answer (denied)"],
       ["busy", "denied (busy)"],
@@ -727,8 +737,9 @@ describe(":mcp log (mcp-drive D14)", () => {
       // mcp-checkpoints Behaviour 6: a payment or a form's yes and no are told apart.
       ["checkpoint-yes", "allowed (checkpoint)"],
       ["checkpoint-no", "denied (checkpoint)"],
-    ]) {
-      const row = logRow({ ...entry(), outcome: /** @type {any} */ (outcome) });
+    ];
+    for (const [outcome, said] of outcomes) {
+      const row = logRow({ ...entry(), outcome });
       expect(row.endsWith(` · ${said}`), row).toBe(true);
     }
   });
@@ -809,7 +820,7 @@ describe("questions that always ask", () => {
   const DOWNLOAD = "vimma_download";
   test("a grant does not run it, whatever was asked: it waits", () => {
     const q = queue();
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     expect(q.ask(1, DOWNLOAD, MIN).kind).toBe("run");
     expect(q.ask(1, DOWNLOAD, MIN, { always: true }).kind).toBe("wait");
     expect(q.ask(1, DOWNLOAD, MIN).kind).toBe("run"); // the grant still stands
@@ -817,8 +828,8 @@ describe("questions that always ask", () => {
 
   test("a grant given to another question leaves it waiting", () => {
     const q = queue();
-    const a = q.ask(1, READ, 0);
-    const b = q.ask(1, DOWNLOAD, 0, { always: true });
+    const a = waiting(q.ask(1, READ, 0));
+    const b = waiting(q.ask(1, DOWNLOAD, 0, { always: true }));
     expect(q.answer(a.id, { kind: "grant", minutes: 5 }, 0).resolved).toEqual([
       { id: a.id, allow: true },
     ]);
@@ -827,7 +838,7 @@ describe("questions that always ask", () => {
 
   test("a grant as its answer allows it once and grants nothing", () => {
     const q = queue();
-    const b = q.ask(1, DOWNLOAD, 0, { always: true });
+    const b = waiting(q.ask(1, DOWNLOAD, 0, { always: true }));
     expect(q.answer(b.id, { kind: "grant", minutes: 5 }, 0)).toEqual({
       resolved: [{ id: b.id, allow: true }],
     });
@@ -841,7 +852,7 @@ describe("vimma_show always asks (mcp-drive D4)", () => {
   const SHOW = "vimma_show";
   test("it waits even when asked without always, and a grant answer allows it once only", () => {
     const q = queue();
-    const a = q.ask(1, SHOW, 0);
+    const a = waiting(q.ask(1, SHOW, 0));
     expect(a.kind).toBe("wait");
     expect(q.answer(a.id, { kind: "grant", minutes: 10 }, 0)).toEqual({
       resolved: [{ id: a.id, allow: true }],
@@ -852,11 +863,14 @@ describe("vimma_show always asks (mcp-drive D4)", () => {
 
   test("a grant of another tool never covers it", () => {
     const q = queue();
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
-    const b = q.ask(1, SHOW, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const b = waiting(q.ask(1, SHOW, 0));
     expect(b.kind).toBe("wait");
-    q.answer(q.ask(1, READ, 0).id, { kind: "grant", minutes: 10 }, 0);
-    expect(q.waiting.map((r) => r.id)).toContain(b.id);
+    // Nor does one made while it waits.
+    const later = queue();
+    const shown = waiting(later.ask(1, SHOW, 0));
+    later.answer(waiting(later.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    expect(later.waiting.map((r) => r.id)).toContain(shown.id);
   });
 });
 
@@ -897,7 +911,7 @@ describe("the conversation grant (builtin-agent B18)", () => {
     const q = new AgentQueue();
     q.connect("builtin:1");
     for (let i = 0; i < 3; i++) {
-      q.answer(/** @type {any} */ (q.ask("builtin:1", READ, i)).id, { kind: "deny" }, i);
+      q.answer(waiting(q.ask("builtin:1", READ, i)).id, { kind: "deny" }, i);
     }
     expect(q.ask("builtin:1", READ, 10).kind).toBe("deny");
     q.grantConnection("builtin:1", 10);
@@ -951,7 +965,7 @@ describe("the built-in agent and :mcp off (builtin-agent Behaviour 33)", () => {
     q.connect("builtin:1");
     q.connect(7);
     q.grantConnection("builtin:1", 0);
-    q.answer(/** @type {any} */ (q.ask(7, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(7, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     q.forgetSessions();
     expect(q.grants(1)).toEqual([{ conn: "builtin:1", until: Infinity }]);
   });
@@ -965,7 +979,7 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
   function granted() {
     const q = new AgentQueue();
     q.connect(1);
-    q.answer(/** @type {any} */ (q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    q.answer(waiting(q.ask(1, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
     return q;
   }
 
@@ -980,9 +994,9 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
   test("a grant made later lets a waiting harmless form run, not a consequential one", () => {
     const q = new AgentQueue();
     q.connect(1);
-    const read = /** @type {any} */ (q.ask(1, READ, 0));
-    const harmless = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: true }));
-    const message = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const read = waiting(q.ask(1, READ, 0));
+    const harmless = waiting(q.ask(1, ACT, 0, { always: true, covered: true }));
+    const message = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
     const { resolved } = q.answer(read.id, { kind: "grant", minutes: 10 }, 1);
     expect(resolved.map((r) => r.id)).toEqual([read.id, harmless.id]);
     expect(q.queue.some((r) => r.id === message.id)).toBe(true);
@@ -990,10 +1004,10 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
 
   test("an allowance runs its key under the grant", () => {
     const q = granted();
-    const first = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    const first = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
     expect(first.kind).toBe("wait");
-    const queued = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
-    const other = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "j" }));
+    const queued = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    const other = waiting(q.ask(1, ACT, 1000, { always: true, covered: "j" }));
     const { resolved } = q.answer(first.id, { kind: "here", key: "k" }, 2000);
     expect(resolved).toEqual([
       { id: first.id, allow: true },
@@ -1008,8 +1022,8 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
   test("an allowance is the connection's own", () => {
     const q = granted();
     q.connect(2);
-    q.answer(/** @type {any} */ (q.ask(2, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
-    const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    q.answer(waiting(q.ask(2, READ, 0)).id, { kind: "grant", minutes: 10 }, 0);
+    const asked = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
     q.answer(asked.id, { kind: "here", key: "k" }, 1000);
     expect(q.ask(2, ACT, 2000, { always: true, covered: "k" }).kind).toBe("wait");
   });
@@ -1021,11 +1035,11 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
       (/** @type {AgentQueue} */ q) => q.endGrant(1),
     ]) {
       const q = granted();
-      const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+      const asked = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
       q.answer(asked.id, { kind: "here", key: "k" }, 1000);
       end(q);
       // A new grant starts with no allowance.
-      const again = /** @type {any} */ (q.ask(1, READ, 11 * MIN));
+      const again = q.ask(1, READ, 11 * MIN);
       if (again.kind === "wait") q.answer(again.id, { kind: "grant", minutes: 10 }, 11 * MIN);
       expect(q.ask(1, ACT, 11 * MIN + 1, { always: true, covered: "k" }).kind).toBe("wait");
     }
@@ -1034,17 +1048,17 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
   test("`a` without a grant is a yes for that step only", () => {
     const q = new AgentQueue();
     q.connect(1);
-    const asked = /** @type {any} */ (q.ask(1, ACT, 0, { always: true, covered: "k" }));
+    const asked = waiting(q.ask(1, ACT, 0, { always: true, covered: "k" }));
     expect(q.answer(asked.id, { kind: "here", key: "k" }, 1).resolved).toEqual([
       { id: asked.id, allow: true },
     ]);
-    q.answer(/** @type {any} */ (q.ask(1, READ, 2)).id, { kind: "grant", minutes: 10 }, 2);
+    q.answer(waiting(q.ask(1, READ, 2)).id, { kind: "grant", minutes: 10 }, 2);
     expect(q.ask(1, ACT, 3, { always: true, covered: "k" }).kind).toBe("wait");
   });
 
   test("an always-ask tool and a request with no cover are never covered", () => {
     const q = granted();
-    const asked = /** @type {any} */ (q.ask(1, ACT, 1000, { always: true, covered: "k" }));
+    const asked = waiting(q.ask(1, ACT, 1000, { always: true, covered: "k" }));
     q.answer(asked.id, { kind: "here", key: "k" }, 1000);
     expect(q.ask(1, "vimma_show", 2000, { covered: true }).kind).toBe("wait");
     expect(q.ask(1, ACT, 2000, { always: true }).kind).toBe("wait");

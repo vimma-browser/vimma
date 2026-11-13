@@ -37,6 +37,8 @@ import {
 } from "../src/agent-act.mjs";
 import { AGENT_LINKS } from "../src/agent-keys.mjs";
 import { parseHintReply } from "../src/hints.mjs";
+/** @import { AgentElementTarget } from "../src/agent-act.mjs" */
+/** @import { AgentElementInfo } from "../src/agent-element.mjs" */
 
 const rect = { x: 10, y: 20, width: 30, height: 10 };
 /** @param {number} y @param {number} [x] */
@@ -219,7 +221,7 @@ describe("labels (F5)", () => {
 describe("the element list (F5; security.md M31)", () => {
   const signup = { key: "1:0", method: "post", action: "https://example.com/api/signup" };
   const search = { key: "1:1", method: "get", action: "https://example.com/search" };
-  /** @param {string} label @param {object} info @param {object} [more] */
+  /** @param {string} label @param {AgentElementInfo} info @param {Partial<AgentElementTarget>} [more] */
   const el = (label, info, more = {}) => ({
     label,
     target: { rect, kind: "click", info, ...more },
@@ -401,7 +403,7 @@ describe("the element list (F5; security.md M31)", () => {
 // labels; the labels stay those of the page now (security.md M31).
 describe("compact element lists (agent-speed S4)", () => {
   const basket = { key: "1:0", method: "post", action: "https://shop.example/basket" };
-  /** @param {string} label @param {object} info @param {object} [more] */
+  /** @param {string} label @param {AgentElementInfo} info @param {Partial<AgentElementTarget>} [more] */
   const el = (label, info, more = {}) => ({
     label,
     target: { rect, kind: "click", info, ...more },
@@ -499,7 +501,7 @@ describe("compact element lists (agent-speed S4)", () => {
 // builtin-agent B2 (agent-speed Behaviour 4): `query` and `kinds` narrow a list to the elements
 // an agent asks for.
 describe("element list filters (builtin-agent B2)", () => {
-  /** @param {string} label @param {object} info */
+  /** @param {string} label @param {AgentElementInfo} info */
   const el = (label, info) => ({ label, target: { rect, kind: "click", info } });
   const page = [
     el("aa", { kind: "link", text: "Dairy" }),
@@ -904,7 +906,7 @@ describe("screenshots (F18-F20)", () => {
     expect(screenshotScale(640, 2)).toBe(2);
     expect(screenshotScale(800, 2)).toBe(1.6);
     expect(screenshotScale(2560, 1)).toBe(0.5);
-    expect(screenshotScale(1366, 1) * 1366).toBeLessThanOrEqual(1280);
+    expect((screenshotScale(1366, 1) ?? Infinity) * 1366).toBeLessThanOrEqual(1280);
     // A device pixel ratio that is no number counts as 1.
     expect(screenshotScale(640, Number.NaN)).toBe(1);
     expect(screenshotScale(640, 0)).toBe(1);
@@ -1084,7 +1086,7 @@ describe("console reads (F22-F24)", () => {
   });
 
   test("the lists: newest first, only after since, at most 100 each, within the bytes", () => {
-    const err = (time, message = `e${time}`) => ({
+    const err = (/** @type {number} */ time, message = `e${time}`) => ({
       level: /** @type {const} */ ("error"),
       source: /** @type {const} */ ("script"),
       message,
@@ -1093,7 +1095,7 @@ describe("console reads (F22-F24)", () => {
       column: 1,
       time,
     });
-    const req = (time) => ({
+    const req = (/** @type {number} */ time) => ({
       method: "GET",
       url: `https://example.com/api/${time}`,
       status: 500,
@@ -1104,8 +1106,8 @@ describe("console reads (F22-F24)", () => {
     expect(r.errors.split("\n").map((l) => JSON.parse(l).time)).toEqual([3, 2, 1]);
     expect(r.requests.split("\n").map((l) => JSON.parse(l).time)).toEqual([5, 4]);
     expect(r.dropped).toBe(0);
-    expect(JSON.parse(r.errors.split("\n")[0])).toEqual(err(3));
-    expect(JSON.parse(r.requests.split("\n")[0])).toEqual(req(5));
+    expect(JSON.parse(r.errors.split("\n")[0] ?? "")).toEqual(err(3));
+    expect(JSON.parse(r.requests.split("\n")[0] ?? "")).toEqual(req(5));
     // Only entries newer than `since`.
     r = consoleLists([err(1), err(3)], [req(2), req(4)], 2, AGENT_CONSOLE.bytes);
     expect(r.errors.split("\n").map((l) => JSON.parse(l).time)).toEqual([3]);
@@ -1119,7 +1121,7 @@ describe("console reads (F22-F24)", () => {
     const reqs = Array.from({ length: 120 }, (_, i) => req(i + 1));
     r = consoleLists(many, reqs, 0, AGENT_CONSOLE.bytes);
     expect(r.errors.split("\n")).toHaveLength(100);
-    expect(JSON.parse(r.errors.split("\n")[99]).time).toBe(31);
+    expect(JSON.parse(r.errors.split("\n")[99] ?? "").time).toBe(31);
     expect(r.requests.split("\n")).toHaveLength(100);
     expect(r.dropped).toBe(50);
     // Past the byte budget the oldest are left out, of either list, and counted.
@@ -1198,7 +1200,7 @@ describe("console reads: bounded work and URLs without credentials (F24, M30)", 
     const entries = Array.from({ length: 1500 }, (_, i) => ({ time: i }));
     const kept = newestEntries(entries, 100, AGENT_CONSOLE.errors);
     expect(kept).toHaveLength(AGENT_CONSOLE.errors);
-    expect(kept[0].time).toBe(1499);
+    expect(kept[0]?.time).toBe(1499);
     expect(kept.at(-1)?.time).toBe(1400);
     expect(newestEntries(entries, 1495, 100).map((e) => e.time)).toEqual([1499, 1498, 1497, 1496]);
   });

@@ -5,10 +5,23 @@ import { createDispatcher } from "../src/dispatcher.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { parseKey } from "../src/keys.mjs";
 
+/** @import { Mode } from "../src/modes.mjs" */
+/** @import { EscapeResult } from "../src/escape.mjs" */
+
+/**
+ * @param {string} id
+ * @param {Mode} mode
+ */
 const action = (id, mode, extra = {}) => ({ kind: "action", action: { id }, mode, ...extra });
+/**
+ * The mode Esc leaves for; a pass has none.
+ * @param {EscapeResult} r
+ */
+const modeOf = (r) => (r.kind === "pass" ? undefined : r.mode);
 
 describe("resolveEscape (plan §2)", () => {
-  test.each([
+  /** @type {Array<[Mode, ReturnType<typeof action>]>} */
+  const idle = [
     ["insert", action("mode.normal", "normal", { blur: true })],
     ["visual", action("mode.normal", "normal", { collapseSelection: true })],
     ["command", action("command.cancel", "normal")],
@@ -16,7 +29,8 @@ describe("resolveEscape (plan §2)", () => {
     ["help", action("help.close", "normal")],
     ["panel", action("panel.close", "normal")],
     ["normal", action("page.stop", "normal", { afterPage: true, blur: true })],
-  ])("Given %s with nothing pending, then %o", (mode, expected) => {
+  ];
+  test.each(idle)("Given %s with nothing pending, then %o", (mode, expected) => {
     expect(resolveEscape({ mode })).toEqual(expected);
     expect(resolveEscape({ mode, pending: false })).toEqual(expected);
   });
@@ -25,18 +39,20 @@ describe("resolveEscape (plan §2)", () => {
     expect(resolveEscape({ mode, pending: true })).toEqual({ kind: "cancel", mode });
   });
 
-  test.each([
+  /** @type {Array<[Mode, Mode]>} */
+  const overlays = [
     ["help", "insert"],
     ["panel", "visual"],
     ["help", "normal"],
-  ])("Given %s opened from %s, then Esc returns there", (mode, previous) => {
-    expect(resolveEscape({ mode, previous }).mode).toBe(previous);
+  ];
+  test.each(overlays)("Given %s opened from %s, then Esc returns there", (mode, previous) => {
+    expect(modeOf(resolveEscape({ mode, previous }))).toBe(previous);
   });
 
-  test.each(["command", "hint", "insert", "visual"])(
+  test.each(/** @type {Mode[]} */ (["command", "hint", "insert", "visual"]))(
     "Given %s, then previous is ignored and Esc goes to normal",
     (mode) => {
-      expect(resolveEscape({ mode, previous: "insert" }).mode).toBe("normal");
+      expect(modeOf(resolveEscape({ mode, previous: "insert" }))).toBe("normal");
     },
   );
 
