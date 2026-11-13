@@ -16,15 +16,15 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ENGINE_CERT_DIR, linkUpdateCerts } from "../link-update-certs.mjs";
+import { ENGINE_CERT_DIR, linkUpdateCerts } from "../link-update-certs.ts";
 import { CERT_DIR } from "../../update/gen-update-keys.mjs";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 const SLOTS = ["primary.der", "secondary.der"];
 
-/** Every file under `dir`, relative to it. @param {string} dir @returns {string[]} */
-function walk(dir, prefix = "") {
+/** Every file under `dir`, relative to it. */
+function walk(dir: string, prefix = ""): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(join(dir, e.name), `${prefix}${e.name}/`) : [`${prefix}${e.name}`],
   );
@@ -62,7 +62,7 @@ describe("the update certificates' location", () => {
   it("is linked by npm run import, after surfer import", () => {
     const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
     expect(pkg.scripts.import).toMatch(
-      /surfer import && node tools\/import\/link-update-certs\.mjs &&/,
+      /surfer import && node tools\/import\/link-update-certs\.ts &&/,
     );
   });
 });

@@ -13,8 +13,9 @@
  * Upstream sources, .git and anything outside engine/ are never written. Run it, then
  * `npm run import` and a build (mach reconfigures on its own).
  *
- * CLI: node tools/import/relocate-checkout.mjs --from /old/path [--dry-run]
+ * CLI: node tools/import/relocate-checkout.ts --from /old/path [--dry-run]
  */
+import type { Dirent } from "node:fs";
 import {
   closeSync,
   constants as fsConstants,
@@ -36,21 +37,17 @@ const MAX_TEXT = 64 * 1024 * 1024;
 /**
  * Replaces `from` wherever it is the whole path or a directory prefix of one: not inside a
  * longer name such as `/old/repo2`.
- * @param {string} text
- * @param {string} from
- * @param {string} to
  */
-export function replacePath(text, from, to) {
+export function replacePath(text: string, from: string, to: string) {
   const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return text.replace(new RegExp(`${escaped}(?![A-Za-z0-9._-])`, "g"), to);
 }
 
-/**
- * @param {string} dir
- * @param {(path: string, entry: import("node:fs").Dirent) => void} visit
- * @param {(name: string) => boolean} [skipDir]
- */
-function walk(dir, visit, skipDir = () => false) {
+function walk(
+  dir: string,
+  visit: (path: string, entry: Dirent) => void,
+  skipDir: (name: string) => boolean = () => false,
+) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
     const p = join(dir, e.name);
     if (e.isDirectory()) {
@@ -60,11 +57,18 @@ function walk(dir, visit, skipDir = () => false) {
 }
 
 /**
- * @param {{ root: string, from: string, dryRun?: boolean }} opts root: this checkout (where the
- *   tree is now); from: where it was
- * @returns {{ links: number, files: number }} what was (or, dry, would be) changed
+ * @param opts root: this checkout (where the tree is now); from: where it was
+ * @returns what was (or, dry, would be) changed
  */
-export function relocate({ root, from, dryRun = false }) {
+export function relocate({
+  root,
+  from,
+  dryRun = false,
+}: {
+  root: string;
+  from: string;
+  dryRun?: boolean;
+}): { links: number; files: number } {
   if (!isAbsolute(from) || !isAbsolute(root)) {
     throw new Error("relocate: --from and the checkout must be absolute paths");
   }
@@ -72,7 +76,7 @@ export function relocate({ root, from, dryRun = false }) {
   const now = resolve(root);
   if (old === now) throw new Error(`relocate: ${old} is the same path as this checkout`);
   const engine = join(now, "engine");
-  const under = (/** @type {string} */ t) => t === old || t.startsWith(`${old}/`);
+  const under = (t: string) => t === old || t.startsWith(`${old}/`);
 
   let links = 0;
   walk(
@@ -96,7 +100,7 @@ export function relocate({ root, from, dryRun = false }) {
     const objdir = join(engine, obj.name);
     for (const top of readdirSync(objdir, { withFileTypes: true })) {
       if (top.name === "dist") continue;
-      const visit = (/** @type {string} */ p) => {
+      const visit = (p: string) => {
         // One descriptor for the check, the read and the write, opened without following a
         // link: a file swapped for a link between them cannot be written through
         // (CodeQL js/file-system-race). O_NONBLOCK: a FIFO is opened, seen and skipped.
@@ -105,7 +109,7 @@ export function relocate({ root, from, dryRun = false }) {
         try {
           fd = openSync(p, (dryRun ? O_RDONLY : O_RDWR) | O_NOFOLLOW | O_NONBLOCK);
         } catch (e) {
-          if (/** @type {NodeJS.ErrnoException} */ (e).code === "ELOOP") return; // a link
+          if ((e as NodeJS.ErrnoException).code === "ELOOP") return; // a link
           throw e;
         }
         try {
@@ -141,7 +145,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const dryRun = args.includes("--dry-run");
   const known = new Set(["--from", "--dry-run", from]);
   if (!from || args.some((a) => !known.has(a))) {
-    console.error("usage: relocate-checkout.mjs --from /old/checkout/path [--dry-run]");
+    console.error("usage: relocate-checkout.ts --from /old/checkout/path [--dry-run]");
     process.exit(2);
   }
   const root = fileURLToPath(new URL("../../", import.meta.url)).replace(/\/$/, "");

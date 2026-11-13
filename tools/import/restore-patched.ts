@@ -8,7 +8,7 @@
  * Checking out exactly those files from the engine's own git first makes every import start
  * from upstream. Nothing else in engine/ is touched: never `git checkout .`, never a clean.
  *
- * CLI: node tools/import/restore-patched.mjs [--dry-run]
+ * CLI: node tools/import/restore-patched.ts [--dry-run]
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -19,17 +19,16 @@ import { fileURLToPath } from "node:url";
  * Upstream paths a unified diff modifies: the `+++ b/<path>` line of each `--- `/`+++ ` header
  * pair outside a hunk. A file the patch creates (`--- /dev/null`) or deletes (`+++ /dev/null`)
  * has no upstream version to restore, so it is left out.
- * @param {string} text the patch
- * @returns {string[]} engine-relative paths, in order of first appearance, without duplicates
+ * @param text the patch
+ * @returns engine-relative paths, in order of first appearance, without duplicates
  */
-export function patchedFiles(text) {
+export function patchedFiles(text: string): string[] {
   const lines = text.split("\n");
-  /** @type {string[]} */
-  const files = [];
+  const files: string[] = [];
   let oldLeft = 0;
   let newLeft = 0;
   for (let i = 0; i < lines.length; i++) {
-    const line = /** @type {string} */ (lines[i]);
+    const line = lines[i] as string;
     if (oldLeft > 0 || newLeft > 0) {
       // Inside a hunk: count lines so a removed "-- a/x" or added "++ b/x" is never a header.
       if (line.startsWith("-")) oldLeft--;
@@ -62,32 +61,34 @@ export function patchedFiles(text) {
   return files;
 }
 
-/** @param {string} line a `--- ` or `+++ ` header; a tab starts an optional timestamp */
-function headerPath(line) {
-  return /** @type {string} */ (line.slice(4).split("\t")[0]).trimEnd();
+/** @param line a `--- ` or `+++ ` header; a tab starts an optional timestamp */
+function headerPath(line: string) {
+  return (line.slice(4).split("\t")[0] as string).trimEnd();
 }
 
 /**
- * @param {string} dir
- * @returns {string[]} every `*.patch` under dir, as absolute paths, sorted
+ * @returns every `*.patch` under dir, as absolute paths, sorted
  */
-export function findPatches(dir) {
+export function findPatches(dir: string): string[] {
   return readdirSync(dir, { recursive: true, withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith(".patch"))
     .map((e) => join(e.parentPath, e.name))
     .sort();
 }
 
-/**
- * @param {{ src: string, engine: string, dryRun?: boolean }} opts
- * @returns {{ files: string[], untracked: string[], command?: string[], skipped?: string }}
- */
-export function restorePatched({ src, engine, dryRun = false }) {
+export function restorePatched({
+  src,
+  engine,
+  dryRun = false,
+}: {
+  src: string;
+  engine: string;
+  dryRun?: boolean;
+}): { files: string[]; untracked: string[]; command?: string[]; skipped?: string } {
   if (!existsSync(join(engine, ".git"))) {
     return { files: [], untracked: [], skipped: `no engine git repo at ${engine}` };
   }
-  /** @type {string[]} */
-  const wanted = [];
+  const wanted: string[] = [];
   for (const patch of findPatches(src)) {
     for (const f of patchedFiles(readFileSync(patch, "utf8"))) {
       if (!wanted.includes(f)) wanted.push(f);
@@ -105,11 +106,7 @@ export function restorePatched({ src, engine, dryRun = false }) {
   return { files, untracked, command };
 }
 
-/**
- * @param {string} dir
- * @param {string[]} args
- */
-function git(dir, args) {
+function git(dir: string, args: string[]) {
   // No inherited GIT_* (a hook or worktree's GIT_DIR would point git at the wrong repo).
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")),
@@ -123,7 +120,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
   const unknown = args.filter((a) => a !== "--dry-run");
   if (unknown.length > 0) {
-    console.error(`usage: restore-patched.mjs [--dry-run] (unknown: ${unknown.join(" ")})`);
+    console.error(`usage: restore-patched.ts [--dry-run] (unknown: ${unknown.join(" ")})`);
     process.exit(2);
   }
   const root = fileURLToPath(new URL("../../", import.meta.url));

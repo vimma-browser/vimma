@@ -13,7 +13,7 @@
  * fixed list of extensions: a binary certificate can carry neither. Like surfer, this makes a
  * symlink and lists it in engine/.gitignore. Run by `npm run import`, after `surfer import`.
  *
- * CLI: node tools/import/link-update-certs.mjs
+ * CLI: node tools/import/link-update-certs.ts
  */
 
 import {
@@ -34,11 +34,11 @@ export const ENGINE_CERT_DIR = "toolkit/mozapps/update/updater/vimma";
 const SLOTS = ["primary.der", "secondary.der"];
 
 /**
- * @param {string} root the repository
- * @param {string} engine its engine/
- * @returns {string[]} the links made, engine-relative
+ * @param root the repository
+ * @param engine its engine/
+ * @returns the links made, engine-relative
  */
-export function linkUpdateCerts(root, engine) {
+export function linkUpdateCerts(root: string, engine: string): string[] {
   if (!existsSync(engine)) throw new Error(`no engine at ${engine}; run npm run download first`);
   // Check both before linking either, so a failed run leaves no half-set for a build to embed.
   const sources = SLOTS.map((f) => {
@@ -55,14 +55,13 @@ export function linkUpdateCerts(root, engine) {
   mkdirSync(join(engine, ENGINE_CERT_DIR), { recursive: true });
   const gitignore = join(engine, ".gitignore");
   const ignored = existsSync(gitignore) ? readFileSync(gitignore, "utf8").split("\n") : [];
-  /** @type {string[]} */
-  const linked = [];
+  const linked: string[] = [];
   SLOTS.forEach((f, i) => {
     const rel = `${ENGINE_CERT_DIR}/${f}`;
     const dest = join(engine, rel);
     // force: also a dangling link from when the certificates were under src/.
     rmSync(dest, { force: true });
-    symlinkSync(/** @type {string} */ (sources[i]), dest);
+    symlinkSync(sources[i] as string, dest);
     if (!ignored.includes(rel)) appendFileSync(gitignore, `\n${rel}`);
     linked.push(rel);
   });

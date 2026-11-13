@@ -183,9 +183,10 @@ for most of the 12.5 minutes `docs/runbook.md` records for `surfer download`; wi
 `package-lock.json` at `main` (7fc0226; the lockfile is unchanged since 30bf67e):
 
 - The build job runs `tools/package/package.mjs`, `tools/sync-core.mjs`,
-  `tools/version-files/version-files.mjs`, `tools/import/restore-patched.mjs` and
-  `tools/package/sbom.mjs` (Node built-ins only), `tools/package/validate-sbom.mjs` (imports
-  `ajv`), and Surfer (`download`, `config brand`, `import`, `build`).
+  `tools/version-files/version-files.mjs`, `tools/import/restore-patched.mjs` (Since changed:
+  `restore-patched.ts`, ADR-025) and `tools/package/sbom.mjs` (Node built-ins only),
+  `tools/package/validate-sbom.mjs` (imports `ajv`), and Surfer (`download`, `config brand`,
+  `import`, `build`).
 - **Surfer 1.14.9** has 22 direct dependencies: `@resvg/resvg-js` 1.4.0, `async-icns` 1.0.2,
   `axios` 1.20.0, `chalk` 4.1.2, `cli-progress` 3.12.0, `commander` 6.2.1, `execa` 5.1.1,
   `fast-extract` 1.14.11, `fs-extra` 10.1.0, `ini` 3.0.1, `is-apple-silicon` 1.0.1, `kleur`
@@ -448,8 +449,8 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
    which is no anchor); keeping the `.vimma-firefox-version` shortcut with a hash of the tarball
    (the tarball is not what is built; `engine/` is). Extracting with `CI_SKIP_INIT=1` skips
    Surfer's git commit of the whole tree (R3), which a build does not need: `e2e.yml` already
-   builds from an empty `git init`, and `restore-patched.mjs` has nothing to restore in a fresh
-   tree.
+   builds from an empty `git init`, and `restore-patched.mjs` (Since changed: `restore-patched.ts`,
+   ADR-025) has nothing to restore in a fresh tree.
 
 ### Where full builds run
 

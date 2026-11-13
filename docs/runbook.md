@@ -86,13 +86,13 @@ Placeholder artwork: `configs/branding/vimma/*.svg`, rendered by `tools/branding
 `git apply`. When a patch changed since the last import, its reverse no longer matches what the
 old version left in `engine/`, so the forward apply fails ("Exiting due to error") on a file
 that still carries the old hunks. `npm run import` therefore runs
-`tools/import/restore-patched.mjs` first: it reads the `+++ b/<path>` line of each header pair in
+`tools/import/restore-patched.ts` first: it reads the `+++ b/<path>` line of each header pair in
 `src/**/*.patch` and runs `git -C engine checkout -- <those files>` (11 files today), so every
 import starts from upstream. It touches only those files: never `git checkout .`, never a
 clean. A file a patch creates (`--- /dev/null`) is skipped, as is a path upstream does not track.
 
 ```sh
-node tools/import/restore-patched.mjs --dry-run   # list the files and the git command, change nothing
+node tools/import/restore-patched.ts --dry-run   # list the files and the git command, change nothing
 ```
 
 Without an `engine/` (before `surfer download`) it does nothing.
@@ -103,13 +103,13 @@ Without an `engine/` (before `surfer download`) it does nothing.
 checkout's absolute path in Make dependency, cargo and config files. After `mv old new`, links
 dangle and the build mixes paths. The 2026-10-10 move (`~/repositories/VimHerdr` →
 `~/repositories/vimma`) needed about 139k symlinks retargeted and the old path rewritten in about
-6.9k objdir text files. `tools/import/relocate-checkout.mjs` does both:
+6.9k objdir text files. `tools/import/relocate-checkout.ts` does both:
 
 ```sh
 mv ~/repositories/old ~/repositories/new && cd ~/repositories/new
 git worktree prune                     # or `git worktree repair` for worktrees you keep
-node tools/import/relocate-checkout.mjs --from ~/repositories/old --dry-run   # counts only
-node tools/import/relocate-checkout.mjs --from ~/repositories/old
+node tools/import/relocate-checkout.ts --from ~/repositories/old --dry-run   # counts only
+node tools/import/relocate-checkout.ts --from ~/repositories/old
 npm run import && npx surfer build     # mach reconfigures; the 2026-10-10 full build: 21 min
 ```
 
@@ -2704,7 +2704,7 @@ installs keep trusting it until they are updated by hand.
 
 **5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
 certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
-links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
+links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.ts`),
 and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
 They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
 header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,

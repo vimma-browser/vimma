@@ -98,10 +98,10 @@ That rebuilds only the front end. Changes to branding, `configs/` or `moz.config
 `npm run build`.
 
 `npm run import` first restores the upstream files our `.patch` files touch
-(`tools/import/restore-patched.mjs`, the `+++ b/` paths, `--dry-run` to list them), so an edited
+(`tools/import/restore-patched.ts`, the `+++ b/` paths, `--dry-run` to list them), so an edited
 patch re-applies cleanly instead of failing on its old version; nothing else in `engine/` is
 reset. After moving the checkout to another path, run
-`node tools/import/relocate-checkout.mjs --from <old path>` before importing: it retargets
+`node tools/import/relocate-checkout.ts --from <old path>` before importing: it retargets
 `engine/`'s absolute symlinks and rewrites the old path in the objdir
 ([runbook](docs/runbook.md#moving-the-checkout)).
 
