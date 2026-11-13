@@ -12,8 +12,12 @@
 // /bin/sh relaunch script (core/restart.mjs) that waits for this process to exit and then runs
 // `$APPIMAGE`, on the same profile, with the session resumed once, as Firefox's restart would.
 
-import { relaunchCommand, restartKeepsTabs, restartPlan } from "../core/restart.mjs";
-import { restartConfirmation } from "../core/restart.mjs";
+import {
+  relaunchCommand,
+  restartConfirmation,
+  restartKeepsTabs,
+  restartPlan,
+} from "../core/restart.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { privateTabCount } from "./private-ops.mjs";
 

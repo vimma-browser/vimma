@@ -53,7 +53,7 @@ import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
 import { OutlinePanel } from "../ui/pdf-outline.mjs";
 import { AgentChatWindow } from "../ui/agent-chat.mjs";
 import { giveSelectedTab } from "./agent-chat-ops.mjs";
-import { runBookmarkEffect } from "./bookmark-actions.mjs";
+import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
@@ -61,7 +61,7 @@ import { GrepSession } from "./grep.mjs";
 import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { closeTabById } from "./tab-ops.mjs";
+import { closeTabById, openOrSay } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
@@ -91,7 +91,7 @@ import {
   privateStatus,
   privateTabCount,
 } from "./private-ops.mjs";
-import { tabsKeptBy } from "./restart.mjs";
+import { restartAsking, restartOrSay, tabsKeptBy } from "./restart.mjs";
 import { AgentUi } from "./agent-ui.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
@@ -99,7 +99,7 @@ import { PromptKeys } from "./prompt-keys.mjs";
 import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
 import { KeyLog } from "../about/key-log.mjs";
-import { addonNames, addonPickerItems, openAddonById } from "./addon-ops.mjs";
+import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "./addon-ops.mjs";
 import {
   forgetSitePermissions,
   sitePermissionItems,
@@ -116,10 +116,6 @@ import {
   showOutline,
   showOutlineBeside,
 } from "./outline-ops.mjs";
-import { openOrSay } from "./tab-ops.mjs";
-import { addonOp, sayAddon } from "./addon-ops.mjs";
-import { restartAsking, restartOrSay } from "./restart.mjs";
-import { bookmarkContext } from "./bookmark-actions.mjs";
 
 // Defined with the code that uses them; importers reach them here, as before the runners moved.
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
@@ -2165,7 +2161,6 @@ export const VimmaHost = {
   },
 };
 
-// A finished update check redraws every status bar (docs/specs/m6a-updater.md §5).
 /**
  * What the host can execute (runners.mjs): chrome actions, run with the window's state, and
  * actions on the focused page, run with its <browser>. Built after VimmaHost, which the runners
@@ -2188,6 +2183,7 @@ const BUILT = Object.freeze([...Object.keys(RUNNERS), ...Object.keys(CONTENT_RUN
  */
 export const RUNNABLE = new Set(BUILT);
 
+// A finished update check redraws every status bar (docs/specs/m6a-updater.md §5).
 VimmaUpdates.addListener(() => {
   for (const win of windows) {
     const state = states.get(win);

@@ -4,7 +4,8 @@
 
 // The PDF viewer's outline in the side panel's slot (docs/specs/pdf-mode.md decisions 10 and
 // 19): Tab asks the viewer for it (pdf-ops.mjs) and shows it, or shows it beside the document by
-// itself; Enter on an entry follows it. VimmaHost calls these with its window state.
+// itself; Enter on an entry follows it. VimmaHost (focus, tab and outline changes) and runners.mjs
+// (Tab, `pdf.outline`) call these with the window's state.
 
 import { BLOCKED_URL_TEXT } from "./tab-ops.mjs";
 import { NOT_PDF, PdfOps } from "./pdf-ops.mjs";
