@@ -1,6 +1,6 @@
-// The promo recorder's pure parts (tools/promo/record.mjs): the profile's prefs, the window
+// The promo recorder's pure parts (tools/promo/record.ts): the profile's prefs, the window
 // geometry, the probe page's report of a hint label, and the key-overlay track. No I/O
-// here, so test/promo.test.mjs covers it without a browser.
+// here, so test/promo.test.ts covers it without a browser.
 /** The fixture sites' host names; the fixture server answers them all as an HTTP proxy. */
 export const HOSTS = Object.freeze({
   handbook: "http://handbook.example/",
@@ -19,12 +19,9 @@ export const HOSTS = Object.freeze({
  * A vimma-core module as the fixture server serves it next to probe.js: the server serves
  * `.js` as a script and nothing as `.mjs`, so each relative `./name.mjs` import becomes
  * `./name.js`. `imports` names those modules, which the recorder serves the same way.
- * @param {string} text
- * @returns {{ text: string, imports: string[] }}
  */
-export function servedModule(text) {
-  /** @type {string[]} */
-  const imports = [];
+export function servedModule(text: string): { text: string; imports: string[] } {
+  const imports: string[] = [];
   const out = text.replace(/(from\s+["']\.\/)([\w-]+)\.mjs(["'])/g, (_, head, name, tail) => {
     imports.push(name);
     return `${head}${name}.js${tail}`;
@@ -36,23 +33,24 @@ export function servedModule(text) {
  * Where the recorder's proxy sends a request: the server `routes` names for its host (the shop,
  * the scripted model), else the fixture pages. A proxy gets an absolute URL; a request sent
  * straight to it has only a path, and its Host header names the host.
- * @param {string} url the request line's target
- * @param {string} host the Host header
- * @param {Record<string, string>} routes host (with any port) → origin of its server
- * @param {string} fallback origin of the fixture pages
- * @returns {{ origin: string, path: string }}
+ * @param url the request line's target
+ * @param host the Host header
+ * @param routes host (with any port) → origin of its server
+ * @param fallback origin of the fixture pages
  */
-export function proxyRoute(url, host, routes, fallback) {
+export function proxyRoute(
+  url: string,
+  host: string,
+  routes: Record<string, string>,
+  fallback: string,
+): { origin: string; path: string } {
   const parsed = new URL(url, `http://${host || "localhost"}`);
   const origin = Object.hasOwn(routes, parsed.host) ? routes[parsed.host] : fallback;
-  return { origin: /** @type {string} */ (origin), path: `${parsed.pathname}${parsed.search}` };
+  return { origin: origin as string, path: `${parsed.pathname}${parsed.search}` };
 }
 
-/**
- * @param {string} text e.g. "1920x1080"
- * @returns {{ width: number, height: number }}
- */
-export function parseGeometry(text) {
+/** @param text e.g. "1920x1080" */
+export function parseGeometry(text: string): { width: number; height: number } {
   const m = /^(\d{3,4})x(\d{3,4})$/.exec(text);
   if (!m)
     throw new Error(`geometry must be WIDTHxHEIGHT, e.g. 1920x1080, got ${JSON.stringify(text)}`);
@@ -65,10 +63,8 @@ export function parseGeometry(text) {
 /**
  * The browser window in CSS pixels: the screen divided by the device-pixel scale, so the window
  * fills the Xvfb screen exactly.
- * @param {{ width: number, height: number }} screen
- * @param {number} scale
  */
-export function cssWindow(screen, scale) {
+export function cssWindow(screen: { width: number; height: number }, scale: number) {
   if (!(scale >= 1 && scale <= 3)) throw new Error(`scale must be from 1 to 3, got ${scale}`);
   return { width: Math.round(screen.width / scale), height: Math.round(screen.height / scale) };
 }
@@ -84,10 +80,18 @@ export function cssWindow(screen, scale) {
  * shot that edits it (the theme shot's way back to the built-in palette) shows the change soon.
  * HTTPS goes to the fixture server too, which refuses it: nothing in a shot reaches the network
  * (about:addons would otherwise fetch its recommendations from addons.mozilla.org).
- * @param {{ port: number, themeDir: string, configPath?: string, scale: number }} options
- * @returns {Record<string, boolean | number | string | null>}
  */
-export function promoPrefs({ port, themeDir, configPath, scale }) {
+export function promoPrefs({
+  port,
+  themeDir,
+  configPath,
+  scale,
+}: {
+  port: number;
+  themeDir: string;
+  configPath?: string;
+  scale: number;
+}): Record<string, boolean | number | string | null> {
   return {
     "network.proxy.type": 1,
     "network.proxy.http": "127.0.0.1",
@@ -133,11 +137,24 @@ export function promoPrefs({ port, themeDir, configPath, scale }) {
  * `[theme.colors]`: single colours over the palette, as the theme shot's config card types. With
  * `search`, a fixture search URL as the default engine: an engine made from a URL is not one of
  * Firefox's own, so the address bar's placeholder names no search company.
- * @param {{ source: "file" | "omarchy", name: string | null, appearance?: "dark" | "light",
- *   colors?: Record<string, string>, toolbar?: "hidden" | "shown",
- *   agent?: { endpoint: string, model: string }, search?: boolean }} options
  */
-export function promoConfig({ source, name, appearance, colors, toolbar, agent, search }) {
+export function promoConfig({
+  source,
+  name,
+  appearance,
+  colors,
+  toolbar,
+  agent,
+  search,
+}: {
+  source: "file" | "omarchy";
+  name: string | null;
+  appearance?: "dark" | "light";
+  colors?: Record<string, string>;
+  toolbar?: "hidden" | "shown";
+  agent?: { endpoint: string; model: string };
+  search?: boolean;
+}) {
   const lines = ["schema = 2", "", "[theme]", `source = "${source}"`];
   if (name) lines.push(`name = "${name}"`);
   if (appearance) lines.push(`appearance = "${appearance}"`);
@@ -162,10 +179,11 @@ export function promoConfig({ source, name, appearance, colors, toolbar, agent, 
  * config the recorder would write without an error. A build from before the key reports it as
  * unknown, and a config.toml with an error is not applied at all, so the recorder leaves the
  * key out for such a build.
- * @param {(text: string) => { errors: unknown[] }} parseConfig
- * @param {string} name
  */
-export function supportsThemeName(parseConfig, name) {
+export function supportsThemeName(
+  parseConfig: (text: string) => { errors: unknown[] },
+  name: string,
+) {
   try {
     return parseConfig(promoConfig({ source: "file", name })).errors.length === 0;
   } catch {
@@ -177,10 +195,9 @@ export function supportsThemeName(parseConfig, name) {
  * Read a probe page's title (fixtures/probe.js): `probe:<label>@<x>,<y>` is the hint label of
  * the page's target link and its centre on the screen, `probe-error:<why>` a page the label
  * cannot be worked out for.
- * @param {string} title
- * @returns {{ label: string, x: number, y: number } | null} null until the page has reported
+ * @returns null until the page has reported
  */
-export function parseProbeTitle(title) {
+export function parseProbeTitle(title: string): { label: string; x: number; y: number } | null {
   if (title.startsWith("probe-error:")) {
     throw new Error(
       `the probe page cannot label its target: ${title.slice("probe-error:".length)}`,
@@ -197,32 +214,33 @@ export function parseProbeTitle(title) {
  * clip's first frame, for the compositor to draw. Times are taken before the keys are sent.
  */
 export class KeyTrack {
+  declare keys: { t: number; keys: string }[];
+  declare marks: { t: number; name: string }[];
+  /** epoch ms of the clip's first frame */
+  declare origin: number | null;
+  declare pending: { at: number; keys?: string; name?: string }[];
   constructor() {
-    /** @type {{ t: number, keys: string }[]} */
     this.keys = [];
-    /** @type {{ t: number, name: string }[]} */
     this.marks = [];
-    /** @type {number | null} epoch ms of the clip's first frame */
     this.origin = null;
-    /** @type {{ at: number, keys?: string, name?: string }[]} */
     this.pending = [];
   }
 
-  /** @param {string} keys @param {number} at epoch ms */
-  key(keys, at) {
+  /** @param at epoch ms */
+  key(keys: string, at: number) {
     this.pending.push({ at, keys });
   }
 
-  /** @param {string} name @param {number} at epoch ms */
-  mark(name, at) {
+  /** @param at epoch ms */
+  mark(name: string, at: number) {
     this.pending.push({ at, name });
   }
 
   /**
    * Fix the clip's origin once the first frame's time is known, and resolve every event.
-   * @param {number} origin epoch ms of the first frame
+   * @param origin epoch ms of the first frame
    */
-  resolve(origin) {
+  resolve(origin: number) {
     this.origin = origin;
     for (const e of this.pending) {
       const t = Math.max(0, Math.round(e.at - origin) / 1000);

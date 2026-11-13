@@ -12,8 +12,8 @@ import {
   proxyRoute,
   servedModule,
   supportsThemeName,
-} from "../promo.mjs";
-import { ROSE_PINE } from "../shots.mjs";
+} from "../promo.ts";
+import { ROSE_PINE } from "../shots.ts";
 
 describe("parseGeometry", () => {
   it("reads WIDTHxHEIGHT", () => {
@@ -178,7 +178,7 @@ describe("servedModule", () => {
     });
   });
   it("serves hints.mjs and every module it reaches, each import naming a served .js", () => {
-    // record.mjs (serveCore) serves vimma-core's hints.mjs to probe.js with what it imports.
+    // record.ts (serveCore) serves vimma-core's hints.mjs to probe.js with what it imports.
     // vimma-core stays .mjs (ADR-025) while tools/ moves to .ts, so the rewrite reads `./x.mjs`.
     const served = new Map();
     const queue = ["hints"];
@@ -225,9 +225,8 @@ describe("supportsThemeName", () => {
     expect(supportsThemeName(parseConfig, "no-such-palette")).toBe(false);
   });
   it("asks about exactly the config the recorder writes", () => {
-    /** @type {string[]} */
-    const seen = [];
-    supportsThemeName((/** @type {string} */ text) => (seen.push(text), { errors: [] }), "vimma");
+    const seen: string[] = [];
+    supportsThemeName((text: string) => (seen.push(text), { errors: [] }), "vimma");
     expect(seen).toEqual([promoConfig({ source: "file", name: "vimma" })]);
   });
 });
