@@ -229,6 +229,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/spec-lint/`          | Checks of spec and ADR headers, decision reasons, and spec statuses against their issues.                   |
 | `tools/md-wording/`         | Checks that Markdown and comments are written for outside readers.                                          |
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
+| `tools/layering/`           | Checks the import layering of the `vimma/` folders ([ADR-026](docs/adr/026-module-layering.md)).            |
 | `tools/security/`           | Checks that every test link in [docs/security.md](docs/security.md) resolves.                               |
 | `tools/license-check/`      | Licence checks of npm packages and Rust crates.                                                             |
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
@@ -245,32 +246,32 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 The scripts at the top of `tools/` are the `npm run` entry points (`build.mjs`, `start.mjs`,
 `mochitest.mjs`, `sync-core.mjs`, `gen-docs.mjs` and others).
 
-## Dependency direction, as it is today
+## Dependency direction
 
-One rule is enforced: **vimma-core depends on nothing.** `eslint.config.mjs` fails on any
-`chrome://`, `resource://` or Node import, and on Firefox globals, in `packages/vimma-core/src/`.
-Most folders under `vimma/` import core.
-
-Among the chrome folders there is no enforced layering. `vimma.js` imports them all. Some
-folders are leaves: `services/`, `search/`, `updates/` and `split/` import only core, `omarchy/`
-and `start/` only `ui/`, and `setup/` core, `config/` and `ui/`. The host is the hub, and the
-imports around it run both ways today:
+Two rules are enforced. **vimma-core depends on nothing:** `eslint.config.mjs` fails on any
+`chrome://`, `resource://` or Node import, and on Firefox globals, in `packages/vimma-core/src/`
+([ADR-005](docs/adr/005-pure-core-package.md)). **The chrome folders form layers**
+([ADR-026](docs/adr/026-module-layering.md)): a module imports its own folder and lower layers
+only, eagerly or lazily, and no two modules import each other eagerly. `npm run layering` checks
+both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter maps).
 
 ```text
-  leaves:  services/ search/ updates/ split/ ──▶ core
-           omarchy/ start/ ──▶ ui/          setup/ ──▶ core, config/, ui/
-
-  host/  ──imports──▶  actors/ agent/ ctl/ config/ ui/ workspaces/ about/ split/ search/ updates/
-  host/  ◀──imports──  actors/ agent/ ctl/ config/ ui/ workspaces/ about/
-
-  also both ways:  config/ ⇄ ui/;  longer loops such as ui/ → agent/ → host/ → ui/
+  7  vimma.js                         wires everything at startup
+  6  about/ setup/ start/ omarchy/    pages and hooks
+  5  agent/                           the built-in agent, a client of ctl/
+  4  config/ ctl/                     front doors that drive the host
+  3  host/                            the orchestrator: keys in, actions out
+  2  workspaces/ actors/              browser state, the bridge to pages
+  1  services/ search/ updates/ split/ ui/    leaves
+  0  core/                            pure logic
 ```
 
-So `ctl/`, `workspaces/`, `actors/`, `agent/`, `config/`, `ui/` and `about/` each import a module of
-`host/`, and `host/` imports each of them back: the folders form cycles rather than layers. These
-are static ES module imports in one process, so they work, but a change to the host can reach
-almost every folder. Issue [#936](https://github.com/vimma-browser/vimma/issues/936) tracks
-breaking these cycles; until it lands, do not read the folder list as a layering.
+A lower layer reaches a higher one through an observer topic, a callback or an interface object
+passed in, as `host/runners.mjs` is passed the host. Seventeen older imports still point upwards
+(the host reading the agent gate, running a few `:` commands of `config/` and `agent/`, and
+recording keys for `about:vimma`; the parent actor reporting to the host; the agent chat window
+driving the agent): each is listed with its reason in `tools/layering/layers.ts`, the list can
+only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
 
 ## State and where it lives
 

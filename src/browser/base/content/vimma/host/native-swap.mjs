@@ -11,7 +11,6 @@
 
 import { frameApplied, openFrame, planNativeShow } from "../core/nativeswap.mjs";
 import { pairStep, parkedWindow } from "../core/privatepair.mjs";
-import { startedUp } from "./private-swap.mjs";
 
 /** @import { Frame, NativePlan, Rect } from "../core/nativeswap.mjs" */
 /** @import { Pair, PairEvent, ShowOp } from "../core/privatepair.mjs" */
@@ -72,6 +71,33 @@ let quitting = () => Services.startup.shuttingDown;
  * @param {BrowserWindow} win
  */
 export const isBrowserWindow = (win) => !win.closed && win.toolbar?.visible !== false;
+
+/**
+ * Resolves once `win`'s browser document has finished its delayed startup: true, or false when
+ * it closed first. The window OpenBrowserWindow returns still shows the initial about:blank,
+ * without browser-init.js's delayedStartupPromise, and a title set on that document never
+ * reaches the window manager.
+ * @param {BrowserWindow} win
+ * @returns {Promise<boolean>}
+ */
+export function startedUp(win) {
+  const w = win;
+  if (w.closed) return Promise.resolve(false);
+  if (w.gBrowserInit?.delayedStartupFinished) return Promise.resolve(true);
+  const READY = "browser-delayed-startup-finished";
+  const CLOSED = "domwindowclosed";
+  return new Promise((resolve) => {
+    /** @param {unknown} subject @param {string} topic */
+    const observer = (subject, topic) => {
+      if (subject !== win) return;
+      Services.obs.removeObserver(observer, READY);
+      Services.obs.removeObserver(observer, CLOSED);
+      resolve(topic === READY);
+    };
+    Services.obs.addObserver(observer, READY);
+    Services.obs.addObserver(observer, CLOSED);
+  });
+}
 
 /** @param {string} text */
 function logOnce(text) {
