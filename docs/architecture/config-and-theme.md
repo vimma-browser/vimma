@@ -175,15 +175,17 @@ or `vimma.theme.omarchyPath` is set by hand. `check` then:
    (so no frame is drawn without tokens), does the same for Firefox's own themed pages, and
    rewrites the `<style>` of Vimma's own pages (the start page, `about:vimma`, the setup page).
 
-The poll is an interval of `vimma.theme.pollMs` (2 s by default) that runs only while a window is
-open and there is an Omarchy theme to follow. Without Omarchy the built-in palette, `[theme]
+The poll runs every `vimma.theme.pollMs` (2 s by default) only while a window is open and there is
+an Omarchy theme to follow. Like the config poll, it is a one-shot timer armed again at each tick,
+so the test harness never blames a repeating timer on another test file. Without Omarchy the built-in palette, `[theme]
 name`, applies and nothing is polled. Vimma's CSS in `src/browser/themes/shared/vimma/` is
 written against the tokens, so the surfaces it styles change with the sheet. Tests:
 [theme.test.mjs](../../packages/vimma-core/test/theme.test.mjs), the sample themes in
 `tests/contract/theme/`,
 [theme.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs);
 `rewriting_the_file_updates_within_the_poll`, `broken_file_keeps_the_previous_colours` and
-`swapping_the_symlink_follows_the_new_theme` in
+`swapping_the_symlink_follows_the_new_theme` and
+`the_poll_is_not_a_repeating_timer_a_test_could_be_blamed_for` in
 [browser_vimma_theme.js](../../tests/browser/browser_vimma_theme.js);
 `without_omarchy_nothing_polls_and_the_builtin_shows` in
 [browser_vimma_theme_appearance.js](../../tests/browser/browser_vimma_theme_appearance.js).
