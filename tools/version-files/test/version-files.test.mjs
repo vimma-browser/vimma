@@ -57,6 +57,7 @@ describe("versionFiles", () => {
   });
 
   it("reads the named brand", () => {
+    /** @type {import("../version-files.mjs").SurferConfig} */
     const config = surfer("157.0.1", "0.1.0");
     config.brands = { ...config.brands, other: { release: { displayVersion: "2.0.0" } } };
     expect(lastLine(versionFiles(config, "other")["version_display.txt"])).toBe("2.0.0");

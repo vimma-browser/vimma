@@ -38,7 +38,10 @@ const artifact = (name, o = {}) => ({
   },
 });
 
-/** @param {Record<string, object[]>} byName artifacts the API returns for each exact name */
+/**
+ * @param {Record<string, import("../canary.mjs").Artifact[]>} byName artifacts the API returns
+ *   for each exact name
+ */
 const listing = (byName) => async (/** @type {string} */ name) => byName[name] ?? [];
 
 const RUN = "https://github.com/vimma-browser/vimma/actions/runs/1";

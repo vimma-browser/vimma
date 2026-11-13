@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 // `npm run typecheck` (ci.yml's "Typecheck" step) checks two programs under the same strict
-// options (issue #945): the browser code without Node's types, and tools/ with them.
+// options (issue #945): the browser code without Node's types, and tools/ with them, tests
+// included (issue #947).
 /** @param {string} path */
 const json = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
 
@@ -25,8 +26,12 @@ describe("npm run typecheck", () => {
     expect(tools.extends).toBe("../tsconfig.json");
     expect(tools.compilerOptions.types).toEqual(["node"]);
     expect(tools.include).toContain("**/*.mjs");
-    // Rust, and the .mjs tests (issue #947), are not in it.
-    expect(tools.exclude).toEqual(expect.arrayContaining(["**/test/**/*.mjs", "vimma-ctl/"]));
+    // Rust is not in it; the tests are, .mjs and .ts alike (issue #947), except the key guard's
+    // own test: editing it needs the key-rotation-approved label (docs/security.md B1).
+    expect(tools.exclude).toContain("vimma-ctl/");
+    expect(
+      tools.exclude.filter((/** @type {string} */ glob) => /(?:^|\/)test\//.test(glob)),
+    ).toEqual(["ci/test/key-guard.test.mjs"]);
   });
 
   // ADR-025: Node runs tools/**/*.ts as they are, by erasing the types; nothing compiles them.

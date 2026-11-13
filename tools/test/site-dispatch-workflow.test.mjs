@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { defined } from "./defined.ts";
 
 // docs/security.md B15: site-dispatch.yml holds the vimma-site-dispatch app's key and a release
 // event runs the tag's copy, so its token must reach vimma-site alone and nothing from the event
@@ -56,7 +57,7 @@ function ifOf(jobText) {
 /** The job names under `jobs:`. */
 function jobNames() {
   const jobs = text.slice(text.indexOf("\njobs:\n"));
-  return [...jobs.matchAll(/^ {2}([a-z][\w-]*):$/gm)].map((m) => m[1]);
+  return [...jobs.matchAll(/^ {2}([a-z][\w-]*):$/gm)].map((m) => defined(m[1]));
 }
 
 describe("site dispatch workflow (site-dispatch.yml)", () => {

@@ -124,10 +124,18 @@ describe("upstream autopilot workflow", () => {
     // B1: no caller may check a hash against an unsigned SHA512SUMS. Every workflow and every
     // shell script under tools/ that calls the verifier fetches SHA512SUMS.asc and passes it.
     const callers = [
-      ...readdirSync(dir).map((f) => [`.github/workflows/${f}`, workflow(f)]),
+      ...readdirSync(dir).map(
+        (f) => /** @type {const} */ ([`.github/workflows/${f}`, workflow(f)]),
+      ),
       ...readdirSync(new URL("..", import.meta.url), { recursive: true, encoding: "utf8" })
         .filter((f) => f.endsWith(".sh"))
-        .map((f) => [`tools/${f}`, readFileSync(new URL(`../${f}`, import.meta.url), "utf8")]),
+        .map(
+          (f) =>
+            /** @type {const} */ ([
+              `tools/${f}`,
+              readFileSync(new URL(`../${f}`, import.meta.url), "utf8"),
+            ]),
+        ),
     ];
     const calls = callers.flatMap(([name, text]) => {
       const joined = text.replace(/\\\n\s*/g, " ");
@@ -149,10 +157,10 @@ describe("upstream autopilot workflow", () => {
   it("a report on a tarball that failed verification is never uploaded", () => {
     // source-check.sh writes `result` only after the signature and hash are verified, so an
     // upload gated on it never publishes patch-check output from an unverified tarball (G4, G10).
-    for (const [name, step] of [
+    for (const [name, step] of /** @type {const} */ ([
       ["upstream.yml", "Upload the patch-check report"],
       ["upstream-beta.yml", "Upload the source check"],
-    ]) {
+    ])) {
       const text = workflow(name);
       const at = text.indexOf(`- name: ${step}`);
       expect(at, name).toBeGreaterThan(0);

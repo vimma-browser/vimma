@@ -125,7 +125,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const dir = tempDir("vimma-update-keys-");
     const der = Buffer.from(certificate(dir, "primary.der", "Vimma update signing primary"));
     // The signature is the certificate's last bytes: flip one, so the key and the subject stay.
-    der[der.length - 1] ^= 0x01;
+    der.writeUInt8(der.readUInt8(der.length - 1) ^ 0x01, der.length - 1);
     writeFileSync(join(dir, "primary.der"), der);
     writeFileSync(join(dir, "secondary.der"), der);
     expect(() => readCertificates(dir)).toThrow(/self-signed/);

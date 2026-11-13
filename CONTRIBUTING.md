@@ -268,9 +268,7 @@ stays `.mjs` (ADR-025 says why).
 5. **Types to syntax, nothing else.** `@param`/`@returns` types become annotations, `@typedef`
    an exported `type` or `interface`, `/** @type {T} */ (x)` becomes `x as T`, and
    `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
-   `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
-   check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
-   in the same pull request. A property a constructor assigns becomes a `declare` field
+   property a constructor assigns becomes a `declare` field
    (`declare keys: string[];`), which Node erases, as it does the cast.
 6. **Update every caller** from step 1, and take the area's files off
    `tools/test/mjs-allowlist.txt`. An implemented spec that names a renamed file gets a
