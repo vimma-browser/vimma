@@ -28,7 +28,7 @@ const { validateMessage, PRIVATE_WORKSPACE_ID } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
 const { getTabLabel, setTabLabel } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/tab-labels.mjs",
+  "chrome://browser/content/vimma/workspaces/tab-labels.mjs",
 );
 const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",

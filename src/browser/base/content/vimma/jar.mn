@@ -117,7 +117,7 @@ browser.jar:
         skin/classic/browser/vimma/side-panel.css         (/browser/themes/shared/vimma/side-panel.css)
         content/browser/vimma/host/goto.mjs               (host/goto.mjs)
         content/browser/vimma/host/tab-search.mjs         (host/tab-search.mjs)
-        content/browser/vimma/host/tab-labels.mjs         (host/tab-labels.mjs)
+        content/browser/vimma/workspaces/tab-labels.mjs   (workspaces/tab-labels.mjs)
         content/browser/vimma/split/PaneView.mjs          (split/PaneView.mjs)
         content/browser/vimma/split/layout.mjs            (split/layout.mjs)
         skin/classic/browser/vimma/split.css              (/browser/themes/shared/vimma/split.css)

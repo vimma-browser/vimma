@@ -38,7 +38,7 @@ import {
   switchWorkspace,
   workspaceOfTab,
 } from "../core/workspaces.mjs";
-import { getTabLabel, LABEL_EVENT, setTabLabel, TAB_LABEL_KEY } from "../host/tab-labels.mjs";
+import { getTabLabel, LABEL_EVENT, setTabLabel, TAB_LABEL_KEY } from "./tab-labels.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { unpinnedNotice } from "../core/workspacedefs.mjs";
 import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";

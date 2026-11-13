@@ -261,11 +261,12 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 ```
 
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
-passed in, as `host/runners.mjs` is passed the host. Sixteen older imports still point upwards:
+passed in, as `host/runners.mjs` is passed the host. Fifteen older imports still point upwards:
 the host reading the agent gate and running a few commands of `config/`, `agent/` and `ctl/`
-(`:route add`, `:agent give`, the downloads picker's agent mark); the workspace snapshot reading
-tab labels from `host/`; the parent actor reporting to the host; the agent chat window driving the
-agent. Each is listed with its reason in `tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
+(`:route add`, `:agent give`, the downloads picker's agent mark); the parent actor reporting to
+the host; the agent chat window driving the agent. Each is listed with its reason in
+`tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each
+folder's `README.md` says what it may import.
 
 The picture below is drawn from the same scan of the imports that `npm run layering` checks:
 `npm run diagrams` writes [docs/assets/diagrams/modules.d2](docs/assets/diagrams/modules.d2)
@@ -274,7 +275,7 @@ from it, so the picture, the rule and the code cannot disagree.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/modules-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/modules-light.svg">
-  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ and workspaces/ to host/, host/ to ctl/, config/ and agent/, and ui/ to host/, config/ and agent/.">
+  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ to host/, host/ to ctl/, config/ and agent/, and ui/ to host/, config/ and agent/.">
 </picture>
 
 In words, as the code stands:
@@ -286,10 +287,10 @@ In words, as the code stands:
   layer 1's folders has one arrow to the layer, labelled with how many: `about/`, `config/` and
   `host/` import four of them, `ctl/` three.
 - Orange arrows are the upward imports the exception list keeps, folded into one arrow per pair of
-  folders: `actors/` and `workspaces/` import `host/`; `host/` imports `ctl/`, and `config/` and
-  `agent/` lazily; `ui/` imports `host/`, `config/` and `agent/` lazily.
-- Folder by folder, `actors/`, `ctl/`, `host/` and `workspaces/` still form one eager cycle, and
-  every loop in it runs through an orange arrow. No two modules import each other eagerly
+  folders: `actors/` imports `host/`; `host/` imports `ctl/`, and `config/` and `agent/` lazily;
+  `ui/` imports `host/`, `config/` and `agent/` lazily.
+- Folder by folder, `actors/`, `ctl/` and `host/` still form one eager cycle, and every loop in it
+  runs through an orange arrow. No two modules import each other eagerly
   (`npm run layering` fails on that), so the cycle exists only between folders, and it closes only
   through the listed exceptions. When issue [#936](https://github.com/vimma-browser/vimma/issues/936)
   removes them, `npm run diagrams` redraws the picture without them.

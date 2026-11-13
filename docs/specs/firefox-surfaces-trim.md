@@ -375,7 +375,13 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     pref was off comes back under its about: URL, and the start page then replaces it with its own.
     A load of these pages triggered by a principal other than the system principal, such as an
     extension's `windows.create()` with one of them as the home page, is refused: the start page
-    is a chrome page, which such principals cannot load.)
+    is a chrome page, which such principals cannot load. Once the stand-in has handed out
+    Firefox's page, it keeps Firefox's module until the last privilegedabout process it saw start
+    (`ipc:content-created`) ends (`ipc:content-shutdown`), even with the pref back on: the parent
+    checks every principal that process sends against the module's flags of that moment, and the
+    start page's would get the process killed with every tab in it
+    ([#950](https://github.com/vimma-browser/vimma/issues/950)). New tabs still follow the pref at
+    once through `AboutNewTab.newTabURL`.)
 11. **Mozilla's own services keep their names and links.** AMO (installs, dictionaries), Safe
     Browsing (including Report Deceptive Site), `about:credits`, `about:policies` and the Mozilla
     root store wording stay, because they name or reach services Vimma uses unchanged, and

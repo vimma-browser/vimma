@@ -21,7 +21,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 const { getTabLabel, setTabLabel } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/tab-labels.mjs",
+  "chrome://browser/content/vimma/workspaces/tab-labels.mjs",
 );
 const { SessionStore } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
