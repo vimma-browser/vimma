@@ -64,18 +64,104 @@ const runsBaseGuard = (s: Step) => /git show "\$BASE:tools\//.test(s.run ?? "");
 
 type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 type Job = { steps?: Step[] };
+type Workflow = { jobs: Record<string, Job> };
 
-function workflowJobs(): { name: string; job: Job }[] {
-  const out: { name: string; job: Job }[] = [];
+function workflowJobs(): { name: string; job: Job; workflow: Workflow }[] {
+  const out: { name: string; job: Job; workflow: Workflow }[] = [];
   for (const file of readdirSync(WORKFLOWS)
     .filter((f) => /\.ya?ml$/.test(f))
     .sort()) {
-    const doc = load(readFileSync(WORKFLOWS + file, "utf8"), { schema: CORE_SCHEMA }) as {
-      jobs: Record<string, Job>;
-    };
-    for (const [id, job] of Object.entries(doc.jobs)) out.push({ name: `${file} ${id}`, job });
+    const workflow = load(readFileSync(WORKFLOWS + file, "utf8"), {
+      schema: CORE_SCHEMA,
+    }) as Workflow;
+    for (const [id, job] of Object.entries(workflow.jobs))
+      out.push({ name: `${file} ${id}`, job, workflow });
   }
   return out;
+}
+
+// What a guard job may hold. Each list allows; anything else is refused, not judged: a `run:`
+// step of any kind before the guard (a script from the checkout, make, corepack, pnpm, bun, an
+// absolute path to node), an action other than the checkout or a checkout not pinned by commit, a
+// checkout input that starts a program from the checkout (lfs reads its .lfsconfig, submodules
+// fetch what its .gitmodules names), a `shell:` or `working-directory:` on the guard step, and
+// environment such as NODE_OPTIONS or BASH_ENV, which make the guard's own node or bash load a
+// file from the checkout. Job keys such as container, services, defaults, env or
+// continue-on-error, and a workflow's defaults or env, change how every step runs or what its
+// failure means, the guard's included.
+const BEFORE_GUARD_KEYS = ["name", "id", "if", "uses", "with"];
+const CHECKOUT = /^actions\/checkout@[0-9a-f]{40}$/;
+const CHECKOUT_INPUTS = ["fetch-depth", "persist-credentials"];
+const GUARD_KEYS = ["name", "id", "if", "env", "run"];
+// BASE must be the base commit: the guard is read from it.
+const GUARD_ENV: Record<string, string> = {
+  BASE: "${{ github.event.pull_request.base.sha }}",
+  HEAD: "${{ github.event.pull_request.head.sha }}",
+  PR_LABELS: "${{ toJSON(github.event.pull_request.labels.*.name) }}",
+};
+const JOB_KEYS = [
+  "name",
+  "needs",
+  "if",
+  "runs-on",
+  "timeout-minutes",
+  "permissions",
+  "outputs",
+  "concurrency",
+  "steps",
+];
+const WORKFLOW_KEYS = ["name", "run-name", "on", "permissions", "concurrency", "jobs"];
+
+// The guard steps' exact text. The tests of docs-only.mjs and key-guard.mjs check that each step
+// contains its `git show "$BASE:…"` line, which a command appended after it would still pass.
+// key-guard.yml cannot change without the key-rotation-approved label anyway (B1); its text is
+// pinned here too, so that every guard is held to the same rule.
+const DOCS_ONLY_GUARD = `if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
+  node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
+else
+  echo "No classifier on the base: running everything"
+fi
+`;
+const KEY_GUARD = `guard="$RUNNER_TEMP/key-guard.mjs"
+git cat-file -e "$BASE^{commit}" || exit 2
+if git cat-file -e "$BASE:tools/ci/key-guard.mjs"; then
+  git show "$BASE:tools/ci/key-guard.mjs" > "$guard"
+else
+  echo "No key guard on the base: running the pull request's copy"
+  cp tools/ci/key-guard.mjs "$guard"
+fi
+node "$guard" --base "$BASE" --head "$HEAD"
+`;
+const GUARD_RUNS = [DOCS_ONLY_GUARD, KEY_GUARD];
+
+const extra = (o: object | undefined, allowed: string[]) =>
+  Object.keys(o ?? {}).filter((k) => !allowed.includes(k));
+
+/** What a job runs before, or around, its guard from the base; empty when the guard runs first. */
+function guardFaults(workflow: object, job: Job): string[] {
+  const steps = (job.steps ?? []) as (Step & Record<string, unknown>)[];
+  const guards = steps.filter(runsBaseGuard);
+  if (guards.length === 0) return ["no guard from the base"];
+  const faults: string[] = [];
+  // A second step with the guard's pattern could pose as the guard and run anything.
+  if (guards.length !== 1) faults.push(`guard steps: ${guards.length}`);
+  const guard = steps.findIndex(runsBaseGuard);
+  const runs = steps.slice(0, guard + 1).filter((s) => "run" in s).length;
+  if (runs !== 1) faults.push(`run steps up to the guard: ${runs}`);
+  for (const k of extra(workflow, WORKFLOW_KEYS)) faults.push(`workflow ${k}`);
+  for (const k of extra(job, JOB_KEYS)) faults.push(`job ${k}`);
+  steps.slice(0, guard).forEach((s, i) => {
+    if (!CHECKOUT.test(s.uses ?? ""))
+      faults.push(`step ${i}: ${(s.uses ?? s.run ?? "").split("\n")[0]}`);
+    for (const k of extra(s, BEFORE_GUARD_KEYS)) faults.push(`step ${i} ${k}`);
+    for (const k of extra(s.with, CHECKOUT_INPUTS)) faults.push(`step ${i} with ${k}`);
+  });
+  const g = steps[guard] as Record<string, unknown>;
+  for (const k of extra(g, GUARD_KEYS)) faults.push(`guard ${k}`);
+  if (!GUARD_RUNS.includes(String(g.run))) faults.push("guard run: not the pinned text");
+  for (const [k, v] of Object.entries((g.env as Record<string, unknown> | undefined) ?? {}))
+    if (GUARD_ENV[k] !== v) faults.push(`guard env ${k}`);
+  return faults;
 }
 
 /** A shell line that starts Node: `node`, `npm` or `npx` as a command, not inside a word. */
@@ -199,26 +285,107 @@ describe("the Node a workflow job runs its tools on", () => {
   });
 
   // A guard from the base judges the pull request, so nothing the pull request supplies may run
-  // before it: no action but the checkout (setup-node runs npm and yarn in the checkout, which
-  // read its .npmrc and .yarnrc), and no node, npm, npx or yarn of the job's own.
+  // before it: only actions/checkout comes first (setup-node runs npm and yarn in the checkout,
+  // which read its .npmrc and .yarnrc; any `run:` step may start a program of the checkout).
+  // The four jobs fit the rule as they stand, so it has no exceptions.
   it("nothing runs in the pull request's checkout before a guard from the base", () => {
-    const found: string[] = [];
-    for (const { name, job } of workflowJobs()) {
-      const steps = job.steps ?? [];
-      const guard = steps.findIndex(runsBaseGuard);
-      if (guard < 0) continue;
-      found.push(name);
-      steps.slice(0, guard).forEach((s, i) => {
-        const what = s.uses ?? s.run ?? "";
-        const ok = s.uses
-          ? s.uses.startsWith("actions/checkout@")
-          : !/(?:^|[\s;&|(`])(?:node|npm|npx|yarn)(?:\s|$)/m.test(s.run ?? "");
-        expect(`${name} step ${i} before the guard: ${what.split("\n")[0]}: ${ok}`).toMatch(
-          /: true$/,
-        );
-      });
-    }
-    expect(found.sort()).toEqual(BASE_GUARDS);
+    const faults: Record<string, string[]> = {};
+    for (const { name, job, workflow } of workflowJobs())
+      if ((job.steps ?? []).some(runsBaseGuard)) faults[name] = guardFaults(workflow, job);
+    expect(Object.keys(faults).sort()).toEqual(BASE_GUARDS);
+    expect(
+      Object.fromEntries(Object.entries(faults).filter(([, f]) => f.length)),
+      "docs/security.md B18: only actions/checkout, pinned by commit, with fetch-depth and " +
+        "persist-credentials, may come before the guard, and the guard step keeps its pinned " +
+        "text and env; move any other step after it",
+    ).toEqual({});
+  });
+
+  const GUARD = {
+    name: "guard",
+    env: { BASE: GUARD_ENV.BASE, HEAD: GUARD_ENV.HEAD },
+    run: DOCS_ONLY_GUARD,
+  };
+  const CHECKOUT = {
+    uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+    with: { "persist-credentials": false },
+  };
+  const SETUP_NODE = { uses: "actions/setup-node@0", with: { "node-version-file": ".nvmrc" } };
+  it.each([
+    ["a script from the checkout", { steps: [CHECKOUT, { run: "./tools/x.sh" }, GUARD] }, "step 1"],
+    ["bash with a script", { steps: [CHECKOUT, { run: "bash tools/x.sh" }, GUARD] }, "step 1"],
+    [
+      "python3 with a script",
+      { steps: [CHECKOUT, { run: "python3 tools/x.py" }, GUARD] },
+      "step 1",
+    ],
+    ["make", { steps: [CHECKOUT, { run: "make" }, GUARD] }, "step 1"],
+    ["corepack", { steps: [CHECKOUT, { run: "corepack enable" }, GUARD] }, "step 1"],
+    ["pnpm", { steps: [CHECKOUT, { run: "pnpm --version" }, GUARD] }, "step 1"],
+    ["bun", { steps: [CHECKOUT, { run: "bun x tsc" }, GUARD] }, "step 1"],
+    ["node by its path", { steps: [CHECKOUT, { run: "/usr/bin/node t.js" }, GUARD] }, "step 1"],
+    ["any run step", { steps: [CHECKOUT, { run: "echo hi" }, GUARD] }, "step 1"],
+    ["setup-node", { steps: [CHECKOUT, SETUP_NODE, GUARD] }, "step 1"],
+    ["a run step first", { steps: [{ run: "ls" }, CHECKOUT, GUARD] }, "step 0"],
+    ["a checkout with lfs", { steps: [{ ...CHECKOUT, with: { lfs: true } }, GUARD] }, "with lfs"],
+    ["a checkout with env", { steps: [{ ...CHECKOUT, env: { A: "1" } }, GUARD] }, "step 0 env"],
+    ["a shell on the guard", { steps: [CHECKOUT, { ...GUARD, shell: "./x {0}" }] }, "guard shell"],
+    [
+      "a working directory on the guard",
+      { steps: [CHECKOUT, { ...GUARD, "working-directory": "tools" }] },
+      "guard working-directory",
+    ],
+    [
+      "NODE_OPTIONS on the guard",
+      { steps: [CHECKOUT, { ...GUARD, env: { NODE_OPTIONS: "--import ./x.mjs" } }] },
+      "guard env NODE_OPTIONS",
+    ],
+    ["a container", { container: "node:22", steps: [CHECKOUT, GUARD] }, "job container"],
+    ["services", { services: { db: { image: "x" } }, steps: [CHECKOUT, GUARD] }, "job services"],
+    [
+      "a job-level defaults.run",
+      { defaults: { run: { shell: "./x {0}" } }, steps: [CHECKOUT, GUARD] },
+      "job defaults",
+    ],
+    ["a job-level env", { env: { BASH_ENV: "./x" }, steps: [CHECKOUT, GUARD] }, "job env"],
+    [
+      "a decoy guard",
+      { steps: [CHECKOUT, { run: 'git show "$BASE:tools/x"; make' }, GUARD] },
+      "guard steps",
+    ],
+    [
+      "a command after the guard's text",
+      { steps: [CHECKOUT, { ...GUARD, run: `${DOCS_ONLY_GUARD}make\n` }] },
+      "guard run",
+    ],
+    [
+      "BASE taken from the head",
+      { steps: [CHECKOUT, { ...GUARD, env: { ...GUARD.env, BASE: GUARD_ENV.HEAD } }] },
+      "guard env BASE",
+    ],
+    [
+      "a checkout pinned by tag",
+      { steps: [{ ...CHECKOUT, uses: "actions/checkout@v4" }, GUARD] },
+      "step 0: actions/checkout@v4",
+    ],
+    [
+      "continue-on-error",
+      { "continue-on-error": true, steps: [CHECKOUT, GUARD] },
+      "job continue-on-error",
+    ],
+    ["a merge key", { "<<": { env: { A: "1" } }, steps: [CHECKOUT, GUARD] }, "job <<"],
+  ])("refuses %s before or around a guard from the base", (_, job, fault) => {
+    expect(guardFaults({}, job as Job).join("; ")).toContain(fault);
+  });
+
+  it("refuses a workflow-level defaults or env in a guard's workflow", () => {
+    const job = { steps: [CHECKOUT, GUARD] };
+    expect(guardFaults({}, job)).toEqual([]);
+    expect(guardFaults({ name: "n", on: "pull_request", jobs: {} }, job)).toEqual([]);
+    expect(guardFaults({ defaults: { run: { shell: "./x {0}" } } }, job)).toEqual([
+      "workflow defaults",
+    ]);
+    expect(guardFaults({ env: { NODE_OPTIONS: "-r ./x" } }, job)).toEqual(["workflow env"]);
   });
 
   // A sparse checkout without .nvmrc fails setup-node; one without the tool it runs fails the

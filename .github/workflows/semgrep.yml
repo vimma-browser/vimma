@@ -81,6 +81,8 @@ jobs:
       SEMGREP_IMAGE: semgrep/semgrep@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # Paths skipped: .semgrepignore. Every finding goes into the SARIF; only ERROR fails the job.
       - name: Semgrep scan
