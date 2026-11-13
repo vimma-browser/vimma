@@ -16,15 +16,18 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `docs/security.md` before touching the control socket, MCP and the agent gate, content actors,
   the updater, workflows with secrets, or release.
 - `docs/runbook.md` for builds, lanes, CI, releases and the update signing chain.
-- `plan.md` once per milestone, for the architecture and the roadmap behind the specs.
+- `ARCHITECTURE.md` for how the code fits together (processes, folders, dependencies, trust
+  boundaries), `docs/roadmap.md` for the milestones, and `docs/README.md` for which page covers
+  what.
 - `docs/review-checklist.md` before opening a pull request.
 
 ## Commands
 
 - `npm test`: Vitest for `packages/vimma-core` and `tools/` (fast, run constantly).
 - `npm run typecheck`: `tsc --checkJs` over `src/**/vimma/**` and `packages/**`.
-- `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`)
-  and spec-lint.
+- `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`),
+  spec-lint, and arch-lint (`ARCHITECTURE.md` names every `vimma/` folder, `tools/` folder and
+  workflow).
 - `npm run gen-docs`: regenerate `docs/bindings.md`, `docs/bindings.json` and `defaults.toml`
   after changing `actions.mjs` or `defaults.mjs`.
 - `npm run gen-agent-tools`: regenerate the built-in agent's tool list and system text
@@ -105,6 +108,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 
 ## Layout
 
+`ARCHITECTURE.md` is the full map, with a line per folder; in short:
+
 - `packages/vimma-core`: dispatcher, key notation, `actions.mjs`, keymap, config, theme, control
   protocol validator, agent gate logic, state tree (pure).
 - `src/browser/base/content/vimma/`:
@@ -112,14 +117,16 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   - `actors/`: JSWindowActor parent/child (focus, scroll, hints, caret, page reads).
   - `ui/`: status bar, help overlay, command line, side panel, pickers, prompts, agent line.
   - `ctl/`: control socket server (protocol 2, full and agent roles), `AgentGate`, agent pages.
-  - `workspaces/`, `split/`, `config/`, `omarchy/`, `services/`, `about/`, `start/`.
+  - `agent/`: the built-in agent.
+  - `workspaces/`, `split/`, `config/`, `search/`, `updates/`, `omarchy/`, `services/`, `about/`,
+    `setup/`, `start/`, `licence/`.
 - `tools/vimma-ctl`: Rust CLI for the control socket, and `vimma-ctl mcp` (an MCP server over
   stdio).
 - `tools/`: e2e harness, artifact builds, upstream autopilot, packaging, lanes, bench, sites.
 - `tests/browser`: mochitests; `tests/e2e`: socket scenarios and baselines; `tests/contract`:
   protocol fixtures.
-- `docs/`: `guide.md` (users), `security.md`, `limits.md`, `runbook.md`, `rebase.md`, `adr/`,
-  `specs/`.
+- `docs/`: `README.md` (the index), `guide.md` (users), `security.md`, `limits.md`, `runbook.md`,
+  `rebase.md`, `roadmap.md`, `adr/`, `specs/`.
 
 ## Where to work
 

@@ -1,7 +1,7 @@
 # Review checklist
 
 Posted on every PR by the reviewer (a fresh agent session with the spec open, then the
-maintainer). Plan §4, step 5. Each item is ticked, or answered "n/a" with a reason.
+maintainer). Each item is ticked, or answered "n/a" with a reason.
 
 - [ ] A spec exists (`docs/specs/<name>.md`) and the PR stays inside its scope. The PR is ready to
       merge: nothing in it waits on an open question (those go in the feature's issue).

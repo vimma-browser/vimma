@@ -475,7 +475,7 @@ build`. The release's
   forward with a patch release. To pull a bad release: `gh release edit vX.Y.Z --draft` (runbook,
   Release packages).
 
-## Patch-size audit (plan §4, Sunday maintenance)
+## Patch-size audit
 
 ```sh
 python3 tools/upstream/patch-audit.py      # --json FILE for machines
