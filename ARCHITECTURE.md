@@ -133,7 +133,8 @@ The keymap is vimma-core's defaults (`defaults.mjs`) merged with the user's `con
 key, the prefix and the leader can be remapped. `npm run gen-docs` writes
 [docs/bindings.md](docs/bindings.md) from the same tables. Which keys Vimma takes from Firefox and
 from pages: [docs/specs/firefox-keys.md](docs/specs/firefox-keys.md) and
-[ADR-024](docs/adr/024-keymap-contexts.md).
+[ADR-024](docs/adr/024-keymap-contexts.md). Step by step, with the code that carries a key:
+[The life of a keypress](docs/architecture/keypress.md).
 
 ## Module map
 
@@ -283,7 +284,9 @@ breaking these cycles; until it lands, do not read the folder list as a layering
 
 Persisted formats carry a version and have fixtures in `tests/contract/`; the specs
 ([m3-workspaces](docs/specs/m3-workspaces.md), [m5-config-load](docs/specs/m5-config-load.md))
-give the schemas.
+give the schemas. How the workspace state is saved and restored:
+[Workspaces and panes](docs/architecture/workspaces-and-panes.md); how `config.toml` and the theme
+are read and applied: [Config and theme](docs/architecture/config-and-theme.md).
 
 ## Trust boundaries
 
@@ -323,7 +326,8 @@ tests that enforce it. In short:
 Tests are written before the code they test, and a baseline or snapshot changes only with a
 reason in the commit body ([CONTRIBUTING.md](CONTRIBUTING.md), "Workflow"). CI never retries a
 test: a flaky one gets an issue and a fix for its cause ([docs/runbook.md](docs/runbook.md),
-"Testing").
+"Testing"). Each layer, where it runs and what no layer covers:
+[Testing](docs/architecture/testing.md).
 
 ## Automation and release infrastructure
 
