@@ -96,7 +96,7 @@ describe("MARKDOWN_TESTS", () => {
 
   it("lists every Vitest file that reads a Markdown file of the repo", () => {
     const tests = [...walk(join(ROOT, "packages")), ...walk(join(ROOT, "tools"))]
-      .filter((p) => p.endsWith(".test.mjs"))
+      .filter((p) => /\.test\.(?:mjs|ts)$/.test(p))
       .map((p) => relative(ROOT, p));
     const readers = tests.filter((p) =>
       /new URL\(\s*["'`](?:\.\.\/)+[^"'`]+\.md["'`]/.test(readFileSync(join(ROOT, p), "utf8")),

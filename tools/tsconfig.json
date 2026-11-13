@@ -1,8 +1,11 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": {
-    "types": ["node"]
+    "types": ["node"],
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["**/*.mjs", "sites/probes-globals.d.ts"],
-  "exclude": ["**/test/**", "vimma-ctl/", "**/node_modules/**"]
+  "include": ["**/*.mjs", "**/*.ts"],
+  "exclude": ["**/test/**/*.mjs", "vimma-ctl/", "**/node_modules/**"]
 }
