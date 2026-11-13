@@ -113,7 +113,7 @@ jobs:
         env:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           COMMIT: ${{ github.sha }}
-        run: node tools/mutation/report.mjs reports/mutation/mutation.json > body.md
+        run: node tools/mutation/report.ts reports/mutation/mutation.json > body.md
 
       - name: Create, update or close the tracking issue
         env:

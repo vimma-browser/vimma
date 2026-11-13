@@ -45,8 +45,6 @@ tools/import/test/relocate-checkout.test.mjs
 tools/import/test/restore-patched.test.mjs
 tools/mach-python.mjs
 tools/mochitest.mjs
-tools/mutation/report.mjs
-tools/mutation/test/report.test.mjs
 tools/package/cask.mjs
 tools/package/ctl-notices.mjs
 tools/package/flatpak.mjs
@@ -80,13 +78,7 @@ tools/release/test/smoke-check.test.mjs
 tools/release/test/version-line.test.mjs
 tools/release/version-line.mjs
 tools/repo.mjs
-tools/spec-lint/spec-lint.mjs
-tools/spec-lint/spec-status.mjs
-tools/spec-lint/test/spec-lint.test.mjs
-tools/spec-lint/test/spec-status.test.mjs
 tools/start.mjs
-tools/stats/downloads.mjs
-tools/stats/test/downloads.test.mjs
 tools/sync-core.mjs
 tools/test/build-supply-chain.test.mjs
 tools/test/build.test.mjs

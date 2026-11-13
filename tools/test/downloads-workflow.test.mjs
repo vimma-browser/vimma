@@ -65,8 +65,8 @@ describe("release downloads workflow", () => {
   it("collect runs the script without a stored credential", () => {
     const collect = job("collect");
     expect(collect).toContain("persist-credentials: false");
-    expect(collect).toMatch(/node tools\/stats\/downloads\.mjs collect /);
-    expect(collect).toMatch(/node tools\/stats\/downloads\.mjs merge /);
+    expect(collect).toMatch(/node tools\/stats\/downloads\.ts collect /);
+    expect(collect).toMatch(/node tools\/stats\/downloads\.ts merge /);
   });
 
   it("record runs no repository code and pushes only to the stats branch", () => {

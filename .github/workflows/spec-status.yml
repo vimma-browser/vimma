@@ -1,5 +1,5 @@
 # Spec statuses against their GitHub issues (docs/specs/README.md, "Keeping statuses current").
-# tools/spec-lint/spec-status.mjs reads each spec's `Status:` and `Issue:` lines and the issues'
+# tools/spec-lint/spec-status.ts reads each spec's `Status:` and `Issue:` lines and the issues'
 # states and labels. Findings go into one issue labelled `spec-status`, updated on each run and
 # closed when nothing is left. A status drifts when an issue closes, which no pull request sees,
 # so this runs on a schedule and on issue events rather than in CI.
@@ -54,7 +54,7 @@ jobs:
         run: |
           mkdir -p out
           status=0
-          node tools/spec-lint/spec-status.mjs --markdown out/report.md || status=$?
+          node tools/spec-lint/spec-status.ts --markdown out/report.md || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
           cat out/report.md >> "$GITHUB_STEP_SUMMARY"
           [ "$status" -le 1 ]

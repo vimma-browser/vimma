@@ -3964,8 +3964,12 @@ deploy key that may write `stats` alone in place of the job token.
   level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
   not keep its checkout's credentials. Traffic (views, clones, referrers) is therefore not
   recorded: its API needs the Administration permission, which a job token cannot be given, and
-  recording it would mean the workflow's first stored secret.
+  recording it would mean the workflow's first stored secret. Before the script, `collect` sets up
+  `.nvmrc`'s Node with `actions/setup-node`, pinned by commit SHA and without a cache, so the
+  script never runs on the runner image's own Node, whose version this repository does not
+  choose (ADR-025); the action runs with the same read-only token.
   [`grants nothing by default; reads in collect, writes contents only in record`](../tools/test/downloads-workflow.test.mjs),
+  [`every job sets up Node before it runs node, npm or npx, but the listed ones`](../tools/test/runner-node.test.ts),
   [`collect runs the script without a stored credential`](../tools/test/downloads-workflow.test.mjs),
   [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,

@@ -659,7 +659,10 @@ minutes and logs show every push. Check `git log origin/main` if anything looks 
 A pull request whose every changed file is prose Markdown skips the work Markdown cannot affect.
 `tools/ci/docs-only.mjs` decides from `git diff --name-only --no-renames base...head` (never the
 title or body); ci.yml and e2e.yml run it as the base branch has it, so a pull
-request cannot change the classifier that judges it.
+request cannot change the classifier that judges it. They read the base's `docs-only.ts` first
+and `docs-only.mjs` second, and run the copy under the name it had, on `.nvmrc`'s Node (ADR-025):
+the pull request that renames the classifier is still judged by the base's `.mjs`. A base with
+neither runs everything; a copy that fails fails the step.
 
 **Docs-only** means all of these hold:
 
@@ -1123,10 +1126,12 @@ Why it does not flake (CI never retries; a flaky test means quarantine):
 If the step does fail without a slowing change, that is a flake: quarantine it (open an
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
-**Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, release-please and claude
-use `node-version-file: .nvmrc`, and so do the nightly and release build jobs. One exception:
-release.yml's package job checks out a release tag (tags from before `.nvmrc` lack it) and stays
-on major 22. A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major
+**Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
+pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc`, and so do the
+nightly and release build jobs. release.yml's package job checks out a release tag (tags from
+before `.nvmrc` lack it) and stays on major 22. `tools/test/runner-node.test.ts` lists the jobs
+that still set up major 22 only, and those that still run `node` or `npm` on the runner image's
+own Node, whose version this repository does not choose; both lists only shrink (#946). A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major
 also moves `@types/node` to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
 without a flag or a warning (ADR-025). The bench needs nothing for it: both sides of the
@@ -2049,7 +2054,7 @@ jump and whether the jumps line up with workflow runs.
   schedule sits early in the day: a late-evening one lands on the next day on most nights but
   not all, recording one day twice (the second run is skipped) and the next not at all. The `collect` job
   has `contents: read` only: it fetches the history from the public branch, takes the snapshot
-  with `tools/stats/downloads.mjs` and appends it unless that day is already recorded. The
+  with `tools/stats/downloads.ts` and appends it unless that day is already recorded. The
   `record` job has `contents: write`, checks out only the `stats` branch, runs no repository
   code, refuses a file that does not begin with the recorded history, and pushes. No secret. A
   push by the job token starts no workflow. Both jobs take well under a minute.
@@ -2057,8 +2062,8 @@ jump and whether the jumps line up with workflow runs.
 
   ```sh
   git fetch origin stats && git show origin/stats:downloads.csv > /tmp/downloads.csv
-  node tools/stats/downloads.mjs summary --csv /tmp/downloads.csv            # per release, per day
-  node tools/stats/downloads.mjs summary --csv /tmp/downloads.csv --assets   # and per asset
+  node tools/stats/downloads.ts summary --csv /tmp/downloads.csv            # per release, per day
+  node tools/stats/downloads.ts summary --csv /tmp/downloads.csv --assets   # and per asset
   ```
 
   Each line has the total and the change since that release's (or asset's) previous snapshot;

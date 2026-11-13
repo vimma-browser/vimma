@@ -49,7 +49,7 @@ describe("spec status workflow", () => {
     expect(report).not.toContain("actions/checkout");
     expect(report).not.toMatch(/\bnode\b/);
     expect(job("check")).toContain("persist-credentials: false");
-    expect(job("check")).toMatch(/node tools\/spec-lint\/spec-status\.mjs --markdown/);
+    expect(job("check")).toMatch(/node tools\/spec-lint\/spec-status\.ts --markdown/);
   });
 
   it("keeps one issue: updates it while there are findings and closes it when there are none", () => {
