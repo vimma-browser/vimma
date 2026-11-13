@@ -141,6 +141,12 @@ jobs:
       - name: Architecture map is current (npm run arch-lint)
         run: npm run arch-lint
 
+      # ARCHITECTURE.md's two SVG pictures match their D2 sources, and the module graph's source
+      # matches the imports under vimma/ (issue #943). Needs no D2: each SVG records its source's
+      # hash. On docs-only changes too, like arch-lint.
+      - name: Diagrams match their sources (npm run diagrams:check)
+        run: npm run diagrams:check
+
       # CHANGELOG.md's [Unreleased] is its first heading, appears once and holds only what the
       # release PR's firefox-notes job can move into the new version's entry (issue #529).
       - name: Hand-written changelog lines in order (npm run changelog-lint)

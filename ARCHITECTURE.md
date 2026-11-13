@@ -51,33 +51,15 @@ file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Com
 
 ## The running system
 
-```mermaid
-flowchart LR
-  subgraph vimma["Vimma (one app)"]
-    subgraph parent["Parent process: browser windows"]
-      chrome["vimma.js, then host/, ui/, workspaces/,<br/>split/, config/ ... with core/"]
-      ctl["ctl/: control socket server<br/>and AgentGate"]
-      agent["agent/: built-in agent"]
-    end
-    subgraph content["Content processes (sandboxed)"]
-      child["actors/: VimmaChild,<br/>one per frame"]
-    end
-    chrome <-- "JSWindowActor messages" --> child
-    chrome --- ctl
-    agent -- "same gate as MCP agents" --> ctl
-  end
-  cli["vimma-ctl (CLI)"] -- "TCP 127.0.0.1, token" --> ctl
-  mcp["vimma-ctl mcp"] -- "TCP 127.0.0.1, agent role" --> ctl
-  host["AI agent host<br/>(MCP client)"] -- "MCP over stdio" --> mcp
-  e2e["tools/e2e harness"] -- "TCP 127.0.0.1" --> ctl
-  agent -- "HTTPS, or HTTP to a local server" --> models["Model providers<br/>(Anthropic API, OpenAI-compatible, local)"]
-  agent -- "subprocess, one-time ticket" --> clis["Agent CLIs<br/>(Claude Code, Codex, Gemini CLI)"]
-  clis --> mcp
-  chrome -- "HTTPS, signed manifest" --> updates["updates.vimma.dev"]
-  files["config.toml,<br/>Omarchy colors.toml"] -- "polled" --> chrome
-  omarchy["Omarchy theme-set hook"] -- "-vimma-reload-theme<br/>(command-line remoting)" --> chrome
-  chrome -- "Hyprland IPC socket" --> hypr["Hyprland"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/system-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/system-light.svg">
+  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and AgentGate in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent goes through the same gate, the gate drives the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
+</picture>
+
+The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
+dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows go
+through the control socket's token or the agent gate. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is
@@ -229,6 +211,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/spec-lint/`          | Checks of spec and ADR headers, decision reasons, and spec statuses against their issues.                   |
 | `tools/md-wording/`         | Checks that Markdown and comments are written for outside readers.                                          |
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
+| `tools/diagrams/`           | The two pictures on this page: the module graph read from the imports, and the D2 render of both.           |
 | `tools/security/`           | Checks that every test link in [docs/security.md](docs/security.md) resolves.                               |
 | `tools/license-check/`      | Licence checks of npm packages and Rust crates.                                                             |
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
@@ -251,26 +234,39 @@ One rule is enforced: **vimma-core depends on nothing.** `eslint.config.mjs` fai
 `chrome://`, `resource://` or Node import, and on Firefox globals, in `packages/vimma-core/src/`.
 Most folders under `vimma/` import core.
 
-Among the chrome folders there is no enforced layering. `vimma.js` imports them all. Some
-folders are leaves: `services/`, `search/`, `updates/` and `split/` import only core, `omarchy/`
-and `start/` only `ui/`, and `setup/` core, `config/` and `ui/`. The host is the hub, and the
-imports around it run both ways today:
+Among the chrome folders there is no enforced layering. The picture below is drawn from the
+imports themselves: `npm run diagrams` reads every static import, `importESModule()` call and
+lazy getter under `vimma/` and writes
+[docs/assets/diagrams/modules.d2](docs/assets/diagrams/modules.d2), so it cannot fall behind the
+code.
 
-```text
-  leaves:  services/ search/ updates/ split/ ──▶ core
-           omarchy/ start/ ──▶ ui/          setup/ ──▶ core, config/, ui/
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/modules-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/modules-light.svg">
+  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/. host/, about/, actors/, config/, ctl/ and workspaces/ form one eager import cycle around host/. setup/, start/ and omarchy/ import ui/; agent/ imports host/ and ctl/; ui/ reaches host/, config/ and agent/ only lazily; search/, split/ and updates/ are leaves, and services/ imports only core/.">
+</picture>
 
-  host/  ──imports──▶  actors/ agent/ ctl/ config/ ui/ workspaces/ about/ split/ search/ updates/
-  host/  ◀──imports──  actors/ agent/ ctl/ config/ ui/ workspaces/ about/
+In words, as the code stands:
 
-  also both ways:  config/ ⇄ ui/;  longer loops such as ui/ → agent/ → host/ → ui/
-```
+- `vimma.js` imports every folder, to start it; every folder but `omarchy/` and `start/`
+  imports core.
+- **Leaves.** `services/` imports only core; `search/`, `split/` and `updates/` import only core
+  and are imported by the folders above them.
+- **Pages and setup.** `start/` imports `ui/`, `omarchy/` imports it lazily, and `setup/` imports
+  `ui/` and `config/`.
+- **One eager cycle around the host.** `host/` imports `about/`, `actors/`, `ctl/` and
+  `workspaces/` statically, and each of them imports a module of `host/` back; `config/` and
+  `config/` joins it through `about/`, which imports it (`host/` → `about/` → `config/` →
+  `host/`). Static imports in one process
+  work in a cycle, but the order in which these modules evaluate depends on which one loads
+  first, and a change to the host can reach every folder in it.
+- **Lazy edges.** `host/` loads `config/` and `agent/` lazily; `ui/` reaches `host/`, `config/`
+  and `agent/` only lazily; `agent/` imports `host/` and `ctl/`. These close longer loops (such
+  as `ui/` → `agent/` → `host/` → `ui/`) that do not decide the evaluation order.
 
-So `ctl/`, `workspaces/`, `actors/`, `agent/`, `config/`, `ui/` and `about/` each import a module of
-`host/`, and `host/` imports each of them back: the folders form cycles rather than layers. These
-are static ES module imports in one process, so they work, but a change to the host can reach
-almost every folder. Issue [#936](https://github.com/vimma-browser/vimma/issues/936) tracks
-breaking these cycles; until it lands, do not read the folder list as a layering.
+Issue [#936](https://github.com/vimma-browser/vimma/issues/936) tracks breaking these cycles;
+until it lands, do not read the folder list as a layering. When it does, `npm run diagrams`
+redraws the picture from the new imports.
 
 ## State and where it lives
 
@@ -383,3 +379,11 @@ requests included) runs `tools/arch-lint/arch-lint.ts`, which fails when a folde
 when this page names one that no longer exists. A name counts in a code span written as
 `` `vimma/<folder>/` ``, `` `tools/<folder>/` `` or `` `<workflow>.yml` `` (or `.yaml`). Adding a folder or a
 workflow therefore means adding its line here in the same pull request.
+
+The two pictures follow the same rule. `npm run diagrams` regenerates the module graph's D2
+source from the imports and renders every source in `docs/assets/diagrams/` to a light and a
+dark SVG with a pinned D2 release (`tools/diagrams/render.ts` names its version and checksums,
+and downloads it into `~/.cache/vimma/` on first use). Each SVG records a hash of the source it
+was drawn from, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
+`ci.yml`) fails without D2 when an import or a `.d2` file changed and the pictures were not
+rendered again.
