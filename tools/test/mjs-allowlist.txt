@@ -35,12 +35,6 @@ tools/e2e/test/update-host.test.mjs
 tools/e2e/test/xvfb.test.mjs
 tools/e2e/update-host.mjs
 tools/e2e/xwd.mjs
-tools/import/link-update-certs.mjs
-tools/import/relocate-checkout.mjs
-tools/import/restore-patched.mjs
-tools/import/test/link-update-certs.test.mjs
-tools/import/test/relocate-checkout.test.mjs
-tools/import/test/restore-patched.test.mjs
 tools/mach-python.mjs
 tools/mochitest.mjs
 tools/package/cask.mjs

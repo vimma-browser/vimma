@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { findPatches, patchedFiles, restorePatched } from "../restore-patched.mjs";
+import { findPatches, patchedFiles, restorePatched } from "../restore-patched.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const modify = `--- a/browser/base/moz.build
@@ -62,11 +62,7 @@ describe("findPatches", () => {
   });
 });
 
-/**
- * @param {string} dir
- * @param {string[]} args
- */
-const git = (dir, ...args) =>
+const git = (dir: string, ...args: string[]) =>
   execFileSync("git", ["-C", dir, "-c", "user.name=t", "-c", "user.email=t@t", ...args], {
     encoding: "utf8",
     env: { PATH: process.env.PATH, HOME: dir },
