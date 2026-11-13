@@ -428,6 +428,14 @@ describe("browser command line and environment", () => {
     expect(Object.fromEntries(PROFILE_PREFS)["browser.urlbar.placeholderName"]).toBe("Google");
   });
 
+  // Issue #953: a private window reads its own pref (SearchUIUtils.updatePlaceholderNamePreference
+  // writes "browser.urlbar.placeholderName.private"), with the same race in a new profile.
+  it("names the default engine in a private window's URL bar from the start too", () => {
+    expect(Object.fromEntries(PROFILE_PREFS)["browser.urlbar.placeholderName.private"]).toBe(
+      "Google",
+    );
+  });
+
   it("pins one device pixel per CSS pixel and a light theme in the profile", () => {
     const prefs = Object.fromEntries(PROFILE_PREFS);
     expect(prefs["layout.css.devPixelsPerPx"]).toBe("1.0");

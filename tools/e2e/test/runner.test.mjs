@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { exitCode, formatReport, githubAnnotations, runScenarios } from "../runner.mjs";
+import { shotFailure } from "../screenshot.mjs";
 
 /** @param {string} name @param {object} [over] */
 const scn = (name, over = {}) => ({
@@ -51,6 +52,33 @@ describe("runScenarios", () => {
       "launch m0-bad",
       "teardown m0-bad",
     ]);
+    expect(exitCode(results)).toBe(1);
+  });
+
+  // Issue #953: a differing screenshot lets the steps go on, but the scenario still fails, with
+  // the message, and the run exits 1. The session's screenshot is e2e.mjs's: shotFailure of
+  // checkBaseline's result.
+  it("fails a scenario whose screenshot differs, after its last step, and exits 1", async () => {
+    /** @type {string[]} */
+    const events = [];
+    const results = await runScenarios(
+      [scn("m0-shot", { steps: [{ screenshot: "m0-shot" }, { keys: "j" }] })],
+      {
+        startSession: async () => ({
+          ctl: {
+            state: async () => ({}),
+            sendKeys: async (/** @type {string} */ k) => void events.push(`keys ${k}`),
+            open: async () => "2",
+          },
+          screenshot: async () =>
+            shotFailure({ status: "mismatch", message: "m0-shot: 2.52 % of pixels differ" }),
+          teardown: async () => void events.push("teardown"),
+        }),
+      },
+    );
+    expect(results[0]?.status).toBe("fail");
+    expect(results[0]?.error).toMatch(/step 1 \(screenshot\): m0-shot: 2\.52 % of pixels differ/);
+    expect(events).toEqual(["keys j", "teardown"]);
     expect(exitCode(results)).toBe(1);
   });
 

@@ -1,7 +1,7 @@
 {
   "name": "issue-533-follow-link-switch",
   "issue": 533,
-  "description": "Spec follow-link-switch: gF labels the two links of fixture:article.html, and the status bar names both outcomes beside the HINT badge, 'a background · A go there' (follow-link-switch-hints). Typing the first label's last character in upper case, A, opens the long page in a new tab after the article and selects it. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "description": "Spec follow-link-switch: gF labels the two links of fixture:article.html, and the status bar names both outcomes beside the HINT badge, 'a background · A go there' (follow-link-switch-hints). Typing the first label's last character in upper case, A, opens the long page in a new tab after the article and selects it. The status bar shows the fixture server's fixed port (28471).",
   "timeoutSeconds": 60,
   "steps": [
     {

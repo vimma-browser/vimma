@@ -329,7 +329,10 @@ Supersedes the sections above where they differ.
   it that other users can write: the profile's `HOME` lies in the shared `/tmp`.) (Since changed:
   on Linux a scenario's browser renders with vendored fonts through its own fontconfig file and
   GTK settings, and the profile names the URL bar's engine from the start (issue #944); described
-  in `tests/e2e/fonts/README.md` and the runbook's "Baselines".)
+  in `tests/e2e/fonts/README.md` and the runbook's "Baselines".) (Since changed: the fixture pages
+  are served on the fixed port 28471, and a run whose port is taken stops with exit 2 instead of
+  taking another; a screenshot that differs no longer stops its scenario, which fails at its end;
+  the baselines were re-recorded from CI (issue #953).)
 - **`ready()` and a server still starting.** The first server build answers
   `failed: no browser window` until its first window exists (≈ 70 % of runs failed at 0.7 s).
   `ready()` retries that one message, within its deadline; any other `failed` and every

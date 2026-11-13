@@ -1,6 +1,6 @@
 // Screenshots for e2e scenarios (spec m0-e2e-harness): capture from the harness's Xvfb, compare
 // with tests/e2e/baselines/<name>.png at plan §4's 0.5 % tolerance, write the actual and a diff
-// image on a mismatch. Baselines change only with --update-baselines and a changelog line.
+// image on a mismatch. Baselines change only with --update-baselines and a commit body saying why.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -70,6 +70,16 @@ export function diffImages(
  */
 
 /**
+ * What a screenshot step hands runSteps: the message of a missing or differing baseline, which
+ * lets the steps go on and fails the scenario at its end (issue #953), or nothing.
+ * @param {BaselineResult} result
+ * @returns {string | undefined}
+ */
+export function shotFailure(result) {
+  return result.status === "missing" || result.status === "mismatch" ? result.message : undefined;
+}
+
+/**
  * Compare `image` with `<baselineDir>/<name>.png`, or write it there with `update`.
  * @param {{ name: string, image: Image, baselineDir: string, outDir: string, update?: boolean }} o
  * @returns {BaselineResult}
@@ -82,8 +92,7 @@ export function checkBaseline({ name, image, baselineDir, outDir, update = false
     return {
       status: "updated",
       message:
-        `wrote ${path}: commit it with a changelog line saying why it changed ` +
-        "(CONTRIBUTING.md)",
+        `wrote ${path}: commit it with a commit body saying why it changed ` + "(CONTRIBUTING.md)",
     };
   }
   if (!existsSync(path)) {
@@ -96,8 +105,8 @@ export function checkBaseline({ name, image, baselineDir, outDir, update = false
       status: "missing",
       message:
         `no baseline ${path}; this run's image is ${actualPath}. Create it with ` +
-        "--update-baselines (or take CI's), check it by eye, and commit it with a changelog " +
-        "line (CONTRIBUTING.md: never change a baseline without one)",
+        "--update-baselines (or take CI's), check it by eye, and commit it with a commit body " +
+        "saying why (CONTRIBUTING.md: never change a baseline without one)",
     };
   }
   const result = diffImages(decodePng(readFileSync(path)), image);
