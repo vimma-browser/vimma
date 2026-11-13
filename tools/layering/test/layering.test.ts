@@ -14,6 +14,13 @@ import {
 
 const V = "chrome://browser/content/vimma/";
 
+/**
+ * A specifier in double quotes. The fixtures build their relative imports with it, so that
+ * tools/test/typescript-tools.test.mjs, which reads this file's own relative imports as text,
+ * does not take them for imports of this file.
+ */
+const q = (spec: string) => JSON.stringify(spec);
+
 /** The edges `importsOf` finds, as `to (kind)` strings, for short assertions. */
 function found(source: string, file = "host/a.mjs"): string[] {
   return importsOf(source, file).map((e) => `${e.to} (${e.kind})`);
@@ -24,8 +31,8 @@ describe("importsOf: every way a module reaches another", () => {
     expect(
       found(
         [
-          `import { A } from "../ui/a.mjs";`,
-          `import { B } from "./b.mjs";`,
+          `import { A } from ${q("../ui/a.mjs")};`,
+          `import { B } from ${q("./b.mjs")};`,
           `import { C } from "${V}ctl/C.sys.mjs";`,
         ].join("\n"),
       ),
@@ -35,7 +42,7 @@ describe("importsOf: every way a module reaches another", () => {
   test("a re-export is an eager import", () => {
     expect(
       found(
-        `export { A } from "../ui/a.mjs";\nexport * from "../split/b.mjs";\nexport const x = 1;`,
+        `export { A } from ${q("../ui/a.mjs")};\nexport * from ${q("../split/b.mjs")};\nexport const x = 1;`,
       ),
     ).toEqual(["ui/a.mjs (eager)", "split/b.mjs (eager)"]);
   });
@@ -69,7 +76,7 @@ describe("importsOf: every way a module reaches another", () => {
           `});`,
           `ChromeUtils.defineLazyGetter(lazy, "G", () =>`,
           `  ChromeUtils.importESModule("${V}ctl/AgentGate.sys.mjs").AgentGate);`,
-          `const later = import("../config/ConfigHost.sys.mjs");`,
+          `const later = import(${q("../config/ConfigHost.sys.mjs")});`,
         ].join("\n"),
       ),
     ).toEqual([
@@ -105,8 +112,8 @@ describe("importsOf: every way a module reaches another", () => {
           `const S = ChromeUtils.importESModule("moz-src:///browser/S.sys.mjs");`,
           `const page = "${V}start/start.html";`,
           `const data = "${V}about/patches.json";`,
-          `/** @import { Mode } from "../core/modes.mjs" */`,
-          `/** @type {import("../ui/b.mjs").B} */`,
+          `/** @import { Mode } from ${q("../core/modes.mjs")} */`,
+          `/** @type {import(${q("../ui/b.mjs")}).B} */`,
           `const b = null;`,
           `const word = "./not-an-import.mjs";`,
         ].join("\n"),
