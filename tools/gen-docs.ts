@@ -18,8 +18,7 @@ writeFileSync(new URL("packages/vimma-core/defaults.toml", root), formatDefaults
 
 const keymap = compileKeymap();
 const rows = bindingTable(keymap);
-/** @param {string} s */
-const cell = (s) => s.replaceAll("|", "\\|");
+const cell = (s: string) => s.replaceAll("|", "\\|");
 const lines = [
   "# Default bindings",
   "",
@@ -77,8 +76,7 @@ lines.push(
   "| Key | Firefox | In Vimma |",
   "| --- | --- | --- |",
 );
-/** @param {(typeof FIREFOX_SHORTCUTS)[number]} r */
-const fate = (r) => {
+const fate = (r: (typeof FIREFOX_SHORTCUTS)[number]) => {
   // The row's action is on other keys (ctrl+n: new_window, page-suggestions decision 7); Firefox's
   // key stays off while a mode binds the chord, ctrl+n's suggestion_next in insert mode.
   if (r.action && r.unbound) {
