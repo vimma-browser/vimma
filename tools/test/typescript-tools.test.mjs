@@ -35,17 +35,25 @@ function importSpecifiers(code) {
   const visit = (node) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(visit);
-    const n = /** @type {{ type?: string, source?: { type: string, value: unknown } }} */ (node);
+    /** @typedef {{ type: string, value?: unknown, expressions?: unknown[],
+     *   quasis?: { value: { cooked: string } }[] }} Source */
+    const n = /** @type {{ type?: string, source?: Source }} */ (node);
     const source = n.source;
+    // import(`./x.ts`) without substitutions names its module as plainly as a string does
+    const spec =
+      source?.type === "Literal"
+        ? source.value
+        : source?.type === "TemplateLiteral" && source.expressions?.length === 0
+          ? source.quasis?.[0]?.value.cooked
+          : undefined;
     if (
       (n.type === "ImportDeclaration" ||
         n.type === "ExportNamedDeclaration" ||
         n.type === "ExportAllDeclaration" ||
         n.type === "ImportExpression") &&
-      source?.type === "Literal" &&
-      typeof source.value === "string"
+      typeof spec === "string"
     )
-      found.push(source.value);
+      found.push(spec);
     for (const value of Object.values(node)) if (value && typeof value === "object") visit(value);
   };
   visit(program);
@@ -142,12 +150,13 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       'import { a } from "./a.ts";',
       'export { b } from "./b.ts";',
       'const c = await import("./c.ts");',
+      "const e = await import(`./e.ts`);",
       '// from "./comment.mjs"',
       "const text = 'import { d } from \"./string.mjs\";';",
-      "export const x: T = [a, c, text];",
+      "export const x: T = [a, c, e, text];",
       "",
     ].join("\n");
-    expect(importSpecifiers(code)).toEqual(["./a.ts", "./b.ts", "./c.ts"]);
+    expect(importSpecifiers(code)).toEqual(["./a.ts", "./b.ts", "./c.ts", "./e.ts"]);
   });
 
   it("keeps TypeScript in tools/: Firefox and vimma-core load their files unbuilt", () => {

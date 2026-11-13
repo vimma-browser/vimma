@@ -1,5 +1,5 @@
 # The .mjs files under tools/ that have not moved to .ts yet (ADR-025, #946). Nothing is added
-# here: new code under tools/ is .ts. Each pull request that moves an area takes its files off,
+# here: new Node code under tools/ is .ts. Each pull request that moves an area takes its files off,
 # and tools/test/mjs-ratchet.test.ts fails until it does. tools/claude-plugin stays .mjs and is
 # not listed.
 tools/agent-bench/agent-bench.mjs
