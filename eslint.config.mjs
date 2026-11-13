@@ -85,7 +85,7 @@ export default [
   },
   {
     // Vendored smol-toml (BSD-3-Clause), generated unchanged from upstream by
-    // tools/vendor-smol-toml.mjs so updates stay mechanical. The purity rules above still apply;
+    // tools/vendor-smol-toml.ts so updates stay mechanical. The purity rules above still apply;
     // only these two style rules, which upstream's assignment-in-condition loops trip, are off here.
     files: ["packages/vimma-core/src/vendor/**"],
     rules: { "no-cond-assign": "off", "no-useless-assignment": "off" },

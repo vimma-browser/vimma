@@ -19,15 +19,21 @@ const FIXTURE = "tools/vimma-ctl/tests/fixtures/mcp/tools-list.json";
 const MCP_RS = "tools/vimma-ctl/src/mcp/instructions.rs";
 const OUT = "packages/vimma-core/src/agent-tools-data.mjs";
 
-/** @type {Record<string, string>} */
-const ESCAPES = { n: "\n", t: "\t", r: "\r", "\\": "\\", '"': '"', "'": "'", 0: "\0" };
+const ESCAPES: Record<string, string> = {
+  n: "\n",
+  t: "\t",
+  r: "\r",
+  "\\": "\\",
+  '"': '"',
+  "'": "'",
+  0: "\0",
+};
 
 /**
  * The value of `const NAME: &str = "...";` in Rust source: a `\` at a line's end joins the next
  * line without its leading whitespace, as Rust does, and the simple escapes are read.
- * @param {string} src @param {string} name
  */
-export function rustStringConst(src, name) {
+export function rustStringConst(src: string, name: string) {
   const m = new RegExp(`const ${name}: &str = "((?:[^"\\\\]|\\\\[\\s\\S])*)";`).exec(src);
   if (!m) throw new Error(`no string constant ${name}`);
   return (m[1] ?? "").replace(/\\(\n\s*|[ntr\\"'0])/g, (_, e) =>

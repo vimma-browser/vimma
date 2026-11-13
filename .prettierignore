@@ -9,7 +9,7 @@ surfer.json
 tools/upstream/fixtures/surfer-*.json
 .claude/
 
-# vendored smol-toml, generated from the upstream tarball by tools/vendor-smol-toml.mjs
+# vendored smol-toml, generated from the upstream tarball by tools/vendor-smol-toml.ts
 packages/vimma-core/src/vendor/smol-toml/smol-toml.mjs
 
 # release-please writes CHANGELOG.md and its manifest in its own style ("*" bullets); prettier

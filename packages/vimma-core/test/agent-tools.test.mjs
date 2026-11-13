@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { AGENT_INSTRUCTIONS, AGENT_TOOL_LIST, agentTools } from "../src/agent-tools.mjs";
-import { rustStringConst } from "../../../tools/gen-agent-tools.mjs";
+import { rustStringConst } from "../../../tools/gen-agent-tools.ts";
 
 const root = new URL("../../../", import.meta.url);
 const fixture = JSON.parse(
