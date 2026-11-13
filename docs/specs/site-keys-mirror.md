@@ -1,8 +1,9 @@
 # Spec: site-keys-mirror
 
-Status: implemented · Area: `packages/vimma-core/src/help.mjs`, `tools/gen-docs.mjs`,
-`docs/bindings.json` (new, generated), `.github/workflows/site-dispatch.yml` (new). No upstream
-patch. The website half lives in vimma-browser/vimma-site.
+Status: implemented · Area: `packages/vimma-core/src/help.mjs`, `tools/gen-docs.mjs` (Since changed:
+`gen-docs.ts`, ADR-025), `docs/bindings.json` (new, generated),
+`.github/workflows/site-dispatch.yml` (new). No upstream patch. The website half lives in
+vimma-browser/vimma-site.
 
 ## Goal
 

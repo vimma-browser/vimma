@@ -58,8 +58,9 @@ vimma-core's JavaScript validator (used by the browser-side server) read.
   rustup and runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` (clippy
   `pedantic` is on in `Cargo.toml`) and `cargo test`, as steps of the existing `ci.yml` job (one
   job on purpose: minutes are billed per job). No third-party toolchain action.
-- Crate licences are checked by `tools/license-check/cargo-license-check.mjs` from
-  `cargo metadata`, against the same allowlist as npm packages (`npm run license-check:crates`).
+- Crate licences are checked by `tools/license-check/cargo-license-check.mjs` (Since changed:
+  `cargo-license-check.ts`, ADR-025) from `cargo metadata`, against the same allowlist as npm
+  packages (`npm run license-check:crates`).
 - Distribution is one binary: `cargo build --release --locked` in `tools/vimma-ctl/`. The release
   workflow and the AUR package pick it up when they exist.
 - Contributors who touch the client need a Rust toolchain; everyone else does not. The browser

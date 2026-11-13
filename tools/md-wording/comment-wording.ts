@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The code comments' counterpart of process-wording.mjs: a comment says why the code is the way
+// The code comments' counterpart of process-wording.ts: a comment says why the code is the way
 // it is, for readers who were not part of the work. This check (npm run lint, and CI) fails on a
 // comment that records the process instead: the Markdown check's phrases (review attributions
 // and pointers to the contributor instructions file among them), plus dated and quoted answers

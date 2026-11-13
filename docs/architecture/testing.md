@@ -113,7 +113,7 @@ clippy and the tests on a Mac and is not required.
 **What it proves.** That core's key-to-action time stays under 50 µs a key and does not regress:
 the suite no more than 10 % slower than the baseline commit, and no case more than 25 %.
 
-**Where.** A step of the `check` job, `npm run bench -- --check` (`tools/bench/bench.mjs`, cases
+**Where.** A step of the `check` job, `npm run bench -- --check` (`tools/bench/bench.ts`, cases
 in `packages/vimma-core/bench/cases.mjs`). It measures the working tree and the baseline commit
 named in `baseline.json` in the same processes, so the runner's speed cancels out. Why it does
 not flake and how to move the baseline on purpose: docs/runbook.md, "Bench baseline".

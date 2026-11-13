@@ -116,14 +116,14 @@ tests.**
 - **Help**: `bindingTable` (`help.mjs:31-37`) makes one row per `ACTIONS` entry with the keys
   `keymap.keysFor` returns (`keymap.mjs:316`); the overlay, `:map`, `docs/bindings.md` and, since
   #154, `docs/bindings.json` (`bindingsJson`, `help.mjs:76-110`; vimma.dev mirrors it through
-  `.github/workflows/site-dispatch.yml`) all render it. `tools/gen-docs.mjs` writes
-  `defaults.toml`, bindings.md and bindings.json; `defaults.test.mjs:16-19` fails when the
-  committed bindings.json is stale. Firefox's keys are in none of them. Groups today, in order
-  (`actions.mjs`): Help, Tabs, Panes, Workspaces (`private_workspace` there), Navigation
-  (`history_back`, `history_forward`, `reload`, `focus_urlbar` at `:146-152`), Page, Hints,
-  Find, Modes, Copy mode, Side panel, Bookmarks, Config, Add-ons. `restore_tab`
-  (`tab.restore`) sits in "Side panel" (`actions.mjs:259`) because its only key is the panel's
-  `<C-S-t>` (`defaults.mjs:216-217`; runner `VimmaHost.sys.mjs:595-596`).
+  `.github/workflows/site-dispatch.yml`) all render it. `tools/gen-docs.mjs` (Since changed:
+  `gen-docs.ts`, ADR-025) writes `defaults.toml`, bindings.md and bindings.json;
+  `defaults.test.mjs:16-19` fails when the committed bindings.json is stale. Firefox's keys are in
+  none of them. Groups today, in order (`actions.mjs`): Help, Tabs, Panes, Workspaces
+  (`private_workspace` there), Navigation (`history_back`, `history_forward`, `reload`,
+  `focus_urlbar` at `:146-152`), Page, Hints, Find, Modes, Copy mode, Side panel, Bookmarks, Config,
+  Add-ons. `restore_tab` (`tab.restore`) sits in "Side panel" (`actions.mjs:259`) because its only
+  key is the panel's `<C-S-t>` (`defaults.mjs:216-217`; runner `VimmaHost.sys.mjs:595-596`).
 - **Config file**: `:config` / first run writes `formatConfigTemplate()` (`defaults.mjs:395-413`),
   every setting commented out (`# disable = [...]` under `[firefox]`, `defaults.mjs:328-332`); an
   existing file is never rewritten (`ConfigHost.sys.mjs:257` `createFromTemplate`).

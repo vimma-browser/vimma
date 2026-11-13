@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Key-to-action in core (plan §5: < 50 µs), measured by tools/bench/bench.mjs and gated against
- * baseline.json by tools/bench/compare.mjs. Each case runs one whole key sequence from keydown to
+ * Key-to-action in core (plan §5: < 50 µs), measured by tools/bench/bench.ts and gated against
+ * baseline.json by tools/bench/compare.ts. Each case runs one whole key sequence from keydown to
  * the action the host would apply, so the dispatcher ends idle and every run does the same work.
  * Names key the baseline: renaming a case means re-recording it (docs/runbook.md).
  */
