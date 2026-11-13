@@ -498,7 +498,7 @@ npm run mochitest -- --artifact tests/browser/
 npm run lane:teardown       # when done: removes this worktree's engine/
 ```
 
-`tools/lanes/lane-setup.mjs`:
+`tools/lanes/lane-setup.ts`:
 
 1. reflink-copies the main checkout's `engine/` (`--source <checkout>` for another) without
    any `obj-*` dir, keeping the engine's own `.git` and modes (`cp -a --reflink=always`);
@@ -1085,7 +1085,7 @@ Why it does not flake (CI never retries; a flaky test means quarantine):
   sample: unchanged code read +25.0 % on one case on a hosted macOS runner. Instead, each sweep
   divides the working tree's ratio by the baseline's, both taken a few milliseconds apart in the
   same phase, and the gate takes the median of those per round and the median of the rounds.
-  `tools/bench/test/bench.test.mjs` scripts such a machine on a fake clock: on 20 seeds,
+  `tools/bench/test/bench.test.ts` scripts such a machine on a fake clock: on 20 seeds,
   separate medians read identical code up to +50 %, the paired change reads it within the gate
   and still fails a case made 20 % slower.
 - **Load order alternates.** Two copies of identical code in one process differ by several per
@@ -1114,7 +1114,7 @@ Why it does not flake (CI never retries; a flaky test means quarantine):
   the reference's time lowers a ratio, so the lowest ratio picked whichever process had the
   slowest reference (issue #125, PR #121).
 - **It still catches a real slowdown.** A dispatcher made 20 % slower fails the gate
-  (`tools/bench/test/bench.test.mjs`): the test measures the baseline, an unchanged copy and the
+  (`tools/bench/test/bench.test.ts`): the test measures the baseline, an unchanged copy and the
   slowed code as variants of one `measure()` call, as the bench measures its two sides, and gates
   the median of three such runs. By hand: a loop of 24 multiply-adds at the top of `dispatch()`
   read +15.2 % on the suite against `--base HEAD` and the step exited 1.

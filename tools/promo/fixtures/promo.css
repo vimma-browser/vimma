@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* The promo video's fictional sites (tools/promo/record.mjs): a handbook, a news front page and a
+/* The promo video's fictional sites (tools/promo/record.ts): a handbook, a news front page and a
    mail inbox. Dark and calm, in Vimma's own palette (theme.mjs VIMMA_DARK): the background one
    step lighter than the browser's background, so a page stays apart from the status bar; links and
    accents avoid the aqua and magenta of Vimma's own surfaces and hints, and the panels and the
