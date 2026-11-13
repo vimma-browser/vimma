@@ -3,7 +3,7 @@
 `about:vimma`: the current mode, the last keys and what they did, config errors, versions, the
 patch count, the control socket and MCP state, and a redacted bug report.
 `AboutVimma.sys.mjs` registers the page and gathers its data; `about.mjs` and `about.html` are
-the page; `key-log.mjs` keeps the last key events, which the host records.
+the page. The last key events come from `host/key-log.mjs`, which the host writes.
 
 **Entry points:** `AboutVimma.register()`, called by `vimma.js`.
 

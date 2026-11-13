@@ -98,7 +98,7 @@ import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
-import { KeyLog } from "../about/key-log.mjs";
+import { KeyLog } from "./key-log.mjs";
 import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "./addon-ops.mjs";
 import {
   forgetSitePermissions,

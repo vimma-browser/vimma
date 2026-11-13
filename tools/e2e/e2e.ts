@@ -13,9 +13,10 @@
  *   npm run e2e -- --xvfb --keep                 # own Xvfb even with a display; keep profiles
  *   npm run e2e -- --headless                    # MOZ_HEADLESS, no screenshots (macOS default)
  *   npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl path/to/vimma-ctl
- *   npm run e2e -- --update-baselines            # rewrite baselines: needs a changelog line
+ *   npm run e2e -- --update-baselines            # rewrite baselines: commit body says why
  *   npm run e2e -- --run-pending                 # also run scenarios marked pending
  *   npm run e2e -- --report-json out.json        # also write the results as JSON (Beta canary)
+ *   npm run e2e -- --port 28472                  # fixture pages on another port (VIMMA_E2E_PORT)
  *   npm run e2e -- --updater engine/obj-x86_64-pc-linux-gnu --filter m6a-update
  *                                                # the updater's scenarios (VIMMA_UPDATES=1)
  *
@@ -28,6 +29,11 @@
  * A scenario with `update` (docs/specs/m6a-updater.md, "Tests", e2e) runs only with --updater,
  * the objdir of a VIMMA_UPDATES=1 build after `./mach package`: each gets its own install of that
  * tarball, updated from a local host (update-host.ts). Without --updater it is reported pending.
+ *
+ * Fixture pages are served on 127.0.0.1:28471 (PAGE_PORT in pages.ts), the port the baselines
+ * show in the URL and status bars. When another process holds it (another e2e run, most likely),
+ * the run stops before launching anything: a different port would be drawn into every screenshot
+ * that shows a URL. --port N (or VIMMA_E2E_PORT=N) picks another, 0 any free one.
  *
  * Exit 0 when nothing failed (pending scenarios are reported, not passed), 1 on failures,
  * 2 on usage errors.
@@ -59,10 +65,10 @@ import {
   unpackTarball,
   waitForSessionSaved,
 } from "./launcher.ts";
-import { fixtureText, fixtureUrl, startPageServer } from "./pages.ts";
+import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "./pages.ts";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.ts";
 import { loadScenarios, scenarioLaunch } from "./scenario.ts";
-import { capture, checkBaseline } from "./screenshot.ts";
+import { capture, checkBaseline, shotFailure } from "./screenshot.ts";
 import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.ts";
 import type { Build } from "./launcher.ts";
 import type { UpdateRun } from "./update-host.ts";
@@ -91,6 +97,7 @@ const OPTIONS = {
   out: { type: "string", default: join(REPO, "e2e-output") },
   "report-json": { type: "string" },
   updater: { type: "string" },
+  port: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
 } as const;
 
@@ -114,6 +121,12 @@ async function main() {
     return usage("--update-baselines is refused in CI: baselines change only in a reviewed commit");
   }
   if (values["report-json"] === "") return usage("--report-json needs a file path");
+  let port: number;
+  try {
+    port = pagePort({ flag: values.port, env: process.env });
+  } catch (e) {
+    return usage((e as Error).message);
+  }
   const budgetMs = Number(values.budget) * 1000;
   const discoveryTimeoutMs = Number(values["discovery-timeout"]) * 1000;
   if (!(budgetMs > 0) || !(discoveryTimeoutMs > 0))
@@ -167,8 +180,22 @@ async function main() {
     if (runnable.length) {
       ctlBin = findVimmaCtl({ flag: values["vimma-ctl"], env: process.env });
       // In-process: it dies with the CLI, so a signal needs no cleanup for it.
-      pages = await startPageServer(join(REPO, "tests/e2e/fixtures"));
+      try {
+        pages = await startPageServer(join(REPO, "tests/e2e/fixtures"), { port });
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "EADDRINUSE") throw e;
+        // Not another port on its own: the baselines show this one in the URL and status bars.
+        await cleanupAll();
+        return usage(
+          `the fixture pages' port: ${(e as Error).message}, most likely another ` +
+            `e2e run. The baselines show port ${PAGE_PORT} in the URL and status bars: wait for ` +
+            "that run, or pass --port N (or VIMMA_E2E_PORT=N; 0 for any free port), and a " +
+            "screenshot that shows a URL then differs from its baseline by a few digits.",
+        );
+      }
+      const note = port === PAGE_PORT ? "" : ` (not the baselines' port ${PAGE_PORT})`;
       console.log(`build: ${build?.binary ?? "none"}\nvimma-ctl: ${ctlBin}`);
+      console.log(`fixture pages: ${pages.base}${note}`);
     }
     /** the update scenarios' */
     let updateRun: Promise<UpdateRun> | null = null;
@@ -293,8 +320,8 @@ async function main() {
         });
         console.log(`        screenshot ${name}: ${result.status}: ${result.message}`);
         if (result.status === "updated") rewritten.push(name);
-        if (result.status === "missing" || result.status === "mismatch")
-          throw new Error(result.message);
+        // runSteps goes on and fails the scenario at its end (issue #953)
+        return shotFailure(result);
       };
       const stepCtl = {
         state: () => ctl.state(),
@@ -422,8 +449,8 @@ async function main() {
     }
     if (rewritten.length) {
       console.log(
-        `\nBaselines rewritten: ${rewritten.join(", ")}. Check them by eye and commit with a ` +
-          "changelog line saying why (CONTRIBUTING.md: never change a baseline without one).",
+        `\nBaselines rewritten: ${rewritten.join(", ")}. Check them by eye and commit them with ` +
+          "a commit body saying why (CONTRIBUTING.md: never change a baseline without one).",
       );
     }
     return exitCode(results);

@@ -765,7 +765,7 @@ add_task(async function about_vimma_and_its_key_log_leave_private_windows_out() 
   const { AboutVimma } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/about/AboutVimma.sys.mjs",
   );
-  const { KeyLog } = ChromeUtils.importESModule("chrome://browser/content/vimma/about/key-log.mjs");
+  const { KeyLog } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/key-log.mjs");
   const { VimmaHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
   );

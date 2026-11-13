@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -191,4 +192,64 @@ describe("npm run e2e: the scenarios' fonts", () => {
       process.platform === "darwin" ? undefined : E2E_FONTCONFIG,
     );
   }, 70_000);
+});
+
+// Issue #953: the fixture page server's port shows in the URL and status bars of the
+// baselines, so a run whose port is taken stops at once and says how to go on, rather than
+// drawing another port into every screenshot.
+describe("npm run e2e: the fixture page server's port", () => {
+  const run = (args: string[], env: Record<string, string> = {}) => {
+    const dir = tempDir("e2e-port-");
+    const scenarios = join(dir, "scenarios");
+    mkdirSync(scenarios);
+    writeFileSync(
+      join(scenarios, "m0-port.json"),
+      JSON.stringify({
+        name: "m0-port",
+        description: "x",
+        timeoutSeconds: 5,
+        steps: [{ "wait-for-state": { mode: "normal" } }],
+      }),
+    );
+    return spawnSync(
+      process.execPath,
+      [
+        CLI,
+        ...["--scenarios", scenarios, "--baselines", join(dir, "shots"), "--out", join(dir, "o")],
+        ...["--build", `${BIN}/false`, "--vimma-ctl", `${BIN}/true`, "--discovery-timeout", "1"],
+        ...args,
+      ],
+      { encoding: "utf8", env: { ...process.env, CI: "true", ...env }, timeout: 30_000 },
+    );
+  };
+
+  it("exits 2 before launching anything when the port is taken, naming it and the overrides", async () => {
+    const other = createServer();
+    await new Promise((resolve) => other.listen(0, "127.0.0.1", () => resolve(undefined)));
+    try {
+      const address = other.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const r = run([], { VIMMA_E2E_PORT: String(port) });
+      expect(r.status, r.stdout + r.stderr).toBe(2);
+      expect(r.stderr).toContain(`127.0.0.1:${port}`);
+      expect(r.stderr).toMatch(/--port/);
+      expect(r.stderr).toMatch(/VIMMA_E2E_PORT/);
+      expect(r.stdout).not.toMatch(/m0-port/);
+    } finally {
+      await new Promise((resolve) => other.close(() => resolve(undefined)));
+    }
+  });
+
+  it("says when the port is not the baselines' one", () => {
+    const r = run(["--port", "0"]);
+    expect(r.stdout).toMatch(
+      /fixture pages: http:\/\/127\.0\.0\.1:\d+\/ \(not the baselines' port \d+/,
+    );
+  });
+
+  it("refuses a port that is not a number from 0 to 65535 (exit 2)", () => {
+    const r = run(["--port", "http"]);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/--port/);
+  });
 });

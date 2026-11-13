@@ -356,7 +356,9 @@ export type UpdateHost = {
 /**
  * The local update host: `/update.xml` (whatever the query) answers the manifest last given to
  * `serve` (404 before, or after `serve(null)`), and `/<name>` each file added, with the byte
- * ranges nsIncrementalDownload asks for. It listens on 127.0.0.1 only.
+ * ranges nsIncrementalDownload asks for. It listens on 127.0.0.1 only, on any free port: unlike
+ * the fixture pages' fixed one (pages.ts, PAGE_PORT), no screenshot shows its origin, since the
+ * update scenarios take none, so a fixed port would only make two runs collide.
  */
 export async function startUpdateHost({
   cert,

@@ -6,7 +6,13 @@ import { deflateSync } from "node:zlib";
 import { decodePng, encodePng } from "../png.ts";
 import fc from "fast-check";
 import { decodeXwd } from "../xwd.ts";
-import { CHANNEL_TOLERANCE, MAX_DIFF_RATIO, checkBaseline, diffImages } from "../screenshot.ts";
+import {
+  CHANNEL_TOLERANCE,
+  MAX_DIFF_RATIO,
+  checkBaseline,
+  diffImages,
+  shotFailure,
+} from "../screenshot.ts";
 import { defined } from "../../test/defined.ts";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -224,7 +230,7 @@ describe("checkBaseline", () => {
     const out = tempDir();
     const r = checkBaseline({ name: "m0-x", image: img, baselineDir: dir, outDir: out });
     expect(r.status).toBe("missing");
-    expect(r.message).toMatch(/--update-baselines[^]*changelog/);
+    expect(r.message).toMatch(/--update-baselines[^]*commit body/);
     expect(existsSync(join(dir, "m0-x.png"))).toBe(false);
     // the actual image lands in e2e-output/, so CI's run can supply the first baseline
     expect(decodePng(readFileSync(join(out, "m0-x.actual.png")))).toEqual(img);
@@ -334,3 +340,13 @@ function xvfbXwd(w: number, h: number, pixels: number[][], littleHeader: boolean
   );
   return Buffer.concat([header, name, colors, body]);
 }
+
+// Issue #953: what e2e.ts's screenshot step hands runSteps, which fails the scenario at its end.
+describe("shotFailure", () => {
+  it("gives the message of a missing or differing baseline, nothing for a match or a rewrite", () => {
+    expect(shotFailure({ status: "mismatch", message: "2.5 % differ" })).toBe("2.5 % differ");
+    expect(shotFailure({ status: "missing", message: "no baseline" })).toBe("no baseline");
+    expect(shotFailure({ status: "match", message: "0.00 %" })).toBeUndefined();
+    expect(shotFailure({ status: "updated", message: "wrote it" })).toBeUndefined();
+  });
+});

@@ -127,7 +127,7 @@ Tests: [dispatcher.test.mjs](../../packages/vimma-core/test/dispatcher.test.mjs)
 ## 3. The host acts on the answer
 
 `_dispatch` first logs the key and its result for `about:vimma` (`KeyLog.record` in
-`about/key-log.mjs`): never in a private window, and a plain key typed in insert or command mode
+`host/key-log.mjs`): never in a private window, and a plain key typed in insert or command mode
 is kept only as `·`. Then it handles each kind:
 
 - **`pass`.** The key goes on to Firefox and the page. Before that, `_editKey` looks for a

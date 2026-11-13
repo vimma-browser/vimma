@@ -40,9 +40,43 @@ export function fixtureText(text: string, base: string | null): string {
   return text.replace(/fixture:[^\s\]]*/g, (url) => fixtureUrl(url, base));
 }
 
-/** Serve the plain files of `dir` (no subdirectories) on 127.0.0.1 at an ephemeral port. */
+/**
+ * The e2e scenarios' page server port. The URL and status bars show it, so every run serves on
+ * the same one and draws the same pixels as the baselines (issue #953). Below Linux's ephemeral
+ * range (32768-60999), so the kernel never gives it to another program's outgoing socket, and in
+ * no list of Firefox's blocked ports (netwerk/base/nsIOService.cpp, gBadPortList).
+ */
+export const PAGE_PORT = 28471;
+
+/**
+ * The port the e2e page server listens on: `--port`, else `VIMMA_E2E_PORT`, else PAGE_PORT.
+ * 0 asks for any free port (screenshots that show the URL then differ from the baselines).
+ */
+export function pagePort({
+  flag,
+  env,
+}: {
+  flag: string | undefined;
+  env: Record<string, string | undefined>;
+}): number {
+  // An empty VIMMA_E2E_PORT is an unset one, as VIMMA_E2E_BUILD; an empty --port is an error.
+  const [name, value] =
+    flag !== undefined ? ["--port", flag] : ["VIMMA_E2E_PORT", env.VIMMA_E2E_PORT || undefined];
+  if (value === undefined) return PAGE_PORT;
+  const port = /^\d{1,5}$/.test(value) ? Number(value) : NaN;
+  if (!(port <= 65535))
+    throw new Error(`${name} needs a port from 0 to 65535, not ${JSON.stringify(value)}`);
+  return port;
+}
+
+/**
+ * Serve the plain files of `dir` (no subdirectories) on 127.0.0.1, at `port` (default: any
+ * free one). A port another process holds rejects with EADDRINUSE: the caller decides what to
+ * do, since another port changes what the pages' URLs look like.
+ */
 export async function startPageServer(
   dir: string,
+  { port: wanted = 0 }: { port?: number } = {},
 ): Promise<{ base: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     let name = "";
@@ -63,8 +97,11 @@ export async function startPageServer(
     createReadStream(path).pipe(res);
   });
   await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve(undefined));
+    server.once("error", (e: NodeJS.ErrnoException) => {
+      if (e.code === "EADDRINUSE") e.message = `127.0.0.1:${wanted} is in use by another process`;
+      reject(e);
+    });
+    server.listen(wanted, "127.0.0.1", () => resolve(undefined));
   });
   const address = server.address();
   const port = typeof address === "object" && address ? address.port : 0;

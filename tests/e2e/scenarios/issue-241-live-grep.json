@@ -1,7 +1,7 @@
 {
   "name": "issue-241-live-grep",
   "issue": 241,
-  "description": "Live grep (docs/specs/live-grep.md): three fixture pages in one workspace; ctrl+b f g and `credit` list every matching line with its tab and line number, the best result next to the prompt at the bottom, the preview on the right with the matched line highlighted; Enter selects that tab and the match, in normal mode. The status bar shows the fixture server's port, a few digits that vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "description": "Live grep (docs/specs/live-grep.md): three fixture pages in one workspace; ctrl+b f g and `credit` list every matching line with its tab and line number, the best result next to the prompt at the bottom, the preview on the right with the matched line highlighted; Enter selects that tab and the match, in normal mode. The status bar shows the fixture server's fixed port (28471).",
   "timeoutSeconds": 90,
   "steps": [
     {

@@ -7,7 +7,7 @@ export type Status = "pass" | "fail" | "timeout" | "pending" | "skipped";
 export type Result = { name: string; status: Status; ms: number; error?: string };
 export type Session = {
   ctl: StepContext["ctl"];
-  screenshot: (name: string) => Promise<void>;
+  screenshot: (name: string) => Promise<string | void>;
   restart?: (how: "quit" | "kill") => Promise<void>;
   control?: Control;
   profile?: string;
