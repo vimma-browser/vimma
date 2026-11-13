@@ -11,9 +11,11 @@ import { MODES } from "../src/modes.mjs";
 import { ACTIONS } from "../src/actions.mjs";
 import { DEFAULT_CONFIG } from "../src/defaults.mjs";
 
+const DEFAULT_KEYS = DEFAULT_CONFIG.keys;
+if (!DEFAULT_KEYS) throw new Error("the defaults have no [keys]");
 /** [keys] lists that drop every default leader binding, so no binding uses the leader. */
 const NO_LEADER_KEYS = Object.fromEntries(
-  Object.entries(DEFAULT_CONFIG.keys)
+  Object.entries(DEFAULT_KEYS)
     .filter(([, v]) => [v].flat().some((b) => /<leader>/i.test(b)))
     .map(([k, v]) => [k, [v].flat().filter((b) => !/<leader>/i.test(b))]),
 );
@@ -28,7 +30,7 @@ describe("help table", () => {
     // An explicit sidebar list, so the leader binding does not hang on the defaults.
     const km = compileKeymap({ keys: { toggle_sidebar: ["prefix+b", "<leader>n"] } });
     const rows = bindingTable(km);
-    const keys = (name) => rows.find((r) => r.name === name)?.bindings;
+    const keys = (/** @type {string} */ name) => rows.find((r) => r.name === name)?.bindings;
     expect(keys("show_keybinds")).toContain("ctrl+b ?");
     expect(keys("toggle_sidebar")).toEqual(["ctrl+b b", "space n"]);
     expect(keys("close_tab")).toEqual(["ctrl+b shift+x", "ctrl+f4", "x"]);
@@ -143,7 +145,7 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
         if (k.mode) expect([...MODES, "pdf"]).toContain(k.mode);
       }
     }
-    const keysOf = (name) =>
+    const keysOf = (/** @type {string} */ name) =>
       data.groups.flatMap((g) => g.actions).find((a) => a.name === name)?.keys;
     expect(keysOf("help_close")).toContainEqual({ keys: "esc", chords: ["esc"], mode: "help" });
     // The PDF viewer's bindings carry their context like a mode (docs/specs/pdf-mode.md).
@@ -166,7 +168,7 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
 // docs/specs/firefox-keys.md decisions 3 and 7.
 describe("Firefox's keys in the overlay", () => {
   const rows = bindingTable(compileKeymap());
-  const row = (name) => rows.find((r) => r.name === name);
+  const row = (/** @type {string} */ name) => rows.find((r) => r.name === name);
 
   test("Browser comes after Page, Developer tools after it", () => {
     const groups = [...new Set(rows.map((r) => r.group))];

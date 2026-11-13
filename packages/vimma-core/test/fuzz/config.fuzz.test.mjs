@@ -77,7 +77,7 @@ function expectInSchema(c) {
 /**
  * Values for a schema-checked field: mostly valid ones, so that whole documents often pass and
  * reach the in-schema checks, then near misses, prototype member names and random text.
- * @param {string[]} valid
+ * @param {readonly string[]} valid
  * @param {string[]} [near]
  */
 const fieldValue = (valid, near = []) =>

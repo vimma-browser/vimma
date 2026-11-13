@@ -102,6 +102,7 @@ describe("agent gate fuzzing", () => {
             /** @type {Set<number>} */
             const always = new Set();
             /** @type {Set<number>} conns that answered a grantable question with a grant */
+            /** @type {Set<import("../../src/agent.mjs").ConnId>} */
             const granted = new Set();
             let now = 0;
             for (const e of events) {
@@ -115,9 +116,11 @@ describe("agent gate fuzzing", () => {
                 const waiting = q.waiting;
                 if (!waiting.length) continue;
                 const target = waiting[e.pick % waiting.length];
+                if (!target) continue;
+                /** @type {import("../../src/agent.mjs").Answer} */
                 const answer =
                   e.kind === "grant" ? { kind: "grant", minutes: 5 } : { kind: e.kind };
-                const { resolved, grant } = q.answer(target.id, /** @type {any} */ (answer), now);
+                const { resolved, grant } = q.answer(target.id, answer, now);
                 for (const r of resolved) {
                   if (r.id !== target.id) expect(always.has(r.id)).toBe(false);
                 }
@@ -175,12 +178,13 @@ describe("agent gate fuzzing", () => {
             for (const e of events) {
               now += 7000;
               const ids = q.waiting.map((r) => r.id);
-              const target = ids.length ? ids[("pick" in e ? e.pick : 0) % ids.length] : -1;
+              const target = ids[("pick" in e ? e.pick : 0) % ids.length] ?? -1;
               if (e.op === "ask") q.ask(e.conn, e.tool, now);
               else if (e.op === "answer") {
+                /** @type {import("../../src/agent.mjs").Answer} */
                 const answer =
                   e.kind === "grant" ? { kind: "grant", minutes: e.minutes } : { kind: e.kind };
-                settle(q.answer(target, /** @type {any} */ (answer), now).resolved);
+                settle(q.answer(target, answer, now).resolved);
               } else if (e.op === "expire") settle(q.expire(target, now).resolved);
               else if (e.op === "cancel") {
                 if (q.cancel(target)) done.add(target);

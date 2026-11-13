@@ -698,7 +698,9 @@ describe("budgets", () => {
     expect(r.calls).toHaveLength(1);
     expect(res.outcome).toBe("budget");
     expect(res.exceeded).toEqual({ limit: "steps", used: 1, max: 1 });
-    expect(res.messages.at(-1).results[1]).toEqual({
+    const last = res.messages.at(-1);
+    if (last?.role !== "tool") throw new Error(`not the tool results: ${JSON.stringify(last)}`);
+    expect(last.results[1]).toEqual({
       id: "b",
       name: "vimma_tabs",
       isError: true,
@@ -844,10 +846,15 @@ describe("older results leave the context in blocks", () => {
   });
 
   test("a hosted provider keeps 6, a local one 20, and keep_results overrides both", () => {
+    /** @type {import("../src/agent-providers.mjs").Provider} */
     const hosted = { kind: "anthropic", endpoint: "https://api.anthropic.com", model: "m" };
+    /** @type {import("../src/agent-providers.mjs").Provider} */
     const remote = { kind: "openai", endpoint: "https://llm.example/v1", model: "m" };
+    /** @type {import("../src/agent-providers.mjs").Provider} */
     const ollama = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
+    /** @type {import("../src/agent-providers.mjs").Provider} */
     const studio = { kind: "openai", endpoint: "http://localhost:1234/v1", model: "m" };
+    /** @type {import("../src/agent-providers.mjs").Provider} */
     const v6 = { kind: "openai", endpoint: "http://[::1]:8000/v1", model: "m" };
     expect(KEEP_RESULTS_LOCAL).toBe(20);
     expect([hosted, remote].map((p) => keepResultsFor(p, null))).toEqual([6, 6]);

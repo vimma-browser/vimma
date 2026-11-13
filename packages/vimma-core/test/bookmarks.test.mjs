@@ -31,10 +31,30 @@ import { createDispatcher } from "../src/dispatcher.mjs";
 import { parseKey } from "../src/keys.mjs";
 import { parseCommandLine } from "../src/cmdline.mjs";
 
-/** @import { BookmarksState, Folder } from "../src/bookmarks.mjs" */
+/** @import { BookmarksState, Folder, PlacesItem } from "../src/bookmarks.mjs" */
 
+/** @param {string} guid @param {string} title @param {string} uri @returns {PlacesItem} */
 const bm = (guid, title, uri) => ({ guid, typeCode: 1, title, uri });
+/** @param {string} guid @param {string} title @param {PlacesItem[]} [children] */
 const folder = (guid, title, children = []) => ({ guid, typeCode: 2, title, children });
+
+/**
+ * The folder at `path` (child indexes from `node`) in a copy of the places tree; throws when the
+ * fixture has no folder there.
+ * @param {PlacesItem} node @param {number[]} path
+ * @returns {PlacesItem & { children: PlacesItem[] }}
+ */
+function folderAt(node, ...path) {
+  let at = node;
+  for (const i of path) {
+    const next = at.children?.[i];
+    if (!next) throw new Error(`no child ${i} in the fixture`);
+    at = next;
+  }
+  const { children } = at;
+  if (!children) throw new Error("not a folder in the fixture");
+  return Object.assign(at, { children });
+}
 
 /** What PlacesUtils.promiseBookmarksTree("") gives, cut down. */
 const places = {
@@ -108,7 +128,7 @@ describe("fromPlaces", () => {
   });
   test("mobile shows once it has something", () => {
     const withMobile = structuredClone(places);
-    withMobile.children[3].children.push(bm("m1", "Phone", "https://m.example/"));
+    folderAt(withMobile, 3).children.push(bm("m1", "Phone", "https://m.example/"));
     expect(
       fromPlaces(withMobile)
         .children.map((c) => c.title)
@@ -128,7 +148,7 @@ describe("fromPlaces", () => {
 // docs/specs/bookmarks.md: the panel shows only the Bookmarks Toolbar.
 describe('fromPlaces(places, "toolbar")', () => {
   const nested = structuredClone(places);
-  nested.children[1].children.push(
+  folderAt(nested, 1).children.push(
     folder("tools", "tools", [bm("vitest", "Vitest", "https://vitest.dev/")]),
   );
   const bar = fromPlaces(nested, "toolbar");
@@ -186,7 +206,7 @@ describe('fromPlaces(places, "toolbar")', () => {
 
 function emptyBar() {
   const p = structuredClone(places);
-  p.children[1].children = [];
+  folderAt(p, 1).children = [];
   return p;
 }
 
@@ -274,7 +294,7 @@ describe("filterBookmarks", () => {
 
 /**
  * @param {BookmarksState} s
- * @param {Array<{ id: string, arg?: number }>} actions
+ * @param {Array<{ id: string, arg?: number, count?: number, page?: number }>} actions
  */
 function press(s, actions) {
   /** @type {ReturnType<typeof bookmarksKey>["effect"]} */
@@ -457,7 +477,7 @@ describe("refreshBookmarks", () => {
   test("keeps the highlight on its item, expanded folders and the filter", () => {
     const s = at("jira", { expanded: ["work"] });
     const more = structuredClone(places);
-    more.children[0].children[0].children.unshift(bm("new", "New", "https://new.example/"));
+    folderAt(more, 0, 0).children.unshift(bm("new", "New", "https://new.example/"));
     const next = refreshBookmarks(s, fromPlaces(more));
     expect(sel(next)?.guid).toBe("jira");
     expect(next.rows.map((r) => r.guid)).toContain("new");
@@ -465,11 +485,11 @@ describe("refreshBookmarks", () => {
   test("an item gone: the highlight stays at its place; a folder gone leaves expanded", () => {
     const s = at("Work2", { expanded: ["work"] });
     const less = structuredClone(places);
-    less.children[0].children.splice(1, 1);
+    folderAt(less, 0).children.splice(1, 1);
     const next = refreshBookmarks(s, fromPlaces(less));
     expect(next.selected).toBe(s.selected);
     const noWork = structuredClone(places);
-    noWork.children[0].children.splice(0, 1);
+    folderAt(noWork, 0).children.splice(0, 1);
     expect(refreshBookmarks(s, fromPlaces(noWork)).expanded).not.toContain("work");
   });
 });

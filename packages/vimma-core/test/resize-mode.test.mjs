@@ -7,12 +7,25 @@ import { resolveEscape } from "../src/escape.mjs";
 import { getAction } from "../src/actions.mjs";
 import { BADGES } from "../src/theme.mjs";
 
-/** Feed space-separated chords; return all results. */
+/** @import { Mode } from "../src/modes.mjs" */
+
+/**
+ * Feed space-separated chords; return all results.
+ * @param {ReturnType<typeof createDispatcher>} d
+ * @param {Mode} mode
+ * @param {string} keys
+ */
 function feed(d, mode, keys) {
   return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
 }
+/**
+ * @template T
+ * @param {T[]} arr
+ */
 const last = (arr) => arr[arr.length - 1];
+/** @param {string} id */
 const act = (id, extra = {}) => ({ kind: "action", action: { id, ...extra } });
+/** @param {Parameters<typeof compileKeymap>[0]} [cfg] */
 const make = (cfg) => createDispatcher(compileKeymap(cfg));
 
 describe("resize mode (m4-split-panes sub-spec 5, ADR-014)", () => {
@@ -78,7 +91,7 @@ describe("resize mode (m4-split-panes sub-spec 5, ADR-014)", () => {
       action: { id: "pane.resize_exit" },
       mode: "normal",
     });
-    expect(resolveEscape({ mode: "resize", previous: "insert" }).mode).toBe("insert");
+    expect(resolveEscape({ mode: "resize", previous: "insert" })).toMatchObject({ mode: "insert" });
   });
 
   test("resize_exit is an action, in the Panes group", () => {
