@@ -11,8 +11,9 @@ How to build, run and test Vimma, and how changes get in. For why Vimma exists, 
 - About 35 GB of free disk space, as measured on one machine: `engine/` 27 GB (source and the
   full build), the sccache compiler cache 6.8 GB, toolchains in `~/.mozbuild` 3.1 GB and the
   Firefox source download in `.surfer/` 0.8 GB.
-- Node.js 22.18 or later, which runs the TypeScript tools under `tools/` without a flag
-  ([ADR-025](docs/adr/025-typescript-for-tools.md)); `.nvmrc` pins the version CI uses. git.
+- Node.js 22.18 or later in the 22 line, or 24.3 or later: they run the TypeScript tools under
+  `tools/` without a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)); `.nvmrc`
+  pins the version CI uses. git.
 - Python 3.10 to 3.14: the range `engine/mach` declares it supports. A newer Python breaks mach in
   places; Python 3.15 cannot parse the test manifests.
 - Time: the first full build took 39 min on a 16-thread Ryzen with 58 GB RAM. The Firefox source
@@ -171,8 +172,9 @@ Mac is not supported.
 - **Tools.** Xcode's command line tools (`xcode-select --install`), Python 3 and
   `brew install gnu-tar gnupg`: Surfer unpacks the Firefox source with GNU tar (`gtar`) on macOS,
   and the source check needs `gpgv`.
-- **Node.js** 22.18 or later: the first Node 22 that runs the `.ts` tools without a flag
-  ([ADR-025](docs/adr/025-typescript-for-tools.md)). `.nvmrc` pins the version CI uses.
+- **Node.js** 22.18 or later in the 22 line, or 24.3 or later: they run the `.ts` tools without
+  a flag or a warning ([ADR-025](docs/adr/025-typescript-for-tools.md)). `.nvmrc` pins the
+  version CI uses.
 
 ```sh
 npm ci
@@ -217,29 +219,47 @@ folder of `tools/`) per pull request. `npm run typecheck`, `npm run lint` and `n
 erase (`tsc` rejects the rest), `import type` for a type-only import, and the real file name in a
 relative import: `./x.ts`.
 
-Moving an area, in a pull request that does only this (`Part of #946`):
+Moving an area, in a pull request that does only this (`Part of #946`). `tools/claude-plugin`
+stays `.mjs` (ADR-025 says why).
 
-1. **Callers first.** Search for every path to the area's files before renaming:
-   `git grep -nE 'tools/<area>/|\.\./<area>/|tools\\/<area>\\/'` and each file's bare name. Count
-   them in `package.json` scripts, workflows, docs, other tools' imports, and tests that read a
-   workflow or a tool as text (they match paths with escaped slashes).
-2. **Check the workflows that run it.** An area a workflow runs on the runner's own Node (no
-   `actions/setup-node` with `.nvmrc`) needs that step first, in its own pull request. A workflow
-   that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`) first learns to look
-   for the `.ts` name and fall back to the `.mjs` one. An area that a workflow holding secrets
-   calls goes last, with a security review by a fresh session that did not write it.
+1. **Callers first.** Find every way the area is reached before renaming:
+   - its paths: `git grep -nE 'tools/<area>/|\.\./<area>/|tools\\/<area>\\/'`, and each file's
+     bare name, in `package.json`, workflows, docs, other tools' imports, and tests that read a
+     workflow or a tool as text (they match paths with escaped slashes);
+   - the npm scripts that run it, and the scripts that run those (`npm run import` runs
+     `sync-core`, `version-files` and two `tools/import/` scripts), followed to every
+     `npm run <script>` in a workflow;
+   - the areas that import it, which reach it in every job that reaches them.
+2. **Check every job that reaches it,** step by step, not workflow by workflow:
+   - A job that holds secrets (`secrets.*`) makes the area one of the last, with a security
+     review by a fresh session that did not write it and a manual nightly run before the next
+     area starts.
+   - A job that runs `node` or `npm` before any `actions/setup-node` with `.nvmrc` uses the
+     runner's own Node, which may be older than 22.18: add the step first, in its own pull
+     request.
+   - A `sparse-checkout:` that names a file of the area names the new file.
+   - A step that runs the base branch's copy (`git show "$BASE:tools/…" > "$RUNNER_TEMP/…"`)
+     first learns to read the `.ts` name and fall back to the `.mjs` one, and keeps the extension
+     it read on the temporary copy, in its own pull request.
 3. **Record the tests.** `npx vitest run tools/<area> --reporter=json --outputFile=before.json`,
    and the output of each command-line tool on the real tree.
 4. **Rename alone,** in its own commit, so that the review sees the move and the conversion
    apart: `git mv tools/<area>/x.mjs tools/<area>/x.ts`, tests included.
 5. **Types to syntax, nothing else.** `@param`/`@returns` types become annotations, `@typedef`
    an exported `type` or `interface`, `/** @type {T} */ (x)` becomes `x as T`, and
-   `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change.
+   `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
+   `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
+   check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
+   in the same pull request.
 6. **Update every caller** from step 1. An implemented spec that names a renamed file gets a
    `(Since changed: …)` note, not a rewrite.
 7. **Prove it.** The same test names and count as in step 3 (diff the two lists); the
    typecheck, lint and test scripts green; each command-line tool printing the same output
-   through its npm script; and no path to a renamed `.mjs` file left in `git grep`.
+   through its npm script or workflow command; and no path to a renamed `.mjs` file left in
+   `git grep`. Vitest runs `.ts` through its own transform and resolves `./x.js` to `x.ts`, so a
+   green test does not show that Node can run the file: running each command-line tool is that
+   proof, and for a module that only others import, tsc and the import check in
+   `tools/test/typescript-tools.test.mjs` are.
 
 ## How Vimma is built
 

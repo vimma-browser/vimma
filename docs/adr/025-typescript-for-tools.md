@@ -15,8 +15,9 @@ whole type system in comments: casts as `/** @type {T} */ (x)`, which prettier m
 start an expression, typedefs that cannot be generic without `@template`, and imports of types as
 `import("./x.mjs").T`. The same types read and review more easily as TypeScript syntax.
 
-Node 22.18 and later run a `.ts` file directly by erasing its types (type stripping): no flag, no
-build step, and nothing written to stderr. On Node 22.23.3, the version `.nvmrc` pins:
+Node runs a `.ts` file directly by erasing its types (type stripping), with no flag, no build
+step and nothing written to stderr, from 22.18 in the 22 line and from 24.3 on. On Node 22.23.3,
+the version `.nvmrc` pins:
 
 ```sh
 $ node main.ts     # imports ./double.ts; an interface, a type-only import, annotations, a cast
@@ -25,7 +26,10 @@ $ node enum.ts
 SyntaxError [ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX]: TypeScript enum is not supported in strip-only mode
 ```
 
-Node 22.17 does not run `.ts` at all (`ERR_UNKNOWN_FILE_EXTENSION`).
+Measured on other versions with the same file: 22.17.1 and 23.5.0 do not run `.ts` at all
+(`ERR_UNKNOWN_FILE_EXTENSION`); 23.6.0, 23.11.1 and 24.2.0 run it but print
+`ExperimentalWarning: Type Stripping is an experimental feature` on stderr, which tools whose
+tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 
 ## Decision
 
@@ -37,17 +41,32 @@ Node 22.17 does not run `.ts` at all (`ERR_UNKNOWN_FILE_EXTENSION`).
    Node removes types without looking at what they import. A relative import names the file Node
    loads, `./x.ts` (`allowImportingTsExtensions`; the configuration has `noEmit`), and a test
    checks that every relative import in `tools/**/*.ts` names a file that exists.
-3. `package.json` asks for Node `>=22.18`, the first Node 22 that runs `.ts` without a flag.
+3. `package.json` asks for Node `^22.18.0 || >=24.3.0`: the versions measured above to run `.ts`
+   with no flag and no warning.
 4. `.ts` files get what `.mjs` files get: `npm run typecheck` checks them (their tests too, unlike
    the `.mjs` tests, issue #947), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the
    same rules (`no-undef` and `no-unused-vars` among them) and prettier formats them.
 5. eslint reads a `.ts` file through amaro, the type stripper Node itself uses (MIT, no
    dependencies, no install script): in strip-only mode it replaces each type with spaces, so the
    lines and columns eslint reports are those of the `.ts` file, and syntax Node cannot erase is a
-   parsing error. Type annotations are not linted; tsc checks them.
+   parsing error at that syntax. Its limits:
+   - Types are not linted. A mistake at the type level (a wrong annotation, an unknown type
+     name) is caught by tsc alone.
+   - eslint's amaro (the `package.json` version, 1.3.0 today) is not the one inside Node
+     (`process.versions.amaro`: 1.1.8 in Node 22.23.3), so lint and runtime erase with
+     different versions. tsc's `erasableSyntaxOnly` is the check that holds; the parse error is
+     an earlier signal.
+   - A value used only in a type position (`const sizes = [1]; type S = typeof sizes;`) is
+     reported by `no-unused-vars`, because the type that uses it is gone. Such a value gets an
+     `eslint-disable-next-line` with its reason, or the type is written out.
 6. JavaScript with JSDoc stays, as ADR-004 decided, for everything Firefox loads
    (`src/browser/base/content/vimma/`) and for `packages/vimma-core`, which `npm run sync-core`
    copies into the browser unbuilt. A test fails when a `.ts` file is tracked outside `tools/`.
+7. One exception inside `tools/`: the hooks of `tools/claude-plugin` stay `.mjs`. Claude Code and
+   Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
+   `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
+   does not block, so the guard would stop guarding without a word. The plugin moves only with a
+   plan that fails closed on such a Node, after a security review.
 
 ## Reasoning
 
@@ -80,9 +99,17 @@ Node 22.17 does not run `.ts` at all (`ERR_UNKNOWN_FILE_EXTENSION`).
 
 - An area moves in its own pull request, by rename plus JSDoc-to-syntax with no change in logic
   (`CONTRIBUTING.md`, "TypeScript in tools/"). Until every area has moved, `tools/` holds both.
-- A workflow that runs a tool on the runner's own Node, without `actions/setup-node` and
-  `.nvmrc`, needs that step before its tool can move: the runner's Node may be older than 22.18.
-- A workflow that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`) looks for
-  the `.ts` name first and the `.mjs` name second, so that the pull request that renames the tool
-  is still checked by the base's copy.
-- Contributors need Node 22.18 or later; `.nvmrc` already pins a later one.
+- A job that runs a tool on the runner's own Node (a `node` or `npm` step before any
+  `actions/setup-node` with `.nvmrc`) needs that step before its tool can move: the runner's Node
+  may be older than 22.18. On the day of this record those jobs are: ci.yml `check`,
+  `vimma-ctl-macos` and `covered`; e2e.yml `changes`; key-guard.yml `key-guard`; pkgbuild.yml
+  `covered`; semgrep.yml `covered`; dependabot-automerge.yml `classify`; downloads.yml `collect`;
+  mutation.yml `report`; spec-status.yml `check`; upstream.yml `detect`, `track`, `publish`,
+  `patch-issue` and `drift`; upstream-beta.yml `detect` and `render`; upstream-merge.yml `merge`.
+- A job that checks out only some paths (`sparse-checkout: tools/ci/tree-covered.mjs` in
+  pkgbuild.yml and semgrep.yml) names the new file when it moves.
+- A step that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`: ci.yml and
+  e2e.yml for `docs-only.mjs`, key-guard.yml for `key-guard.mjs`) looks for the `.ts` name first
+  and the `.mjs` name second, so that the pull request that renames the tool is still checked by
+  the base's copy, and writes the copy under the name it read: a `.ts` copy keeps `.ts`.
+- Contributors need Node 22.18 or later in the 22 line, or 24.3 or later; `.nvmrc` pins 22.23.3.
