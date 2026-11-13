@@ -159,9 +159,9 @@ jobs:
         if: steps.classify.outputs.docs-only != 'true'
         run: npm run coverage
 
-      # Plan §5 performance gate (issue #17): fails on a case over 50 µs, or the suite more than
-      # 10 % slower (one case 25 %) than the baseline recorded for this runner's CPU model. A step,
-      # not a job (~30 s; no extra per-job minute). Why it does not flake: docs/runbook.md,
+      # Performance gate (ARCHITECTURE.md, "Testing"; issue #17): fails on a case over 50 µs, or
+      # the suite more than 10 % slower (one case 25 %) than the baseline recorded for this
+      # runner's CPU model. A step, not a job (~30 s; no extra per-job minute). Why it does not flake: docs/runbook.md,
       # "Bench baseline".
       # Docs-only: instead of the whole suite, the Vitest files that read the repo's Markdown.
       - name: Vitest, the files that read Markdown (docs-only pull request)

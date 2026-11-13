@@ -128,7 +128,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
 npm run typecheck        # tsc --checkJs
-npm run lint             # eslint + prettier --check + no process wording in Markdown
+npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
 npm run sites -- --filter github                          # live sites, a report (docs/runbook.md)
@@ -191,15 +191,20 @@ Pull requests run the same steps on a hosted Mac (`mochitest (artifact build, ma
 
 ## Project layout
 
-| Path                              | What                                                                                                                                             |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `packages/vimma-core/`            | Pure ES modules with no Firefox imports: key notation, actions, keymap, dispatcher, config and theme. Tested with Vitest.                        |
-| `src/browser/base/content/vimma/` | Our browser code: the key host, actors, UI, workspaces, split panes, config and the control socket. `core/` is copied in by `npm run sync-core`. |
-| `src/**/*.patch`                  | The small upstream patches, each listed in [ADR-003](docs/adr/003-own-files-minimal-patches.md).                                                 |
-| `configs/`                        | mozconfigs and branding inputs.                                                                                                                  |
-| `tests/browser/`                  | Mochitests (`browser_vimma_*.js`).                                                                                                               |
-| `tools/`                          | Build, upstream-bump, licence and commitlint helpers.                                                                                            |
-| `docs/`                           | [User guide](docs/guide.md), [bindings](docs/bindings.md), [limits](docs/limits.md), specs, ADRs, [runbook](docs/runbook.md).                    |
+[ARCHITECTURE.md](ARCHITECTURE.md) is the map of the code: what Vimma adds to Firefox, the
+processes and how they talk, a line for every folder, the dependencies between them and the trust
+boundaries. [docs/README.md](docs/README.md) says which document covers what. The top level:
+
+| Path                              | What                                                                                                                                                      |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vimma-core/`            | Pure ES modules with no Firefox imports: keys, actions, keymap, dispatcher, config, theme, the browser model, the agent logic. Vitest.                    |
+| `src/browser/base/content/vimma/` | Our browser code: key host, actors, UI, workspaces, split panes, config, control socket, agents. `core/` is copied in by `sync-core`.                     |
+| `src/**/*.patch`                  | The small upstream patches, each listed in [ADR-003](docs/adr/003-own-files-minimal-patches.md).                                                          |
+| `configs/`                        | mozconfigs, branding inputs and the updater's certificates.                                                                                               |
+| `tests/`                          | Mochitests (`browser/`), socket-driven e2e scenarios (`e2e/`) and contract fixtures (`contract/`).                                                        |
+| `tools/`                          | vimma-ctl (Rust), the e2e harness, builds and packaging, the upstream autopilot, release and update tooling, and the lints.                               |
+| `.github/workflows/`              | CI, nightly and scheduled checks, the upstream autopilot, release and publishing.                                                                         |
+| `docs/`                           | [User guide](docs/guide.md), [bindings](docs/bindings.md), [limits](docs/limits.md), [roadmap](docs/roadmap.md), specs, ADRs, [runbook](docs/runbook.md). |
 
 ## How Vimma is built
 
@@ -209,12 +214,12 @@ use before it goes into a release.
 
 ## Workflow
 
-Vimma follows a spec-first, test-first loop ([plan.md](plan.md) §4–§5):
+Vimma follows a spec-first, test-first loop:
 
 - **Issues.** Every planned feature has one GitHub issue (label `planned`) with a short reason,
   a link to its spec and the spec's open questions. The issues are the backlog; the
   [Vimma roadmap](https://github.com/orgs/vimma-browser/projects/1) board tracks them, and
-  [plan.md](plan.md) §6 keeps only the milestones and their order.
+  [docs/roadmap.md](docs/roadmap.md) keeps only the milestones and their order.
 - **Specs.** Every feature starts as `docs/specs/<feature>.md`, written to
   [docs/specs/README.md](docs/specs/README.md). A spec merges to `main` at once as a draft with
   its open questions; the maintainer answers them in the feature's issue, each answer is a small
@@ -491,4 +496,6 @@ Vimma.
   and its test links valid (CI checks them); vulnerabilities are reported as
   [SECURITY.md](SECURITY.md) says.
 - [docs/adr/](docs/adr/) and [docs/specs/](docs/specs/): decisions and feature specs.
-- [plan.md](plan.md): the roadmap.
+- [ARCHITECTURE.md](ARCHITECTURE.md): how the code fits together.
+- [docs/roadmap.md](docs/roadmap.md): the milestones and the risks.
+- [docs/README.md](docs/README.md): the index of every document.

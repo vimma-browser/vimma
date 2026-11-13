@@ -96,8 +96,8 @@ Two checks keep a status from drifting away from the work.
 
 ### The feature's issue
 
-Every planned feature has one GitHub issue. It is the backlog entry, and the roadmap in
-[plan.md](../../plan.md) §6 links to it instead of describing the feature itself.
+Every planned feature has one GitHub issue. It is the backlog entry, and the
+[roadmap](../roadmap.md) links to it instead of describing the feature itself.
 
 - **Title:** the feature's name.
 - **Body:** a short reason for the feature, a link to the spec on `main`, and the spec's open

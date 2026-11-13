@@ -1,4 +1,4 @@
-# Spec ci-quality-gates (plan §5, unit layer): Stryker mutation testing of packages/vimma-core/src,
+# Spec ci-quality-gates (ARCHITECTURE.md, "Testing"): Stryker mutation testing of packages/vimma-core/src,
 # weekly. Survivors become ONE tracking issue (label `mutation`), rewritten by every run; they never
 # fail the workflow. Only a broken run (Stryker or the dry run erroring) is red.
 #
