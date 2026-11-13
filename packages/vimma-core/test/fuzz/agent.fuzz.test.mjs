@@ -101,7 +101,7 @@ describe("agent gate fuzzing", () => {
             for (let c = 0; c <= 3; c++) q.connect(c);
             /** @type {Set<number>} */
             const always = new Set();
-            /** @type {Set<number>} conns that answered a grantable question with a grant */
+            // The connections that answered a grantable question with a grant.
             /** @type {Set<import("../../src/agent.mjs").ConnId>} */
             const granted = new Set();
             let now = 0;

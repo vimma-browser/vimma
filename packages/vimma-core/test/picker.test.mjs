@@ -388,10 +388,12 @@ describe("properties", () => {
           for (const m of out) {
             const item = list.find((x) => x === m.item);
             if (!item) throw new Error("a match of an item not in the list");
-            for (const k of Object.keys(m.highlights)) expect(fields).toContain(k);
-            for (const k of fields) {
-              const r = m.highlights[k];
-              if (r) wellFormed(r, (k === "workspace" ? item.workspaceName : item[k]) ?? "");
+            for (const [k, r] of Object.entries(m.highlights)) {
+              expect(fields).toContain(k);
+              expect(r).toBeDefined();
+              const field = fields.find((f) => f === k);
+              if (!field || !r) throw new Error(`a highlight of ${k} without ranges`);
+              wellFormed(r, (field === "workspace" ? item.workspaceName : item[field]) ?? "");
             }
           }
         },
@@ -458,10 +460,9 @@ describe("workspace picker (m3-workspaces 5)", () => {
 
   test("setPickerItems keeps the selected workspace", () => {
     const s = openPicker(ws, { activeId: "w3" });
-    // The third workspace first, then the first two.
-    const [first, second, third] = [0, 1, 2].map((i) => model.workspaces.slice(i, i + 1));
-    const order = [third, first, second].flatMap((w) => w ?? []);
-    const reordered = workspaceItems({ ...model, workspaces: order.map((w) => ({ ...w })) });
+    const [a, b, c] = model.workspaces;
+    if (!a || !b || !c) throw new Error("the model has three workspaces");
+    const reordered = workspaceItems({ ...model, workspaces: [c, a, b].map((w) => ({ ...w })) });
     expect(selectedWs(setPickerItems(s, reordered))).toBe("w3");
   });
 });

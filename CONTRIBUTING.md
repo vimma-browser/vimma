@@ -129,7 +129,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs: browser code and packages, then tools/
+npm run typecheck        # tsc --checkJs: browser code and packages, then tools/, then core tests
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js

@@ -5,5 +5,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["**/*.mjs", "../bench/**/*.mjs"],
-  "exclude": ["snapshot.test.mjs"]
+  "exclude": []
 }

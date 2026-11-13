@@ -14,6 +14,16 @@ import { activeWorkspace, splitsOf } from "../src/workspaces.mjs";
 import { createRow } from "../src/panes.mjs";
 
 /**
+ * A written snapshot's first workspace; throws when it has none, so no assertion reads past it.
+ * @param {ReturnType<typeof toSnapshot>} snapshot
+ */
+function firstOf(snapshot) {
+  const w = snapshot.workspaces[0];
+  if (!w) throw new Error("the snapshot has no workspace");
+  return w;
+}
+
+/**
  * The workspace state a snapshot restores to, without its tab renames.
  * @param {unknown} input
  * @param {Parameters<typeof readSnapshot>[1]} [options]
@@ -316,8 +326,8 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
     const raw = hidden();
     expect(raw.workspaces[0].activeTab).toBe("tab-c");
     const written = toSnapshot(stateOf(raw));
-    expect(written.workspaces[0].activeTab).toBe("tab-c");
-    expect(written.workspaces[0].alone).toBe("tab-z");
+    expect(firstOf(written).activeTab).toBe("tab-c");
+    expect(firstOf(written).alone).toBe("tab-z");
   });
 
   test.each([
@@ -372,8 +382,8 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
 
   test("several splits round-trip with their numbers and the shown one", () => {
     const written = toSnapshot(several());
-    expect(written.workspaces[0].splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
-    expect(written.workspaces[0].shown).toBe(3);
+    expect(firstOf(written).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(firstOf(written).shown).toBe(3);
     const back = stateOf(JSON.parse(JSON.stringify(written)));
     expect(w1(back).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
     expect(w1(back).shown).toBe(3);
@@ -385,7 +395,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
 
   test("the written panes is the shown split, as an older reader expects it", () => {
     const written = toSnapshot(several());
-    const w = written.workspaces[0];
+    const w = firstOf(written);
     expect(w.panes.root).toEqual(w.splits[1].root);
     expect(w.panes).not.toHaveProperty("number");
     expect(w.panes).not.toHaveProperty("hidden");
@@ -402,7 +412,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
 
   test("on a lone tab: shown is null, panes is the split shown last, hidden, alone kept", () => {
     const written = toSnapshot(several({ shown: null, alone: "tab-z" }));
-    const w = written.workspaces[0];
+    const w = firstOf(written);
     expect(w.shown).toBeNull();
     expect(w.panes.hidden).toBe(true);
     expect(w.panes.root).toEqual(w.splits[0].root);

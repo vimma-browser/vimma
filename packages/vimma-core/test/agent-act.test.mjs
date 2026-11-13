@@ -906,7 +906,9 @@ describe("screenshots (F18-F20)", () => {
     expect(screenshotScale(640, 2)).toBe(2);
     expect(screenshotScale(800, 2)).toBe(1.6);
     expect(screenshotScale(2560, 1)).toBe(0.5);
-    expect((screenshotScale(1366, 1) ?? Infinity) * 1366).toBeLessThanOrEqual(1280);
+    const scale = screenshotScale(1366, 1);
+    expect(scale).not.toBeNull();
+    expect((scale ?? Infinity) * 1366).toBeLessThanOrEqual(1280);
     // A device pixel ratio that is no number counts as 1.
     expect(screenshotScale(640, Number.NaN)).toBe(1);
     expect(screenshotScale(640, 0)).toBe(1);

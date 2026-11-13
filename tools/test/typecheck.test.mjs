@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 // `npm run typecheck` (ci.yml's "Typecheck" step) checks three programs under the same strict
 // options: the browser code without Node's types (issue #945), tools/ with them, and the core's
@@ -57,15 +57,10 @@ describe("npm run typecheck", () => {
     expect(root.include.some((/** @type {string} */ g) => g.includes("/test/"))).toBe(false);
   });
 
-  // A ratchet: the core's test files not checked yet are named one by one, so a new test file is
-  // always checked and the list only shrinks.
-  it("leaves out only named core test files that exist", () => {
-    for (const path of coreTests.exclude ?? []) {
-      expect(path).toMatch(/^[\w./-]+\.mjs$/);
-      expect(existsSync(new URL(`../../packages/vimma-core/test/${path}`, import.meta.url))).toBe(
-        true,
-      );
-    }
+  // Every core test file is checked: a new one is in the program as soon as it exists, and none
+  // may be left out (issue #959).
+  it("leaves no core test file out", () => {
+    expect(coreTests.exclude ?? []).toEqual([]);
   });
 
   it("pins @types/node to the Node major in .nvmrc", () => {
