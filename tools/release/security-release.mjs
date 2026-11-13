@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * A merged Firefox security bump releases itself (spec firefox-versions, decisions 11 to 15;
- * ADR-020; docs/security.md G9 and G10). Run by the `security-release` job of
+ * ADR-020; docs/security.md G11 and G12). Run by the `security-release` job of
  * release-please.yml on every push to `main`: when the pushed commit is the squash merge of the
  * upstream autopilot's PR labelled `security`, the open release PR is set to auto-merge, pinned
  * to its current head commit. GitHub then merges it once the `main` ruleset is satisfied; the
