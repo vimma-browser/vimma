@@ -75,8 +75,8 @@ describe("tab.goto_last", () => {
   });
 });
 
-// A window without workspaces (private) keys the picker's tabs by panel; an unloaded tab has
-// none (#958).
+// A window without workspaces (private, a popup, or any with containers off) keys the picker's
+// tabs by panel; an unloaded tab has none (#958).
 describe("tabIds", () => {
   test("a loaded tab's id is its panel", () => {
     const ids = tabIds();
@@ -108,5 +108,44 @@ describe("tabIds", () => {
     expect(ids.find(tabs, lazyId)).toBe(lazy);
     expect(ids.find(tabs, "panel-1-9")).toBe(lazy);
     expect(ids.find(tabs, "panel-9-9")).toBeUndefined();
+  });
+});
+
+describe("tabIds: a missing id", () => {
+  // Ids are strings and never empty (a panel id, or `lazy-<n>`): a null, undefined or empty id
+  // names no tab, not the first unloaded tab (whose panel is null) nor the first tab never listed
+  // (whose unloaded id is undefined).
+  test.each([null, undefined, ""])("find(tabs, %j) is no tab", (id) => {
+    const ids = tabIds();
+    const loaded = { linkedPanel: "panel-1-2" };
+    const listed = { linkedPanel: null };
+    const neverListed = { linkedPanel: null };
+    ids.idOf(listed);
+    const tabs = [loaded, listed, neverListed];
+    expect(ids.find(tabs, /** @type {string} */ (/** @type {unknown} */ (id)))).toBeUndefined();
+  });
+});
+
+// Tab search lists several windows' tabs together and keys its rows by tab id: one instance
+// serves every window, so an unloaded tab's id never repeats in another window, and each window's
+// lookup finds only its own tabs.
+describe("tabIds across windows", () => {
+  test("unloaded tabs in two windows get ids no other tab has", () => {
+    const ids = tabIds();
+    const first = [{ linkedPanel: "panel-1-1" }, { linkedPanel: null }, { linkedPanel: null }];
+    const second = [{ linkedPanel: "panel-2-1" }, { linkedPanel: null }, { linkedPanel: null }];
+    const listed = [...first, ...second].map((t) => ids.idOf(t));
+    expect(new Set(listed).size).toBe(listed.length);
+  });
+
+  test("a window's lookup never finds another window's tab by its id", () => {
+    const ids = tabIds();
+    const a = { linkedPanel: null };
+    const b = { linkedPanel: null };
+    const aId = ids.idOf(a);
+    const bId = ids.idOf(b);
+    expect(ids.find([a], bId)).toBeUndefined();
+    expect(ids.find([b], aId)).toBeUndefined();
+    expect(ids.find([b], bId)).toBe(b);
   });
 });

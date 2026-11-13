@@ -37,7 +37,8 @@ function gBrowserOf(win) {
 /**
  * The workspace model the picker lists: the window's workspaces (m3-workspaces 2b), every
  * workspace's tabs in the window's tab order; selecting one in another workspace switches to it
- * (WindowWorkspaces' TabSelect). A window without workspaces (private) lists its visible tabs.
+ * (WindowWorkspaces' TabSelect). A window without workspaces (a private window, a popup, or
+ * every window when containers are off) lists its visible tabs.
  * @param {BrowserWindow} win
  * @returns {Workspaces}
  */
@@ -64,10 +65,19 @@ export function pickerWorkspaces(win) {
     name: "",
     container: "",
     tabs: tabs.map((t) => windowTabIds.idOf(t)),
-    activeTab: windowTabIds.idOf(gBrowserOf(win).selectedTab),
+    activeTab: selectedTabId(win),
     panes: null,
   };
   return { workspaces: [workspace], active: workspace.id, next: 1 };
+}
+
+/**
+ * The selected tab's id, as the picker's rows name it: its panel, the same in a window with
+ * workspaces or without, since the selected tab is loaded.
+ * @param {BrowserWindow} win
+ */
+export function selectedTabId(win) {
+  return windowTabIds.idOf(gBrowserOf(win).selectedTab);
 }
 
 /**

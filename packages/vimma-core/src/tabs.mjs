@@ -39,8 +39,8 @@ export function tabTarget(action, current, length) {
 }
 
 /**
- * Ids for the tabs of a window without workspaces (private), which has no workspace model to
- * give its tabs uuids. A loaded tab's id is its panel, as in a window with workspaces; an
+ * Ids for the tabs of a window without workspaces (a private window, a popup, or every window
+ * when containers are off), which has no workspace model to give its tabs uuids. A loaded tab's id is its panel, as in a window with workspaces; an
  * unloaded tab has no panel (Firefox's "Unload Tab" and every restored background tab), so it
  * gets an id of its own, kept for as long as the tab lives, and `find` still takes that id once
  * the tab has loaded: a row listed while the tab was unloaded selects it.
@@ -61,10 +61,12 @@ export function tabIds(prefix = "lazy-") {
     },
     /**
      * @param {readonly T[]} tabs
-     * @param {string} id
+     * @param {string} id  never empty; a missing one names no tab (an unloaded tab's panel is
+     *   null, and a tab never listed has no unloaded id)
      * @returns {T | undefined}
      */
     find(tabs, id) {
+      if (!id) return undefined;
       return tabs.find((t) => t.linkedPanel === id || unloaded.get(t) === id);
     },
   };
