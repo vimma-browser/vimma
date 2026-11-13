@@ -1,8 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { findProcessWording } from "../process-wording.mjs";
+import { findProcessWording } from "../process-wording.ts";
 
-/** @param {string} md */
-const phrases = (md) => findProcessWording(md).map((f) => f.phrase.toLowerCase());
+const phrases = (md: string) => findProcessWording(md).map((f) => f.phrase.toLowerCase());
 
 describe("findProcessWording", () => {
   test.each([

@@ -13,7 +13,7 @@
 // non-blank lines, so a marker in a tight list covers the whole list. A marker without a reason
 // exempts nothing.
 //
-//   node tools/md-wording/process-wording.mjs [file.md ...]   (default: every tracked .md file)
+//   node tools/md-wording/process-wording.ts [file.md ...]   (default: every tracked .md file)
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -54,12 +54,8 @@ export const PATTERNS = [
 
 const MARKER = /<!--\s*process-wording:\s*\S[^>]*-->/;
 
-/**
- * Process wording in a Markdown text, outside paragraphs exempted by a marker with a reason.
- * @param {string} md
- * @returns {{ line: number, phrase: string }[]}
- */
-export function findProcessWording(md) {
+/** Process wording in a Markdown text, outside paragraphs exempted by a marker with a reason. */
+export function findProcessWording(md: string): { line: number; phrase: string }[] {
   const found = [];
   const lines = md.split("\n");
   let start = 0;
@@ -73,11 +69,10 @@ export function findProcessWording(md) {
 }
 
 /**
- * @param {string[]} lines  one paragraph
- * @param {number} first  the line number of its first line
- * @returns {{ line: number, phrase: string }[]}
+ * @param lines  one paragraph
+ * @param first  the line number of its first line
  */
-function inParagraph(lines, first) {
+function inParagraph(lines: string[], first: number): { line: number; phrase: string }[] {
   if (MARKER.test(lines.join(" "))) return [];
   return matchPatterns(lines, first, PATTERNS);
 }
@@ -85,21 +80,23 @@ function inParagraph(lines, first) {
 /**
  * Every match of `patterns` in a paragraph whose lines are joined with a space, so a phrase may
  * break across lines, reported on the line where it starts.
- * @param {string[]} lines  one paragraph
- * @param {number} first  the line number of its first line
- * @param {RegExp[]} patterns  global regular expressions
- * @returns {{ line: number, phrase: string }[]}
+ * @param lines  one paragraph
+ * @param first  the line number of its first line
+ * @param patterns  global regular expressions
  */
-export function matchPatterns(lines, first, patterns) {
+export function matchPatterns(
+  lines: string[],
+  first: number,
+  patterns: RegExp[],
+): { line: number; phrase: string }[] {
   const text = lines.join(" ");
-  /** @type {number[]} */
-  const offsets = [];
+  const offsets: number[] = [];
   let at = 0;
   for (const line of lines) {
     offsets.push(at);
     at += line.length + 1;
   }
-  const lineOf = (/** @type {number} */ index) => {
+  const lineOf = (index: number) => {
     let i = 0;
     while (i + 1 < offsets.length && (offsets[i + 1] ?? Infinity) <= index) i++;
     return first + i;
@@ -113,8 +110,8 @@ export function matchPatterns(lines, first, patterns) {
   return hits.sort((a, b) => a.index - b.index).map(({ line, phrase }) => ({ line, phrase }));
 }
 
-/** @returns {string[]} the tracked Markdown files, repo-relative */
-function trackedMarkdown() {
+/** @returns the tracked Markdown files, repo-relative */
+function trackedMarkdown(): string[] {
   const out = execFileSync("git", ["ls-files", "-z", "--", "*.md"], {
     cwd: ROOT,
     encoding: "utf8",
@@ -136,7 +133,7 @@ function main() {
   if (problems > 0) {
     console.error(
       `${problems} process wording problem(s). State the decision and its reason instead; see ` +
-        "tools/md-wording/process-wording.mjs for the marker that exempts a paragraph.",
+        "tools/md-wording/process-wording.ts for the marker that exempts a paragraph.",
     );
     process.exit(1);
   }
