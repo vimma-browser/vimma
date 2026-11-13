@@ -2583,6 +2583,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
 [`reads no secret, deploys to no environment and only reads the repository`](../tools/package/test/macos.test.mjs),
 [`pins one rcodesign release and its SHA-256, checked before the file is used`](../tools/package/test/macos.test.mjs)
 
+Every job of these workflows that sets up Node takes the exact version in `.nvmrc` of the commit it
+checked out (`node-version-file: .nvmrc`), never a bare major such as `node-version: 22`, which
+resolves to whichever 22.x the runner's tool cache or the version manifest has that day: the
+release tools run on the Node their tests ran on. Every release tag has `.nvmrc`; the build jobs
+of the same commit read it too, so a tree without it could not be released anyway.
+[`every setup-node step takes .nvmrc's version`](../tools/test/runner-node.test.ts)
+
 - B1. Nothing is **ever** built from, or reported on, a Firefox source tarball unless its SHA-512
   is listed in a `SHA512SUMS` carrying exactly one good signature by a valid signing subkey of
   Mozilla's release key `14F26682D0916CDD81E37B6D61B7B526D98F0353`, pinned in
@@ -3182,6 +3189,40 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.mjs),
   [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.mjs),
   [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.mjs)
+- B17. D2 draws the two SVG pictures in `ARCHITECTURE.md` (issue #943). It is a build tool from
+  outside the project (terrastruct/d2, MPL-2.0) that runs on a contributor's machine and is
+  never shipped. `tools/diagrams/render.ts` **must** pin its release by version (v0.9.0) and by
+  the SHA-256 of each platform's tarball, copied from the release's `SHA256SUMS`, and **must**
+  check the downloaded bytes in memory before handing them to `tar` on stdin. It unpacks into a
+  folder beside the cache and moves it into place, and records the binary's own SHA-256, so an
+  interrupted or altered install is downloaded again rather than run. D2 **must** run only when
+  a person runs `npm run diagrams`: no workflow, no other npm script, `npm ci`, lint or test
+  renders. CI runs only `npm run diagrams:check`, which needs no D2 and fails on an SVG that is
+  behind its source, was edited by hand, or holds a script, `foreignObject`, an event handler or
+  an address other than the SVG namespaces and D2's embedded `data:` fonts.
+  `VIMMA_D2=<path>` uses a binary the person chose; only the version it reports is checked.
+  The SVGs embed subsets of D2's default fonts, Source Sans Pro and Source Code Pro (SIL OFL
+  1.1). **⚠ limit:** the pin trusts the release that GitHub served when the sums were copied.
+  [`is a fixed release, with a SHA-256 for each platform contributors use`](../tools/diagrams/test/render.test.ts),
+  [`a download whose checksum differs is refused`](../tools/diagrams/test/render.test.ts),
+  [`is unpacked aside and moved into place, with its hash recorded and checked on use`](../tools/diagrams/test/render.test.ts),
+  [`a half-unpacked cache, with no recorded hash, is not used`](../tools/diagrams/test/render.test.ts),
+  [`VIMMA_D2 of the pinned version is used, with no cache folder needed`](../tools/diagrams/test/render.test.ts),
+  [`no workflow and no npm script but diagrams renders: CI only checks`](../tools/diagrams/test/render.test.ts),
+  [`fails when an SVG was edited after the render`](../tools/diagrams/test/render.test.ts),
+  [`the committed SVGs hold none of them`](../tools/diagrams/test/render.test.ts)
+- B18. A guard that a workflow runs from the base branch (`git show "$BASE:tools/…"`: the
+  docs-only classifier in ci.yml and e2e.yml, the release key guard in key-guard.yml) judges the
+  pull request whose checkout it runs in, so **nothing** of that checkout may run before it: no
+  action but `actions/checkout`, and no `node`, `npm`, `npx` or `yarn` step. Setting up a tool
+  counts: `actions/setup-node` prints the versions of `npm` and `yarn` in the checkout, and a
+  package manager reads its configuration, which can name a program to start, from the current
+  directory, so a pull request could run its own code before the guard and change what the guard
+  answers. These guards therefore run on the runner image's own Node and stay `.mjs` (ADR-025,
+  decision 7). The `actions/setup-node` steps that run before other tools, on trusted refs only,
+  set `YARN_IGNORE_PATH`, which Yarn 1 honours, and `package-manager-cache: false`.
+  [`nothing runs in the pull request's checkout before a guard from the base`](../tools/test/runner-node.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
@@ -3964,8 +4005,15 @@ deploy key that may write `stats` alone in place of the job token.
   level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
   not keep its checkout's credentials. Traffic (views, clones, referrers) is therefore not
   recorded: its API needs the Administration permission, which a job token cannot be given, and
-  recording it would mean the workflow's first stored secret.
+  recording it would mean the workflow's first stored secret. Before the script, `collect` sets up
+  `.nvmrc`'s Node with `actions/setup-node`, pinned by commit SHA, with no cache and
+  `package-manager-cache: false` (otherwise a `packageManager` field naming npm in `package.json`
+  would turn on caching by itself), so the script never runs on the runner image's own Node,
+  whose version this repository does not choose (ADR-025); the action runs with the same
+  read-only token.
   [`grants nothing by default; reads in collect, writes contents only in record`](../tools/test/downloads-workflow.test.mjs),
+  [`every job sets up Node before it runs node, npm or npx, but the listed ones`](../tools/test/runner-node.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts),
   [`collect runs the script without a stored credential`](../tools/test/downloads-workflow.test.mjs),
   [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,

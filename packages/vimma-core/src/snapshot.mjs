@@ -3,9 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Versioned JSON for the workspace + pane state (spec m3-m4-core-models). The host writes
- * `toSnapshot(state)` to its state file and restores with `fromSnapshot`, which migrates older
- * schemas and validates every invariant, failing with the JSON path of the first problem.
+ * Versioned JSON for the workspace + pane state (spec m3-m4-core-models). The host keeps
+ * `toSnapshot(state)` in each window's `vimma-workspaces` SessionStore value and restores it with
+ * `readSnapshot`, which migrates older schemas and validates every invariant, failing with the
+ * JSON path of the first problem.
  * Contract fixtures: tests/contract/state/v<n>/.
  */
 
@@ -115,7 +116,7 @@ export function toSnapshot(s, { tabLabels } = {}) {
     workspaces: s.workspaces.map((w) => {
       const own = w.splits === undefined ? null : splitsOf(w);
       const view = own?.splits.length ? olderView(own) : w.panes;
-      // A hidden view (side-panel-unsplit decision 24): the file keeps activeTab on the focused
+      // A hidden view (side-panel-unsplit decision 24): the snapshot keeps activeTab on the focused
       // pane's tab, so an older Vimma restores the split shown; `alone` is the tab shown alone.
       const alone =
         view?.hidden && w.activeTab !== null && !hasTab(view, w.activeTab) ? w.activeTab : null;
@@ -181,10 +182,10 @@ export function migrateSnapshot(raw, migrations = SNAPSHOT_MIGRATIONS) {
 }
 
 /**
- * Whether the host may overwrite the state file it found: false only for a file written by a
- * newer vimma (schema above SCHEMA_VERSION), whose data this version would silently drop.
- * Missing (null) or unreadable files may be overwritten.
- * @param {unknown} existing the file's text, its parsed JSON, or null when there is no file
+ * Whether the host may overwrite the snapshot it found in a window's SessionStore value: false
+ * only for one written by a newer vimma (schema above SCHEMA_VERSION), whose data this version
+ * would silently drop. A missing (null) or unparseable value may be overwritten.
+ * @param {unknown} existing the value's text, its parsed JSON, or null when there is none
  * @returns {boolean}
  */
 export function canWrite(existing) {
@@ -290,8 +291,8 @@ function readPanes(raw, path, tabs) {
 /**
  * A workspace's `splits`, read leniently (docs/specs/multiple-splits.md decision 15): an entry
  * that is malformed, has fewer than two panes, a number outside 1 to MAX_SPLITS_LIMIT or one
- * already read, or a tab of an earlier entry is dropped, so a damaged file never puts one tab in
- * two splits and never fails the restore. Not an array: no splits.
+ * already read, or a tab of an earlier entry is dropped, so a damaged snapshot never puts one tab
+ * in two splits and never fails the restore. Not an array: no splits.
  * @param {unknown} raw
  * @param {string} path
  * @param {Set<string>} tabs  the workspace's
@@ -336,20 +337,11 @@ function hasTab(panes, tabId) {
 }
 
 /**
- * Parses, migrates and validates a snapshot (object or JSON text).
- * @param {unknown} input
- * @param {{ migrations?: Readonly<Record<number, SnapshotMigration>> }} [options]
- * @returns {Workspaces}
- */
-export function fromSnapshot(input, options) {
-  return readSnapshot(input, options).state;
-}
-
-/**
- * `fromSnapshot` plus the tab renames. The workspace state is validated strictly (a broken file
- * throws `SnapshotError`); the optional `tabLabels` field is read leniently: stale or invalid
- * entries are dropped with a warning, so one bad label never fails a restore. The optional
- * `alternate` is kept only when it names a workspace other than `active`, else dropped.
+ * Parses, migrates and validates a snapshot (object or JSON text), with its tab renames. The
+ * workspace state is validated strictly (a broken value throws `SnapshotError`); the optional
+ * `tabLabels` field is read leniently: stale or invalid entries are dropped with a warning, so one
+ * bad label never fails a restore. The optional `alternate` is kept only when it names a workspace
+ * other than `active`, else dropped.
  * @param {unknown} input
  * @param {{ migrations?: Readonly<Record<number, SnapshotMigration>> }} [options]
  * @returns {{ state: Workspaces, tabLabels: TabLabels, warnings: TabLabelWarning[] }}
@@ -419,7 +411,7 @@ export function readSnapshot(input, { migrations } = {}) {
       activeTab = w.alone;
     }
     // Several splits (multiple-splits decision 15). Which one shows, and which showed last, come
-    // from activeTab and alone, the fields an older Vimma keeps up to date too, so a file it
+    // from activeTab and alone, the fields an older Vimma keeps up to date too, so a snapshot it
     // rewrote never names a shown split that is not on screen; `shown` is written for readers.
     /** @type {Partial<Splits>} */
     let own = {};

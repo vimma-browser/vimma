@@ -683,7 +683,12 @@ minutes and logs show every push. Check `git log origin/main` if anything looks 
 A pull request whose every changed file is prose Markdown skips the work Markdown cannot affect.
 `tools/ci/docs-only.mjs` decides from `git diff --name-only --no-renames base...head` (never the
 title or body); ci.yml and e2e.yml run it as the base branch has it, so a pull
-request cannot change the classifier that judges it.
+request cannot change the classifier that judges it. It runs on the runner image's own Node, and
+only the checkout comes before it: no step runs anything in the pull request's checkout first,
+not even `actions/setup-node`, whose version checks start the package managers there, and those
+read their configuration from the checkout (docs/security.md, B18). That is why it stays `.mjs`
+(ADR-025, decision 7). Started through a symlinked path the classifier does nothing and exits 0,
+which runs everything; the runners' `$RUNNER_TEMP` is a real path.
 
 **Docs-only** means all of these hold:
 
@@ -1147,11 +1152,18 @@ Why it does not flake (CI never retries; a flaky test means quarantine):
 If the step does fail without a slowing change, that is a flake: quarantine it (open an
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
-**Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, release-please and claude
-use `node-version-file: .nvmrc`, and so do the nightly and release build jobs. One exception:
-release.yml's package job checks out a release tag (tags from before `.nvmrc` lack it) and stays
-on major 22. A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major
-also moves `@types/node` to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
+**Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
+pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the base-branch
+guards run on the runner's own Node, docs/security.md B18), and so do the nightly build jobs and
+every release and macos job: no setup-node step takes a bare major such as `node-version: 22`,
+which would give the newest 22.x the runner has. A release job checks out the tag's commit before
+setup-node, so it reads that tag's `.nvmrc`; every release tag has one (from v0.1.1), and the
+build jobs of the same commit read it too, so a tree without it could not be released anyway.
+`tools/test/runner-node.test.ts` fails on a setup-node without `.nvmrc`, and lists the jobs that
+still run `node` or `npm` on the runner image's own Node, whose version this repository does not
+choose; that list only shrinks (#946). A Node bump is its
+own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node` to it
+(`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
 without a flag or a warning (ADR-025). The bench needs nothing for it: both sides of the
 comparison run on the same Node.
@@ -2073,7 +2085,7 @@ jump and whether the jumps line up with workflow runs.
   schedule sits early in the day: a late-evening one lands on the next day on most nights but
   not all, recording one day twice (the second run is skipped) and the next not at all. The `collect` job
   has `contents: read` only: it fetches the history from the public branch, takes the snapshot
-  with `tools/stats/downloads.mjs` and appends it unless that day is already recorded. The
+  with `tools/stats/downloads.ts` and appends it unless that day is already recorded. The
   `record` job has `contents: write`, checks out only the `stats` branch, runs no repository
   code, refuses a file that does not begin with the recorded history, and pushes. No secret. A
   push by the job token starts no workflow. Both jobs take well under a minute.
@@ -2081,8 +2093,8 @@ jump and whether the jumps line up with workflow runs.
 
   ```sh
   git fetch origin stats && git show origin/stats:downloads.csv > /tmp/downloads.csv
-  node tools/stats/downloads.mjs summary --csv /tmp/downloads.csv            # per release, per day
-  node tools/stats/downloads.mjs summary --csv /tmp/downloads.csv --assets   # and per asset
+  node tools/stats/downloads.ts summary --csv /tmp/downloads.csv            # per release, per day
+  node tools/stats/downloads.ts summary --csv /tmp/downloads.csv --assets   # and per asset
   ```
 
   Each line has the total and the change since that release's (or asset's) previous snapshot;

@@ -9,6 +9,22 @@ import {
   KeyNotationError,
 } from "../src/keys.mjs";
 
+/** @import { Chord } from "../src/keys.mjs" */
+
+/**
+ * The chord a keydown makes, failing the test where it makes none.
+ * @param {Chord | null} chord
+ * @returns {Chord}
+ */
+const made = (chord) => {
+  if (chord === null) throw new Error("the keydown made no chord");
+  return chord;
+};
+
+/**
+ * @param {string} key
+ * @param {Partial<Chord>} [mods]
+ */
 const chord = (key, mods = {}) => ({
   key,
   ctrl: false,
@@ -171,6 +187,10 @@ describe("displayBinding", () => {
 });
 
 describe("chordFromEvent", () => {
+  /**
+   * @param {string} key
+   * @param {Partial<Parameters<typeof chordFromEvent>[0]>} [mods]
+   */
   const ev = (key, mods = {}) => ({
     key,
     ctrlKey: false,
@@ -191,7 +211,7 @@ describe("chordFromEvent", () => {
     [ev("Tab", { shiftKey: true }), "shift+tab"],
     [ev("-"), "minus"],
   ])("a keydown %j is the chord %s", (e, text) => {
-    expect(formatKey(/** @type {any} */ (chordFromEvent(e)))).toBe(text);
+    expect(formatKey(made(chordFromEvent(e)))).toBe(text);
   });
 
   test.each(["Shift", "Control", "Alt", "Meta", "Dead", "Unidentified", "Process"])(
@@ -232,8 +252,8 @@ describe("chordFromEvent: Option and AltGr characters", () => {
     metaKey: false,
     ...mods,
   });
-  /** @param {any} e */
-  const text = (e) => formatKey(/** @type {any} */ (chordFromEvent(e)));
+  /** @param {Parameters<typeof chordFromEvent>[0]} e */
+  const text = (e) => formatKey(made(chordFromEvent(e)));
 
   test.each([
     // macOS sets AltGraph with every Option press (widget/cocoa nsCocoaUtils.mm), and altKey.

@@ -49,7 +49,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 3. `package.json` asks for Node `^22.18.0 || >=24.3.0`: the versions measured above to run `.ts`
    with no flag and no warning.
 4. `.ts` files get what `.mjs` files get: `npm run typecheck` checks them (their tests too, unlike
-   the `.mjs` tests, issue #947), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the
+   the `.mjs` tests, issue #947. Since changed: the `.mjs` tests are checked as well, except the
+   key guard's own test), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the
    same rules (`no-undef` and `no-unused-vars` among them) and prettier formats them.
 5. eslint reads a `.ts` file through amaro, the type stripper Node itself uses (MIT, no
    dependencies, no install script): in strip-only mode it replaces each type with spaces, so the
@@ -72,6 +73,14 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
    does not block, so the guard would stop guarding without a word. The plugin moves only with a
    plan that fails closed on such a Node, after a security review.
+   A second exception: the guards that workflows run from the base branch, `tools/ci/docs-only.mjs`
+   and `tools/ci/key-guard.mjs`, and key-guard's test, which the guard's `GUARD_PATHS` names, stay
+   `.mjs`. They judge a pull request inside its checkout, so they run on the runner image's own
+   Node with nothing of the pull request run first, and a `.ts` file would need a Node set up in
+   that checkout: `actions/setup-node` runs `npm --version` and `yarn --version` there, and a
+   package manager reads its configuration from the current directory (docs/security.md, B18).
+   `tools/ci/tree-covered.mjs` runs only on pushes to `main`, from trusted files, and may move
+   with the rest of `tools/ci`.
 
 ## Reasoning
 
@@ -111,10 +120,16 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
   `covered`; semgrep.yml `covered`; dependabot-automerge.yml `classify`; downloads.yml `collect`;
   mutation.yml `report`; spec-status.yml `check`; upstream.yml `detect`, `track`, `publish`,
   `patch-issue` and `drift`; upstream-beta.yml `detect` and `render`; upstream-merge.yml `merge`.
+- Every `actions/setup-node` step takes `node-version-file: .nvmrc`, never a bare major: a
+  `node-version: 22` step gets the newest 22.x the runner has, not the version the tools were
+  checked on. The last six such jobs (release.yml `ctl`, `package`, `mar`, `macos-ctl` and
+  `macos-smoke`, macos.yml `smoke`) moved to `.nvmrc` in their own pull request, before the
+  last group's tools (#946); `tools/test/runner-node.test.ts` keeps it so.
 - A job that checks out only some paths (`sparse-checkout: tools/ci/tree-covered.mjs` in
   pkgbuild.yml and semgrep.yml) names the new file when it moves.
 - A step that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`: ci.yml and
-  e2e.yml for `docs-only.mjs`, key-guard.yml for `key-guard.mjs`) looks for the `.ts` name first
-  and the `.mjs` name second, so that the pull request that renames the tool is still checked by
-  the base's copy, and writes the copy under the name it read: a `.ts` copy keeps `.ts`.
+  e2e.yml for `docs-only.mjs`, key-guard.yml for `key-guard.mjs`) runs it on the runner's own
+  Node, so those tools stay `.mjs` (decision 7, second exception). (Since changed: an earlier
+  draft of this record had such steps look for a `.ts` name first; that needed Node set up in the
+  pull request's checkout before the guard, which decision 7 now rules out.)
 - Contributors need Node 22.18 or later in the 22 line, or 24.3 or later; `.nvmrc` pins 22.23.3.

@@ -98,9 +98,9 @@ describe("trailing slashes", () => {
     });
     const dirs = dataDirs({ home: `/a${slashes}x${slashes}`, dataHome: "", dataDirs: "/" });
     expect(performance.now() - start).toBeLessThan(500);
-    expect(lists[0].endsWith("x/.config/mimeapps.list")).toBe(true);
-    expect(lists[1].endsWith("y/mimeapps.list")).toBe(true);
-    expect(dirs[0].endsWith("x/.local/share")).toBe(true);
+    expect(lists[0]?.endsWith("x/.config/mimeapps.list")).toBe(true);
+    expect(lists[1]?.endsWith("y/mimeapps.list")).toBe(true);
+    expect(dirs[0]?.endsWith("x/.local/share")).toBe(true);
     expect(dirs[1]).toBe("/");
   });
 });

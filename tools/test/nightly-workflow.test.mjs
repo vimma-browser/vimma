@@ -389,7 +389,8 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
     }
     for (const failed of ["build", "mar-sign", "mar", "sign", "publish"]) {
       // mar runs after a failed mar-sign only to fail on its first step ("The MAR was signed").
-      const also = failed === "mar-sign" ? { mar: /** @type {const} */ ("failure") } : {};
+      /** @type {Record<string, "failure">} */
+      const also = failed === "mar-sign" ? { mar: "failure" } : {};
       const run = nightly("schedule", CHANGED, VARS, { [failed]: "failure", ...also });
       expect(run.started, failed).not.toContain("manifest");
       expect(run.started, failed).toContain("report");

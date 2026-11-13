@@ -129,7 +129,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs: browser code and packages, then tools/
+npm run typecheck        # tsc --checkJs: browser code and packages, then tools/, then core tests
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
@@ -258,9 +258,14 @@ stays `.mjs` (ADR-025 says why).
      runner's own Node, which may be older than 22.18: add the step first, in its own pull
      request.
    - A `sparse-checkout:` that names a file of the area names the new file.
-   - A step that runs the base branch's copy (`git show "$BASE:tools/…" > "$RUNNER_TEMP/…"`)
-     first learns to read the `.ts` name and fall back to the `.mjs` one, and keeps the extension
-     it read on the temporary copy, in its own pull request.
+   - Nothing runs in a pull request's checkout before a guard from the base branch
+     (`git show "$BASE:tools/…" > "$RUNNER_TEMP/…"`): no setup-node or other action but the
+     checkout, no `node`, `npm`, `npx` or `yarn` step. Those guards (`tools/ci/docs-only.mjs`,
+     `tools/ci/key-guard.mjs` and its test) run on the runner's own Node and stay `.mjs` (ADR-025,
+     decision 7; docs/security.md, B18). `tools/test/runner-node.test.ts` checks the rule.
+   - A setup-node added to a job that runs on trusted refs (a push to `main`, a schedule, a
+     dispatch) has no cache and says `package-manager-cache: false` and
+     `env: YARN_IGNORE_PATH: "1"` when a guard or a tool with a write token runs after it.
 3. **Record the tests.** `npx vitest run --reporter=json --outputFile=before.json` (the whole
    suite: other areas' tests import the area or read it as text), and the output of each
    command-line tool on the real tree. Compare names from the JSON reporter, not `vitest list`,
@@ -270,9 +275,7 @@ stays `.mjs` (ADR-025 says why).
 5. **Types to syntax, nothing else.** `@param`/`@returns` types become annotations, `@typedef`
    an exported `type` or `interface`, `/** @type {T} */ (x)` becomes `x as T`, and
    `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
-   `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
-   check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
-   in the same pull request. A property a constructor assigns becomes a `declare` field
+   property a constructor assigns becomes a `declare` field
    (`declare keys: string[];`), which Node erases, as it does the cast.
 6. **Update every caller** from step 1, and take the area's files off
    `tools/test/mjs-allowlist.txt`. An implemented spec that names a renamed file gets a

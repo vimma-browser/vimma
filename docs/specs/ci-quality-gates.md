@@ -27,9 +27,9 @@ Two rows of plan §5 and issue #17:
 - `tools/bench/test/cases.test.mjs` (Since changed: `cases.test.ts`, ADR-025): the cases cover a
   single key, the prefix plus a key and a count plus a motion, and each produces the action it names
   on every run.
-- `tools/mutation/test/report.test.mjs`: the score matches Stryker's formula; survivors are listed
-  per file, sorted; the body stays under GitHub's 65 536-character limit; the CLI writes `score`
-  and `survivors` to `$GITHUB_OUTPUT`.
+- `tools/mutation/test/report.test.mjs` (Since changed: `report.test.ts`, ADR-025): the score
+  matches Stryker's formula; survivors are listed per file, sorted; the body stays under GitHub's
+  65 536-character limit; the CLI writes `score` and `survivors` to `$GITHUB_OUTPUT`.
 
 ## Settled (2026-10-09)
 

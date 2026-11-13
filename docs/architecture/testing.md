@@ -204,7 +204,7 @@ the nightly runner: repeated visits from one address draw the sites' bot checks.
 
 **Where.** `mutation.yml`, Sundays at 04:23 UTC, incremental from the last run's results and
 from scratch on the first Sunday of a month. Surviving mutants go into one issue labelled
-`mutation`, rewritten by each run (`tools/mutation/report.mjs`); they never fail the run, only a
+`mutation`, rewritten by each run (`tools/mutation/report.ts`); they never fail the run, only a
 broken Stryker run does.
 
 **Locally.** `npm run mutation`; reading the report: docs/runbook.md, "Mutation testing".

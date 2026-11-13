@@ -367,6 +367,7 @@ const MCP_RS = readdirSync(MCP_DIR)
 // A used-up rate is told apart from questions waiting, as vimma-ctl does (issue #592): a
 // built-in agent that reads "waiting for the user" ends its task instead of waiting.
 describe("a used-up rate", () => {
+  /** @type {import("../src/agent-results.mjs").Failure} */
   const rate = {
     kind: "denied",
     reason: "busy",

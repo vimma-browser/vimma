@@ -51,33 +51,16 @@ file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Com
 
 ## The running system
 
-```mermaid
-flowchart LR
-  subgraph vimma["Vimma (one app)"]
-    subgraph parent["Parent process: browser windows"]
-      chrome["vimma.js, then host/, ui/, workspaces/,<br/>split/, config/ ... with core/"]
-      ctl["ctl/: control socket server<br/>and AgentGate"]
-      agent["agent/: built-in agent"]
-    end
-    subgraph content["Content processes (sandboxed)"]
-      child["actors/: VimmaChild,<br/>one per frame"]
-    end
-    chrome <-- "JSWindowActor messages" --> child
-    chrome --- ctl
-    agent -- "same gate as MCP agents" --> ctl
-  end
-  cli["vimma-ctl (CLI)"] -- "TCP 127.0.0.1, token" --> ctl
-  mcp["vimma-ctl mcp"] -- "TCP 127.0.0.1, agent role" --> ctl
-  host["AI agent host<br/>(MCP client)"] -- "MCP over stdio" --> mcp
-  e2e["tools/e2e harness"] -- "TCP 127.0.0.1" --> ctl
-  agent -- "HTTPS, or HTTP to a local server" --> models["Model providers<br/>(Anthropic API, OpenAI-compatible, local)"]
-  agent -- "subprocess, one-time ticket" --> clis["Agent CLIs<br/>(Claude Code, Codex, Gemini CLI)"]
-  clis --> mcp
-  chrome -- "HTTPS, signed manifest" --> updates["updates.vimma.dev"]
-  files["config.toml,<br/>Omarchy colors.toml"] -- "polled" --> chrome
-  omarchy["Omarchy theme-set hook"] -- "-vimma-reload-theme<br/>(command-line remoting)" --> chrome
-  chrome -- "Hyprland IPC socket" --> hypr["Hyprland"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/system-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/system-light.svg">
+  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and AgentGate in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent goes through the same gate, the gate drives the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
+</picture>
+
+The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
+dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows
+reach `ctl/`: those from outside past the control socket's token, the built-in agent's in
+process through the agent gate. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is
@@ -96,19 +79,23 @@ flowchart LR
   [spec](docs/specs/vimma-mcp.md), [ADR-019](docs/adr/019-agents-over-mcp.md)). One call's way
   through it: [The life of an agent call](docs/architecture/agent-call.md).
 - **vimma-ctl.** One Rust binary, shipped next to the browser: `vimma-ctl <command>` is the
-  scripting client, and `vimma-ctl mcp` is an MCP server over stdio that an AI agent host starts,
-  which connects to the browser as the `agent` role.
+  scripting client (the `full` role, as is the e2e harness in `tools/e2e/`), and `vimma-ctl mcp`
+  is an MCP server over stdio that an AI agent host starts, which connects to the browser as the
+  `agent` role.
 - **The built-in agent.** A chat window inside Vimma. Its model calls go straight to the
   provider's HTTP API; its tool calls go through the same gate, grants and log as an outside
-  agent's, in process. It can also run an agent CLI as a subprocess, whose only MCP server is
+  agent's, in process, with no socket or token; a task sent with `Enter` grants its own
+  conversation's connection without a question, until the task ends. It can also run an agent CLI as a subprocess, whose only MCP server is
   `vimma-ctl mcp` with a one-time ticket ([builtin-agent](docs/specs/builtin-agent.md),
   [builtin-agent-cli](docs/specs/builtin-agent-cli.md)).
-- **Outside the browser.** The update check reads a signed manifest from updates.vimma.dev
-  ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
+- **Outside the browser.** The update check reads a signed manifest from updates.vimma.dev,
+  where the release pipeline publishes it; the update file (MAR) it names is downloaded from the
+  release on GitHub (not drawn). A model provider is reached over HTTPS, or over HTTP when it
+  runs on this machine ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
   `config.toml` and the Omarchy theme file are polled every 2 s, because Firefox has no portable
   file watcher. Omarchy's theme-set hook makes the theme reload at once through Firefox's
   command-line remoting. On Hyprland, the private workspace can swap in place of the window
-  through Hyprland's IPC socket ([ADR-017](docs/adr/017-window-manager-ipc.md)).
+  through Hyprland's IPC sockets, one for requests and one for the events Vimma listens to ([ADR-017](docs/adr/017-window-manager-ipc.md)).
 
 ## How a key is handled
 
@@ -230,6 +217,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/md-wording/`         | Checks that Markdown and comments are written for outside readers.                                          |
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
 | `tools/layering/`           | Checks the import layering of the `vimma/` folders ([ADR-026](docs/adr/026-module-layering.md)).            |
+| `tools/diagrams/`           | The two pictures on this page: the module graph read from the imports, and the D2 render of both.           |
 | `tools/security/`           | Checks that every test link in [docs/security.md](docs/security.md) resolves.                               |
 | `tools/license-check/`      | Licence checks of npm packages and Rust crates.                                                             |
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
@@ -273,6 +261,34 @@ the host reading the agent gate, running a few commands of `config/`, `agent/` a
 `about:vimma`; the workspace snapshot reading tab labels from `host/`; the parent actor
 reporting to the host; the agent chat window driving the agent. Each is listed with its reason
 in `tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each folder's `README.md` says what it may import.
+
+The picture below is drawn from the same scan of the imports that `npm run layering` checks:
+`npm run diagrams` writes [docs/assets/diagrams/modules.d2](docs/assets/diagrams/modules.d2)
+from it, so the picture, the rule and the code cannot disagree.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/modules-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/modules-light.svg">
+  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ and workspaces/ to host/, host/ to about/, ctl/, config/ and agent/, and ui/ to host/, config/ and agent/.">
+</picture>
+
+In words, as the code stands:
+
+- Every folder drawn sits in the row of its layer. `vimma.js` imports every folder drawn, to
+  start it, and every folder drawn but `omarchy/` and `start/` imports core; neither is drawn,
+  and nor is `licence/`, which holds no module.
+- Grey arrows go down the layers, as the rule allows. An importer that reaches two or more of
+  layer 1's folders has one arrow to the layer, labelled with how many: `about/`, `config/` and
+  `host/` import four of them, `ctl/` three.
+- Orange arrows are the upward imports the exception list keeps, folded into one arrow per pair of
+  folders: `actors/` and `workspaces/` import `host/`; `host/` imports `about/` and `ctl/`, and
+  `config/` and `agent/` lazily; `ui/` imports `host/`, `config/` and `agent/` lazily.
+- Folder by folder, `about/`, `actors/`, `config/`, `ctl/`, `host/` and `workspaces/` still form
+  one eager cycle, and every loop in it runs through an orange arrow. No two modules import each
+  other eagerly (`npm run layering` fails on that), so the cycle exists only between folders, and
+  it closes only through the listed exceptions. When issue
+  [#936](https://github.com/vimma-browser/vimma/issues/936) removes them, `npm run diagrams`
+  redraws the picture without them.
 
 ## State and where it lives
 
@@ -385,3 +401,12 @@ requests included) runs `tools/arch-lint/arch-lint.ts`, which fails when a folde
 when this page names one that no longer exists. A name counts in a code span written as
 `` `vimma/<folder>/` ``, `` `tools/<folder>/` `` or `` `<workflow>.yml` `` (or `.yaml`). Adding a folder or a
 workflow therefore means adding its line here in the same pull request.
+
+The two pictures follow the same rule. `npm run diagrams` regenerates the module graph's D2
+source from the imports and renders every source in `docs/assets/diagrams/` to a light and a
+dark SVG with a pinned D2 release (`tools/diagrams/render.ts` names its version and checksums,
+and downloads it into `~/.cache/vimma/` on first use). Each SVG records a hash of the source it
+was drawn from and one of itself, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
+`ci.yml`) fails without D2 when an import or a `.d2` file changed and the pictures were not
+rendered again, when an SVG was edited by hand, and when one holds a script or an outside
+address ([docs/security.md](docs/security.md), B17).

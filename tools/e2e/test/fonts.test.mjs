@@ -7,12 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { E2E_FONTCONFIG, E2E_FONTS } from "../launcher.mjs";
+import { defined } from "../../test/defined.ts";
 
 /** @returns {Map<string, string>} file name → SHA-256, from the README's table */
 const listedSums = () => {
   const readme = readFileSync(join(E2E_FONTS, "README.md"), "utf8");
   const rows = [...readme.matchAll(/^\| `([^`]+\.ttf)` .*\| `([0-9a-f]{64})` \|$/gm)];
-  return new Map(rows.map((m) => [m[1], m[2]]));
+  return new Map(rows.map((m) => [defined(m[1]), defined(m[2])]));
 };
 
 describe("vendored e2e fonts", () => {

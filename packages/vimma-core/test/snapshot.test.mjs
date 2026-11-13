@@ -5,13 +5,30 @@ import {
   SCHEMA_VERSION,
   SNAPSHOT_MIGRATIONS,
   toSnapshot,
-  fromSnapshot,
+  readSnapshot,
   migrateSnapshot,
   canWrite,
   SnapshotError,
 } from "../src/snapshot.mjs";
 import { activeWorkspace, splitsOf } from "../src/workspaces.mjs";
 import { createRow } from "../src/panes.mjs";
+
+/**
+ * A written snapshot's first workspace; throws when it has none, so no assertion reads past it.
+ * @param {ReturnType<typeof toSnapshot>} snapshot
+ */
+function firstOf(snapshot) {
+  const w = snapshot.workspaces[0];
+  if (!w) throw new Error("the snapshot has no workspace");
+  return w;
+}
+
+/**
+ * The workspace state a snapshot restores to, without its tab renames.
+ * @param {unknown} input
+ * @param {Parameters<typeof readSnapshot>[1]} [options]
+ */
+const stateOf = (input, options) => readSnapshot(input, options).state;
 
 const fixture = (/** @type {string} */ name) =>
   readFileSync(new URL(`../../../tests/contract/state/v1/${name}`, import.meta.url), "utf8");
@@ -29,7 +46,7 @@ function snapshotError(fn) {
 
 describe("contract fixtures, schema v1", () => {
   test("valid.json loads and round-trips through toSnapshot", () => {
-    const s = fromSnapshot(fixture("valid.json"));
+    const s = stateOf(fixture("valid.json"));
     expect(activeWorkspace(s).name).toBe("personal");
     expect(activeWorkspace(s).panes?.zoom).toBe("p1");
     expect(toSnapshot(s)).toEqual(JSON.parse(fixture("valid.json")));
@@ -37,7 +54,7 @@ describe("contract fixtures, schema v1", () => {
   });
 
   test("invalid.json fails with a SnapshotError naming the path", () => {
-    const e = snapshotError(() => fromSnapshot(fixture("invalid.json")));
+    const e = snapshotError(() => stateOf(fixture("invalid.json")));
     expect(e.path).toBe("workspaces[0].panes.root.ratios");
     expect(e.message).toMatch(/workspaces\[0\]\.panes\.root\.ratios/);
   });
@@ -163,7 +180,7 @@ describe("validation", () => {
       ["panes not an object", (r) => (r.workspaces[0].panes = "x"), "workspaces[0].panes"],
     ]),
   )("%s → %s", (_, mutate, path) => {
-    expect(snapshotError(() => fromSnapshot(mutated(mutate))).path).toBe(path);
+    expect(snapshotError(() => stateOf(mutated(mutate))).path).toBe(path);
   });
 
   test("a same-axis child split is accepted when flattening would squeeze a pane below MIN_RATIO", () => {
@@ -172,15 +189,15 @@ describe("validation", () => {
       inner.axis = "x";
       inner.ratios = [0.15, 0.85]; // 0.15 × 0.5 < MIN_RATIO
     });
-    expect(fromSnapshot(raw).workspaces[0]?.panes?.root).toMatchObject({
+    expect(stateOf(raw).workspaces[0]?.panes?.root).toMatchObject({
       children: [{ type: "leaf" }, { axis: "x", ratios: [0.15, 0.85] }],
     });
   });
 
   test("broken JSON and non-objects are rejected", () => {
-    expect(snapshotError(() => fromSnapshot("{")).code).toBe("bad-json");
-    expect(snapshotError(() => fromSnapshot("[]")).path).toBe("");
-    expect(snapshotError(() => fromSnapshot(null)).code).toBe("invalid");
+    expect(snapshotError(() => stateOf("{")).code).toBe("bad-json");
+    expect(snapshotError(() => stateOf("[]")).path).toBe("");
+    expect(snapshotError(() => stateOf(null)).code).toBe("invalid");
   });
 });
 
@@ -192,7 +209,7 @@ describe("panes.layout (docs/specs/tiling-layouts.md): optional, no schema bump"
       w.panes.layout = layout;
     });
   const read = (/** @type {any} */ raw) =>
-    /** @type {any} */ (fromSnapshot(raw)).workspaces.find(
+    /** @type {any} */ (stateOf(raw)).workspaces.find(
       (/** @type {any} */ w) => w.panes?.root.type === "split",
     ).panes;
 
@@ -200,7 +217,7 @@ describe("panes.layout (docs/specs/tiling-layouts.md): optional, no schema bump"
     const raw = withLayout("tiled");
     const panes = read(raw);
     expect(panes.layout).toBe("tiled");
-    expect(toSnapshot(fromSnapshot(raw))).toEqual(raw);
+    expect(toSnapshot(stateOf(raw))).toEqual(raw);
     expect(raw.schema).toBe(SCHEMA_VERSION);
   });
 
@@ -216,13 +233,13 @@ describe("panes.layout (docs/specs/tiling-layouts.md): optional, no schema bump"
 
 describe("migrations", () => {
   test("a newer schema is unsupported", () => {
-    const e = snapshotError(() => fromSnapshot(mutated((r) => (r.schema = 2))));
+    const e = snapshotError(() => stateOf(mutated((r) => (r.schema = 2))));
     expect(e.code).toBe("unsupported-schema");
     expect(e.path).toBe("schema");
   });
 
   test("an older schema without a migration step is unsupported", () => {
-    expect(snapshotError(() => fromSnapshot(mutated((r) => (r.schema = 0)))).code).toBe(
+    expect(snapshotError(() => stateOf(mutated((r) => (r.schema = 0)))).code).toBe(
       "unsupported-schema",
     );
     expect(Object.keys(SNAPSHOT_MIGRATIONS)).toEqual([]);
@@ -249,7 +266,7 @@ describe("migrations", () => {
       }),
     };
     expect(migrateSnapshot(v0, migrations).schema).toBe(1);
-    expect(toSnapshot(fromSnapshot(v0, { migrations }))).toEqual(JSON.parse(fixture("valid.json")));
+    expect(toSnapshot(stateOf(v0, { migrations }))).toEqual(JSON.parse(fixture("valid.json")));
   });
 
   test("a migration that does not advance the schema throws instead of looping", () => {
@@ -294,23 +311,23 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
       w.alone = "tab-z";
       more(w);
     });
-  const w1 = (/** @type {any} */ raw) => /** @type {any} */ (fromSnapshot(raw)).workspaces[0];
+  const w1 = (/** @type {any} */ raw) => /** @type {any} */ (stateOf(raw)).workspaces[0];
 
   test("a hidden view reads with the alone tab as the active one, and writes back", () => {
     const raw = hidden();
     const w = w1(raw);
     expect(w.panes.hidden).toBe(true);
     expect(w.activeTab).toBe("tab-z");
-    expect(toSnapshot(fromSnapshot(raw))).toEqual(raw);
+    expect(toSnapshot(stateOf(raw))).toEqual(raw);
     expect(raw.schema).toBe(SCHEMA_VERSION);
   });
 
   test("the file keeps activeTab on the focused pane, so an older reader shows the split", () => {
     const raw = hidden();
     expect(raw.workspaces[0].activeTab).toBe("tab-c");
-    const written = toSnapshot(fromSnapshot(raw));
-    expect(written.workspaces[0].activeTab).toBe("tab-c");
-    expect(written.workspaces[0].alone).toBe("tab-z");
+    const written = toSnapshot(stateOf(raw));
+    expect(firstOf(written).activeTab).toBe("tab-c");
+    expect(firstOf(written).alone).toBe("tab-z");
   });
 
   test.each([
@@ -328,15 +345,13 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
     const raw = mutated((r) => {
       r.workspaces[1].panes.hidden = true;
     });
-    expect("hidden" in /** @type {any} */ (fromSnapshot(raw)).workspaces[1].panes).toBe(false);
+    expect("hidden" in /** @type {any} */ (stateOf(raw)).workspaces[1].panes).toBe(false);
   });
 
   test("a snapshot without them reads as before", () => {
     const w = w1(JSON.parse(fixture("valid.json")));
     expect("hidden" in w.panes).toBe(false);
-    expect(toSnapshot(fromSnapshot(fixture("valid.json"))).workspaces[0]).not.toHaveProperty(
-      "alone",
-    );
+    expect(toSnapshot(stateOf(fixture("valid.json"))).workspaces[0]).not.toHaveProperty("alone");
   });
 });
 
@@ -344,7 +359,7 @@ describe("panes.hidden and alone: optional, no schema bump", () => {
 describe("splits: a list, with panes and activeTab kept for an older reader", () => {
   /** w1 (tabs a-c in valid.json's tree) gains tab-x and tab-y, a second split numbered 3. */
   const several = (/** @type {{ shown?: number | null, alone?: string }} */ o = {}) => {
-    const base = fromSnapshot(fixture("valid.json"));
+    const base = stateOf(fixture("valid.json"));
     const w = /** @type {any} */ (base.workspaces[0]);
     const one = Object.freeze({ ...w.panes, number: 1 });
     const three = Object.freeze({
@@ -367,9 +382,9 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
 
   test("several splits round-trip with their numbers and the shown one", () => {
     const written = toSnapshot(several());
-    expect(written.workspaces[0].splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
-    expect(written.workspaces[0].shown).toBe(3);
-    const back = fromSnapshot(JSON.parse(JSON.stringify(written)));
+    expect(firstOf(written).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
+    expect(firstOf(written).shown).toBe(3);
+    const back = stateOf(JSON.parse(JSON.stringify(written)));
     expect(w1(back).splits.map((/** @type {any} */ x) => x.number)).toEqual([1, 3]);
     expect(w1(back).shown).toBe(3);
     expect(w1(back).last).toBe(3);
@@ -380,7 +395,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
 
   test("the written panes is the shown split, as an older reader expects it", () => {
     const written = toSnapshot(several());
-    const w = written.workspaces[0];
+    const w = firstOf(written);
     expect(w.panes.root).toEqual(w.splits[1].root);
     expect(w.panes).not.toHaveProperty("number");
     expect(w.panes).not.toHaveProperty("hidden");
@@ -392,25 +407,25 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
       delete x.splits;
       delete x.shown;
     }
-    expect(w1(fromSnapshot(older)).panes.root).toEqual(w.splits[1].root);
+    expect(w1(stateOf(older)).panes.root).toEqual(w.splits[1].root);
   });
 
   test("on a lone tab: shown is null, panes is the split shown last, hidden, alone kept", () => {
     const written = toSnapshot(several({ shown: null, alone: "tab-z" }));
-    const w = written.workspaces[0];
+    const w = firstOf(written);
     expect(w.shown).toBeNull();
     expect(w.panes.hidden).toBe(true);
     expect(w.panes.root).toEqual(w.splits[0].root);
     expect(w.activeTab).toBe("tab-c");
     expect(w.alone).toBe("tab-z");
-    const back = w1(fromSnapshot(JSON.parse(JSON.stringify(written))));
+    const back = w1(stateOf(JSON.parse(JSON.stringify(written))));
     expect(back.shown).toBeNull();
     expect(back.last).toBe(1);
     expect(back.activeTab).toBe("tab-z");
   });
 
   test("a file with only panes reads as one split, number 1, and writes back unchanged", () => {
-    const s = fromSnapshot(fixture("valid.json"));
+    const s = stateOf(fixture("valid.json"));
     expect(w1(s)).not.toHaveProperty("splits");
     const one = splitsOf(w1(s));
     expect(one.splits.map((x) => x.number)).toEqual([1]);
@@ -426,14 +441,14 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
       r.workspaces[0].panes.hidden = true;
       r.workspaces[0].alone = "tab-z";
     });
-    expect(splitsOf(w1(fromSnapshot(raw)))).toMatchObject({ shown: null, last: 1 });
+    expect(splitsOf(w1(stateOf(raw)))).toMatchObject({ shown: null, last: 1 });
   });
 
   /** @param {(splits: any[]) => void} damage */
   const damaged = (damage) => {
     const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
     damage(raw.workspaces[0].splits);
-    return w1(fromSnapshot(raw));
+    return w1(stateOf(raw));
   };
 
   test.each([
@@ -457,7 +472,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
   test("a splits field that is not an array reads as no splits", () => {
     const raw = JSON.parse(JSON.stringify(toSnapshot(several())));
     raw.workspaces[0].splits = { 1: "x" };
-    expect(w1(fromSnapshot(raw)).splits).toEqual([]);
+    expect(w1(stateOf(raw)).splits).toEqual([]);
   });
 
   test("property: a tab is never in two splits after a read, whatever the file says", () => {
@@ -473,7 +488,7 @@ describe("splits: a list, with panes and activeTab kept for an older reader", ()
             ...JSON.parse(JSON.stringify(which ? three : one)),
             number: n,
           }));
-          const w = w1(fromSnapshot(raw));
+          const w = w1(stateOf(raw));
           const tabs = w.splits.flatMap((/** @type {any} */ x) =>
             JSON.stringify(x.root).match(/tab-[a-z]/g),
           );

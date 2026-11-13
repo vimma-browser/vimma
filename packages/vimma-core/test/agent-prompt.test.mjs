@@ -802,9 +802,9 @@ describe("the status bar's agent state (decision 24)", () => {
       minutes: 14,
       ran: false,
     });
-    expect(agentState({ ...base, grants: [{ until: Infinity }] }).minutes).toBe(Infinity);
-    expect(agentState({ ...base, ranAt: 0, now: 1999 }).ran).toBe(true);
-    expect(agentState({ ...base, ranAt: 0, now: 2000 }).ran).toBe(false);
+    expect(agentState({ ...base, grants: [{ until: Infinity }] })?.minutes).toBe(Infinity);
+    expect(agentState({ ...base, ranAt: 0, now: 1999 })?.ran).toBe(true);
+    expect(agentState({ ...base, ranAt: 0, now: 2000 })?.ran).toBe(false);
   });
   test("a full-control question with no agent connected still shows", () => {
     expect(agentState({ connections: 0, waiting: 1, grants: [], ranAt: null, now: 0 })).toEqual({
@@ -1045,6 +1045,7 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
 
 describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
   test("it reads as failed, not as allowed", () => {
+    /** @type {import("../src/agent.mjs").LogEntry} */
     const e = {
       at: 0,
       client: "claude-code",
@@ -1111,15 +1112,17 @@ describe("a form allowed for the grant (mcp-consequence K5)", () => {
       'allowed "Lisää koriin" on shop.example for this grant',
     );
     expect(checkpointNotice(form)).toBe("allowed sending the form to shop.example");
-    const row = logRow({
+    // A queue's entry, its connection included: the row leaves it out.
+    const entry = {
       at: 0,
       conn: 1,
       client: "claude-code",
       tool: "vimma_activate",
       title: "Kori",
       detail: "ad",
-      outcome: "checkpoint-here",
-    });
+      outcome: /** @type {const} */ ("checkpoint-here"),
+    };
+    const row = logRow(entry);
     expect(row).toMatch(/allowed \(checkpoint, for the grant\)$/);
   });
 

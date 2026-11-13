@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { E2E_FONTCONFIG } from "../launcher.mjs";
+import { defined } from "../../test/defined.ts";
 
 const CLI = fileURLToPath(new URL("../e2e.mjs", import.meta.url));
 // macOS has no /bin/false or /bin/true, only /usr/bin's.
@@ -184,7 +185,9 @@ describe("npm run e2e: the scenarios' fonts", () => {
     );
     expect(r.status, r.stdout + r.stderr).toBe(0);
     const [profile] = readdirSync(tmp).filter((f) => f.startsWith("vimma-e2e-profile-"));
-    const seen = JSON.parse(readFileSync(join(tmp, profile, "fake-browser.json"), "utf8"));
+    const seen = JSON.parse(
+      readFileSync(join(tmp, defined(profile, "a profile"), "fake-browser.json"), "utf8"),
+    );
     expect(seen.env.FONTCONFIG_FILE).toBe(
       process.platform === "darwin" ? undefined : E2E_FONTCONFIG,
     );

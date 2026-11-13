@@ -7,6 +7,7 @@ import { decodePng, encodePng } from "../png.mjs";
 import fc from "fast-check";
 import { decodeXwd } from "../xwd.mjs";
 import { CHANNEL_TOLERANCE, MAX_DIFF_RATIO, checkBaseline, diffImages } from "../screenshot.mjs";
+import { defined } from "../../test/defined.ts";
 
 const fixture = (/** @type {string} */ name) =>
   readFileSync(new URL(`./fixtures/${name}`, import.meta.url));
@@ -65,7 +66,7 @@ describe("PNG", () => {
         const b = /** @type {number} */ (prev[i]);
         const c = i >= bpp ? /** @type {number} */ (prev[i - bpp]) : 0;
         const pred = [0, a, b, (a + b) >> 1, paeth(a, b, c)][y] ?? 0;
-        raw.push(/** @type {number} */ (row[i] - pred) & 0xff);
+        raw.push((defined(row[i]) - pred) & 0xff);
       }
     }
     const png = rawPng(w, rows.length, 4, Uint8Array.from(raw));
@@ -90,7 +91,7 @@ describe("PNG", () => {
     expect(() => decodePng(Buffer.from("GIF89a"))).toThrow(/not a PNG/);
     const good = encodePng(image(2, 2, () => [1, 2, 3, 4]));
     const bad = Buffer.from(good);
-    bad[bad.length - 20] ^= 0xff; // inside IDAT: CRC no longer matches
+    bad.writeUInt8(bad.readUInt8(bad.length - 20) ^ 0xff, bad.length - 20); // inside IDAT: CRC no longer matches
     expect(() => decodePng(bad)).toThrow(/CRC/);
     expect(() => decodePng(rawPng(1, 1, 3, Uint8Array.from([0, 0])))).toThrow(/colour type 3/);
     expect(() => decodePng(rawPng(1, 1, 6, Uint8Array.from([0, 0]), 16))).toThrow(/bit depth 16/);

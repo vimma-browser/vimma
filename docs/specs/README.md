@@ -82,7 +82,7 @@ Two checks keep a status from drifting away from the work.
   `tools/spec-lint/decisions-baseline.json`; giving one a reason, or the spec becoming
   implemented, makes its entry fail as no longer needed, so the list only shrinks. No new
   entry is added to it.
-- **`spec-status.yml`** runs `npm run spec-status` (`tools/spec-lint/spec-status.mjs`) every day,
+- **`spec-status.yml`** runs `npm run spec-status` (`tools/spec-lint/spec-status.ts`) every day,
   whenever an issue is closed or reopened, and when `docs/specs/` changes on `main`. It reports a
   draft or accepted spec whose issues are all closed, an implemented spec with an open issue, an
   open issue whose `spec:draft` or `spec:accepted` label differs from the spec, and an `Issue:`

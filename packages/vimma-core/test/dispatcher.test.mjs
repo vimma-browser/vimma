@@ -3,12 +3,40 @@ import { createDispatcher } from "../src/dispatcher.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { chordFromEvent, formatKey, parseKey } from "../src/keys.mjs";
 
-/** Feed space-separated chords; return all results. */
+/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Chord } from "../src/keys.mjs" */
+/** @import { DispatchResult } from "../src/dispatcher.mjs" */
+
+/**
+ * Feed space-separated chords; return all results.
+ * @param {ReturnType<typeof createDispatcher>} d
+ * @param {Mode} mode
+ * @param {string} keys
+ */
 function feed(d, mode, keys) {
   return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
 }
+/**
+ * @template T
+ * @param {T[]} arr
+ */
 const last = (arr) => arr[arr.length - 1];
+/** @param {Parameters<typeof compileKeymap>[0]} [cfg] */
 const make = (cfg) => createDispatcher(compileKeymap(cfg));
+/**
+ * The id of the action a result runs, if it runs one.
+ * @param {DispatchResult | undefined} r
+ */
+const actionId = (r) => (r?.kind === "action" ? r.action.id : undefined);
+/**
+ * The chord a keydown makes, failing the test where it makes none.
+ * @param {Chord | null} chord
+ * @returns {Chord}
+ */
+const made = (chord) => {
+  if (chord === null) throw new Error("the keydown made no chord");
+  return chord;
+};
 
 describe("dispatcher (spec acceptance criteria)", () => {
   test("ctrl+b then ? in normal mode shows help after pending", () => {
@@ -165,7 +193,7 @@ describe("dispatcher (spec acceptance criteria)", () => {
   test("by default no leader binding exists: space n does not open the side panel", () => {
     const results = feed(make(), "normal", "space n");
     expect(results[0]).toEqual({ kind: "pass" });
-    expect(results.some((r) => r.action?.id === "sidebar.toggle")).toBe(false);
+    expect(results.some((r) => actionId(r) === "sidebar.toggle")).toBe(false);
     expect(last(feed(make(), "normal", "space b"))).not.toMatchObject({
       action: { id: "bookmarks.toggle" },
     });
@@ -208,13 +236,13 @@ describe("dispatcher (spec acceptance criteria)", () => {
   });
 
   test("ctrl+b ) switches workspace in every mode", () => {
-    for (const mode of ["normal", "insert", "visual", "panel"]) {
-      expect(last(feed(make(), mode, "ctrl+b )")).action?.id).toBe("workspace.next");
+    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
+      expect(actionId(last(feed(make(), mode, "ctrl+b )")))).toBe("workspace.next");
     }
   });
 
   test("ctrl+b ( and ctrl+b ) go to the previous and next workspace in every mode", () => {
-    for (const mode of ["normal", "insert", "visual", "panel"]) {
+    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
       expect(last(feed(make(), mode, "ctrl+b ("))).toEqual({
         kind: "action",
         action: { id: "workspace.previous" },
@@ -231,7 +259,7 @@ describe("dispatcher (spec acceptance criteria)", () => {
     const ev = { ctrlKey: false, altKey: false, shiftKey: true, metaKey: false };
     d.dispatch("normal", parseKey("ctrl+b"));
     // event.key is "(" whichever key made it: shift+9 (US) or shift+8 (Finnish).
-    expect(d.dispatch("normal", /** @type {any} */ (chordFromEvent({ ...ev, key: "(" })))).toEqual({
+    expect(d.dispatch("normal", made(chordFromEvent({ ...ev, key: "(" })))).toEqual({
       kind: "action",
       action: { id: "workspace.previous" },
     });
@@ -242,9 +270,9 @@ describe("dispatcher (spec acceptance criteria)", () => {
   });
 
   test("ctrl+i and ctrl+u no longer switch workspace in any mode", () => {
-    for (const mode of ["normal", "insert", "visual", "panel"]) {
+    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
       for (const key of ["ctrl+i", "ctrl+u"]) {
-        const id = feed(make(), mode, key)[0].action?.id;
+        const id = actionId(feed(make(), mode, key)[0]);
         expect(id === "workspace.next" || id === "workspace.previous", `${mode} ${key}`).toBe(
           false,
         );
@@ -511,18 +539,20 @@ describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
 // Workspaces as Vim buffers: ctrl+^ (ctrl+6) for the alternate, ]w / [w to step, and the
 // prefix forms that work in every mode.
 describe("workspace keys like Vim's buffer keys", () => {
-  const action = (/** @type {string} */ mode, /** @type {string} */ keys) =>
+  const action = (/** @type {Mode} */ mode, /** @type {string} */ keys) =>
     last(feed(make(), mode, keys));
   const alternate = { kind: "action", action: { id: "workspace.last" } };
 
-  test.each([
+  /** @type {Array<[Mode, string]>} */
+  const alternates = [
     ["normal", "ctrl+^"],
     ["normal", "ctrl+6"],
     ["normal", "ctrl+b ^"],
     ["normal", "ctrl+b ctrl+6"],
     ["insert", "ctrl+b ^"],
     ["insert", "ctrl+b ctrl+6"],
-  ])("%s: %s goes to the alternate workspace", (mode, keys) => {
+  ];
+  test.each(alternates)("%s: %s goes to the alternate workspace", (mode, keys) => {
     expect(action(mode, keys)).toEqual(alternate);
   });
 
@@ -562,7 +592,8 @@ describe("workspace keys like Vim's buffer keys", () => {
 
   test("the keydowns US and Finnish layouts send reach the same actions", () => {
     const d = make();
-    const press = (/** @type {any} */ e) => d.dispatch("normal", chordFromEvent(e));
+    const press = (/** @type {ReturnType<typeof ev>} */ e) =>
+      d.dispatch("normal", made(chordFromEvent(e)));
     // US: ctrl+shift+6 is "^" with shift (GTK keeps the shifted keyval under ctrl).
     expect(press(ev("^", "Digit6", { ctrlKey: true, shiftKey: true }))).toEqual(alternate);
     // Any layout: ctrl+6 is "6".

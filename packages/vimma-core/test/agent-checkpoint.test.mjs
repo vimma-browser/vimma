@@ -17,6 +17,7 @@ import {
   statedTotal,
 } from "../src/agent-checkpoint.mjs";
 import { textWidth } from "../src/textwidth.mjs";
+/** @import { SentField, SentFields } from "../src/agent-checkpoint.mjs" */
 
 describe("a payment step (C5, C6)", () => {
   test("card fields alone, and a pay phrase alone, make a payment step; neither makes none", () => {
@@ -205,7 +206,7 @@ describe("what the child says of a step (checked like any content reply)", () =>
 // docs/specs/mcp-consequence.md: under a grant a click's form asks by what it sends (K1-K3), and
 // `a` allows one button on one site for the rest of the grant (K5).
 describe("a consequential form (mcp-consequence K2, K3)", () => {
-  /** @param {object[]} fields @param {object} [rest] */
+  /** @param {SentField[]} fields @param {Partial<SentFields>} [rest] @returns {SentFields} */
   const sent = (fields, rest = {}) => ({ fields, hidden: 2, more: 0, ...rest });
 
   test("a form of hidden fields, numbers and choices is not consequential", () => {
@@ -314,10 +315,17 @@ describe("a consequential form (mcp-consequence K2, K3)", () => {
       { name: "email", value: "a@example.com", text: true, identity: true },
     ]);
     expect(parseSentFields(raw)).toEqual(raw);
-    expect(parseSentFields(sent([{ name: "a", value: "", text: 1 }]))).toBe(null);
-    expect(parseSentFields(sent([{ name: "a", value: "", identity: "yes" }]))).toBe(null);
+    // A mark that is not `true` (parseSentFields reads unknown, so no sent() here).
+    expect(
+      parseSentFields({ fields: [{ name: "a", value: "", text: 1 }], hidden: 2, more: 0 }),
+    ).toBe(null);
+    expect(
+      parseSentFields({ fields: [{ name: "a", value: "", identity: "yes" }], hidden: 2, more: 0 }),
+    ).toBe(null);
     const cut = sent([{ name: "m", value: "x", text: true, cut: true }]);
     expect(parseSentFields(cut)).toEqual(cut);
-    expect(parseSentFields(sent([{ name: "a", value: "", cut: 1 }]))).toBe(null);
+    expect(
+      parseSentFields({ fields: [{ name: "a", value: "", cut: 1 }], hidden: 2, more: 0 }),
+    ).toBe(null);
   });
 });

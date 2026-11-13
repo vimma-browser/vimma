@@ -194,7 +194,7 @@ describe("toolbar toggle", () => {
       group: "Navigation",
     });
     const d = createDispatcher(compileKeymap());
-    for (const mode of ["normal", "insert"]) {
+    for (const mode of /** @type {const} */ (["normal", "insert"])) {
       expect(d.dispatch(mode, parseKey("ctrl+b"))).toEqual({ kind: "pending" });
       expect(d.dispatch(mode, parseKey("u"))).toEqual({
         kind: "action",
@@ -240,7 +240,7 @@ describe("toolbar toggle", () => {
 
   test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {
     const km = compileKeymap();
-    for (const [name, id, key] of [
+    for (const [name, id, key] of /** @type {const} */ ([
       ["element_visual", "element.visual", "v"],
       ["element_visual_line", "element.visual_line", "V"],
       ["element_yank", "element.yank", "y"],
@@ -248,7 +248,7 @@ describe("toolbar toggle", () => {
       ["element_child", "element.child", "-"],
       ["element_next", "element.next", "j"],
       ["element_prev", "element.prev", "k"],
-    ]) {
+    ])) {
       expect(getAction(name)).toMatchObject({ id, group: "Element focus" });
       expect(km.bindingsFor(name)).toEqual([`${key} [element]`]);
     }
@@ -312,11 +312,11 @@ describe("Firefox's sidebar actions (firefox-surfaces-trim decision 12)", () => 
 
 describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4 to 6)", () => {
   test("split_picker, next_split and previous_split are pane actions", () => {
-    for (const [name, id] of [
+    for (const [name, id] of /** @type {const} */ ([
       ["split_picker", "pane.split_picker"],
       ["next_split", "pane.next_split"],
       ["previous_split", "pane.previous_split"],
-    ]) {
+    ])) {
       expect(getAction(name)).toMatchObject({ id, group: "Panes" });
     }
   });

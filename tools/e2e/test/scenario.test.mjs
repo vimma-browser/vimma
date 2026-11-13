@@ -701,9 +701,11 @@ describe("update scenarios (m6a-updater, e2e)", () => {
             { "wait-for-install": { updateError: null } },
           ],
         }),
+        undefined,
       ),
     ).toEqual([]);
-    const bad = (/** @type {object} */ over) => validateScenario(update(over)).join("; ");
+    const bad = (/** @type {object} */ over) =>
+      validateScenario(update(over), undefined).join("; ");
     expect(bad({ update: { updater: "mine" } })).toMatch(/update: updater is test or shipped/);
     expect(bad({ update: { updater: "test", extra: 1 } })).toMatch(/update: unknown field extra/);
     expect(bad({ steps: [{ "serve-update": { offer: "n2" } }] })).toMatch(
@@ -726,7 +728,9 @@ describe("update scenarios (m6a-updater, e2e)", () => {
     );
     // the update steps need an install the scenario updates
     expect(
-      validateScenario(scenario({ steps: [{ "serve-update": { offer: "n1" } }] })).join("; "),
+      validateScenario(scenario({ steps: [{ "serve-update": { offer: "n1" } }] }), undefined).join(
+        "; ",
+      ),
     ).toMatch(/step 1: serve-update needs the scenario's "update" field/);
   });
 
@@ -734,6 +738,7 @@ describe("update scenarios (m6a-updater, e2e)", () => {
     /** @type {string[]} */
     const calls = [];
     let reads = 0;
+    /** @type {() => Promise<import("../scenario.mjs").InstallState>} */
     const install = async () => {
       reads++;
       return reads < 3
@@ -759,6 +764,7 @@ describe("update scenarios (m6a-updater, e2e)", () => {
   });
 
   it("wait-for-install times out naming what differs", async () => {
+    /** @type {() => Promise<import("../scenario.mjs").InstallState>} */
     const install = async () => ({ buildId: "n", marker: false, updateError: 23, marRequests: 1 });
     await expect(
       runSteps(

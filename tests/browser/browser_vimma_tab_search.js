@@ -311,6 +311,38 @@ add_task(async function a_lazy_tab_is_listed_and_stays_unloaded() {
   forgetClosed();
 });
 
+// A window without workspaces (private) keys its tabs by their panel, which an unloaded tab has
+// none of: each unloaded tab still gets a row of its own, and Enter selects that tab (#958).
+add_task(async function unloaded_private_tabs_are_listed_apart_and_enter_selects_each() {
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const titles = ["Private one", "Private two", "Private three"];
+  const tabs = [];
+  for (const title of titles) tabs.push(await openTitled(title, { win: priv }));
+  priv.gBrowser.selectedTab = tabs[0];
+  // Firefox's "Unload Tab" (tab context menu): the browser goes lazy, its panel is gone.
+  await priv.gBrowser.explicitUnloadTabs([tabs[1], tabs[2]]);
+  await until(() => !tabs[1].linkedPanel && !tabs[2].linkedPanel, "two tabs unloaded");
+  // focusContent checks this window's focus; the private window is another.
+  await SimpleTest.promiseFocus(priv.gBrowser.selectedBrowser);
+  prefix("g", {}, priv);
+  await until(() => isOpen(priv), "open");
+  const listed = options(priv).filter((r) => titles.includes(titleOf(r)));
+  Assert.deepEqual(listed.map(titleOf), titles, "each tab is listed with its own title");
+  Assert.deepEqual(
+    listed.map((r) => r.querySelector(".vimma-picker-host")?.textContent),
+    ["example.org", "example.org", "example.org"],
+    "and its host",
+  );
+  const ids = options(priv).map((r) => r.dataset.id);
+  Assert.equal(new Set(ids).size, ids.length, "every row has an id of its own");
+  selectRow(listed[2], priv);
+  EventUtils.synthesizeKey("KEY_Enter", {}, priv);
+  await until(() => priv.gBrowser.selectedTab === tabs[2], "Enter selects the third tab");
+  Assert.ok(!tabs[1].linkedPanel, "the second stays unloaded");
+  await BrowserTestUtils.closeWindow(priv);
+  await SimpleTest.promiseFocus(window);
+});
+
 add_task(async function audio_and_mute_are_marked_and_searchable() {
   const loud = await openTitled("Loud tab");
   const quiet = await openTitled("Quiet tab");

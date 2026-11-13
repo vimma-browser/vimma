@@ -17,15 +17,36 @@ import {
 import { downloadSections } from "../src/downloads.mjs";
 import { createSplits, newSplit, splitPickerItems } from "../src/splits.mjs";
 
-/** @import { PickerState, PickerItem } from "../src/picker.mjs" */
+/** @import { AnyItem, Field, PickerState, PickerItem } from "../src/picker.mjs" */
+/** @import { Workspaces } from "../src/workspaces.mjs" */
 
-const workspaces = {
+/**
+ * A workspaces model from what the pickers read of each workspace: its id, name, tabs and active
+ * tab. The container and panes, which they do not read, are filled in.
+ * @param {{ active: string, workspaces: { id: string, name: string, tabs: string[],
+ *   activeTab: string | null }[] }} model
+ * @returns {Workspaces}
+ */
+const fixture = ({ active, workspaces }) => ({
+  active,
+  next: workspaces.length + 1,
+  workspaces: workspaces.map((w) => ({ ...w, container: w.id, panes: null })),
+});
+
+/** @param {AnyItem | undefined} item */
+const tabIdOf = (item) => (item && "tabId" in item ? item.tabId : undefined);
+/** @param {AnyItem | undefined} item */
+const splitIdOf = (item) => (item && "splitId" in item ? item.splitId : undefined);
+/** @param {AnyItem | undefined} item */
+const workspaceIdOf = (item) => (item && "workspaceId" in item ? item.workspaceId : undefined);
+
+const workspaces = fixture({
   active: "w1",
   workspaces: [
     { id: "w1", name: "work", tabs: ["t1", "t2"], activeTab: "t2" },
     { id: "w2", name: "personal", tabs: ["t3", "t4"], activeTab: "t3" },
   ],
-};
+});
 /** @type {Record<string, { title: string, url: string }>} */
 const info = {
   t1: { title: "GitHub", url: "https://github.com/" },
@@ -47,7 +68,7 @@ function press(s, keys) {
 }
 
 /** @param {PickerState} s */
-const selectedTab = (s) => pickerSelection(s)?.item.tabId;
+const selectedTab = (s) => tabIdOf(pickerSelection(s)?.item);
 
 describe("scoring", () => {
   test("tiers", () => {
@@ -132,32 +153,32 @@ describe("scoring", () => {
 
   test("matches rename, title, URL and workspace", () => {
     const cook = filterItems(items, "cook");
-    expect(cook.map((m) => m.item.tabId)).toEqual(["t3"]);
+    expect(cook.map((m) => tabIdOf(m.item))).toEqual(["t3"]);
     expect(cook[0]?.highlights.display).toEqual([[0, 4]]);
-    expect(filterItems(items, "recipes")[0]?.item.tabId).toBe("t3");
+    expect(tabIdOf(filterItems(items, "recipes")[0]?.item)).toBe("t3");
     expect(filterItems(items, "recipes")[0]?.highlights.title).toEqual([[0, 7]]);
-    expect(filterItems(items, "personal").map((m) => m.item.tabId)).toEqual(["t3", "t4"]);
-    expect(filterItems(items, "  work   mail ").map((m) => m.item.tabId)).toEqual(["t2"]);
+    expect(filterItems(items, "personal").map((m) => tabIdOf(m.item))).toEqual(["t3", "t4"]);
+    expect(filterItems(items, "  work   mail ").map((m) => tabIdOf(m.item))).toEqual(["t2"]);
     expect(filterItems(items, "github.com")[0]?.highlights.url).toEqual([[8, 18]]);
     expect(matchItem(/** @type {PickerItem} */ (items[0]), "zzz")).toBeNull();
   });
 
   test("a blank query lists everything in order; ties keep input order", () => {
-    expect(filterItems(items, " ").map((m) => [m.item.tabId, m.score])).toEqual([
+    expect(filterItems(items, " ").map((m) => [tabIdOf(m.item), m.score])).toEqual([
       ["t1", 0],
       ["t2", 0],
       ["t3", 0],
       ["t4", 0],
     ]);
     const twins = pickerItems(
-      {
+      fixture({
         active: "w1",
         workspaces: [{ id: "w1", name: "a", tabs: ["x", "y", "z"], activeTab: "x" }],
-      },
+      }),
       () => ({ title: "Docs", url: "https://docs.rs/" }),
       {},
     );
-    expect(filterItems(twins, "doc").map((m) => m.item.tabId)).toEqual(["x", "y", "z"]);
+    expect(filterItems(twins, "doc").map((m) => tabIdOf(m.item))).toEqual(["x", "y", "z"]);
   });
 });
 
@@ -193,7 +214,7 @@ describe("picker state machine", () => {
     let r = press(s, ["/", "g", "i", "t"]).state;
     expect(r.mode).toBe("search");
     expect(r.query).toBe("git");
-    expect(r.matches.map((m) => m.item.tabId)).toEqual(["t1"]);
+    expect(r.matches.map((m) => tabIdOf(m.item))).toEqual(["t1"]);
     r = press(r, ["backspace"]).state;
     expect(r.query).toBe("gi");
     r = press(r, ["ctrl+w"]).state;
@@ -344,25 +365,37 @@ describe("properties", () => {
         fc.array(fc.record({ title: alpha, url: alpha }), { maxLength: 8 }),
         fc.string({ unit: fc.constantFrom(..."abc "), maxLength: 4 }),
         (rows, query) => {
-          const ws = {
+          const ws = fixture({
             active: "w1",
             workspaces: [
               { id: "w1", name: "ws", tabs: rows.map((_, i) => `t${i}`), activeTab: null },
             ],
-          };
+          });
           const list = pickerItems(ws, (id) => rows[Number(id.slice(1))], {});
           const out = filterItems(list, query);
           for (let i = 1; i < out.length; i++) {
-            const p = /** @type {any} */ (out[i - 1]);
-            const c = /** @type {any} */ (out[i]);
+            const p = out[i - 1];
+            const c = out[i];
+            if (!p || !c) throw new Error("a hole in the matches");
             expect(p.score).toBeGreaterThanOrEqual(c.score);
             if (p.score === c.score)
-              expect(list.indexOf(p.item)).toBeLessThan(list.indexOf(c.item));
+              expect(list.findIndex((x) => x === p.item)).toBeLessThan(
+                list.findIndex((x) => x === c.item),
+              );
           }
-          for (const m of out)
+          /** @type {readonly Field[]} */
+          const fields = ["display", "title", "url", "workspace", "markers"];
+          for (const m of out) {
+            const item = list.find((x) => x === m.item);
+            if (!item) throw new Error("a match of an item not in the list");
             for (const [k, r] of Object.entries(m.highlights)) {
-              wellFormed(r, /** @type {any} */ (m.item)[k === "workspace" ? "workspaceName" : k]);
+              expect(fields).toContain(k);
+              expect(r).toBeDefined();
+              const field = fields.find((f) => f === k);
+              if (!field || !r) throw new Error(`a highlight of ${k} without ranges`);
+              wellFormed(r, (field === "workspace" ? item.workspaceName : item[field]) ?? "");
             }
+          }
         },
       ),
     );
@@ -370,17 +403,17 @@ describe("properties", () => {
 });
 
 describe("workspace picker (m3-workspaces 5)", () => {
-  const model = {
+  const model = fixture({
     active: "w2",
     workspaces: [
       { id: "w1", name: "work", tabs: ["t1", "t2"], activeTab: "t2" },
       { id: "w2", name: "personal", tabs: ["t3"], activeTab: "t3" },
       { id: "w3", name: "admin", tabs: [], activeTab: null },
     ],
-  };
+  });
   const ws = workspaceItems(model, (id) => id === "t1");
   /** @param {PickerState} s */
-  const selectedWs = (s) => /** @type {any} */ (pickerSelection(s)?.item)?.workspaceId;
+  const selectedWs = (s) => workspaceIdOf(pickerSelection(s)?.item);
 
   test("one item per workspace in order, with its tab and foreign counts; the active marked", () => {
     expect(ws).toEqual([
@@ -403,7 +436,7 @@ describe("workspace picker (m3-workspaces 5)", () => {
 
   test("filters by name only, with highlights", () => {
     const m = filterItems(ws, "ad");
-    expect(m.map((x) => /** @type {any} */ (x.item).workspaceId)).toEqual(["w3"]);
+    expect(m.map((x) => workspaceIdOf(x.item))).toEqual(["w3"]);
     expect(m[0]?.highlights).toEqual({ display: [[0, 2]] });
     expect(filterItems(ws, "github")).toEqual([]);
   });
@@ -428,20 +461,21 @@ describe("workspace picker (m3-workspaces 5)", () => {
   test("setPickerItems keeps the selected workspace", () => {
     const s = openPicker(ws, { activeId: "w3" });
     const [a, b, c] = model.workspaces;
+    if (!a || !b || !c) throw new Error("the model has three workspaces");
     const reordered = workspaceItems({ ...model, workspaces: [c, a, b].map((w) => ({ ...w })) });
     expect(selectedWs(setPickerItems(s, reordered))).toBe("w3");
   });
 });
 
 describe("tab search (docs/specs/tab-search.md)", () => {
-  const model = {
+  const model = fixture({
     active: "w2",
     workspaces: [
       { id: "w1", name: "work", tabs: ["t1", "t2"], activeTab: "t2" },
       { id: "wa", name: "agent", tabs: ["a1"], activeTab: "a1" },
       { id: "w2", name: "personal", tabs: ["t3", "t4"], activeTab: "t3" },
     ],
-  };
+  });
   /** @type {Record<string, { title: string, url: string, playing?: boolean,
    *   muted?: boolean, pinned?: boolean }>} */
   const tabInfo = {
@@ -489,13 +523,13 @@ describe("tab search (docs/specs/tab-search.md)", () => {
   });
 
   test("marker words are a searchable field; a tie never ranks an agent row first", () => {
-    expect(filterItems(list, "playing").map((m) => m.item.tabId)).toEqual(["t1"]);
-    expect(filterItems(list, "muted").map((m) => m.item.tabId)).toEqual(["t3"]);
-    expect(filterItems(list, "closed").map((m) => m.item.tabId)).toEqual(["closed:7"]);
-    expect(filterItems(list, "old").map((m) => m.item.tabId)).toEqual(["closed:7"]);
+    expect(filterItems(list, "playing").map((m) => tabIdOf(m.item))).toEqual(["t1"]);
+    expect(filterItems(list, "muted").map((m) => tabIdOf(m.item))).toEqual(["t3"]);
+    expect(filterItems(list, "closed").map((m) => tabIdOf(m.item))).toEqual(["closed:7"]);
+    expect(filterItems(list, "old").map((m) => tabIdOf(m.item))).toEqual(["closed:7"]);
     expect(filterItems(list, "docs.example.com/old")[0]?.highlights.url).toEqual([[8, 28]]);
     const agentFirst = [/** @type {PickerItem} */ (tabs[4]), /** @type {PickerItem} */ (tabs[3])];
-    const docs = filterItems(agentFirst, "docs").map((m) => m.item.tabId);
+    const docs = filterItems(agentFirst, "docs").map((m) => tabIdOf(m.item));
     expect(docs).toEqual(["t2", "a1"]);
   });
 
@@ -537,7 +571,7 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     expect(ids(press(s, ["j", "shift+tab"]).state)).toBe("t3");
     // With a query, the next section's best match; search mode stays.
     const q = press(s, ["/", "d", "o", "c", "s"]).state;
-    expect(q.matches.map((m) => m.item.tabId)).toEqual(["t2", "a1", "closed:7"]);
+    expect(q.matches.map((m) => tabIdOf(m.item))).toEqual(["t2", "a1", "closed:7"]);
     const next = press(q, ["tab"]).state;
     expect(ids(next)).toBe("a1");
     expect(next.mode).toBe("search");
@@ -553,7 +587,7 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     const s = openPicker(list, { activeId: "t1", typeFirst: true, query: "radio" });
     expect(s.mode).toBe("search");
     expect(s.query).toBe("radio");
-    expect(s.matches.map((m) => m.item.tabId)).toEqual(["t3"]);
+    expect(s.matches.map((m) => tabIdOf(m.item))).toEqual(["t3"]);
     expect(openPicker(list, { typeFirst: true }).query).toBe("");
     expect(openPicker(list, {}).mode).toBe("browse");
   });
@@ -660,13 +694,14 @@ describe("downloads picker (docs/specs/downloads.md)", () => {
 
   test("the filter matches name, host, state and workspace", () => {
     const ids = (/** @type {string} */ q) =>
-      filterItems(rows(), q).map((m) => /** @type {any} */ (m.item).downloadId);
+      filterItems(rows(), q).map((m) => ("downloadId" in m.item ? m.item.downloadId : undefined));
     expect(ids("file1")).toEqual(["1"]);
     expect(ids("files2.example")).toEqual(["2"]);
     expect(ids("50%")).toEqual(["3"]);
     expect(ids("work")).toEqual(["2"]);
     expect(ids("token")).toEqual([]);
-    const third = /** @type {any} */ (rows()[2]);
+    const third = rows()[2];
+    if (!third) throw new Error("no third row");
     expect(matchItem(third, "file1")?.highlights.display).toEqual([[0, 5]]);
   });
 
@@ -706,7 +741,7 @@ describe("split picker (docs/specs/multiple-splits.md behaviour 7)", () => {
   });
   const items = splitPickerItems(model, (id) => titles[id] ?? "");
   /** @param {PickerState} s */
-  const selectedSplit = (s) => /** @type {any} */ (pickerSelection(s)?.item)?.splitId;
+  const selectedSplit = (s) => splitIdOf(pickerSelection(s)?.item);
 
   test("opens on the shown split; Enter shows the selected one", () => {
     let s = openPicker(items, { activeId: "3" });
@@ -725,7 +760,7 @@ describe("split picker (docs/specs/multiple-splits.md behaviour 7)", () => {
   test("typing after / filters by the panes' titles", () => {
     let s = openPicker(items, { activeId: "1" });
     for (const k of ["/", "c", "a", "l"]) s = pickerKey(s, k).state;
-    expect(s.matches.map((m) => /** @type {any} */ (m.item).splitId)).toEqual(["3"]);
+    expect(s.matches.map((m) => splitIdOf(m.item))).toEqual(["3"]);
     // In search mode a digit is typed, not a split picked.
     expect(pickerKey(s, "2").effect).toBeNull();
     expect(pickerKey(s, "enter").effect).toEqual({ type: "select", id: "3" });

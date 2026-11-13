@@ -7,7 +7,10 @@ import { parseConfig } from "../src/config.mjs";
 
 const guide = readFileSync(new URL("../../../docs/guide.md", import.meta.url), "utf8");
 
-/** The ```toml blocks of `text` that configure the agent. @param {string} text */
+/**
+ * The fenced toml blocks of `text` that configure the agent.
+ * @param {string} text
+ */
 const agentExamples = (text) =>
   [...text.matchAll(/```toml\n([\s\S]*?)```/g)]
     .map((m) => /** @type {string} */ (m[1]))
@@ -17,7 +20,9 @@ const agentExamples = (text) =>
 function section(/** @type {string} */ heading) {
   const start = guide.indexOf(`\n${heading}\n`);
   if (start < 0) return "";
-  const level = /** @type {string} */ (/^#+/.exec(heading))[0].length;
+  const hashes = /^#+/.exec(heading);
+  if (!hashes) throw new Error(`not a heading: ${heading}`);
+  const level = hashes[0].length;
   const rest = guide.slice(start + heading.length + 2);
   const end = rest.search(new RegExp(`^#{1,${level}} `, "m"));
   return end < 0 ? rest : rest.slice(0, end);
@@ -36,18 +41,16 @@ describe("the guide's [agent] examples", () => {
 
   test("the model section has one for each local server and each hosted kind", () => {
     const examples = agentExamples(section("#### Choosing a model for the agent chat"));
-    const providers = examples.flatMap(
-      (block) => /** @type {any} */ (parseConfig(block).config)?.agent.providers ?? [],
-    );
+    const providers = examples.flatMap((block) => parseConfig(block).config?.agent.providers ?? []);
     const at = (/** @type {string} */ origin) =>
-      providers.filter((/** @type {any} */ p) => p.endpoint.startsWith(origin));
+      providers.filter((p) => p.endpoint.startsWith(origin));
     // Ollama, LM Studio, the llama.cpp server and vLLM, on their default ports.
     for (const port of [11434, 1234, 8080, 8000]) {
       expect(at(`http://127.0.0.1:${port}/`), `port ${port}`).toHaveLength(1);
     }
     expect(at("https://api.anthropic.com")[0]?.kind).toBe("anthropic");
     const hosted = providers.filter(
-      (/** @type {any} */ p) => p.kind === "openai" && p.endpoint.startsWith("https://"),
+      (p) => p.kind === "openai" && p.endpoint.startsWith("https://"),
     );
     expect(hosted.length).toBeGreaterThan(0);
     // A key field is a config error: no example may show one.

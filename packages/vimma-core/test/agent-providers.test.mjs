@@ -20,18 +20,21 @@ const fixture = (name) =>
   );
 
 const KEY = "sk-test-0123456789abcdefa1b2";
-const TOOLS = [
-  {
-    name: "vimma_open",
-    description: "Open a URL.",
-    inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
-  },
-];
+/** @type {import("../src/agent-providers.mjs").ToolDef} */
+const OPEN_TOOL = {
+  name: "vimma_open",
+  description: "Open a URL.",
+  inputSchema: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+};
+const TOOLS = [OPEN_TOOL];
+/** @typedef {import("../src/agent-providers.mjs").Provider} Provider */
+/** @type {Provider} */
 const anthropic = {
   kind: "anthropic",
   endpoint: "https://api.anthropic.com/",
   model: "claude-sonnet-4-5",
 };
+/** @type {Provider} */
 const local = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "qwen2.5:1.5b" };
 
 /** @type {import("../src/agent-providers.mjs").ChatMessage[]} */
@@ -73,7 +76,7 @@ describe("Anthropic requests", () => {
     expect(body.system).toBe("SYS");
     expect(body.max_tokens).toBeGreaterThan(0);
     expect(body.tools).toEqual([
-      { name: "vimma_open", description: "Open a URL.", input_schema: TOOLS[0].inputSchema },
+      { name: "vimma_open", description: "Open a URL.", input_schema: OPEN_TOOL.inputSchema },
     ]);
     expect(body.cache_control).toEqual({ type: "ephemeral" });
     expect(req.body).not.toContain(KEY);
@@ -171,7 +174,7 @@ describe("OpenAI-compatible requests", () => {
         function: {
           name: "vimma_open",
           description: "Open a URL.",
-          parameters: TOOLS[0].inputSchema,
+          parameters: OPEN_TOOL.inputSchema,
         },
       },
     ]);

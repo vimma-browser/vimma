@@ -6,14 +6,12 @@ import {
   hasReason,
   parseSpec,
   specErrors,
-} from "../spec-lint.mjs";
+} from "../spec-lint.ts";
 
 /**
  * A spec with the header the template asks for.
- * @param {string} status
- * @param {string} [rest]
  */
-const spec = (status, rest = "") =>
+const spec = (status: string, rest = "") =>
   [
     "# Spec: x",
     "",
@@ -88,7 +86,7 @@ describe("specErrors", () => {
   });
 
   test("a draft or accepted spec must name its issue; an implemented one need not", () => {
-    const noIssue = (status) =>
+    const noIssue = (status: string) =>
       spec(status).replace(
         "Issue: [#241](https://github.com/vimma-browser/vimma/issues/241)\n",
         "",
@@ -100,7 +98,8 @@ describe("specErrors", () => {
 });
 
 describe("adrStatusErrors", () => {
-  const adr = (status) => `# ADR-099: X\n\n- Status: ${status}\n- Date: 2026-10-14\n\n## Context\n`;
+  const adr = (status: string) =>
+    `# ADR-099: X\n\n- Status: ${status}\n- Date: 2026-10-14\n\n## Context\n`;
 
   test.each([
     "Proposed",
@@ -201,7 +200,7 @@ describe("findDecisions", () => {
 });
 
 describe("decisionErrors", () => {
-  const design = (...items) => ["", "## Design", "", ...items, ""].join("\n");
+  const design = (...items: string[]) => ["", "## Design", "", ...items, ""].join("\n");
 
   test("a draft or accepted spec's decision without a reason fails", () => {
     const md = spec("draft", design("1. **Keys: `ctrl+b u`.** It runs `toggle_toolbar`."));
@@ -229,7 +228,7 @@ describe("decisionErrors", () => {
 
 describe("baseline", () => {
   test("an entry that is no longer needed is an error, so the baseline only shrinks", async () => {
-    const { staleBaseline } = await import("../spec-lint.mjs");
+    const { staleBaseline } = await import("../spec-lint.ts");
     expect(
       staleBaseline({ "x.md": ["Keys.", "Gone."], "y.md": ["Any."] }, { "x.md": ["Keys."] }),
     ).toEqual([
