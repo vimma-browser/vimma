@@ -118,8 +118,8 @@ const scalar = fc.oneof(
   fc.string({ maxLength: 20 }).map((s) => `"""${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"""`),
 );
 
-/** @type {fc.Arbitrary<string>} */
-const value = fc.letrec((tie) => ({
+/** @type {fc.LetrecTypedBuilder<{ value: string }>} */
+const valueBuilder = (tie) => ({
   value: fc.oneof(
     { depthSize: "small", withCrossShrink: true },
     { weight: 6, arbitrary: scalar },
@@ -138,7 +138,8 @@ const value = fc.letrec((tie) => ({
         .map((kvs) => `{ ${kvs.map(([k, v]) => `${k} = ${v}`).join(", ")} }`),
     },
   ),
-})).value;
+});
+const value = fc.letrec(valueBuilder).value;
 
 const line = fc.oneof(
   { weight: 6, arbitrary: fc.tuple(key, value).map(([k, v]) => `${k} = ${v}`) },
