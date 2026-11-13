@@ -4,7 +4,7 @@
 
 # Replaces the brand.ftl Surfer writes from its template, which lacks -brand-shortcut-name
 # (spec firefox-surfaces-trim, delivery step 3). The names are surfer.json's brands.vimma;
-# tools/branding/test/brand-ftl.test.mjs keeps the two in step.
+# tools/branding/test/brand-ftl.test.ts keeps the two in step.
 
 -brand-shorter-name = Vimma
 -brand-short-name = Vimma

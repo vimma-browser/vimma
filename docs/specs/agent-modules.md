@@ -11,7 +11,7 @@ for the `:module` commands and, in its own keymap PR, `defaults.mjs` for the req
 `modules/ModuleSandbox.sys.mjs`, `ui/module-review.mjs`, `ui/module-picker.mjs`;
 `host/VimmaHost.sys.mjs`, `host/addon-ops.mjs`, `ctl/VimmaControl.sys.mjs`,
 `ctl/agent-commands.mjs`, `vimma.js` for the sandbox flag, `ui/statusbar.mjs`);
-`tools/vimma-ctl/` (`vimma-ctl module`, new MCP tools); `tools/security/test/chrome-source.test.mjs`;
+`tools/vimma-ctl/` (`vimma-ctl module`, new MCP tools); `tools/security/test/chrome-source.test.ts`;
 `docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none ·
 ADR: ADR-024, the module format (new, written with delivery PR 1, decision 7); ADR-007 and
 ADR-019 gain a consequence line for the `sandbox` role (decision 26)
@@ -266,7 +266,7 @@ recognise every such field.`; a permission an update adds is
   which keeps comments, and `:route add` (security.md F1).
 - **Chrome code never evaluates text.** The test `never builds code from text: no eval, Function
 or sandbox evaluation` scans every chrome source for `eval(`, `Function(`, `evalInSandbox` and
-  `loadSubScript` (`tools/security/test/chrome-source.test.mjs:57-58`, security.md C2).
+  `loadSubScript` (`tools/security/test/chrome-source.test.ts:57-58`, security.md C2).
 - **Add-ons are installed only from the setup page.** The test `installs an add-on only from the
 setup page` allows `installTemporaryAddon` and the other install calls only in
   `setup/SetupHost.sys.mjs` (`chrome-source.test.mjs:181-192`, security.md A1). The add-on
@@ -498,7 +498,7 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
    permission enforcement, and loading and unloading at run time, all maintained upstream.
    ADR-024 records the format. Rejected:
    - **A Vimma-native module in a `Cu.Sandbox`** with a capability API of Vimma's: Vimma's chrome
-     would evaluate generated code (security.md C2, `chrome-source.test.mjs:57-58`, forbids
+     would evaluate generated code (security.md C2, `chrome-source.test.ts:57-58`, forbids
      `evalInSandbox`), and Vimma would have to rebuild Xray handling, principals, permissions,
      lifecycle and CSP that Firefox already enforces.
    - **A userscript-style content script** (the `userScripts` API): its sandbox has only the
@@ -972,7 +972,7 @@ vocabulary`.
   `test_sandbox_allows_the_requests_own_address`; `test_a_name_resolving_to_loopback_is_cancelled`
   (settles D17's unverified point).
 - `browser_vimma_security_invariants.js`: `modules_install_only_from_the_approved_copy`.
-- `tools/security/test/chrome-source.test.mjs`: `installs an add-on only from the setup page,
+- `tools/security/test/chrome-source.test.ts`: `installs an add-on only from the setup page,
 and modules only from ModuleHost`.
 
 ### vimma-ctl (`tools/vimma-ctl`)

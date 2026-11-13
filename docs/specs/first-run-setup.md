@@ -108,9 +108,9 @@ All Firefox paths are in Vimma's engine tree at Firefox 158.0 (`surfer.json`,
   Badger (`jid1-MnnxcxisBPnSXQ@jetpack`) are all "Recommended" for Firefox.
 - **Vimma's network stance.** Vimma uploads no telemetry (`docs/security.md` P1). Requests to
   AMO for add-ons and their updates are kept as in Firefox (`docs/guide.md`, privacy table).
-- **Vimma never installs add-ons today.** `docs/security.md` A1, enforced by
-  `never installs an add-on` in `tools/security/test/chrome-source.test.mjs`, which fails on
-  any `getInstallForURL` or `installAddonFromAOM` in Vimma's chrome code.
+- **Vimma never installs add-ons today.** `docs/security.md` A1, enforced by `never installs an
+add-on` in `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`,
+  ADR-025), which fails on any `getInstallForURL` or `installAddonFromAOM` in Vimma's chrome code.
 
 ## Design
 

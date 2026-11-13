@@ -153,8 +153,8 @@ changes.
   `defaults.mjs:147`), page first, which runs Firefox's `viewBookmarksToolbarKb`
   (`host/browser-ops.mjs:59`). It is named in `ctrl+b ?` and rebindable.
 - **Defaults** are Firefox prefs in `src/browser/branding/vimma/pref/firefox-branding.js`, checked
-  by `tools/branding/test/branding-prefs.test.mjs` (Vitest). They are defaults, never locked, so
-  the user's own value wins.
+  by `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`,
+  ADR-025) (Vitest). They are defaults, never locked, so the user's own value wins.
 - **Config.** [toolbar-toggle](toolbar-toggle.md) (implemented) added the `[ui]` table with
   `[ui] toolbar = "shown" | "hidden"` (decision 3, schema 2, `config.mjs:220–224`), held in
   `vimma.ui.toolbar.hidden`, written by `ConfigHost` at startup and on a reload only when that
@@ -302,8 +302,9 @@ cannot change the browser-wide pref.
 Written first and seen to fail (red, then green, per CONTRIBUTING.md).
 
 - **Vitest**
-  - `tools/branding/test/branding-prefs.test.mjs`: given the branding pref file, then
-    `browser.toolbars.bookmarks.visibility` is `"never"` and not locked.
+  - `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`,
+    ADR-025): given the branding pref file, then `browser.toolbars.bookmarks.visibility` is
+    `"never"` and not locked.
   - `config.test.mjs` / `config-v2.test.mjs`: given `schema = 2` and
     `[ui] bookmarks_toolbar = "shown"`, then it parses to `"shown"` (and `"hidden"`,
     `"newtab"` to themselves); given `"always"` (Firefox's word), then an error suggesting

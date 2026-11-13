@@ -5,11 +5,11 @@ every pull request; spec [site-compat](../../../../docs/specs/site-compat.md), "
 Each file is a page's rendered document as the browser built it, with its scripts, event
 handlers, images, frames, fonts and every network reference removed, the stylesheets it uses
 inlined, and every link pointing to `followed.html`. Each starts with a Content-Security-Policy
-that lets nothing run or load. `tools/sites/test/snapshot.test.mjs` checks all of that for every
+that lets nothing run or load. `tools/sites/test/snapshot.test.ts` checks all of that for every
 file here, and that each one is listed in `snapshots.json` with its licence.
 
 Only pages whose licence allows redistribution are recorded (`SNAPSHOT_LICENCES` in
-`tools/sites/snapshot.mjs`). The files are kept byte-exact as the recorder wrote them, so
+`tools/sites/snapshot.ts`). The files are kept byte-exact as the recorder wrote them, so
 prettier skips them.
 
 ## Attribution

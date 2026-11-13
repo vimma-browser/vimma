@@ -345,7 +345,7 @@ first)` and reports skipped tests. Run it after `npm run import`, in the checkou
 `engine/`.
 
 **Product names.** `src/toolkit/locales/en-US/toolkit/branding/brandings.ftl` is generated from
-upstream's by `tools/branding/brandings.mjs`, which gives the features Vimma ships as its own
+upstream's by `tools/branding/brandings.ts`, which gives the features Vimma ships as its own
 neutral names (spec firefox-surfaces-trim). After a bump, regenerate it and commit the result:
 
 ```sh
@@ -357,7 +357,7 @@ git diff src/toolkit/
 The generator stops when upstream has a term whose value says Firefox or Mozilla and that neither
 `RENAME` nor `KEEP` in the script decides: put a feature Vimma ships in `RENAME` with a neutral
 name that reads in the strings that use it, and a Mozilla product in `KEEP`. `e2e.yml` runs
-`tools/branding/test/brandings.test.mjs` before the import (afterwards upstream's file is a link to
+`tools/branding/test/brandings.test.ts` before the import (afterwards upstream's file is a link to
 ours and a CI engine has no history to read it from), so an autopilot PR whose new release changes
 `brandings.ftl` fails there until someone regenerates the file.
 
