@@ -82,6 +82,7 @@ function regressedNight() {
   return file;
 }
 
+// The old file name stays in this name so the test names match before and after the move to .ts.
 describe("tools/sites/compare.mjs", () => {
   it("compares two recorded nights: a diff in the summary, no issue", () => {
     const r = compare({

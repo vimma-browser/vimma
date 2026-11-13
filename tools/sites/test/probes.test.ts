@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Script, createContext, runInContext } from "node:vm";
+import * as espree from "espree";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { contentFocusField, jsonLiteral, probe } from "../probes.ts";
 
@@ -123,6 +124,34 @@ describe("probe source sent from Node", () => {
     expect(() => new Script(`(${(written as string).replace(/^export /, "")})`)).toThrow(
       SyntaxError,
     );
+  });
+
+  // The browser has none of this module's names, so a probe that read one would throw there and
+  // nowhere in Node. An identifier that names a module-level declaration, other than the probe's
+  // own name and a property after `.`, is such a read.
+  it("reads nothing from the module's scope: no probe names a module-level declaration", () => {
+    const module = [
+      ...readFileSync(PROBES, "utf8").matchAll(
+        /^(?:export )?(?:async )?(?:function\*? |const |let |var |class )([\w$]+)/gm,
+      ),
+    ].map((m) => m[1]);
+    expect(module).toContain("LITERAL_ESCAPES");
+    expect(module).toContain("jsonLiteral");
+    for (const [name, src] of Object.entries(sources)) {
+      const tokens = espree.tokenize(src, { ecmaVersion: "latest" });
+      const reads = tokens.filter(
+        (t, i) =>
+          t.type === "Identifier" &&
+          module.includes(t.value) &&
+          t.value !== name &&
+          tokens[i - 1]?.value !== "." &&
+          tokens[i - 1]?.value !== "?.",
+      );
+      expect(
+        reads.map((t) => t.value),
+        name,
+      ).toEqual([]);
+    }
   });
 
   it("still evaluates: the sent contentFocusField finds the field outside Node's module", () => {
