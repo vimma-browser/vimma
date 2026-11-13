@@ -384,7 +384,14 @@ describe("workflow wiring", () => {
     expect(commitlint).toMatch(/^ {8}if: steps\.tree\.outputs\.skip == 'true'$/m);
     expect(commitlint).toContain('npx --no -- commitlint --from "$FROM" --to "$TO"');
     expect(commitlint).toContain("FROM: ${{ github.event.before }}");
-    for (const s of steps.filter((s) => !s.includes("id: tree") && !s.includes("actions/checkout")))
+    // Before the guard: the checkout and .nvmrc's Node it runs on (ADR-025); after it, only
+    // what a skip needs.
+    const tree = steps.findIndex((s) => s.includes("id: tree"));
+    expect(steps.slice(0, tree).map((s) => /^uses: ([^@]+)@/.exec(s)?.[1])).toEqual([
+      "actions/checkout",
+      "actions/setup-node",
+    ]);
+    for (const s of steps.slice(tree + 1))
       expect(s).toMatch(/^ {8}if: steps\.tree\.outputs\.skip == 'true'$/m);
   });
 

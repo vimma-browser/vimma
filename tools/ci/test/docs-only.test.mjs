@@ -11,6 +11,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CORE_SCHEMA, load } from "js-yaml";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { GENERATED_MARKDOWN, MARKDOWN_TESTS, classify, isDocsOnly } from "../docs-only.mjs";
 
@@ -229,7 +230,10 @@ describe("workflow wiring", () => {
   function expectClassifyStep(block) {
     const step = steps(block).find((s) => s.text.includes("id: classify"));
     expect(step?.cond).toBe("github.event_name == 'pull_request'");
-    expect(step?.text).toContain('git show "$BASE:tools/ci/docs-only.mjs"');
+    // ADR-025: the base's copy under either name, .ts first, so the pull request that renames
+    // the classifier is still classified by the base's .mjs (tests below run the step).
+    expect(step?.text).toContain("for ext in ts mjs; do");
+    expect(step?.text).toContain('git show "$BASE:tools/ci/docs-only.$ext"');
     expect(step?.text).toContain("BASE: ${{ github.event.pull_request.base.sha }}");
     expect(step?.text).toContain("HEAD: ${{ github.event.pull_request.head.sha }}");
     expect(step?.text).not.toMatch(/node tools\/ci\/docs-only\.mjs/);
@@ -372,5 +376,142 @@ describe("workflow wiring", () => {
       expect(found?.cond, String(re)).toBe(SKIP);
       expect(found?.text).toContain("working-directory: tools/vimma-ctl");
     }
+  });
+});
+
+// ADR-025: the classify step reads the base's classifier as docs-only.ts or docs-only.mjs, .ts
+// first, and runs the copy under the name it read, so that the pull request renaming it is still
+// classified by the base's copy and the one after runs the .ts. These run the step's own shell
+// text, as each job has it, in a repository whose base holds one name, both or neither.
+describe("the classify step, run as the workflows have it", () => {
+  const CLASSIFIER = readFileSync(SCRIPT, "utf8");
+  /** Exits 3 and claims docs-only: a copy that must never be the one that runs. */
+  const DECOY =
+    'import { appendFileSync } from "node:fs";\n' +
+    'appendFileSync(process.env.GITHUB_OUTPUT ?? "/dev/null", "docs-only=true\\n");\n' +
+    "process.exit(3);\n";
+  const GIT_ENV = {
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@example.com",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@example.com",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+  /** @param {string} cwd @param {string[]} args */
+  const git = (cwd, ...args) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_ENV } });
+
+  /** @param {string} file @param {string} jobId */
+  function classifyScript(file, jobId) {
+    const doc =
+      /** @type {{ jobs: Record<string, { steps: { id?: string, run?: string }[] }> }} */ (
+        load(readFileSync(join(ROOT, ".github", "workflows", file), "utf8"), {
+          schema: CORE_SCHEMA,
+        })
+      );
+    const run = doc.jobs[jobId]?.steps.find((s) => s.id === "classify")?.run;
+    if (!run) throw new Error(`${file} ${jobId}: no classify step`);
+    return run;
+  }
+
+  /**
+   * A base commit with `base` files under tools/ci/, a head commit that changes the guide and
+   * writes `head` files, and the step run with the head checked out, as actions/checkout leaves it.
+   * @param {string} script
+   * @param {Record<string, string>} base
+   * @param {Record<string, string>} [head]
+   */
+  function runStep(script, base, head = {}) {
+    const dir = tempDir("vimma-classify-step-");
+    git(dir, "init", "-q", "-b", "main");
+    mkdirSync(join(dir, "docs"));
+    mkdirSync(join(dir, "tools", "ci"), { recursive: true });
+    writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n");
+    for (const [name, text] of Object.entries(base))
+      writeFileSync(join(dir, "tools", "ci", name), text);
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "base");
+    const BASE = git(dir, "rev-parse", "HEAD").trim();
+    writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nMore.\n");
+    for (const [path, text] of Object.entries(head)) {
+      mkdirSync(join(dir, path, ".."), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "head");
+    const HEAD = git(dir, "rev-parse", "HEAD").trim();
+    const temp = tempDir("vimma-classify-temp-");
+    const output = join(temp, "github-output");
+    writeFileSync(output, "");
+    const res = spawnSync("bash", ["-e", "-c", script], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, BASE, HEAD, RUNNER_TEMP: temp, GITHUB_OUTPUT: output },
+    });
+    return {
+      status: res.status,
+      stdout: res.stdout,
+      written: readFileSync(output, "utf8"),
+      copies: readdirSync(temp)
+        .filter((f) => f.startsWith("docs-only"))
+        .sort(),
+    };
+  }
+
+  const JOBS = [
+    ["ci.yml", "check"],
+    ["ci.yml", "vimma-ctl-macos"],
+    ["e2e.yml", "changes"],
+  ];
+
+  describe.each(JOBS)("%s %s", (file, jobId) => {
+    const script = classifyScript(file, jobId);
+
+    it("runs the base's docs-only.ts, copied as .ts, once the base has the .ts name", () => {
+      const res = runStep(script, { "docs-only.ts": CLASSIFIER });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=true\n");
+      expect(res.copies).toEqual(["docs-only.ts"]);
+    });
+
+    it("runs the base's docs-only.mjs while the base has only the .mjs name", () => {
+      const res = runStep(script, { "docs-only.mjs": CLASSIFIER });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=true\n");
+      expect(res.copies).toEqual(["docs-only.mjs"]);
+    });
+
+    it("prefers the .ts name when the base has both", () => {
+      const res = runStep(script, { "docs-only.ts": CLASSIFIER, "docs-only.mjs": DECOY });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=true\n");
+    });
+
+    it("runs everything when the base has neither: no output, no skipped step", () => {
+      const res = runStep(script, { "other.mjs": "" });
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain("No classifier on the base: running everything");
+      expect(res.written).toBe("");
+    });
+
+    it("never runs the pull request's own copy, under either name", () => {
+      const head = {
+        "tools/ci/docs-only.ts": DECOY,
+        "tools/ci/docs-only.mjs": DECOY,
+        "src/x.mjs": "export {};\n",
+      };
+      const res = runStep(script, { "docs-only.mjs": CLASSIFIER }, head);
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=false\n");
+      const none = runStep(script, { "other.mjs": "" }, head);
+      expect(none.written).toBe("");
+    });
+
+    it("fails the step, rather than skipping checks, when the base's copy cannot run", () => {
+      const res = runStep(script, { "docs-only.ts": "process.exit(2);\n" });
+      expect(res.status).not.toBe(0);
+      expect(res.written).toBe("");
+    });
   });
 });

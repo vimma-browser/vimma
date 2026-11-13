@@ -49,6 +49,12 @@ jobs:
           fetch-depth: 0 # the pushed range, for commitlint below
           persist-credentials: false
 
+      # .nvmrc's Node for the guard: the runner image's own may be older than the 22.18 a .ts tool
+      # needs (ADR-025). No cache here; the setup below adds it when commitlint needs npm ci.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
       # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
       # can name another here and skip on its passes.
       - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)
@@ -92,8 +98,18 @@ jobs:
         with:
           fetch-depth: 0 # commitlint and the classifier read the whole PR range
 
+      # .nvmrc's Node for the classifier: the runner image's own may be older than the 22.18 a .ts
+      # tool needs (ADR-025). No cache, so that only .nvmrc is read from the pull request before
+      # the classifier answers; the setup after it adds the npm cache.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          node-version-file: .nvmrc
+
       # The classifier as the base branch has it, so the pull request cannot change the answer;
-      # without one on the base the output stays empty and everything runs.
+      # without one on the base the output stays empty and everything runs. docs-only.ts first,
+      # then docs-only.mjs (ADR-025): the pull request that renames it is classified by the
+      # base's .mjs, and the copy keeps the extension Node needs to strip a .ts file's types.
       - name: Docs-only pull request? (tools/ci/docs-only.mjs, from the base)
         id: classify
         if: github.event_name == 'pull_request'
@@ -101,11 +117,14 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
-            node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
-          else
-            echo "No classifier on the base: running everything"
-          fi
+          for ext in ts mjs; do
+            if git cat-file -e "$BASE:tools/ci/docs-only.$ext" 2>/dev/null; then
+              git show "$BASE:tools/ci/docs-only.$ext" > "$RUNNER_TEMP/docs-only.$ext"
+              exec node "$RUNNER_TEMP/docs-only.$ext" --event pull_request \
+                --base "$BASE" --head "$HEAD"
+            fi
+          done
+          echo "No classifier on the base: running everything"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -262,8 +281,13 @@ jobs:
           fetch-depth: 0 # the classifier reads the PR range
           persist-credentials: false
 
-      # As in the check job: the classifier from the base, so the pull request cannot change it.
-      # The runner image's Node runs it; it uses Node's built-in modules only.
+      # As in the check job: the classifier from the base, so the pull request cannot change it,
+      # on .nvmrc's Node (no cache; nothing is installed). It uses Node's built-in modules only.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          node-version-file: .nvmrc
+
       - name: Docs-only pull request? (tools/ci/docs-only.mjs, from the base)
         id: classify
         if: github.event_name == 'pull_request'
@@ -271,11 +295,14 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
-            node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
-          else
-            echo "No classifier on the base: running everything"
-          fi
+          for ext in ts mjs; do
+            if git cat-file -e "$BASE:tools/ci/docs-only.$ext" 2>/dev/null; then
+              git show "$BASE:tools/ci/docs-only.$ext" > "$RUNNER_TEMP/docs-only.$ext"
+              exec node "$RUNNER_TEMP/docs-only.$ext" --event pull_request \
+                --base "$BASE" --head "$HEAD"
+            fi
+          done
+          echo "No classifier on the base: running everything"
 
       # The runner image ships rustup; it installs the toolchain pinned in rust-toolchain.toml.
       - name: Rust toolchain (tools/vimma-ctl/rust-toolchain.toml)

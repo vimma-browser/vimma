@@ -86,6 +86,14 @@ jobs:
           fetch-depth: 0 # base...head needs the merge base
           persist-credentials: false
 
+      # .nvmrc's Node: the runner image's own may be older than the 22.18 a .ts tool needs
+      # (ADR-025). Only on a pull request, as the checkout: a call or a manual run classifies
+      # nothing. docs-only.ts first, then docs-only.mjs, as in ci.yml's check job.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: github.event_name == 'pull_request'
+        with:
+          node-version-file: .nvmrc
+
       - name: Docs-only pull request? (tools/ci/docs-only.mjs, from the base)
         id: classify
         if: github.event_name == 'pull_request'
@@ -93,11 +101,14 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          if git show "$BASE:tools/ci/docs-only.mjs" > "$RUNNER_TEMP/docs-only.mjs"; then
-            node "$RUNNER_TEMP/docs-only.mjs" --event pull_request --base "$BASE" --head "$HEAD"
-          else
-            echo "No classifier on the base: running everything"
-          fi
+          for ext in ts mjs; do
+            if git cat-file -e "$BASE:tools/ci/docs-only.$ext" 2>/dev/null; then
+              git show "$BASE:tools/ci/docs-only.$ext" > "$RUNNER_TEMP/docs-only.$ext"
+              exec node "$RUNNER_TEMP/docs-only.$ext" --event pull_request \
+                --base "$BASE" --head "$HEAD"
+            fi
+          done
+          echo "No classifier on the base: running everything"
 
   mochitest:
     name: mochitest (artifact build)

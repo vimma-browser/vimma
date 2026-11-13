@@ -5,8 +5,8 @@
 # so this runs on a schedule and on issue events rather than in CI.
 #
 # Two jobs, so the step that runs repository code never holds a token that can write issues.
-# No secret: the job token only. Nothing to install: the script is Node standard library on the
-# runner's node.
+# No secret: the job token only. Nothing to install: the script is Node standard library, on
+# .nvmrc's Node (the runner image's own may be older than the 22.18 a .ts tool needs, ADR-025).
 name: spec-status
 
 on:
@@ -40,6 +40,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
 
       # Exit 1 (findings) still hands the report to the issue job; exit 2 (could not check)
       # fails here.
