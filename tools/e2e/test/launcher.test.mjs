@@ -235,17 +235,22 @@ describe("profile", () => {
 
   // Issue #944: the content sandbox reads fonts only from the system's font folders, so a page
   // drew every glyph as a hex box with the vendored fonts until their folder was allowed too.
-  it("lets content processes read the pinned fonts' folder as well, when asked", () => {
-    const [[name, src]] = devPrefs(REPO_ROOT, "linux");
-    const fonts = `${realpathSync(E2E_FONTS)}/`;
-    const js = readFileSync(
-      join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
-      "utf8",
-    );
-    expect(js).toContain(
-      `user_pref(${JSON.stringify(name)}, ${JSON.stringify(`${src},${fonts}`)});`,
-    );
-  });
+  // Linux only: the fonts are pinned there alone (scenarioFontconfig), and macOS's read path pref
+  // is a different one.
+  it.skipIf(process.platform === "darwin")(
+    "lets content processes read the pinned fonts' folder as well, when asked",
+    () => {
+      const [[name, src]] = devPrefs(REPO_ROOT, "linux");
+      const fonts = `${realpathSync(E2E_FONTS)}/`;
+      const js = readFileSync(
+        join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
+        "utf8",
+      );
+      expect(js).toContain(
+        `user_pref(${JSON.stringify(name)}, ${JSON.stringify(`${src},${fonts}`)});`,
+      );
+    },
+  );
 });
 
 describe("browser command line and environment", () => {
