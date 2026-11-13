@@ -79,9 +79,10 @@ quieter still.
   (`newTabURLOverridden` with another URL); when that extension goes, `newtab-url-changed`
   brings ours back. Private windows get it too (Firefox uses an overridden new-tab URL there).
   Typed and history loads of `about:home`, `about:newtab` and `about:welcome` follow the pref
-  too, except that once Firefox's page has loaded, they keep Firefox's page while a
-  privilegedabout process runs (in practice until the next start): the parent would otherwise
-  kill that process over Firefox's page (#950).
+  too, except that once Firefox's page has been handed out, they keep Firefox's page until the
+  last privilegedabout process seen starting (`ipc:content-created`) ends
+  (`ipc:content-shutdown`; in practice until the next start): the parent would otherwise kill
+  that process over Firefox's page (#950).
 - **URL bar:** the page is `BROWSER_NEW_TAB_URL`, so `isInitialPage` and `isBlankPageURL` treat
   it as Firefox's new tab: empty URL bar, focused on open. `StartPage.init` also adds it to each
   window's `gInitialPages` for a home page opened with the new-tab override off.

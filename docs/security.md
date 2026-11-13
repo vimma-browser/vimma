@@ -533,12 +533,20 @@ text that pages, add-ons and bookmarks choose.
   on, these loads are the chrome start page in the parent, and the stand-in's flags have no
   `URI_SAFE_FOR_UNTRUSTED_CONTENT`, child-process or `MAKE_LINKABLE` flag, so the web can neither
   load nor link to it. Turned off, it hands loads to Firefox's module and its flags. Once it has
-  handed out Firefox's page, it **keeps** Firefox's module and flags while any privilegedabout
-  process runs, whatever the pref: the parent checks every principal that process sends against
-  the about: module's flags of that moment and kills the process on a mismatch (#950). The
-  stand-in only ever falls back to Firefox's own module, never the other way round while
-  Firefox's page may live.
+  handed out Firefox's page, it **keeps** Firefox's module and flags, whatever the pref, until
+  the last privilegedabout process it saw start (`ipc:content-created`) ends
+  (`ipc:content-shutdown`): the parent checks every principal that process sends against the
+  about: module's flags of that moment and kills the process on a mismatch (#950). Nothing else
+  clears that: not the end of another content process, and not "no privilegedabout process is
+  alive", since a process still launching is not listed yet. The stand-in only ever falls back
+  to Firefox's own module, never the other way round while Firefox's page may live. **⚠ limit:**
+  a load of Firefox's page whose channel exists when the last privilegedabout process ends, and
+  whose process is picked after, reads the start page's flags then, so that one load can get a
+  process that does not match its page (not tested; the next load matches again). Firefox
+  keeps one privilegedabout process alive, so this needs that process to crash or the keep-alive
+  pref set to 0.
   [`typed_firefox_pages_open_the_start_page`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
+  [`firefox_flags_stay_until_a_privilegedabout_process_ends`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
   [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_surfaces_trim.js)
 
 ## 7. Omarchy hook and the `vimma-open` launcher

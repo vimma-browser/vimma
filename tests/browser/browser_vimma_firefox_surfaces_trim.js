@@ -724,6 +724,71 @@ async function load(browser, url) {
   await loaded;
 }
 
+// Once it has handed out Firefox's page, the start page module keeps Firefox's flags until a
+// privilegedabout process that ran ends. The parent makes the page's channel before that
+// process is alive, and getAllDOMProcesses leaves out a process still launching, so neither "no
+// privilegedabout process is alive" nor the end of another content process may give the start
+// page's flags back: a page loaded then would be killed when the start page is turned on (#950).
+add_task(async function firefox_flags_stay_until_a_privilegedabout_process_ends() {
+  const home = Services.io.newURI("about:home");
+  const module = Cc["@mozilla.org/network/protocol/about;1?what=home"].getService(
+    Ci.nsIAboutModule,
+  );
+  const startFlags = () => module.getURIFlags(home) === 0;
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.ipc.keepProcessesAlive.privilegedabout", 0],
+      ["dom.ipc.keepProcessesAlive.webIsolated.perOrigin", 0],
+      ["browser.newtab.preload", false],
+    ],
+  });
+  try {
+    NewTabPagePreloading.removePreloadedBrowser(window);
+    await TestUtils.waitForCondition(
+      () => !aboutProcessRuns(),
+      "no privilegedabout process",
+      100,
+      300,
+    );
+    Assert.ok(startFlags(), "the start page's flags to begin with");
+
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+    // Firefox's page is handed out; its process is not alive yet.
+    const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
+    NetUtil.newChannel({ uri: home, loadUsingSystemPrincipal: true });
+    await SpecialPowers.popPrefEnv();
+    Assert.ok(!startFlags(), "with no privilegedabout process alive yet, Firefox's flags stay");
+
+    const web = await BrowserTestUtils.openNewForegroundTab({
+      gBrowser,
+      url: "https://example.org/",
+      forceNewProcess: true,
+    });
+    const webID = web.linkedBrowser.browsingContext.currentWindowGlobal.domProcess.childID;
+    const webEnded = TestUtils.topicObserved(
+      "ipc:content-shutdown",
+      (_s, id) => Number(id) === webID,
+    );
+    BrowserTestUtils.removeTab(web);
+    await webEnded;
+    Assert.ok(!startFlags(), "another content process ending keeps Firefox's flags");
+
+    // A privilegedabout process that ran (about:logins) ends: the start page's flags come back.
+    const logins = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
+    Assert.equal(logins.linkedBrowser.remoteType, "privilegedabout", "about:logins runs there");
+    BrowserTestUtils.removeTab(logins);
+    await TestUtils.waitForCondition(
+      () => !aboutProcessRuns(),
+      "about:logins' process ends",
+      100,
+      300,
+    );
+    await TestUtils.waitForCondition(startFlags, "the start page's flags come back", 100, 50);
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
 add_task(async function firefox_new_tab_stays_without_the_start_page() {
   await withFirefoxNewTab(async () => {
     const { spec } = await typeInNewTab("about:newtab", "about:newtab");
@@ -735,34 +800,56 @@ add_task(async function firefox_new_tab_stays_without_the_start_page() {
 // the parent checks the page's principal on each message, such as a blob URL registration, against
 // the about: module's flags at that moment (#950).
 add_task(async function turning_the_start_page_on_keeps_firefox_new_tab_alive() {
-  await withFirefoxNewTab(async () => {
-    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
-    const browser = tab.linkedBrowser;
-    let crashed = false;
-    const onCrash = () => (crashed = true);
-    browser.addEventListener("oop-browser-crashed", onCrash);
-    await load(browser, "about:newtab");
-    Assert.equal(browser.remoteType, "privilegedabout", "Firefox's page is in its own process");
-    await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", true]] });
-    try {
-      const url = await SpecialPowers.spawn(browser, [], () =>
-        content.URL.createObjectURL(new content.Blob(["vimma"])),
-      );
-      Assert.ok(url.startsWith("blob:"), "Firefox's page still registers a blob URL");
-      Assert.equal(AboutNewTab.newTabURL, START, "new tabs open the start page at once");
-      await load(browser, "about:home");
-      Assert.equal(
-        browser.currentURI.spec,
-        "about:home",
-        "Firefox's pages stay while their process runs",
-      );
-    } finally {
-      await SpecialPowers.popPrefEnv();
-      browser.removeEventListener("oop-browser-crashed", onCrash);
-      BrowserTestUtils.removeTab(tab);
-    }
-    Assert.ok(!crashed, "the content process is not killed");
-  });
+  /** @type {number[]} */
+  const abnormal = [];
+  /** @type {(subject: any, topic: string, id: string) => void} */
+  const onShutdown = (subject, _topic, id) => {
+    const props = subject.QueryInterface(Ci.nsIPropertyBag2);
+    if (props.hasKey("abnormal")) abnormal.push(Number(id));
+  };
+  Services.obs.addObserver(onShutdown, "ipc:content-shutdown");
+  let childID = -1;
+  try {
+    await withFirefoxNewTab(async () => {
+      const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+      const browser = tab.linkedBrowser;
+      await load(browser, "about:newtab");
+      Assert.equal(browser.remoteType, "privilegedabout", "Firefox's page is in its own process");
+      childID = browser.browsingContext.currentWindowGlobal.domProcess.childID;
+      await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", true]] });
+      try {
+        // The registration reaches the parent now; its unregistration when the tab goes, below.
+        const url = await SpecialPowers.spawn(browser, [], () =>
+          content.URL.createObjectURL(new content.Blob(["vimma"])),
+        );
+        Assert.ok(url.startsWith("blob:"), "Firefox's page still registers a blob URL");
+        Assert.equal(AboutNewTab.newTabURL, START, "new tabs open the start page at once");
+        await load(browser, "about:home");
+        Assert.equal(
+          browser.currentURI.spec,
+          "about:home",
+          "Firefox's pages stay while their process runs",
+        );
+        await SpecialPowers.spawn(browser, [], () => {
+          content.URL.createObjectURL(new content.Blob(["vimma"]));
+        });
+      } finally {
+        // Closed with the start page still on, so the page's blob URLs are unregistered then.
+        BrowserTestUtils.removeTab(tab);
+        await TestUtils.waitForCondition(
+          () => !aboutProcessRuns(),
+          "the privilegedabout process ends",
+          100,
+          300,
+        );
+        await SpecialPowers.popPrefEnv();
+      }
+    });
+  } finally {
+    Services.obs.removeObserver(onShutdown, "ipc:content-shutdown");
+  }
+  Assert.greater(childID, 0, "Firefox's page had a content process");
+  Assert.ok(!abnormal.includes(childID), "the content process is not killed");
 });
 
 // A history entry recorded as Firefox's page comes back as the start page once Firefox's page is
@@ -773,9 +860,12 @@ add_task(async function firefox_page_from_history_comes_back_as_the_start_page()
   const browser = tab.linkedBrowser;
   await withFirefoxNewTab(async () => {
     await SpecialPowers.pushPrefEnv({ set: [["browser.sessionhistory.max_total_viewers", 0]] });
-    await load(browser, "about:newtab");
-    await load(browser, "https://example.com/");
-    await SpecialPowers.popPrefEnv();
+    try {
+      await load(browser, "about:newtab");
+      await load(browser, "https://example.com/");
+    } finally {
+      await SpecialPowers.popPrefEnv();
+    }
   });
   const loaded = BrowserTestUtils.browserLoaded(browser, false, START);
   browser.goBack();
