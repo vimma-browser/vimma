@@ -155,8 +155,8 @@ nothing of its own.
 
 - Vitest (`packages/vimma-core/test/sitepermissions.test.mjs`): rows, scope and lock words, the
   keys, refusals, `next` order, the heading, `:site` and `:permissions`, no default key.
-- Vitest (`tools/security/test/chrome-source.test.mjs`):
-  `changes a site permission only from the site permissions picker`.
+- Vitest (`tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`,
+  ADR-025)): `changes a site permission only from the site permissions picker`.
 - Mochitest (`tests/browser/browser_vimma_site_permissions.js`): every Page Info permission
   with its real state; keys change it through Firefox and the row follows; a state Firefox
   does not offer is refused; pop-ups can be allowed, blocked (stored for the site) and reset; a

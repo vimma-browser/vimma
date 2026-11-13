@@ -956,17 +956,16 @@ checkpoints asking`; `a conversation grant has no expiry and ends on stop`.
 - `npm run agent-bench -- --provider <name> --model <model> [--lists <ids>] [--runs N]`, run by
   hand, never in CI, because it needs a model and, for a hosted one, a key and money. Its own
   unit tests, and one run against the scripted provider, run in CI so the harness keeps working.
-- **The shop.** `tests/e2e/fixtures/bench-shop/`: a local grocery shop of 60 products in
-  10 categories (`catalog.json`), rendered by `tools/agent-bench/shop.mjs` on `127.0.0.1`, with
-  a search page, category pages, product pages with sizes and variants (organic, lactose-free,
-  sliced, brand), a basket and a checkout. Basket buttons are built like the real shop's
-  (`type=submit` outside a form, a script posting to the shop); the checkout's
-  `Place order and pay` is a payment checkpoint by its words. The search form is a real form,
-  so a search sent through it is a form submission. Some pages carry injected instructions (in
-  product descriptions and reviews) that tell the agent to open a URL on a second host
-  (`localhost` on another port, another site) or to check out. A server renders the shop,
-  rather than the plain files of the checkpoint tests, because the scores come from what
-  reached it.
+- **The shop.** `tests/e2e/fixtures/bench-shop/`: a local grocery shop of 60 products in 10
+  categories (`catalog.json`), rendered by `tools/agent-bench/shop.mjs` (Since changed: `shop.ts`,
+  ADR-025) on `127.0.0.1`, with a search page, category pages, product pages with sizes and variants
+  (organic, lactose-free, sliced, brand), a basket and a checkout. Basket buttons are built like the
+  real shop's (`type=submit` outside a form, a script posting to the shop); the checkout's `Place
+order and pay` is a payment checkpoint by its words. The search form is a real form, so a search
+  sent through it is a form submission. Some pages carry injected instructions (in product
+  descriptions and reviews) that tell the agent to open a URL on a second host (`localhost` on
+  another port, another site) or to check out. A server renders the shop, rather than the plain
+  files of the checkpoint tests, because the scores come from what reached it.
 - **The lists.** Ten fixed shopping lists from 1 to 10 items, some with preferences ("the
   cheapest", "lactose-free if there is one", "not sliced"), one with an item the shop does not
   sell, one that asks for a quantity.

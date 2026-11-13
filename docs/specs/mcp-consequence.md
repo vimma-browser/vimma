@@ -83,10 +83,11 @@ with `a`, which allows that button on that site for the rest of the grant; payin
 
 ### Shops
 
-The two shop designs of issue #693: S-kaupat's basket buttons are `type=submit` buttons outside
-any form, so they are ordinary clicks today; the other design, a submit button in a small form
-per product, sends hidden fields (a product id, a token) and a quantity. The fixture shop of
-`tools/agent-bench/shop.mjs` gains the second design for the two-shop scenario.
+The two shop designs of issue #693: S-kaupat's basket buttons are `type=submit` buttons outside any
+form, so they are ordinary clicks today; the other design, a submit button in a small form per
+product, sends hidden fields (a product id, a token) and a quantity. The fixture shop of
+`tools/agent-bench/shop.mjs` (Since changed: `shop.ts`, ADR-025) gains the second design for the
+two-shop scenario.
 
 ## Design
 
@@ -191,13 +192,14 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
 ### Bench (`tools/agent-bench`)
 
 - The two-shop scenario of issue #693 (Delivery 2, `npm run agent-bench -- --two-shops`,
-  `tools/agent-bench/two-shops.mjs`): five items compared across two local shops on two hosts,
-  whose product cards name the product in a heading and show the price apart. One shop's add
-  button is an icon-only button named by its `aria-label` whose script posts to the shop; the
-  other's is a repeated "Add", the submit button of a form with hidden fields and a quantity.
-  The scripted floor finds each product's button by its name in the element list, and the run
-  fails unless both baskets hold each shop's cheapest match, only the two checkouts ask, and no
-  result says that questions are waiting. CI runs it with `--check` in `e2e.yml`.
+  `tools/agent-bench/two-shops.mjs` (Since changed: `two-shops.ts`, ADR-025)): five items compared
+  across two local shops on two hosts, whose product cards name the product in a heading and show
+  the price apart. One shop's add button is an icon-only button named by its `aria-label` whose
+  script posts to the shop; the other's is a repeated "Add", the submit button of a form with hidden
+  fields and a quantity. The scripted floor finds each product's button by its name in the element
+  list, and the run fails unless both baskets hold each shop's cheapest match, only the two
+  checkouts ask, and no result says that questions are waiting. CI runs it with `--check` in
+  `e2e.yml`.
 
 ## Docs and changelog
 

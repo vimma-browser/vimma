@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The bench shop's page script (tools/agent-bench/shop.mjs): basket buttons post to the shop
+// The bench shop's page script (tools/agent-bench/shop.ts): basket buttons post to the shop
 // from a click listener, as many real shops do, so no form is sent; the checkout's button
 // places the order the same way.
 "use strict";

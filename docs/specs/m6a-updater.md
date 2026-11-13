@@ -1167,14 +1167,15 @@ Written first and seen to fail.
   `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
 - **Tools** `tools/update/test/manifest.test.mjs`: XML from fixtures (attributes, sizes, hashes,
-  nightly names, empty `<updates/>`), urgency from fixture commit logs (a `security`-labelled
-  bump, an unknown-advisory bump, none), signing round trip with a test key, the deploy commit
-  touching only `updates/**`. `tools/package/test/package.test.mjs`: `is-packaged-app` and
-  its content in AppDir, `.deb` and PKGBUILD, absent from the tarball; `--channel nightly`
-  rewrites both channel files. `release-workflow.test.mjs` / a new `update-workflow.test.mjs`:
-  gates, environments, that only `update-sign` gets the key or `id-token` among the new jobs, only
-  `update-publish` the site key, the build job gets neither, no pull-request trigger.
-  `tools/branding/test/branding-prefs.test.mjs`: `app.update.interval` is 43200.
+  nightly names, empty `<updates/>`), urgency from fixture commit logs (a `security`-labelled bump,
+  an unknown-advisory bump, none), signing round trip with a test key, the deploy commit touching
+  only `updates/**`. `tools/package/test/package.test.mjs`: `is-packaged-app` and its content in
+  AppDir, `.deb` and PKGBUILD, absent from the tarball; `--channel nightly` rewrites both channel
+  files. `release-workflow.test.mjs` / a new `update-workflow.test.mjs`: gates, environments, that
+  only `update-sign` gets the key or `id-token` among the new jobs, only `update-publish` the site
+  key, the build job gets neither, no pull-request trigger.
+  `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`, ADR-025):
+  `app.update.interval` is 43200.
 - **Mochitest** `tests/browser/browser_vimma_update_verify.js` (full build with
   `VIMMA_UPDATES=1`; in automation, `vimma.update.testKeys` set; XML served by an `.sjs` on
   `mochi.test`, reached by swapping `Services.appinfo.updateURL` the way `setUpdateURL` does):
@@ -1283,14 +1284,15 @@ The key custody and the update host (decisions 16 to 18) are built into every up
 binary; ADR-016 records them in sub-PR 2. Sub-PRs, in order, each independently mergeable and
 tested:
 
-1. **Check and tell** (decision 26; no build change): `updates.mjs` (signature, parsing, rules 1
-   to 5, `updateNotice`, the steps per install type), `update-keys.mjs` (the pinned public keys,
-   empty until the key ceremony in `docs/runbook.md`), `[updates] check` in `config.mjs`, the
-   action `app.update_check` and `:update`, the status bar's update segment,
-   `vimma/updates/VimmaUpdates.sys.mjs` (Vimma's own fetch for every packaged install, every
-   12 hours and on `:update`), about:vimma's Updates section and its report line, and
-   `app.update.interval` 43200. Tests: `updates.test.mjs`, `branding-prefs.test.mjs`,
-   `browser_vimma_update_check.js` (a local manifest host and a key generated in the test).
+1. **Check and tell** (decision 26; no build change): `updates.mjs` (signature, parsing, rules 1 to
+   5, `updateNotice`, the steps per install type), `update-keys.mjs` (the pinned public keys, empty
+   until the key ceremony in `docs/runbook.md`), `[updates] check` in `config.mjs`, the action
+   `app.update_check` and `:update`, the status bar's update segment,
+   `vimma/updates/VimmaUpdates.sys.mjs` (Vimma's own fetch for every packaged install, every 12
+   hours and on `:update`), about:vimma's Updates section and its report line, and
+   `app.update.interval` 43200. Tests: `updates.test.mjs`, `branding-prefs.test.mjs` (Since changed:
+   `branding-prefs.test.ts`, ADR-025), `browser_vimma_update_check.js` (a local manifest host and a
+   key generated in the test).
 2. **Build and keys** (mozconfig, the three patches, `keys.mjs` generation from the DER files, so
    that `update-keys.mjs` and the updater's certificates have one source, prefs, ADR-016, the
    ADR-003 register lines): done when a `VIMMA_UPDATES=1` build has

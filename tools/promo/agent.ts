@@ -4,11 +4,11 @@
 // same, offline and without a key; the window names the endpoint as it is configured, so the
 // video never passes the script off as a real model.
 import { createServer } from "node:http";
-import { readBody } from "../agent-bench/shop.mjs";
-import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../agent-bench/scripted.mjs";
-import type { Script, ScriptTurn } from "../agent-bench/scripted.mjs";
-import type { ShoppingList } from "../agent-bench/score.mjs";
-import type { Catalog, Product } from "../agent-bench/shop.mjs";
+import { readBody } from "../agent-bench/shop.ts";
+import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../agent-bench/scripted.ts";
+import type { Script, ScriptTurn } from "../agent-bench/scripted.ts";
+import type { ShoppingList } from "../agent-bench/score.ts";
+import type { Catalog, Product } from "../agent-bench/shop.ts";
 
 /** The model name the provider lists, and the chat window's first line shows. */
 export const MODEL = "scripted";
@@ -71,7 +71,7 @@ export const PROMO_LIST: ShoppingList = Object.freeze({
 export const DECLINED_TEXT =
   "You said no at the payment, so the order was not placed. The basket keeps all three.";
 
-/** The start of a tool result the user denied in Vimma (agent-bench/score.mjs isUserDenial). */
+/** The start of a tool result the user denied in Vimma (agent-bench/score.ts isUserDenial). */
 const DENIED = /^(Error: )?The user denied this request in Vimma\./;
 
 /**

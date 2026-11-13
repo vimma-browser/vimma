@@ -366,7 +366,8 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 
 ## Test plan
 
-- Vitest, written first (`tools/sites/test/`):
+- Vitest, written first (`tools/sites/test/`) (Since changed: the `.test.mjs` files below are
+  `.test.ts`, ADR-025):
   - `classify.test.mjs`: Cloudflare, Google `/sorry/`, reCAPTCHA/hCaptcha iframes, Reddit,
     DuckDuckGo and Akamai pages are `bot-check`; Google/YouTube consent pages and consent
     manager containers are `consent`, with the reject button found when it is there; ordinary
@@ -500,9 +501,9 @@ What changed from the plan above, and why:
   `workflow_dispatch` run is compared with it too, but never becomes a baseline, and a filtered
   run (its `--filter` is recorded in `results.json`) removes no site from the tracked list: the
   sites it did not visit stay tracked as not checked.
-- **The open issue is looked up by the compare job** (`issues: read`), so the choice between
-  create, update, close and nothing is made in tested code (`issueAction` in
-  `tools/sites/diff.mjs`). The report job only carries the choice out.
+- **The open issue is looked up by the compare job** (`issues: read`), so the choice between create,
+  update, close and nothing is made in tested code (`issueAction` in `tools/sites/diff.mjs` (Since
+  changed: `diff.ts`, ADR-025)). The report job only carries the choice out.
 - **Retried screenshots** are named `<site>.retry-<n>-<label>.png`, so the first visit's are
   kept beside them, and no site id (letters, digits and dashes) can produce the same name.
 - **A broken chain never closes the issue.** A tracked regression must not vanish because one
@@ -532,10 +533,10 @@ What changed from the plan above, and why:
 
 What changed from the plan above, and why:
 
-- **Four snapshots:** Wikipedia, MDN, docs.python.org and doc.rust-lang.org, the four pages on
-  the list whose licence allows a copy (`SNAPSHOT_LICENCES` in `tools/sites/snapshot.mjs`;
-  `--record` refuses any other id). No hand-written fixture yet: none of the live run's findings
-  so far is a structure the four lack.
+- **Four snapshots:** Wikipedia, MDN, docs.python.org and doc.rust-lang.org, the four pages on the
+  list whose licence allows a copy (`SNAPSHOT_LICENCES` in `tools/sites/snapshot.mjs` (Since
+  changed: `snapshot.ts`, ADR-025); `--record` refuses any other id). No hand-written fixture yet:
+  none of the live run's findings so far is a structure the four lack.
 - **Every link leads to `followed.html`**, a page next to the snapshots, and fragment links
   stay. A link to the live site would make the hints check leave the machine; one to a missing
   page would depend on how the browser shows a 404.
