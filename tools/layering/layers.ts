@@ -94,16 +94,8 @@ export const EXCEPTIONS: Exception[] = [
     issue: 936,
   },
 
-  // Two modules live in a folder other than the one that owns them; moving either changes a
-  // chrome:// URL that mochitests import.
-  {
-    from: "host/VimmaHost.sys.mjs",
-    to: "about/key-log.mjs",
-    kind: "eager",
-    reason: "the host writes the key log, which still lives in about/",
-    fate: "goes",
-    issue: 936,
-  },
+  // A module lives in a folder other than the one that owns it; moving it changes a chrome://
+  // URL that mochitests import.
   {
     from: "workspaces/WindowWorkspaces.sys.mjs",
     to: "host/tab-labels.mjs",

@@ -2,7 +2,8 @@
 
 The orchestrator of each browser window: key capture and dispatch in `VimmaHost.sys.mjs`, the
 action tables in `runners.mjs`, one area's actions per `*-ops.mjs` module
-([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
+([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)). `key-log.mjs` keeps the last
+key events the host dispatched, which `about:vimma` shows.
 
 **Entry points:** `VimmaHost.init(win)` and `VimmaHost.uninit(win)`, called by `vimma.js`;
 `runners.mjs`, which takes the host as an argument instead of importing it.
