@@ -10,7 +10,7 @@ Where to read about what. Users start with the guide; contributors with
 | What Vimma does and how to use it                      | [guide.md](guide.md), and [bindings.md](bindings.md) for every key (generated)                |
 | What Vimma does not do yet, or cannot                  | [limits.md](limits.md)                                                                        |
 | How the code is organised, and what talks to what      | [ARCHITECTURE.md](../ARCHITECTURE.md)                                                         |
-| How one flow runs through the code, step by step       | [architecture/](architecture/): an agent call, a release and update, a Firefox bump           |
+| How one flow runs through the code, step by step       | [architecture/](architecture/): keys, workspaces, config, tests, agents, releases, bumps      |
 | How to build, test and contribute                      | [CONTRIBUTING.md](../CONTRIBUTING.md)                                                         |
 | Where the project stands and what comes next           | [roadmap.md](roadmap.md)                                                                      |
 | Why a past decision was made                           | [adr/](adr/), the decision records below                                                      |

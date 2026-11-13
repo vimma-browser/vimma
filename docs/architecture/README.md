@@ -7,8 +7,12 @@ refuse or fail at each step, and where that is tested. They link to the specs, d
 [docs/security.md](../security.md) and [docs/runbook.md](../runbook.md) for the rules and the
 procedures rather than repeating them.
 
-| Page                                                              | Follows                                                                                   |
-| ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| [The life of an agent call](agent-call.md)                        | An MCP tool call: `vimma-ctl mcp`, the control socket, the agent gate, the page, and back |
-| [From a release tag to an offered update](updates-and-release.md) | A Vimma release: release-please, `release.yml`, signing, the manifest, the client's check |
-| [From a Firefox release to a merged bump](upstream-autopilot.md)  | A Firefox release: detection, source verification, the patch check, the suites, the merge |
+| Page                                                              | Follows                                                                                            |
+| ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| [The life of a keypress](keypress.md)                             | A key: capture, the dispatcher, the runner tables, the actor pair, the page, and insert mode back  |
+| [Workspaces and panes](workspaces-and-panes.md)                   | A workspace switch and a split: the core models, the window's mirror, saving and the restore       |
+| [Config and theme](config-and-theme.md)                           | `config.toml` and the theme: the poll, parsing and checks, applying, the tokens, the Omarchy hook  |
+| [The life of an agent call](agent-call.md)                        | An MCP tool call: `vimma-ctl mcp`, the control socket, the agent gate, the page, and back          |
+| [From a release tag to an offered update](updates-and-release.md) | A Vimma release: release-please, `release.yml`, signing, the manifest, the client's check          |
+| [From a Firefox release to a merged bump](upstream-autopilot.md)  | A Firefox release: detection, source verification, the patch check, the suites, the merge          |
+| [Testing](testing.md)                                             | A pull request's checks and the scheduled runs: each layer, where it runs, and what is not covered |
