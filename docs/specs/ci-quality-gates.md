@@ -18,13 +18,15 @@ Two rows of plan §5 and issue #17:
 
 ## Tests (written first)
 
-- `tools/bench/test/compare.test.mjs`: median and min-of-medians; combining processes keeps the
-  lowest; a suite (geometric mean) > 10 % over the baseline fails, exactly 10 % passes, one case
-  at +15 % only notes, one case > 25 % fails; a slower runner with the same ratio passes; any
-  case over 50 µs fails even without a baseline; an unknown machine and a new case only advise; a
-  baseline case that was not measured fails; the CLI exits 0/1/2.
-- `tools/bench/test/cases.test.mjs`: the cases cover a single key, the prefix plus a key and a
-  count plus a motion, and each produces the action it names on every run.
+- `tools/bench/test/compare.test.mjs` (Since changed: `compare.test.ts`, ADR-025): median and
+  min-of-medians; combining processes keeps the lowest; a suite (geometric mean) > 10 % over the
+  baseline fails, exactly 10 % passes, one case at +15 % only notes, one case > 25 % fails; a slower
+  runner with the same ratio passes; any case over 50 µs fails even without a baseline; an unknown
+  machine and a new case only advise; a baseline case that was not measured fails; the CLI exits
+  0/1/2.
+- `tools/bench/test/cases.test.mjs` (Since changed: `cases.test.ts`, ADR-025): the cases cover a
+  single key, the prefix plus a key and a count plus a motion, and each produces the action it names
+  on every run.
 - `tools/mutation/test/report.test.mjs`: the score matches Stryker's formula; survivors are listed
   per file, sorted; the body stays under GitHub's 65 536-character limit; the CLI writes `score`
   and `survivors` to `$GITHUB_OUTPUT`.
@@ -49,13 +51,14 @@ Two rows of plan §5 and issue #17:
 - **Two jobs in mutation.yml.** The job that runs repository code (npm ci, Stryker, tests) has
   `contents: read` and `actions: read`; only the report job, which runs no npm code, has
   `issues: write`. Costs one extra billed minute a week.
-- **Bench: own harness, not `vitest bench`.** `tools/bench/bench.mjs` warms up each case, times
-  batches of ≥ 100 µs each followed by a batch of a fixed reference workload, and takes per case
-  the median ratio (51 samples a round, median over 5 rounds) and the minimum µs; then the lowest
-  of each over 15 fresh processes. The old `core.bench.mjs` (mean latency, no baseline) is gone.
-  (Since changed: issue [#667](https://github.com/vimma-browser/vimma/issues/667) gates the
-  change paired sweep by sweep, the median of each sweep's head-over-baseline ratio, instead of
-  each side's own median ratio; see docs/runbook.md, "Bench baseline".)
+- **Bench: own harness, not `vitest bench`.** `tools/bench/bench.mjs` (Since changed: `bench.ts`,
+  ADR-025) warms up each case, times batches of ≥ 100 µs each followed by a batch of a fixed
+  reference workload, and takes per case the median ratio (51 samples a round, median over 5 rounds)
+  and the minimum µs; then the lowest of each over 15 fresh processes. The old `core.bench.mjs`
+  (mean latency, no baseline) is gone. (Since changed: issue
+  [#667](https://github.com/vimma-browser/vimma/issues/667) gates the change paired sweep by sweep,
+  the median of each sweep's head-over-baseline ratio, instead of each side's own median ratio; see
+  docs/runbook.md, "Bench baseline".)
 - **The 10 % gate is on the suite.** Measured on a laptop pinned to 2 CPUs, 8 whole runs: single
   cases spread up to 14 % (max−min), the geometric mean of all cases 6 %. One process alone spread
   20–30 % (JIT modes), hence the 15 processes. So: fail when the geometric mean of the cases'

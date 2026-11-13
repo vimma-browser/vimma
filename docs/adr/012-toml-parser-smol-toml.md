@@ -13,8 +13,8 @@ ADR-008 called for vendoring a small MIT-licensed TOML parser. When the parser w
 
 The vendored parser is **smol-toml 1.9.0, BSD-3-Clause**, in
 `packages/vimma-core/src/vendor/smol-toml/`. It is generated as one ES module by
-`tools/vendor-smol-toml.mjs`. ADR-008's requirement becomes "a small, permissively licensed
-(MIT, BSD or ISC) parser".
+`tools/vendor-smol-toml.mjs` (Since changed: `vendor-smol-toml.ts`, ADR-025). ADR-008's requirement
+becomes "a small, permissively licensed (MIT, BSD or ISC) parser".
 
 ## Reasoning
 

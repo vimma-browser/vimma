@@ -545,10 +545,10 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
 
 - O1. The hook **must** only ask running Vimmas to reload their theme (D-Bus, else
   `vimma-ctl reload-theme`) and **never** start a Vimma.
-  [`asks every running Vimma, over Firefox's D-Bus remoting, to reload its theme`](../tools/omarchy/test/theme-hook.test.mjs),
-  [`never starts Vimma: with none running it does nothing and says nothing`](../tools/omarchy/test/theme-hook.test.mjs)
+  [`asks every running Vimma, over Firefox's D-Bus remoting, to reload its theme`](../tools/omarchy/test/theme-hook.test.ts),
+  [`never starts Vimma: with none running it does nothing and says nothing`](../tools/omarchy/test/theme-hook.test.ts)
 - O2. The hook **never** passes its arguments (the theme name) on to Vimma or `vimma-ctl`.
-  [`never passes its arguments on: a hostile theme name changes nothing`](../tools/omarchy/test/theme-hook.test.mjs)
+  [`never passes its arguments on: a hostile theme name changes nothing`](../tools/omarchy/test/theme-hook.test.ts)
 - O3. `-vimma-reload-theme` **must** open no window or tab.
   [`test_remote_reload_theme`](../tests/browser/browser_vimma_omarchy_hook.js)
 - O4. Vimma **must** write the hook only where none is, or over its own unedited copy; an edited

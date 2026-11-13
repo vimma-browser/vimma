@@ -141,6 +141,11 @@ jobs:
       - name: Architecture map is current (npm run arch-lint)
         run: npm run arch-lint
 
+      # Each vimma/ folder imports only lower layers, bar the listed exceptions; no eager import
+      # cycle; every folder has its README.md (ADR-026). On docs-only changes too: a README counts.
+      - name: Imports follow the module layering, ADR-026 (npm run layering)
+        run: npm run layering
+
       # ARCHITECTURE.md's two SVG pictures match their D2 sources, and the module graph's source
       # matches the imports under vimma/ (issue #943). Needs no D2: each SVG records its source's
       # hash. On docs-only changes too, like arch-lint.

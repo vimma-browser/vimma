@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { commitlint } from "../../commitlint/test/repo-commitlint.mjs";
+import { commitlint } from "../../commitlint/test/repo-commitlint.ts";
 import { detect, driftLine, githubOutputText, labelsFor, outputs, summary } from "../detect.mjs";
 import {
   BODY_LIMIT,

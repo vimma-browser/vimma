@@ -1,0 +1,242 @@
+/**
+ * Bench regression gate (spec ci-quality-gates, plan §5 "Performance", issues #17 and #342).
+ * Compares the working tree's cases with the baseline commit's cases, both measured by
+ * tools/bench/bench.ts in the same processes, sample by sample. It fails when
+ *   - any case of the working tree takes BUDGET_US or more (plan: key-to-action in core < 50 µs);
+ *   - the geometric mean of the cases' changes is more than THRESHOLD (10 %) above the baseline
+ *     commit's, or one case is more than CASE_THRESHOLD (25 %) above it, or a case of the
+ *     baseline commit was not measured. A change is the case's ratio (its time over the reference
+ *     workload's, sampled in pairs) against the same case's ratio in the baseline commit.
+ */
+export const BUDGET_US = 50;
+/** Plan §5: a regression over 10 % fails, measured on the suite (geometric mean of the cases). */
+export const THRESHOLD = 0.1;
+/**
+ * One case alone fails only past 25 %: a single sub-microsecond case moves more than the suite's
+ * mean of five, which averages the noise of its cases (docs/runbook.md).
+ */
+export const CASE_THRESHOLD = 0.25;
+/** Floating-point slack, so a change of exactly the limit passes. */
+const EPSILON = 1e-9;
+
+/**
+ * µs per key-to-action, and that over the reference workload's µs (min of per-round medians,
+ * both)
+ */
+export interface CaseResult {
+  us: number;
+  ratio: number;
+}
+export interface Result {
+  machine: string;
+  referenceUs: number;
+  cases: Record<string, CaseResult>;
+}
+/**
+ * Costs the baseline accepts on top of the baseline commit, per case: a change meant to cost
+ * time cannot name its own commit before it is merged, so it states the cost here and the next
+ * move of the commit folds it in (docs/runbook.md, "Bench baseline")
+ */
+export type Accepted = Record<string, { change: number; why: string }>;
+export interface Row {
+  name: string;
+  us: number;
+  ratio: number;
+  base: number | null;
+  change: number | null;
+}
+
+export function median(xs: number[]) {
+  if (xs.length === 0) throw new RangeError("median of an empty sample");
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? (s[mid] as number) : (Number(s[mid - 1]) + Number(s[mid])) / 2;
+}
+
+/**
+ * Noise on a shared machine only ever adds time, so the quietest round is the best estimate.
+ * @param rounds samples per round
+ */
+export function minOfMedians(rounds: number[][]) {
+  return Math.min(...rounds.map(median));
+}
+
+/**
+ * One case's change against another's measured in the same sweeps: per sample, the quotient of
+ * the two ratios that sweep took a few milliseconds apart; the median of those per round, and the
+ * median of the rounds. Not the quotient of each side's own median: when the runner's load comes
+ * and goes in phases of a few milliseconds, each side's samples fall into two modes, and its
+ * median lands on whichever mode got one more sample. Two sides of identical code then read up to
+ * +50 % apart (issue #667). A sweep measures both sides in the same phase, so their quotient
+ * cancels it unless a phase changes between them.
+ * @param a per round, the case's ratio in each sweep
+ * @param b the same for the case it is compared with, from the same measurement
+ */
+export function pairedChange(a: number[][], b: number[][]) {
+  if (a.length !== b.length || a.some((round, r) => round.length !== b[r]?.length)) {
+    throw new Error("pairedChange: both cases must come from the same sweeps");
+  }
+  return median(a.map((round, r) => median(round.map((x, s) => x / Number(b[r]?.[s])))));
+}
+
+/**
+ * One result from several bench processes (each with its own fixed hash seed, bench.ts).
+ *   - µs, for the budget: the lowest over the processes, since noise only adds time.
+ *   - ratio, for the regression gate: the median over the processes. Not the lowest: noise in
+ *     the reference's time lowers a ratio, so the lowest ratio picks the process whose reference
+ *     ran slowest, and the gate then compares that outlier with the next run's (issue #125).
+ * `referenceSpread` is (slowest − fastest) / fastest of the processes' reference times, printed so
+ * a reference that stops being steady shows in the log.
+ */
+export function combine(
+  results: Result[],
+): Result & { processes: number; referenceSpread: number } {
+  const [first] = results;
+  if (!first) throw new RangeError("combine: no results");
+  const names = Object.keys(first.cases).sort();
+  for (const r of results) {
+    if (r.machine !== first.machine) throw new Error("combine: results from another machine");
+    if (Object.keys(r.cases).sort().join("\n") !== names.join("\n")) {
+      throw new Error("combine: results with different cases");
+    }
+  }
+  const cases: Record<string, CaseResult> = {};
+  for (const name of Object.keys(first.cases)) {
+    const of = results.map((r) => r.cases[name] as CaseResult);
+    cases[name] = {
+      us: Math.min(...of.map((c) => c.us)),
+      ratio: median(of.map((c) => c.ratio)),
+    };
+  }
+  const refs = results.map((r) => r.referenceUs);
+  const referenceUs = Math.min(...refs);
+  return {
+    machine: first.machine,
+    referenceUs,
+    referenceSpread: Math.max(...refs) / referenceUs - 1,
+    processes: results.length,
+    cases,
+  };
+}
+
+/**
+ * The working tree's and the baseline commit's results from the same processes, combined so that
+ * loading one side first cannot lean the gate. Loading first moves a sub-microsecond case by
+ * several per cent, so half of the processes load the baseline first (bench.ts, childArgs). A
+ * median of each side alone keeps the lean whenever one order has more processes (8 to 7 of 15),
+ * and so does a median of the processes' own changes, which then all read the lean one way or
+ * the other. So: per case, each process's own change (working tree over baseline), the median of
+ * those per load order, and the geometric mean of the two orders' medians, in which a lean of the
+ * same size either way cancels. `base`'s ratio is the working tree's combined ratio over that
+ * change, so compare() reads it; its µs is the baseline's own (budget only).
+ * @param heads the working tree's results, one per process
+ * @param bases the baseline commit's, in the same order
+ * @param headFirst per process, whether it loaded the working tree first
+ */
+export function combinePaired(heads: Result[], bases: Result[], headFirst: boolean[]) {
+  if (heads.length !== bases.length || heads.length !== headFirst.length) {
+    throw new Error("combinePaired: both sides must come from the same processes");
+  }
+  const head = combine(heads);
+  const base = combine(bases);
+  const changes = (name: string, first: boolean) =>
+    heads.flatMap((h, p) =>
+      headFirst[p] === first
+        ? [Number(h.cases[name]?.ratio) / Number(bases[p]?.cases[name]?.ratio)]
+        : [],
+    );
+  const cases: Record<string, CaseResult> = {};
+  for (const [name, c] of Object.entries(base.cases)) {
+    const own = head.cases[name];
+    if (!own) {
+      cases[name] = c;
+      continue;
+    }
+    const groups = [changes(name, true), changes(name, false)].filter((g) => g.length > 0);
+    const change = Math.exp(
+      groups.reduce((sum, g) => sum + Math.log(median(g)), 0) / groups.length,
+    );
+    cases[name] = { us: c.us, ratio: own.ratio / change };
+  }
+  return { head, base: { ...base, cases } };
+}
+
+const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
+
+/**
+ * @param result the working tree's cases
+ * @param base the baseline commit's cases, measured in the same processes
+ */
+export function compare(
+  result: Result,
+  base: Result,
+  {
+    threshold = THRESHOLD,
+    caseThreshold = CASE_THRESHOLD,
+    budgetUs = BUDGET_US,
+    accepted = {},
+  }: { threshold?: number; caseThreshold?: number; budgetUs?: number; accepted?: Accepted } = {},
+) {
+  const failures: string[] = [];
+  const notes: string[] = [];
+  const rows: Row[] = [];
+  let logSum = 0;
+  let compared = 0;
+  for (const [name, { us, ratio }] of Object.entries(result.cases)) {
+    if (us >= budgetUs) {
+      failures.push(`${name}: ${us.toFixed(2)} µs is not under the ${budgetUs} µs budget`);
+    }
+    const measured = base.cases[name]?.ratio ?? null;
+    const allowance = accepted[name];
+    const was = measured === null ? null : measured * (1 + (allowance?.change ?? 0));
+    const change = was === null ? null : ratio / was - 1;
+    rows.push({ name, us, ratio, base: was, change });
+    if (change === null) {
+      notes.push(`${name}: no baseline for this case yet (not in the baseline commit)`);
+      continue;
+    }
+    if (allowance) {
+      notes.push(`${name}: ${pct(allowance.change)} accepted by the baseline (${allowance.why})`);
+    }
+    logSum += Math.log1p(change);
+    compared++;
+    const vs = `against the baseline (ratio ${ratio.toFixed(3)} vs ${Number(was).toFixed(3)})`;
+    if (change > caseThreshold + EPSILON) {
+      failures.push(`${name}: ${pct(change)} ${vs}, over the ${pct(caseThreshold)} limit`);
+    } else if (change > threshold + EPSILON) {
+      notes.push(`${name}: ${pct(change)} ${vs}; the suite gate decides`);
+    }
+  }
+  const suiteChange = compared ? Math.expm1(logSum / compared) : null;
+  if (suiteChange !== null && suiteChange > threshold + EPSILON) {
+    failures.unshift(
+      `suite: ${pct(suiteChange)} against the baseline (geometric mean over ${compared} cases), ` +
+        `over the ${pct(threshold)} limit`,
+    );
+  }
+  for (const name of Object.keys(base.cases)) {
+    if (!(name in result.cases)) {
+      failures.push(
+        `${name}: in the baseline commit but not measured; move the baseline to a commit ` +
+          `without it (docs/runbook.md, "Bench baseline")`,
+      );
+    }
+  }
+  return { ok: failures.length === 0, failures, notes, rows, suiteChange };
+}
+
+export function formatTable(r: ReturnType<typeof compare>) {
+  const width = Math.max(4, ...r.rows.map((row) => row.name.length));
+  const lines = [`${"case".padEnd(width)}  ${"µs".padStart(8)}  ratio  baseline  change`];
+  for (const { name, us, ratio, base, change } of r.rows) {
+    lines.push(
+      `${name.padEnd(width)}  ${`${us.toFixed(2)} µs`.padStart(8)}  ${ratio.toFixed(3)}  ` +
+        `${base === null ? "—".padStart(8) : base.toFixed(3).padStart(8)}  ` +
+        `${change === null ? "—" : pct(change)}`,
+    );
+  }
+  if (r.suiteChange !== null) {
+    lines.push(`suite (geometric mean of the changes): ${pct(r.suiteChange)}`);
+  }
+  return lines.join("\n");
+}

@@ -2,8 +2,8 @@
 
 Status: implemented · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 `agent-providers.mjs`, `agent-chat.mjs`, `agent-budget.mjs`, `agent-owners.mjs`,
-`agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs`, `agent-store.mjs`;
-`agent.mjs` and
+`agent-tools.mjs` with `agent-tools-data.mjs` from `tools/gen-agent-tools.mjs` (Since changed:
+`gen-agent-tools.ts`, ADR-025), `agent-store.mjs`; `agent.mjs` and
 `agent-prompt.mjs`
 for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
 `defaults.mjs` for the key; `config.mjs` also for setup's edit of config.toml);
@@ -767,8 +767,8 @@ connection (#578), and covers later tasks sent with `Enter` in the same conversa
 shown in the header and ends with `s`, `:agent stop`, `ctrl+b shift+a`, `:mcp revoke`, the
 conversation's deletion or a restart. Between tasks the model gets no turn, so a standing grant
 is used only by a task the user sent. (Since changed: the grant also ends when its task ends,
-however it ends, so no grant stands between tasks; decision 18.) What it allows is what any grant allows (above);
-`ctrl+Enter` sends a task without one and ends a standing one.
+however it ends, so no grant stands between tasks; decision 18.) What it allows is what any grant
+allows (above); `ctrl+Enter` sends a task without one and ends a standing one.
 
 ### Several agents at once
 

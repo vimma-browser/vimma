@@ -420,15 +420,15 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
    A contributor's machine keeps `npx surfer download`, and `tools/upstream/verify-source.sh`
    (`npm run verify-source`, sub-PR 2) checks the tarball it left in `.surfer/engine/` with the
    same `verify-sha512.py`. Reason: a local `engine/` needs Surfer's commit of the pristine tree,
-   which `surfer export` diffs against and `tools/lanes/lanes.mjs` resets lanes to, and
-   `firefox-source.sh` makes an empty repository instead. The check runs after Surfer extracts,
-   so it protects the build, not the extraction. It records the verified version and hash in
-   `engine/.git/vimma-source-verified` (as `firefox-source.sh` does), and `npm run import` starts
-   with `verify-source.sh --require`, which refuses an `engine/` without that record for
-   `surfer.json`'s version. Reason: import is the first step of every local build and every
-   lane, and the check is offline and instant, so B1 holds on a contributor's machine without
-   relying on a setup step being remembered. The record lives in `engine/.git` because Surfer's
-   `--force` deletes it with `engine/`, a lane's `git clean` keeps it, and a lane's copy of
+   which `surfer export` diffs against and `tools/lanes/lanes.mjs` (Since changed: `lanes.ts`,
+   ADR-025) resets lanes to, and `firefox-source.sh` makes an empty repository instead. The check
+   runs after Surfer extracts, so it protects the build, not the extraction. It records the verified
+   version and hash in `engine/.git/vimma-source-verified` (as `firefox-source.sh` does), and
+   `npm run import` starts with `verify-source.sh --require`, which refuses an `engine/` without
+   that record for `surfer.json`'s version. Reason: import is the first step of every local build
+   and every lane, and the check is offline and instant, so B1 holds on a contributor's machine
+   without relying on a setup step being remembered. The record lives in `engine/.git` because
+   Surfer's `--force` deletes it with `engine/`, a lane's `git clean` keeps it, and a lane's copy of
    `engine/` carries it. It is a guard against building an unverified download, not against
    someone who can write to `engine/`.
 

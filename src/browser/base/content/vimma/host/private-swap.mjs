@@ -30,9 +30,9 @@ import {
   repliesOk,
 } from "../core/hyprswap.mjs";
 import { HyprIpc, REPLY_MS } from "./hypr/HyprIpc.sys.mjs";
-import { NativeSwap } from "./native-swap.mjs";
+import { NativeSwap, startedUp } from "./native-swap.mjs";
 
-export { isBrowserWindow } from "./native-swap.mjs";
+export { isBrowserWindow, startedUp } from "./native-swap.mjs";
 
 /** @import { Client, Command, Dialect, Pair, PairEvent, ShowOp } from "../core/hyprswap.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
@@ -132,33 +132,6 @@ let unswapped = new WeakSet();
 
 /** What a switch says when Hyprland never named a Vimma window (decision 7). */
 const NOT_NAMED = "private: Hyprland did not name the Vimma window; showing it as a window";
-
-/**
- * Resolves once `win`'s browser document has finished its delayed startup: true, or false when
- * it closed first. The window OpenBrowserWindow returns still shows the initial about:blank,
- * without browser-init.js's delayedStartupPromise, and a title set on that document never
- * reaches the window manager.
- * @param {BrowserWindow} win
- * @returns {Promise<boolean>}
- */
-export function startedUp(win) {
-  const w = win;
-  if (w.closed) return Promise.resolve(false);
-  if (w.gBrowserInit?.delayedStartupFinished) return Promise.resolve(true);
-  const READY = "browser-delayed-startup-finished";
-  const CLOSED = "domwindowclosed";
-  return new Promise((resolve) => {
-    /** @param {unknown} subject @param {string} topic */
-    const observer = (subject, topic) => {
-      if (subject !== win) return;
-      Services.obs.removeObserver(observer, READY);
-      Services.obs.removeObserver(observer, CLOSED);
-      resolve(topic === READY);
-    };
-    Services.obs.addObserver(observer, READY);
-    Services.obs.addObserver(observer, CLOSED);
-  });
-}
 
 /** Why Hyprland is not even tried, or null. */
 function gate() {

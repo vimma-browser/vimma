@@ -159,7 +159,7 @@ function mozVersion(origin) {
 }
 
 /**
- * The smol-toml vimma-core vendors (tools/vendor-smol-toml.mjs writes its version in a header).
+ * The smol-toml vimma-core vendors (tools/vendor-smol-toml.ts writes its version in a header).
  * @param {string} vimmaRoot
  * @returns {Component[]}
  */

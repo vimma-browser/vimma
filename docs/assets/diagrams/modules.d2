@@ -4,67 +4,76 @@
 direction: down
 
 classes: {
-  folder: {
-    style: { fill: ${box}; stroke: ${box-line}; font-color: ${text}; font-size: 16; border-radius: 6 }
-  }
-  cycle-group: {
+  band: {
     label.near: outside-top-left
-    style: { fill: ${cycle-fill}; stroke: ${cycle}; stroke-dash: 4; font-color: ${cycle}; font-size: 15; border-radius: 8 }
+    style: { fill: ${zone-app}; stroke: ${box-line}; stroke-dash: 4; font-color: ${muted}; font-size: 16; border-radius: 8 }
   }
-  eager: { style: { stroke: ${line}; stroke-width: 1 } }
-  lazy: { style: { stroke: ${muted}; stroke-dash: 4 } }
-  cycle-edge: { style: { stroke: ${cycle}; stroke-width: 2 } }
-  legend: { shape: text; near: bottom-center; style: { font-color: ${muted}; font-size: 15 } }
+  folder: {
+    style: { fill: ${bg}; stroke: ${box-line}; font-color: ${text}; font-size: 18; border-radius: 6 }
+  }
+  order: { style: { opacity: 0 } }
+  down: { style: { stroke: ${line}; stroke-width: 1 } }
+  down-lazy: { style: { stroke: ${line}; stroke-dash: 4 } }
+  up: { style: { stroke: ${cycle}; stroke-width: 2 } }
+  up-lazy: { style: { stroke: ${cycle}; stroke-width: 2; stroke-dash: 4 } }
+  legend: { shape: text; near: bottom-center; style: { font-color: ${muted}; font-size: 17 } }
 }
 
-cycle1: "Eager import cycle: 6 folders" {
-  class: cycle-group
-  about: "about/" { class: folder }
-  actors: "actors/" { class: folder }
-  config: "config/" { class: folder }
-  ctl: "ctl/" { class: folder }
-  host: "host/" { class: folder }
-  workspaces: "workspaces/" { class: folder }
+about: "about/ · 6" { class: folder }
+omarchy: "omarchy/ · 6" { class: folder }
+setup: "setup/ · 6" { class: folder }
+start: "start/ · 6" { class: folder }
+agent: "agent/ · 5" { class: folder }
+config: "config/ · 4" { class: folder }
+ctl: "ctl/ · 4" { class: folder }
+host: "host/ · 3" { class: folder }
+actors: "actors/ · 2" { class: folder }
+workspaces: "workspaces/ · 2" { class: folder }
+layer1: "Layer 1" {
+  class: band
+  search: "search/ · 1" { class: folder }
+  services: "services/ · 1" { class: folder }
+  split: "split/ · 1" { class: folder }
+  ui: "ui/ · 1" { class: folder }
+  updates: "updates/ · 1" { class: folder }
 }
-agent: "agent/" { class: folder }
-omarchy: "omarchy/" { class: folder }
-search: "search/" { class: folder }
-services: "services/" { class: folder }
-setup: "setup/" { class: folder }
-split: "split/" { class: folder }
-start: "start/" { class: folder }
-ui: "ui/" { class: folder }
-updates: "updates/" { class: folder }
 
-cycle1.about -> cycle1.config { class: cycle-edge }
-cycle1.about -> cycle1.ctl { class: cycle-edge }
-cycle1.about -> cycle1.host { class: cycle-edge }
-cycle1 -> search { class: eager }
-cycle1 -> split { class: eager }
-cycle1 -> ui { class: eager }
-cycle1 -> updates { class: eager }
-cycle1.about -> cycle1.workspaces { class: cycle-edge }
-cycle1.actors -> cycle1.host { class: cycle-edge }
-agent -> cycle1.ctl { class: eager }
-agent -> cycle1.host { class: eager }
-cycle1.config -> cycle1.host { class: cycle-edge }
-cycle1.config -> cycle1.workspaces { class: cycle-edge }
-cycle1.ctl -> cycle1.actors { class: cycle-edge }
-cycle1.ctl -> cycle1.host { class: cycle-edge }
-cycle1.ctl -> cycle1.workspaces { class: cycle-edge }
-cycle1.host -> cycle1.about { class: cycle-edge }
-cycle1.host -> cycle1.actors { class: cycle-edge }
-agent <- cycle1.host { class: lazy }
-cycle1.config <- cycle1.host { class: lazy }
-cycle1.host -> cycle1.ctl { class: cycle-edge }
-cycle1.host -> cycle1.workspaces { class: cycle-edge }
-ui <- omarchy { class: lazy }
-setup -> cycle1.config { class: eager }
-setup -> ui { class: eager }
-start -> ui { class: eager }
-agent <- ui { class: lazy }
-cycle1.config <- ui { class: lazy }
-cycle1.host <- ui { class: lazy }
-cycle1.workspaces -> cycle1.host { class: cycle-edge }
+about -> agent { class: order }
+actors -> layer1 { class: order }
+omarchy -> agent { class: order }
+setup -> agent { class: order }
+start -> agent { class: order }
 
-legend: "An arrow points from a folder to one it imports.\nSolid: eager, the import loads with the module.\nDashed: lazy, a getter or a call loads it later.\nAn arrow from a cycle's box: two or more of its folders import that folder.\nvimma.js imports every folder drawn here.\ncore/ is imported by every folder drawn here except omarchy/ and start/." { class: legend }
+about -> config { class: down }
+about -> ctl { class: down }
+about -> host { class: down }
+about -> layer1: "4" { class: down }
+about -> workspaces { class: down }
+host <- actors { class: up }
+agent -> ctl { class: down }
+agent -> host { class: down }
+config -> host { class: down }
+config -> layer1: "4" { class: down }
+config -> workspaces { class: down }
+ctl -> actors { class: down }
+ctl -> host { class: down }
+ctl -> layer1: "3" { class: down }
+ctl -> workspaces { class: down }
+about <- host { class: up }
+host -> actors { class: down }
+agent <- host { class: up-lazy }
+config <- host { class: up-lazy }
+ctl <- host { class: up }
+host -> layer1: "4" { class: down }
+host -> workspaces { class: down }
+omarchy -> layer1.ui { class: down-lazy }
+setup -> config { class: down }
+setup -> layer1.ui { class: down }
+start -> layer1.ui { class: down }
+agent <- layer1.ui { class: up-lazy }
+config <- layer1.ui { class: up-lazy }
+host <- layer1.ui { class: up-lazy }
+host <- workspaces { class: up }
+workspaces -> layer1.split { class: down }
+
+legend: "An arrow points from a folder to one it imports: solid when the import loads with the\nmodule (eager), dashed when a getter or a call loads it later (lazy).\nGrey: down the layers, as ADR-026 allows.\nAn arrow to a band: imports that many of its folders.\nOrange: one of the 17 upward imports tools/layering/layers.ts lists (#936 removes them).\nEager cycle, closed only by orange arrows: about/, actors/, config/, ctl/, host/, workspaces/.\nvimma.js imports every folder drawn here.\ncore/ is imported by every folder drawn here except omarchy/ and start/." { class: legend }

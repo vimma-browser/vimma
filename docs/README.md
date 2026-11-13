@@ -51,6 +51,7 @@ Where to read about what. Users start with the guide; contributors with
 | [023](adr/023-in-browser-model-client.md)           | The built-in agent is a model client in the browser, through the agent commands |
 | [024](adr/024-keymap-contexts.md)                   | Keymap contexts: a key's binding can depend on the document                     |
 | [025](adr/025-typescript-for-tools.md)              | Node-side tooling under `tools/` is TypeScript that Node runs unbuilt           |
+| [026](adr/026-module-layering.md)                   | The folders under `vimma/` form layers, checked by `npm run layering`           |
 
 ## Specs by area
 

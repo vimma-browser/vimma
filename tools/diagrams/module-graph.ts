@@ -4,172 +4,60 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The module dependency picture in ARCHITECTURE.md is drawn from the imports, so it cannot
-// disagree with the code (issue #943). This reads every tracked JavaScript file under
-// src/browser/base/content/vimma/, collects the imports that reach another folder there, and
-// writes them as D2 to docs/assets/diagrams/modules.d2; tools/diagrams/render.ts draws it.
+// disagree with the code (issue #943). The imports come from tools/layering, the scanner that
+// checks ADR-026's layers, so the picture and the rule read the same edges. This folds them into
+// one edge per pair of folders under src/browser/base/content/vimma/ and writes them as D2 to
+// docs/assets/diagrams/modules.d2, the folders in bands by layer; tools/diagrams/render.ts draws it.
 //
-// An import is eager when it runs while its module loads: a static import or export-from, or an
-// importESModule() or import() call outside any function. It is lazy when it runs later: a lazy
-// getter (defineESModuleGetters) or a call inside a function. Eager imports decide the order in
-// which modules evaluate, so a loop of eager imports between folders is drawn as a cycle.
+// An import is eager when it runs while its module loads and lazy when it runs later (a lazy
+// getter, or a call inside a function), as tools/layering decides.
 //
 //   node tools/diagrams/module-graph.ts          write docs/assets/diagrams/modules.d2
 //   node tools/diagrams/module-graph.ts --check  fail when the committed file differs
 
-import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, posix, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import * as espree from "espree";
-import type { Node } from "estree";
+import {
+  type Edge as FileEdge,
+  type Exception,
+  ROOT_FOLDER,
+  folderOf,
+  treeScan,
+} from "../layering/layering.ts";
+import { EXCEPTIONS, LAYERS } from "../layering/layers.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 export const VIMMA = "src/browser/base/content/vimma/";
 export const MODULES_D2 = "docs/assets/diagrams/modules.d2";
-const CHROME = "chrome://browser/content/vimma/";
 
 export type Kind = "eager" | "lazy";
 
-export interface Import {
-  spec: string;
-  kind: Kind;
-}
-
+/** An import between two folders; `(root)` is vimma.js. */
 export interface Edge {
   from: string;
   to: string;
   kind: Kind;
 }
 
-export interface SourceFile {
-  /** relative to vimma/ */
-  path: string;
-  code: string;
-}
-
-const FUNCTIONS = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression"]);
-
-function parse(code: string): Node {
-  const options = { ecmaVersion: "latest", loc: true } as const;
-  try {
-    return espree.parse(code, { ...options, sourceType: "module" }) as Node;
-  } catch {
-    // vimma.js is a classic script that the browser window loads with <script>.
-    return espree.parse(code, { ...options, sourceType: "script" }) as Node;
-  }
-}
-
-/** The string a literal or a template with no substitution holds, else null. */
-function fixedString(node: Node | null | undefined): string | null {
-  if (!node) return null;
-  if (node.type === "Literal" && typeof node.value === "string") return node.value;
-  if (node.type === "TemplateLiteral" && node.expressions.length === 0)
-    return node.quasis[0]?.value.cooked ?? null;
-  return null;
-}
-
-function calleeName(node: Node): string | null {
-  if (node.type !== "CallExpression" || node.callee.type !== "MemberExpression") return null;
-  const p = node.callee.property;
-  return p.type === "Identifier" ? p.name : null;
-}
-
-/** The modules a file imports, in source order, each with when it loads. */
-export function importsOf(code: string): Import[] {
-  const found: Import[] = [];
-  const fixed = (node: Node | null | undefined, at: Node): string => {
-    const spec = fixedString(node);
-    if (spec === null)
-      throw new Error(`line ${at.loc?.start.line}: an import specifier is not a string literal`);
-    return spec;
-  };
-
-  const visit = (node: Node, inFunction: boolean): void => {
-    const kind: Kind = inFunction ? "lazy" : "eager";
-    switch (node.type) {
-      case "ImportDeclaration":
-      case "ExportAllDeclaration":
-        found.push({ spec: fixed(node.source, node), kind: "eager" });
-        break;
-      case "ExportNamedDeclaration":
-        if (node.source) found.push({ spec: fixed(node.source, node), kind: "eager" });
-        break;
-      case "ImportExpression":
-        found.push({ spec: fixed(node.source, node), kind });
-        break;
-      case "CallExpression": {
-        const name = calleeName(node);
-        if (name === "importESModule") {
-          found.push({ spec: fixed(node.arguments[0] as Node | undefined, node), kind });
-        } else if (name === "defineESModuleGetters" || name === "defineLazyModuleGetters") {
-          const map = node.arguments[1] as Node | undefined;
-          if (map?.type !== "ObjectExpression")
-            throw new Error(`line ${node.loc?.start.line}: ${name} without an object literal`);
-          for (const prop of map.properties) {
-            if (prop.type !== "Property") throw new Error(`line ${prop.loc?.start.line}: spread`);
-            found.push({ spec: fixed(prop.value as Node, prop), kind: "lazy" });
-          }
-          // Its arguments hold nothing more to find.
-          return;
-        }
-        break;
-      }
-    }
-    // An instance field's initializer runs with each new object, not when the module loads.
-    const entersFunction =
-      FUNCTIONS.has(node.type) || (node.type === "PropertyDefinition" && !node.static);
-    for (const [key, value] of Object.entries(node)) {
-      if (key === "loc" || key === "range") continue;
-      const children = Array.isArray(value) ? value : [value];
-      for (const child of children)
-        if (child && typeof child === "object" && typeof child.type === "string")
-          visit(child as Node, inFunction || entersFunction);
-    }
-  };
-
-  visit(parse(code), false);
-  return found;
-}
-
-/**
- * The folder under vimma/ that a specifier reaches, or the file's own name for a file at the top
- * of vimma/ (vimma.js); null for anything outside vimma/ (Firefox's own modules).
- * @param spec  the import specifier
- * @param file  the importing file, relative to vimma/
- */
-export function folderOf(spec: string, file: string): string | null {
-  let path: string;
-  if (spec.startsWith(CHROME)) path = spec.slice(CHROME.length);
-  else if (spec.startsWith("./") || spec.startsWith("../"))
-    path = posix.normalize(posix.join(posix.dirname(file), spec));
-  else return null;
-  if (path.startsWith("../") || path === "..") return null;
-  return path.split("/")[0] ?? null;
-}
-
 /** One edge per pair of folders that import each other, eager when any of the imports is. */
-export function folderEdges(files: readonly SourceFile[]): Edge[] {
+export function folderEdges(input: readonly FileEdge[]): Edge[] {
   const edges = new Map<string, Edge>();
-  for (const file of files) {
-    let imports: Import[];
-    try {
-      imports = importsOf(file.code);
-    } catch (e) {
-      throw new Error(`${VIMMA}${file.path}: ${(e as Error).message}`, { cause: e });
-    }
-    const from = file.path.includes("/") ? (file.path.split("/")[0] ?? "") : file.path;
-    for (const { spec, kind } of imports) {
-      const to = folderOf(spec, file.path);
-      if (to === null || to === from) continue;
-      const key = `${from}\0${to}`;
-      const seen = edges.get(key);
-      if (!seen) edges.set(key, { from, to, kind });
-      else if (kind === "eager") seen.kind = "eager";
-    }
+  for (const e of input) {
+    const from = folderOf(e.from);
+    // A URL prefix (`host/`) names its folder.
+    const to = folderOf(e.to.endsWith("/") ? `${e.to}-` : e.to);
+    if (from === to) continue;
+    const key = `${from}\0${to}`;
+    const seen = edges.get(key);
+    if (!seen) edges.set(key, { from, to, kind: e.kind });
+    else if (e.kind === "eager") seen.kind = "eager";
   }
-  return [...edges.values()].sort((a, b) =>
-    a.from === b.from ? a.to.localeCompare(b.to) : a.from.localeCompare(b.from),
-  );
+  return [...edges.values()].sort(byEnds);
+}
+
+function byEnds(a: Edge, b: Edge): number {
+  return a.from === b.from ? a.to.localeCompare(b.to) : a.from.localeCompare(b.from);
 }
 
 /**
@@ -226,43 +114,56 @@ const id = (folder: string): string => folder.replace(/[^\w]/g, "_");
 function everyExcept(drawn: readonly string[], reached: ReadonlySet<string>): string {
   const missing = drawn.filter((n) => !reached.has(n)).map((n) => `${n}/`);
   if (!missing.length) return "every folder drawn here";
-  const list =
-    missing.length === 1
-      ? missing[0]
-      : `${missing.slice(0, -1).join(", ")} and ${missing[missing.length - 1]}`;
-  return `every folder drawn here except ${list}`;
+  return `every folder drawn here except ${listed(missing)}`;
+}
+
+function listed(items: readonly string[]): string {
+  return items.length === 1
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
 /**
  * The D2 source of the folder graph, the same text for the same edges in any order.
  *
- * Two nodes would draw an edge to nearly every folder and hide the rest, so the legend states
- * their edges instead: vimma.js, which imports every folder to start it, and core/, which
- * nearly every folder imports. Each eager cycle is a box holding its folders and the edges
- * between them; an edge that two or more of its folders share to the same folder outside starts
- * at the box, once.
+ * Each folder carries its ADR-026 layer and sits in a row by it, the top layer first, so the
+ * layering shows at a glance: an import down the layers is drawn plain, and an upward one, which
+ * only tools/layering/layers.ts's exceptions allow, in the warning colour. Two folders would draw an edge to nearly every other
+ * and hide the rest, so the legend states theirs instead: vimma.js, which imports every folder to
+ * start it, and core/, which nearly every folder imports.
  */
-export function toD2(input: readonly Edge[]): string {
-  const ENTRY = "vimma.js";
+export function toD2(
+  input: readonly Edge[],
+  layers: Record<string, number>,
+  exceptions: readonly Exception[],
+): string {
   const CORE = "core";
-  const edges = [...input].sort((a, b) =>
-    a.from === b.from ? a.to.localeCompare(b.to) : a.from.localeCompare(b.from),
-  );
-  const drawnEdges = edges.filter((e) => ![e.from, e.to].some((n) => n === ENTRY || n === CORE));
+  const edges = [...input].sort(byEnds);
+  const hidden = (n: string) => n === ROOT_FOLDER || n === CORE;
+  const drawnEdges = edges.filter((e) => !hidden(e.from) && !hidden(e.to));
   // A folder that imports only core/ (services/) is still drawn, with no arrow.
-  const drawn = [...new Set(edges.flatMap((e) => [e.from, e.to]))]
-    .filter((n) => n !== ENTRY && n !== CORE)
-    .sort();
-  const groups = cycleGroups(drawnEdges);
-  const groupOf = new Map<string, number>();
-  groups.forEach((g, i) => g.forEach((f) => groupOf.set(f, i + 1)));
-  const ref = (n: string) => (groupOf.has(n) ? `cycle${groupOf.get(n)}.${id(n)}` : id(n));
+  const drawn = [...new Set(edges.flatMap((e) => [e.from, e.to]))].filter((n) => !hidden(n)).sort();
+  const layerOf = (n: string): number => {
+    const layer = layers[n];
+    if (layer === undefined) throw new Error(`${n}/ has no layer in tools/layering/layers.ts`);
+    return layer;
+  };
+  const layersDrawn = [...new Set(drawn.map(layerOf))].sort((x, y) => y - x);
+  const isUp = (e: Edge) => layerOf(e.to) >= layerOf(e.from);
 
-  // ELK layers a graph by its edges' direction, source above target. A lazy edge is written
-  // target first (`b <- a` draws the same arrow from a to b), so that only eager imports decide
-  // which folder sits above which, and lazy ones, which close most loops, point upwards.
-  const arrow = (from: string, to: string, kind: Kind, cls: string) =>
-    kind === "lazy" ? `${to} <- ${from} { class: ${cls} }` : `${from} -> ${to} { class: ${cls} }`;
+  // A layer of three or more folders would gather a fan of arrows from each importer, so an
+  // importer that reaches two or more of its folders gets one arrow to the layer's band,
+  // labelled with how many. Only downward imports merge; an upward one is always drawn alone.
+  const bandSize = (layer: number) => drawn.filter((d) => layerOf(d) === layer).length;
+  const into = new Map<string, Edge[]>();
+  for (const e of drawnEdges) {
+    if (isUp(e) || bandSize(layerOf(e.to)) < 3) continue;
+    const key = `${e.from}\0${layerOf(e.to)}`;
+    into.set(key, [...(into.get(key) ?? []), e]);
+  }
+  const mergedKeys = new Set([...into].filter(([, list]) => list.length > 1).map(([k]) => k));
+  const banded = new Set([...mergedKeys].map((k) => Number(k.split("\0")[1])));
+  const ref = (n: string) => (banded.has(layerOf(n)) ? `layer${layerOf(n)}.${id(n)}` : id(n));
 
   const lines = [
     "# Generated by npm run diagrams from the imports under src/browser/base/content/vimma/",
@@ -271,83 +172,96 @@ export function toD2(input: readonly Edge[]): string {
     "direction: down",
     "",
     "classes: {",
-    "  folder: {",
-    "    style: { fill: ${box}; stroke: ${box-line}; font-color: ${text}; font-size: 16; border-radius: 6 }",
-    "  }",
-    "  cycle-group: {",
+    "  band: {",
     "    label.near: outside-top-left",
-    "    style: { fill: ${cycle-fill}; stroke: ${cycle}; stroke-dash: 4; font-color: ${cycle}; font-size: 15; border-radius: 8 }",
+    "    style: { fill: ${zone-app}; stroke: ${box-line}; stroke-dash: 4; font-color: ${muted}; font-size: 16; border-radius: 8 }",
     "  }",
-    "  eager: { style: { stroke: ${line}; stroke-width: 1 } }",
-    "  lazy: { style: { stroke: ${muted}; stroke-dash: 4 } }",
-    "  cycle-edge: { style: { stroke: ${cycle}; stroke-width: 2 } }",
-    "  legend: { shape: text; near: bottom-center; style: { font-color: ${muted}; font-size: 15 } }",
+    "  folder: {",
+    "    style: { fill: ${bg}; stroke: ${box-line}; font-color: ${text}; font-size: 18; border-radius: 6 }",
+    "  }",
+    "  order: { style: { opacity: 0 } }",
+    "  down: { style: { stroke: ${line}; stroke-width: 1 } }",
+    "  down-lazy: { style: { stroke: ${line}; stroke-dash: 4 } }",
+    "  up: { style: { stroke: ${cycle}; stroke-width: 2 } }",
+    "  up-lazy: { style: { stroke: ${cycle}; stroke-width: 2; stroke-dash: 4 } }",
+    "  legend: { shape: text; near: bottom-center; style: { font-color: ${muted}; font-size: 17 } }",
     "}",
     "",
   ];
-  groups.forEach((g, i) => {
-    lines.push(`cycle${i + 1}: "Eager import cycle: ${g.length} folders" {`);
-    lines.push("  class: cycle-group");
-    for (const n of g) lines.push(`  ${id(n)}: "${n}/" { class: folder }`);
-    lines.push("}");
-  });
-  for (const n of drawn) if (!groupOf.has(n)) lines.push(`${id(n)}: "${n}/" { class: folder }`);
-  lines.push("");
-
-  // Edges out of a cycle to the same outside folder, to be merged when two or more share one.
-  const leaving = new Map<string, Edge[]>();
-  for (const e of drawnEdges) {
-    const g = groupOf.get(e.from);
-    if (g !== undefined && groupOf.get(e.to) !== g) {
-      const key = `${g}\0${e.to}`;
-      leaving.set(key, [...(leaving.get(key) ?? []), e]);
-    }
+  for (const layer of layersDrawn) {
+    const band = banded.has(layer);
+    if (band) lines.push(`layer${layer}: "Layer ${layer}" {`, "  class: band");
+    for (const n of drawn.filter((d) => layerOf(d) === layer))
+      lines.push(`${band ? "  " : ""}${id(n)}: "${n}/ · ${layer}" { class: folder }`);
+    if (band) lines.push("}");
   }
-  const merged = new Set<string>();
+  lines.push("");
+  // ELK places a folder only as far down as its arrows push it, so a folder that imports
+  // nothing of the next layer below (start/ imports only ui/) would sink towards the bottom.
+  // An invisible link to that layer holds each folder in its row.
+  for (const n of drawn) {
+    const below = layersDrawn.find((l) => l < layerOf(n));
+    if (below === undefined) continue;
+    const reaches = drawnEdges.some((e) => e.from === n && !isUp(e) && layerOf(e.to) === below);
+    if (reaches) continue;
+    const first = drawn.find((d) => layerOf(d) === below) ?? "";
+    lines.push(`${ref(n)} -> ${banded.has(below) ? `layer${below}` : ref(first)} { class: order }`);
+  }
+  lines.push("");
+  // ELK layers a graph by its edges' direction, source above target. An upward edge is written
+  // target first (`b <- a` draws the same arrow from a to b), so that it does not pull a lower
+  // folder above a higher one.
+  const written = new Set<string>();
   for (const e of drawnEdges) {
-    const g = groupOf.get(e.from);
-    const shared = g !== undefined ? leaving.get(`${g}\0${e.to}`) : undefined;
-    if (shared && shared.length > 1) {
-      const key = `${g}\0${e.to}`;
-      if (merged.has(key)) continue;
-      merged.add(key);
-      const kind = shared.some((x) => x.kind === "eager") ? "eager" : "lazy";
-      lines.push(arrow(`cycle${g}`, ref(e.to), kind, kind));
+    const lazy = (kind: Kind) => (kind === "lazy" ? "-lazy" : "");
+    const key = `${e.from}\0${layerOf(e.to)}`;
+    if (!isUp(e) && mergedKeys.has(key)) {
+      if (written.has(key)) continue;
+      written.add(key);
+      const list = into.get(key) ?? [];
+      const kind = list.some((x) => x.kind === "eager") ? "eager" : "lazy";
+      lines.push(
+        `${ref(e.from)} -> layer${layerOf(e.to)}: "${list.length}" { class: down${lazy(kind)} }`,
+      );
       continue;
     }
-    const inside = g !== undefined && groupOf.get(e.to) === g;
-    const cls = inside && e.kind === "eager" ? "cycle-edge" : e.kind;
-    lines.push(arrow(ref(e.from), ref(e.to), e.kind, cls));
+    lines.push(
+      isUp(e)
+        ? `${ref(e.to)} <- ${ref(e.from)} { class: up${lazy(e.kind)} }`
+        : `${ref(e.from)} -> ${ref(e.to)} { class: down${lazy(e.kind)} }`,
+    );
   }
 
-  const fromEntry = new Set(edges.filter((e) => e.from === ENTRY).map((e) => e.to));
+  const fromEntry = new Set(edges.filter((e) => e.from === ROOT_FOLDER).map((e) => e.to));
   const toCore = new Set(edges.filter((e) => e.to === CORE).map((e) => e.from));
+  const issues = [...new Set(exceptions.flatMap((x) => (x.issue ? [`#${x.issue}`] : [])))].sort();
+  const cycles = cycleGroups(drawnEdges).map((g) => g.map((n) => `${n}/`).join(", "));
   lines.push(
     "",
     `legend: "${[
-      "An arrow points from a folder to one it imports.",
-      "Solid: eager, the import loads with the module.",
-      "Dashed: lazy, a getter or a call loads it later.",
-      "An arrow from a cycle's box: two or more of its folders import that folder.",
-      `${ENTRY} imports ${everyExcept(drawn, fromEntry)}.`,
+      "An arrow points from a folder to one it imports: solid when the import loads with the",
+      "module (eager), dashed when a getter or a call loads it later (lazy).",
+      "Grey: down the layers, as ADR-026 allows.",
+      ...(mergedKeys.size ? ["An arrow to a band: imports that many of its folders."] : []),
+      `Orange: one of the ${exceptions.length} upward imports tools/layering/layers.ts lists` +
+        (issues.length ? ` (${listed(issues)} removes them).` : "."),
+      ...cycles.map((c) => `Eager cycle, closed only by orange arrows: ${c}.`),
+      `vimma.js imports ${everyExcept(drawn, fromEntry)}.`,
       `${CORE}/ is imported by ${everyExcept(drawn, toCore)}.`,
     ].join("\\n")}" { class: legend }`,
   );
   return `${lines.join("\n")}\n`;
 }
 
-/** The tracked .js and .mjs files under vimma/ in a checkout, from git's index, sorted. */
-export function readVimmaFiles(root: string): SourceFile[] {
-  return execFileSync("git", ["ls-files", "-z", "--", VIMMA], { cwd: root, encoding: "utf8" })
-    .split("\0")
-    .filter((f) => /\.m?js$/.test(f))
-    .sort()
-    .map((f) => ({ path: f.slice(VIMMA.length), code: readFileSync(join(root, f), "utf8") }));
-}
-
 function main(): void {
-  const edges = folderEdges(readVimmaFiles(ROOT));
-  const d2 = toD2(edges);
+  const { edges: fileEdges, problems } = treeScan(ROOT);
+  if (problems.length) {
+    for (const p of problems) console.error(`${VIMMA}${p}`);
+    console.error("\nModule graph: imports that cannot be read; npm run layering says more.");
+    process.exit(1);
+  }
+  const edges = folderEdges(fileEdges);
+  const d2 = toD2(edges, LAYERS, EXCEPTIONS);
   const groups = cycleGroups(edges);
   const summary =
     `${edges.length} edges (${edges.filter((e) => e.kind === "lazy").length} lazy), ` +
