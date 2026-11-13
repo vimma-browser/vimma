@@ -331,6 +331,7 @@ describe("workflow wiring", () => {
     for (const re of [
       /npx --no -- prettier --check \./,
       /npm run security-links/,
+      /npm run arch-lint/,
       /npm run test:py/,
       /npm run gen-docs/,
       /npx --no -- commitlint --from "\$FROM"/,

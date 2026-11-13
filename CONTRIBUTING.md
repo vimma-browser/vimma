@@ -251,6 +251,12 @@ Vimma follows a spec-first, test-first loop:
   pref.
 
 - **TDD.** Write the failing test and run it, then implement until it passes. Never loosen a test.
+  A bug fix starts with a failing test at the lowest layer that can reproduce it: vimma-core's
+  Vitest before a mochitest, a mochitest before an e2e scenario.
+- **Versioned formats.** A change to the config schema, the control protocol or a state file
+  raises its version and adds valid and invalid fixtures for the new version in
+  `tests/contract/`; a config schema change also adds a migration step (`MIGRATIONS` in
+  `packages/vimma-core/src/config.mjs`), so older files keep loading.
 - **Commits.** Use Conventional Commits with a body: the subject is the changelog line; the body
   explains why.
   `npx commitlint --from origin/main` checks this, and CI rejects `feat`, `fix` and `revert`

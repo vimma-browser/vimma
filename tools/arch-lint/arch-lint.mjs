@@ -3,15 +3,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// ARCHITECTURE.md keeps up with the tree (issue #931), checked in `npm run lint` and CI: every
+// ARCHITECTURE.md keeps up with the tree (issue #931), checked by `npm run arch-lint` (part of
+// `npm run lint`) and by its own step in ci.yml, which runs on docs-only changes too: every
 // folder of src/browser/base/content/vimma/, every folder of tools/ and every workflow in
 // .github/workflows/ is named in it, and everything it names in those forms exists. An overview
 // that silently fell behind the code is the failure this prevents.
 //
 // A name counts only in a code span, in one of three forms: `vimma/<folder>/`, `tools/<folder>/`
-// and `<workflow>.yml`. Deeper paths, files and bare prose are not entries, so the document can
-// mention them freely. The repository's side comes from `git ls-files`, so git-ignored folders
-// (vimma/core/, which sync-core copies in) and stray local files never count.
+// and `<workflow>.yml` (or `.yaml`). Deeper paths, files and bare prose are not entries, so the
+// document can mention them freely. The repository's side comes from `git ls-files`, so
+// git-ignored folders (vimma/core/, which sync-core copies in) and stray local files never count.
 //
 //   node tools/arch-lint/arch-lint.mjs
 
@@ -44,7 +45,7 @@ const KINDS = /** @type {const} */ ([
   },
   {
     key: "workflows",
-    span: /^([\w.-]+\.yml)$/,
+    span: /^([\w.-]+\.ya?ml)$/,
     path: (/** @type {string} */ n) => `${WORKFLOWS}${n}`,
     form: (/** @type {string} */ n) => n,
   },
@@ -91,12 +92,13 @@ export function archErrors(md, repo) {
 }
 
 /**
- * The tracked folders and workflows, from git's index.
+ * The tracked folders and workflows of a checkout, from git's index.
+ * @param {string} root  the checkout
  * @returns {Entries}
  */
-function listEntries() {
+export function listEntries(root) {
   const files = execFileSync("git", ["ls-files", "-z", "--", VIMMA, TOOLS, WORKFLOWS], {
-    cwd: ROOT,
+    cwd: root,
     encoding: "utf8",
   })
     .split("\0")
@@ -110,7 +112,7 @@ function listEntries() {
     ),
   ];
   const workflows = files
-    .filter((f) => f.startsWith(WORKFLOWS) && /^[^/]+\.yml$/.test(f.slice(WORKFLOWS.length)))
+    .filter((f) => f.startsWith(WORKFLOWS) && /^[^/]+\.ya?ml$/.test(f.slice(WORKFLOWS.length)))
     .map((f) => f.slice(WORKFLOWS.length));
   return {
     vimma: folders(VIMMA).sort(),
@@ -127,7 +129,7 @@ function main() {
     console.error(`${DOC} is missing: it is the map of the code (issue #931).`);
     process.exit(1);
   }
-  const errors = archErrors(md, listEntries());
+  const errors = archErrors(md, listEntries(ROOT));
   if (errors.length) {
     for (const e of errors) console.error(`${DOC}: ${e}`);
     console.error(

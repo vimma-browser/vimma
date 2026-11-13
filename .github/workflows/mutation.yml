@@ -1,5 +1,5 @@
-# Spec ci-quality-gates (ARCHITECTURE.md, "Testing"): Stryker mutation testing of packages/vimma-core/src,
-# weekly. Survivors become ONE tracking issue (label `mutation`), rewritten by every run; they never
+# Spec ci-quality-gates (ARCHITECTURE.md, "Testing"): Stryker mutation testing of
+# packages/vimma-core/src, weekly. Survivors become ONE tracking issue (label `mutation`), rewritten by every run; they never
 # fail the workflow. Only a broken run (Stryker or the dry run erroring) is red.
 #
 # Minutes: incremental mode reuses the previous run's results (artifact `mutation-report`), so a

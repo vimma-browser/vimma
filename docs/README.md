@@ -127,13 +127,13 @@ The repository's first planning document, `plan.md`, was split up once its conte
 into the pages above. Older specs, ADRs and code comments cite it as "plan §N"; this is where each
 section's content lives now (the original is in git history):
 
-| plan.md section             | Now                                                                                                                                                                   |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| §1 Decisions                | [adr/](adr/), listed above                                                                                                                                            |
-| §2 Interaction model        | [guide.md](guide.md), [bindings.md](bindings.md), and [ARCHITECTURE.md](../ARCHITECTURE.md), "How a key is handled"                                                   |
-| §3 Architecture             | [ARCHITECTURE.md](../ARCHITECTURE.md)                                                                                                                                 |
-| §4 Development life cycle   | [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"; [specs/README.md](specs/README.md); [ARCHITECTURE.md](../ARCHITECTURE.md), "Automation and release infrastructure" |
-| §5 TDD and the test pyramid | [ARCHITECTURE.md](../ARCHITECTURE.md), "Testing"; [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"                                                                   |
-| §6 Roadmap, §9 Risks        | [roadmap.md](roadmap.md)                                                                                                                                              |
-| §7 Versioning and release   | [specs/release-versioning.md](specs/release-versioning.md), [specs/firefox-versions.md](specs/firefox-versions.md), [runbook.md](runbook.md), "Releases"              |
-| §8, §10 Coding agents       | The contributor instructions for coding agents at the repository root, and [CONTRIBUTING.md](../CONTRIBUTING.md), "Claude Code plugin"                                |
+| plan.md section             | Now                                                                                                                                                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §1 Decisions                | [adr/](adr/), listed above                                                                                                                                                                                        |
+| §2 Interaction model        | [guide.md](guide.md), [bindings.md](bindings.md), and [ARCHITECTURE.md](../ARCHITECTURE.md), "How a key is handled"                                                                                               |
+| §3 Architecture             | [ARCHITECTURE.md](../ARCHITECTURE.md)                                                                                                                                                                             |
+| §4 Development life cycle   | [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"; [specs/README.md](specs/README.md); [ARCHITECTURE.md](../ARCHITECTURE.md), "Automation and release infrastructure"                                             |
+| §5 TDD and the test pyramid | [ARCHITECTURE.md](../ARCHITECTURE.md), "Testing"; [CONTRIBUTING.md](../CONTRIBUTING.md), "Workflow"                                                                                                               |
+| §6 Roadmap, §9 Risks        | [roadmap.md](roadmap.md)                                                                                                                                                                                          |
+| §7 Versioning and release   | [specs/release-versioning.md](specs/release-versioning.md), [specs/firefox-versions.md](specs/firefox-versions.md), [runbook.md](runbook.md), "Releases"                                                          |
+| §8, §10 Coding agents       | <!-- process-wording: names the coding agents' rules file that replaced plan.md §8 --> [AGENTS.md](../AGENTS.md), the rules coding agents follow, and [CONTRIBUTING.md](../CONTRIBUTING.md), "Claude Code plugin" |

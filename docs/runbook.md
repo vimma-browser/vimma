@@ -1139,9 +1139,10 @@ leader lookup" }`. The gate then compares the case with the baseline commit's ti
 ### Key-to-paint timings (`browser_vimma_perf.js`)
 
 The second performance budget, key-to-paint in the window, and the 200-tab risk in
-[roadmap.md](roadmap.md), measured read-only in a mochitest (no paint timestamp on the control socket): `performance.now()` just
-before `EventUtils.synthesizeKey`, again when the synchronous key handling returns (**action**),
-and at the first `MozAfterPaint` of the chrome window after which the result holds (**paint**).
+[roadmap.md](roadmap.md), measured read-only in a mochitest (no paint timestamp on the control
+socket): `performance.now()` just before `EventUtils.synthesizeKey`, again when the synchronous key
+handling returns (**action**), and at the first `MozAfterPaint` of the chrome window after which the
+result holds (**paint**).
 21 presses per case; each case logs one line:
 
 ```sh
@@ -2393,9 +2394,9 @@ gh run list -R vimma-browser/vimma -w release.yml -L 1   # the new run
 If the draft has lost its tag (`gh release view v0.1.2` does not find it, and the releases list
 shows `untagged-…`), reattach it first, as in "Releases" above, so the upload finds it.
 
-**When it fails:** a `release-failure` issue links the run, while the release is still a draft.
-Fix on `main`, then re-run for the same tag. The tag is not deleted: release-please has already moved its
-manifest and changelog past it, and the release notes stay valid. If the fix changes what is
+**When it fails:** a `release-failure` issue links the run, while the release is still a draft. Fix
+on `main`, then re-run for the same tag. The tag is not deleted: release-please has already moved
+its manifest and changelog past it, and the release notes stay valid. If the fix changes what is
 built, release a patch version instead. A manual run, `gh workflow run release.yml -f tag=vX.Y.Z`,
 runs the workflow file from `main` (the jobs refuse any other branch) but checks out and builds
 the tag's source: a fix to the workflow file reaches the re-run, while a fix to the source or to a

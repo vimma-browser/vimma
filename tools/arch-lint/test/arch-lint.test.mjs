@@ -1,5 +1,9 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { archErrors, namedEntries } from "../arch-lint.mjs";
+import { tempDir } from "../../test/temp-dir.mjs";
+import { archErrors, listEntries, namedEntries } from "../arch-lint.mjs";
 
 /** What the repository holds, in the shape `listEntries` returns. */
 const repo = {
@@ -28,6 +32,13 @@ describe("namedEntries", () => {
       tools: ["e2e", "vimma-ctl"],
       workflows: ["ci.yml", "e2e.yml"],
     });
+  });
+
+  test("a .yaml workflow counts like a .yml one", () => {
+    expect(namedEntries("`nightly.yaml` and `ci.yml`").workflows).toEqual([
+      "nightly.yaml",
+      "ci.yml",
+    ]);
   });
 
   test("a deeper path, a file or bare prose names no folder", () => {
@@ -78,5 +89,52 @@ describe("archErrors", () => {
     expect(archErrors(md, repo)).toEqual([
       "src/browser/base/content/vimma/actors/ is missing: describe it as `vimma/actors/`",
     ]);
+  });
+});
+
+describe("listEntries", () => {
+  /**
+   * A git repository holding `files`, each tracked unless listed in `ignored`.
+   * @param {string[]} files
+   * @param {string[]} [untracked]
+   */
+  function repoWith(files, untracked = []) {
+    const root = tempDir("vimma-arch-lint-");
+    const git = (/** @type {string[]} */ ...args) =>
+      execFileSync("git", ["-c", "init.defaultBranch=main", ...args], { cwd: root, stdio: "pipe" });
+    git("init", "-q");
+    for (const f of [...files, ...untracked]) {
+      mkdirSync(dirname(join(root, f)), { recursive: true });
+      writeFileSync(join(root, f), "x\n");
+    }
+    git("add", "--", ...files);
+    return root;
+  }
+
+  test("lists the tracked folders and workflows, never untracked or ignored ones", () => {
+    const root = repoWith(
+      [
+        "src/browser/base/content/vimma/vimma.js",
+        "src/browser/base/content/vimma/host/VimmaHost.sys.mjs",
+        "src/browser/base/content/vimma/host/hypr/HyprIpc.sys.mjs",
+        "src/browser/base/content/vimma/ui/statusbar.mjs",
+        "tools/build.mjs",
+        "tools/e2e/e2e.mjs",
+        ".github/workflows/ci.yml",
+        ".github/workflows/nightly.yaml",
+        ".github/workflows/README.md",
+        ".github/dependabot.yml",
+      ],
+      [
+        "src/browser/base/content/vimma/core/keys.mjs",
+        "tools/stray/x.mjs",
+        ".github/workflows/x.yml",
+      ],
+    );
+    expect(listEntries(root)).toEqual({
+      vimma: ["host", "ui"],
+      tools: ["e2e"],
+      workflows: ["ci.yml", "nightly.yaml"],
+    });
   });
 });

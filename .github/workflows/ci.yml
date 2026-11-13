@@ -136,6 +136,11 @@ jobs:
       - name: Spec statuses and decision reasons (npm run spec-lint)
         run: npm run spec-lint
 
+      # ARCHITECTURE.md names every vimma/ folder, tools/ folder and workflow, and nothing that is
+      # gone (issue #931). On docs-only changes too: an edit to ARCHITECTURE.md alone is checked.
+      - name: Architecture map is current (npm run arch-lint)
+        run: npm run arch-lint
+
       # CHANGELOG.md's [Unreleased] is its first heading, appears once and holds only what the
       # release PR's firefox-notes job can move into the new version's entry (issue #529).
       - name: Hand-written changelog lines in order (npm run changelog-lint)
@@ -161,8 +166,8 @@ jobs:
 
       # Performance gate (ARCHITECTURE.md, "Testing"; issue #17): fails on a case over 50 µs, or
       # the suite more than 10 % slower (one case 25 %) than the baseline recorded for this
-      # runner's CPU model. A step, not a job (~30 s; no extra per-job minute). Why it does not flake: docs/runbook.md,
-      # "Bench baseline".
+      # runner's CPU model. A step, not a job (~30 s; no extra per-job minute). Why it does not
+      # flake: docs/runbook.md, "Bench baseline".
       # Docs-only: instead of the whole suite, the Vitest files that read the repo's Markdown.
       - name: Vitest, the files that read Markdown (docs-only pull request)
         if: steps.classify.outputs.docs-only == 'true'
