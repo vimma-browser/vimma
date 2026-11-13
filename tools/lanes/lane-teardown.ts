@@ -2,16 +2,16 @@
 /**
  * `npm run lane:teardown` (docs/runbook.md, "Parallel browser lanes"): removes this worktree's
  * engine/ (its copy of the tree and its obj-artifact). Refuses in the main checkout, and refuses
- * an engine/ that is a symlink or resolves into the main checkout's engine (lanes.mjs,
+ * an engine/ that is a symlink or resolves into the main checkout's engine (lanes.ts,
  * teardownTarget).
  */
 import { spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { gitEnv, mainWorktree, teardownTarget } from "./lanes.mjs";
+import { gitEnv, mainWorktree, teardownTarget } from "./lanes.ts";
 
-/** @param {string} root this worktree */
-function main(root) {
+/** @param root this worktree */
+function main(root: string) {
   const res = spawnSync("git", ["worktree", "list", "--porcelain"], {
     cwd: root,
     encoding: "utf8",

@@ -8,7 +8,7 @@
  *
  * 1. reflink-copies <source>/engine (default: the main checkout's) without its obj-* dirs;
  * 2. resets the copy to upstream: unlinks the source import's symlinks, `git checkout -- .`,
- *    `git clean -fd` (lanes.mjs, resetEngine);
+ *    `git clean -fd` (lanes.ts, resetEngine);
  * 3. runs this worktree's `npm run import`, then tools/artifact-build into engine/obj-artifact;
  * 4. checks no symlink leads into the source checkout, runs browser_vimma_branding.js, and
  *    prints the timings and the disk used.
@@ -30,19 +30,16 @@ import {
   removeForeignLinks,
   resetEngine,
   teardownTarget,
-} from "./lanes.mjs";
+} from "./lanes.ts";
 
 const VERIFY_TEST = "tests/browser/browser_vimma_branding.js";
 
 /**
- * @param {string} cmd
- * @param {string[]} args
- * @param {string} cwd
- * @param {boolean} [quiet] capture stdout instead of passing it through
+ * @param quiet capture stdout instead of passing it through
  * Every child (git, and npm/node, whose surfer runs git apply in engine/) gets gitEnv(): no
  * inherited GIT_DIR/GIT_WORK_TREE can steer it at another repo.
  */
-function run(cmd, args, cwd, quiet = false) {
+function run(cmd: string, args: string[], cwd: string, quiet = false) {
   const res = spawnSync(cmd, args, {
     cwd,
     stdio: quiet ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -55,16 +52,11 @@ function run(cmd, args, cwd, quiet = false) {
   return res.stdout ?? "";
 }
 
-/** @param {number} bytes */
-function gb(bytes) {
+function gb(bytes: number) {
   return `${(bytes / 1e9).toFixed(2)} GB`;
 }
 
-/**
- * @param {string} engine
- * @returns {string}
- */
-export function diskReport(engine) {
+export function diskReport(engine: string): string {
   const btrfs = spawnSync("btrfs", ["filesystem", "du", "-s", "--raw", engine], {
     encoding: "utf8",
   });
@@ -72,13 +64,13 @@ export function diskReport(engine) {
     const { total, exclusive } = parseBtrfsDu(btrfs.stdout);
     return `${gb(total)} total, ${gb(exclusive)} exclusive (btrfs filesystem du)`;
   }
-  const du = (/** @type {string[]} */ ...a) =>
+  const du = (...a: string[]) =>
     Number(spawnSync("du", ["-sb", ...a, engine], { encoding: "utf8" }).stdout.split("\t")[0]);
   return `${gb(du("--apparent-size"))} apparent, ${gb(du())} allocated (du; not btrfs, so no exclusive figure)`;
 }
 
-/** @param {string} root this worktree */
-async function main(root) {
+/** @param root this worktree */
+async function main(root: string) {
   const { values } = parseArgs({
     options: {
       source: { type: "string" },
@@ -101,14 +93,8 @@ async function main(root) {
     rmSync(teardownTarget(root, mainCheckout), { recursive: true, force: true });
   }
 
-  /** @type {Array<[string, number]>} */
-  const times = [];
-  /**
-   * @template T
-   * @param {string} name
-   * @param {() => T | Promise<T>} fn
-   */
-  const phase = async (name, fn) => {
+  const times: Array<[string, number]> = [];
+  const phase = async <T>(name: string, fn: () => T | Promise<T>) => {
     console.log(`lane-setup: ${name}…`);
     const t = performance.now();
     const out = await fn();
