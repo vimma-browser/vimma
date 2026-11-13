@@ -230,7 +230,9 @@ new schema and not a separate file:
   (pruned), and only when there are any. `readSnapshot(input, { migrations }) → { state,
 tabLabels, warnings }` validates the workspace state as strictly as before and reads
   `tabLabels` with `readTabLabels`; `fromSnapshot(input)` is unchanged and returns `state`. So a
-  snapshot with stale or invalid labels still restores.
+  snapshot with stale or invalid labels still restores. (Since changed: `fromSnapshot` is
+  removed, because only its tests called it; `readSnapshot` in `snapshot.mjs` is the reader,
+  [#956](https://github.com/vimma-browser/vimma/issues/956).)
 - Tests (`snapshot-labels.test.mjs`): labels round-trip; no labels → the v1 fixture byte for
   byte; labels of closed tabs are not written; stale, padded, non-string and empty labels are
   dropped or fixed with warnings and the state still restores; properties: any `tabLabels` value

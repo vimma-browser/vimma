@@ -44,7 +44,8 @@ control characters (`bad-id`) and unused (`duplicate-id`). Without one, ids are 
 as before. An explicit id shaped like a minted one (`w7`) moves `next` past it, so minting never
 collides and the snapshot's `next` rule holds. Snapshot schema 1 is unchanged: it always stored
 an arbitrary string id; `fromSnapshot` now applies the same `isWorkspaceId` check (every id an
-older vimma wrote, `w<n>`, passes).
+older vimma wrote, `w<n>`, passes). (Since changed: `fromSnapshot` is removed; `readSnapshot` in
+`snapshot.mjs` applies the check, [#956](https://github.com/vimma-browser/vimma/issues/956).)
 
 ### `panes.max`
 
