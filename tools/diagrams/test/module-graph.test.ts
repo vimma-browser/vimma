@@ -114,7 +114,8 @@ describe("toD2", () => {
     expect(d2.indexOf("start:")).toBeLessThan(d2.indexOf("ctl:"));
     expect(d2.indexOf("ctl:")).toBeLessThan(d2.indexOf("split:"));
     // No node for vimma.js or core/, and no band where no arrows merge.
-    expect(d2).not.toMatch(/^(_root_|core):|layer\d: "/m);
+    expect(d2).not.toMatch(/^(?:_root_|core):/m);
+    expect(d2).not.toMatch(/layer\d: "/);
   });
 
   test("invisible links hold each folder above the next lower layer it does not import", () => {

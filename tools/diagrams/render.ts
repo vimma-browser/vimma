@@ -275,13 +275,8 @@ async function d2Binary(): Promise<string> {
   const bytes = new Uint8Array(await res.arrayBuffer());
   verifyChecksum(bytes, asset.sha256);
   mkdirSync(dir, { recursive: true });
-  const tmp = mkdtempSync(join(dir, "download-"));
-  try {
-    writeFileSync(join(tmp, asset.name), bytes);
-    execFileSync("tar", ["-xzf", join(tmp, asset.name), "-C", dir]);
-  } finally {
-    rmSync(tmp, { recursive: true, force: true });
-  }
+  // Unpacked straight from the checked bytes: no copy of the download lands on disk first.
+  execFileSync("tar", ["-xzf", "-", "-C", dir], { input: bytes });
   if (version(bin) !== D2.version) throw new Error(`${bin} does not report ${D2.version}`);
   return bin;
 }
