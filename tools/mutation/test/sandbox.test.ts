@@ -11,6 +11,7 @@ import config from "../../../stryker.config.mjs";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 const coreTests = join(root, "packages/vimma-core/test");
+const coreSrc = join(root, "packages/vimma-core/src");
 // packages/vimma-core/vitest.config.mjs, the suite Stryker runs, leaves the fuzz properties out.
 const skippedDirs = new Set([join(coreTests, "fuzz")]);
 const topLevel = new Set(readdirSync(root).filter((name) => name !== "node_modules"));
@@ -47,6 +48,8 @@ function importSpecifiers(source: string): string[] {
  * `new URL("tools/…", root)` does) when it names something inside that folder. A template
  * literal's fixed part names its folder, so its path is cut back to the last `/`. Only existing
  * paths count. Both rules leave out test data such as `"../evil.txt"`, `"docs/a.pdf"` or `"docs/"`.
+ * A git-ignored, generated path (sync-core's copy under src/) counts only where it has been
+ * generated, so a local run can find a path that CI does not; no core test names one today.
  */
 function repoPath(file: string, literal: string, partial = false): string | null {
   let base: string;
@@ -75,52 +78,76 @@ function tsconfigChain(file: string): string[] {
   return chain;
 }
 
-/** Each repository path the core's tests reach, with the test file that reaches it. */
+/**
+ * Each repository path the core's tests reach, with how: the test file, or `<test> via <module>`
+ * for a path that a module the test imports names.
+ */
 function reachedPaths(): Map<string, Set<string>> {
   const reached = new Map<string, Set<string>>();
-  const queue: [string, string][] = [];
-  const add = (path: string, from: string) => {
-    const froms = reached.get(path) ?? new Set();
-    if (froms.has(from)) return;
-    reached.set(path, froms.add(from));
-    if (/\.(m?js|ts)$/.test(path) && statSync(path).isFile()) queue.push([path, from]);
-    if (path.endsWith(".ts")) for (const tsconfig of tsconfigChain(path)) add(tsconfig, from);
+  const queue: [module: string, test: string][] = [];
+  const queued = new Set<string>();
+  const add = (path: string, test: string, via: string | null, load: boolean) => {
+    const label = via ? `${test} via ${rel(via)}` : test;
+    reached.set(path, (reached.get(path) ?? new Set<string>()).add(label));
+    if (load && /\.(m?js|ts)$/.test(path) && statSync(path).isFile()) {
+      if (!queued.has(`${path}\0${test}`)) queue.push([path, test]);
+      queued.add(`${path}\0${test}`);
+    }
+    if (load && path.endsWith(".ts")) {
+      for (const tsconfig of tsconfigChain(path)) add(tsconfig, test, via, false);
+    }
   };
   for (const file of testFiles(coreTests)) {
-    const from = rel(file);
+    const test = rel(file);
     for (const { text, partial } of literals(readFileSync(file, "utf8"))) {
       const path = repoPath(file, text, partial);
-      if (path && !path.startsWith(coreTests + sep)) add(path, from);
+      // A path the test names may be a module it imports, which then loads its own imports.
+      if (path && !path.startsWith(coreTests + sep)) add(path, test, null, true);
     }
   }
-  // Modules the tests import load their own relative imports in the sandbox too.
   for (let next = queue.shift(); next; next = queue.shift()) {
-    const [module, from] = next;
+    const [module, test] = next;
     if (module.startsWith(coreTests + sep)) continue;
-    for (const spec of importSpecifiers(readFileSync(module, "utf8"))) {
+    const source = readFileSync(module, "utf8");
+    // A module outside the core may read repository files too (tools/gen-agent-tools.ts reads
+    // vimma-ctl's sources through `new URL(path, root)`). The core's own code reads no files.
+    if (!module.startsWith(coreSrc + sep)) {
+      for (const { text, partial } of literals(source)) {
+        const path = repoPath(module, text, partial);
+        if (path) add(path, test, module, false);
+      }
+    }
+    for (const spec of importSpecifiers(source)) {
       const path = spec.startsWith(".") ? repoPath(module, spec) : null;
-      if (path) add(path, from);
+      if (path) add(path, test, module, true);
     }
   }
   return reached;
 }
 
-/** The ignore pattern that keeps `path` out of the sandbox, or null. */
+/**
+ * The ignore pattern that keeps `path` out of the sandbox, or null. Patterns are root-anchored
+ * paths whose `*` matches within one name, as in .gitignore.
+ */
 function ignoredBy(path: string, patterns: string[]): string | null {
   const relPath = rel(path);
   return (
     patterns.find((pattern) => {
-      const anchored = pattern.slice(1);
-      return relPath === anchored || relPath.startsWith(`${anchored}/`);
+      const glob = pattern.slice(1).replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*");
+      return new RegExp(`^${glob}(/|$)`).test(relPath);
     }) ?? null
   );
 }
 
 describe("Stryker's sandbox (stryker.config.mjs)", () => {
   const patterns = (config.ignorePatterns ?? []).filter((p): p is string => p !== undefined);
+  const reached = reachedPaths();
 
   it("ignores only root-anchored paths, the only form this test reads", () => {
-    for (const pattern of patterns) expect(pattern).toMatch(/^\/[\w.-]+(\/[\w.-]+)*$/);
+    for (const pattern of patterns) expect(pattern).toMatch(/^\/[\w.*-]+(\/[\w.*-]+)*$/);
+    expect(ignoredBy(join(root, "firefox-140.0/x"), ["/firefox-*"])).toBe("/firefox-*");
+    expect(ignoredBy(join(root, ".claude-plugin/x"), ["/.claude"])).toBeNull();
+    expect(ignoredBy(join(root, "tools/vimma-ctl/src"), ["/tools/vimma-ctl/target"])).toBeNull();
   });
 
   it("names no tsconfig for Stryker to rewrite, which needs TypeScript's missing JS API", () => {
@@ -128,15 +155,23 @@ describe("Stryker's sandbox (stryker.config.mjs)", () => {
   });
 
   it("finds the repository files the core's tests read and import", () => {
-    const reached = [...reachedPaths().keys()].map(rel);
-    expect(reached).toContain("tests/contract/control/v1");
-    expect(reached).toContain("tools/vimma-ctl/src/mcp/instructions.rs");
-    expect(reached).toContain("tools/gen-agent-tools.ts");
-    expect(reached).toContain("tools/tsconfig.json");
+    const paths = [...reached.keys()].map(rel);
+    expect(paths).toContain("tests/contract/control/v1");
+    expect(paths).toContain("tools/vimma-ctl/src/mcp/instructions.rs");
+    expect(paths).toContain("tools/gen-agent-tools.ts");
+    expect(paths).toContain("tools/tsconfig.json");
+  });
+
+  it("finds the files a module the tests import reads, not only its imports", () => {
+    // tools/gen-agent-tools.ts reads vimma-ctl's MCP sources through `new URL(path, root)`.
+    const via = reached.get(join(root, "tools/vimma-ctl/src/mcp/instructions.rs"));
+    expect([...(via ?? [])]).toContain(
+      "packages/vimma-core/test/agent-tools.test.mjs via tools/gen-agent-tools.ts",
+    );
   });
 
   it("copies every repository file the core's tests read or import", () => {
-    const missing = [...reachedPaths()].flatMap(([path, froms]) => {
+    const missing = [...reached].flatMap(([path, froms]) => {
       const pattern = ignoredBy(path, patterns);
       return pattern
         ? [...froms].map((from) => `${from} reaches ${rel(path)}, ignored by ${pattern}`)

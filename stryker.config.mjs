@@ -15,9 +15,11 @@ export default {
     // The core's tests alone (tools/ tests do not import packages/vimma-core/src); stop at the
     // first failure, since one failing test already kills the mutant. Tests tagged `timing` stay
     // out: they assert speed budgets that the instrumented code cannot meet
-    // (packages/vimma-core/vitest.config.mjs).
+    // (packages/vimma-core/vitest.config.mjs). The instrumented code also runs the slowest
+    // property tests (about 2 s each on the real code) past Vitest's 5 s default, so the limit is
+    // 60 s; a mutant that hangs still ends at Stryker's own timeout and counts as killed.
     command:
-      "node node_modules/vitest/vitest.mjs run --config packages/vimma-core/vitest.config.mjs --bail 1 --pool threads --no-isolate --maxWorkers 1 --tagsFilter '!timing'",
+      "node node_modules/vitest/vitest.mjs run --config packages/vimma-core/vitest.config.mjs --bail 1 --pool threads --no-isolate --maxWorkers 1 --testTimeout 60000 --tagsFilter '!timing'",
   },
   coverageAnalysis: "off",
   mutate: [
@@ -26,11 +28,27 @@ export default {
     "!packages/vimma-core/src/vendor/**",
   ],
   // Kept out of the sandbox copy: the engine, the browser sources, mochitests and old reports,
-  // which the core's tests never read. docs/ and tsconfig.json stay in: core tests check docs
-  // against code, and Vitest transforms the tools/*.ts they import under tools/tsconfig.json,
-  // which extends the root one. tools/mutation/test/sandbox.test.ts fails when a core test reaches
-  // a file listed here.
-  ignorePatterns: ["/engine", "/.surfer", "/src", "/tests/browser", "/reports"],
+  // which the core's tests never read, and the git-ignored build output, worktrees and Firefox
+  // downloads (Stryker does not read .gitignore, so a local run would copy them). docs/ and
+  // tsconfig.json stay in: core tests check docs against code, and Vitest transforms the
+  // tools/*.ts they import under tools/tsconfig.json, which extends the root one.
+  // tools/mutation/test/sandbox.test.ts fails when a core test reaches a path listed here.
+  ignorePatterns: [
+    "/engine",
+    "/.surfer",
+    "/src",
+    "/tests/browser",
+    "/reports",
+    "/.claude",
+    "/.dotbuild",
+    "/firefox-*",
+    "/tools/vimma-ctl/target",
+    "/coverage",
+    "/dist",
+    "/e2e-output",
+    "/site-compat-output",
+    "/site-compat-offline",
+  ],
   // Stryker rewrites the `extends` and `references` of this file and its parents with
   // TypeScript's JS API, which TypeScript 7 (native) no longer has. Naming a file that does not
   // exist skips that; it would change nothing anyway, since the sandbox copies the whole tree
