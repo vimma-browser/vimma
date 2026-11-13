@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vitest";
-import { driftFindings, renderReport } from "../spec-status.mjs";
+import { driftFindings, renderReport } from "../spec-status.ts";
+import type { Issue } from "../spec-status.ts";
 
-/**
- * @param {number} number
- * @param {"open" | "closed"} state
- * @param {string[]} [labels]
- */
-const issue = (number, state, labels = []) => [number, { state, labels, pullRequest: false }];
+const issue = (
+  number: number,
+  state: "open" | "closed",
+  labels: string[] = [],
+): [number, Issue] => [number, { state, labels, pullRequest: false }];
 
 describe("driftFindings", () => {
   test("nothing to report when every status matches its issues", () => {
@@ -67,7 +67,9 @@ describe("driftFindings", () => {
   });
 
   test("a linked number that is no issue (missing, or a pull request)", () => {
-    const issues = new Map([[2, { state: "closed", labels: [], pullRequest: true }]]);
+    const issues = new Map<number, Issue>([
+      [2, { state: "closed", labels: [], pullRequest: true }],
+    ]);
     const found = driftFindings([{ file: "a.md", status: "draft", issues: [1, 2] }], issues);
     expect(found).toEqual([
       { file: "a.md", message: expect.stringMatching(/#1 is not an issue/) },

@@ -7,7 +7,8 @@
 # Two jobs, so the step that runs repository code never holds a token that can push. The record
 # job checks out only the stats branch, runs no repository code, and refuses a file that does
 # not begin with the recorded history (append only). No secret: the job token only. Nothing to
-# install: the script is Node standard library on the runner's node.
+# install: the script is Node standard library, on .nvmrc's Node (the runner image's own may be
+# older than the 22.18 a .ts tool needs, ADR-025).
 name: downloads
 
 on:
@@ -39,6 +40,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
       # The history comes from the public stats branch; a failed fetch fails the run rather
       # than starting a new history.
       - name: Snapshot
@@ -49,9 +57,9 @@ jobs:
           mkdir -p out
           git fetch --no-tags --depth=1 origin stats
           git show FETCH_HEAD:downloads.csv > out/downloads.csv
-          node tools/stats/downloads.mjs collect --repo "$REPO" > out/day.csv
-          node tools/stats/downloads.mjs merge --csv out/downloads.csv --day out/day.csv
-          node tools/stats/downloads.mjs summary --csv out/downloads.csv --markdown \
+          node tools/stats/downloads.ts collect --repo "$REPO" > out/day.csv
+          node tools/stats/downloads.ts merge --csv out/downloads.csv --day out/day.csv
+          node tools/stats/downloads.ts summary --csv out/downloads.csv --markdown \
             >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

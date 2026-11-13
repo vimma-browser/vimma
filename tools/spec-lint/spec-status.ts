@@ -14,7 +14,7 @@
 // spec-status.yml runs it daily and keeps one issue with the report. Read-only: it only reads
 // the repository and the issues.
 //
-//   node tools/spec-lint/spec-status.mjs [--markdown FILE] [--repo OWNER/NAME]
+//   node tools/spec-lint/spec-status.ts [--markdown FILE] [--repo OWNER/NAME]
 //
 // Exit status: 0 nothing to report, 1 findings (the report says what), 2 could not check.
 // GH_TOKEN or GITHUB_TOKEN is used when set; without one, GitHub's anonymous limit (60
@@ -25,35 +25,28 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
-import { parseSpec } from "./spec-lint.mjs";
+import { parseSpec } from "./spec-lint.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const LIVE = new Set(["draft", "accepted"]);
 
-/**
- * @typedef {{ file: string, status: string | null, issues: number[] }} Spec
- * @typedef {{ state: "open" | "closed", labels: string[], pullRequest: boolean }} Issue
- * @typedef {{ file: string, message: string }} Finding
- */
+export type Spec = { file: string; status: string | null; issues: number[] };
+export type Issue = { state: "open" | "closed"; labels: string[]; pullRequest: boolean };
+export type Finding = { file: string; message: string };
 
-/** @param {number[]} ns */
-const list = (ns) => {
+const list = (ns: number[]) => {
   const refs = ns.map((n) => `#${n}`);
   return refs.length < 2 ? refs.join("") : `${refs.slice(0, -1).join(", ")} and ${refs.at(-1)}`;
 };
 
 /**
- * @param {Spec[]} specs
- * @param {Map<number, Issue>} issues  every linked number that GitHub knows
- * @returns {Finding[]}
+ * @param issues  every linked number that GitHub knows
  */
-export function driftFindings(specs, issues) {
-  /** @type {Finding[]} */
-  const found = [];
+export function driftFindings(specs: Spec[], issues: Map<number, Issue>): Finding[] {
+  const found: Finding[] = [];
   for (const spec of specs) {
     const { file, status } = spec;
-    /** @type {number[]} */
-    const known = [];
+    const known: number[] = [];
     for (const n of spec.issues) {
       const issue = issues.get(n);
       if (!issue || issue.pullRequest)
@@ -87,11 +80,12 @@ export function driftFindings(specs, issues) {
 }
 
 /**
- * @param {Finding[]} findings
- * @param {{ repo: string, sha: string }} where
- * @returns {string} Markdown
+ * @returns Markdown
  */
-export function renderReport(findings, { repo, sha }) {
+export function renderReport(
+  findings: Finding[],
+  { repo, sha }: { repo: string; sha: string },
+): string {
   if (findings.length === 0)
     return "Every spec's status and label match their issues (docs/specs/README.md, Lifecycle).\n";
   const lines = [
@@ -107,26 +101,21 @@ export function renderReport(findings, { repo, sha }) {
   return lines.join("\n") + "\n";
 }
 
-/** @returns {Spec[]} */
-function readSpecs() {
+function readSpecs(): Spec[] {
   return readdirSync(join(ROOT, "docs/specs"))
     .filter((f) => f.endsWith(".md") && f !== "README.md")
     .sort()
     .map((file) => ({ file, ...parseSpec(readFileSync(join(ROOT, "docs/specs", file), "utf8")) }));
 }
 
-/**
- * @param {number[]} numbers
- * @param {string} repo
- * @returns {Promise<Map<number, Issue>>}
- */
-async function fetchIssues(numbers, repo) {
+async function fetchIssues(numbers: number[], repo: string): Promise<Map<number, Issue>> {
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
-  /** @type {Record<string, string>} */
-  const headers = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" };
+  const headers: Record<string, string> = {
+    accept: "application/vnd.github+json",
+    "x-github-api-version": "2022-11-28",
+  };
   if (token) headers.authorization = `Bearer ${token}`;
-  /** @type {Map<number, Issue>} */
-  const issues = new Map();
+  const issues: Map<number, Issue> = new Map();
   for (const n of numbers) {
     const res = await fetch(`https://api.github.com/repos/${repo}/issues/${n}`, { headers });
     if (res.status === 404 || res.status === 410) continue;
@@ -134,7 +123,7 @@ async function fetchIssues(numbers, repo) {
     const body = await res.json();
     issues.set(n, {
       state: body.state === "open" ? "open" : "closed",
-      labels: (body.labels ?? []).map((/** @type {{ name: string }} */ l) => l.name),
+      labels: (body.labels ?? []).map((l: { name: string }) => l.name),
       pullRequest: Boolean(body.pull_request),
     });
   }

@@ -49,6 +49,15 @@ jobs:
           fetch-depth: 0 # the pushed range, for commitlint below
           persist-credentials: false
 
+      # .nvmrc's Node for the guard: the runner image's own may be older than the 22.18 a .ts tool
+      # needs (ADR-025). No cache here; the setup below adds it when commitlint needs npm ci.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
       # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
       # can name another here and skip on its passes.
       - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)

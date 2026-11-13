@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { execFile, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { promisify } from "node:util";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -15,16 +16,20 @@ import {
   parseCsv,
   summarise,
   toCsv,
-} from "../downloads.mjs";
+} from "../downloads.ts";
 
 // #647: a daily snapshot of every release asset's download count, kept on the `stats` branch
 // (docs/runbook.md, "Release download counts"), and a summary of the daily deltas.
 
-const SCRIPT = fileURLToPath(new URL("../downloads.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../downloads.ts", import.meta.url));
 const execFileAsync = promisify(execFile);
 
-/** @param {string} date @param {string} tag @param {string} asset @param {number} downloads */
-const row = (date, tag, asset, downloads) => ({ date, tag, asset, downloads });
+const row = (date: string, tag: string, asset: string, downloads: number) => ({
+  date,
+  tag,
+  asset,
+  downloads,
+});
 
 describe("asset rows", () => {
   it("one row per asset of each published release, sorted by tag and asset", () => {
@@ -137,13 +142,12 @@ describe("summary", () => {
 
 describe("fetching releases", () => {
   it("follows the pages until one comes back short, with the token when there is one", async () => {
-    /** @type {{ url: string, auth: string | undefined }[]} */
-    const calls = [];
-    const page = (n) => Array.from({ length: n }, (_, i) => ({ tag_name: `v${i}`, assets: [] }));
+    const calls: { url: string; auth: string | undefined }[] = [];
+    const page = (n: number) =>
+      Array.from({ length: n }, (_, i) => ({ tag_name: `v${i}`, assets: [] }));
     const pages = [page(100), page(3)];
-    /** @type {typeof fetch} */
-    const fakeFetch = async (url, init) => {
-      const headers = /** @type {Record<string, string>} */ (init?.headers ?? {});
+    const fakeFetch: typeof fetch = async (url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
       calls.push({ url: String(url), auth: headers.authorization });
       return new Response(JSON.stringify(pages.shift() ?? []), { status: 200 });
     };
@@ -157,8 +161,7 @@ describe("fetching releases", () => {
   });
 
   it("fails on an HTTP error rather than recording a partial day", async () => {
-    /** @type {typeof fetch} */
-    const fakeFetch = async () => new Response("rate limited", { status: 403 });
+    const fakeFetch: typeof fetch = async () => new Response("rate limited", { status: 403 });
     await expect(fetchReleases("o/r", { fetch: fakeFetch })).rejects.toThrow(/403/);
   });
 });
@@ -166,8 +169,7 @@ describe("fetching releases", () => {
 describe("the command line", () => {
   it("collect prints the day's CSV on stdout, from the API that GITHUB_API_URL names", async () => {
     const releases = [{ tag_name: "v1", assets: [{ name: "a.dmg", download_count: 7 }] }];
-    /** @type {string[]} */
-    const paths = [];
+    const paths: string[] = [];
     const server = createServer((req, res) => {
       paths.push(req.url ?? "");
       res.setHeader("content-type", "application/json");
@@ -175,7 +177,7 @@ describe("the command line", () => {
     });
     await new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(undefined)));
     try {
-      const { port } = /** @type {import("node:net").AddressInfo} */ (server.address());
+      const { port } = server.address() as AddressInfo;
       const { stdout, stderr } = await execFileAsync(
         process.execPath,
         [SCRIPT, "collect", "--repo", "o/r", "--date", "2026-10-29"],

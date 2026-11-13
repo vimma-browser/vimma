@@ -3,7 +3,7 @@
  * Turns Stryker's JSON report (mutation-testing-report-schema) into the body of the one tracking
  * issue that .github/workflows/mutation.yml keeps up to date (spec ci-quality-gates; plan §5:
  * "survivors become issues"). Usage:
- *   RUN_URL=… COMMIT=… node tools/mutation/report.mjs reports/mutation/mutation.json > body.md
+ *   RUN_URL=… COMMIT=… node tools/mutation/report.ts reports/mutation/mutation.json > body.md
  * Writes `score` and `survivors` to $GITHUB_OUTPUT when set. Exit 0, or 2 on unreadable input.
  */
 import { appendFileSync, readFileSync } from "node:fs";
@@ -15,24 +15,23 @@ export const MAX_BODY = 65_000;
 const SURVIVOR = new Set(["Survived", "NoCoverage"]);
 const DETECTED = new Set(["Killed", "Timeout"]);
 
-/**
- * @typedef {{ mutatorName: string, replacement?: string, status: string,
- *   location: { start: { line: number, column: number } } }} Mutant
- * @typedef {{ files: Record<string, { mutants: Mutant[] }> }} Report
- */
+export type Mutant = {
+  mutatorName: string;
+  replacement?: string;
+  status: string;
+  location: { start: { line: number; column: number } };
+};
+export type Report = { files: Record<string, { mutants: Mutant[] }> };
 
-/** @param {string} s */
-const oneLine = (s) => s.replace(/\r?\n/g, "⏎").replace(/`/g, "'").slice(0, 80);
+const oneLine = (s: string) => s.replace(/\r?\n/g, "⏎").replace(/`/g, "'").slice(0, 80);
 
-/**
- * @param {Report} report
- * @param {{ runUrl: string, commit: string }} meta
- */
-export function survivorsReport(report, { runUrl, commit }) {
+export function survivorsReport(
+  report: Report,
+  { runUrl, commit }: { runUrl: string; commit: string },
+) {
   let detected = 0;
   let valid = 0;
-  /** @type {[string, Mutant[]][]} */
-  const perFile = [];
+  const perFile: [string, Mutant[]][] = [];
   for (const [file, { mutants }] of Object.entries(report.files).sort(([a], [b]) =>
     a.localeCompare(b),
   )) {
@@ -89,8 +88,7 @@ export function survivorsReport(report, { runUrl, commit }) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  /** @type {Report} */
-  let report;
+  let report: Report;
   try {
     report = JSON.parse(readFileSync(process.argv[2] ?? "reports/mutation/mutation.json", "utf8"));
   } catch (e) {
