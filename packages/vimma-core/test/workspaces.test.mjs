@@ -29,7 +29,14 @@ import {
 } from "../src/workspaces.mjs";
 import { createSplits, newSplit } from "../src/splits.mjs";
 import { closePane, focus, leaves, resize, setPaneTab, swap, toggleZoom } from "../src/panes.mjs";
-import { toSnapshot, fromSnapshot } from "../src/snapshot.mjs";
+import { toSnapshot, readSnapshot } from "../src/snapshot.mjs";
+
+/**
+ * The workspace state a snapshot restores to, without its tab renames.
+ * @param {unknown} input
+ * @param {Parameters<typeof readSnapshot>[1]} [options]
+ */
+const stateOf = (input, options) => readSnapshot(input, options).state;
 
 /** @param {() => unknown} fn @param {string} code */
 function expectWsError(fn, code) {
@@ -169,14 +176,14 @@ describe("explicit workspace ids", () => {
     let s = createWorkspaces([{ name: "work", container: "c-work", id: "w7" }]);
     s = addWorkspace(s, { name: "personal", container: "c-personal" });
     expect(s.workspaces.map((w) => w.id)).toEqual(["w7", "w8"]);
-    expect(fromSnapshot(toSnapshot(s))).toEqual(s);
+    expect(stateOf(toSnapshot(s))).toEqual(s);
   });
 
   test("explicit ids round-trip through a v1 snapshot", () => {
     const s = createWorkspaces([{ name: "work", container: "c-work", id: uuid }]);
     const snap = toSnapshot(openTab(s, "a"));
     expect(snap.schema).toBe(1);
-    expect(fromSnapshot(JSON.stringify(snap))).toEqual(openTab(s, "a"));
+    expect(stateOf(JSON.stringify(snap))).toEqual(openTab(s, "a"));
   });
 
   test("a duplicate id is duplicate-id", () => {
@@ -569,10 +576,10 @@ describe("workspace properties", () => {
     );
   });
 
-  test("fromSnapshot(toSnapshot(s)) restores s", () => {
+  test("readSnapshot(toSnapshot(s)) restores s", () => {
     fc.assert(
       fc.property(stateArb, (s) => {
-        const back = fromSnapshot(JSON.stringify(toSnapshot(s)));
+        const back = stateOf(JSON.stringify(toSnapshot(s)));
         expect(back).toEqual(s);
       }),
     );
@@ -681,10 +688,10 @@ describe("the alternate workspace (Vim's ctrl+^)", () => {
     const s = switchWorkspace(three(), { name: "admin" });
     const snap = toSnapshot(s);
     expect(snap.alternate).toBe("w1");
-    expect(fromSnapshot(JSON.stringify(snap))).toEqual(s);
+    expect(stateOf(JSON.stringify(snap))).toEqual(s);
     expect("alternate" in toSnapshot(three())).toBe(false);
     for (const bad of ["w3", "nope", 7, null]) {
-      const back = fromSnapshot({ ...snap, alternate: bad });
+      const back = stateOf({ ...snap, alternate: bad });
       expect(back.alternate).toBeUndefined();
     }
   });

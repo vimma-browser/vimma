@@ -17,10 +17,10 @@
 
 import { DEFAULT_THEME_NAME, themeStylesheet } from "../core/theme.mjs";
 
-const lazy = /** @type {Lazy<"clearInterval" | "setInterval">} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
-  clearInterval: "resource://gre/modules/Timer.sys.mjs",
-  setInterval: "resource://gre/modules/Timer.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 /** Points Firefox's focus colour at --vimma-focus (focus rings, the focused pane's outline). */
@@ -304,14 +304,24 @@ function poll() {
   return running;
 }
 
+/**
+ * A one-shot timer set again at each tick, not an interval, as ConfigHost's poll: a repeating
+ * timer leaves the timer list while it fires, and the browser-test harness, which lists repeating
+ * timers once as a run starts, then reports it as left behind by whichever test file runs first.
+ * It is set again before the check starts, so the ticks keep the interval's period, and a check
+ * still running at the next tick makes that tick a no-op (`poll`), as with the interval.
+ */
 function startTimer() {
-  if (timer !== null) lazy.clearInterval(timer);
+  if (timer !== null) lazy.clearTimeout(timer);
   const ms = Math.max(50, Services.prefs.getIntPref(POLL_PREF, DEFAULT_POLL_MS));
-  timer = lazy.setInterval(poll, ms);
+  timer = lazy.setTimeout(() => {
+    startTimer();
+    poll();
+  }, ms);
 }
 
 function stopTimer() {
-  if (timer !== null) lazy.clearInterval(timer);
+  if (timer !== null) lazy.clearTimeout(timer);
   timer = null;
 }
 

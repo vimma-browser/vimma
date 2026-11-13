@@ -35,7 +35,14 @@ import { createDispatcher } from "../src/dispatcher.mjs";
 import { compileKeymap } from "../src/keymap.mjs";
 import { parseKey } from "../src/keys.mjs";
 import { createWorkspaces } from "../src/workspaces.mjs";
-import { fromSnapshot, toSnapshot } from "../src/snapshot.mjs";
+import { readSnapshot, toSnapshot } from "../src/snapshot.mjs";
+
+/**
+ * The workspace state a snapshot restores to, without its tab renames.
+ * @param {unknown} input
+ * @param {Parameters<typeof readSnapshot>[1]} [options]
+ */
+const stateOf = (input, options) => readSnapshot(input, options).state;
 
 /** @param {any} node @returns {string} */
 function shape(node) {
@@ -311,9 +318,7 @@ describe("arrange: round trips", () => {
       ...ws,
       workspaces: [{ ...w, tabs: ["t1", "t2", "t3", "t4"], activeTab: "t2", panes: s }],
     };
-    const back = /** @type {any} */ (
-      fromSnapshot(JSON.stringify(toSnapshot(/** @type {any} */ (ws))))
-    );
+    const back = /** @type {any} */ (stateOf(JSON.stringify(toSnapshot(/** @type {any} */ (ws)))));
     const p = back.workspaces[0].panes;
     expect(shape(p.root)).toBe(shape(s.root));
     expect(p.layout).toBe("main-vertical");
@@ -421,8 +426,8 @@ describe("property: any tree, any preset", () => {
             ...ws,
             workspaces: [{ ...w, tabs, activeTab: focusTab, panes: t }],
           };
-          // fromSnapshot checks canonical form, ratios summing to 1, unique panes and tabs
-          const back = /** @type {any} */ (fromSnapshot(toSnapshot(/** @type {any} */ (doc))));
+          // readSnapshot checks canonical form, ratios summing to 1, unique panes and tabs
+          const back = /** @type {any} */ (stateOf(toSnapshot(/** @type {any} */ (doc))));
           expect(shape(back.workspaces[0].panes.root)).toBe(shape(t.root));
           for (const r of ratios(t.root)) for (const v of r) expect(v).toBeGreaterThan(0.0999);
         },
@@ -589,7 +594,7 @@ describe("showTogether", () => {
       ...ws,
       workspaces: [{ ...w, tabs: ["a", "b", "c", "d"], activeTab: "a", panes: s }],
     };
-    const back = /** @type {any} */ (fromSnapshot(toSnapshot(ws)).workspaces[0]).panes;
+    const back = /** @type {any} */ (stateOf(toSnapshot(ws)).workspaces[0]).panes;
     expect(back.layout).toBe("main-horizontal");
     expect(tabsOf(back.root)).toBe(tabsOf(s.root));
   });

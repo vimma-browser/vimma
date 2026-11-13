@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { describeAction, notImplementedText } from "../src/actions.mjs";
-import { tabTarget } from "../src/tabs.mjs";
+import { tabIds, tabTarget } from "../src/tabs.mjs";
 
 // Spec: docs/specs/m2-tab-keys.md
 
@@ -72,5 +72,41 @@ describe("tab.goto_last", () => {
 
   test("no tabs: nothing", () => {
     expect(tabTarget({ id: "tab.goto_last" }, 0, 0)).toBeNull();
+  });
+});
+
+// A window without workspaces (private) keys the picker's tabs by panel; an unloaded tab has
+// none (#958).
+describe("tabIds", () => {
+  test("a loaded tab's id is its panel", () => {
+    const ids = tabIds();
+    expect(ids.idOf({ linkedPanel: "panel-1-2" })).toBe("panel-1-2");
+  });
+
+  test("unloaded tabs get ids of their own, the same on every call", () => {
+    const ids = tabIds();
+    const a = { linkedPanel: null };
+    const b = { linkedPanel: null };
+    expect(ids.idOf(a)).not.toBe(ids.idOf(b));
+    expect(ids.idOf(a)).toBe(ids.idOf(a));
+    expect(typeof ids.idOf(a)).toBe("string");
+  });
+
+  test("find takes a tab's panel, or the id it had while unloaded", () => {
+    const ids = tabIds();
+    const loaded = { linkedPanel: "panel-1-2" };
+    /** @type {{ linkedPanel: string | null }} */
+    const lazy = { linkedPanel: null };
+    const other = { linkedPanel: null };
+    const tabs = [loaded, other, lazy];
+    tabs.forEach((t) => ids.idOf(t));
+    const lazyId = ids.idOf(lazy);
+    expect(ids.find(tabs, "panel-1-2")).toBe(loaded);
+    expect(ids.find(tabs, lazyId)).toBe(lazy);
+    // Selecting the tab loads it: the row listed before still finds it.
+    lazy.linkedPanel = "panel-1-9";
+    expect(ids.find(tabs, lazyId)).toBe(lazy);
+    expect(ids.find(tabs, "panel-1-9")).toBe(lazy);
+    expect(ids.find(tabs, "panel-9-9")).toBeUndefined();
   });
 });
