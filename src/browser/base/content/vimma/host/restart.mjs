@@ -24,7 +24,7 @@ import { privateTabCount } from "./private-ops.mjs";
 /** @import { InstallType } from "../core/updates.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -63,7 +63,7 @@ let relaunchPath = /** @type {string | null} */ (null);
 const inAutomation = () => /** @type {any} */ (globalThis).Cu?.isInAutomation === true;
 
 /** Services, with the members this module uses that the typings leave out. */
-const services = /** @type {any} */ (Services);
+const services = Services;
 const startup = () => /** @type {Startup} */ (startupOverride ?? services.startup);
 
 /** @param {string} path */

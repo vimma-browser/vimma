@@ -28,7 +28,7 @@ import { workspacePickerItems } from "./workspace-ops.mjs";
 /** @import { WorkspaceItem } from "../core/picker.mjs" */
 /** @import { Workspaces } from "../core/workspaces.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"BrowserWindowTracker" | "PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -44,14 +44,14 @@ const NO_NORMAL = "no normal window is open";
 /**
  * The window and workspace private was entered from, in memory only (decision 8a): what
  * `ctrl+^` and the toggle go back to.
- * @type {{ win: WeakRef<Window>, workspace: string | null } | null}
+ * @type {{ win: WeakRef<BrowserWindow>, workspace: string | null } | null}
  */
 let left = null;
 
 /**
  * Any private window, permanent private browsing too: what Vimma's own diagnostics leave out
  * (about:vimma's window modes and key log; decision 8b).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function isPrivateBrowsing(win) {
   return lazy.PrivateBrowsingUtils.isWindowPrivate(win);
@@ -62,7 +62,7 @@ const isPrivate = isPrivateBrowsing;
  * Whether `win` is (part of) the private workspace: a private window, pop-ups included, unless
  * every window is private (`browser.privatebrowsing.autostart`): then there is no private
  * workspace, and private windows behave as before it existed (decision 3).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function isPrivateWorkspace(win) {
   return isPrivate(win) && !lazy.PrivateBrowsingUtils.permanentPrivateBrowsing;
@@ -71,7 +71,7 @@ export function isPrivateWorkspace(win) {
 /**
  * Every open private browser window, most recent first: together, the private workspace
  * (decision 4).
- * @returns {Window[]}
+ * @returns {BrowserWindow[]}
  */
 export function privateWindows() {
   return allPrivateWindows().filter(isBrowserWindow);
@@ -81,7 +81,7 @@ export function privateWindows() {
  * Every open private window, pop-ups included, most recent first. A private pop-up (an OAuth
  * sign-in) holds the private cookie jar as much as a browser window: closing the private
  * workspace closes it too, or Firefox would never discard the data.
- * @returns {Window[]}
+ * @returns {BrowserWindow[]}
  */
 function allPrivateWindows() {
   return /** @type {any[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
@@ -91,7 +91,7 @@ function allPrivateWindows() {
 
 /** The most recent normal browser window, or null. */
 function normalWindow() {
-  const recent = /** @type {Window | null} */ (
+  const recent = /** @type {BrowserWindow | null} */ (
     lazy.BrowserWindowTracker.orderedWindows.find(
       (/** @type {any} */ w) => isBrowserWindow(w) && !isPrivate(w),
     ) ?? null
@@ -102,21 +102,20 @@ function normalWindow() {
 /** Tabs in every private window, pop-ups included. */
 export function privateTabCount() {
   return allPrivateWindows().reduce(
-    (n, w) =>
-      n + /** @type {any} */ (w).gBrowser.tabs.filter((/** @type {any} */ t) => !t.closing).length,
+    (n, w) => n + w.gBrowser.tabs.filter((/** @type {any} */ t) => !t.closing).length,
     0,
   );
 }
 
 /**
  * The status bar's workspace segment in a private window (decision 6).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function privateStatus(win) {
   return isPrivateWorkspace(win) ? { name: PRIVATE_NAME, index: 0, private: true } : null;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function remember(win) {
   if (isPrivateWorkspace(win)) return;
   left = { win: new WeakRef(win), workspace: WindowWorkspaces.get(win)?.model?.active ?? null };
@@ -126,7 +125,7 @@ function remember(win) {
  * Shows workspace `id` in normal window `win` (unless it shows it already) and focuses it. On
  * Hyprland a parked window comes back in the private window's slot instead (private-swap):
  * focusing a parked window would open its special workspace.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string | null} id
  * @returns {string | null} a refusal
  */
@@ -142,20 +141,18 @@ function showNormal(win, id) {
 /**
  * Opens the private workspace: a private window at the current window's size and, where the
  * platform lets a client place its windows (not Wayland), its position (decision 7).
- * @param {Window} from
- * @returns {Window}
+ * @param {BrowserWindow} from
+ * @returns {BrowserWindow}
  */
 function openPrivate(from) {
   remember(from);
   const f = /** @type {any} */ (from);
   const size = [`outerWidth=${f.outerWidth}`, `outerHeight=${f.outerHeight}`];
-  const wayland = !!(/** @type {any} */ (Services.appinfo).isWayland);
+  const wayland = !!Services.appinfo.isWayland;
   if (!wayland) size.push(`screenX=${f.screenX}`, `screenY=${f.screenY}`);
   // Its first tab is Vimma's start page, as a new tab there is (start-page spec), not
   // Firefox's about:privatebrowsing, which OpenBrowserWindow loads without `args`.
-  const args = /** @type {any} */ (Cc["@mozilla.org/supports-string;1"]).createInstance(
-    Ci.nsISupportsString,
-  );
+  const args = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
   args.data = f.BROWSER_NEW_TAB_URL;
   // On macOS the swap opens it at the exact (restored) frame, without animation.
   const features = PrivateSwap.openFeatures(from) ?? size.join(",");
@@ -165,7 +162,7 @@ function openPrivate(from) {
 /**
  * Going to the private workspace from a normal window: the most recent private window, or a
  * new one. On Hyprland it takes `from`'s place (private-swap); elsewhere it is focused.
- * @param {Window} from
+ * @param {BrowserWindow} from
  */
 function enterPrivate(from) {
   const [existing] = privateWindows();
@@ -202,7 +199,7 @@ export function leavePrivate() {
 
 /**
  * `workspace.private` (ctrl+b shift+p, ctrl+shift+p, `:private`): toggles (decision 2).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {string | null} a refusal
  */
 export function togglePrivate(win) {
@@ -279,7 +276,7 @@ export function closePrivate(ask) {
 /**
  * The workspace picker's rows (decision 5): the normal workspaces, then the private row. In a
  * private window the normal rows are the most recent normal window's.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {WorkspaceItem[]}
  */
 export function pickerItemsWithPrivate(win) {
@@ -293,7 +290,7 @@ export function pickerItemsWithPrivate(win) {
 }
 
 /**
- * @param {Window} win  a normal window
+ * @param {BrowserWindow} win  a normal window
  * @param {boolean} inPrivate  seen from private: no row is the current one
  */
 function normalItems(win, inPrivate) {
@@ -304,7 +301,7 @@ function normalItems(win, inPrivate) {
 /**
  * Enter on a picker row: the private row goes there, a normal row from private switches the
  * most recent normal window.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {string | null | undefined} a refusal; undefined when the row is a normal one seen
  *   from a normal window (the caller switches)
@@ -325,7 +322,7 @@ export function pickerSelect(win, id) {
  * `m` on a picker row. From private every move is refused (decision 5). From a normal window
  * to the private row: after y/N, the tab's URL is reopened in the private workspace and the tab
  * closed (Firefox's "Open Link in New Private Window", as a move).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say
@@ -341,7 +338,7 @@ export function pickerMove(win, id, ask, say, row) {
   if (id !== PRIVATE_WORKSPACE_ID) return undefined;
   const refused = refusal();
   if (refused) return refused;
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const tab = row ?? gBrowser.selectedTab;
   ask(movePrivateQuestion(), () => {
     if (!tab.isConnected || (!row && gBrowser.selectedTab !== tab)) {
@@ -363,12 +360,12 @@ export const MOVE_OUT_REFUSED = PRIVATE_REFUSALS["move-out-of-private"];
  * Reopens `tab`'s page in the private workspace, selected, and closes it here. The principal
  * is the page's own with the private origin attributes (tab-context-menu.js reopenInContainer
  * does the same for a container), so nothing loads with more rights than the page had.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} tab
  * @returns {Promise<string | null>} a refusal
  */
 async function moveIntoPrivate(win, tab) {
-  const ssm = /** @type {any} */ (Services.scriptSecurityManager);
+  const ssm = Services.scriptSecurityManager;
   const browser = tab.linkedBrowser;
   const url = browser.currentURI.spec;
   const page = browser.contentPrincipal;
@@ -390,12 +387,12 @@ async function moveIntoPrivate(win, tab) {
     for (const t of priv.gBrowser.tabs) if (t !== fresh) priv.gBrowser.removeTab(t);
   }
   remember(win);
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   // The workspace keeps a tab: a start page, as a workspace left empty gets (WindowWorkspaces).
   // Before the swap: a new tab in a parked window brings it back (private-swap decision 7).
   const others = gBrowser.visibleTabs.filter((/** @type {any} */ t) => t !== tab && !t.pinned);
   if (!others.length) {
-    gBrowser.addTrustedTab(/** @type {any} */ (win).BROWSER_NEW_TAB_URL, {
+    gBrowser.addTrustedTab(win.BROWSER_NEW_TAB_URL, {
       userContextId: tab.userContextId,
       skipAnimation: true,
     });

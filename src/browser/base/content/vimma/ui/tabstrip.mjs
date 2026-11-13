@@ -11,19 +11,11 @@ export const TABSTRIP_PREF = "vimma.ui.tabstrip.hidden";
 export const TABSTRIP_ATTR = "vimma-tabstrip-hidden";
 const STYLESHEET = "chrome://browser/skin/vimma/tabstrip.css";
 const TOOLBOX_EVENTS = ["customizationstarting", "aftercustomization"];
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into (loading it twice throws) */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (loading it twice throws) */
 const styled = new WeakSet();
 
-/**
- * browser/components/tabbrowser/content/tab-bar-visibility.js
- * @typedef {Window & {
- *   TabBarVisibility: { update: (force?: boolean) => void },
- *   gNavToolbox: Element,
- * }} BrowserWindow
- */
-
 export class TabStrip {
-  /** @param {Window} win  a browser window, from its first script (before the body exists) */
+  /** @param {BrowserWindow} win  a browser window, from its first script (before the body exists) */
   constructor(win) {
     this.win = /** @type {BrowserWindow} */ (win);
     this.onPref = () => this.apply();

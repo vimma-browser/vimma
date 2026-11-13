@@ -40,7 +40,11 @@ import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
 import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AgentChat" | "AgentCli" | "AgentKeys" | "ConfigHost" | "McpHost"
+ *   | "PrivateBrowsingUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
@@ -66,7 +70,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 // goes in as an agent sheet (an author sheet such as side-panel.css drops it).
 const NO_REVEAL_SHEET =
   "data:text/css," + encodeURIComponent(`#${CHAT_KEY_ID}::-moz-reveal { display: none; }`);
-/** @type {WeakSet<Window>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
+/** @type {WeakSet<BrowserWindow>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
 const noReveal = new WeakSet();
 
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
@@ -141,7 +145,7 @@ function defaultProvider() {
 }
 
 export class AgentChatWindow {
-  /** @param {Window} win @param {AgentChatHost} host */
+  /** @param {BrowserWindow} win @param {AgentChatHost} host */
   constructor(win, host) {
     this.win = win;
     this.host = host;

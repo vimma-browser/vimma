@@ -267,7 +267,7 @@ export function textOfDocument(win, cap) {
       items.push("br");
       continue;
     }
-    const shadow = /** @type {any} */ (el).openOrClosedShadowRoot;
+    const shadow = el.openOrClosedShadowRoot;
     /** @type {ArrayLike<Node>} */
     let kids = shadow ? shadow.childNodes : el.childNodes;
     if (!shadow && el.localName === "slot") {

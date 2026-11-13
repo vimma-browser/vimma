@@ -8,7 +8,7 @@
 // security.dialog_enable_delay), so focus left the page and Vimma's keys went to the panel until
 // a click. The new tab is the notice; the downloads button still animates.
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"Downloads">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
 });

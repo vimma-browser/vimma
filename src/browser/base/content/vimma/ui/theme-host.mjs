@@ -17,7 +17,7 @@
 
 import { DEFAULT_THEME_NAME, themeStylesheet } from "../core/theme.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearInterval" | "setInterval">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
@@ -168,7 +168,7 @@ const notFound = (/** @type {unknown} */ e) => /** @type {any} */ (e)?.name === 
 /** @type {string[]} the applied theme's warnings (contrast), for about:vimma */
 let warnings = [];
 let css = builtinCss();
-/** @type {Map<Window, string>} each window's token sheet (a data: URI of `css`) */
+/** @type {Map<BrowserWindow, string>} each window's token sheet (a data: URI of `css`) */
 const windows = new Map();
 /**
  * @type {Map<Document, string>} the token sheet of each document in Firefox's sidebar (spec
@@ -193,7 +193,7 @@ let generation = 0;
 let lastError = null;
 /** @type {Promise<void> | null} */
 let running = null;
-/** @type {unknown} */
+/** @type {number | null} */
 let timer = null;
 /** A window is themed: the prefs are observed, and the poll may run. */
 let started = false;
@@ -470,7 +470,7 @@ const WIZARD_RULES = `
  * @param {Document} doc  one of Firefox's pages, once parsed
  */
 function colourWizards(doc) {
-  const win = /** @type {any} */ (doc.defaultView);
+  const win = doc.defaultView;
   if (!win) return;
   /** @type {WeakSet<ShadowRoot>} */
   const done = new WeakSet();
@@ -491,7 +491,7 @@ function colourWizards(doc) {
 
 /** @param {Document} doc  a prompt in a window of its own, once parsed */
 function colourDialogButtons(doc) {
-  const win = /** @type {any} */ (doc.defaultView);
+  const win = doc.defaultView;
   const root = doc.querySelector("dialog")?.shadowRoot;
   // Over a tab the frame marks the document [subdialog] only after it loads (SubDialog.sys.mjs),
   // so a window of its own is told apart by having no embedder.
@@ -503,7 +503,7 @@ function colourDialogButtons(doc) {
 
 /** @param {Document} doc  a sidebar document, once parsed */
 function colourTrees(doc) {
-  const win = /** @type {any} */ (doc.defaultView);
+  const win = doc.defaultView;
   if (!win) return;
   for (const tree of doc.querySelectorAll("tree")) {
     const root = tree.shadowRoot;
@@ -565,7 +565,7 @@ function attachSidebarPage(doc) {
  * @param {Document} doc
  */
 function isFirefoxPage(doc) {
-  if (!(/** @type {any} */ (doc).nodePrincipal?.isSystemPrincipal)) return false;
+  if (!doc.nodePrincipal?.isSystemPrincipal) return false;
   const frame = /** @type {any} */ (doc.defaultView?.browsingContext?.embedderElement);
   if (!frame) return doc.documentURI === COMMON_DIALOG && windows.size > 0;
   const owner = frame.ownerDocument;
@@ -606,7 +606,7 @@ function attachFirefoxPage(doc) {
 function hideEmptyStatePictures(doc, inSidebar) {
   const win = doc?.defaultView;
   if (!doc || !win || emptyStateDocs.has(doc)) return;
-  if (!(/** @type {any} */ (doc).nodePrincipal?.isSystemPrincipal)) return;
+  if (!doc.nodePrincipal?.isSystemPrincipal) return;
   if (!inSidebar && !/^about:firefoxview(?:[#?]|$)/i.test(doc.documentURI ?? "")) return;
   win.windowUtils.loadSheetUsingURIString(EMPTY_STATES_SHEET, win.windowUtils.AGENT_SHEET);
   emptyStateDocs.add(doc);
@@ -640,7 +640,7 @@ export const ThemeHost = {
    * firefox-chrome.css, to its find bar, menu bar and menus. Every document the sidebar's browser
    * loads gets the tokens too (spec firefox-sidebar-theme), and so do Firefox's own pages and
    * dialogs (spec firefox-surfaces-theme).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   init(win) {
     if (windows.has(win)) return;
@@ -768,7 +768,7 @@ export const ThemeHost = {
   /**
    * `:theme [dark|light|system]` (theme-appearance B3-B5): the built-in palette's appearance,
    * kept in a pref unless config.toml sets it; without a word the other of what `win` shows.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {string} [text]
    * @returns {{ text: string, error?: boolean }}  the notice
    */

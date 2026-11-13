@@ -13,7 +13,7 @@
 
 import { readRecord } from "../core/agent-store.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"OSKeyStore">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
 });

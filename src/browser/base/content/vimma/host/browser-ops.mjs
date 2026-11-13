@@ -67,7 +67,7 @@ export const NO_DEVTOOLS = "Developer tools are off in this browser";
 /**
  * Runs the window's `<command>` `id` as Firefox's key would: nothing when it is disabled
  * (Reader View on a page that has none, Stop with nothing loading).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {boolean} whether it ran
  */
@@ -81,7 +81,7 @@ export function runCommand(win, id) {
 /**
  * Sends the `<key>` `id` the command event its listener runs on, as GlobalKeyListener does. The
  * key is usually one Vimma turned off (bound means off): it is on for this one dispatch.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {boolean} false when the window has no such key
  */
@@ -101,10 +101,10 @@ export function runKey(win, id) {
 /**
  * Firefox's quit (ctrl+q): `goQuitApplication` with an event whose shortcut modifier is down,
  * so Firefox counts it as the shortcut and asks first (`browser.warnOnQuitShortcut`).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function quit(win) {
-  /** @type {any} */ (win).goQuitApplication({ ctrlKey: true, metaKey: true });
+  win.goQuitApplication({ ctrlKey: true, metaKey: true });
 }
 
 /** Prompts in flight per window: a second F7 while one is open does nothing, as in Firefox. */
@@ -114,7 +114,7 @@ const caretPrompts = new WeakSet();
  * Firefox's F7. Its handler is the private Tabbrowser#toggleCaretBrowsing
  * (browser/components/tabbrowser/Tabbrowser.sys.mjs:9197, Firefox 157), which no command or key
  * reaches, so this repeats its steps: the shortcut pref, the same confirmation, then the toggle.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function toggleCaretBrowsing(win) {
   const SHORTCUT = "accessibility.browsewithcaret_shortcut.enabled";
@@ -164,11 +164,11 @@ export function toggleCaretBrowsing(win) {
 /**
  * Firefox's ctrl+shift+pageup / pagedown: moves the selected tab past the next visible one
  * (another workspace's hidden tabs are skipped), as Tabbrowser's keydown handler does.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {"left" | "right"} way
  */
 export function moveTab(win, way) {
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const metricsContext = gBrowser.TabMetrics.userTriggeredContext(
     gBrowser.TabMetrics.METRIC_SOURCE.KEYBOARD,
   );
@@ -180,7 +180,7 @@ export function moveTab(win, way) {
  * `:firefox <id>` (docs/specs/firefox-keys.md decision 5): a `<key>` id runs as that key, even
  * one Vimma turned off; any other id runs as a `<command>`, which does nothing while Firefox has
  * it disabled (Stop with nothing loading), as Firefox's own key would.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {boolean} false when the window has no element with that id
  */
@@ -194,7 +194,7 @@ export function runFirefoxById(win, id) {
 
 /**
  * The ids `:firefox` completes: the window's commands and keys, once each, in document order.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {string[]}
  */
 export function firefoxIds(win) {
@@ -204,11 +204,11 @@ export function firefoxIds(win) {
 
 /**
  * The runners for the Browser and Developer tools actions, keyed by action id.
- * @param {(win: Window, text: string) => void} say  shows a notice
- * @returns {Record<string, (s: { win: Window }, a: Action, text?: string) => void>}
+ * @param {(win: BrowserWindow, text: string) => void} say  shows a notice
+ * @returns {Record<string, (s: { win: BrowserWindow }, a: Action, text?: string) => void>}
  */
 export function browserRunners(say) {
-  /** @type {Record<string, (s: { win: Window }, a: Action, text?: string) => void>} */
+  /** @type {Record<string, (s: { win: BrowserWindow }, a: Action, text?: string) => void>} */
   const out = {};
   for (const [action, command] of Object.entries(BROWSER_COMMANDS)) {
     out[action] = (s) => void runCommand(s.win, command);
@@ -234,11 +234,11 @@ export function browserRunners(say) {
  * the other workspaces' are hidden), as Firefox's openPreferences reuses one, and loads `url`
  * there when it names a pane; otherwise opens `url` in a new tab. A hash change on
  * about:preferences shows that pane (preferences.js listens for hashchange).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} url  about:preferences or about:preferences#<pane>
  */
 export function openSettings(win, url) {
-  const w = /** @type {any} */ (win);
+  const w = win;
   const system = Services.scriptSecurityManager.getSystemPrincipal();
   const tab = w.gBrowser.visibleTabs.find((/** @type {any} */ t) =>
     /^about:(preferences|settings)$/.test(t.linkedBrowser.currentURI.specIgnoringRef),

@@ -362,9 +362,12 @@ add_task(async function moving_a_tab_reopens_it_in_the_target_container() {
   const b = await create("beta");
   ww().switchTo({ id: a.id });
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?moved`);
+  const after = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?after`);
+  gBrowser.selectedTab = tab;
   setTabLabel(tab, "my label");
   tab.toggleMuteAudio();
   const oldId = ww().idOf(tab);
+  const at = tab.index;
 
   await runCommand("wsmove beta");
   await until(() => !tab.isConnected, "the original tab closes");
@@ -372,6 +375,11 @@ add_task(async function moving_a_tab_reopens_it_in_the_target_container() {
   Assert.ok(moved, "the URL reopens in beta's container");
   Assert.equal(getTabLabel(moved), "my label", "the label is kept");
   Assert.ok(moved.muted, "and the mute");
+  // Reopened beside the original, as Firefox's "Reopen in Container" places it (tabIndex
+  // `index + 1`), so it takes the original's place in the tab strip.
+  Assert.equal(moved.index, at, "it takes the original's place");
+  Assert.equal(after.index, at + 1, "before the tab that followed it");
+  BrowserTestUtils.removeTab(after);
   const model = ww().model;
   const inA = model.workspaces.find((w) => w.id === a.id).tabs;
   const inB = model.workspaces.find((w) => w.id === b.id).tabs;

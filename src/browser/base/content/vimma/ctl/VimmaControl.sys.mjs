@@ -48,7 +48,11 @@ import { AgentError, forgetAgentConnection, runAgentCommand } from "./agent-comm
 
 /** @import { Chord } from "../core/keys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AppConstants" | "AsyncShutdown" | "BrowserWindowTracker" | "clearTimeout"
+ *   | "PrivateBrowsingUtils" | "setTimeout"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
@@ -264,7 +268,7 @@ function keyInit(chord) {
 
 /**
  * Press and release each chord in `win`, holding its modifiers like a person would.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Chord[]} chords
  */
 function pressChords(win, chords) {
@@ -272,7 +276,7 @@ function pressChords(win, chords) {
   if (!tip.beginInputTransaction(win, () => true)) {
     throw new ControlError("failed", "another input method owns the window's keyboard input");
   }
-  const KeyboardEvent = /** @type {any} */ (win).KeyboardEvent;
+  const KeyboardEvent = win.KeyboardEvent;
   for (const chord of chords) {
     const held = MODIFIER_KEYS.filter(([flag]) => chord[flag]);
     for (const [, key, code] of held) tip.keydown(new KeyboardEvent("", { key, code }));
@@ -377,7 +381,7 @@ const COMMANDS = {
   },
 
   state() {
-    const win = /** @type {any} */ (topWindow());
+    const win = topWindow();
     const host = VimmaHost.status(win);
     const { gBrowser } = win;
     const visible = gBrowser.visibleTabs;
@@ -417,7 +421,7 @@ const COMMANDS = {
     if (!["http", "https", "file", "about"].includes(uri.scheme)) {
       throw new ControlError("invalid-args", "url scheme must be http, https, file or about");
     }
-    const win = /** @type {any} */ (topWindow());
+    const win = topWindow();
     // The system principal, as BrowserContentHandler uses for `vimma <url>`: the token holder
     // is the user, and javascript: and data: are refused above, so no script runs in a page's
     // context. Not through browserDOMWindow.openURI(OPEN_EXTERNAL) like the command line:
@@ -1280,12 +1284,12 @@ export const VimmaControl = {
    * run (whatever the pref says) and starts watching the pref, but the server starts only once
    * that window has finished its delayed startup: a client that sees the discovery file must
    * find a window to send keys to and report on (the e2e harness saw "no browser window").
-   * @param {Window | { gBrowserInit?: { delayedStartupFinished?: boolean } }} win
+   * @param {BrowserWindow | { gBrowserInit?: { delayedStartupFinished?: boolean } }} win
    */
   init(win) {
     if (initialised) return;
     initialised = true;
-    const w = /** @type {any} */ (win);
+    const w = win;
     if (!w.gBrowserInit?.delayedStartupFinished) {
       windowReady = new Promise((resolve) => {
         /** @param {unknown} subject */
