@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Records the promo video's footage from a real Vimma build: each shot in tools/promo/shots.mjs
+ * Records the promo video's footage from a real Vimma build: each shot in tools/promo/shots.ts
  * gets a fresh throwaway profile (the e2e harness's, plus promoPrefs), runs under its own Xvfb
  * and is driven through vimma-ctl, while ffmpeg's x11grab records the screen. The pages are the
  * fictional sites in tools/promo/fixtures, served by the harness's page server acting as an
@@ -14,9 +14,9 @@
  * window's provider. The video itself is composited elsewhere
  * (vimma-site: npm run video); this writes the raw clips and what happened in them.
  *
- *   node tools/promo/record.mjs --out DIR                       # every shot, 1920x1080
- *   node tools/promo/record.mjs --out DIR --geometry 1080x1920 --shots keys,tiling,agent
- *   node tools/promo/record.mjs --out DIR --pace 800            # slower: ms per beat
+ *   node tools/promo/record.ts --out DIR                       # every shot, 1920x1080
+ *   node tools/promo/record.ts --out DIR --geometry 1080x1920 --shots keys,tiling,agent
+ *   node tools/promo/record.ts --out DIR --pace 800            # slower: ms per beat
  *
  * Options: --scale (device pixels per CSS pixel, default 1.5), --fps (default 30), --toolbar
  * (`[ui] toolbar` for every shot: hidden, the default, or shown), --build
@@ -51,6 +51,7 @@ import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
 import { startPageServer } from "../e2e/pages.mjs";
 import { startShop } from "../agent-bench/shop.mjs";
+import type { ScriptTurn } from "../agent-bench/scripted.mjs";
 import {
   MODEL,
   PROMO_CATALOG,
@@ -58,7 +59,7 @@ import {
   promoShopper,
   startModelServer,
   textKeys,
-} from "./agent.mjs";
+} from "./agent.ts";
 import { READ_PATH_PREF, devPrefs } from "../start.mjs";
 import {
   HOSTS,
@@ -71,8 +72,8 @@ import {
   proxyRoute,
   servedModule,
   supportsThemeName,
-} from "./promo.mjs";
-import { SHOTS } from "./shots.mjs";
+} from "./promo.ts";
+import { SHOTS } from "./shots.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -80,7 +81,7 @@ const FIXTURES = join(HERE, "fixtures");
 const THEMES = join(HERE, "themes");
 const LIGHT_THEMES = new Set(["rose-pine"]);
 
-const OPTIONS = /** @type {const} */ ({
+const OPTIONS = {
   out: { type: "string" },
   geometry: { type: "string", default: "1920x1080" },
   scale: { type: "string", default: "1.5" },
@@ -93,26 +94,19 @@ const OPTIONS = /** @type {const} */ ({
   "vimma-ctl": { type: "string" },
   keep: { type: "boolean", default: false },
   help: { type: "boolean", short: "h", default: false },
-});
+} as const;
 
-/**
- * @param {string} message
- * @returns {never}
- */
-function usage(message) {
-  process.stderr.write(
-    `promo: ${message}\nSee the comment at the top of tools/promo/record.mjs.\n`,
-  );
+function usage(message: string): never {
+  process.stderr.write(`promo: ${message}\nSee the comment at the top of tools/promo/record.ts.\n`);
   process.exit(2);
 }
 
 /**
  * Write a theme into the temp theme directory the profile reads (vimma.theme.omarchyPath):
  * colors.toml, and light.mode for a light theme, as omarchy-theme-set leaves them.
- * @param {string} dir
- * @param {string} name a file in tools/promo/themes
+ * @param name a file in tools/promo/themes
  */
-function writeTheme(dir, name) {
+function writeTheme(dir: string, name: string) {
   copyFileSync(join(THEMES, `${name}.colors.toml`), join(dir, "colors.toml.tmp"));
   rmSync(join(dir, "colors.toml"), { force: true });
   copyFileSync(join(dir, "colors.toml.tmp"), join(dir, "colors.toml"));
@@ -124,11 +118,8 @@ function writeTheme(dir, name) {
 /**
  * Serve vimma-core's `name`.mjs as `name`.js in `dir`, with the modules it imports, for
  * probe.js (fixtures/probe.js imports hints.js).
- * @param {string} dir
- * @param {string} name
- * @param {Set<string>} [done]
  */
-function serveCore(dir, name, done = new Set()) {
+function serveCore(dir: string, name: string, done: Set<string> = new Set()) {
   if (done.has(name)) return;
   done.add(name);
   const { text, imports } = servedModule(
@@ -138,12 +129,8 @@ function serveCore(dir, name, done = new Set()) {
   for (const dep of imports) serveCore(dir, dep, done);
 }
 
-/**
- * Replace config.toml whole (write, then rename), so Vimma's poll never reads half a file.
- * @param {string} path
- * @param {string} text
- */
-function writeConfig(path, text) {
+/** Replace config.toml whole (write, then rename), so Vimma's poll never reads half a file. */
+function writeConfig(path: string, text: string) {
   writeFileSync(`${path}.tmp`, text);
   renameSync(`${path}.tmp`, path);
 }
@@ -151,9 +138,8 @@ function writeConfig(path, text) {
 /**
  * The checkout a local build was made from (`<checkout>/engine/obj-*\/dist/bin/vimma`), or
  * null for a build elsewhere.
- * @param {string} binary
  */
-function buildCheckout(binary) {
+function buildCheckout(binary: string) {
   const m = /^(.*)\/engine\/obj-[^/]+\/dist\/bin\/[^/]+$/.exec(binary);
   return m?.[1] && existsSync(join(m[1], "src")) ? m[1] : null;
 }
@@ -167,21 +153,21 @@ function buildCheckout(binary) {
  * system reports; `toolbar` (from --toolbar) when it takes `[ui] toolbar`. Each key is kept
  * only if the build reads the config with it and without an error, since a config.toml with an
  * error is not applied at all. A build whose checkout cannot be found gets none of them.
- * @param {string} binary
- * @param {"hidden" | "shown"} toolbar
- * @returns {Promise<{ name: string | null, appearance?: "dark", toolbar?: "hidden" | "shown" }>}
  */
-async function promoLook(binary, toolbar) {
+async function promoLook(
+  binary: string,
+  toolbar: "hidden" | "shown",
+): Promise<{ name: string | null; appearance?: "dark"; toolbar?: "hidden" | "shown" }> {
   const checkout = buildCheckout(binary);
   const config = checkout && join(checkout, "src/browser/base/content/vimma/core/config.mjs");
   if (!config || !existsSync(config)) return { name: null };
   try {
     const { parseConfig } = await import(pathToFileURL(config).href);
     if (!supportsThemeName(parseConfig, "vimma")) return { name: null };
-    /** @type {{ name: string, appearance?: "dark", toolbar?: "hidden" | "shown" }} */
-    const look = { name: "vimma" };
-    /** @param {object} more */
-    const reads = (more) =>
+    const look: { name: string; appearance?: "dark"; toolbar?: "hidden" | "shown" } = {
+      name: "vimma",
+    };
+    const reads = (more: object) =>
       parseConfig(promoConfig({ source: "file", ...look, ...more })).errors.length === 0;
     if (reads({ appearance: "dark" })) look.appearance = "dark";
     if (reads({ toolbar })) look.toolbar = toolbar;
@@ -196,10 +182,8 @@ async function promoLook(binary, toolbar) {
  * content sandbox must be allowed to read. The harness allows this checkout's; a build from
  * another checkout (--build ../vimma/engine/...) needs that one's too, or the content actors
  * (hints, scrolling) fail to load.
- * @param {string} binary
- * @returns {Record<string, string>}
  */
-function sandboxPrefs(binary) {
+function sandboxPrefs(binary: string): Record<string, string> {
   const checkout = buildCheckout(binary);
   if (!checkout) return {};
   const paths = new Set([...devPrefs(REPO), ...devPrefs(checkout)].map(([, v]) => String(v)));
@@ -210,11 +194,12 @@ function sandboxPrefs(binary) {
  * The HTTP proxy the profile uses for every request: the fixture pages for the fixture hosts,
  * and the servers `routes` names for theirs (the shop and the scripted model of the agent shot).
  * `routes` is read at each request, so a shot can add its servers after the proxy starts.
- * @param {string} pages the fixture page server's origin
- * @param {Record<string, string>} routes
- * @returns {Promise<{ port: number, close: () => Promise<void> }>}
+ * @param pages the fixture page server's origin
  */
-async function startProxy(pages, routes) {
+async function startProxy(
+  pages: string,
+  routes: Record<string, string>,
+): Promise<{ port: number; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     const { origin, path } = proxyRoute(req.url ?? "/", req.headers.host ?? "", routes, pages);
     const target = new URL(origin);
@@ -256,9 +241,20 @@ async function startProxy(pages, routes) {
  * Screen recording with ffmpeg's x11grab. x11grab stamps each frame with the wall clock, and
  * -copyts keeps those stamps, so the file's start time is the first frame's epoch time: the
  * origin of the key track.
- * @param {{ display: string, width: number, height: number, fps: number, file: string }} o
  */
-async function startRecording({ display, width, height, fps, file }) {
+async function startRecording({
+  display,
+  width,
+  height,
+  fps,
+  file,
+}: {
+  display: string;
+  width: number;
+  height: number;
+  fps: number;
+  file: string;
+}) {
   const child = spawn(
     "ffmpeg",
     [
@@ -276,7 +272,7 @@ async function startRecording({ display, width, height, fps, file }) {
   // wait until frames are being written: progress reports frame=N
   await new Promise((resolve, reject) => {
     let buf = "";
-    const onData = (/** @type {Buffer} */ d) => {
+    const onData = (d: Buffer) => {
       buf += d;
       const frames = [...buf.matchAll(/^frame=(\d+)$/gm)].map((m) => Number(m[1]));
       if (frames.some((n) => n >= 2)) {
@@ -299,12 +295,8 @@ async function startRecording({ display, width, height, fps, file }) {
   };
 }
 
-/**
- * @param {string} cmd
- * @param {string[]} args
- * @returns {Promise<string>} stdout
- */
-function run(cmd, args) {
+/** @returns stdout */
+function run(cmd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     let out = "";
@@ -318,12 +310,8 @@ function run(cmd, args) {
   });
 }
 
-/**
- * The raw capture's first-frame time (epoch ms), and a copy re-based to start at 0.
- * @param {string} raw
- * @param {string} clip
- */
-async function finishClip(raw, clip) {
+/** The raw capture's first-frame time (epoch ms), and a copy re-based to start at 0. */
+async function finishClip(raw: string, clip: string) {
   const probe = JSON.parse(
     await run("ffprobe", [
       "-v",
@@ -359,11 +347,20 @@ async function finishClip(raw, clip) {
  * What a shot can do. Every keystroke goes through vimma-ctl send-keys and onto the key track.
  */
 export class Director {
-  /**
-   * @param {{ ctl: Ctl, pace: number, themeDir: string, track: KeyTrack,
-   *   configPath?: string, themeName?: string | null, appearance?: "dark",
-   *   toolbar?: "hidden" | "shown" }} o
-   */
+  declare ctl: Ctl;
+  declare pace: number;
+  declare themeDir: string;
+  declare track: KeyTrack;
+  declare configPath: string;
+  declare themeName: string | null;
+  declare appearance: "dark" | undefined;
+  declare toolbar: "hidden" | "shown" | undefined;
+  /** hint labels worked out in setup */
+  declare labels: Record<string, string>;
+  /** screen points for the video's zoom */
+  declare points: Record<string, { x: number; y: number }>;
+  /** the agent shot's model turns */
+  declare agentReplies: ScriptTurn[] | null;
   constructor({
     ctl,
     pace,
@@ -373,6 +370,15 @@ export class Director {
     themeName = null,
     appearance,
     toolbar,
+  }: {
+    ctl: Ctl;
+    pace: number;
+    themeDir: string;
+    track: KeyTrack;
+    configPath?: string;
+    themeName?: string | null;
+    appearance?: "dark";
+    toolbar?: "hidden" | "shown";
   }) {
     this.ctl = ctl;
     this.pace = pace;
@@ -382,26 +388,19 @@ export class Director {
     this.themeName = themeName;
     this.appearance = appearance;
     this.toolbar = toolbar;
-    /** @type {Record<string, string>} hint labels worked out in setup */
     this.labels = {};
-    /** @type {Record<string, { x: number, y: number }>} screen points for the video's zoom */
     this.points = {};
-    /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[] | null} the agent shot's model turns */
     this.agentReplies = null;
   }
 
-  /** @returns {Promise<any>} */
-  state() {
+  state(): Promise<any> {
     return this.ctl.state();
   }
 
   /**
    * Wait for the state to satisfy `test`, polling every 50 ms.
-   * @param {(state: any) => boolean} test
-   * @param {string} what
-   * @param {number} [timeoutMs]
    */
-  async until(test, what, timeoutMs = 15_000) {
+  async until(test: (state: any) => boolean, what: string, timeoutMs = 15_000) {
     const deadline = Date.now() + timeoutMs;
     let last;
     for (;;) {
@@ -414,35 +413,33 @@ export class Director {
     }
   }
 
-  /** A pacing pause, in beats of --pace, so a viewer can follow. @param {number} beats */
-  hold(beats) {
+  /** A pacing pause, in beats of --pace, so a viewer can follow. */
+  hold(beats: number) {
     return sleep(Math.round(beats * this.pace));
   }
 
-  /** Keys sent off camera (setup): not on the key track. @param {string} keys */
-  send(keys) {
+  /** Keys sent off camera (setup): not on the key track. */
+  send(keys: string) {
     return this.ctl.sendKeys(keys);
   }
 
   /**
    * One keystroke (or chord sequence) on camera, then `beats` of pause.
-   * @param {string} keys
-   * @param {number} [beats]
    */
-  async key(keys, beats = 1) {
+  async key(keys: string, beats = 1) {
     this.track.key(keys, Date.now());
     await this.ctl.sendKeys(keys);
     await this.hold(beats);
   }
 
-  /** `ctrl+b`, a short beat (the status bar shows "prefix"), then `k`. @param {string} k */
-  async prefix(k) {
+  /** `ctrl+b`, a short beat (the status bar shows "prefix"), then `k`. */
+  async prefix(k: string) {
     await this.key("ctrl+b", 0.7);
     await this.key(k, 0);
   }
 
-  /** Type text a character at a time. @param {string} text @param {number} beats */
-  async type(text, beats) {
+  /** Type text a character at a time. */
+  async type(text: string, beats: number) {
     for (const c of text) await this.key(c === " " ? "space" : c, beats);
   }
 
@@ -478,10 +475,8 @@ export class Director {
   /**
    * Type a sentence a word at a time, `beats` after each, off the key track: a chip for every
    * letter of a sentence would bury the picture. Marked as `typed` once done.
-   * @param {string} text
-   * @param {number} beats
    */
-  async typeText(text, beats) {
+  async typeText(text: string, beats: number) {
     for (const word of textKeys(text)) {
       await this.ctl.sendKeys(word);
       await this.hold(beats);
@@ -489,22 +484,19 @@ export class Director {
     this.mark("typed");
   }
 
-  /** @param {string} url */
-  open(url) {
+  open(url: string) {
     return this.ctl.open(url);
   }
 
-  /** @param {string} name */
-  mark(name) {
+  mark(name: string) {
     this.track.mark(name, Date.now());
   }
 
   /**
    * Swap the theme file, as omarchy-theme-set does, and have Vimma read it now (what
    * Omarchy's theme-set hook does). Marked on the track as `theme:<name>`.
-   * @param {string} name
    */
-  async theme(name) {
+  async theme(name: string) {
     writeTheme(this.themeDir, name);
     this.mark(`theme:${name}`);
     const out = await this.ctl.run(["reload-theme"]);
@@ -518,10 +510,15 @@ export class Director {
    * the shot's other keys as they were. Vimma polls config.toml (every 200 ms in the promo
    * profile); nothing in the state shows the colours, so the shot's next hold covers the poll.
    * Marked on the track as `mark`.
-   * @param {{ source?: "file" | "omarchy", name?: string, colors?: Record<string, string> }} look
-   * @param {string} mark
    */
-  async saveTheme({ source = "file", name, colors }, mark) {
+  async saveTheme(
+    {
+      source = "file",
+      name,
+      colors,
+    }: { source?: "file" | "omarchy"; name?: string; colors?: Record<string, string> },
+    mark: string,
+  ) {
     writeConfig(
       this.configPath,
       promoConfig({
@@ -539,16 +536,14 @@ export class Director {
   /**
    * The hint label Vimma will give the page's target link: load `url#probe` (fixtures/probe.js
    * titles it with the label, worked out with vimma-core's hints.mjs), then close that tab.
-   * @param {string} url
    */
-  async probeHintLabel(url) {
+  async probeHintLabel(url: string) {
     await this.open(`${url}#probe`);
     const s = await this.until(
-      (st) =>
-        st.tabs.some((/** @type {any} */ t) => t.selected && /^probe(-error)?:/.test(t.title)),
+      (st) => st.tabs.some((t: any) => t.selected && /^probe(-error)?:/.test(t.title)),
       "the probe page's report",
     );
-    const tab = s.tabs.find((/** @type {any} */ t) => t.selected);
+    const tab = s.tabs.find((t: any) => t.selected);
     const report = parseProbeTitle(tab.title);
     if (!report) throw new Error("no probe report");
     const count = s.tabs.length;
@@ -563,10 +558,10 @@ async function main() {
   try {
     ({ values } = parseArgs({ options: OPTIONS, allowPositionals: false }));
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
   if (values.help) {
-    process.stdout.write("See the comment at the top of tools/promo/record.mjs.\n");
+    process.stdout.write("See the comment at the top of tools/promo/record.ts.\n");
     return 0;
   }
   if (!values.out) return usage("--out DIR is required");
@@ -595,15 +590,14 @@ async function main() {
     `promo: build ${build.binary}\npromo: ${values.geometry} at ${scale}x, pace ${pace} ms`,
   );
 
-  /** @type {Array<() => Promise<void>>} */
-  const cleanups = [];
+  const cleanups: Array<() => Promise<void>> = [];
   const cleanupAll = async () => {
     for (const c of cleanups.splice(0).reverse()) await c().catch(() => {});
   };
-  for (const [sig, code] of /** @type {const} */ ([
+  for (const [sig, code] of [
     ["SIGINT", 130],
     ["SIGTERM", 143],
-  ])) {
+  ] as const) {
     process.once(sig, () => cleanupAll().finally(() => process.exit(code)));
   }
 
@@ -616,8 +610,7 @@ async function main() {
     serveCore(served, "hints");
     const pages = await startPageServer(served);
     cleanups.push(() => pages.close());
-    /** @type {Record<string, string>} */
-    const routes = {};
+    const routes: Record<string, string> = {};
     const proxy = await startProxy(new URL(pages.base).origin, routes);
     cleanups.push(() => proxy.close());
     const port = proxy.port;
@@ -638,8 +631,7 @@ async function main() {
     );
     // our own Xvfb at the full screen size, with the window in CSS pixels: launch()'s own
     // Xvfb would be the window's size, which is smaller once devPixelsPerPx is over 1
-    /** @type {NodeJS.ProcessEnv} */
-    const baseEnv = { ...process.env, DISPLAY: display.display };
+    const baseEnv: NodeJS.ProcessEnv = { ...process.env, DISPLAY: display.display };
     delete baseEnv.WAYLAND_DISPLAY;
     const env = { ...build.env, GDK_BACKEND: "x11", MOZ_ENABLE_WAYLAND: "0" };
 
@@ -648,20 +640,16 @@ async function main() {
       scale,
       fps,
       pace,
-      /** @type {any[]} */
-      shots: [],
+      shots: [] as any[],
     };
     for (const shot of shots) {
       console.log(`promo: ${shot.name}`);
       // no Omarchy theme until a shot sets one; config.toml picks the source
       for (const f of readdirSync(themeDir)) rmSync(join(themeDir, f), { force: true });
       // the agent shot: a fresh shop (an empty basket) and a fresh script, on this machine
-      /** @type {{ endpoint: string, model: string } | undefined} */
-      let agent;
-      /** @type {() => Promise<void>} */
-      let closeAgent = async () => {};
-      /** @type {import("../agent-bench/scripted.mjs").ScriptTurn[] | null} */
-      let agentReplies = null;
+      let agent: { endpoint: string; model: string } | undefined;
+      let closeAgent: () => Promise<void> = async () => {};
+      let agentReplies: ScriptTurn[] | null = null;
       if (shot.agent) {
         const shop = await startShop({ catalog: PROMO_CATALOG, name: SHOP_NAME });
         const shopHost = new URL(HOSTS.shop).host;
@@ -692,8 +680,7 @@ async function main() {
           search: true,
         }),
       );
-      /** @type {() => Promise<void>} */
-      let teardown = async () => {};
+      let teardown: () => Promise<void> = async () => {};
       const session = await launch({
         build: { binary: build.binary, env },
         xvfb: false,
