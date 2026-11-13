@@ -34,7 +34,7 @@ import { WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 /** @import { Route } from "../core/routes.mjs" */
 /** @import { WorkspaceDefinition } from "../core/workspacedefs.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils" | "URILoadingHelper">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   URILoadingHelper: "resource:///modules/URILoadingHelper.sys.mjs",

@@ -26,7 +26,7 @@ const RENAME_PLACEHOLDER = "empty: back to the page title";
 
 export class RenamePrompt {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {RenameCallbacks} callbacks
    */
   constructor(win, { apply, changed = () => {} }) {

@@ -17,7 +17,7 @@ export const ROUTE_USAGE = ":route, :route add [workspace], :route move";
 
 /**
  * `:route [add [workspace] | move]`.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} text  the command's argument, "" without one
  * @param {(text: string) => void} say  the notice, for what is known only later
  * @returns {string | null} the notice to show now, or null
@@ -25,7 +25,7 @@ export const ROUTE_USAGE = ":route, :route add [workspace], :route move";
 export function runRoute(win, text, say) {
   const [verb = "", ...rest] = text.trim().split(/\s+/);
   const ww = WindowWorkspaces.get(win);
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const tab = gBrowser.selectedTab;
   if (verb === "") {
     const id = ww?.model ? ww.idOf(tab) : "";
@@ -39,7 +39,7 @@ export function runRoute(win, text, say) {
 }
 
 /**
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} tab
  * @param {string} name  the workspace, "" for the current one
  * @param {(text: string) => void} say
@@ -77,7 +77,7 @@ function addRoute(win, tab, name, say) {
 }
 
 /**
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} tab
  */
 function moveByRoute(win, tab) {

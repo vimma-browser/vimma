@@ -154,13 +154,13 @@ const WIDE = Object.freeze({ x: 0, y: 0, width: 16, height: 9 });
 /** Tabs labelled for a11y by us (the third pane on; Firefox labels the first two). */
 const LABEL_ATTR = "vimma-pane-label";
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function gBrowserOf(win) {
   return /** @type {{ gBrowser: TabBrowser }} */ (/** @type {unknown} */ (win)).gBrowser;
 }
 
 export class PaneView {
-  /** @type {Window} */
+  /** @type {BrowserWindow} */
   #win;
   /** @type {Panes | null} null: one pane, the selected tab, no split */
   #panes = null;
@@ -225,7 +225,7 @@ export class PaneView {
   adoption = null;
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {{ max?: number }} [options]  `max`: config `[panes] max` (default: the config default)
    */
   constructor(win, { max = mergeWithDefaults({}).panes.max } = {}) {
@@ -674,7 +674,7 @@ export class PaneView {
     if (refusal) return { ok: false, reason: refusal.message };
     const fresh =
       tab ??
-      gBrowser.addTrustedTab(/** @type {any} */ (this.#win).BROWSER_NEW_TAB_URL, {
+      gBrowser.addTrustedTab(this.#win.BROWSER_NEW_TAB_URL, {
         inBackground: true,
       });
     this.#set(split(current, current.focus, direction, fresh.linkedPanel, { max: this.#max }));
@@ -1268,7 +1268,7 @@ export class PaneView {
     applyLayout(win, rects, area);
     for (const t of rects.keys()) this.#laidOut.add(t);
     if (!this.#resize) {
-      const RO = /** @type {typeof ResizeObserver} */ (/** @type {any} */ (win).ResizeObserver);
+      const RO = /** @type {typeof ResizeObserver} */ (win.ResizeObserver);
       const observer = new RO(() => {
         if (this.#panes && !this.hidden) this.#geometry();
       });
@@ -1300,28 +1300,28 @@ export class PaneView {
   }
 }
 
-/** @type {WeakMap<Window, PaneView>} */
+/** @type {WeakMap<BrowserWindow, PaneView>} */
 const views = new WeakMap();
 
 /**
  * The host API (sub-spec 3's keys call it): one PaneView per browser window.
  */
 export const PaneViews = Object.freeze({
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   init(win) {
     if (views.has(win)) return;
     views.set(win, new PaneView(win));
     win.addEventListener("unload", () => PaneViews.uninit(win), { once: true });
   },
 
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   uninit(win) {
     views.get(win)?.destroy();
     views.delete(win);
   },
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @returns {PaneView | undefined}
    */
   get(win) {

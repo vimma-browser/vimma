@@ -92,7 +92,7 @@ function link(id, guid) {
 /**
  * The window's scope at the configured root (core fromPlaces, workspaceTree). With the
  * workspace root, a window without workspaces (private, containers off) gets the toolbar.
- * @param {Window | null} [win]
+ * @param {BrowserWindow | null} [win]
  * @returns {Promise<Scope>}
  */
 export async function loadScope(win = null) {
@@ -119,7 +119,7 @@ export async function loadScope(win = null) {
 
 /**
  * The panel's tree for `win` (loadScope).
- * @param {Window | null} [win]
+ * @param {BrowserWindow | null} [win]
  * @returns {Promise<Folder>}
  */
 export async function loadTree(win = null) {
@@ -218,11 +218,11 @@ function pathIn(scope, parentGuid, title) {
 
 /**
  * The page a key bookmarks: the selected tab's URL and title, when the panel could open it.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {{ url: string, title: string } | null}
  */
 export function currentPage(win) {
-  const browser = /** @type {any} */ (win).gBrowser.selectedBrowser;
+  const browser = win.gBrowser.selectedBrowser;
   const url = browser.currentURI?.spec ?? "";
   if (!isOpenable(url) || url === "about:blank") return null;
   return { url, title: browser.contentTitle || url };
@@ -233,7 +233,7 @@ export function currentPage(win) {
  * `@name/…` in another workspace's folder, or from the Menu outside them (`outside`); `value`
  * is what the move/rename prompt starts with (outside every folder: its title alone, so Enter
  * files it at the top).
- * @param {Window | null} win
+ * @param {BrowserWindow | null} win
  * @param {string} url
  * @returns {Promise<{ guid: string, path: string, value: string, outside: boolean } | null>}
  */
@@ -263,7 +263,7 @@ export async function findBookmark(win, url) {
  * Files `page` under `text` from folder `base`, by default the tree's top (spec decision 5);
  * `@name/…` in that workspace's folder. `folderOnly`: a trailing `/` makes the folders and no
  * bookmark (the panel's `a`, neo-tree); else the page goes into them under its own title.
- * @param {Window | null} win
+ * @param {BrowserWindow | null} win
  * @param {string} text
  * @param {{ url: string, title: string }} page
  * @param {{ base?: string, folderOnly?: boolean }} [options]
@@ -285,7 +285,7 @@ export async function addBookmark(win, text, page, { base, folderOnly = false } 
 
 /**
  * A folder named by `text` (its last segment; the ones before are made too) under `base`.
- * @param {Window | null} win
+ * @param {BrowserWindow | null} win
  * @param {string} text
  * @param {string} base
  */
@@ -301,7 +301,7 @@ export async function addFolder(win, text, base) {
 /**
  * Moves and renames bookmark `guid` to `text` from the tree's top (the already-bookmarked
  * prompt), or into another workspace's folder (`@name/…`): a trailing `/` keeps its title.
- * @param {Window | null} win
+ * @param {BrowserWindow | null} win
  * @param {string} guid
  * @param {string} text
  */
@@ -341,7 +341,7 @@ export async function renameItem(guid, title) {
 /**
  * Moves `guid` into the folder `text` names from the tree's top, or in another workspace's
  * folder (`@name/…`), made where missing; never into itself or below itself.
- * @param {Window | null} win
+ * @param {BrowserWindow | null} win
  * @param {string} guid
  * @param {string} text
  */

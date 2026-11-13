@@ -16,9 +16,9 @@ import { permissionItems, permissionPlan, permissionTitle } from "../core/sitepe
 
 /** @import { PermissionItem, PermissionOp, PermissionRecord } from "../core/sitepermissions.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"SitePermissions">} */ ({});
 // types/firefox.d.ts declares only part of Services.
-const services = /** @type {any} */ (Services);
+const services = Services;
 ChromeUtils.defineESModuleGetters(lazy, {
   SitePermissions: "resource:///modules/SitePermissions.sys.mjs",
 });
@@ -30,16 +30,16 @@ export const PAGE_CHANGED = "the page changed: run :site again";
 /**
  * The page a window's picker was opened for: its browser and that page's principal. Every key
  * checks the tab still shows it (SP2).
- * @type {WeakMap<Window, { browser: any, principal: any }>}
+ * @type {WeakMap<BrowserWindow, { browser: any, principal: any }>}
  */
 const opened = new WeakMap();
 
-/** @param {Window} win */
-const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
+/** @param {BrowserWindow} win */
+const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * Whether the selected tab, or the page in it, belongs to the agent workspace (SP1).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function inAgentWorkspace(win) {
   const g = gBrowserOf(win);
@@ -150,7 +150,7 @@ function readRecords(browser, principal) {
 
 /**
  * The picker's rows for the page it was opened for.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {PermissionItem[]}
  */
 export function sitePermissionItems(win) {
@@ -160,7 +160,7 @@ export function sitePermissionItems(win) {
 
 /**
  * `:site`: records the selected page and returns the picker's heading, or a refusal.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {{ title: string } | { refused: string }}
  */
 export function openSitePermissions(win) {
@@ -178,7 +178,7 @@ export function openSitePermissions(win) {
 /**
  * A key on a row: applied through SitePermissions when the tab still shows the page the picker
  * was opened for and Firefox allows it. Returns the notice to show, and whether to close.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {PermissionOp} op
  * @param {string} id
  * @returns {{ notice: string | null, close: boolean }}
@@ -246,7 +246,7 @@ export function setSitePopups(browser, kind) {
   return true;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 export function forgetSitePermissions(win) {
   opened.delete(win);
 }

@@ -17,11 +17,11 @@ export const NOTICE_ALERT_ID = "vimma-notice-alert";
 export const NOTICE_MS = 1500;
 const STYLESHEET = "chrome://browser/skin/vimma/notice.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 export class Notice {
-  /** @param {Window} win  a browser window */
+  /** @param {BrowserWindow} win  a browser window */
   constructor(win) {
     this.win = win;
     /** @type {HTMLElement | null} */

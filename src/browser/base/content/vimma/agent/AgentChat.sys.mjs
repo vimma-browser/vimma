@@ -58,7 +58,10 @@ import { AgentCli, CLI_ENABLED_PREF } from "./AgentCli.sys.mjs";
 import { AgentKeys } from "./AgentKeys.sys.mjs";
 import { AgentStore } from "./AgentStore.sys.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"clearTimeout" | "setInterval" | "setTimeout" | "VimmaControl"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setInterval: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -524,14 +527,17 @@ async function keyFor(provider) {
   return (await AgentKeys.get(provider.name, provider.endpoint)) ?? "";
 }
 
-/** What a conversation shows of itself: never its key, which it does not hold. */
+/**
+ * What a conversation shows of itself: never its key, which it does not hold. The provider is
+ * whole (a copy): the window hands it back as the session's choice (`choose`), which new
+ * conversations take, vision and prices included.
+ */
 function view(/** @type {Conversation} */ c) {
-  const { name, kind, endpoint, model, cli } = c.provider;
   return {
     id: c.id,
     conn: c.conn,
     title: c.title,
-    provider: { name, kind, endpoint, model, ...(cli ? { cli } : {}) },
+    provider: { ...c.provider },
     cli: c.cli,
     running: isRunning(c),
     granted: AgentGate.grants().some((g) => g.conn === c.conn),

@@ -31,7 +31,10 @@ import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { KeyLog } from "./key-log.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AppConstants" | "BrowserWindowTracker" | "PrivateBrowsingUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
@@ -106,7 +109,7 @@ function mcpOf() {
   const ucid = agent?.userContextId ?? null;
   let tabs = 0;
   if (ucid !== null) {
-    for (const w of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
       if (lazy.PrivateBrowsingUtils.isWindowPrivate(w)) continue;
       tabs += [...(w.gBrowser?.tabs ?? [])].filter((t) => t.userContextId === ucid).length;
     }
@@ -171,7 +174,7 @@ async function omarchyThemeName(dir) {
 
 /**
  * The rules, and the match for the tab with uuid `tabId` in `win` (spec workspace-routing).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string | null} tabId
  * @returns {RoutesData}
  */
@@ -189,7 +192,7 @@ function routesOf(win, tabId) {
   const last = WorkspaceRouter.lastLink;
   const defaultWorkspace = WorkspaceRouter.defaultWorkspaceState();
   const ww = WindowWorkspaces.get(win);
-  const tab = tabId && ww?.model ? /** @type {any} */ (ww.tabOf(tabId)) : null;
+  const tab = tabId && ww?.model ? ww.tabOf(tabId) : null;
   if (!tab) return { rules, tab: null, last, defaultWorkspace };
   const uri = tab.linkedBrowser.currentURI;
   /** @type {string} */
@@ -218,7 +221,7 @@ function routesOf(win, tabId) {
 
 /**
  * The workspaces of `win`: each one's name, tab count and pane count.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function workspacesOf(win) {
   const model = WindowWorkspaces.get(win)?.model;
@@ -239,7 +242,7 @@ function workspacesOf(win) {
 /**
  * How `win`'s workspace model stands against its live tabs (WindowWorkspaces.health); no
  * counts for a window without workspaces.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function healthOf(win) {
   const ww = WindowWorkspaces.get(win);
@@ -280,7 +283,7 @@ export const AboutVimma = {
 
   /**
    * Everything the page shows, read now. Never the control token, page URLs or titles.
-   * @param {Window} win  the browser window the page is in (its workspaces are listed)
+   * @param {BrowserWindow} win  the browser window the page is in (its workspaces are listed)
    * @param {{ tab?: string | null }} [options]  `tab`: the uuid `:route` passes (routing)
    * @returns {Promise<AboutData>}
    */
@@ -291,9 +294,9 @@ export const AboutVimma = {
     const configPath = ConfigHost.path;
     const theme = ThemeHost.status;
     // A normal window's page lists no private window (private-workspace decision 8b).
-    const windows = /** @type {Window[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
-      (w) => w === win || !lazy.PrivateBrowsingUtils.isWindowPrivate(w),
-    );
+    const windows = /** @type {BrowserWindow[]} */ (
+      lazy.BrowserWindowTracker.orderedWindows
+    ).filter((w) => w === win || !lazy.PrivateBrowsingUtils.isWindowPrivate(w));
     return {
       version: {
         vimma: app.MOZ_APP_VERSION_DISPLAY,

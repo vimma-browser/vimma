@@ -52,7 +52,11 @@ import { UPDATE_OUTCOMES as OUTCOMES } from "../core/control.mjs";
 /** @import { InstallType, Offer, PinnedKey, UpdateNotice } from "../core/updates.mjs" */
 /** @import { Stage } from "../core/update-notices.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AppConstants" | "clearInterval" | "clearTimeout" | "NetUtil" | "setInterval"
+ *   | "setTimeout" | "UpdateUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
@@ -184,11 +188,11 @@ let replacingDecided = /** @type {Promise<void>} */ (Promise.resolve());
 /** @type {Set<() => void>} */
 const listeners = new Set();
 let started = false;
-/** @type {unknown} */
+/** @type {number | null} */
 let firstTimer = null;
 /** @type {((subject: unknown, topic: string) => void) | null} */
 let firstWindow = null;
-/** @type {unknown} */
+/** @type {number | null} */
 let pollTimer = null;
 /** Firefox's updater as this module uses it; a test replaces it (automation only). */
 let firefoxForTest = /** @type {FirefoxUpdater | null} */ (null);
@@ -202,7 +206,7 @@ let askedCheck = false;
 let marUrls = new Set();
 /** When this session's `updates: off` notice started (decision 38), and its end's redraw. */
 let offSince = /** @type {number | null} */ (null);
-/** @type {unknown} */
+/** @type {number | null} */
 let offTimer = null;
 
 function inAutomation() {

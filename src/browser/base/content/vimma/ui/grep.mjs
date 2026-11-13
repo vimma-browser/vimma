@@ -30,7 +30,7 @@ const ROW_BEFORE = 16;
  *   previewTitle: HTMLElement, scope: HTMLElement, scopeTitle: HTMLElement,
  *   scopeBody: HTMLElement, status: HTMLElement }} Parts
  */
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 /**
@@ -68,7 +68,7 @@ function accessibleName(row) {
 }
 
 export class GrepPicker {
-  /** @param {Window} win  a browser window */
+  /** @param {BrowserWindow} win  a browser window */
   constructor(win) {
     this.win = win;
     /** @type {HTMLDialogElement | null} */
@@ -109,7 +109,7 @@ export class GrepPicker {
    * bar. Centring it in the whole window left a gap above it whenever the toolbar was hidden.
    */
   place() {
-    const area = /** @type {any} */ (this.win).gBrowser?.tabbox?.getBoundingClientRect();
+    const area = this.win.gBrowser?.tabbox?.getBoundingClientRect();
     const dialog = this.dialog;
     if (!dialog || !area?.height) return;
     dialog.style.setProperty("--vimma-grep-top", `${area.top}px`);

@@ -46,7 +46,7 @@ import { GrepPicker } from "../ui/grep.mjs";
 const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
   "resource://gre/modules/Timer.sys.mjs",
 );
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"SessionStore">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 });
@@ -71,18 +71,18 @@ const TITLE_MAX = 300;
  */
 
 /**
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {any} gBrowser
  */
-const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
+const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * The windows a scope searches (decision 10): this one, and for `windows` and `closed` every
  * other browser window on the same side of the private line, most recently used first, as tab
  * search lists them. A private window never reaches a normal one, nor the other way (L1).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {GrepPickerState["scope"]} scope
- * @returns {Window[]}
+ * @returns {BrowserWindow[]}
  */
 function scopeWindows(win, scope) {
   if (scope !== "windows" && scope !== "closed") return [win];
@@ -104,8 +104,8 @@ function closedUrl(state) {
  * Recently closed tabs of the scope's windows and, from a normal window, recently closed
  * windows (Firefox keeps no closed private window, SessionStore.sys.mjs `#maybeSaveClosedWindow`
  * callers). SessionStore keeps a closed tab's history entries, not its text.
- * @param {Window} win
- * @param {Window[]} windows  the scope's, this one first
+ * @param {BrowserWindow} win
+ * @param {BrowserWindow[]} windows  the scope's, this one first
  * @returns {GrepClosedEntry[]}
  */
 function closedEntries(win, windows) {
@@ -172,7 +172,7 @@ function closedEntries(win, windows) {
 /**
  * Resolves once the tab switch in progress is done (Firefox's TabSwitchDone), so the page has
  * its viewport's size before the match is scrolled to its middle; after a second at most.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Promise<void>}
  */
 function switchDone(win) {
@@ -199,7 +199,7 @@ const IDLE = Object.freeze({
 
 export class GrepSession {
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {GrepHost} host
    */
   constructor(win, host) {
@@ -221,13 +221,13 @@ export class GrepSession {
     this.previewTimer = undefined;
     /** @type {Map<string, { bc: any, wg: any }>} each searched frame, by `${tabId}:${key}` */
     this.frames = new Map();
-    /** @type {Map<string, Window>} the window of each tab in the last scope, by tab id */
+    /** @type {Map<string, BrowserWindow>} the window of each tab in the last scope, by tab id */
     this.windowOf = new Map();
     /** @type {GrepList | null} the last jump's results (decision 8) */
     this.list = null;
-    /** @type {Map<string, Window>} the windows the grep list's tabs are in, by tab id */
+    /** @type {Map<string, BrowserWindow>} the windows the grep list's tabs are in, by tab id */
     this.listWindows = new Map();
-    /** @type {Set<Window>} windows whose TabClose prunes the grep list */
+    /** @type {Set<BrowserWindow>} windows whose TabClose prunes the grep list */
     this.watched = new Set();
     /** The matcher key of this session's recently closed text: a newer query replaces the
      * older one, and closing the picker drops it (L5, L6). */
@@ -262,7 +262,7 @@ export class GrepSession {
     this.watch(win);
   }
 
-  /** @param {Window} w */
+  /** @param {BrowserWindow} w */
   watch(w) {
     if (this.watched.has(w)) return;
     this.watched.add(w);
@@ -305,7 +305,7 @@ export class GrepSession {
   /**
    * The window a row's tab is in: the grep list's, else the last scope's, else this one.
    * @param {string} tabId
-   * @returns {Window}
+   * @returns {BrowserWindow}
    */
   windowFor(tabId) {
     const w = this.listWindows.get(tabId) ?? this.windowOf.get(tabId);
@@ -447,7 +447,7 @@ export class GrepSession {
    * The tabs in the scope, in the order the list shows them (decision 10): window by window,
    * this one first; in each, the current workspace, or every workspace from `window` on.
    * @param {GrepPickerState["scope"]} scope
-   * @returns {{ tabs: { tab: GrepTab, browser: any }[], windows: Window[] }}
+   * @returns {{ tabs: { tab: GrepTab, browser: any }[], windows: BrowserWindow[] }}
    */
   scopeTabs(scope) {
     const agentId = WorkspaceStore.agent?.id ?? null;
@@ -490,7 +490,7 @@ export class GrepSession {
   /**
    * Recently closed tabs and windows whose title or URL matches, matched in a worker of this
    * process with a time budget, as page text is in its own (L6).
-   * @param {Window[]} windows
+   * @param {BrowserWindow[]} windows
    * @param {string} query
    * @returns {Promise<{ rows: GrepClosedRow[], timedOut: boolean }>}
    */

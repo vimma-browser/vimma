@@ -31,7 +31,7 @@ export const DOWNLOAD_PICKER_ID = "vimma-downloads-picker";
 export const SPLIT_PICKER_ID = "vimma-split-picker";
 const STYLESHEET = "chrome://browser/skin/vimma/picker.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 /**
@@ -212,7 +212,7 @@ function hostOf(url) {
 
 export class GotoPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {PickerHost} host
    * @param {PickerLook} [look]
    */
@@ -538,7 +538,7 @@ export class GotoPicker {
  */
 export class WorkspacePicker extends GotoPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {PickerHost & { moveRow?: (tab: Element, id: string) => void }} host
    */
   constructor(win, host) {
@@ -602,7 +602,7 @@ export class WorkspacePicker extends GotoPicker {
  */
 export class AddonPicker extends GotoPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {Omit<PickerHost, "items" | "activeId"> & { load: () => Promise<AnyItem[]>,
    *   refuse?: (rows: AnyItem[]) => string | null, notice?: (text: string) => void }} host
    *   refuse: why the loaded rows do not open the picker, said through `notice` instead
@@ -666,7 +666,7 @@ export class AddonPicker extends GotoPicker {
  */
 export class PermissionPicker extends GotoPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {PickerHost} host
    */
   constructor(win, host) {
@@ -688,7 +688,7 @@ export class PermissionPicker extends GotoPicker {
  */
 export class PopupPicker extends AddonPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {ConstructorParameters<typeof AddonPicker>[1]} host
    */
   constructor(win, host) {
@@ -703,7 +703,7 @@ export class PopupPicker extends AddonPicker {
  */
 export class DownloadPicker extends AddonPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {ConstructorParameters<typeof AddonPicker>[1] & { closed?: () => void }} host
    */
   constructor(win, host) {
@@ -734,7 +734,7 @@ export class DownloadPicker extends AddonPicker {
  */
 export class SplitPicker extends GotoPicker {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {PickerHost} host
    */
   constructor(win, host) {

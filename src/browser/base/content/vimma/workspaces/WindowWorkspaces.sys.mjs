@@ -49,7 +49,10 @@ import { CHANGED_TOPIC, WorkspaceStore } from "./WorkspaceStore.sys.mjs";
 /** @import { TabInfo } from "../core/switchplan.mjs" */
 /** @import { TabLabels } from "../core/tablabels.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"E10SUtils" | "PrivateBrowsingUtils" | "SessionStore" | "WorkspaceRouter"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   E10SUtils: "resource://gre/modules/E10SUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -65,15 +68,7 @@ export const TAB_KEY = "vimma-tab";
 export const TAB_WORKSPACE_KEY = "vimma-workspace";
 
 /**
- * @typedef {Element & { linkedPanel: string | null, userContextId: number, pinned: boolean,
- *   hidden: boolean, closing?: boolean, selected: boolean,
- *   splitview: (Element & { splitViewId: number, unsplitTabs: () => void }) | null,
- *   linkedBrowser: any }} Tab
- * @typedef {{ tabs: Tab[], visibleTabs: Tab[], selectedTab: Tab, hideTab: (t: Tab) => void,
- *   showTab: (t: Tab) => void, addTrustedTab: (url: string, options?: object) => Tab,
- *   insertBrowser: (t: Tab) => void, getTabForBrowser: (b: unknown) => Tab | null,
- *   addTabsProgressListener: (l: object) => void, removeTabsProgressListener: (l: object) => void,
- *   selectedBrowser: Element & { focus: () => void } }} TabBrowser
+ * @typedef {MozTabbrowserTab} Tab
  * @typedef {object} WindowWorkspacesOptions
  * @property {() => void} [onChange]  told after the model or visibility changed
  * @property {(text: string) => void} [notify]  a status message (`opened in "work"`)
@@ -205,7 +200,7 @@ function unknown(ref) {
 }
 
 export class WindowWorkspacesImpl {
-  /** @type {Window & { gBrowser: TabBrowser, delayedStartupPromise?: Promise<void> }} */
+  /** @type {BrowserWindow} */
   #win;
   /** @type {Workspaces | null} null until built, and for windows without workspaces */
   #model = null;
@@ -257,11 +252,11 @@ export class WindowWorkspacesImpl {
   ready;
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowWorkspacesOptions} [options]
    */
   constructor(win, { onChange = () => {}, notify = () => {} } = {}) {
-    this.#win = /** @type {any} */ (win);
+    this.#win = win;
     this.#onChange = onChange;
     this.#notify = notify;
     for (const type of [...TAB_EVENTS, ...SESSION_EVENTS]) win.addEventListener(type, this);
@@ -481,24 +476,22 @@ export class WindowWorkspacesImpl {
     let fresh;
     this.#moving = { from: id, to: target.id };
     try {
-      fresh = /** @type {any} */ (gBrowser).addTab(tab.linkedBrowser.currentURI.spec, {
+      fresh = gBrowser.addTab(tab.linkedBrowser.currentURI.spec, {
         userContextId,
-        tabIndex: /** @type {any} */ (tab)._tPos + 1,
+        tabIndex: tab.index + 1,
         triggeringPrincipal: principal,
         skipAnimation: true,
-        ...(lazyTab
-          ? { createLazyBrowser: true, lazyTabTitle: /** @type {any} */ (tab).label }
-          : {}),
+        ...(lazyTab ? { createLazyBrowser: true, lazyTabTitle: tab.label } : {}),
       });
     } finally {
       this.#moving = null;
     }
     if (label) setTabLabel(fresh, label);
     onMoved?.(fresh);
-    if (/** @type {any} */ (tab).muted && !fresh.muted) {
-      fresh.toggleMuteAudio(/** @type {any} */ (tab).muteReason);
+    if (tab.muted && !fresh.muted) {
+      fresh.toggleMuteAudio(tab.muteReason);
     }
-    /** @type {any} */ (gBrowser).removeTab(tab, { animate: false });
+    gBrowser.removeTab(tab, { animate: false });
     return null;
   }
 
@@ -511,7 +504,7 @@ export class WindowWorkspacesImpl {
    * @param {number} userContextId
    */
   #principalFor(tab, userContextId) {
-    const ssm = /** @type {any} */ (Services.scriptSecurityManager);
+    const ssm = Services.scriptSecurityManager;
     /** @type {any} */
     let principal;
     if (tab.linkedPanel) {
@@ -1072,8 +1065,8 @@ export class WindowWorkspacesImpl {
     this.#win.queueMicrotask(() => {
       if (!this.unpinsPinnedTabs || !tab.pinned || tab.closing || !tab.isConnected || !this.#model)
         return;
-      /** @type {any} */ (this.#gBrowser).unpinTab(tab);
-      this.#notify(unpinnedNotice(getTabLabel(tab) || /** @type {any} */ (tab).label || ""));
+      this.#gBrowser.unpinTab(tab);
+      this.#notify(unpinnedNotice(getTabLabel(tab) || tab.label || ""));
     });
   }
 
@@ -1315,7 +1308,7 @@ export class WindowWorkspacesImpl {
    */
   #openHome(id, userContextId) {
     const def = WorkspaceStore.definitions.workspaces.find((d) => d.id === id);
-    const url = def?.home ?? /** @type {any} */ (this.#win).BROWSER_NEW_TAB_URL;
+    const url = def?.home ?? this.#win.BROWSER_NEW_TAB_URL;
     // TabOpen puts it in the model (its container's workspace, active by now).
     this.#gBrowser.addTrustedTab(url, { userContextId, skipAnimation: true });
   }
@@ -1401,13 +1394,13 @@ export class WindowWorkspacesImpl {
   }
 }
 
-/** @type {WeakMap<Window, WindowWorkspacesImpl>} */
+/** @type {WeakMap<BrowserWindow, WindowWorkspacesImpl>} */
 const windows = new WeakMap();
 
 /** One WindowWorkspaces per browser window; VimmaHost starts and stops them. */
 export const WindowWorkspaces = Object.freeze({
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowWorkspacesOptions} [options]
    */
   init(win, options) {
@@ -1415,13 +1408,13 @@ export const WindowWorkspaces = Object.freeze({
     return /** @type {WindowWorkspacesImpl} */ (windows.get(win));
   },
 
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   uninit(win) {
     windows.get(win)?.destroy();
     windows.delete(win);
   },
 
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   get(win) {
     return windows.get(win);
   },

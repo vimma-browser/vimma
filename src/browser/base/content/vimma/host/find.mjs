@@ -20,37 +20,10 @@ const FIND_NOTFOUND = 1;
 const ACCEPT_WAIT_MS = 1000;
 
 /**
- * The slice of Firefox's finder (toolkit/modules/FinderParent.sys.mjs) we drive.
- * @typedef {{
- *   caseSensitive: boolean,
- *   addResultListener(l: object): void,
- *   removeResultListener(l: object): void,
- *   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void,
- *   requestMatchesCount(query: string, args: object): void,
- *   removeSelection(keepHighlight?: boolean): void,
- * }} Finder
- * @typedef {Element & {
- *   finder: Finder,
- *   currentURI: { spec: string },
- *   documentContentType: string,
- *   browsingContext: object,
- *   focus(): void,
- * }} Browser
- * @typedef {Element & {
- *   hidden: boolean,
- *   FIND_NORMAL: number,
- *   _findField: HTMLInputElement,
- *   _typeAheadCaseSensitive: number,
- *   open(mode: number): boolean,
- *   close(noAnim?: boolean): void,
- *   onFindAgainCommand(previous: boolean): void,
- * }} FindBar
- * @typedef {{
- *   getTabForBrowser(b: Browser): Element | null,
- *   getFindBar(tab: Element): Promise<FindBar | null>,
- *   getCachedFindBar(tab: Element): FindBar | undefined,
- *   selectedBrowser: Browser,
- * }} TabBrowser
+ * @typedef {MozFinder} Finder
+ * @typedef {MozTabBrowser} Browser
+ * @typedef {MozFindbar} FindBar
+ * @typedef {Tabbrowser} TabBrowser
  */
 
 /**
@@ -76,7 +49,7 @@ const isPdf = (/** @type {Browser} */ b) => b.documentContentType === "applicati
 
 export class Find {
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {() => void} onChange  the host re-reads `status()` (the status bar)
    */
   constructor(win, onChange) {
@@ -116,7 +89,7 @@ export class Find {
 
   /** @returns {TabBrowser & { browsers?: Browser[] }} */
   #gBrowser() {
-    return /** @type {any} */ (this.win).gBrowser;
+    return this.win.gBrowser;
   }
 
   /** Whether keys go to a search being typed: the status bar says `command`, as Vim. */
@@ -196,7 +169,7 @@ export class Find {
       field.focus();
       // Keys typed while the bar was created come first.
       field.value = session.buffer;
-      if (session.buffer) field.dispatchEvent(new /** @type {any} */ (this.win).Event("input"));
+      if (session.buffer) field.dispatchEvent(new this.win.Event("input"));
       if (session.queued === "accept") this.accept();
       this.onChange();
     });

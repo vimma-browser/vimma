@@ -20,7 +20,7 @@ import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
  * @typedef {{ selectedTab: Tab, tabs: Tab[] }} TabBrowser
  */
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function gBrowserOf(win) {
   return /** @type {{ gBrowser: TabBrowser }} */ (/** @type {unknown} */ (win)).gBrowser;
 }
@@ -29,7 +29,7 @@ function gBrowserOf(win) {
  * The workspace model the picker lists: the window's workspaces (m3-workspaces 2b), every
  * workspace's tabs in the window's tab order; selecting one in another workspace switches to it
  * (WindowWorkspaces' TabSelect). A window without workspaces (private) lists its visible tabs.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Workspaces}
  */
 export function pickerWorkspaces(win) {
@@ -62,7 +62,7 @@ export function pickerWorkspaces(win) {
 }
 
 /**
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} tabId
  * @returns {Tab | undefined}
  */
@@ -77,7 +77,7 @@ export function tabById(win, tabId) {
  * Every tab the picker lists, with its title, URL, rename and audio and pinned state. Nothing
  * here loads a lazy tab: its browser answers title and URL from SessionStore (tab-search,
  * decision 9).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {{ agentId?: string | null, window?: number, name?: string }} [options]  `name`: the
  *   workspace name of a window without workspaces (the private workspace)
  * @returns {PickerItem[]}
