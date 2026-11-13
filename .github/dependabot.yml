@@ -6,7 +6,7 @@
 # Actions). Dependabot capitalises `Bump` and writes release notes over 100 columns, and neither
 # is configurable, so commitlint skips its commits and squashes (tools/commitlint, ignoreCommit).
 # Not covered: Node in .nvmrc (no Dependabot ecosystem; bump by hand, docs/runbook.md "Bench
-# baseline") and the Semgrep image digest in semgrep.yml (an env value, not a Dockerfile).
+# baseline") with @types/node's major, which follows it (ignored below), and the Semgrep image digest in semgrep.yml (an env value, not a Dockerfile).
 version: 2
 
 updates:

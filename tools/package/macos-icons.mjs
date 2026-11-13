@@ -37,9 +37,9 @@ const MARK_AQUA = "#1afaca";
  * The mounted dmg's Finder window, in points: its size, which background.png fills at 144 dpi,
  * and where the app and the Applications link (named " ") sit, by the centre of their icons.
  * tools/package/macos-dsstore.sh lays the window out to match.
+ * @type {{ window: { width: number, height: number }, iconSize: number,
+ *   icons: { "Vimma.app": [number, number], " ": [number, number] } }}
  */
-/** @type {{ window: { width: number, height: number }, iconSize: number,
- *   icons: { "Vimma.app": [number, number], " ": [number, number] } }} */
 export const DMG_LAYOUT = {
   window: { width: 640, height: 400 },
   iconSize: 128,

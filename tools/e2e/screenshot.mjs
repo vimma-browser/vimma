@@ -50,10 +50,7 @@ export function diffImages(
     } else {
       // a dimmed grey copy of the actual image, so the red stands out
       const a = actual.data;
-      const grey =
-        /** @type {number} */ (
-          (a[p] ?? 0) + /** @type {number} */ (a[p + 1]) + /** @type {number} */ (a[p + 2])
-        ) / 3;
+      const grey = ((a[p] ?? 0) + (a[p + 1] ?? 0) + (a[p + 2] ?? 0)) / 3; // p + 2 < a.length: ?? never applies
       diff.set([grey / 3 + 128, grey / 3 + 128, grey / 3 + 128, 255].map(Math.round), p);
     }
   }

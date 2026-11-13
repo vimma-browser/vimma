@@ -20,7 +20,6 @@ const MCP_RS = "tools/vimma-ctl/src/mcp/instructions.rs";
 const OUT = "packages/vimma-core/src/agent-tools-data.mjs";
 
 /** @type {Record<string, string>} */
-/** @type {Record<string, string>} */
 const ESCAPES = { n: "\n", t: "\t", r: "\r", "\\": "\\", '"': '"', "'": "'", 0: "\0" };
 
 /**
