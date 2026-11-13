@@ -111,6 +111,51 @@ add_task(async function private_tabs_never_reach_a_normal_window_and_back() {
   EventUtils.synthesizeKey("KEY_Escape");
 });
 
+// A window without workspaces (private) keys its tabs by their panel, which an unloaded tab has
+// none of: each unloaded tab still gets a row of its own, and Enter selects that tab (#958).
+add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
+  await reset();
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const titles = ["Private one", "Private two", "Private three"];
+  const tabs = [];
+  for (const title of titles) {
+    const url = `${PAGE}?${new URLSearchParams({ title, t: `${title} lazyneedle` })}`;
+    const tab = BrowserTestUtils.addTab(priv.gBrowser, url);
+    await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
+    await until(() => tab.linkedBrowser.contentTitle === title, "titled");
+    tabs.push(tab);
+  }
+  priv.gBrowser.selectedTab = tabs[0];
+  // Firefox's "Unload Tab" (tab context menu): the browser goes lazy, its panel is gone.
+  await priv.gBrowser.explicitUnloadTabs([tabs[1], tabs[2]]);
+  await until(() => !tabs[1].linkedPanel && !tabs[2].linkedPanel, "two tabs unloaded");
+  await openGrep(priv);
+  type("lazyneedle", priv);
+  await resultsSettle(3, priv);
+  const tabTitle = (/** @type {Element} */ r) =>
+    r.querySelector(".vimma-grep-tab")?.textContent ?? "";
+  const unloaded = rows(priv).filter((r) => r.dataset.kind === "unloaded");
+  Assert.deepEqual(
+    unloaded.map((r) => titles.find((t) => tabTitle(r).includes(t))),
+    ["Private two", "Private three"],
+    "each unloaded tab is a row with its own title",
+  );
+  const ids = rows(priv).map((r) => r.dataset.tabId);
+  Assert.equal(new Set(ids).size, ids.length, "every row names a tab of its own");
+  const selected = () => dialog(priv)?.querySelector("[role=option][aria-selected=true]");
+  const target = unloaded[1].id;
+  // The best row is at the bottom, by the prompt: ctrl+p moves up the list, away from it.
+  for (let i = 0; i < 10 && selected()?.id !== target; i++) {
+    EventUtils.synthesizeKey("p", { ctrlKey: true }, priv);
+  }
+  Assert.equal(selected()?.id, target, "the third tab's row is selected");
+  EventUtils.synthesizeKey("KEY_Enter", {}, priv);
+  await until(() => priv.gBrowser.selectedTab === tabs[2], "Enter selects the third tab");
+  Assert.ok(!tabs[1].linkedPanel, "the second stays unloaded");
+  await BrowserTestUtils.closeWindow(priv);
+  await SimpleTest.promiseFocus(window);
+});
+
 add_task(async function the_scope_box_lists_the_windows_and_tabs_searched() {
   await reset();
   ww().switchTo({ id: def(OTHER_WS).id });
