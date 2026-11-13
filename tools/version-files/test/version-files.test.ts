@@ -7,20 +7,14 @@ import {
   versionFiles,
   writePatchManifest,
   writeVersionFiles,
-} from "../version-files.mjs";
+} from "../version-files.ts";
+import type { SurferConfig } from "../version-files.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-/**
- * configure (`milestone()`) reads only the last line, as with config/milestone.txt.
- * @param {string} file
- */
-const lastLine = (file) => file.trimEnd().split("\n").at(-1);
+/** configure (`milestone()`) reads only the last line, as with config/milestone.txt. */
+const lastLine = (file: string) => file.trimEnd().split("\n").at(-1);
 
-/**
- * @param {string | undefined} firefox
- * @param {string | undefined} display
- */
-const surfer = (firefox, display) => ({
+const surfer = (firefox: string | undefined, display: string | undefined) => ({
   version: { product: "firefox", version: firefox },
   brands: { vimma: { release: { displayVersion: display } } },
 });
@@ -57,8 +51,7 @@ describe("versionFiles", () => {
   });
 
   it("reads the named brand", () => {
-    /** @type {import("../version-files.mjs").SurferConfig} */
-    const config = surfer("157.0.1", "0.1.0");
+    const config: SurferConfig = surfer("157.0.1", "0.1.0");
     config.brands = { ...config.brands, other: { release: { displayVersion: "2.0.0" } } };
     expect(lastLine(versionFiles(config, "other")["version_display.txt"])).toBe("2.0.0");
   });
@@ -93,8 +86,7 @@ describe("patchManifest", () => {
   /** A tree with two patches (one nested) and a file that is not one. */
   function tree() {
     const root = tempDir("vimma-patches-");
-    /** @param {number} n */
-    const hunk = (n) => `@@ -${n},1 +${n},2 @@\n line\n+added\n`;
+    const hunk = (n: number) => `@@ -${n},1 +${n},2 @@\n line\n+added\n`;
     mkdirSync(join(root, "src/browser/base"), { recursive: true });
     writeFileSync(
       join(root, "src/browser/base/b.patch"),

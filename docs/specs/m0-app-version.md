@@ -19,14 +19,14 @@ About dialog, about:support, Settings), I still see Vimma's own version, `0.1.0`
   `MOZ_APP_VERSION_DISPLAY` stays `brands.vimma.release.displayVersion` (`0.1.0`).
   `configs/common/mozconfig` adds `ac_add_options --with-version-file-path=browser/config/vimma`,
   a configure option Firefox already has (`build/moz.configure/init.configure`, `milestone()`).
-- **The files are generated**, never committed: `tools/version-files/version-files.mjs`
-  (`npm run version-files`, run by `npm run import` before `surfer import`) reads `surfer.json`
-  and writes `src/browser/config/vimma/version.txt` (Firefox version) and `version_display.txt`
-  (Vimma version), git-ignored like `vimma/core/`. `surfer import` links them into
-  `engine/browser/config/vimma/`. It fails loudly if either version is missing or not a dotted
-  version (Surfer silently falls back to `1.0.0`). Each file starts with the MPL header as `#`
-  lines, because `surfer license-check` walks `src/` (git-ignored files too); configure reads only
-  the last line, as with `config/milestone.txt`.
+- **The files are generated**, never committed: `tools/version-files/version-files.mjs` (Since
+  changed: `version-files.ts`, ADR-025) (`npm run version-files`, run by `npm run import` before
+  `surfer import`) reads `surfer.json` and writes `src/browser/config/vimma/version.txt` (Firefox
+  version) and `version_display.txt` (Vimma version), git-ignored like `vimma/core/`.
+  `surfer import` links them into `engine/browser/config/vimma/`. It fails loudly if either version
+  is missing or not a dotted version (Surfer silently falls back to `1.0.0`). Each file starts with
+  the MPL header as `#` lines, because `surfer license-check` walks `src/` (git-ignored files too);
+  configure reads only the last line, as with `config/milestone.txt`.
 - **Two readers of the display version that mean "Firefox version"**, patched to read
   `MOZ_APP_VERSION`, one word each:
   - `src/toolkit/components/utils/ClientEnvironment-sys-mjs.patch`: `ClientEnvironmentBase.version`
@@ -82,10 +82,10 @@ equals Firefox's app version, so upstream bumps need no test change.
 - Given the About dialog, when it has loaded, then the `#version` l10n `version` argument is
   `MOZ_APP_VERSION_DISPLAY`.
 
-`tools/version-files/test/version-files.test.mjs` (vitest): `versionFiles(surferJson)` returns
-the two files, each with the MPL header as `#` lines and the version on the last line; it throws
-when `version.version` or `displayVersion` is missing or malformed; `writeVersionFiles` creates
-the directory and writes both.
+`tools/version-files/test/version-files.test.mjs` (Since changed: `version-files.test.ts`, ADR-025)
+(vitest): `versionFiles(surferJson)` returns the two files, each with the MPL header as `#` lines
+and the version on the last line; it throws when `version.version` or `displayVersion` is missing
+or malformed; `writeVersionFiles` creates the directory and writes both.
 
 **Changed assertion** in `browser_vimma_branding.js`: "`appinfo.version` is 0.x" becomes
 "`AppConstants.MOZ_APP_VERSION_DISPLAY` is 0.x". Reason: `appinfo.version` is now deliberately

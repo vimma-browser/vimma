@@ -5,9 +5,9 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 `tools/upstream/canary.mjs` (new), `tools/upstream/source-check.sh` (new),
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
 `tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs`,
-`tools/version-files/version-files.mjs`, `tools/e2e/e2e.mjs`, `docs/rebase.md`,
-`docs/security.md`, `docs/runbook.md` · Upstream patches: none · ADR: amends
-[ADR-002](../adr/002-upstream-release-channel.md) and
+`tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
+`tools/e2e/e2e.mjs`, `docs/rebase.md`, `docs/security.md`, `docs/runbook.md` · Upstream patches:
+none · ADR: amends [ADR-002](../adr/002-upstream-release-channel.md) and
 [ADR-010](../adr/010-pr-artifact-builds.md) (one paragraph each); no new ADR
 
 Issue: [#218](https://github.com/vimma-browser/vimma/issues/218)
@@ -302,10 +302,11 @@ detect ──► source-check ──► test (e2e.yml) ──► render ──�
    the first failure fails the job. Reason: one definition of "the suites" (ADR-015), and a Beta
    report needs every failure, not the first.
 
-5. **`version.txt` gets Mozilla's value for a Beta.** `version-files.mjs` writes `159.0` for a pin
-   of `159.0b1` (the version without `bN`, as in Mozilla's own Beta tree, R3), so
-   `Services.appinfo.version` equals `platformVersion` and `browser_vimma_app_version.js` tests
-   Firefox, not the pin's spelling. Vimma's display version is unchanged.
+5. **`version.txt` gets Mozilla's value for a Beta.** `version-files.mjs` (Since changed:
+   `version-files.ts`, ADR-025) writes `159.0` for a pin of `159.0b1` (the version without `bN`, as
+   in Mozilla's own Beta tree, R3), so `Services.appinfo.version` equals `platformVersion` and
+   `browser_vimma_app_version.js` tests Firefox, not the pin's spelling. Vimma's display version is
+   unchanged.
 6. **The artifact build takes the tree from `sourcestamp.txt`.** `artifact-build.mjs` and
    `artifact-preflight.mjs` read the tree from the `https://hg.mozilla.org/<tree>/rev/<rev>` line
    and accept exactly `releases/mozilla-release` and `releases/mozilla-beta`; anything else is an
@@ -455,7 +456,8 @@ Vitest, existing files:
   - `refuses a tree other than mozilla-release or mozilla-beta`
 - `tools/upstream/test/artifact-preflight.test.mjs`:
   `finds Mozilla's 159.0b1 build in the mozilla-beta index` (fixture of the 2026-10-14 response).
-- `tools/version-files/test/version-files.test.mjs`: `a beta pin writes 159.0 to version.txt`.
+- `tools/version-files/test/version-files.test.mjs` (Since changed: `version-files.test.ts`,
+  ADR-025): `a beta pin writes 159.0 to version.txt`.
 - `tools/test/surfer-pin.test.mjs`: `surfer.json on main pins a Firefox release, never a beta`.
 - `tools/e2e/test`: `--report-json writes each failed scenario with its error`.
 

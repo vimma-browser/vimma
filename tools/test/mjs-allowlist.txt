@@ -159,5 +159,3 @@ tools/upstream/test/suite-results.test.mjs
 tools/upstream/test/upstream-prefs.test.mjs
 tools/upstream/test/verify-source.test.mjs
 tools/upstream/upstream-prefs.mjs
-tools/version-files/test/version-files.test.mjs
-tools/version-files/version-files.mjs
