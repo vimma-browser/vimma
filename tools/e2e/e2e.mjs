@@ -13,7 +13,7 @@
  *   npm run e2e -- --xvfb --keep                 # own Xvfb even with a display; keep profiles
  *   npm run e2e -- --headless                    # MOZ_HEADLESS, no screenshots (macOS default)
  *   npm run e2e -- --build /Volumes/Vimma/Vimma.app --vimma-ctl path/to/vimma-ctl
- *   npm run e2e -- --update-baselines            # rewrite baselines: needs a changelog line
+ *   npm run e2e -- --update-baselines            # rewrite baselines: commit body says why
  *   npm run e2e -- --run-pending                 # also run scenarios marked pending
  *   npm run e2e -- --report-json out.json        # also write the results as JSON (Beta canary)
  *   npm run e2e -- --port 28472                  # fixture pages on another port (VIMMA_E2E_PORT)
@@ -68,7 +68,7 @@ import {
 import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "./pages.mjs";
 import { exitCode, formatReport, githubAnnotations, reportJson, runScenarios } from "./runner.mjs";
 import { loadScenarios, scenarioLaunch } from "./scenario.mjs";
-import { capture, checkBaseline } from "./screenshot.mjs";
+import { capture, checkBaseline, shotFailure } from "./screenshot.mjs";
 import { installState, prepareUpdateRun, trustCa, updateEnv, updatePrefs } from "./update-host.mjs";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
@@ -336,7 +336,7 @@ async function main() {
         console.log(`        screenshot ${name}: ${result.status}: ${result.message}`);
         if (result.status === "updated") rewritten.push(name);
         // runSteps goes on and fails the scenario at its end (issue #953)
-        if (result.status === "missing" || result.status === "mismatch") return result.message;
+        return shotFailure(result);
       };
       const stepCtl = {
         state: () => ctl.state(),
@@ -467,8 +467,8 @@ async function main() {
     }
     if (rewritten.length) {
       console.log(
-        `\nBaselines rewritten: ${rewritten.join(", ")}. Check them by eye and commit with a ` +
-          "changelog line saying why (CONTRIBUTING.md: never change a baseline without one).",
+        `\nBaselines rewritten: ${rewritten.join(", ")}. Check them by eye and commit them with ` +
+          "a commit body saying why (CONTRIBUTING.md: never change a baseline without one).",
       );
     }
     return exitCode(results);

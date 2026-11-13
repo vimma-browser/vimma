@@ -94,8 +94,14 @@ describe("the page server's port", () => {
     expect(pagePort({ flag: "0", env: {} })).toBe(0);
   });
 
+  // As VIMMA_E2E_BUILD: an empty variable is an unset one (an empty --port stays an error).
+  it("takes an empty VIMMA_E2E_PORT as unset", () => {
+    expect(pagePort({ flag: undefined, env: { VIMMA_E2E_PORT: "" } })).toBe(PAGE_PORT);
+  });
+
   it.each(["", "x", "-1", "65536", "80.5", " 80"])("refuses %j as a port", (bad) => {
     expect(() => pagePort({ flag: bad, env: {} })).toThrow(/--port/);
+    if (bad === "") return;
     expect(() => pagePort({ flag: undefined, env: { VIMMA_E2E_PORT: bad } })).toThrow(
       /VIMMA_E2E_PORT/,
     );

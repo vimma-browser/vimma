@@ -59,8 +59,9 @@ export const PAGE_PORT = 28471;
  * @returns {number}
  */
 export function pagePort({ flag, env }) {
+  // An empty VIMMA_E2E_PORT is an unset one, as VIMMA_E2E_BUILD; an empty --port is an error.
   const [name, value] =
-    flag !== undefined ? ["--port", flag] : ["VIMMA_E2E_PORT", env.VIMMA_E2E_PORT];
+    flag !== undefined ? ["--port", flag] : ["VIMMA_E2E_PORT", env.VIMMA_E2E_PORT || undefined];
   if (value === undefined) return PAGE_PORT;
   const port = /^\d{1,5}$/.test(value) ? Number(value) : NaN;
   if (!(port <= 65535))

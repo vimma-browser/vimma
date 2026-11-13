@@ -319,7 +319,8 @@ product, then take CI's images. To re-record one or more baselines:
 1. Replace each `<name>.png` to re-record with a placeholder that cannot match (any other
    1280×800 PNG, such as a solid colour), in a commit of its own, and push. The vitest check that
    every screenshot has a 1280×800 baseline still passes; a deleted baseline would fail it, and
-   with it the job, before the scenarios run.
+   with it the job, before the scenarios run. The next step replaces the placeholders before the
+   pull request merges, and its squash keeps only the net change: the new baselines.
 2. The job fails on those screenshots and uploads `e2e-output` (kept 7 days):
    `gh run download <run-id> -n e2e-output`. Each `<name>.actual.png` is CI's image.
 3. Look at every image (no error text, no half-drawn state, no leftover notice or focus ring from
@@ -581,6 +582,11 @@ Limits:
 - **CPU:** an artifact build is CPU-bound (the front-end build). On a 16-thread machine run at
   most about 3 artifact builds at once, and none while the main checkout runs a full build;
   mochitests are light, a few in parallel are fine.
+- **e2e runs share one port.** Every lane's `npm run e2e` serves the fixture pages on
+  `127.0.0.1:28471`, so two lanes' runs collide: the second exits 2 before launching anything,
+  with a message naming the port. Wait for the first, or run the second with `--port N` (or
+  `VIMMA_E2E_PORT=N`; 0 for any free port); its screenshots that show a URL then differ from the
+  baselines by a few digits.
 - **Don't set up a lane while the source checkout is mid-import** (or mid-`git` in its
   `engine/`): the copy is a snapshot. Stray `*.lock` files copied from its `engine/.git` are
   removed in the lane (and logged), never in the source; a half-applied import is undone by
