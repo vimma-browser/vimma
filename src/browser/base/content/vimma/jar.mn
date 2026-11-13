@@ -133,7 +133,7 @@ browser.jar:
         content/browser/vimma/setup/setup.html            (setup/setup.html)
         content/browser/vimma/setup/setup.mjs             (setup/setup.mjs)
         skin/classic/browser/vimma/setup.css              (/browser/themes/shared/vimma/setup.css)
-        content/browser/vimma/about/key-log.mjs           (about/key-log.mjs)
+        content/browser/vimma/host/key-log.mjs            (host/key-log.mjs)
         content/browser/vimma/about/about.html            (about/about.html)
         content/browser/vimma/about/about.mjs             (about/about.mjs)
         content/browser/vimma/about/patches.json          (/browser/config/vimma/patches.json)

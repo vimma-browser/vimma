@@ -50,6 +50,8 @@ import`, and packaged by `jar.mn`. So the list is the one the build was imported
     each key with core's `describeOutcome` (the action id, `pass`, `cancel`, `…` pending); a
     replayed key is recorded once, by the dispatch that handles it. A plain key in insert or
     command mode is stored as `·`, never as typed. The host change is one import and one line.
+    (Since changed: the log is `host/key-log.mjs`, in the folder of the host that writes it,
+    ADR-026.)
   - Config: `ConfigHost.path`, `ConfigHost.file` (new: `pending`, `missing`, `read`), the schema
     of the config in force, `ConfigHost.errors` through `formatConfigError` (file:line), and
     core's `bindingTable(ConfigHost.keymap)` (new accessor) with overridden rows marked `*`.
