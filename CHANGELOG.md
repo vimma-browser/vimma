@@ -10,7 +10,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ### Added
 
 * **prompt-keys:** answer the add-on installed notice with y and p ([#884](https://github.com/vimma-browser/vimma/issues/884)) ([fa8622f](https://github.com/vimma-browser/vimma/commit/fa8622fbfda6b1fcfaf8227314374bea7ae5e192)), closes [#868](https://github.com/vimma-browser/vimma/issues/868)
-* **update:** public nightlies with a signed mar and update manifest ([#922](https://github.com/vimma-browser/vimma/issues/922)) ([33194d0](https://github.com/vimma-browser/vimma/commit/33194d051d2962953168d25dd44bd353c99cd99d))
 
 
 ### Fixed
