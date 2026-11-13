@@ -27,8 +27,29 @@ let started = false;
 // MAKE_LINKABLE flag), so only the user, Vimma or Firefox's own code starts these loads.
 const FIREFOX_START = ["home", "newtab", "welcome"];
 
+// Whether Firefox's own page has been handed out since the last time no privilegedabout process
+// was running.
+let firefoxServed = false;
+
+/**
+ * Whether one of Firefox's pages may still live in a content process. Firefox's pages load in the
+ * privilegedabout process, and the parent checks each principal that process sends against the
+ * about: module's flags as they are when the message arrives (ProcessIsolation.cpp,
+ * ValidatePrincipalCouldPotentiallyBeLoadedBy). The start page's flags say "parent process", so
+ * with them the parent kills the process over the next message from Firefox's page, such as a
+ * blob URL registration, and every tab in it crashes (#950). Firefox's module therefore stays
+ * until no privilegedabout process is left: Firefox keeps one alive
+ * (dom.ipc.keepProcessesAlive.privilegedabout), so in practice until the next start.
+ */
+function firefoxMayLive() {
+  if (!firefoxServed) return false;
+  if (ChromeUtils.getAllDOMProcesses().some((p) => p.remoteType === "privilegedabout")) return true;
+  firefoxServed = false;
+  return false;
+}
+
 /** Whether a load of a Firefox start page opens Vimma's instead. */
-const redirecting = () => Services.prefs.getBoolPref(NEWTAB_PREF, true);
+const redirecting = () => Services.prefs.getBoolPref(NEWTAB_PREF, true) && !firefoxMayLive();
 
 /**
  * Stands in for Firefox's about: module of `page` in this (the parent) process, so the load is
@@ -64,7 +85,10 @@ function standIn(page) {
      * @param {any} loadInfo
      */
     newChannel(uri, loadInfo) {
-      if (!redirecting()) return firefox.newChannel(uri, loadInfo);
+      if (!redirecting()) {
+        firefoxServed = true;
+        return firefox.newChannel(uri, loadInfo);
+      }
       const start = startURI();
       loadInfo.resultPrincipalURI = start;
       return Services.io.newChannelFromURIWithLoadInfo(start, loadInfo);

@@ -182,6 +182,9 @@ add_task(async function about_home_and_newtab_render() {
     set: [
       ["browser.newtab.preload", false],
       ["vimma.startpage.newtab", false],
+      // Firefox's pages keep the start page module on Firefox's while their privilegedabout
+      // process runs (#950): letting it end after the last tab gives later tests the start page.
+      ["dom.ipc.keepProcessesAlive.privilegedabout", 0],
     ],
   });
   NewTabPagePreloading.removePreloadedBrowser(window);
@@ -197,6 +200,12 @@ add_task(async function about_home_and_newtab_render() {
       Assert.ok(rendered, `${url} renders the new-tab page`);
     });
   }
+  await TestUtils.waitForCondition(
+    () => !ChromeUtils.getAllDOMProcesses().some((p) => p.remoteType === "privilegedabout"),
+    "the privilegedabout process ends",
+    100,
+    300,
+  );
   await SpecialPowers.popPrefEnv();
   Assert.deepEqual(errors, [], "no AboutNewTabRedirector errors");
 });

@@ -16,6 +16,7 @@ const { SidebarManager } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sidebar/SidebarManager.sys.mjs",
 );
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
+const { AboutNewTab } = ChromeUtils.importESModule("resource:///modules/AboutNewTab.sys.mjs");
 const { FirefoxRelayUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/FirefoxRelayUtils.sys.mjs",
 );
@@ -672,24 +673,106 @@ add_task(async function typed_firefox_pages_open_the_start_page() {
   }
 });
 
+/** Whether a privilegedabout content process (Firefox's new tab and home pages) is running. */
+const aboutProcessRuns = () =>
+  ChromeUtils.getAllDOMProcesses().some((p) => p.remoteType === "privilegedabout");
+
+/**
+ * Runs `task` with Firefox's new tab page (vimma.startpage.newtab off), then waits for the
+ * privilegedabout process to end before the start page comes back: while Firefox's page may live
+ * there, the start page module keeps Firefox's (#950). Firefox keeps that process alive after its
+ * last tab; the test lets it end, and keeps a preloaded Firefox new tab from holding it.
+ * @param {() => Promise<void>} task
+ */
+async function withFirefoxNewTab(task) {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.startpage.newtab", false],
+      ["dom.ipc.keepProcessesAlive.privilegedabout", 0],
+      ["browser.newtab.preload", false],
+    ],
+  });
+  try {
+    await task();
+  } finally {
+    NewTabPagePreloading.removePreloadedBrowser(window);
+    await TestUtils.waitForCondition(
+      () => !aboutProcessRuns(),
+      "the privilegedabout process ends",
+      100,
+      300,
+    );
+    await SpecialPowers.popPrefEnv();
+  }
+}
+
+/**
+ * Loads `url` in `browser` and waits for it.
+ * @param {any} browser
+ * @param {string} url
+ */
+async function load(browser, url) {
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
+  BrowserTestUtils.startLoadingURIString(browser, url);
+  await loaded;
+}
+
 add_task(async function firefox_new_tab_stays_without_the_start_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
-  const { spec } = await typeInNewTab("about:newtab", "about:newtab");
-  Assert.equal(spec, "about:newtab", "with the start page off, Firefox's new tab page loads");
-  await SpecialPowers.popPrefEnv();
+  await withFirefoxNewTab(async () => {
+    const { spec } = await typeInNewTab("about:newtab", "about:newtab");
+    Assert.equal(spec, "about:newtab", "with the start page off, Firefox's new tab page loads");
+  });
 });
 
-add_task(async function firefox_page_from_history_reloads_as_the_start_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+// Turning the start page on while Firefox's page is open must not get that page's process killed:
+// the parent checks the page's principal on each message, such as a blob URL registration, against
+// the about: module's flags at that moment (#950).
+add_task(async function turning_the_start_page_on_keeps_firefox_new_tab_alive() {
+  await withFirefoxNewTab(async () => {
+    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
+    const browser = tab.linkedBrowser;
+    let crashed = false;
+    const onCrash = () => (crashed = true);
+    browser.addEventListener("oop-browser-crashed", onCrash);
+    await load(browser, "about:newtab");
+    Assert.equal(browser.remoteType, "privilegedabout", "Firefox's page is in its own process");
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", true]] });
+    try {
+      const url = await SpecialPowers.spawn(browser, [], () =>
+        content.URL.createObjectURL(new content.Blob(["vimma"])),
+      );
+      Assert.ok(url.startsWith("blob:"), "Firefox's page still registers a blob URL");
+      Assert.equal(AboutNewTab.newTabURL, START, "new tabs open the start page at once");
+      await load(browser, "about:home");
+      Assert.equal(
+        browser.currentURI.spec,
+        "about:home",
+        "Firefox's pages stay while their process runs",
+      );
+    } finally {
+      await SpecialPowers.popPrefEnv();
+      browser.removeEventListener("oop-browser-crashed", onCrash);
+      BrowserTestUtils.removeTab(tab);
+    }
+    Assert.ok(!crashed, "the content process is not killed");
+  });
+});
+
+// A history entry recorded as Firefox's page comes back as the start page once Firefox's page is
+// gone: the start page replaces itself (start.mjs). Without bfcache, leaving Firefox's page ends
+// its process.
+add_task(async function firefox_page_from_history_comes_back_as_the_start_page() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
   const browser = tab.linkedBrowser;
-  let loaded = BrowserTestUtils.browserLoaded(browser, false, "about:newtab");
-  BrowserTestUtils.startLoadingURIString(browser, "about:newtab");
+  await withFirefoxNewTab(async () => {
+    await SpecialPowers.pushPrefEnv({ set: [["browser.sessionhistory.max_total_viewers", 0]] });
+    await load(browser, "about:newtab");
+    await load(browser, "https://example.com/");
+    await SpecialPowers.popPrefEnv();
+  });
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, START);
+  browser.goBack();
   await loaded;
-  await SpecialPowers.popPrefEnv();
-  loaded = BrowserTestUtils.browserLoaded(browser, false, START);
-  browser.reload();
-  await loaded;
-  Assert.equal(browser.currentURI.spec, START, "the reloaded entry is the start page's URL");
+  Assert.equal(browser.currentURI.spec, START, "the entry comes back as the start page's URL");
   BrowserTestUtils.removeTab(tab);
 });
