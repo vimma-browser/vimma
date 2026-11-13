@@ -39,7 +39,7 @@ import {
   waitForSessionSaved,
   xvfbArgs,
 } from "../launcher.mjs";
-import { devPrefs } from "../../start.mjs";
+import { READ_PATH_PREF, devPrefs } from "../../start.mjs";
 import { startFakeServer } from "./fake-server.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -235,22 +235,17 @@ describe("profile", () => {
 
   // Issue #944: the content sandbox reads fonts only from the system's font folders, so a page
   // drew every glyph as a hex box with the vendored fonts until their folder was allowed too.
-  // Linux only: the fonts are pinned there alone (scenarioFontconfig), and macOS's read path pref
-  // is a different one.
-  it.skipIf(process.platform === "darwin")(
-    "lets content processes read the pinned fonts' folder as well, when asked",
-    () => {
-      const [[name, src]] = devPrefs(REPO_ROOT, "linux");
-      const fonts = `${realpathSync(E2E_FONTS)}/`;
-      const js = readFileSync(
-        join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
-        "utf8",
-      );
-      expect(js).toContain(
-        `user_pref(${JSON.stringify(name)}, ${JSON.stringify(`${src},${fonts}`)});`,
-      );
-    },
-  );
+  it("lets content processes read the pinned fonts' folder as well, when asked", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const js = readFileSync(
+      join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
+      "utf8",
+    );
+    // On macOS the repo's src/ goes in another pref (devPrefs), so the list holds the fonts alone.
+    const [[name, src]] = devPrefs(REPO_ROOT);
+    const list = name === READ_PATH_PREF ? `${src},${fonts}` : fonts;
+    expect(js).toContain(`user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(list)});`);
+  });
 });
 
 describe("browser command line and environment", () => {
