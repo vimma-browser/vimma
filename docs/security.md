@@ -528,6 +528,18 @@ text that pages, add-ons and bookmarks choose.
   - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
     prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
     section.
+- C4. Vimma's start page stands in for Firefox's `about:home`, `about:newtab` and `about:welcome`
+  modules in the parent process (`start/StartPage.sys.mjs`): while `vimma.startpage.newtab` is
+  on, these loads are the chrome start page in the parent, and the stand-in's flags have no
+  `URI_SAFE_FOR_UNTRUSTED_CONTENT`, child-process or `MAKE_LINKABLE` flag, so the web can neither
+  load nor link to it. Turned off, it hands loads to Firefox's module and its flags. Once it has
+  handed out Firefox's page, it **keeps** Firefox's module and flags while any privilegedabout
+  process runs, whatever the pref: the parent checks every principal that process sends against
+  the about: module's flags of that moment and kills the process on a mismatch (#950). The
+  stand-in only ever falls back to Firefox's own module, never the other way round while
+  Firefox's page may live.
+  [`typed_firefox_pages_open_the_start_page`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
+  [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_surfaces_trim.js)
 
 ## 7. Omarchy hook and the `vimma-open` launcher
 

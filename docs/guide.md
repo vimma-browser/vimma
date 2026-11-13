@@ -453,8 +453,10 @@ To change it back:
   windows", or set `browser.startup.homepage` in `about:config`. "Restore Defaults" there brings
   the start page back.
 - **New tabs:** set `vimma.startpage.newtab` to `false` in `about:config` (applies at once) for
-  Firefox's new tab page. Settings' "New tabs" menu does not change Vimma's start page. An
-  extension that sets its own new tab page takes precedence.
+  Firefox's new tab page. Set back to `true`, new tabs open the start page at once; a typed
+  `about:home`, `about:newtab` or `about:welcome` shows Firefox's page until Vimma restarts, since
+  switching a page Firefox has open would crash it. Settings' "New tabs" menu does not change
+  Vimma's start page. An extension that sets its own new tab page takes precedence.
 
 ### Moving over from Firefox or Chrome
 
