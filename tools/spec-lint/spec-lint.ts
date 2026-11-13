@@ -9,14 +9,14 @@
 //   `- Status:` line with Proposed, Accepted, Superseded, Deprecated or Rejected. A note may
 //   follow the word.
 // - A draft or accepted spec names its GitHub issue on an `Issue:` (or `Issues:`) line in its
-//   header, so tools/spec-lint/spec-status.mjs can compare the two.
+//   header, so tools/spec-lint/spec-status.ts can compare the two.
 // - In a draft or accepted spec, every decision states its reason. A decision is a numbered item
 //   with a bold title, at the start of a line, in the Design section or a section whose heading
 //   says "Decisions". Its text must contain a reason word (REASON below). Implemented specs are
 //   frozen history and are not checked. Decisions written before this check are listed in
 //   decisions-baseline.json; an entry that is no longer needed fails, so the list only shrinks.
 //
-//   node tools/spec-lint/spec-lint.mjs
+//   node tools/spec-lint/spec-lint.ts
 
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -44,9 +44,8 @@ const REASON = /\b(?:because|so that|so|since|reasons?|in order to)\b(?=[\s:,.])
 
 /**
  * The header: everything before the first `## ` heading.
- * @param {string} md
  */
-function header(md) {
+function header(md: string) {
   const m = /^## /m.exec(md);
   return m ? md.slice(0, m.index) : md;
 }
@@ -54,11 +53,9 @@ function header(md) {
 /**
  * The first word after a `Status:` label, and whether what follows it is a note (end of line,
  * a space, a parenthesis, a comma or a semicolon) rather than more of the word.
- * @param {string} md
- * @param {RegExp} label  matches the label at the start of a line
- * @returns {{ word: string, rest: string } | null}
+ * @param label  matches the label at the start of a line
  */
-function statusOf(md, label) {
+function statusOf(md: string, label: RegExp): { word: string; rest: string } | null {
   const line = header(md)
     .split("\n")
     .find((l) => label.test(l));
@@ -73,10 +70,9 @@ const ADR_LABEL = /^- Status:\s*/;
 const ISSUE_LABEL = /^Issues?:\s*/;
 
 /**
- * @param {string} md  a spec
- * @returns {{ status: string | null, issues: number[] }}
+ * @param md  a spec
  */
-export function parseSpec(md) {
+export function parseSpec(md: string): { status: string | null; issues: number[] } {
   const s = statusOf(md, SPEC_LABEL);
   // The `Issue:` paragraph: its line and the lines that continue it, up to a blank line.
   const lines = header(md).split("\n");
@@ -89,12 +85,13 @@ export function parseSpec(md) {
 }
 
 /**
- * @param {{ word: string, rest: string } | null} s
- * @param {readonly string[]} allowed
- * @param {string} label  how the line is written, for the message
- * @returns {string[]}
+ * @param label  how the line is written, for the message
  */
-function statusErrors(s, allowed, label) {
+function statusErrors(
+  s: { word: string; rest: string } | null,
+  allowed: readonly string[],
+  label: string,
+): string[] {
   if (!s) return [`status: no \`${label}\` line in the header`];
   const list = `${allowed.slice(0, -1).join(", ")} or ${allowed.at(-1)}`;
   if (!allowed.includes(s.word) || /^\s*\|/.test(s.rest))
@@ -104,10 +101,8 @@ function statusErrors(s, allowed, label) {
 
 /**
  * The status and issue rules for one spec.
- * @param {string} md
- * @returns {string[]}
  */
-export function specErrors(md) {
+export function specErrors(md: string): string[] {
   const s = statusOf(md, SPEC_LABEL);
   const errors = statusErrors(s, SPEC_STATUSES, "Status:");
   if (errors.length === 0 && s && LIVE.has(s.word) && parseSpec(md).issues.length === 0)
@@ -119,30 +114,25 @@ export function specErrors(md) {
 
 /**
  * The status rule for one ADR.
- * @param {string} md
- * @returns {string[]}
  */
-export function adrStatusErrors(md) {
+export function adrStatusErrors(md: string): string[] {
   return statusErrors(statusOf(md, ADR_LABEL), ADR_STATUSES, "- Status:");
 }
 
-/** @param {string} text */
-export function hasReason(text) {
+export function hasReason(text: string) {
   return REASON.test(text.replace(/\s+/g, " ") + " ");
 }
 
 /**
  * The decisions of a spec: numbered items with a bold title at the start of a line, in the
  * Design section (and its sub-sections) or a section whose heading names decisions.
- * @param {string} md
- * @returns {{ number: number, title: string, line: number, text: string }[]}
  */
-export function findDecisions(md) {
-  /** @type {{ number: number, title: string, line: number, text: string }[]} */
-  const found = [];
+export function findDecisions(
+  md: string,
+): { number: number; title: string; line: number; text: string }[] {
+  const found: { number: number; title: string; line: number; text: string }[] = [];
   let inSection = false;
-  /** @type {{ number: number, title: string, line: number, text: string } | null} */
-  let current = null;
+  let current: { number: number; title: string; line: number; text: string } | null = null;
   let blank = false;
   const lines = md.split("\n");
   for (let i = 0; i < lines.length; i++) {
@@ -181,17 +171,18 @@ export function findDecisions(md) {
 
 /**
  * The reason rule for one spec.
- * @param {string} file  for the messages
- * @param {string} md
- * @param {readonly string[]} baseline  titles of this spec's decisions written before the rule
- * @returns {{ errors: string[], used: string[] }}  `used`: the baseline titles still needed
+ * @param file  for the messages
+ * @param baseline  titles of this spec's decisions written before the rule
+ * @returns `used`: the baseline titles still needed
  */
-export function decisionErrors(file, md, baseline) {
+export function decisionErrors(
+  file: string,
+  md: string,
+  baseline: readonly string[],
+): { errors: string[]; used: string[] } {
   const { status } = parseSpec(md);
-  /** @type {string[]} */
-  const errors = [];
-  /** @type {string[]} */
-  const used = [];
+  const errors: string[] = [];
+  const used: string[] = [];
   if (!status || !LIVE.has(status)) return { errors, used };
   for (const d of findDecisions(md)) {
     if (hasReason(d.text)) continue;
@@ -210,13 +201,12 @@ export function decisionErrors(file, md, baseline) {
 /**
  * Baseline entries no longer needed: the decision now has a reason, was renamed or removed, or
  * its spec is implemented.
- * @param {Record<string, string[]>} baseline
- * @param {Record<string, string[]>} used
- * @returns {string[]}
  */
-export function staleBaseline(baseline, used) {
-  /** @type {string[]} */
-  const errors = [];
+export function staleBaseline(
+  baseline: Record<string, string[]>,
+  used: Record<string, string[]>,
+): string[] {
+  const errors: string[] = [];
   for (const [file, titles] of Object.entries(baseline))
     for (const title of titles)
       if (!(used[file] ?? []).includes(title))
@@ -227,19 +217,16 @@ export function staleBaseline(baseline, used) {
   return errors;
 }
 
-/** @param {string} dir @returns {string[]} the Markdown files in it, sorted */
-const markdown = (dir) =>
+/** @returns the Markdown files in it, sorted */
+const markdown = (dir: string): string[] =>
   readdirSync(join(ROOT, dir))
     .filter((f) => f.endsWith(".md") && f !== "README.md")
     .sort();
 
 function main() {
-  /** @type {Record<string, string[]>} */
-  const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
-  /** @type {Record<string, string[]>} */
-  const used = {};
-  /** @type {string[]} */
-  const errors = [];
+  const baseline: Record<string, string[]> = JSON.parse(readFileSync(BASELINE, "utf8"));
+  const used: Record<string, string[]> = {};
+  const errors: string[] = [];
   for (const file of markdown("docs/specs")) {
     const md = readFileSync(join(ROOT, "docs/specs", file), "utf8");
     for (const e of specErrors(md)) errors.push(`docs/specs/${file}: ${e}`);

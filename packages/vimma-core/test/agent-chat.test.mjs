@@ -386,7 +386,7 @@ describe("the header (Behaviour 6)", () => {
     expect(noModelReason(errors, "config.toml")).toBe(
       "2 errors: config.toml:9: agent.providers[0].endpoint: is not a URL",
     );
-    expect(noModelReason([errors[0]], "x.toml")).toBe("x.toml:2: keys.x: unknown action");
+    expect(noModelReason(errors.slice(0, 1), "x.toml")).toBe("x.toml:2: keys.x: unknown action");
   });
 
   test("the window's body names the refused file's error in place of the setup steps", () => {
@@ -425,15 +425,14 @@ describe("what leaves the machine (Behaviour 5)", () => {
   });
 
   test("the notice before the first task names the host and, when known, who runs it", () => {
-    expect(
-      externalNotice({ kind: "anthropic", endpoint: "https://api.anthropic.com", name: "a" }),
-    ).toBe(
+    // A configured provider, its name included; the notice reads the endpoint.
+    const anthropic = { kind: "anthropic", endpoint: "https://api.anthropic.com", name: "a" };
+    const hosted = { kind: "openai", endpoint: "https://llm.example.com/v1", name: "x" };
+    expect(externalNotice(anthropic)).toBe(
       "Page text the agent reads, field values it sees, screenshots and your messages are " +
         "sent to api.anthropic.com (Anthropic). y send · n cancel",
     );
-    expect(
-      externalNotice({ kind: "openai", endpoint: "https://llm.example.com/v1", name: "x" }),
-    ).toBe(
+    expect(externalNotice(hosted)).toBe(
       "Page text the agent reads, field values it sees, screenshots and your messages are " +
         "sent to llm.example.com. y send · n cancel",
     );
@@ -525,7 +524,8 @@ describe("the window's keys in normal mode (Behaviour 14)", () => {
     expect(k("x", "g")).toEqual({ kind: "none" });
     expect(k("G")).toEqual({ kind: "do", what: "bottom" });
     expect(k("shift+g")).toEqual({ kind: "do", what: "bottom" });
-    for (const [key, what] of [
+    /** @type {[string, string][]} */
+    const verbs = [
       ["i", "insert"],
       ["a", "insert"],
       ["s", "stop"],
@@ -536,8 +536,8 @@ describe("the window's keys in normal mode (Behaviour 14)", () => {
       ["P", "give"],
       ["y", "yank"],
       ["q", "close"],
-    ])
-      expect(k(key)).toEqual({ kind: "do", what });
+    ];
+    for (const [key, what] of verbs) expect(k(key)).toEqual({ kind: "do", what });
     expect(k("z")).toEqual({ kind: "none" });
     expect(k("esc")).toEqual({ kind: "none" });
   });

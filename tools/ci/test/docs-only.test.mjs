@@ -8,9 +8,18 @@
 
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import {
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  symlinkSync,
+  writeFileSync,
+  mkdirSync,
+  statSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CORE_SCHEMA, load } from "js-yaml";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { GENERATED_MARKDOWN, MARKDOWN_TESTS, classify, isDocsOnly } from "../docs-only.mjs";
 
@@ -373,5 +382,161 @@ describe("workflow wiring", () => {
       expect(found?.cond, String(re)).toBe(SKIP);
       expect(found?.text).toContain("working-directory: tools/vimma-ctl");
     }
+  });
+});
+
+// The classify step runs the base's docs-only.mjs, on the runner's own Node with nothing of the
+// pull request run before it (ADR-025, decision 7: it stays .mjs). These run the step's own shell
+// text, as each job has it, in a repository whose base has the classifier or not.
+describe("the classify step, run as the workflows have it", () => {
+  const CLASSIFIER = readFileSync(SCRIPT, "utf8");
+  /** Exits 3 and claims docs-only: a copy that must never be the one that runs. */
+  const DECOY =
+    'import { appendFileSync } from "node:fs";\n' +
+    'appendFileSync(process.env.GITHUB_OUTPUT ?? "/dev/null", "docs-only=true\\n");\n' +
+    "process.exit(3);\n";
+  const GIT_ENV = {
+    GIT_AUTHOR_NAME: "t",
+    GIT_AUTHOR_EMAIL: "t@example.com",
+    GIT_COMMITTER_NAME: "t",
+    GIT_COMMITTER_EMAIL: "t@example.com",
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+  /** @param {string} cwd @param {string[]} args */
+  const git = (cwd, ...args) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_ENV } });
+
+  /** @param {string} file @param {string} jobId @param {string} [id] */
+  function classifyScript(file, jobId, id = "classify") {
+    const doc =
+      /** @type {{ jobs: Record<string, { steps: { id?: string, run?: string }[] }> }} */ (
+        load(readFileSync(join(ROOT, ".github", "workflows", file), "utf8"), {
+          schema: CORE_SCHEMA,
+        })
+      );
+    const run = doc.jobs[jobId]?.steps.find((s) => s.id === id)?.run;
+    if (!run) throw new Error(`${file} ${jobId}: no ${id} step`);
+    return run;
+  }
+
+  /**
+   * A base commit with `base` files under tools/ci/ (a name starting with "." at the root), a head
+   * commit that changes the guide and writes `head` files, and the step run with the head checked
+   * out, as actions/checkout leaves it. The directories are real paths, as the runner's are:
+   * macOS's temporary directory is under /var, a symlink to /private/var, and the classifier
+   * runs only when started by its real path (below, "through a symlinked path").
+   * @param {string} script
+   * @param {Record<string, string>} base
+   * @param {Record<string, string>} [head]
+   * @param {string} [runnerTemp] RUNNER_TEMP, a real temporary directory by default
+   */
+  function runStep(script, base, head = {}, runnerTemp) {
+    const dir = realpathSync(tempDir("vimma-classify-step-"));
+    git(dir, "init", "-q", "-b", "main");
+    mkdirSync(join(dir, "docs"));
+    mkdirSync(join(dir, "tools", "ci"), { recursive: true });
+    writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n");
+    for (const [name, text] of Object.entries(base))
+      writeFileSync(name.startsWith(".") ? join(dir, name) : join(dir, "tools", "ci", name), text);
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "base");
+    const BASE = git(dir, "rev-parse", "HEAD").trim();
+    writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nMore.\n");
+    for (const [path, text] of Object.entries(head)) {
+      mkdirSync(join(dir, path, ".."), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+    git(dir, "add", "-A");
+    git(dir, "commit", "-q", "-m", "head");
+    const HEAD = git(dir, "rev-parse", "HEAD").trim();
+    const temp = runnerTemp ?? realpathSync(tempDir("vimma-classify-temp-"));
+    const output = join(temp, "github-output");
+    writeFileSync(output, "");
+    const res = spawnSync("bash", ["-e", "-c", script], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, BASE, HEAD, RUNNER_TEMP: temp, GITHUB_OUTPUT: output },
+    });
+    return {
+      status: res.status,
+      stdout: res.stdout,
+      written: readFileSync(output, "utf8"),
+      temp,
+      copies: readdirSync(temp)
+        .filter((f) => f.startsWith("docs-only"))
+        .sort(),
+    };
+  }
+
+  const JOBS = [
+    ["ci.yml", "check"],
+    ["ci.yml", "vimma-ctl-macos"],
+    ["e2e.yml", "changes"],
+  ];
+
+  describe.each(JOBS)("%s %s", (file, jobId) => {
+    const script = classifyScript(file, jobId);
+
+    it("runs the base's docs-only.mjs", () => {
+      const res = runStep(script, { "docs-only.mjs": CLASSIFIER });
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=true\n");
+      expect(res.copies).toEqual(["docs-only.mjs"]);
+    });
+
+    it("runs everything when the base has no classifier: no output, no skipped step", () => {
+      const res = runStep(script, { "other.mjs": "" });
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain("No classifier on the base: running everything");
+      expect(res.written).toBe("");
+    });
+
+    it("never runs the pull request's own copy, under any name", () => {
+      const head = {
+        "tools/ci/docs-only.ts": DECOY,
+        "tools/ci/docs-only.mjs": DECOY,
+        "src/x.mjs": "export {};\n",
+      };
+      const res = runStep(script, { "docs-only.mjs": CLASSIFIER }, head);
+      expect(res.status).toBe(0);
+      expect(res.written).toBe("docs-only=false\n");
+      const none = runStep(script, { "other.mjs": "" }, head);
+      expect(none.written).toBe("");
+    });
+
+    it("fails the step, rather than skipping checks, when the base's copy cannot run", () => {
+      const res = runStep(script, { "docs-only.mjs": "process.exit(2);\n" });
+      expect(res.status).not.toBe(0);
+      expect(res.written).toBe("");
+    });
+  });
+
+  // The classifier, like most tools here, runs its main() only when process.argv[1] is the real
+  // path of the module (fileURLToPath(import.meta.url), which Node resolves). Started through a
+  // symlinked directory it does nothing and exits 0: no output, so every check runs. The runners'
+  // RUNNER_TEMP is a real path; this pins the fail-safe result. Giving docs-only the symlink
+  // handling key-guard.mjs has would make it judge here too.
+  it("through a symlinked RUNNER_TEMP the classifier does nothing, so everything runs", () => {
+    const real = realpathSync(tempDir("vimma-classify-real-"));
+    const link = join(realpathSync(tempDir("vimma-classify-link-")), "temp");
+    symlinkSync(real, link);
+    const res = runStep(
+      classifyScript("ci.yml", "check"),
+      { "docs-only.mjs": CLASSIFIER },
+      {},
+      link,
+    );
+    expect(res.status).toBe(0);
+    expect(res.written).toBe("");
+  });
+
+  // A tools/ci tool under two names leaves a reader unsure which one a workflow runs; the guards
+  // stay .mjs (ADR-025, decision 7), and tree-covered moves by renaming, never by copying.
+  it("this branch holds each tools/ci tool under one name only", () => {
+    const tracked = git(ROOT, "ls-files", "tools/ci").split("\n").filter(Boolean);
+    for (const f of tracked.filter((t) => t.endsWith(".ts")))
+      expect(tracked, f).not.toContain(f.replace(/\.ts$/, ".mjs"));
+    expect(tracked.some((t) => /^tools\/ci\/docs-only\.(?:mjs|ts)$/.test(t))).toBe(true);
   });
 });

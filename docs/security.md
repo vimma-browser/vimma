@@ -3204,6 +3204,18 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`no workflow and no npm script but diagrams renders: CI only checks`](../tools/diagrams/test/render.test.ts),
   [`fails when an SVG was edited after the render`](../tools/diagrams/test/render.test.ts),
   [`the committed SVGs hold none of them`](../tools/diagrams/test/render.test.ts)
+- B18. A guard that a workflow runs from the base branch (`git show "$BASE:tools/…"`: the
+  docs-only classifier in ci.yml and e2e.yml, the release key guard in key-guard.yml) judges the
+  pull request whose checkout it runs in, so **nothing** of that checkout may run before it: no
+  action but `actions/checkout`, and no `node`, `npm`, `npx` or `yarn` step. Setting up a tool
+  counts: `actions/setup-node` prints the versions of `npm` and `yarn` in the checkout, and a
+  package manager reads its configuration, which can name a program to start, from the current
+  directory, so a pull request could run its own code before the guard and change what the guard
+  answers. These guards therefore run on the runner image's own Node and stay `.mjs` (ADR-025,
+  decision 7). The `actions/setup-node` steps that run before other tools, on trusted refs only,
+  set `YARN_IGNORE_PATH`, which Yarn 1 honours, and `package-manager-cache: false`.
+  [`nothing runs in the pull request's checkout before a guard from the base`](../tools/test/runner-node.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
@@ -3986,8 +3998,15 @@ deploy key that may write `stats` alone in place of the job token.
   level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
   not keep its checkout's credentials. Traffic (views, clones, referrers) is therefore not
   recorded: its API needs the Administration permission, which a job token cannot be given, and
-  recording it would mean the workflow's first stored secret.
+  recording it would mean the workflow's first stored secret. Before the script, `collect` sets up
+  `.nvmrc`'s Node with `actions/setup-node`, pinned by commit SHA, with no cache and
+  `package-manager-cache: false` (otherwise a `packageManager` field naming npm in `package.json`
+  would turn on caching by itself), so the script never runs on the runner image's own Node,
+  whose version this repository does not choose (ADR-025); the action runs with the same
+  read-only token.
   [`grants nothing by default; reads in collect, writes contents only in record`](../tools/test/downloads-workflow.test.mjs),
+  [`every job sets up Node before it runs node, npm or npx, but the listed ones`](../tools/test/runner-node.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts),
   [`collect runs the script without a stored credential`](../tools/test/downloads-workflow.test.mjs),
   [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../tools/test/downloads-workflow.test.mjs)
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,

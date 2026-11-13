@@ -2,6 +2,9 @@ import { describe, test, expect } from "vitest";
 import { compileKeymap, KeymapError } from "../src/keymap.mjs";
 import { parsePath } from "../src/toml.mjs";
 
+/** @import { Mode } from "../src/modes.mjs" */
+/** @import { TrieNode } from "../src/keymap.mjs" */
+
 describe("compileKeymap", () => {
   test("compiles defaults without errors", () => {
     const km = compileKeymap();
@@ -17,6 +20,7 @@ describe("compileKeymap", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(KeymapError);
+    if (!(err instanceof KeymapError)) throw err;
     expect(err.path).toBe("keys.new_tabb");
     expect(err.suggestion).toBe("new_tab");
     expect(err.message).toMatch(/did you mean "new_tab"/);
@@ -37,6 +41,7 @@ describe("compileKeymap", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(KeymapError);
+    if (!(err instanceof KeymapError)) throw err;
     expect(err.path).toBe(path);
     expect(parsePath(err.path)).toEqual(segs);
   });
@@ -53,6 +58,7 @@ describe("compileKeymap", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(KeymapError);
+    if (!(err instanceof KeymapError)) throw err;
     expect(err.path).toBe("keys.new_tab[1]");
   });
 
@@ -76,6 +82,7 @@ describe("compileKeymap", () => {
   });
 
   test("a non-string, non-list binding value is an error", () => {
+    // @ts-expect-error a number where a binding goes: the validation under test
     expect(() => compileKeymap({ keys: { new_tab: 3 } })).toThrow(KeymapError);
     expect(() => compileKeymap({ modal: { normal: { j: 3 } } })).toThrow(KeymapError);
   });
@@ -115,11 +122,12 @@ describe("compileKeymap", () => {
 describe("normal-mode extras (yy, p, P, gi, gu, gU, gf)", () => {
   /**
    * The action a key sequence reaches in `mode`, or undefined.
-   * @param {string} mode
+   * @param {Mode} mode
    * @param {string[]} keys
    */
   const actionAt = (mode, keys) => {
-    let node = compileKeymap().trie(/** @type {any} */ (mode));
+    /** @type {TrieNode | undefined} */
+    let node = compileKeymap().trie(mode);
     for (const k of keys) node = node?.children.get(k);
     return node?.action?.id;
   };
@@ -173,17 +181,17 @@ describe("normal-mode extras (yy, p, P, gi, gu, gU, gf)", () => {
 describe("I focuses the address bar", () => {
   /**
    * The action one key reaches in `mode`, or undefined.
-   * @param {string} mode
+   * @param {Mode} mode
    * @param {string} key
    */
-  const at = (mode, key) =>
-    compileKeymap()
-      .trie(/** @type {any} */ (mode))
-      .children.get(key)?.action?.id;
+  const at = (mode, key) => compileKeymap().trie(mode).children.get(key)?.action?.id;
 
-  test.each(["normal", "visual", "panel"])("%s mode: I runs urlbar.focus", (mode) => {
-    expect(at(mode, "shift+i")).toBe("urlbar.focus");
-  });
+  test.each(/** @type {Mode[]} */ (["normal", "visual", "panel"]))(
+    "%s mode: I runs urlbar.focus",
+    (mode) => {
+      expect(at(mode, "shift+i")).toBe("urlbar.focus");
+    },
+  );
 
   test("insert mode leaves I to the text field", () => {
     expect(at("insert", "shift+i")).toBeUndefined();
@@ -240,6 +248,7 @@ describe("[firefox] enable in the keymap", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(KeymapError);
+    if (!(err instanceof KeymapError)) throw err;
     expect(err.path).toBe("firefox.enable[1]");
     expect(err.detail).toBe("ctrl+t is bound to new_tab in [keys]; unbind it or drop it here");
   });
@@ -333,6 +342,7 @@ describe(": bindings in [modal.*]", () => {
       err = e;
     }
     expect(err).toBeInstanceOf(KeymapError);
+    if (!(err instanceof KeymapError)) throw err;
     expect(err.path).toBe('modal.normal."x"');
     expect(err.detail).toBe('not a command: "firfox"');
     expect(err.suggestion).toBe("firefox");
@@ -348,16 +358,22 @@ describe(": bindings in [modal.*]", () => {
 describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
   const linux = compileKeymap();
   const mac = compileKeymap({}, { mac: true });
-  /** @param {ReturnType<typeof compileKeymap>} km @param {string} chord @param {string} mode */
-  const at = (km, chord, mode = "normal") =>
-    km.trie(/** @type {any} */ (mode)).children.get(chord)?.action?.name;
+  /**
+   * @param {ReturnType<typeof compileKeymap>} km
+   * @param {string} chord
+   * @param {Mode} [mode]
+   */
+  const at = (km, chord, mode = "normal") => km.trie(mode).children.get(chord)?.action?.name;
 
+  /** @type {Array<[string, string]>} */
   const MAC = [
     ["meta+left", "history_back"],
     ["meta+right", "history_forward"],
     ["meta+[", "history_back"],
     ["meta+]", "history_forward"],
-    ...[1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`meta+${n}`, `select_tab_${n}`]),
+    ...[1, 2, 3, 4, 5, 6, 7, 8].map(
+      /** @returns {[string, string]} */ (n) => [`meta+${n}`, `select_tab_${n}`],
+    ),
     ["meta+9", "select_last_tab"],
     ["meta+l", "focus_urlbar"],
     // goHome is alt+home on every platform, and Option+Home types no character.
@@ -365,7 +381,7 @@ describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
   ];
 
   test.each(MAC)("%s runs %s on macOS, in every mode", (chord, action) => {
-    for (const mode of ["normal", "insert", "visual", "panel", "help"]) {
+    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
       expect(at(mac, chord, mode), `${chord} in ${mode}`).toBe(action);
     }
   });
@@ -384,7 +400,7 @@ describe("macOS defaults: Firefox's macOS chords for the alt keys", () => {
     expect(at(linux, "alt+9")).toBe("select_last_tab");
     expect(at(linux, "alt+home")).toBe("go_home");
     for (const [chord] of MAC.filter(([c]) => c.startsWith("meta+"))) {
-      expect(at(linux, /** @type {string} */ (chord)), chord).toBeUndefined();
+      expect(at(linux, chord), chord).toBeUndefined();
     }
     expect(compileKeymap({}, { mac: false }).bindingsFor("history_back")).toEqual(
       linux.bindingsFor("history_back"),

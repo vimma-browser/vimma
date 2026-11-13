@@ -3,17 +3,12 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { MAX_BODY, survivorsReport } from "../report.mjs";
+import { MAX_BODY, survivorsReport } from "../report.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-const script = fileURLToPath(new URL("../report.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../report.ts", import.meta.url));
 
-/**
- * @param {string} status
- * @param {number} line
- * @param {string} [replacement]
- */
-const mutant = (status, line, replacement = "false") => ({
+const mutant = (status: string, line: number, replacement = "false") => ({
   id: `${line}`,
   mutatorName: "BooleanLiteral",
   replacement,
@@ -101,6 +96,8 @@ describe("survivorsReport", () => {
   });
 });
 
+// The suite keeps the name it had as report.mjs, so the test names stay the same across the move
+// to TypeScript (#946).
 describe("report.mjs on the command line", () => {
   it("writes the issue body to stdout and the score to GITHUB_OUTPUT", () => {
     const dir = tempDir("mutation-report-");

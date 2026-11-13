@@ -37,21 +37,22 @@ describe("the private workspace's id", () => {
 });
 
 describe("privateNeighbours (decision 6)", () => {
-  const ws = [
+  const [main, work, agent] = [
     { id: "w1", name: "main" },
     { id: "w2", name: "work" },
     { id: "w3", name: "agent" },
   ];
+  const ws = [main, work, agent];
   test("the side panel names the last and the first normal workspace", () => {
     expect(privateNeighbours(ws)).toEqual(["agent", "main"]);
   });
   test("past the agent workspace, which the cycle skips (vimma-mcp decision 9)", () => {
     expect(privateNeighbours(ws, new Set(["w3"]))).toEqual(["work", "main"]);
-    expect(privateNeighbours([ws[0], ws[2]], new Set(["w3"]))).toEqual(["main", "main"]);
+    expect(privateNeighbours([main, agent], new Set(["w3"]))).toEqual(["main", "main"]);
   });
   test("with no normal workspace there is none", () => {
     expect(privateNeighbours([])).toEqual([null, null]);
-    expect(privateNeighbours([ws[2]], new Set(["w3"]))).toEqual([null, null]);
+    expect(privateNeighbours([agent], new Set(["w3"]))).toEqual([null, null]);
   });
 });
 

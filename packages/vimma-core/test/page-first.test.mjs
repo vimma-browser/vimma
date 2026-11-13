@@ -1,7 +1,12 @@
 import { describe, test, expect } from "vitest";
 import { PAGE_FIRST_MAX, PageFirstQueue } from "../src/page-first.mjs";
 
-/** A queue with one deferred binding per key, its result named after the key and mode. */
+/** @import { Mode } from "../src/modes.mjs" */
+
+/**
+ * A queue with one deferred binding per key, its result named after the key and mode.
+ * @param {...[string, Mode?]} keys
+ */
 function queue(...keys) {
   const q = new PageFirstQueue();
   for (const [key, mode = "normal"] of keys) q.defer(key, `${key}@${mode}`, mode);

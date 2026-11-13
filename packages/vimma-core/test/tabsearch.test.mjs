@@ -15,28 +15,42 @@ import {
 } from "../src/tabsearch.mjs";
 
 /** @import { PickerItem } from "../src/picker.mjs" */
+/** @import { Workspaces } from "../src/workspaces.mjs" */
 
-const model = {
+/**
+ * A workspaces model from what the pickers read of each workspace: its id, name, tabs and active
+ * tab. The container and panes, which they do not read, are filled in.
+ * @param {{ active: string, workspaces: { id: string, name: string, tabs: string[],
+ *   activeTab: string | null }[] }} model
+ * @returns {Workspaces}
+ */
+const fixture = ({ active, workspaces }) => ({
+  active,
+  next: workspaces.length + 1,
+  workspaces: workspaces.map((w) => ({ ...w, container: w.id, panes: null })),
+});
+
+const model = fixture({
   active: "w1",
   workspaces: [
     { id: "w1", name: "work", tabs: ["t1", "t2"], activeTab: "t1" },
     { id: "w2", name: "personal", tabs: ["t3"], activeTab: "t3" },
   ],
-};
+});
 /** @param {string} id */
 const info = (id) => ({ title: `Title ${id}`, url: `https://${id}.example.com/` });
 const here = pickerItems(model, info, {});
 const there = pickerItems(
-  { ...model, workspaces: [{ id: "w1", name: "work", tabs: ["u1"], activeTab: "u1" }] },
+  fixture({ ...model, workspaces: [{ id: "w1", name: "work", tabs: ["u1"], activeTab: "u1" }] }),
   info,
   {},
   { window: 2 },
 );
 const secret = pickerItems(
-  {
+  fixture({
     active: "window",
     workspaces: [{ id: "window", name: "private", tabs: ["p1"], activeTab: "p1" }],
-  },
+  }),
   info,
   {},
 );
@@ -109,11 +123,10 @@ describe("tab search lists (docs/specs/tab-search.md, decisions 3 and 5)", () =>
   });
 
   test("a normal window never lists a private tab, and the private window only private ones", () => {
+    const normalWindow = { private: false, items: here };
+    const privateWindow = { private: true, items: secret };
     const input = {
-      windows: [
-        { private: false, items: here },
-        { private: true, items: secret },
-      ],
+      windows: [normalWindow, privateWindow],
       closedTabs: [closedTab(1), closedTab(2, { private: true, title: "Secret closed" })],
       closedWindows: [{ closedId: 9, title: "Old window", tabCount: 1, closedAt: 5 }],
     };
@@ -122,7 +135,7 @@ describe("tab search lists (docs/specs/tab-search.md, decisions 3 and 5)", () =>
     const inPrivate = tabSearchItems({
       ...input,
       private: true,
-      windows: [input.windows[1], input.windows[0]],
+      windows: [privateWindow, normalWindow],
     });
     expect(inPrivate.map((i) => i.tabId)).toEqual(["p1", "closed:2"]);
     expect(JSON.stringify(normal)).not.toContain("Secret");
@@ -177,7 +190,8 @@ describe("sections, names and the row cap", () => {
     expect(sectionHeading(byId("u1"), 40)).toBe("work · 40 · w2");
     expect(sectionHeading(byId("closed:1"), 9)).toBe("Recently closed · 9");
     const agent = pickerItems(model, info, {}, { agentId: "w2" }).find((i) => i.agent);
-    expect(sectionHeading(/** @type {PickerItem} */ (agent), 1)).toBe("◇ personal · 1");
+    if (!agent) throw new Error("no agent item");
+    expect(sectionHeading(agent, 1)).toBe("◇ personal · 1");
   });
 
   test("accessible names say the workspace, the window or recently closed, and the markers", () => {

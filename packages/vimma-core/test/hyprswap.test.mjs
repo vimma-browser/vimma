@@ -26,13 +26,18 @@ import {
   splitReplies,
   workspaceTarget,
 } from "../src/hyprswap.mjs";
+/** @import { Client, Command, ShowPlan } from "../src/hyprswap.mjs" */
 
 // docs/specs/private-swap.md decisions 3, 4, 5, 6, 7 and 9; ADR-017.
 
 const A = "0x571e4538c0b0";
 const B = "0x571e44830ae0";
 
-/** A client record as parseClients returns it. */
+/**
+ * A client record as parseClients returns it.
+ * @param {Partial<Client>} [over]
+ * @returns {Client}
+ */
 function client(over = {}) {
   return {
     address: A,
@@ -47,6 +52,15 @@ function client(over = {}) {
     size: [621, 745],
     ...over,
   };
+}
+
+/**
+ * A plan's commands; throws on a refusal, which has none.
+ * @param {ShowPlan} plan
+ */
+function commandsOf(plan) {
+  if (plan.kind === "refuse") throw new Error(`refused: ${plan.reason}`);
+  return plan.commands;
 }
 
 /** Every character a command may hold (decision 4). */
@@ -131,8 +145,8 @@ describe("batch replies", () => {
 });
 
 describe("the encoder (decision 4)", () => {
-  const lua = (/** @type {any} */ c) => encodeCommand("lua", c);
-  const legacy = (/** @type {any} */ c) => encodeCommand("legacy", c);
+  const lua = (/** @type {Command} */ c) => encodeCommand("lua", c);
+  const legacy = (/** @type {Command} */ c) => encodeCommand("legacy", c);
 
   test("every verb in the Lua dialect", () => {
     expect(lua({ verb: "move", window: A, workspace: 3 })).toEqual([
@@ -270,7 +284,7 @@ describe("the encoder (decision 4)", () => {
       { verb: "move", window: A, workspace: PARK },
       { verb: "focus", window: B },
     ]);
-    expect(isAllowedRequest(/** @type {any} */ (batch).text)).toBe(true);
+    expect(isAllowedRequest(batch?.text ?? "")).toBe(true);
     expect(isAllowedRequest(`dispatch movetoworkspacesilent 3,address:${A}`)).toBe(true);
     for (const bad of [
       'dispatch hl.dsp.exec_cmd("kitty")',
@@ -533,14 +547,14 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
   ])("fullscreen %i (client %i): unset on the slot window, set on the shown one", (fs, fc_) => {
     const plan = planShow("lua", priv, client({ fullscreen: fs, fullscreenClient: fc_ }));
     expect(plan).toMatchObject({ kind: "swap" });
-    const cmds = /** @type {any} */ (plan).commands;
+    const cmds = commandsOf(plan);
     expect(cmds[0]).toEqual({ verb: "fullscreen", window: A, internal: 0, client: 0 });
     expect(cmds.at(-1)).toEqual({ verb: "fullscreen", window: B, internal: fs, client: fc_ });
   });
 
   test("a fullscreen window coming back is unset before it moves", () => {
     const plan = planShow("lua", { ...priv, fullscreen: 1, fullscreenClient: 1 }, normal);
-    expect(/** @type {any} */ (plan).commands[0]).toEqual({
+    expect(commandsOf(plan)[0]).toEqual({
       verb: "fullscreen",
       window: B,
       internal: 0,
@@ -550,7 +564,7 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
 
   test("a floating window shown in a tile is tiled first", () => {
     const plan = planShow("lua", { ...priv, floating: true }, normal);
-    expect(/** @type {any} */ (plan).commands[0]).toEqual({ verb: "float", window: B, on: false });
+    expect(commandsOf(plan)[0]).toEqual({ verb: "float", window: B, on: false });
   });
 
   test("a floating slot: float, exact size and position, park; no swap", () => {
@@ -568,7 +582,7 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
       ],
     });
     const floatingAlready = planShow("lua", { ...priv, floating: true }, slot);
-    expect(/** @type {any} */ (floatingAlready).commands).not.toContainEqual({
+    expect(commandsOf(floatingAlready)).not.toContainEqual({
       verb: "float",
       window: B,
       on: true,
@@ -588,7 +602,7 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
 
   test("a named workspace slot moves by name", () => {
     const plan = planShow("lua", priv, client({ workspace: { id: -1337, name: "web" } }));
-    expect(/** @type {any} */ (plan).commands[0]).toEqual({
+    expect(commandsOf(plan)[0]).toEqual({
       verb: "move",
       window: B,
       workspace: { name: "web" },
@@ -606,9 +620,9 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
   });
 
   test("the legacy dialect plans the same and encodes with focus first", () => {
-    const plan = /** @type {any} */ (planShow("legacy", priv, normal));
+    const plan = planShow("legacy", priv, normal);
     expect(plan.kind).toBe("swap");
-    expect(encodeBatch("legacy", plan.commands)?.text).toBe(
+    expect(encodeBatch("legacy", commandsOf(plan))?.text).toBe(
       `[[BATCH]]dispatch movetoworkspacesilent 3,address:${B};` +
         `dispatch focuswindow address:${B};dispatch swapwindow address:${A};` +
         `dispatch movetoworkspacesilent special:vimma,address:${A};` +
@@ -643,9 +657,9 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
     });
     fc.assert(
       fc.property(fc.constantFrom("lua", "legacy"), rec, rec, (dialect, show, place) => {
-        const plan = planShow(/** @type {any} */ (dialect), show, place);
+        const plan = planShow(dialect, show, place);
         if (plan.kind === "refuse") return true;
-        const batch = encodeBatch(/** @type {any} */ (dialect), plan.commands);
+        const batch = encodeBatch(dialect, plan.commands);
         if (!batch) return false;
         const commands = batch.text.replace(/^\[\[BATCH\]\]/, "").split(";");
         return isAllowedRequest(batch.text) && commands.every((c) => SAFE.test(c));
@@ -658,7 +672,7 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
     const hex = fc.integer({ min: 1, max: 0xffffffffff }).map((n) => `0x${n.toString(16)}`);
     const coord = fc.integer({ min: -4000, max: 4000 });
     const size = fc.integer({ min: 1, max: 8000 });
-    const rec = (/** @type {any} */ ws) =>
+    const rec = (/** @type {fc.Arbitrary<{ id: number, name: string }>} */ ws) =>
       fc.record({
         address: hex,
         pid: fc.nat(),
@@ -682,9 +696,9 @@ describe("planShow: show X in Y's place (Design: the mechanism)", () => {
         rec(slotWs),
         (dialect, show, place) => {
           if (show.address === place.address) return true;
-          const plan = planShow(/** @type {any} */ (dialect), show, place);
+          const plan = planShow(dialect, show, place);
           if (plan.kind === "refuse") return false;
-          const batch = encodeBatch(/** @type {any} */ (dialect), plan.commands);
+          const batch = encodeBatch(dialect, plan.commands);
           return !!batch && isAllowedRequest(batch.text);
         },
       ),

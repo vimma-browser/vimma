@@ -23,8 +23,17 @@ import { SUGGESTION_ACTIONS } from "../src/suggestions.mjs";
 const TEXT_FIELD = new Set(["insert", "command", "help"]);
 import { getAction } from "../src/actions.mjs";
 
+/** @import { Mode } from "../src/modes.mjs" */
+
+/**
+ * SUGGESTION_ACTIONS, asked about any action id.
+ * @type {ReadonlySet<string | undefined>}
+ */
+const SUGGESTION_IDS = SUGGESTION_ACTIONS;
+
 describe("xulKeyChord", () => {
-  test.each([
+  /** @type {Array<[Parameters<typeof xulKeyChord>[0], string, { mac?: boolean }?]>} */
+  const xulKeys = [
     [{ key: "W", modifiers: "accel" }, "ctrl+w"],
     [{ key: "w", modifiers: "accel" }, "ctrl+w"],
     [{ key: "T", modifiers: "accel,shift" }, "ctrl+shift+t"],
@@ -49,7 +58,8 @@ describe("xulKeyChord", () => {
     [{ key: "M", modifiers: "control" }, "ctrl+m", { mac: true }],
     [{ key: "Q", modifiers: "meta" }, "meta+q"],
     [{ key: "R", modifiers: "os, accel" }, "ctrl+meta+r"],
-  ])("<key %j> is %s", (el, chord, opts = {}) => {
+  ];
+  test.each(xulKeys)("<key %j> is %s", (el, chord, opts = {}) => {
     expect(xulKeyChord(el, opts)).toBe(chord);
   });
 
@@ -324,10 +334,11 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
       if (!r.action || r.unbound) continue;
+      /** @type {Mode[]} */
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        const node = keymap.trie(mode, r.context).children.get(r.chord);
         // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
         if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
@@ -335,7 +346,7 @@ describe("FIREFOX_SHORTCUTS (the inventory)", () => {
         }
         // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
         // row's action outside one (page-suggestions decision 6).
-        if (mode === "insert" && SUGGESTION_ACTIONS.has(/** @type {any} */ (node?.action?.id))) {
+        if (mode === "insert" && SUGGESTION_IDS.has(node?.action?.id)) {
           expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
           continue;
         }
@@ -418,14 +429,14 @@ describe("pageFirst (who goes first: decision 6)", () => {
     expect(pageFirst("meta+l", { mac: true })).toBe(true);
     expect(pageFirst("meta+[", { mac: true, mode: "insert" })).toBe(true);
     // The rest of the keymap is Linux's on both, and so is who goes first on it.
-    for (const [chord, want] of [
+    for (const [chord, want] of /** @type {const} */ ([
       ["ctrl+s", true],
       ["ctrl+l", true],
       ["ctrl+t", false],
       ["ctrl+u", false],
       ["alt+home", true],
-    ]) {
-      expect(pageFirst(/** @type {string} */ (chord), { mac: true }), chord).toBe(want);
+    ])) {
+      expect(pageFirst(chord, { mac: true }), chord).toBe(want);
     }
     expect(pageFirst("f11", { mac: true, fullScreen: true })).toBe(false);
   });
@@ -638,10 +649,11 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
   test("every a/b row with an action is bound to it by the default keymap, in its modes", () => {
     for (const r of rows) {
       if (!r.action || r.unbound) continue;
+      /** @type {Mode[]} */
       const modes =
         r.modes === "all" ? ["normal", "insert", "visual", "panel", "help"] : ["normal"];
       for (const mode of modes) {
-        const node = keymap.trie(/** @type {any} */ (mode), r.context).children.get(r.chord);
+        const node = keymap.trie(mode, r.context).children.get(r.chord);
         // ctrl+j and ctrl+m are Enter where keys type into a field (key-handling-batch § 2).
         if (TEXT_FIELD.has(mode) && insertEditCommand(r.chord)) {
           expect(node, `${r.chord} in ${mode} is the field's`).toBeUndefined();
@@ -649,7 +661,7 @@ describe("FIREFOX_SHORTCUTS_MACOS (the macOS inventory)", () => {
         }
         // ctrl+n and ctrl+p move through a page's suggestion list in insert mode, and run the
         // row's action outside one (page-suggestions decision 6).
-        if (mode === "insert" && SUGGESTION_ACTIONS.has(/** @type {any} */ (node?.action?.id))) {
+        if (mode === "insert" && SUGGESTION_IDS.has(node?.action?.id)) {
           expect(keymap.fallback("insert", r.chord)?.name, `${r.chord} in insert`).toBe(r.action);
           continue;
         }
@@ -683,8 +695,9 @@ describe("macOS: the guide's [firefox] enable example", () => {
   const onWith = (text) => {
     const { config, keymap, errors } = parseConfig(text, { mac: true });
     expect(errors).toEqual([]);
-    const plan = planFirefoxKeys(keys, /** @type {any} */ (config).firefox, {
-      bound: boundChords(/** @type {any} */ (keymap)),
+    if (!config || !keymap) throw new Error("the config did not parse");
+    const plan = planFirefoxKeys(keys, config.firefox, {
+      bound: boundChords(keymap),
       mac: true,
     });
     const off = new Set(plan.off);
@@ -697,7 +710,8 @@ describe("macOS: the guide's [firefox] enable example", () => {
     expect(examples, "one [firefox] example with meta+ keys in docs/guide.md").toHaveLength(1);
     const text = /** @type {string} */ (examples[0]);
     const { config } = parseConfig(text, { mac: true });
-    const firefox = /** @type {any} */ (config).firefox;
+    if (!config) throw new Error("the example did not parse");
+    const firefox = config.firefox;
     expect(firefox.disable).toBe("all");
     expect(firefox.enable).toContain("meta+t");
     expect(firefox.enable.every((/** @type {string} */ c) => c.includes("meta+"))).toBe(true);
@@ -716,11 +730,9 @@ describe("macOS: the guide's [firefox] enable example", () => {
   test("the guide's example enables no chord the macOS keymap binds", () => {
     const text = /** @type {string} */ (examples[0]);
     const { config, keymap } = parseConfig(text, { mac: true });
-    const enable = /** @type {any} */ (config).firefox.enable;
-    for (const bound of [
-      boundChords(/** @type {any} */ (keymap)),
-      boundChords(compileKeymap({}, { mac: true })),
-    ]) {
+    if (!config || !keymap) throw new Error("the example did not parse");
+    const enable = config.firefox.enable;
+    for (const bound of [boundChords(keymap), boundChords(compileKeymap({}, { mac: true }))]) {
       expect(enable.filter((/** @type {string} */ c) => bound.has(c))).toEqual([]);
     }
   });

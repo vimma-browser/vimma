@@ -31,8 +31,17 @@ const hello = (extra = {}) => ({
   role: "agent",
   ...extra,
 });
+/**
+ * @param {string} command
+ * @param {Record<string, unknown>} [args]
+ */
 const req = (command, args = {}, id = 1) => ({ type: "request", id, command, args });
+/** @param {unknown} result */
 const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
+/**
+ * @param {unknown} message
+ * @param {import("../src/control.mjs").ValidateOptions} [options]
+ */
 const errorsOf = (message, options) => validateMessage(message, options).errors;
 
 describe("contract fixtures (tests/contract/control/v2)", () => {
@@ -152,7 +161,8 @@ describe("hello, welcome and discovery with roles", () => {
 
   test("a v2 discovery file lists one or both roles, never twice", () => {
     const d = { protocol: 2, port: 4000, token: TOKEN, pid: 7 };
-    const errors = (roles) => errorsOf({ ...d, roles }, { kind: "discovery" });
+    const errors = (/** @type {unknown} */ roles) =>
+      errorsOf({ ...d, roles }, { kind: "discovery" });
     expect(errors(["agent"])).toEqual([]);
     expect(errors(["full", "agent"])).toEqual([]);
     for (const bad of [[], ["agent", "agent"], ["root"], "agent", undefined]) {
@@ -298,7 +308,8 @@ describe("agent commands: args", () => {
 
   // docs/specs/mcp-forms.md F18, F20: a screenshot names one tab, and whether to draw the labels.
   test("agent-screenshot: a tab and an optional labels flag, nothing else", () => {
-    const shot = (args) => errorsOf(req("agent-screenshot", args));
+    const shot = (/** @type {Record<string, unknown>} */ args) =>
+      errorsOf(req("agent-screenshot", args));
     expect(shot({ tab: "12" })).toEqual([]);
     expect(shot({ tab: "12", labels: true })).toEqual([]);
     expect(shot({ tab: "12", labels: false })).toEqual([]);
@@ -309,7 +320,8 @@ describe("agent commands: args", () => {
 
   // docs/specs/mcp-forms.md F22: a console read names one tab, and optionally a time.
   test("agent-console: a tab and an optional since, nothing else", () => {
-    const read = (args) => errorsOf(req("agent-console", args));
+    const read = (/** @type {Record<string, unknown>} */ args) =>
+      errorsOf(req("agent-console", args));
     expect(read({ tab: "12" })).toEqual([]);
     expect(read({ tab: "12", since: 0 })).toEqual([]);
     expect(read({ tab: "12", since: 1_761_000_000_000 })).toEqual([]);
@@ -345,7 +357,7 @@ describe("agent commands: args", () => {
   // docs/specs/mcp-forms.md F12, F14, F15: a fill names one tab, 1 to 32 fields by label with a
   // text or a true or false, and an optional submit: true or a submit button's label.
   test("agent-fill: a tab, fields by label and value, an optional submit", () => {
-    const fill = (args) => errorsOf(req("agent-fill", args));
+    const fill = (/** @type {Record<string, unknown>} */ args) => errorsOf(req("agent-fill", args));
     const sd = { label: "sd", value: "ada@example.com" };
     expect(fill({ tab: "12", fields: [sd] })).toEqual([]);
     expect(fill({ tab: "12", fields: [sd, { label: "sf", value: true }], submit: true })).toEqual(
@@ -521,7 +533,8 @@ describe("agent commands: results and errors", () => {
   // delimiters, Vimma's clock, and how many entries were left out.
   test("agent-console: the page, its errors and requests inside the delimiters, the time", () => {
     const cmd = { command: "agent-console" };
-    const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+    const wrap = (/** @type {string} */ t) =>
+      `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
     const result = {
       url: "https://a/",
       title: "A",
@@ -699,7 +712,7 @@ describe("agent commands: results and errors", () => {
   });
 
   test("a denial names its reason; no other error carries one", () => {
-    const denied = (reason) => ({
+    const denied = (/** @type {unknown} */ reason = undefined) => ({
       type: "response",
       id: 1,
       ok: false,
@@ -717,6 +730,10 @@ describe("agent commands: results and errors", () => {
 
   // Issue #592: a used-up rate is busy with the time until the next call is allowed.
   test("retryAfter: 1 to 60000 whole milliseconds, on a busy denial only", () => {
+    /**
+     * @param {unknown} reason
+     * @param {unknown} retryAfter
+     */
     const denied = (reason, retryAfter) => ({
       type: "response",
       id: 1,
@@ -740,11 +757,13 @@ describe("agent commands: results and errors", () => {
 // `kinds` filters, `agent-elements` a `full` flag, and a compact list names the labels it left
 // out as given in the conversation's last list of the site (security.md M31).
 describe("element list filters and compact lists (agent-speed S4)", () => {
-  const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+  const wrap = (/** @type {string} */ t) =>
+    `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
   const list = wrap('{"label":"a","kind":"button","text":"Go"}');
 
   test("agent-elements takes query, kinds and full", () => {
-    const els = (args) => errorsOf(req("agent-elements", { tab: "12", ...args }));
+    const els = (/** @type {Record<string, unknown>} */ args) =>
+      errorsOf(req("agent-elements", { tab: "12", ...args }));
     expect(els({ query: "oat drink", kinds: ["button", "link"], full: true })).toEqual([]);
     expect(els({ full: false })).toEqual([]);
     expect(els({ full: "yes" })).toEqual(["full must be a boolean"]);
@@ -763,11 +782,13 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 
   test("a step takes query and kinds only with its element list", () => {
     const fields = [{ label: "sd", value: "x" }];
-    for (const [command, args] of [
+    /** @type {[string, Record<string, unknown>][]} */
+    const steps = [
       ["agent-open", { url: "https://a/" }],
       ["agent-activate", { tab: "12", label: "sd" }],
       ["agent-fill", { tab: "12", fields }],
-    ]) {
+    ];
+    for (const [command, args] of steps) {
       const filters = { query: "oat", kinds: ["button"] };
       expect(errorsOf(req(command, { ...args, elements: true, ...filters })), command).toEqual([]);
       expect(errorsOf(req(command, { ...args, ...filters })), command).toEqual([
@@ -784,12 +805,14 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 
   test("a list's repeated labels come with it, each a label, at most once", () => {
     const after = { url: "https://a/", title: "A", loading: false, navigated: true };
-    for (const [command, base] of [
+    /** @type {[string, Record<string, unknown>][]} */
+    const lists = [
       ["agent-elements", { url: "https://a/", title: "A" }],
       ["agent-activate", after],
       ["agent-fill", { ...after, filled: 1 }],
       ["agent-open", { tab: "13", url: "https://a/", title: "A" }],
-    ]) {
+    ];
+    for (const [command, base] of lists) {
       const cmd = { command };
       const r = { ...base, elements: list, dropped: 0 };
       expect(errorsOf(ok({ ...r, repeated: ["aa", "sd"] }), cmd), command).toEqual([]);
@@ -810,18 +833,21 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 // Issue #584: an open, a click or a fill may return the page's new element list, under the same
 // rules as agent-elements' (security.md M31); a screenshot is smaller unless asked full.
 describe("element lists in a step's result (#584)", () => {
-  const wrap = (t) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+  const wrap = (/** @type {string} */ t) =>
+    `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
   const list = wrap('{"label":"a","kind":"button","text":"Go"}');
 
   test("agent-open, agent-activate and agent-fill take an optional elements flag", () => {
     const fields = [{ label: "sd", value: "x" }];
-    for (const [command, args] of [
+    /** @type {[string, Record<string, unknown>][]} */
+    const steps = [
       ["agent-open", { url: "https://a/" }],
       ["agent-open", { url: "https://a/", tab: "4" }],
       ["agent-activate", { tab: "12", label: "sd" }],
       ["agent-fill", { tab: "12", fields }],
       ["agent-fill", { tab: "12", fields, submit: true }],
-    ]) {
+    ];
+    for (const [command, args] of steps) {
       expect(errorsOf(req(command, { ...args, elements: true })), command).toEqual([]);
       expect(errorsOf(req(command, { ...args, elements: false })), command).toEqual([]);
       for (const elements of ["yes", 1, null, {}]) {
@@ -836,7 +862,8 @@ describe("element lists in a step's result (#584)", () => {
   });
 
   test("agent-screenshot takes an optional full flag", () => {
-    const shot = (args) => errorsOf(req("agent-screenshot", args));
+    const shot = (/** @type {Record<string, unknown>} */ args) =>
+      errorsOf(req("agent-screenshot", args));
     expect(shot({ tab: "12", full: true })).toEqual([]);
     expect(shot({ tab: "12", full: false, labels: true })).toEqual([]);
     expect(shot({ tab: "12", full: "yes" })).toEqual(["full must be a boolean"]);
@@ -844,6 +871,7 @@ describe("element lists in a step's result (#584)", () => {
 
   test("a step's list is inside the untrusted delimiters, with its dropped count", () => {
     const after = { url: "https://a/", title: "A", loading: false, navigated: true };
+    /** @type {[string, Record<string, unknown>][]} */
     const cases = [
       ["agent-activate", after],
       ["agent-fill", { ...after, filled: 1 }],
@@ -895,11 +923,13 @@ describe("element lists in a step's result (#584)", () => {
   test("a load error: one of Firefox's codes, only with unlisted error", () => {
     const after = { url: "https://a/", title: "Server Not Found", loading: false, navigated: true };
     const open = { tab: "13", url: "https://a/", title: "Server Not Found" };
-    for (const [result, command] of [
+    /** @type {[Record<string, unknown>, string][]} */
+    const loads = [
       [open, "agent-open"],
       [after, "agent-activate"],
       [{ ...after, filled: 1 }, "agent-fill"],
-    ]) {
+    ];
+    for (const [result, command] of loads) {
       const cmd = { command };
       const failed = { ...result, unlisted: "error", loadError: "dnsNotFound" };
       expect(errorsOf(ok(failed), cmd), command).toEqual([]);
