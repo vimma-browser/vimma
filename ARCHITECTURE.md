@@ -78,15 +78,16 @@ through the control socket's token or the agent gate. In words:
   [spec](docs/specs/vimma-mcp.md), [ADR-019](docs/adr/019-agents-over-mcp.md)). One call's way
   through it: [The life of an agent call](docs/architecture/agent-call.md).
 - **vimma-ctl.** One Rust binary, shipped next to the browser: `vimma-ctl <command>` is the
-  scripting client, and `vimma-ctl mcp` is an MCP server over stdio that an AI agent host starts,
-  which connects to the browser as the `agent` role.
+  scripting client (the `full` role, as is the e2e harness in `tools/e2e/`), and `vimma-ctl mcp`
+  is an MCP server over stdio that an AI agent host starts, which connects to the browser as the
+  `agent` role.
 - **The built-in agent.** A chat window inside Vimma. Its model calls go straight to the
   provider's HTTP API; its tool calls go through the same gate, grants and log as an outside
   agent's, in process. It can also run an agent CLI as a subprocess, whose only MCP server is
   `vimma-ctl mcp` with a one-time ticket ([builtin-agent](docs/specs/builtin-agent.md),
   [builtin-agent-cli](docs/specs/builtin-agent-cli.md)).
-- **Outside the browser.** The update check reads a signed manifest from updates.vimma.dev
-  ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
+- **Outside the browser.** The update check reads a signed manifest from updates.vimma.dev,
+  where the release pipeline publishes it ([m6a-updater](docs/specs/m6a-updater.md), [ADR-016](docs/adr/016-own-update-channel.md)).
   `config.toml` and the Omarchy theme file are polled every 2 s, because Firefox has no portable
   file watcher. Omarchy's theme-set hook makes the theme reload at once through Firefox's
   command-line remoting. On Hyprland, the private workspace can swap in place of the window

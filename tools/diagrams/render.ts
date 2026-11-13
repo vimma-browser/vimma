@@ -8,7 +8,8 @@
 //
 // D2 is a build tool here, never shipped: a release binary pinned by version and SHA-256 below,
 // downloaded once into the user's cache (~/.cache/vimma/d2/<version>/) and checked before it is
-// unpacked. Layout is ELK, which D2 bundles and which is free; TALA is a paid engine.
+// unpacked. Layout is ELK, which D2 bundles and which is free (TALA is a paid engine), or D2's
+// own grid where a source places its boxes by hand (system.d2).
 //
 // Each SVG starts with a comment holding the SHA-256 of what it was drawn from (the D2 version,
 // the source and the palette), so --check finds an SVG that fell behind its source without D2:

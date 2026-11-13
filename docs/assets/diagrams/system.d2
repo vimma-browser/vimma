@@ -1,10 +1,19 @@
 # Vimma's running system: the processes, what talks to what, and the trust boundaries between
 # them. ARCHITECTURE.md, "The running system", describes the same picture in words. Render with
 # npm run diagrams (tools/diagrams/render.ts), which appends the light or dark palette.
+#
+# Laid out by hand on D2's grid, so that each arrow is a short straight line: the desktop and
+# local programs on the left, Vimma's processes in the middle, the network on the right. Within
+# the parent process the window modules sit at the top, next to the content process, the desktop
+# and the update host; the agent sits at the bottom, next to the agent CLIs and the model
+# providers. A `hole` keeps a grid cell empty.
 
-direction: down
+grid-columns: 3
+horizontal-gap: 40
 
 classes: {
+  hole: { label: ""; width: 10; height: 10; style: { fill: transparent; stroke: transparent } }
+  wrap: { label: ""; grid-columns: 1; horizontal-gap: 0; vertical-gap: 50; style: { fill: transparent; stroke: transparent } }
   zone: {
     style: {
       fill: ${zone-app}
@@ -12,7 +21,7 @@ classes: {
       stroke-dash: 4
       border-radius: 8
       font-color: ${muted}
-      font-size: 16
+      font-size: 21
       bold: true
     }
   }
@@ -22,7 +31,7 @@ classes: {
       stroke: ${box-line}
       border-radius: 6
       font-color: ${text}
-      font-size: 16
+      font-size: 21
       bold: true
     }
   }
@@ -32,7 +41,7 @@ classes: {
       stroke: ${box-line}
       border-radius: 4
       font-color: ${text}
-      font-size: 16
+      font-size: 21
     }
   }
   gate: {
@@ -42,7 +51,7 @@ classes: {
       stroke-width: 2
       border-radius: 4
       font-color: ${text}
-      font-size: 16
+      font-size: 21
     }
   }
   outside: {
@@ -51,14 +60,14 @@ classes: {
       stroke: ${box-line}
       border-radius: 4
       font-color: ${text}
-      font-size: 16
+      font-size: 21
     }
   }
   flow: {
     style: {
       stroke: ${line}
       font-color: ${muted}
-      font-size: 15
+      font-size: 18
     }
   }
   gated: {
@@ -66,70 +75,90 @@ classes: {
       stroke: ${accent}
       stroke-width: 2
       font-color: ${muted}
-      font-size: 15
+      font-size: 18
     }
   }
 }
 
-local: "Local programs: a token on 127.0.0.1; agent requests wait for the user" {
-  class: zone
-  label.near: outside-top-left
-  hosts: "AI agent host\n(MCP client)" { class: outside }
-  clis: "Agent CLIs\n(Claude Code, Codex,\nGemini CLI)" { class: outside }
-  mcp: "vimma-ctl mcp\n(agent role)" { class: outside }
-  scripts: "vimma-ctl, tools/e2e\n(full role)" { class: outside }
+west: {
+  class: wrap
+  desktop: "Desktop: strict parsing" {
+    class: zone
+    label.near: outside-top-left
+    grid-columns: 1
+    grid-gap: 24
+    files: "config.toml, Omarchy\ncolors.toml (polled)" { class: outside }
+    hook: "Omarchy theme-set hook\n(-vimma-reload-theme)" { class: outside }
+    hypr: "Hyprland\n(IPC socket)" { class: outside }
+  }
+  local: "Local programs: token on 127.0.0.1" {
+    class: zone
+    label.near: outside-top-left
+    grid-rows: 3
+    grid-columns: 2
+    horizontal-gap: 50
+    vertical-gap: 40
+    h1 { class: hole }
+    scripts: "vimma-ctl, e2e\n(full role)" { class: outside }
+    hosts: "AI agent host\n(MCP client)" { class: outside }
+    mcp: "vimma-ctl mcp\n(agent role)" { class: outside }
+    h2 { class: hole }
+    clis: "Agent CLIs (Claude Code,\nCodex, Gemini), run by\nagent/ with a ticket" { class: outside }
+  }
 }
 
 app: "Vimma (one application)" {
   class: zone
   label.near: outside-top-left
-  direction: right
-  parent: "Parent process (privileged)" {
-    class: process
-    label.near: top-left
-    agent: "agent/:\nbuilt-in agent" { class: module }
-    ctl: "ctl/: control server\nand AgentGate" { class: gate }
-    chrome: "vimma.js, host/, ui/,\nworkspaces/, split/,\nconfig/ … with core/" { class: module }
-  }
+  grid-columns: 1
+  horizontal-gap: 40
+  vertical-gap: 80
   content: "Content processes (sandboxed)" {
     class: process
-    label.near: top-left
+    label.near: outside-top-left
     style.fill: ${zone-page}
     style.stroke: ${zone-page-line}
-    child: "actors/: VimmaChild, one per\nframe, beside untrusted pages" { class: module }
+    child: "actors/: VimmaChild,\none per frame" { class: module }
+  }
+  parent: "Parent process (privileged)" {
+    class: process
+    label.near: outside-bottom-right
+    grid-columns: 1
+    grid-gap: 40
+    chrome: "vimma.js, host/, ui/,\nworkspaces/, split/,\nconfig/ … with core/" { class: module }
+    ctl: "ctl/: control server\nand AgentGate" { class: gate }
+    agent: "agent/: built-in agent" { class: module }
   }
 }
 
-desktop: "Desktop: files parsed strictly, the window manager" {
-  class: zone
-  label.near: outside-top-left
-  files: "config.toml, Omarchy\ncolors.toml (polled)" { class: outside }
-  hook: "Omarchy theme-set hook\n(-vimma-reload-theme)" { class: outside }
-  hypr: "Hyprland\n(IPC socket)" { class: outside }
+east: {
+  class: wrap
+  net: "Network: HTTPS, signed updates" {
+    class: zone
+    label.near: outside-top-left
+    grid-columns: 1
+    grid-gap: 40
+    updates: "updates.vimma.dev\n(signed manifest)" { class: outside }
+    release: "Release pipeline\n(GitHub Actions)" { class: outside }
+    models: "Model providers\n(Anthropic, OpenAI-\ncompatible, or local)" { class: outside }
+  }
+  legend: "Blue arrow: through the control\nsocket's token and the agent gate\nYellow box: sandboxed, beside\nuntrusted pages\nDashed box: a trust boundary" {
+    shape: text
+    style: { font-color: ${muted}; font-size: 20 }
+  }
 }
 
-net: "Network: HTTPS; updates signed, keys pinned" {
-  class: zone
-  label.near: outside-top-left
-  models: "Model providers\n(Anthropic, OpenAI-\ncompatible, or local)" { class: outside }
-  updates: "updates.vimma.dev\n(update check,\nsigned manifest)" { class: outside }
-  release: "Release pipeline\n(GitHub Actions)" { class: outside }
-}
-
-local.hosts -> local.mcp: "stdio" { class: flow }
-local.clis -> local.mcp: "stdio" { class: flow }
-local.mcp -> app.parent.ctl { class: gated }
-local.scripts -> app.parent.ctl { class: gated }
-
-local.clis <- app.parent.agent: "subprocess,\none-time ticket" { class: flow }
+west.local.hosts -> west.local.mcp: "stdio" { class: flow }
+west.local.clis -> west.local.mcp: "stdio" { class: flow }
+west.local.mcp -> app.parent.ctl { class: gated }
+west.local.scripts -> app.parent.ctl { class: gated }
+app.parent.agent -> west.local.clis { class: flow }
 app.parent.agent -> app.parent.ctl: "same gate" { class: gated }
 app.parent.ctl -> app.parent.chrome { class: flow }
-app.parent.chrome <-> app.content.child: "actor\nmessages" { class: flow }
-
-app.parent.agent -> net.models { class: flow }
-app.parent.chrome -> net.updates { class: flow }
-net.release -> net.updates: "publishes" { class: flow }
-
-desktop.files -> app.parent.chrome { class: flow }
-desktop.hook -> app.parent.chrome { class: flow }
-desktop.hypr <- app.parent.chrome { class: flow }
+app.parent.chrome <-> app.content.child: "actor messages" { class: flow }
+app.parent.agent -> east.net.models { class: flow }
+app.parent.chrome -> east.net.updates { class: flow }
+east.net.release -> east.net.updates: "publishes" { class: flow }
+west.desktop.files -> app.parent.chrome { class: flow }
+west.desktop.hook -> app.parent.chrome { class: flow }
+app.parent.chrome -> west.desktop.hypr { class: flow }
