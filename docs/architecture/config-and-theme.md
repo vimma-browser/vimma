@@ -229,6 +229,6 @@ every running Vimma through Firefox's own command-line remoting, the D-Bus `Open
 `vimma-ctl reload-theme`, which needs the control socket on. Tests: `test_remote_reload_theme`
 and `test_installer` in
 [browser_vimma_omarchy_hook.js](../../tests/browser/browser_vimma_omarchy_hook.js);
-[theme-hook.test.mjs](../../tools/omarchy/test/theme-hook.test.mjs), which runs the script with
+[theme-hook.test.ts](../../tools/omarchy/test/theme-hook.test.ts), which runs the script with
 fake `busctl`, `vimma-ctl` and `vimma`; `test_reload_theme` in
 [browser_vimma_control.js](../../tests/browser/browser_vimma_control.js); and security.md §7.
