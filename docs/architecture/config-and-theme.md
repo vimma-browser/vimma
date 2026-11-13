@@ -28,11 +28,12 @@ sequenceDiagram
   CH->>Core: reloadConfig(active, text)
   Core->>Core: parseToml, migrate, validate, compileKeymap
   Core-->>CH: the new config, or errors and the old one
-  CH->>Host: configure: keymap, then the errors
+  CH->>Host: apply: configure(keymap, ...)
   Host->>Host: a new dispatcher per window
-  CH->>TH: setConfig([theme])
+  CH->>TH: apply: setConfig([theme])
   TH->>TH: themeStylesheet (core theme.mjs)
   TH->>Win: load the new token sheet, remove the old
+  CH->>Host: report: configure(configErrors), for the status bar
 ```
 
 ## 1. Finding and reading `config.toml`
@@ -50,9 +51,11 @@ poll timer, create a missing file from the commented template on a profile's fir
 (`vimma.config.pollMs`), because Firefox has no portable file watcher. Each tick runs `check`:
 
 1. `stat` takes the file's modification time and size, or "missing". A tick that finds the same
-   signature as the last read stops here.
+   signature as the last read stops here; otherwise the new signature is kept before the read.
 2. The file is read. A missing file is the empty text, so the defaults apply. A file that cannot
-   be read holds update checks off and logs the error, and the config in force stays.
+   be read holds update checks off and logs the error, and the config in force stays; since the
+   signature was already kept, it is tried again only once its time or size changes, or on
+   `:source`.
 3. `use` hands the text to core and applies the result (sections 2 and 3).
 
 One read runs at a time; a forced read asked for during one runs after it.
@@ -78,10 +81,10 @@ problems together:
 1. **TOML.** `parseToml` (`toml.mjs`) runs the vendored smol-toml
    (`packages/vimma-core/src/vendor/smol-toml/`, ADR-012) with integers as BigInt, so `1.0` can be
    told from `1`. A syntax error becomes one error with its line and column, and a hint when an
-   earlier bracket is still open. Nesting deeper than `MAX_DEPTH` (32) is refused, since smol-toml
-   bounds only inline values.
+   earlier bracket is still open. Nesting deeper than `MAX_DEPTH` (32 at present) is refused, since
+   smol-toml bounds only inline values.
 2. **Schema.** `schema` must be a non-negative integer; a number above `CONFIG_SCHEMA_VERSION`
-   (2) is "from a newer vimma", and nothing of the file applies.
+   (2 at present) is "from a newer vimma", and nothing of the file applies.
 3. **Migration.** `migrate` runs the steps of `MIGRATIONS` from the file's schema up: a file
    without `schema` is schema 0. Each step is pure, and schema 2 only adds keys, so an older
    Vimma reading a newer file names the schema rather than an unknown key (ADR-008).
@@ -109,21 +112,30 @@ properties in [config.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/config.
 
 Back in `ConfigHost`, `use` applies the result only when it is a new config (`apply`). A file
 with errors therefore changes nothing in force, except on the first read, when the defaults it
-falls back to are applied. `apply` hands each part to its owner:
+falls back to are applied as a file would be. That is not a no-op: among other things it hands
+`WorkspaceStore` the default, empty `[workspaces]`, whose reconcile keeps the workspaces the
+definitions file has but no longer as config ones, and saves them. `apply` hands each part to
+its owner:
 
-- `VimmaHost.configure` with the keymap, the hint characters, `[sites]`, `[firefox]` and the
-  bookmarks root. For a new keymap each window drops its pending sequence, gets a new dispatcher
-  and a rebuilt help overlay, and turns off Firefox's shortcuts on the chords the keymap binds.
+- `VimmaHost.configure` with the keymap, the hint characters, `[sites]`, `[firefox]`,
+  `[modal] insert_editing` and the bookmarks root. For a new keymap each window drops its pending
+  sequence, gets a new dispatcher and a rebuilt help overlay, and turns off Firefox's shortcuts on
+  the chords the keymap binds.
 - Each window's `PaneView` takes `[panes]`; `ThemeHost.setConfig` takes `[theme]` (section 4);
   `WorkspaceRouter` the `[[routes]]` and `[routing]`; `McpHost` `[mcp]` and `[agent]`; and the
-  toolbar, the bookmarks toolbar, the private swap's placement and the side panel's numbers their
-  own lines.
+  toolbar, the bookmarks toolbar, the PDF outline (`[ui] pdf_outline`), the private swap's
+  placement and the side panel's numbers their own lines.
 - `SearchHost.setConfig` and `WorkspaceStore.setConfig` run asynchronously; `[search]` can
   reveal problems only once the profile's engines are read, and adds them to the errors later.
 
-Then, whether or not the file applied, `use` tells the update check (a file with errors never
-turns update checks on; `updatesCheckAfterRead`) and calls `report`, which logs each error once
-per change of the file and passes them to `VimmaHost.configure` as `configErrors` with the file's
+Then, whether or not the file applied, `use` tells the update check what `[updates] check` now
+is (`updatesCheckAfterRead` in core `updates.mjs`). A file with errors still decides it when its
+TOML parses: its own `check` applies, and a missing one counts as true, so a value from a newer
+build never keeps the user from the release that accepts it. Only when `check` cannot be read
+(the TOML does not parse, or the line is malformed or misplaced) does the previous config's value
+stay, and when only the defaults stand in for the file, at startup, checks are held. `use` then
+calls `report`, which logs the errors (once per change of the file, and again on each `:source`)
+and passes them to `VimmaHost.configure` as `configErrors` with the file's
 name. The status bar shows them, `about:vimma` lists them, and the built-in agent's window names
 a refused file when it has no model. A provider whose agent CLI this build does not know is left
 out with a warning, and the rest of the file applies. Tests:
@@ -147,7 +159,10 @@ or `vimma.theme.omarchyPath` is set by hand. `check` then:
 1. `stat`s `colors.toml` and `light.mode` in the theme folder (by default
    `~/.local/state/omarchy/current/theme`). A missing `colors.toml` gives the built-in palette
    when nothing is shown yet, and otherwise keeps the theme shown, since `omarchy-theme-set`
-   removes the old folder just before it moves the new one in.
+   removes the old folder just before it moves the new one in. The signature holds the folder,
+   the file's modification and creation times, its size and whether `light.mode` exists, and
+   `IOUtils.stat` follows symlinks, so a swap of the `current/theme` link to another theme
+   changes it even when the two files have the same time and size.
 2. An unchanged signature stops here; otherwise the file is read.
 3. `themeStylesheet` (`packages/vimma-core/src/theme.mjs`) builds the sheet. `resolveTheme` reads
    the file with `parseOmarchyColors` (hex colours only, missing keys derived as Omarchy derives
@@ -200,11 +215,12 @@ among them `firefox_website_appearance_wins`.
 `omarchy/OmarchyHook.sys.mjs` registers, once per process, a command-line handler for
 `-vimma-reload-theme`. A line that carries the flag from another process calls `ThemeHost.reload`,
 which waits for a running check, forgets the signature and checks again. On a first launch the
-handler drops the flag, and the launch opens its window as usual. When `ThemeHost` has found Omarchy
-and the pref `vimma.theme.omarchyHook` is on (the default), `sync` writes
-`omarchy/vimma-theme-reload.sh` into `~/.config/omarchy/hooks/theme-set.d/`, with a last line
-holding its SHA-256, and keeps it current while that hash still matches. An edited copy is the
-user's and is never touched; a copy the user deleted is not written again; turning the pref off
+handler drops the flag, and the launch opens its window as usual. When `ThemeHost` has found
+Omarchy, `~/.config/omarchy/hooks` exists, the browser is not under automation or in permanent
+private browsing (`startupBlocked`), and the pref `vimma.theme.omarchyHook` is on (the default),
+`sync` writes `omarchy/vimma-theme-reload.sh` into `~/.config/omarchy/hooks/theme-set.d/`, with a
+last line holding its SHA-256, and keeps it current while that hash still matches. An edited copy is
+the user's and is never touched; a copy the user deleted is not written again; turning the pref off
 removes Vimma's unedited copy.
 
 `omarchy-theme-set` runs the hook after it has switched the theme. The script sends the flag to

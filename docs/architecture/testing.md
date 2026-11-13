@@ -26,20 +26,26 @@ sequenceDiagram
   Dev->>E2E: the same push
   E2E->>E2E: artifact build, mochitests, e2e, site snapshots, agent bench
   Dev->>Scan: the same push
-  CI-->>Main: required checks green: the merge is allowed
-  E2E-->>Main: (macOS mochitests report, never block)
+  CI-->>Main: required: lint, typecheck, test, commitlint, licences
+  E2E-->>Main: required: mochitest (artifact build)
+  Scan-->>Main: required: Semgrep, both CodeQL analyses, the key guard
+  Note over E2E,Main: mochitest-macos only reports
   Main->>CI: push to main: skipped when a pull request passed the same tree
   Main->>Sched: on a schedule: full build, fuzzing, live sites, mutants
 ```
 
 ## The required checks
 
-The ruleset on `main` requires six checks: `lint, typecheck, test, commitlint, licences` (the
-`check` job of `ci.yml`), `mochitest (artifact build)` (`e2e.yml`), the Semgrep scan, the two
-CodeQL analyses, and `Mozilla release key unchanged or approved` (`key-guard.yml`). A docs-only
-pull request (`tools/ci/docs-only.mjs`, as the base branch has it) skips the steps Markdown cannot
-affect and the mochitest job, and each still reports success. A push to a draft skips the slow
-ones the same way until the pull request is marked ready. The details are in docs/runbook.md,
+The ruleset on `main` (`gh api repos/vimma-browser/vimma/rules/branches/main` shows the current one)
+requires these checks: `lint, typecheck, test, commitlint, licences` (the `check` job of `ci.yml`),
+`mochitest (artifact build)` (`e2e.yml`), the Semgrep scan, the two CodeQL analyses, and
+`Mozilla release key unchanged or approved` (`key-guard.yml`). Green checks are not all a merge
+needs: the ruleset also blocks one while CodeQL reports a security alert of high severity or more,
+or another alert at error level, and while a review thread is unresolved. A docs-only pull request
+(`tools/ci/docs-only.mjs`, as the base branch has it) skips the steps Markdown cannot affect and the
+mochitest job, and each still reports success. The `opened` and `synchronize` events of a draft skip
+the three slow required checks, the mochitest job with the e2e scenarios, the Semgrep scan and both
+CodeQL analyses, until the pull request is marked ready. The details are in docs/runbook.md,
 "Docs-only pull requests", "Draft pull requests" and "Once per tree".
 
 ## 1. Unit tests: Vitest
@@ -66,12 +72,13 @@ either well formed or a located error, never an exception, and an accepted value
 the schema allows.
 
 **Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.mjs`:
-in every Vitest run they use a fixed seed (`FIXED_SEED`) and 100 cases each, so a red run is red
-again on a re-run. `properties.test.mjs` holds more properties of the key notation and the
-dispatcher. On the Rust side, `tools/vimma-ctl/tests/protocol_props.rs` and `mcp_props.rs` use
-proptest and run with `cargo test`. `fuzz.yml` runs both sets every night (02:41 UTC) from a random
-seed with many more cases; a failure uploads the seed and the failing cases and opens or comments on
-one issue labelled `fuzz-failure`.
+in every Vitest run they use a fixed seed (`FIXED_SEED`), so a red run is red again on a re-run, and
+`RUNS` (100) cases times each property's `weight`, which takes most to 500, 1000 or 2000 cases and a
+slow one to 20. `properties.test.mjs` holds more properties of the key notation and the dispatcher.
+On the Rust side, `tools/vimma-ctl/tests/protocol_props.rs` and `mcp_props.rs` use proptest and run
+with `cargo test`. `fuzz.yml` runs both sets every night (02:41 UTC) from a random seed with many
+more cases; a failure uploads the seed and the failing cases and opens or comments on one issue
+labelled `fuzz-failure`.
 
 **Locally.** `VIMMA_FUZZ_SEED=<seed> npx vitest run packages/vimma-core/test/fuzz`, and
 docs/runbook.md, "Fuzzing: reproducing a failing seed".
@@ -117,8 +124,8 @@ not flake and how to move the baseline on purpose: docs/runbook.md, "Bench basel
 
 **What it proves.** The browser code in a real Firefox: key capture and dispatch, every runner,
 the actors in real pages, the UI, workspaces and panes over real tabs, the control socket and the
-agent gate, theme and config loading. About 150 files of `tests/browser/browser_vimma_*.js`, with
-their `file_vimma_*` fixtures, listed in `tests/browser/browser.toml`. `browser_vimma_perf.js`
+agent gate, theme and config loading. The files are `tests/browser/browser_vimma_*.js` with their
+`file_vimma_*` fixtures, each listed in `tests/browser/browser.toml`. `browser_vimma_perf.js`
 also checks key-to-paint times against budgets set from CI runs.
 
 **Where.** The required `mochitest (artifact build)` job of `e2e.yml`, on a hosted Linux runner.
@@ -126,10 +133,12 @@ It downloads Firefox's source for `surfer.json`'s release and checks it
 (`tools/upstream/firefox-source.sh`), runs `npm run import`, makes the artifact build
 (`tools/artifact-build/artifact-build.mjs`: Vimma's front end over Mozilla's compiled binaries
 for the same release), and runs `npm run mochitest -- --artifact tests/browser/` with
-`VIMMA_REQUIRE_CTL=1`, so the vimma-ctl task fails rather than skips. Three files are marked
-`skip-if = ["artifact"]` in `browser.toml` because they test compiled-in parts (the crash
-reporter, the `--version` line, the updater); `nightly.yml` runs the whole suite on a full build.
-The same suite runs on a hosted Mac in `mochitest (artifact build, macOS)`, which only reports.
+`VIMMA_REQUIRE_CTL=1`, so the vimma-ctl task fails rather than skips. Files that test
+compiled-in parts are marked `skip-if = ["artifact"]` in `browser.toml` (at present the crash
+reporter, the `--version` line and the updater); `nightly.yml` runs the whole suite on a full
+build. The separate job `mochitest (artifact build, macOS)` (`mochitest-macos`) only reports: on
+a hosted Mac it runs `npm test` and the same suite, without `vimma-ctl` (so
+`browser_vimma_control.js` skips), and it has no draft skip.
 
 **Locally.** In a worktree, `npm run lane:setup` once (a copy of the primary checkout's engine,
 docs/runbook.md, "Parallel browser lanes"), then
@@ -154,13 +163,16 @@ A scenario marked pending is reported as a notice and passes nothing; the suite 
 budget; `--update-baselines` is refused when `CI` is set, so a baseline changes only in a
 reviewed commit that says why.
 
-The browser gets an allowlisted environment (no desktop scaling, theme, locale or Wayland
-variables; `HOME` inside the profile), and the profile pins the pixel ratio and a light theme.
+The browser gets an allowlisted environment (`browserEnv` in `launcher.mjs`): none of the
+desktop's scaling, theme, locale or Wayland variables, but fixed ones (`LANG=C.UTF-8`, `TZ=UTC`,
+`GTK_THEME=Adwaita`) and `HOME` inside the profile; the profile pins the pixel ratio and a light
+theme.
 The fonts are the system's, so a baseline made on another machine can differ; the runbook says
 to take CI's image in that case (docs/runbook.md, "End-to-end tests", "Baselines").
 
 The same job then runs the site snapshot gate (section 8) and the agent bench with its scripted
-provider (`npm run agent-bench -- --artifact --check`, [docs/agent-bench.md](../agent-bench.md)),
+provider (`npm run agent-bench -- --artifact --check --lists L04 --two-shops`,
+[docs/agent-bench.md](../agent-bench.md)),
 which needs no model.
 
 **Locally.** `npm run e2e -- --xvfb --artifact --filter <name>`; throwaway scenarios with
@@ -207,11 +219,13 @@ ARCHITECTURE.md.
 
 - **Full builds on pull requests.** Pull requests test the front end on Mozilla's binaries. A
   change to a `.patch`, C++, `moz.build`, `configs/` or branding is compiled only by a full
-  build: the nightly, the macOS build of `macos.yml`, a release, or the contributor's own run,
-  which the pull request reports.
-  The nightly runs at 03:00 UTC only while the repository variable `NIGHTLY_ENABLED` is `true`,
-  and its `changes` job (`tools/update/nightly-change.mjs`) skips a scheduled build when nothing
-  changed.
+  build: the nightly, the macOS build of `macos.yml`, a release, or the contributor's own full
+  build, whose mochitest run the pull request must report
+  ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs at 03:00 UTC only while
+  the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
+  (`tools/update/nightly-change.mjs`) skips a scheduled build only when public nightlies are on
+  and the rolling release already records the same commit and Firefox version; anything else,
+  a doubt included, builds.
 - **The updater end to end.** The e2e updater scenarios need a `VIMMA_UPDATES=1` build packaged
   with `mach package`, which no pull request job makes; they are reported pending in CI and run
   by hand (docs/runbook.md, "End-to-end tests").

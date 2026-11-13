@@ -22,16 +22,17 @@ sequenceDiagram
   participant Child as actors/VimmaChild
   participant Parent as actors/VimmaParent
   Win->>Host: keydown, capture phase (_onKeyDown)
-  Host->>Host: questions, prompts, pickers first
+  Host->>Host: the questions and prompts first
   Host->>Host: chordFromEvent, then _mode
+  Host->>Host: an open picker or search takes the key
   Host->>Disp: dispatch(mode, chord, context)
   Disp-->>Host: action, pending, cancel or pass
   Host->>Host: _dispatch: consume or let it go
   Host->>Run: _run: CONTENT_RUNNERS["scroll.down"]
   Run->>Act: VimmaActors.scroll(browser, "down", count)
   Act->>Child: Vimma:Scroll (sendQuery)
-  Child-->>Act: scrolled or not
   Host->>Host: _emit: status bar and overlays redraw
+  Child-->>Act: scrolled or not, later
   Note over Child,Parent: the other way: focus changes
   Child->>Parent: Vimma:Focus, an editable descriptor
   Parent->>Host: onFocusReport: the tab's mode
@@ -39,8 +40,9 @@ sequenceDiagram
 
 ## Before the key: the keymap
 
-At startup `VimmaHost.init` gives each window a dispatcher over the built-in keymap
-(`compileKeymap({})`); `config.toml` replaces it when `ConfigHost` has read the file
+`VimmaHost.init` gives each window a dispatcher over the keymap in force (`settings.keymap`), or
+over the built-in one (`compileKeymap({})`) while `config.toml` has not been read yet;
+`VimmaHost.configure` replaces every window's when `ConfigHost` applies the file
 ([Config and theme](config-and-theme.md)). `compileKeymap` in
 `packages/vimma-core/src/keymap.mjs` builds the keymap in this order:
 
@@ -84,18 +86,18 @@ order, and returns when one does:
 4. Hints and element focus end when focus has left their page; the setup page keeps its plain
    keys.
 5. `_mode(state)` decides the mode: `help` while an overlay or picker is open, `command` with the
-   command line, `panel`, `resize`, `index`, `hint` or `element` while those are active, then the
-   focused tab's own mode (`browserModes`, normal until a focus report or a key changes it), and
-   `insert` when focus is in the browser's chrome or in a page without Vimma's actor, so the
-   address bar keeps its keys.
-6. The key is recorded for `about:vimma` (never in a private window or a password field). An
-   open picker then takes every key, a `/` search its Enter and Esc, and the help filter its
-   plain keys.
+   command line, `insert` while a rename or y/N prompt types, `panel`, `resize`, `index`, `hint` or
+   `element` while those are active, then the focused tab's own mode (`browserModes`, normal until a
+   focus report or a key changes it), and `insert` when focus is in the browser's chrome or in a
+   page without Vimma's actor, so the address bar keeps its keys.
+6. The key goes into `_lastChords`, a list the mochitests read (never in a private window or a
+   password field). An open picker then takes every key, a `/` search its Enter and Esc, and the
+   help filter its plain keys.
 
 Tests: `records_ctrl_b_in_about_preferences`, `records_ctrl_b_in_url_bar` and
 `records_an_unbound_key_in_content_and_page_still_receives_it` in
-[browser_vimma_key_capture.js](../../tests/browser/browser_vimma_key_capture.js);
-[keys.test.mjs](../../packages/vimma-core/test/keys.test.mjs) for the notation.
+[browser_vimma_key_capture.js](../../tests/browser/browser_vimma_key_capture.js), which read
+`_lastChords`; [keys.test.mjs](../../packages/vimma-core/test/keys.test.mjs) for the notation.
 
 ## 2. The dispatcher answers
 
@@ -112,9 +114,9 @@ results:
   When the key ends an ambiguous sequence without continuing it (`g` bound, then a key that
   does not follow `g`), the shorter binding comes back with `replay: true`, and the host runs it
   and dispatches the same key again.
-- **`pending`**: a node with children, or a digit in a mode that takes counts (`COUNT_MODES` in
-  `modes.mjs`: normal, visual, element, resize and panel). A `0` starts no count, and a digit
-  bound at the root is that binding.
+- **`pending`**: a node with children, an action that waits for its character (`f`), or a digit
+  in a mode that takes counts (`COUNT_MODES` in `modes.mjs`: normal, visual, element, resize and
+  panel). A `0` starts no count, and a digit bound at the root is that binding.
 - **`cancel`**: Esc during a sequence, or a key that leads nowhere after a prefix or a count.
 - **`pass`**: nothing is pending and the key is not in the trie.
 
@@ -124,14 +126,17 @@ Tests: [dispatcher.test.mjs](../../packages/vimma-core/test/dispatcher.test.mjs)
 
 ## 3. The host acts on the answer
 
-`_dispatch` first logs the result for `about:vimma` (`KeyLog.record`, never in a private
-window), then handles each kind:
+`_dispatch` first logs the key and its result for `about:vimma` (`KeyLog.record` in
+`about/key-log.mjs`): never in a private window, and a plain key typed in insert or command mode
+is kept only as `·`. Then it handles each kind:
 
-- **`pass`.** The key goes on to Firefox and the page. Before that, `_editKey` may run a
-  text-field command for an unbound chord (`ctrl+w`, `ctrl+u`, `ctrl+h`, `host/edit-keys.mjs`).
-  Otherwise, in the modal modes (`help`, `hint`, `resize`, `panel`, `index`) the key is
-  consumed; a chord Firefox handles outside its keysets is prevented when the config leaves it
-  off (`CHROME_HANDLED`); and in `visual` and `element` mode a plain key is consumed.
+- **`pass`.** The key goes on to Firefox and the page. Before that, `_editKey` looks for a
+  text-field command for an unbound chord (`ctrl+w`, `ctrl+u`, `ctrl+h`, `host/edit-keys.mjs`): in a
+  chrome field it runs at once and the key is consumed; in a page's field, in insert mode, the key
+  goes on and the command runs after the page had it, unless the page took the key
+  (`_onKeyDownAfter`). Otherwise, in the modal modes (`help`, `hint`, `resize`, `panel`, `index`)
+  the key is consumed; a chord Firefox handles outside its keysets is prevented when the config
+  leaves it off (`CHROME_HANDLED`); and in `visual` and `element` mode a plain key is consumed.
 - **`cancel`.** The key is consumed: `preventDefault` and `stopPropagation` (`consume`).
 - **`pending`.** The first key of a sequence that leads to nothing runnable now passes after all
   (`_leadsToRunnable`): `ctrl+w` reaches the page when the window has one pane
@@ -160,7 +165,8 @@ For such a chord `_dispatch` stores the result in `state.pageFirst` (a `PageFirs
 `page-first.mjs`) and lets the keydown go on. The keypress listener in the system group's capture
 phase (`_onKeyPress`) stops the event when it goes to a remote page and asks for the page's reply
 (`requestReplyFromRemoteContent`). When the reply comes back, `_pageTookKey` checks whether the page
-called `preventDefault`; if not, `_runAfterPage` runs the stored action. A chrome field or a
+called `preventDefault` (in insert mode a native handler in the content process counts too); if
+not, `_runAfterPage` runs the stored action. A chrome field or a
 parent-process page settles the key in `_onKeyPressAfter`, in the bubble phase. Tests:
 `ctrl_m_mutes_unless_the_page_takes_it`, `a_blocked_shortcuts_permission_makes_the_key_vimmas_first`
 and `a_page_first_key_runs_in_a_tab_whose_process_is_still_starting` in
@@ -191,12 +197,13 @@ ops modules load without an import cycle. `j` is `scroll.down`, whose runner cal
 `VimmaActors.register` (called once per process from `vimma.js`, before `VimmaHost.init`) registers
 the JSWindowActor pair: `VimmaChild` in every frame (`allFrames`) of http, https, file, about and
 view-source documents and the start page, `VimmaParent` in the parent, marked
-`safeForUntrustedWebProcess` because the parent trusts nothing from the child but a checked
-descriptor. `VimmaActors.scroll` sends `Vimma:Scroll` with `sendQuery` to the focused frame's actor,
-and to the top frame when the focused one has nothing to scroll. `VimmaChild`'s `receiveMessage`
-scrolls its own document (in the PDF viewer's presentation mode it turns pages), and answers whether
-anything moved. Last, `_onKeyDown` calls `_emit`, and the window's listeners (the status bar among
-them) redraw from `VimmaHost.status`.
+`safeForUntrustedWebProcess` because the parent trusts nothing from the child but a descriptor,
+which at worst flips that tab's mode, and checks every other reply. `VimmaActors.scroll` sends
+`Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused
+one has nothing to scroll. `VimmaChild`'s `receiveMessage` scrolls its own document (in the PDF
+viewer's presentation mode it turns pages), and answers whether anything moved. `_run` does not wait
+for that answer: `_onKeyDown` calls `_emit` at once, and the window's listeners (the status bar
+among them) redraw from `VimmaHost.status`.
 
 ## The way back: insert mode
 
@@ -236,15 +243,16 @@ security.md §13, among them `only_the_focused_frame_may_report` and
   and take the same path as typed ones. The e2e scenarios drive the browser this way. Test:
   `test_send_keys_reach_the_page` in
   [browser_vimma_control.js](../../tests/browser/browser_vimma_control.js).
-- **Agents.** An agent's `vimma_keys` takes a different path: core `agent-keys.mjs` parses the
-  keys with a dispatcher of its own over the default keymap, never the user's, and keeps only
-  whitelisted actions; `ctl/AgentDrive.sys.mjs` then runs each step on the agent tab through
-  `VimmaActors` directly, not through the runner tables or the user's mode
+- **Agents.** An agent's `vimma_keys` takes a different path: `ctl/agent-commands.mjs` calls core
+  `parseAgentKeys` (`agent-keys.mjs`), which parses the keys with a dispatcher of its own over the
+  default keymap, never the user's, and keeps only whitelisted actions; `ctl/AgentDrive.sys.mjs`
+  then runs each step on the agent tab through `VimmaActors` and the tab's own `<browser>`
+  (history steps go through its session history, `gu` and `gU` load a URL), not through the
+  runner tables or the user's mode
   ([mcp-drive](../specs/mcp-drive.md), security.md M16, M20, M21). The rest of an agent call is
   in [The life of an agent call](agent-call.md).
 
-The time from key to action is gated twice: core's dispatch by the bench in `ci.yml` (under 50 µs
-a key, and no regression over the baseline commit; docs/runbook.md, "Bench baseline"), and
-key-to-paint in a real window by
-[browser_vimma_perf.js](../../tests/browser/browser_vimma_perf.js). See
-[Testing](testing.md).
+The time from key to action is gated twice: core's dispatch by the bench in `ci.yml` (under 50 µs a
+key, and no regression over 10 % against the baseline commit; docs/runbook.md, "Bench baseline"),
+and key-to-paint in a real window by
+[browser_vimma_perf.js](../../tests/browser/browser_vimma_perf.js). See [Testing](testing.md).

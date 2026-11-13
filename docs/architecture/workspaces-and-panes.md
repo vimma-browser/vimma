@@ -31,7 +31,7 @@ sequenceDiagram
   WW->>FF: selectedTab, showTab, hideTab
   WW->>PV: reconcile()
   PV->>Core: planSplit(tree, Firefox's group)
-  PV->>FF: join, leave, order; geometry
+  PV->>FF: join, leave, order, then geometry
   WW->>SS: microtask: tab values and window value
 ```
 
@@ -82,15 +82,19 @@ Tests: [workspaces.test.mjs](../../packages/vimma-core/test/workspaces.test.mjs)
   others are hidden with `gBrowser.hideTab`. A new tab joins the workspace that owns its
   container; a tab in a container no workspace owns joins the active one and is marked foreign. A
   tab pinned outside Vimma is unpinned with a notice, since `hideTab` refuses pinned tabs.
-- `split/PaneView.mjs`, one per window (`PaneViews.init` in `vimma.js`), holds the shown pane
-  tree, keyed by each tab's `linkedPanel`, mirrors it onto one of Firefox's own split views
-  (ADR-013), and parks the trees of the workspaces not shown. `split/layout.mjs` puts each panel
-  at its rectangle with CSS.
+- `split/PaneView.mjs`, one per window (`PaneViews.init` in `vimma.js`), holds the shown pane tree,
+  keyed by each tab's `linkedPanel` (the id Firefox's split view works with; a lazy tab gets one
+  when it is inserted, and panels do not survive a restart, hence the uuids below), mirrors it onto
+  one of Firefox's own split views (ADR-013), and parks the trees of the workspaces not shown.
+  `split/layout.mjs` puts each panel at its rectangle with CSS.
 
-A tab opened without a container takes one from `Tabbrowser-sys-mjs.patch`, which asks
-`WorkspaceStore.defaultUserContextId`: the window's active workspace's container, and a new
-window's first tab `firstTabUserContextId`. Private windows and popups get none, so Firefox's own
-behaviour stays there. Tests: `new_tabs_without_a_container_take_the_active_workspaces` and
+A tab opened without a container, and not pinned, takes one from `Tabbrowser-sys-mjs.patch`:
+its opener's container first, else `WorkspaceStore.defaultUserContextId`, which answers with the
+window's active workspace's container, else the most recent browser window's, else the
+`lastActive` workspace's. A URL from the command line (`fromExternal`) gets
+`nonAgentUserContextId`, never the agent workspace's, and a new window's first tab
+`firstTabUserContextId`. Private windows and popups get none, so Firefox's own behaviour stays
+there. Tests: `new_tabs_without_a_container_take_the_active_workspaces` and
 `gate1_a_login_in_one_workspace_is_invisible_in_another` in
 [browser_vimma_workspace_routing.js](../../tests/browser/browser_vimma_workspace_routing.js);
 `containers_off_disables_workspaces` in
@@ -110,8 +114,8 @@ models to `#show`:
    and the tabs to show and hide; `#show` selects first, then calls `showTab` and `hideTab`.
 4. `PaneView.reconcile` (below) puts the target's split back on screen, and `adopt` takes in or
    undoes splits made outside Vimma, such as one whose tabs span workspaces.
-5. `WorkspaceStore.setActive` records the workspace, which becomes `lastActive` for the next
-   start, and `#changed` tells the side panel and the status bar, then schedules a save.
+5. When the active workspace changed, `WorkspaceStore.setActive` records it as `lastActive` for
+   the next start, and `#changed` tells the side panel and the status bar, then schedules a save.
 
 Tests: `prefix_parens_show_one_workspace_and_restore_its_tab` and
 `a_split_hides_as_a_whole_and_comes_back_laid_out` in
@@ -122,7 +126,8 @@ Tests: `prefix_parens_show_one_workspace_and_restore_its_tab` and
 ## 2. The split view
 
 A pane key (`ctrl+b v`, `ctrl+b -`) reaches `host/pane-ops.mjs`, which calls `PaneView.split`: it
-refuses while the split is hidden and wherever core's `splitRefusal` says no (the pane limit), opens
+refuses while the split is hidden and wherever core's `splitRefusal` says no (`[panes] max`, or
+no room next to the focused pane), opens
 the new tab in the background, and sets the tree that core's `split` returns. Every change, and
 every switch, ends in `PaneView.reconcile`:
 
@@ -151,13 +156,14 @@ Two places hold the state, written at different times:
   JSON but not valid definitions is copied aside as `.corrupt-<time>` and the store starts empty.
   The store also caches the last user workspace's container in a pref, so a cold start can give
   the first tab a container before the file is read.
-- **Each window's state**, in Firefox's SessionStore. `WindowWorkspaces.#save` runs in a
-  microtask after any change: each tab gets a uuid in the tab value `vimma-tab` and its
-  workspace in `vimma-workspace`, and the window value `vimma-workspaces` gets core's snapshot
-  (`toSnapshot`: the order, each workspace's selected tab, the pane trees with uuids in place of
-  panels, the tab labels). It writes nothing while a restore is under way, nor over a window
-  value from a newer schema (`canWrite` in `snapshot.mjs`). A snapshot that fails its own check
-  is written without the pane trees.
+- **Each window's state**, in Firefox's SessionStore. `WindowWorkspaces.#save` runs in a microtask
+  after any change, and at once when the window closes (`SSWindowClosing`) and as a restore into it
+  begins: each tab of the model (pinned tabs are not in it) gets a uuid in the tab value `vimma-tab`
+  and its workspace in `vimma-workspace`, and the window value `vimma-workspaces` gets core's
+  snapshot (`toSnapshot`: the order, each workspace's selected tab, the pane trees with uuids in
+  place of panels, the tab labels). It writes nothing while a restore is under way, nor over a
+  window value from a newer schema (`canWrite` in `snapshot.mjs`). A snapshot that fails its own
+  check is written without the pane trees.
 
 Tests: `save_and_load_round_trip` and `a_newer_file_is_never_overwritten` in
 [browser_vimma_workspace_store.js](../../tests/browser/browser_vimma_workspace_store.js);
@@ -173,17 +179,20 @@ restore into the window is already under way.
 
 Firefox's SessionStore brings back the tabs, each in its container, with their tab and window
 values. It brackets a restore into a window with `SSWindowStateBusy` (or `SSWindowRestoring`)
-and `SSWindowStateReady`. In between, `WindowWorkspaces` applies no tab event and saves nothing;
-a timer of `STUCK_RESTORE_MS` (5 s) ends a bracket that never closes. On Ready, `#reconcile`
+and `SSWindowStateReady`. In between, `WindowWorkspaces` applies no tab event to its model
+(`WorkspaceRouter.adoptTab` still sees each `TabOpen`) and saves nothing. The bracket also ends
+on the `sessionstore-single-window-restored` notification, and a timer of `STUCK_RESTORE_MS`
+(5 s at present) ends one that never closes. On Ready, `#reconcile`
 runs `#rebuild`, and keeps the old model if the rebuild throws:
 
 1. The tab ids are read again from `vimma-tab`.
 2. The window value is read with `readSnapshot`, unless it is the one this window wrote or comes
    from a newer schema.
-3. A fresh model is built from the live tabs, which are the truth: each tab goes to the workspace
-   that owns its container, else the one the snapshot or its `vimma-workspace` value names, else the
-   snapshot's active one. Pinned tabs stay out. Each workspace's selected tab and the alternate come
-   from the snapshot.
+3. A fresh model is built from the live tabs, which are the truth, over a base: the snapshot, or
+   the window's current model when there is none. Each tab goes to the workspace that owns its
+   container, else the one the base or its `vimma-workspace` value names, else the base's active
+   one; pinned tabs stay out. Each workspace's selected tab and the alternate come from the base,
+   and the active workspace is the one of the live selected tab.
 4. The tab labels come back, and `#restorePanes` hands every workspace's splits to
    `PaneView.restore`, with each uuid turned back into a panel.
 5. `#show` applies the result as a switch does.
@@ -219,7 +228,8 @@ security.md §2.
 The private workspace is Firefox's own private window, shown as one more workspace; every
 privacy guarantee is Firefox's. `host/private-ops.mjs` finds, opens, focuses and closes those
 windows, and core `privatews.mjs` holds the rules: `ctrl+b )` and `ctrl+b (` never enter it, a tab
-moves in only after a question and never out, and nothing about it is written to disk. Inside a
+moves in only after a question and never out, and Vimma keeps what it knows of it in memory
+only; that the pages leave nothing on disk is Firefox's private browsing guarantee. Inside a
 private window `WindowWorkspaces` does not start, `WorkspaceStore` gives no container, and
 `WorkspaceRouter` routes nothing; `PaneView` works there as anywhere. On Hyprland,
 `host/private-swap.mjs` swaps the private window into the normal window's place over Hyprland's
