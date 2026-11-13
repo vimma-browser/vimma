@@ -29,6 +29,10 @@ Status: implemented (core); the host wiring followed in the milestone's host spe
 |                  | `SNAPSHOT_MIGRATIONS`, `SnapshotError`                                                |
 | `index.mjs`      | re-exports                                                                            |
 
+(Since changed: `readSnapshot` reads a snapshot with its tab renames and is what the host uses;
+`fromSnapshot`, which returned only its workspace state, had no caller outside its tests and was
+removed, [#956](https://github.com/vimma-browser/vimma/issues/956).)
+
 Contract fixtures: `tests/contract/state/v1/valid.json`, `tests/contract/state/v1/invalid.json`.
 Bench: `packages/vimma-core/bench/cases.mjs`, run by `tools/bench/bench.mjs` (Since changed:
 `bench.ts`, ADR-025) (`npm run bench`). It is a **core-only smoke test**: dispatcher and model
