@@ -106,11 +106,11 @@ process through the agent gate. In words:
 2. It turns the event into a chord (`ctrl+b`, `shift+t`) and asks vimma-core's dispatcher what it
    means in the current mode. The modes are `normal`, `insert`, `visual`, `command`, `hint`,
    `element`, `help`, `panel`, `resize` and `index`; a pending `ctrl+b` prefix is tracked by the
-   dispatcher itself (`packages/vimma-core/src/modes.mjs`).
+   dispatcher itself (`packages/vimma-core/src/keys/modes.mjs`).
 3. The dispatcher answers with an action, "pending" (more keys may follow), "cancel" (a pending
    sequence ends with no action, such as an unknown key after `ctrl+b`) or "pass". A key that
    passes reaches Firefox and the page untouched.
-4. An action is a name from the closed list in `packages/vimma-core/src/actions.mjs`.
+4. An action is a name from the closed list in `packages/vimma-core/src/keys/actions.mjs`.
    `host/runners.mjs` holds the action tables, which `VimmaHost.sys.mjs` dispatches to. A chrome
    action runs in the browser window (tab, pane, workspace, picker and others, through the
    `host/*-ops.mjs` modules); a page action goes to the focused page through the actor (scroll,
@@ -157,24 +157,30 @@ every file that ships; `moz.build` adds the folder to the build.
 
 ### `packages/vimma-core`
 
-Pure ES modules, about 80 of them in one flat `src/` folder, tested with Vitest in Node. No Firefox
-API and no Node built-in may be imported there; eslint enforces it. The areas:
+Pure ES modules, about 80 of them, tested with Vitest in Node. No Firefox API and no Node built-in
+may be imported there; eslint enforces it. `src/` groups them in folders by area; `npm run
+sync-core` copies them into the chrome tree as one flat `core/` folder, so browser code imports
+`../core/<name>.mjs` whichever folder holds the module, and module names stay unique across folders
+(`tools/test/sync-core.test.ts`). The tests stay in one flat `test/` folder, named after the module
+they test.
 
-- **Keys and modes:** key notation (`keys.mjs`), the action list (`actions.mjs`), default
-  bindings (`defaults.mjs`), keymap merge (`keymap.mjs`), the dispatcher, modes, Escape, the
-  command line, Firefox's own shortcuts, help.
-- **Browser model:** tabs, tab labels, workspaces and their definitions, panes and split plans,
-  layouts, the side panel, pickers, the status bar text, routing rules, private workspace rules.
-- **Page modes:** editable detection, hints, find, live grep, text blocks, motions, PDF.
-- **Config and theme:** the TOML parser (vendored smol-toml,
-  [ADR-012](docs/adr/012-toml-parser-smol-toml.md)), config validation and migrations, theme tokens, search engines, site permissions.
-- **Control and agents:** the control protocol validator, the agent gate's queue and grants, the
-  agent's tools, prompts, model providers and loop, agent CLIs, stored conversations.
-- **Updates and setup:** manifest checks and pinned update keys, update notices, the first-run
-  setup, add-ons.
+| Folder                                | Role                                                                                                                                                                                                                                         |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/vimma-core/src/keys/`       | Key notation (`keys.mjs`), modes, the action list (`actions.mjs`), keymap compilation, the dispatcher, Escape, the `:` command line, insert-mode detection, Firefox's own shortcuts, keys left to the page, prompt and suggestion-list keys. |
+| `packages/vimma-core/src/config/`     | `config.toml`: TOML (`toml.mjs`, on the vendored parser), validation and migrations (`config.mjs`), the defaults (`defaults.mjs`), theme tokens, `[search]`, `[[routes]]`.                                                                   |
+| `packages/vimma-core/src/workspaces/` | The workspace model and definitions, the switch planner, the state snapshot, tab labels and tab selection, the private workspace and its in-place swap on Hyprland and macOS.                                                                |
+| `packages/vimma-core/src/panes/`      | The pane tree, several splits per workspace, tiling layouts, the split reconcile planner.                                                                                                                                                    |
+| `packages/vimma-core/src/page/`       | What Vimma does in a page: hints, text blocks, copy-mode motions, find, page URLs, the PDF viewer's state.                                                                                                                                   |
+| `packages/vimma-core/src/ui/`         | Vimma's own surfaces as plain data: the status bar, the pickers (goto, tab search, add-ons, downloads, pop-ups, site permissions, PDF outline, live grep), the side panel, bookmarks, the help table, `about:vimma`'s report.                |
+| `packages/vimma-core/src/agent/`      | Local AI agents: the agent gate's queue and grants, checkpoints, the question line, page actions, `vimma_keys`, agent downloads, and the built-in agent's tools, providers, loop, chat, CLIs and stored conversations.                       |
+| `packages/vimma-core/src/control/`    | The control protocol validator (versions 1 and 2) and vimma-ctl's version check.                                                                                                                                                             |
+| `packages/vimma-core/src/updates/`    | The update manifest's checks, the pinned update keys, update notices, the AppImage's self-update, restart.                                                                                                                                   |
+| `packages/vimma-core/src/system/`     | Vimma on the desktop: the first-run setup's pure parts, whether Vimma is the default browser.                                                                                                                                                |
+| `packages/vimma-core/src/text/`       | Text helpers every area uses: linear-time string edits, terminal-width text measurement.                                                                                                                                                     |
+| `packages/vimma-core/src/vendor/`     | Vendored smol-toml ([ADR-012](docs/adr/012-toml-parser-smol-toml.md)), generated by `tools/vendor-smol-toml.ts`.                                                                                                                             |
 
-`index.mjs` re-exports the public part. Generated files: `agent-tools-data.mjs`
-(`npm run gen-agent-tools`) and `update-keys.mjs` (`npm run gen-update-keys`).
+`src/index.mjs` re-exports the public part. Generated files: `agent/agent-tools-data.mjs`
+(`npm run gen-agent-tools`) and `updates/update-keys.mjs` (`npm run gen-update-keys`).
 
 ### The rest of `src/`, and `configs/`
 
@@ -395,10 +401,11 @@ person acting; publishing the draft stays a person's click
 
 `npm run arch-lint` (part of `npm run lint`, and a step of its own in `ci.yml`, docs-only pull
 requests included) runs `tools/arch-lint/arch-lint.ts`, which fails when a folder under
-`src/browser/base/content/vimma/`, a folder under `tools/` or a workflow is not named here, or
-when this page names one that no longer exists. A name counts in a code span written as
-`` `vimma/<folder>/` ``, `` `tools/<folder>/` `` or `` `<workflow>.yml` `` (or `.yaml`). Adding a folder or a
-workflow therefore means adding its line here in the same pull request.
+`src/browser/base/content/vimma/`, a folder under `tools/`, a workflow or a folder under
+`packages/vimma-core/src/` is not named here, or when this page names one that no longer exists.
+A name counts in a code span written as `` `vimma/<folder>/` ``, `` `tools/<folder>/` ``,
+`` `<workflow>.yml` `` (or `.yaml`) or `` `packages/vimma-core/src/<folder>/` ``. Adding a folder or
+a workflow therefore means adding its line here in the same pull request.
 
 The two pictures follow the same rule. `npm run diagrams` regenerates the module graph's D2
 source from the imports and renders every source in `docs/assets/diagrams/` to a light and a

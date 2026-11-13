@@ -10,14 +10,14 @@ import {
   refreshPanel,
   rowNumber,
   rowSplitName,
-} from "../src/sidepanel.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { parseKey } from "../src/keys.mjs";
+} from "../src/ui/sidepanel.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { PanelState, PanelTabInfo } from "../src/sidepanel.mjs" */
-/** @import { Workspaces } from "../src/workspaces.mjs" */
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { PanelState, PanelTabInfo } from "../src/ui/sidepanel.mjs" */
+/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 
 /** @type {Workspaces} */
 const model = {

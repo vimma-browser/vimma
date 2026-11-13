@@ -36,7 +36,7 @@ import {
   signatureComment,
   signedBytes as manifestBytes,
   spkiKeyId,
-} from "../../packages/vimma-core/src/updates.mjs";
+} from "../../packages/vimma-core/src/updates/updates.mjs";
 import { buildManifest, marName } from "../update/manifest.mjs";
 import { buildMarFromDir, insertSignature, signedBytes as marBytes } from "../update/mar.mjs";
 

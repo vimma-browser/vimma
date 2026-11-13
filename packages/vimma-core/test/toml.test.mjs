@@ -6,7 +6,7 @@ import {
   parsePath,
   parseToml,
   setTomlKeys,
-} from "../src/toml.mjs";
+} from "../src/config/toml.mjs";
 
 describe("parseToml", () => {
   test("parses a TOML 1.0 document into plain values", () => {

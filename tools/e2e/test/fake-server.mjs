@@ -10,7 +10,7 @@ import {
   CHALLENGE_CONTEXT,
   tokensEqual,
   validateMessage,
-} from "../../../packages/vimma-core/src/control.mjs";
+} from "../../../packages/vimma-core/src/control/control.mjs";
 
 /**
  * @typedef {{ id: string, url: string, title: string, selected: boolean }} FakeTab
@@ -81,7 +81,7 @@ export async function startFakeServer(profile, options = {}) {
 
   /**
    * @param {unknown} message
-   * @param {import("../../../packages/vimma-core/src/control.mjs").ValidateOptions} [opts]
+   * @param {import("../../../packages/vimma-core/src/control/control.mjs").ValidateOptions} [opts]
    */
   function check(message, opts) {
     const { valid, errors } = validateMessage(message, opts);
@@ -128,7 +128,7 @@ export async function startFakeServer(profile, options = {}) {
     socket.on("close", () => sockets.delete(socket));
     socket.on("error", () => {});
     fake.connections++;
-    /** @param {object} message @param {import("../../../packages/vimma-core/src/control.mjs").ValidateOptions} [opts] */
+    /** @param {object} message @param {import("../../../packages/vimma-core/src/control/control.mjs").ValidateOptions} [opts] */
     const send = (message, opts) => {
       check(message, opts);
       socket.write(`${JSON.stringify(message)}\n`);

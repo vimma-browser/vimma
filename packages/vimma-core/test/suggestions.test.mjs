@@ -1,9 +1,13 @@
 import { describe, test, expect } from "vitest";
-import { suggestionListOpen, suggestionStep, SUGGESTION_ACTIONS } from "../src/suggestions.mjs";
+import {
+  suggestionListOpen,
+  suggestionStep,
+  SUGGESTION_ACTIONS,
+} from "../src/keys/suggestions.mjs";
 
 // docs/specs/page-suggestions.md decision 4: what counts as an open suggestion list.
 
-/** @param {Partial<import("../src/suggestions.mjs").PopupSnapshot>} [p] */
+/** @param {Partial<import("../src/keys/suggestions.mjs").PopupSnapshot>} [p] */
 const popup = (p = {}) => ({
   role: "listbox",
   rendered: true,
@@ -12,7 +16,7 @@ const popup = (p = {}) => ({
   ...p,
 });
 
-/** @param {Partial<import("../src/suggestions.mjs").FieldSnapshot>} [f] */
+/** @param {Partial<import("../src/keys/suggestions.mjs").FieldSnapshot>} [f] */
 const field = (f = {}) => ({ role: "", expanded: "", popups: [], ...f });
 
 describe("suggestionListOpen", () => {

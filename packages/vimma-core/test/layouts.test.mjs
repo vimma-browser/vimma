@@ -14,7 +14,7 @@ import {
   swap,
   toggleZoom,
   MIN_RATIO,
-} from "../src/panes.mjs";
+} from "../src/panes/panes.mjs";
 import {
   LAYOUTS,
   MAIN_SIZE_DEFAULT,
@@ -28,14 +28,14 @@ import {
   repaneRefusal,
   showTogether,
   togetherRefusal,
-} from "../src/layouts.mjs";
-import { getAction } from "../src/actions.mjs";
-import { completeCommandLine, parseCommandLine } from "../src/cmdline.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { parseKey } from "../src/keys.mjs";
-import { createWorkspaces } from "../src/workspaces.mjs";
-import { readSnapshot, toSnapshot } from "../src/snapshot.mjs";
+} from "../src/panes/layouts.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { completeCommandLine, parseCommandLine } from "../src/keys/cmdline.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
+import { createWorkspaces } from "../src/workspaces/workspaces.mjs";
+import { readSnapshot, toSnapshot } from "../src/workspaces/snapshot.mjs";
 
 /**
  * The workspace state a snapshot restores to, without its tab renames.

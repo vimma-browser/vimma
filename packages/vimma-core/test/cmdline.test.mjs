@@ -12,9 +12,9 @@ import {
   parseToolbarCommand,
   parseBookmarksToolbarCommand,
   parseSettingsCommand,
-} from "../src/cmdline.mjs";
-import { ACTIONS, getAction } from "../src/actions.mjs";
-/** @import { History } from "../src/cmdline.mjs" */
+} from "../src/keys/cmdline.mjs";
+import { ACTIONS, getAction } from "../src/keys/actions.mjs";
+/** @import { History } from "../src/keys/cmdline.mjs" */
 
 /**
  * The error a command line gives; throws when it gives none.

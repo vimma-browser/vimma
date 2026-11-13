@@ -4,7 +4,7 @@
 
 //! Protocol messages, versions 1 and 2: encoding what the client sends (`hello`, requests) and
 //! decoding what it receives (`welcome`, responses, results) and the discovery file. The rules
-//! mirror `packages/vimma-core/src/control.mjs`; both are tested against
+//! mirror `packages/vimma-core/src/control/control.mjs`; both are tested against
 //! `tests/contract/control/v1/` and `v2/`. Protocol 2 adds the hello's role
 //! (docs/specs/vimma-mcp.md, decision 2): vimma-ctl's own commands use `full`.
 
@@ -19,7 +19,7 @@ pub const PROTOCOL: u64 = 2;
 pub const MAX_LINE: usize = 1024 * 1024;
 /// Largest request id (2^53 - 1, exact in a JSON number).
 pub const MAX_ID: u64 = (1 << 53) - 1;
-/// vimma-core's `MODES` (packages/vimma-core/src/modes.mjs; a test keeps them in step).
+/// vimma-core's `MODES` (packages/vimma-core/src/keys/modes.mjs; a test keeps them in step).
 pub const MODES: [&str; 10] = [
     "normal", "insert", "visual", "command", "hint", "element", "help", "panel", "resize", "index",
 ];
@@ -940,15 +940,18 @@ mod tests {
                 .collect()
         };
         assert_eq!(
-            quoted_after(&src("modes.mjs"), "MODES = Object.freeze(["),
+            quoted_after(&src("keys/modes.mjs"), "MODES = Object.freeze(["),
             MODES
         );
         assert_eq!(
-            quoted_after(&src("control.mjs"), "ERROR_CODES = Object.freeze(["),
+            quoted_after(&src("control/control.mjs"), "ERROR_CODES = Object.freeze(["),
             ERROR_CODES
         );
         assert_eq!(
-            quoted_after(&src("control.mjs"), "DENY_REASONS = Object.freeze(["),
+            quoted_after(
+                &src("control/control.mjs"),
+                "DENY_REASONS = Object.freeze(["
+            ),
             DENY_REASONS
         );
     }

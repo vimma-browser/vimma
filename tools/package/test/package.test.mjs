@@ -3,7 +3,7 @@ import {
   PKGBUILD_INSTALL_COMMAND as CORE_PKGBUILD_INSTALL_COMMAND,
   installTypeFrom,
   updateSteps,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {

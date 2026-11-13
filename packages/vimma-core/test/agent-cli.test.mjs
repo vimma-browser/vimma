@@ -40,9 +40,9 @@ import {
   userLine,
   versionText,
   VERSION_MS,
-} from "../src/agent-cli.mjs";
-import { STORE_VERSION, readRecord } from "../src/agent-store.mjs";
-import { parseToml } from "../src/toml.mjs";
+} from "../src/agent/agent-cli.mjs";
+import { STORE_VERSION, readRecord } from "../src/agent/agent-store.mjs";
+import { parseToml } from "../src/config/toml.mjs";
 
 /**
  * The CLIS entry `id`; throws when there is none, so a test never reads one that is missing.

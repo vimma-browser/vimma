@@ -1,7 +1,7 @@
 // docs/specs/builtin-agent.md B6, B10, Behaviour 15-18, 34: the pure model loop, driven here by
 // a scripted OpenAI-compatible server (a fake `fetch`) and a scripted tool runner. No network.
 import { describe, expect, test } from "vitest";
-import { Budget } from "../src/agent-budget.mjs";
+import { Budget } from "../src/agent/agent-budget.mjs";
 import {
   checkToolCall,
   clearContext,
@@ -11,10 +11,10 @@ import {
   LEFT_OUT,
   pruneResults,
   startTask,
-} from "../src/agent-loop.mjs";
-import { toolResult } from "../src/agent-results.mjs";
-import { untrustedHeader } from "../src/agent.mjs";
-import { AGENT_DEFAULTS } from "../src/config.mjs";
+} from "../src/agent/agent-loop.mjs";
+import { toolResult } from "../src/agent/agent-results.mjs";
+import { untrustedHeader } from "../src/agent/agent.mjs";
+import { AGENT_DEFAULTS } from "../src/config/config.mjs";
 
 const provider = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
 const TOOLS = [
@@ -771,7 +771,7 @@ describe("budgets", () => {
 
 describe("clearContext", () => {
   test("a cleared context sends messages, replies and summaries only", () => {
-    /** @type {import("../src/agent-providers.mjs").ChatMessage[]} */
+    /** @type {import("../src/agent/agent-providers.mjs").ChatMessage[]} */
     const history = [
       { role: "user", text: "Buy milk" },
       {
@@ -846,15 +846,15 @@ describe("older results leave the context in blocks", () => {
   });
 
   test("a hosted provider keeps 6, a local one 20, and keep_results overrides both", () => {
-    /** @type {import("../src/agent-providers.mjs").Provider} */
+    /** @type {import("../src/agent/agent-providers.mjs").Provider} */
     const hosted = { kind: "anthropic", endpoint: "https://api.anthropic.com", model: "m" };
-    /** @type {import("../src/agent-providers.mjs").Provider} */
+    /** @type {import("../src/agent/agent-providers.mjs").Provider} */
     const remote = { kind: "openai", endpoint: "https://llm.example/v1", model: "m" };
-    /** @type {import("../src/agent-providers.mjs").Provider} */
+    /** @type {import("../src/agent/agent-providers.mjs").Provider} */
     const ollama = { kind: "openai", endpoint: "http://127.0.0.1:11434/v1", model: "m" };
-    /** @type {import("../src/agent-providers.mjs").Provider} */
+    /** @type {import("../src/agent/agent-providers.mjs").Provider} */
     const studio = { kind: "openai", endpoint: "http://localhost:1234/v1", model: "m" };
-    /** @type {import("../src/agent-providers.mjs").Provider} */
+    /** @type {import("../src/agent/agent-providers.mjs").Provider} */
     const v6 = { kind: "openai", endpoint: "http://[::1]:8000/v1", model: "m" };
     expect(KEEP_RESULTS_LOCAL).toBe(20);
     expect([hosted, remote].map((p) => keepResultsFor(p, null))).toEqual([6, 6]);

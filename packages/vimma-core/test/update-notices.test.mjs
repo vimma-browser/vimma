@@ -13,12 +13,12 @@ import {
   securityQuestion,
   shouldAsk,
   shouldAskRestart,
-} from "../src/update-notices.mjs";
+} from "../src/updates/update-notices.mjs";
 
 const HOUR = 3_600_000;
 const NOW = Date.UTC(2026, 9, 17, 12);
 
-/** @param {Partial<import("../src/updates.mjs").Offer>} [o] */
+/** @param {Partial<import("../src/updates/updates.mjs").Offer>} [o] */
 const offer = (o = {}) => ({
   appVersion: "158.0.2",
   buildId: "20261017000000",

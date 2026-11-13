@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { agentTools, AGENT_INSTRUCTIONS } from "../../../packages/vimma-core/src/agent-tools.mjs";
-import { OPEN_RATE } from "../../../packages/vimma-core/src/agent.mjs";
+import {
+  agentTools,
+  AGENT_INSTRUCTIONS,
+} from "../../../packages/vimma-core/src/agent/agent-tools.mjs";
+import { OPEN_RATE } from "../../../packages/vimma-core/src/agent/agent.mjs";
 import { runOne, waitOutRate } from "../run.ts";
 import { passes } from "../score.ts";
 import { SCRIPTED_PROVIDER, scriptedFetch } from "../scripted.ts";
@@ -16,7 +19,7 @@ import {
   twoShopsScenario,
   twoShopsTask,
 } from "../two-shops.ts";
-import type { RunTool } from "../../../packages/vimma-core/src/agent-loop.mjs";
+import type { RunTool } from "../../../packages/vimma-core/src/agent/agent-loop.mjs";
 import type { ScriptRequest } from "../scripted.ts";
 import type { Shop } from "../two-shops.ts";
 

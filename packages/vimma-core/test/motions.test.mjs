@@ -7,9 +7,9 @@ import {
   wordObject,
   firstNonBlank,
   isFindKind,
-} from "../src/motions.mjs";
+} from "../src/page/motions.mjs";
 
-/** @import { FindKind } from "../src/motions.mjs" */
+/** @import { FindKind } from "../src/page/motions.mjs" */
 
 // Caret positions are between characters: 0 is before the first, text.length after the last.
 // Spec: docs/specs/m1-copy-mode.md § Settled (motions).

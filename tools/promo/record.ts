@@ -36,7 +36,6 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -61,6 +60,7 @@ import {
   textKeys,
 } from "./agent.ts";
 import { READ_PATH_PREF, devPrefs } from "../start.mjs";
+import { flatCore } from "../sync-core.mjs";
 import {
   HOSTS,
   KeyTrack,
@@ -117,16 +117,22 @@ function writeTheme(dir: string, name: string) {
 
 /**
  * Serve vimma-core's `name`.mjs as `name`.js in `dir`, with the modules it imports, for
- * probe.js (fixtures/probe.js imports hints.js).
+ * probe.js (fixtures/probe.js imports hints.js). The modules come from sync-core's flat copy, in
+ * which each imports the others as `./name.mjs`, whichever folder of the package holds it.
  */
-function serveCore(dir: string, name: string, done: Set<string> = new Set()) {
+function serveCore(
+  dir: string,
+  name: string,
+  done: Set<string> = new Set(),
+  core: Map<string, string> = flatCore(join(REPO, "packages/vimma-core/src")),
+) {
   if (done.has(name)) return;
   done.add(name);
-  const { text, imports } = servedModule(
-    readFileSync(join(REPO, `packages/vimma-core/src/${name}.mjs`), "utf8"),
-  );
+  const source = core.get(`${name}.mjs`);
+  if (source === undefined) throw new Error(`vimma-core has no module ${name}.mjs`);
+  const { text, imports } = servedModule(source);
   writeFileSync(join(dir, `${name}.js`), text);
-  for (const dep of imports) serveCore(dir, dep, done);
+  for (const dep of imports) serveCore(dir, dep, done, core);
 }
 
 /** Replace config.toml whole (write, then rename), so Vimma's poll never reads half a file. */

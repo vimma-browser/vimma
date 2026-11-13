@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { ACTIONS, closest, getAction, resolveActionName } from "../src/actions.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
+import { ACTIONS, closest, getAction, resolveActionName } from "../src/keys/actions.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 
 describe("actions", () => {
   test("every action has a unique id+arg, a unique config name, a group and a description", () => {
@@ -187,8 +187,8 @@ describe("closest", () => {
 // docs/specs/toolbar-toggle.md, decision 1.
 describe("toolbar toggle", () => {
   test("ctrl+b u runs toggle_toolbar (toolbar.toggle) through the dispatcher", async () => {
-    const { createDispatcher } = await import("../src/dispatcher.mjs");
-    const { parseKey } = await import("../src/keys.mjs");
+    const { createDispatcher } = await import("../src/keys/dispatcher.mjs");
+    const { parseKey } = await import("../src/keys/keys.mjs");
     expect(getAction("toggle_toolbar")).toMatchObject({
       id: "toolbar.toggle",
       group: "Navigation",

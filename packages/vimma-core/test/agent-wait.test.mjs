@@ -2,7 +2,7 @@
 // the call waits until the page has gone quiet, not a fixed second; a loaded page counts as
 // ready at DOMContentLoaded and a short quiet period, not at its load event.
 import { describe, expect, test } from "vitest";
-import { AGENT_WAITS, quietVerdict } from "../src/agent-wait.mjs";
+import { AGENT_WAITS, quietVerdict } from "../src/agent/agent-wait.mjs";
 
 const STEP = { quiet: AGENT_WAITS.quiet, still: AGENT_WAITS.still, max: AGENT_WAITS.busy };
 

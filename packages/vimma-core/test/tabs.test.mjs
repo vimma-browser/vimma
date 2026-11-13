@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
-import { describeAction, notImplementedText } from "../src/actions.mjs";
-import { tabIds, tabTarget } from "../src/tabs.mjs";
+import { describeAction, notImplementedText } from "../src/keys/actions.mjs";
+import { tabIds, tabTarget } from "../src/workspaces/tabs.mjs";
 
 // Spec: docs/specs/m2-tab-keys.md
 

@@ -11,7 +11,7 @@
 
 import { setTimeout as delay } from "node:timers/promises";
 import { fullName, loadCatalog } from "./shop.ts";
-import type { Fetch, Provider } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Fetch, Provider } from "../../packages/vimma-core/src/agent/agent-providers.mjs";
 import type { ShoppingList } from "./score.ts";
 import type { Catalog } from "./shop.ts";
 

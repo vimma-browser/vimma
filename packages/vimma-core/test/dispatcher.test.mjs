@@ -1,11 +1,11 @@
 import { describe, test, expect } from "vitest";
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { chordFromEvent, formatKey, parseKey } from "../src/keys.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { chordFromEvent, formatKey, parseKey } from "../src/keys/keys.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
-/** @import { Chord } from "../src/keys.mjs" */
-/** @import { DispatchResult } from "../src/dispatcher.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
+/** @import { Chord } from "../src/keys/keys.mjs" */
+/** @import { DispatchResult } from "../src/keys/dispatcher.mjs" */
 
 /**
  * Feed space-separated chords; return all results.

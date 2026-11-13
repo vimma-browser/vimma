@@ -9,7 +9,7 @@ import {
   needsBlockText,
   blockAround,
   blockObject,
-} from "../src/blocks.mjs";
+} from "../src/page/blocks.mjs";
 
 /**
  * A descriptor tree from a nested shorthand: [tag, props?, ...children]. Every element is on

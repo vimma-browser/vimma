@@ -24,7 +24,7 @@ import {
   userWorkspace,
   deleteBookmarksQuestion,
   AGENT_LOOKS,
-} from "../src/workspacedefs.mjs";
+} from "../src/workspaces/workspacedefs.mjs";
 
 const fixture = (/** @type {string} */ name) =>
   readFileSync(new URL(`../../../tests/contract/workspaces/v1/${name}`, import.meta.url), "utf8");

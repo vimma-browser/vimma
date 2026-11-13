@@ -3,7 +3,11 @@
 // limits, or be refused; never a throw, never another action id.
 import { describe, expect, test } from "vitest";
 import fc from "fast-check";
-import { AGENT_KEY_ACTIONS, AGENT_KEY_LIMITS, parseAgentKeys } from "../../src/agent-keys.mjs";
+import {
+  AGENT_KEY_ACTIONS,
+  AGENT_KEY_LIMITS,
+  parseAgentKeys,
+} from "../../src/agent/agent-keys.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 
 /** Pieces of key notation, refused keys among them, so random joins often parse. */

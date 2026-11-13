@@ -21,9 +21,9 @@ import {
   splitRefusal,
   MIN_RATIO,
   PaneError,
-} from "../src/panes.mjs";
+} from "../src/panes/panes.mjs";
 
-/** @import { LayoutRect, Leaf, PaneNode, Panes, Split } from "../src/panes.mjs" */
+/** @import { LayoutRect, Leaf, PaneNode, Panes, Split } from "../src/panes/panes.mjs" */
 
 /**
  * `value`, failing the test where it is missing.
@@ -172,7 +172,7 @@ describe("closePane", () => {
 
 describe("focus", () => {
   test.each(
-    /** @type {Array<[string, import("../src/panes.mjs").Direction, string]>} */ ([
+    /** @type {Array<[string, import("../src/panes/panes.mjs").Direction, string]>} */ ([
       ["p3", "left", "p1"],
       ["p2", "left", "p1"],
       ["p1", "right", "p3"], // p2 and p3 both border p1; p3 was used more recently

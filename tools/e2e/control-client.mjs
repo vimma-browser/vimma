@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { CHALLENGE_CONTEXT } from "../../packages/vimma-core/src/control.mjs";
+import { CHALLENGE_CONTEXT } from "../../packages/vimma-core/src/control/control.mjs";
 
 /**
  * The version a vimma-ctl built from this tree names in its agent-hello (surfer.json's

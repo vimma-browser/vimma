@@ -13,14 +13,14 @@ import {
   statusWidth,
   textWidth,
   truncate,
-} from "../src/statusbar.mjs";
-import { THEME_TOKENS } from "../src/theme.mjs";
-import { hintKey, hintStatus, startHints } from "../src/hints.mjs";
-import { parseKey } from "../src/keys.mjs";
+} from "../src/ui/statusbar.mjs";
+import { THEME_TOKENS } from "../src/config/theme.mjs";
+import { hintKey, hintStatus, startHints } from "../src/page/hints.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
 
 /**
  * @import { Announced, Segment, SecurityLevel, StatusInput, UrlOrigin }
- *   from "../src/statusbar.mjs"
+ *   from "../src/ui/statusbar.mjs"
  */
 
 const base = {

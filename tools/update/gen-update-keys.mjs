@@ -4,8 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * npm run gen-update-keys: writes packages/vimma-core/src/update-keys.mjs, the keys the manifest
- * check pins, from the certificates Firefox's updater embeds
+ * npm run gen-update-keys: writes packages/vimma-core/src/updates/update-keys.mjs, the keys the
+ * manifest check pins, from the certificates Firefox's updater embeds
  * (configs/updater/primary.der and secondary.der, which npm run import links to where
  * toolkit/mozapps/update/updater/moz-build.patch reads them). One source for both verifiers
  * (docs/specs/m6a-updater.md "Delivery", sub-PR 2): a key can only be trusted by the manifest
@@ -25,7 +25,7 @@ import { fileURLToPath } from "node:url";
 import { CERT_DIR } from "./cert-dir.mjs";
 
 export { CERT_DIR };
-export const UPDATE_KEYS_FILE = "packages/vimma-core/src/update-keys.mjs";
+export const UPDATE_KEYS_FILE = "packages/vimma-core/src/updates/update-keys.mjs";
 
 /** @typedef {{ slot: "primary" | "secondary", spki: Uint8Array }} SlotKey */
 

@@ -5,7 +5,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
-import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates.mjs";
+import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { loadScenarios } from "../../e2e/scenario.mjs";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";

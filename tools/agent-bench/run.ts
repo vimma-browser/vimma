@@ -7,14 +7,18 @@
 // that answers every later question, which under that grant only a checkpoint asks.
 
 import { parseArgs as parseNodeArgs } from "node:util";
-import { Budget } from "../../packages/vimma-core/src/agent-budget.mjs";
-import { startTask } from "../../packages/vimma-core/src/agent-loop.mjs";
+import { Budget } from "../../packages/vimma-core/src/agent/agent-budget.mjs";
+import { startTask } from "../../packages/vimma-core/src/agent/agent-loop.mjs";
 import { taskText } from "./lists.ts";
 import { isUserDenial, scoreRun } from "./score.ts";
 import { timedFetch } from "./breakdown.ts";
-import type { Limits } from "../../packages/vimma-core/src/agent-budget.mjs";
-import type { RunTool } from "../../packages/vimma-core/src/agent-loop.mjs";
-import type { Fetch, Provider, ToolDef } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Limits } from "../../packages/vimma-core/src/agent/agent-budget.mjs";
+import type { RunTool } from "../../packages/vimma-core/src/agent/agent-loop.mjs";
+import type {
+  Fetch,
+  Provider,
+  ToolDef,
+} from "../../packages/vimma-core/src/agent/agent-providers.mjs";
 import type { Turn } from "./breakdown.ts";
 import type { RunScore, ShopRecord, ShoppingList, TaskRecord } from "./score.ts";
 

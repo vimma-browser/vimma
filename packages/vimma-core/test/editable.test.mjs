@@ -14,13 +14,13 @@ import {
   INSERT_ENTER,
   insertEditCommand,
   DESCRIPTOR_MAX_CLASSES,
-} from "../src/editable.mjs";
-import { resolveEscape } from "../src/escape.mjs";
+} from "../src/keys/editable.mjs";
+import { resolveEscape } from "../src/keys/escape.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 /**
  * @import { EditableDescriptor, InsertSiteMode, InsertSiteRule, InsertTrigger }
- *   from "../src/editable.mjs"
+ *   from "../src/keys/editable.mjs"
  */
 
 /** @param {string | undefined} type */

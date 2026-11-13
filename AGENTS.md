@@ -35,11 +35,11 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run gen-docs`: regenerate `docs/bindings.md`, `docs/bindings.json` and `defaults.toml`
   after changing `actions.mjs` or `defaults.mjs`.
 - `npm run gen-agent-tools`: regenerate the built-in agent's tool list and system text
-  (`packages/vimma-core/src/agent-tools-data.mjs`) after changing vimma-ctl's MCP tool fixture
+  (`packages/vimma-core/src/agent/agent-tools-data.mjs`) after changing vimma-ctl's MCP tool fixture
   (`tools/vimma-ctl/tests/fixtures/mcp/tools-list.json`) or `INSTRUCTIONS` in
   `tools/vimma-ctl/src/mcp/instructions.rs`.
 - `npm run gen-update-keys`: regenerate the pinned update keys
-  (`packages/vimma-core/src/update-keys.mjs`) after changing the updater's certificates
+  (`packages/vimma-core/src/updates/update-keys.mjs`) after changing the updater's certificates
   (`configs/updater/*.der`).
 - `npm run import`: sync-core plus surfer import (symlinks `src/` and `tests/` into `engine/`);
   rerun after editing `packages/vimma-core`.

@@ -89,7 +89,7 @@ none)`. By default the address is sent without its query and fragment, which can
 3. **What is already there is said first.** An agent whose request is served by an existing
    action answers with a config change (Behaviour 4), not a module. "A binding that pops the
    current video into a floating window" is Picture-in-Picture, already the action
-   `picture_in_picture` (`packages/vimma-core/src/actions.mjs:204`, `ctrl+}` by default in
+   `picture_in_picture` (`packages/vimma-core/src/keys/actions.mjs:204`, `ctrl+}` by default in
    `defaults.mjs:142`), so the proposal is one line under `[keys]`.
 
 ### The three tiers
@@ -260,10 +260,11 @@ recognise every such field.`; a permission an update adds is
 ### Vimma at `2a7a3b2`
 
 - **No code in config.** `config.toml` is parsed into a closed schema (`TOP_KEYS`,
-  `packages/vimma-core/src/config.mjs:167-184`) and never executed (security.md F3). It is read
-  from `$XDG_CONFIG_HOME/vimma/config.toml` (`config/ConfigHost.sys.mjs:65-73`) and polled every
-  2 s (`:58`). Vimma edits it only through `setTomlKeys` (`packages/vimma-core/src/toml.mjs:487`),
-  which keeps comments, and `:route add` (security.md F1).
+  `packages/vimma-core/src/config/config.mjs:167-184`) and never executed (security.md F3). It is
+  read from `$XDG_CONFIG_HOME/vimma/config.toml` (`config/ConfigHost.sys.mjs:65-73`) and polled
+  every 2 s (`:58`). Vimma edits it only through `setTomlKeys`
+  (`packages/vimma-core/src/config/toml.mjs:487`), which keeps comments, and `:route add`
+  (security.md F1).
 - **Chrome code never evaluates text.** The test `never builds code from text: no eval, Function
 or sandbox evaluation` scans every chrome source for `eval(`, `Function(`, `evalInSandbox` and
   `loadSubScript` (`tools/security/test/chrome-source.test.ts:57-58`, security.md C2).
@@ -279,9 +280,9 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
   runs through `runAgentCommand` (`ctl/agent-commands.mjs:1348`), which confines it to the agent
   workspace (`isAgentTab`, `:154`; `agentTabs`, `:170`; `findAgentTab`, `:207`). Page text
   reaches the model inside delimiters a page cannot close (`wrapUntrusted`,
-  `packages/vimma-core/src/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show` always
-  asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are `INSTRUCTIONS`
-  (`tools/vimma-ctl/src/mcp/instructions.rs:9`).
+  `packages/vimma-core/src/agent/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show`
+  always asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are
+  `INSTRUCTIONS` (`tools/vimma-ctl/src/mcp/instructions.rs:9`).
 - **Sensitive fields.** The actors already tell whether a password, card or one-time-code field
   shows a value (`actors/agent-fields.mjs`, `plainlySensitive` at `:181`, `sensitiveValueShown`
   at `:232`), for agent screenshots (security.md M31).
@@ -289,7 +290,7 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
   profile in a temporary folder (`:137`), sets `vimma.control.enabled` (`:43`) and starts the
   build with `-no-remote -profile` (`:218-219`).
 - **Theme.** The palette is parsed and checked as `#rrggbb` values (`parseOmarchyColors`,
-  `packages/vimma-core/src/theme.mjs:481`) and turned into CSS custom properties on Vimma's
+  `packages/vimma-core/src/config/theme.mjs:481`) and turned into CSS custom properties on Vimma's
   chrome (`tokensToCss`, `:939`); page content cannot see those properties.
 - **A command-line flag of Vimma's own exists**: `-vimma-reload-theme` (`vimma.js:44`,
   security.md O3).

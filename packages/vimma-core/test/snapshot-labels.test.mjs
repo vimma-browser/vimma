@@ -1,9 +1,9 @@
 import { describe, test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import fc from "fast-check";
-import { readSnapshot, toSnapshot } from "../src/snapshot.mjs";
-import { createWorkspaces, openTab } from "../src/workspaces.mjs";
-import { setTabLabel } from "../src/tablabels.mjs";
+import { readSnapshot, toSnapshot } from "../src/workspaces/snapshot.mjs";
+import { createWorkspaces, openTab } from "../src/workspaces/workspaces.mjs";
+import { setTabLabel } from "../src/workspaces/tablabels.mjs";
 
 /**
  * The workspace state a snapshot restores to, without its tab renames.
