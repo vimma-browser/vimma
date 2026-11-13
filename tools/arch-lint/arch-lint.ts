@@ -14,7 +14,7 @@
 // document can mention them freely. The repository's side comes from `git ls-files`, so
 // git-ignored folders (vimma/core/, which sync-core copies in) and stray local files never count.
 //
-//   node tools/arch-lint/arch-lint.mjs
+//   node tools/arch-lint/arch-lint.ts
 
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -27,38 +27,37 @@ const VIMMA = "src/browser/base/content/vimma/";
 const TOOLS = "tools/";
 const WORKFLOWS = ".github/workflows/";
 
-/** @typedef {{ vimma: string[], tools: string[], workflows: string[] }} Entries */
+export interface Entries {
+  vimma: string[];
+  tools: string[];
+  workflows: string[];
+}
 
 /** Each kind: the code-span form that names an entry, the repository path and the form shown. */
-const KINDS = /** @type {const} */ ([
+const KINDS = [
   {
     key: "vimma",
     span: /^vimma\/([\w.-]+)\/$/,
-    path: (/** @type {string} */ n) => `${VIMMA}${n}/`,
-    form: (/** @type {string} */ n) => `vimma/${n}/`,
+    path: (n: string) => `${VIMMA}${n}/`,
+    form: (n: string) => `vimma/${n}/`,
   },
   {
     key: "tools",
     span: /^tools\/([\w.-]+)\/$/,
-    path: (/** @type {string} */ n) => `${TOOLS}${n}/`,
-    form: (/** @type {string} */ n) => `tools/${n}/`,
+    path: (n: string) => `${TOOLS}${n}/`,
+    form: (n: string) => `tools/${n}/`,
   },
   {
     key: "workflows",
     span: /^([\w.-]+\.ya?ml)$/,
-    path: (/** @type {string} */ n) => `${WORKFLOWS}${n}`,
-    form: (/** @type {string} */ n) => n,
+    path: (n: string) => `${WORKFLOWS}${n}`,
+    form: (n: string) => n,
   },
-]);
+] as const;
 
-/**
- * The folders and workflows a Markdown text names in its code spans, in order, each once.
- * @param {string} md
- * @returns {Entries}
- */
-export function namedEntries(md) {
-  /** @type {Entries} */
-  const named = { vimma: [], tools: [], workflows: [] };
+/** The folders and workflows a Markdown text names in its code spans, in order, each once. */
+export function namedEntries(md: string): Entries {
+  const named: Entries = { vimma: [], tools: [], workflows: [] };
   for (const m of md.matchAll(/`([^`\n]+)`/g)) {
     for (const kind of KINDS) {
       const name = kind.span.exec(m[1] ?? "")?.[1];
@@ -70,14 +69,12 @@ export function namedEntries(md) {
 
 /**
  * What the document misses and what it names that does not exist.
- * @param {string} md  ARCHITECTURE.md
- * @param {Entries} repo  what the repository holds
- * @returns {string[]}
+ * @param md  ARCHITECTURE.md
+ * @param repo  what the repository holds
  */
-export function archErrors(md, repo) {
+export function archErrors(md: string, repo: Entries): string[] {
   const named = namedEntries(md);
-  /** @type {string[]} */
-  const errors = [];
+  const errors: string[] = [];
   for (const kind of KINDS) {
     for (const name of repo[kind.key])
       if (!named[kind.key].includes(name))
@@ -93,18 +90,17 @@ export function archErrors(md, repo) {
 
 /**
  * The tracked folders and workflows of a checkout, from git's index.
- * @param {string} root  the checkout
- * @returns {Entries}
+ * @param root  the checkout
  */
-export function listEntries(root) {
+export function listEntries(root: string): Entries {
   const files = execFileSync("git", ["ls-files", "-z", "--", VIMMA, TOOLS, WORKFLOWS], {
     cwd: root,
     encoding: "utf8",
   })
     .split("\0")
     .filter(Boolean);
-  /** @param {string} prefix @returns {string[]} the first folder below `prefix`, sorted */
-  const folders = (prefix) => [
+  /** @returns the first folder below `prefix`, sorted */
+  const folders = (prefix: string): string[] => [
     ...new Set(
       files
         .filter((f) => f.startsWith(prefix) && f.slice(prefix.length).includes("/"))
@@ -121,7 +117,7 @@ export function listEntries(root) {
   };
 }
 
-function main() {
+function main(): void {
   let md = "";
   try {
     md = readFileSync(join(ROOT, DOC), "utf8");

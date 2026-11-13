@@ -90,6 +90,7 @@ describe("findCommentWording", () => {
 describe("commentStyle", () => {
   test.each([
     ["src/browser/base/content/vimma/host/VimmaHost.sys.mjs", "slash"],
+    ["tools/arch-lint/arch-lint.ts", "slash"],
     ["tools/vimma-ctl/src/client.rs", "slash"],
     ["src/browser/themes/shared/vimma/statusbar.css", "slash"],
     ["tests/browser/browser_vimma_control.js", "slash"],

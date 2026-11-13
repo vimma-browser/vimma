@@ -133,7 +133,7 @@ describe("release path", () => {
         }
       }
       // Our own scripts and modules, followed through their relative imports.
-      for (const m of text.matchAll(/(?:\.\/|\b)(tools\/[\w/.-]+\.(?:mjs|js|sh))\b/g)) {
+      for (const m of text.matchAll(/(?:\.\/|\b)(tools\/[\w/.-]+\.(?:mjs|ts|js|sh))\b/g)) {
         const path = m[1] ?? "";
         if (!seen.has(path) && existsSync(new URL(path, root))) {
           seen.add(path);

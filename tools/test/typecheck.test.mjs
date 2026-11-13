@@ -23,10 +23,26 @@ describe("npm run typecheck", () => {
 
   it("checks tools/ with the root's strict options plus Node's types", () => {
     expect(tools.extends).toBe("../tsconfig.json");
-    expect(tools.compilerOptions).toEqual({ types: ["node"] });
+    expect(tools.compilerOptions.types).toEqual(["node"]);
     expect(tools.include).toContain("**/*.mjs");
-    // Rust, and the tests (a follow-up issue), are not in it.
-    expect(tools.exclude).toEqual(expect.arrayContaining(["**/test/**", "vimma-ctl/"]));
+    // Rust, and the .mjs tests (issue #947), are not in it.
+    expect(tools.exclude).toEqual(expect.arrayContaining(["**/test/**/*.mjs", "vimma-ctl/"]));
+  });
+
+  // ADR-025: Node runs tools/**/*.ts as they are, by erasing the types; nothing compiles them.
+  it("checks tools/**/*.ts, tests included, as Node runs them", () => {
+    expect(tools.include).toContain("**/*.ts");
+    for (const glob of tools.exclude) expect(glob).not.toMatch(/(?:^|\/)test\/\*\*$|\.ts$/);
+    expect(tools.compilerOptions).toEqual({
+      types: ["node"],
+      // Only syntax Node can erase: no enums, namespaces, parameter properties or `import =`.
+      erasableSyntaxOnly: true,
+      // Type-only imports say so, since Node removes them without looking at what they import.
+      verbatimModuleSyntax: true,
+      // Imports name the file Node loads: `./x.ts`.
+      allowImportingTsExtensions: true,
+    });
+    expect(root.compilerOptions.noEmit).toBe(true);
   });
 
   it("pins @types/node to the Node major in .nvmrc", () => {
