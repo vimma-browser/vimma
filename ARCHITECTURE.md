@@ -5,7 +5,8 @@ part when it runs, what each folder holds, how the folders depend on each other 
 the trust boundaries are. It is written for someone who has not worked on Vimma before. It names
 folders and roles, not line numbers; the feature specs in [docs/specs/](docs/specs/) and the
 decisions in [docs/adr/](docs/adr/) hold the detail, and [docs/README.md](docs/README.md) says
-which page to read for what.
+which page to read for what. The walkthroughs in [docs/architecture/](docs/architecture/) follow
+one flow each through the code, step by step.
 
 ## What Vimma adds to Firefox
 
@@ -90,7 +91,8 @@ flowchart LR
   [spec](docs/specs/m0-control-protocol-and-vimma-ctl.md)). Protocol 2 has two roles: `full`
   (keys, state, open, theme; the pref `vimma.control.enabled`) and `agent` (only the agent
   commands, confined to the agent workspace and asked of the user; `[mcp] enabled` or `:mcp on`,
-  [spec](docs/specs/vimma-mcp.md), [ADR-019](docs/adr/019-agents-over-mcp.md)).
+  [spec](docs/specs/vimma-mcp.md), [ADR-019](docs/adr/019-agents-over-mcp.md)). One call's way
+  through it: [The life of an agent call](docs/architecture/agent-call.md).
 - **vimma-ctl.** One Rust binary, shipped next to the browser: `vimma-ctl <command>` is the
   scripting client, and `vimma-ctl mcp` is an MCP server over stdio that an AI agent host starts,
   which connects to the browser as the `agent` role.
@@ -362,7 +364,9 @@ version and creates a draft release; `release.yml` builds, signs and uploads the
 maintainer publishes the draft, which starts `update-publish.yml`, `aur.yml` and `homebrew.yml`.
 With `AUTO_SECURITY_RELEASE` on, a merged Firefox security bump becomes a draft release with no
 person acting; publishing the draft stays a person's click
-([ADR-020](docs/adr/020-security-release-without-a-person.md)).
+([ADR-020](docs/adr/020-security-release-without-a-person.md)). Step by step:
+[From a release tag to an offered update](docs/architecture/updates-and-release.md) and
+[From a Firefox release to a merged bump](docs/architecture/upstream-autopilot.md).
 
 ## Keeping it current
 
