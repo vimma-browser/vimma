@@ -132,8 +132,9 @@ Then, whether or not the file applied, `use` tells the update check what `[updat
 is (`updatesCheckAfterRead` in core `updates.mjs`). A file with errors still decides it when its
 TOML parses: its own `check` applies, and a missing one counts as true, so a value from a newer
 build never keeps the user from the release that accepts it. Only when `check` cannot be read
-(the TOML does not parse, or the line is malformed or misplaced) does the previous config's value
-stay, and when only the defaults stand in for the file, at startup, checks are held. `use` then
+(the TOML does not parse, or the line is malformed or misplaced) does it keep the value of the
+config in force, and when only the defaults stand in for the file, at startup, it holds checks
+(`:update` aside). `use` then
 calls `report`, which logs the errors (once per change of the file, and again on each `:source`)
 and passes them to `VimmaHost.configure` as `configErrors` with the file's
 name. The status bar shows them, `about:vimma` lists them, and the built-in agent's window names
@@ -175,15 +176,18 @@ or `vimma.theme.omarchyPath` is set by hand. `check` then:
    (so no frame is drawn without tokens), does the same for Firefox's own themed pages, and
    rewrites the `<style>` of Vimma's own pages (the start page, `about:vimma`, the setup page).
 
-The poll is an interval of `vimma.theme.pollMs` (2 s by default) that runs only while a window is
-open and there is an Omarchy theme to follow. Without Omarchy the built-in palette, `[theme]
-name`, applies and nothing is polled. Vimma's CSS in `src/browser/themes/shared/vimma/` is
-written against the tokens, so the surfaces it styles change with the sheet. Tests:
+The poll runs every `vimma.theme.pollMs` (2 s by default) only while a window is open and there is
+an Omarchy theme to follow. Like the config poll, it is a one-shot timer armed again at each tick,
+so the test harness never blames a repeating timer on another test file. Without Omarchy the
+built-in palette, `[theme] name`, applies and nothing is polled. Vimma's CSS in
+`src/browser/themes/shared/vimma/` is written against the tokens, so the surfaces it styles change
+with the sheet. Tests:
 [theme.test.mjs](../../packages/vimma-core/test/theme.test.mjs), the sample themes in
 `tests/contract/theme/`,
 [theme.fuzz.test.mjs](../../packages/vimma-core/test/fuzz/theme.fuzz.test.mjs);
 `rewriting_the_file_updates_within_the_poll`, `broken_file_keeps_the_previous_colours` and
-`swapping_the_symlink_follows_the_new_theme` in
+`swapping_the_symlink_follows_the_new_theme` and
+`the_poll_is_not_a_repeating_timer_a_test_could_be_blamed_for` in
 [browser_vimma_theme.js](../../tests/browser/browser_vimma_theme.js);
 `without_omarchy_nothing_polls_and_the_builtin_shows` in
 [browser_vimma_theme_appearance.js](../../tests/browser/browser_vimma_theme_appearance.js).

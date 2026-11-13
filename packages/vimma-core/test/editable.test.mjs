@@ -17,6 +17,13 @@ import {
 } from "../src/editable.mjs";
 import { resolveEscape } from "../src/escape.mjs";
 
+/** @import { Mode } from "../src/modes.mjs" */
+/**
+ * @import { EditableDescriptor, InsertSiteMode, InsertSiteRule, InsertTrigger }
+ *   from "../src/editable.mjs"
+ */
+
+/** @param {string | undefined} type */
 const input = (type, extra = {}) => ({ tagName: "INPUT", type, ...extra });
 const div = (extra = {}) => ({ tagName: "DIV", ...extra });
 
@@ -299,6 +306,7 @@ describe("isEditable: designMode and site overrides", () => {
 });
 
 describe("matchSiteRule", () => {
+  /** @type {InsertSiteRule[]} */
   const rules = [
     { match: "example.com", insert: "never" },
     { match: "docs.example.com", insert: "always" },
@@ -352,11 +360,13 @@ describe("matchSiteRule", () => {
     ["[::1]", "::1"],
     ["[FE80::1]", "fe80::1"],
   ])("Given host %s and rule %s, then the rule matches", (host, match) => {
+    /** @type {InsertSiteRule} */
     const rule = { match, insert: "always" };
     expect(matchSiteRule(host, [rule])).toBe(rule);
   });
 
   test("a rule with a trailing dot or uppercase still matches", () => {
+    /** @type {InsertSiteRule} */
     const r = { match: "Example.COM.", insert: "never" };
     expect(matchSiteRule("www.example.com", [r])).toBe(r);
   });
@@ -371,12 +381,14 @@ describe("insert mode on focus changes (host contract)", () => {
     expect([...INSERT_TRIGGERS]).toEqual(["focusin", "recheck"]);
   });
 
-  test.each([
+  /** @type {Array<[{ site?: InsertSiteMode }, EditableDescriptor]>} */
+  const roots = [
     [{ site: "always" }, body],
     [{ site: "always" }, html],
     [{}, { ...body, designMode: true }],
     [{}, { ...html, designMode: true }],
-  ])("on a recheck, %o never makes a bare <body>/<html> editable", (opts, d) => {
+  ];
+  test.each(roots)("on a recheck, %o never makes a bare <body>/<html> editable", (opts, d) => {
     expect(isEditable(d, { ...opts, trigger: "recheck" })).toEqual({
       editable: false,
       reason: "document-root",
@@ -392,7 +404,8 @@ describe("insert mode on focus changes (host contract)", () => {
     expect(() => isEditable(div(), { trigger: /** @type {any} */ ("blur") })).toThrow(TypeError);
   });
 
-  test.each([
+  /** @type {Array<[Mode, InsertTrigger, EditableDescriptor, InsertSiteMode, Mode]>} */
+  const focusChanges = [
     ["normal", "focusin", text, "auto", "insert"],
     ["insert", "focusin", div(), "auto", "normal"],
     ["insert", "focusin", text, "auto", "insert"],
@@ -403,26 +416,36 @@ describe("insert mode on focus changes (host contract)", () => {
     ["hint", "focusin", text, "auto", "hint"],
     ["visual", "recheck", body, "auto", "visual"],
     ["normal", "focusin", body, "always", "insert"],
-  ])("Given %s, on %s of %o (site %s), then %s", (mode, trigger, descriptor, site, next) => {
-    expect(insertModeAfterFocus({ mode, trigger, descriptor, site })).toBe(next);
-  });
+  ];
+  test.each(focusChanges)(
+    "Given %s, on %s of %o (site %s), then %s",
+    (mode, trigger, descriptor, site, next) => {
+      expect(insertModeAfterFocus({ mode, trigger, descriptor, site })).toBe(next);
+    },
+  );
 
-  test.each([
+  /** @type {Array<[string, { site?: InsertSiteMode }, EditableDescriptor]>} */
+  const escToBody = [
     ["site always", { site: "always" }, body],
     ["designMode", {}, { ...body, designMode: true }],
-  ])("Given insert under %s, when Esc blurs to <body>, then normal mode stays", (_, opts, d) => {
-    // Esc: the host switches to normal and blurs (resolveEscape); focus falls to <body>.
-    const esc = resolveEscape({ mode: "insert" });
-    expect(esc).toMatchObject({ mode: "normal", blur: true });
-    const afterEsc = esc.mode;
-    expect(
-      insertModeAfterFocus({ mode: afterEsc, trigger: "recheck", descriptor: d, ...opts }),
-    ).toBe("normal");
-    // A host that rechecks before switching still leaves insert.
-    expect(
-      insertModeAfterFocus({ mode: "insert", trigger: "recheck", descriptor: d, ...opts }),
-    ).toBe("normal");
-  });
+  ];
+  test.each(escToBody)(
+    "Given insert under %s, when Esc blurs to <body>, then normal mode stays",
+    (_, opts, d) => {
+      // Esc: the host switches to normal and blurs (resolveEscape); focus falls to <body>.
+      const esc = resolveEscape({ mode: "insert" });
+      expect(esc).toMatchObject({ mode: "normal", blur: true });
+      if (esc.kind === "pass") throw new Error("Esc in insert mode passed");
+      const afterEsc = esc.mode;
+      expect(
+        insertModeAfterFocus({ mode: afterEsc, trigger: "recheck", descriptor: d, ...opts }),
+      ).toBe("normal");
+      // A host that rechecks before switching still leaves insert.
+      expect(
+        insertModeAfterFocus({ mode: "insert", trigger: "recheck", descriptor: d, ...opts }),
+      ).toBe("normal");
+    },
+  );
 });
 
 describe("parseDescriptor: untrusted reports from a content process", () => {

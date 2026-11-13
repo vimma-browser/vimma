@@ -24,8 +24,15 @@ const fresh = () =>
     engine: "Google",
   });
 
-/** Feeds keys, returning the last result. */
+/** @import { SetupState } from "../src/setup.mjs" */
+
+/**
+ * Feeds keys, returning the last result.
+ * @param {SetupState} state
+ * @param {...string} ks
+ */
 const keys = (state, ...ks) => {
+  /** @type {ReturnType<typeof setupKey>} */
   let r = { state, effect: null };
   for (const k of ks) r = setupKey(r.state, k);
   return r;
@@ -52,7 +59,9 @@ describe("setup", () => {
   });
 
   test("an AMO result off addons.mozilla.org or without a sha256 hash is dropped", () => {
-    const file = (url, hash) => ({ current_version: { file: { url, hash } } });
+    const file = (/** @type {string} */ url, /** @type {string | undefined} */ hash) => ({
+      current_version: { file: { url, hash } },
+    });
     const got = amoEntries([
       amo(file("http://addons.mozilla.org/f.xpi", "sha256:ab")),
       amo(file("https://evil.example/f.xpi", "sha256:ab")),
@@ -68,6 +77,7 @@ describe("setup", () => {
 
   test("a curated slug answered with another guid is dropped", () => {
     const [first] = CURATED;
+    if (!first) throw new Error("no curated add-on");
     const good = amo({ slug: first.slug, guid: first.guid });
     const bad = amo({ slug: first.slug, guid: "impostor@e" });
     expect(amoEntries([good], { curated: true })).toHaveLength(1);
@@ -77,7 +87,7 @@ describe("setup", () => {
 
   test("installed add-ons cannot be marked", () => {
     const addons = amoEntries([amo({ guid: "in@e" })], { installed: new Set(["in@e"]) });
-    expect(addons[0].installed).toBe(true);
+    expect(addons[0]?.installed).toBe(true);
     const s = initialSetup({ addons, engines, engine: "Google" });
     const r = keys(s, "enter", "space", "enter", "enter");
     expect(planSetup(r.state)?.addons).toEqual([]);

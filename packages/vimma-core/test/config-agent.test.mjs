@@ -98,8 +98,8 @@ describe("[agent]", () => {
 
   test("vision defaults to true for anthropic and false for openai (B7)", () => {
     const [local, hosted] = ok(v2(...LOCAL, ...HOSTED)).agent.providers;
-    expect(local.vision).toBe(false);
-    expect(hosted.vision).toBe(true);
+    expect(local?.vision).toBe(false);
+    expect(hosted?.vision).toBe(true);
   });
 
   test("a key field in [agent] is an error, with its line", () => {

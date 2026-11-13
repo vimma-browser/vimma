@@ -64,6 +64,7 @@ beforeAll(async () => {
   [primary, secondary, stranger] = await Promise.all([makeKey(), makeKey(), makeKey()]);
 });
 
+/** @returns {import("../src/updates.mjs").PinnedKey[]} */
 const pinned = () => [
   { id: primary.id, slot: "primary", spki: primary.spki },
   { id: secondary.id, slot: "secondary", spki: secondary.spki },
@@ -72,7 +73,7 @@ const pinned = () => [
 /**
  * @param {string} body
  * @param {Awaited<ReturnType<typeof makeKey>>} key
- * @param {Uint8Array} [bytes]  what is signed, when not signedBytes(body)
+ * @param {Uint8Array<ArrayBuffer>} [bytes]  what is signed, when not signedBytes(body)
  */
 async function sig(body, key, bytes = signedBytes(body)) {
   return {
@@ -231,6 +232,7 @@ describe("the manifest signature (spec §2, §4 rule 1)", () => {
   });
 
   test("a pinned key that is not a valid SPKI refuses, never throws", async () => {
+    /** @type {import("../src/updates.mjs").PinnedKey[]} */
     const broken = [{ id: primary.id, slot: "primary", spki: "AAAA" }];
     const r = await verifyManifest(await signed(manifest(), primary), broken, subtle);
     expect(r).toEqual({ ok: false, reason: "signature: does not verify" });
@@ -281,6 +283,7 @@ describe("pinned keys (update-keys.mjs)", () => {
     const primaries = UPDATE_KEYS.filter((k) => k.slot === "primary");
     expect(primaries).toHaveLength(1);
     const [k] = primaries;
+    if (!k) throw new Error("no primary key");
     const der = base64Decode(k.spki);
     const hash = new Uint8Array(await subtle.digest("SHA-256", der));
     expect([...hash].map((b) => b.toString(16).padStart(2, "0")).join("")).toBe(PRIMARY_SHA256);
@@ -312,6 +315,7 @@ describe("pinned keys (update-keys.mjs)", () => {
       await import("node:crypto");
     const kms = generateKeyPairSync("rsa", { modulusLength: 4096 });
     const der = new Uint8Array(kms.publicKey.export({ type: "spki", format: "der" }));
+    /** @type {import("../src/updates.mjs").PinnedKey} */
     const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
     const body = manifest();
     const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
@@ -324,10 +328,10 @@ describe("pinned keys (update-keys.mjs)", () => {
       digestInfo,
     );
     const text = body + signatureComment([{ key: pin.id, sig: base64Encode(new Uint8Array(raw)) }]);
-    const r = await verifyManifest(text, [/** @type {const} */ (pin)], subtle);
+    const r = await verifyManifest(text, [pin], subtle);
     expect(r).toEqual({ ok: true, body, key: { id: pin.id, slot: "primary" } });
     const flipped = text.replace('vimmaSerial="2', 'vimmaSerial="3');
-    expect((await verifyManifest(flipped, [/** @type {const} */ (pin)], subtle)).ok).toBe(false);
+    expect((await verifyManifest(flipped, [pin], subtle)).ok).toBe(false);
   }, 30_000);
 });
 

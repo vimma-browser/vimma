@@ -46,7 +46,14 @@ const url = fc.oneof(
   fc.constantFrom("about:blank", "file:///etc/hosts", "HTTPS://A.COM/", "about:vimma#bug"),
 );
 
-/** Valid messages of every kind, each with the options its check needs. */
+/**
+ * @typedef {{ m: { type?: string } & Record<string, unknown>,
+ *   o: import("../../src/control.mjs").ValidateOptions }} ValidCase
+ */
+/**
+ * Valid messages of every kind, each with the options its check needs.
+ * @type {fc.Arbitrary<ValidCase>}
+ */
 const validMessage = fc.oneof(
   hex64.map((nonce) => ({ m: { type: "hello", protocol: 1, nonce }, o: {} })),
   hex64.map((proof) => ({ m: { type: "challenge", protocol: 1, proof }, o: {} })),
@@ -102,7 +109,7 @@ const validMessage = fc.oneof(
     .tuple(hex64, fc.constantFrom(["agent"], ["full"], ["agent", "full"]))
     .map(([token, roles]) => ({
       m: { protocol: 2, port: 4000, token, pid: 7, roles },
-      o: { kind: "discovery" },
+      o: { kind: /** @type {const} */ ("discovery") },
     })),
   fc
     .tuple(id, tabId, fc.constantFrom("markdown", "text"), fc.integer({ min: 1, max: 500000 }))
@@ -221,7 +228,7 @@ const validMessage = fc.oneof(
     })),
   fc.tuple(fc.integer({ min: 1, max: 65535 }), hex64, id).map(([port, token, pid]) => ({
     m: { protocol: 1, port, token, pid },
-    o: { kind: "discovery" },
+    o: { kind: /** @type {const} */ ("discovery") },
   })),
 );
 
@@ -334,7 +341,8 @@ describe("control protocol fuzzing", () => {
               message = undefined;
             }
             const v = within(1000, () =>
-              validateMessage(message, /** @type {any} */ ({ kind, command })),
+              // @ts-expect-error -- `kind` may be any name, a prototype one too: options never throw
+              validateMessage(message, { kind, command }),
             );
             expect(v.valid).toBe(v.errors.length === 0);
             for (const e of v.errors) expect(typeof e).toBe("string");
@@ -370,15 +378,11 @@ describe("control protocol fuzzing", () => {
               if (Object.hasOwn(target, extra)) return;
               // Server-to-client messages and results ignore unknown fields by design (spec
               // m0-control-protocol-and-vimma-ctl); requests and response envelopes are strict.
-              const kind = o.kind ?? /** @type {any} */ (m).type;
+              const kind = o.kind ?? m.type ?? "";
               if (["welcome", "challenge", "discovery"].includes(kind)) return;
-              if (target === /** @type {any} */ (copy).result) return;
+              if (target === copy.result) return;
               // Reserved commands are answered not-implemented before their args are read.
-              if (
-                target === /** @type {any} */ (copy).args &&
-                RESERVED_COMMANDS.includes(/** @type {any} */ (copy).command)
-              )
-                return;
+              if (target === copy.args && RESERVED_COMMANDS.includes(String(copy.command))) return;
               // An own property even for "__proto__", as JSON.parse makes it.
               Object.defineProperty(target, extra, {
                 value,

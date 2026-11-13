@@ -24,29 +24,32 @@ const provider = {
   vision: false,
 };
 
+/** @type {import("../src/agent-store.mjs").StoredEntry[]} */
+const stored = [
+  { kind: "user", text: "buy milk" },
+  { kind: "agent", text: "I'll open the shop." },
+  { kind: "summary", text: "task done · 4 steps · 12k tokens · hosts: shop.example" },
+];
 const conversation = {
   uid: "0b5c3c1e-8a9f-4f63-9b7d-2c1a5e4f6a70",
   title: "Weekly groceries",
   created: 1_700_000_000_000,
   used: 1_700_000_500_000,
   provider,
-  stored: [
-    { kind: "user", text: "buy milk" },
-    { kind: "agent", text: "I'll open the shop." },
-    { kind: "summary", text: "task done · 4 steps · 12k tokens · hosts: shop.example" },
-  ],
+  stored,
 };
 
 describe("storedRecord", () => {
   test("a stored conversation holds messages, replies and summaries, never tool output", () => {
-    const record = storedRecord({
+    const inMemory = {
       ...conversation,
       // What a conversation holds in memory besides: none of it is stored.
       messages: [{ role: "tool", results: [{ content: [{ type: "text", text: "PAGE TEXT" }] }] }],
       transcript: { entries: [{ kind: "step", text: 'clicked button "Buy"' }] },
       state: { agent: { client: "built-in" } },
       stored: [...conversation.stored, { kind: "step", text: "clicked" }],
-    });
+    };
+    const record = storedRecord(inMemory);
     expect(record).toEqual({
       v: STORE_VERSION,
       id: conversation.uid,

@@ -15,6 +15,16 @@ import {
 } from "../../src/routes.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 
+/**
+ * The one route a valid rule resolves to; throws when it resolves to none.
+ * @param {Record<string, string>} rule
+ */
+const onlyRoute = (rule) => {
+  const [route] = resolveRoutes([rule]);
+  if (!route) throw new Error(`${JSON.stringify(rule)} resolved to no route`);
+  return route;
+};
+
 const label = fc.stringMatching(/^[a-z0-9](?:[a-z0-9-]{0,8}[a-z0-9])?$/);
 /** A rule's domain: ASCII names, IDN names, a single label. */
 const ruleDomain = fc.oneof(
@@ -119,10 +129,10 @@ describe("routing rule fuzzing", () => {
           ([domain, sub, evil]) => {
             const rule = { domain: `${sub ? "*." : ""}${domain}`, workspace: "w" };
             fc.pre(validateRoutes([rule]).length === 0);
-            const [route] = resolveRoutes([rule]);
-            const host = /** @type {NonNullable<typeof route>} */ (route).domain?.host ?? "";
+            const route = onlyRoute(rule);
+            const host = route.domain?.host ?? "";
             for (const url of disguises(domain, evil)) {
-              const hit = matchRoute([/** @type {any} */ (route)], { url }) !== null;
+              const hit = matchRoute([route], { url }) !== null;
               expect(hit, `${url} against ${sub ? "*." : ""}${domain}`).toBe(
                 inside(url, host, sub),
               );
@@ -141,7 +151,7 @@ describe("routing rule fuzzing", () => {
         "routes-matches-inside",
         fc.property(ruleDomain, fc.array(label, { maxLength: 3 }), (domain, subs) => {
           fc.pre(validateRoutes([{ domain, workspace: "w" }]).length === 0);
-          const [route] = resolveRoutes([{ domain, workspace: "w" }]);
+          const route = onlyRoute({ domain, workspace: "w" });
           const host = [...subs, domain].join(".");
           // Labels the URL parser refuses (`xn--0`) are no host at all.
           fc.pre(URL.canParse(`https://${host}/`));
@@ -150,7 +160,7 @@ describe("routing rule fuzzing", () => {
             `http://${host.toUpperCase()}./x?y#z`,
             `https://user:pw@${host}:8443/`,
           ]) {
-            expect(matchRoute([/** @type {any} */ (route)], { url }), url).not.toBeNull();
+            expect(matchRoute([route], { url }), url).not.toBeNull();
           }
         }),
         { weight: 5 },
@@ -227,7 +237,8 @@ describe("routing rule fuzzing", () => {
               expect(typeof p.message).toBe("string");
             }
             if (problems.length === 0 && Array.isArray(value)) {
-              const routes = resolveRoutes(/** @type {any} */ (value));
+              // validateRoutes found no problem: an array of string tables.
+              const routes = resolveRoutes(/** @type {Record<string, string>[]} */ (value));
               for (const r of routes) {
                 if ("domain" in r) expect(r.domain).not.toBeNull();
                 if ("url" in r) expect(r.url).not.toBeNull();
@@ -275,8 +286,8 @@ describe("routing rule fuzzing", () => {
           const domain = routeDomainFor(url);
           if (domain === null) return;
           if (validateRoutes([{ domain, workspace: "w" }]).length) return;
-          const [route] = resolveRoutes([{ domain, workspace: "w" }]);
-          expect(matchRoute([/** @type {any} */ (route)], { url })).not.toBeNull();
+          const route = onlyRoute({ domain, workspace: "w" });
+          expect(matchRoute([route], { url })).not.toBeNull();
         }),
         { weight: 5 },
       ),
@@ -287,6 +298,7 @@ describe("routing rule fuzzing", () => {
     "very long rules and URLs are checked in bounded time",
     () => {
       const long = "a.".repeat(512 * 1024);
+      /** @type {Record<string, string>[]} */
       const rules = [
         { domain: `${long}com`, workspace: "w" },
         { domain: `*.${"x".repeat(1024 * 1024)}`, workspace: "w" },

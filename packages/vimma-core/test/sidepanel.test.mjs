@@ -16,7 +16,10 @@ import { createDispatcher } from "../src/dispatcher.mjs";
 import { parseKey } from "../src/keys.mjs";
 
 /** @import { PanelState, PanelTabInfo } from "../src/sidepanel.mjs" */
+/** @import { Workspaces } from "../src/workspaces.mjs" */
+/** @import { Mode } from "../src/modes.mjs" */
 
+/** @type {Workspaces} */
 const model = {
   active: "w2",
   next: 4,
@@ -45,7 +48,7 @@ const info = (/** @type {string} */ id) => tabs[id];
 
 /**
  * @param {PanelState} s
- * @param {{ id: string, arg?: number }[]} actions
+ * @param {{ id: string, arg?: number, count?: number, page?: number }[]} actions
  */
 function press(s, actions) {
   /** @type {ReturnType<typeof panelKey>["effect"]} */
@@ -113,7 +116,7 @@ describe("openPanel", () => {
   });
 
   test("Given one workspace, then it has no neighbours", () => {
-    const one = { ...model, active: "w1", workspaces: [model.workspaces[0]] };
+    const one = { ...model, active: "w1", workspaces: model.workspaces.slice(0, 1) };
     const s = openPanel(one, info);
     expect([s.previous, s.next]).toEqual([null, null]);
   });
@@ -131,7 +134,11 @@ describe("openPanel", () => {
   });
 
   test("Given only the agent workspace besides this one, then there are no neighbours", () => {
-    const two = { ...model, active: "w1", workspaces: [model.workspaces[0], model.workspaces[2]] };
+    const two = {
+      ...model,
+      active: "w1",
+      workspaces: model.workspaces.filter((w) => w.id !== "w2"),
+    };
     const s = openPanel(two, info, { skip: new Set(["w3"]) });
     expect([s.previous, s.next]).toEqual([null, null]);
   });
@@ -214,22 +221,24 @@ describe("panelKey", () => {
   test("x closes the highlighted tab and moves the highlight to the next row", () => {
     const { state, effect } = press(s, [{ id: "panel.up" }, { id: "panel.close_tab" }]);
     expect(effect).toEqual({ type: "closeTab", id: "t2" });
-    expect(state.rows[state.selected].tabId).toBe("t3");
+    expect(state.rows[state.selected]?.tabId).toBe("t3");
   });
 
   test("x on the last row moves the highlight to the row before it", () => {
     const { state, effect } = press(s, [{ id: "panel.down" }, { id: "panel.close_tab" }]);
     expect(effect).toEqual({ type: "closeTab", id: "t4" });
-    expect(state.rows[state.selected].tabId).toBe("t3");
+    expect(state.rows[state.selected]?.tabId).toBe("t3");
   });
 
   test("x after the refresh closes the next tab: three x close three rows", () => {
     let state = press(s, [{ id: "panel.up" }]).state;
+    /** @type {string[]} */
     const closed = [];
     let left = model;
     for (let i = 0; i < 3; i++) {
       const r = panelKey(state, { id: "panel.close_tab" });
-      closed.push(/** @type {any} */ (r.effect).id);
+      if (r.effect?.type !== "closeTab") throw new Error("x closed no tab");
+      closed.push(r.effect.id);
       left = {
         ...left,
         workspaces: left.workspaces.map((w) =>
@@ -244,7 +253,7 @@ describe("panelKey", () => {
 
   test("x on a pinned tab refuses and closes nothing", () => {
     const pinned = openPanel(model, (id) => ({ ...tabs[id], pinned: id === "t3" }));
-    expect(pinned.rows[1].pinned).toBe(true);
+    expect(pinned.rows[1]?.pinned).toBe(true);
     const { state, effect } = press(pinned, [{ id: "panel.close_tab" }]);
     expect(state).toBe(pinned);
     expect(effect).toEqual({ type: "refuse", text: "pinned tab: unpin it to close it" });
@@ -259,7 +268,7 @@ describe("panelKey", () => {
   test("m moves the highlighted tab, not the selected one: the host asks where", () => {
     const { state, effect } = press(s, [{ id: "panel.up" }, { id: "panel.move" }]);
     expect(effect).toEqual({ type: "move", id: "t2" });
-    expect(state.rows[state.selected].tabId).toBe("t2");
+    expect(state.rows[state.selected]?.tabId).toBe("t2");
   });
 
   test("m on a pinned tab refuses", () => {
@@ -294,7 +303,7 @@ describe("refreshPanel", () => {
       ),
     };
     const next = refreshPanel(s, moved, info);
-    expect(next.rows[next.selected].tabId).toBe("t4");
+    expect(next.rows[next.selected]?.tabId).toBe("t4");
   });
 
   test("Given another workspace (ctrl+i), then it lists that one, its active tab highlighted", () => {
@@ -309,12 +318,12 @@ describe("refreshPanel", () => {
 describe("panel keys in the keymap", () => {
   const keymap = compileKeymap();
   /**
-   * @param {string} mode
+   * @param {Mode} mode
    * @param {string} keys
    */
   const feed = (mode, keys) => {
     const d = createDispatcher(keymap);
-    return keys.split(" ").map((k) => d.dispatch(/** @type {any} */ (mode), parseKey(k)));
+    return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
   };
 
   test("space n (a leader binding from config.toml) closes the panel from panel mode", () => {
@@ -474,6 +483,7 @@ describe("rowNumber", () => {
 // docs/specs/m4-side-panel-multiselect.md: marks, a line-wise range, and Enter showing the
 // marked tabs together as panes.
 describe("marks", () => {
+  /** @type {Workspaces} */
   const five = {
     ...model,
     workspaces: model.workspaces.map((w) =>

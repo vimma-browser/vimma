@@ -38,7 +38,7 @@ describe("popupItems", () => {
   test("a blocked redirect gets its own row before the pop-ups", () => {
     const items = popupItems(blocked({ popups: [], redirect: "https://example.net/next" }));
     expect(items.map((i) => i.popupId)).toEqual(["allow", "redirect", "hide", "settings"]);
-    expect(items[1].display).toBe("Go to https://example.net/next");
+    expect(items[1]?.display).toBe("Go to https://example.net/next");
   });
 
   test("a locked dom.disable_open_during_load hides allow, as Firefox does", () => {

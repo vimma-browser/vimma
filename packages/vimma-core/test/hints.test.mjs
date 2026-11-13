@@ -26,7 +26,24 @@ import {
 import { ACTIONS } from "../src/actions.mjs";
 import { parseKey } from "../src/keys.mjs";
 
-/** ⌈log_k n⌉ by integer arithmetic (no floating-point surprises at exact powers). */
+/** @import { HintState, ReplyTarget } from "../src/hints.mjs" */
+
+/**
+ * `value`, failing the test where it is missing.
+ * @template T
+ * @param {T | undefined} value
+ * @returns {T}
+ */
+const defined = (value) => {
+  if (value === undefined) throw new Error("expected a value");
+  return value;
+};
+
+/**
+ * ⌈log_k n⌉ by integer arithmetic (no floating-point surprises at exact powers).
+ * @param {number} n
+ * @param {number} k
+ */
 function ceilLog(n, k) {
   let L = 0;
   let p = 1;
@@ -84,6 +101,7 @@ describe("hintLabels", () => {
     try {
       hintLabels(3, chars);
     } catch (e) {
+      if (!(e instanceof HintError)) throw e;
       expect(e.code).toBe("bad-charset");
     }
   });
@@ -110,7 +128,7 @@ describe("hintLabels", () => {
         expect(labels.every((l) => l.length >= 1)).toBe(true);
         // prefix-free: in sorted order a prefix would sit right before an extension of it
         const sorted = [...labels].sort();
-        expect(sorted.some((l, i) => i > 0 && l.startsWith(sorted[i - 1]))).toBe(false);
+        expect(sorted.some((l, i) => i > 0 && l.startsWith(defined(sorted[i - 1])))).toBe(false);
         if (n >= 1) {
           const L = Math.max(1, ceilLog(n, k));
           expect(labels.every((l) => l.length === L - 1 || l.length === L)).toBe(true);
@@ -122,12 +140,12 @@ describe("hintLabels", () => {
           if (n <= k) expect(labels).toEqual([...chars].slice(0, n));
         }
         // ordered by length, then charset order
-        const before = (a, b) => {
+        const before = (/** @type {string} */ a, /** @type {string} */ b) => {
           if (a.length !== b.length) return a.length < b.length;
           const j = [...a].findIndex((c, idx) => c !== b[idx]);
-          return chars.indexOf(a[j]) < chars.indexOf(b[j]);
+          return chars.indexOf(defined(a[j])) < chars.indexOf(defined(b[j]));
         };
-        expect(labels.every((l, i) => i === 0 || before(labels[i - 1], l))).toBe(true);
+        expect(labels.every((l, i) => i === 0 || before(defined(labels[i - 1]), l))).toBe(true);
         expect(hintLabels(n, chars)).toEqual(labels);
       }),
       { numRuns: 300 },
@@ -135,25 +153,20 @@ describe("hintLabels", () => {
   });
 });
 
+/**
+ * @param {number} x
+ * @param {number} y
+ */
 const r = (x, y, width = 40, height = 16) => ({ x, y, width, height });
 
 describe("orderTargets", () => {
   test("a shuffled 3 × 3 grid reads row by row", () => {
+    /** @type {Array<{ id: string, rect: ReturnType<typeof r> }>} */
     const grid = [];
     for (let row = 0; row < 3; row++)
       for (let col = 0; col < 3; col++)
         grid.push({ id: `${row}${col}`, rect: r(col * 100, row * 50) });
-    const shuffled = [
-      grid[4],
-      grid[8],
-      grid[0],
-      grid[2],
-      grid[6],
-      grid[1],
-      grid[7],
-      grid[3],
-      grid[5],
-    ];
+    const shuffled = [4, 8, 0, 2, 6, 1, 7, 3, 5].map((i) => defined(grid[i]));
     expect(orderTargets(shuffled).map((t) => t.id)).toEqual(grid.map((t) => t.id));
   });
 
@@ -211,8 +224,12 @@ describe("orderTargets", () => {
 
 /** 12 targets in reading order: one row of 12. */
 const twelve = Array.from({ length: 12 }, (_, i) => ({ id: i, rect: r(i * 50, 0) }));
-const key = (k) => parseKey(k);
-/** Feed space-separated keys; return the last { state, result } and all results. */
+const key = (/** @type {string} */ k) => parseKey(k);
+/**
+ * Feed space-separated keys; return the last { state, result } and all results.
+ * @param {HintState<(typeof twelve)[number]>} state
+ * @param {string} keys
+ */
 function feed(state, keys) {
   const results = [];
   for (const k of keys.split(" ")) {
@@ -375,7 +392,7 @@ describe("hint mode", () => {
   });
 
   test("a single target still gets a label", () => {
-    const s = startHints([twelve[0]], { action: "hint.follow" });
+    const s = startHints([defined(twelve[0])], { action: "hint.follow" });
     expect(s.hints).toEqual([{ label: "a", target: twelve[0] }]);
   });
 
@@ -471,7 +488,7 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
     });
   });
 
-  const t0 = good.targets[0];
+  const t0 = defined(good.targets[0]);
   test.each([
     ["null", null],
     ["an array", []],
@@ -686,7 +703,9 @@ describe("a collection's waits", () => {
 });
 
 describe("hintCollectReason: which exit of a collection gave its result", () => {
+  /** @param {ReplyTarget[]} targets */
   const reply = (targets) => ({ targets, frames: [], ms: 0 });
+  /** @type {ReplyTarget} */
   const t0 = { id: 0, rect: { x: 0, y: 0, width: 1, height: 1 }, kind: "click" };
   test("each way to an empty result has its own reason", () => {
     expect(hintCollectReason({ queried: false, raw: undefined, reply: null, live: true })).toBe(

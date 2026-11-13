@@ -23,7 +23,7 @@ import {
 } from "../src/grep.mjs";
 import { BLOCK } from "../src/motions.mjs";
 
-/** @import { GrepPickerState, GrepRow, GrepTab } from "../src/grep.mjs" */
+/** @import { GrepList, GrepPickerState, GrepRow, GrepTab } from "../src/grep.mjs" */
 
 /** @param {string} q */
 const must = (q) => {
@@ -87,7 +87,8 @@ describe("grepText", () => {
       [3, 1, "needle"],
       [3, 2, "needle"],
     ]);
-    const first = /** @type {any} */ (matches[0]);
+    const first = matches[0];
+    if (!first) throw new Error("no match");
     expect(first.context).toBe("alpha needle one");
     expect(first.context.slice(first.at[0], first.at[1])).toBe("needle");
   });
@@ -431,6 +432,7 @@ describe("the grep list", () => {
 
   test("steps across tabs and wraps at both ends", () => {
     const alive = () => true;
+    /** @type {GrepList} */
     let list = { query: "x", rows, index: 0 };
     const seen = [];
     for (let i = 0; i < 5; i++) {
@@ -455,7 +457,8 @@ describe("the grep list", () => {
 
   test("[q after the current row's tab closed goes to the last row", () => {
     const pruned = pruneGrepList({ query: "x", rows, index: 1 }, (id) => id !== "a");
-    expect(stepGrepList(/** @type {any} */ (pruned), -1, () => true)?.index).toBe(1);
+    if (!pruned) throw new Error("the list went");
+    expect(stepGrepList(pruned, -1, () => true)?.index).toBe(1);
   });
 
   test("pruneGrepList drops a closed tab's rows and keeps its place", () => {
@@ -464,7 +467,8 @@ describe("the grep list", () => {
     expect(at?.index).toBe(1);
     const onDead = pruneGrepList({ query: "x", rows, index: 1 }, (id) => id !== "a");
     expect(onDead?.index).toBe(-1);
-    expect(stepGrepList(/** @type {any} */ (onDead), 1, () => true)?.index).toBe(0);
+    if (!onDead) throw new Error("the list went");
+    expect(stepGrepList(onDead, 1, () => true)?.index).toBe(0);
     expect(pruneGrepList({ query: "x", rows, index: 0 }, () => false)).toBeNull();
   });
 });
@@ -478,7 +482,7 @@ describe("grepPickerKey", () => {
    * @param {string[]} keys
    */
   const press = (s, keys) => {
-    /** @type {any} */
+    /** @type {ReturnType<typeof grepPickerKey>["effect"]} */
     let effect = null;
     for (const k of keys) ({ state: s, effect } = grepPickerKey(s, k));
     return { state: s, effect };
@@ -774,7 +778,8 @@ describe("grepClosed: recently closed tabs and windows match on title and URL", 
       [closedTab(1, "Retry budget", "https://docs.test/retry")],
       must("budget"),
     );
-    const p = closedPreview(/** @type {any} */ (tabRow));
+    if (!tabRow) throw new Error("no closed tab row");
+    const p = closedPreview(tabRow);
     expect(p.lines).toEqual([
       "Recently closed tab",
       "Retry budget",
@@ -792,7 +797,8 @@ describe("grepClosed: recently closed tabs and windows match on title and URL", 
       ],
     });
     const [winRow] = grepClosed([win], must("budget"));
-    const wp = closedPreview(/** @type {any} */ (winRow));
+    if (!winRow) throw new Error("no closed window row");
+    const wp = closedPreview(winRow);
     expect(wp.lines[0]).toBe("Recently closed window, 2 tabs");
     expect(wp.lines).toContain("Inbox  https://mail.test/");
     expect(wp.lines.slice(-2)).toEqual([

@@ -21,6 +21,26 @@ function lookup(root, seq) {
   return node.action?.name;
 }
 
+/** The default [modal.pdf] table. */
+function defaultPdfKeys() {
+  const pdf = DEFAULT_CONFIG.modal?.pdf;
+  if (typeof pdf !== "object" || pdf === null) throw new Error("the defaults have no [modal.pdf]");
+  return pdf;
+}
+
+/**
+ * A binding's chords as canonical text; a binding here has no prefix or leader.
+ * @param {string} text
+ */
+function sequenceText(text) {
+  return parseBinding(text)
+    .map((e) => {
+      if ("special" in e) throw new Error(`${text}: unexpected <${e.special}>`);
+      return formatKey(e);
+    })
+    .join(" ");
+}
+
 describe("keymap contexts", () => {
   test("the contexts are page and pdf", () => {
     expect(CONTEXTS).toEqual(["page", "pdf"]);
@@ -28,9 +48,7 @@ describe("keymap contexts", () => {
 
   test("the pdf trie of normal mode is the page trie with the default [modal.pdf] over it", () => {
     const km = compileKeymap();
-    const pdfDefaults = new Set(
-      Object.keys(DEFAULT_CONFIG.modal.pdf).map((t) => parseBinding(t).map(formatKey).join(" ")),
-    );
+    const pdfDefaults = new Set(Object.keys(defaultPdfKeys()).map(sequenceText));
     const pdf = new Map(km.sequences("normal", "pdf").map((e) => [e.seq, e.name]));
     for (const e of km.sequences("normal", "page")) {
       if (!pdfDefaults.has(e.seq)) expect(pdf.get(e.seq), e.seq).toBe(e.name);
@@ -89,8 +107,8 @@ describe("keymap contexts", () => {
   test("no default [modal.pdf] key changes a page key's meaning, only gg and G take a page", () => {
     const km = compileKeymap();
     const page = new Map(km.sequences("normal", "page").map((e) => [e.seq, e.name]));
-    const shadowed = Object.keys(DEFAULT_CONFIG.modal.pdf)
-      .map((t) => parseBinding(t).map(formatKey).join(" "))
+    const shadowed = Object.keys(defaultPdfKeys())
+      .map(sequenceText)
       .filter((seq) => page.has(seq));
     // gg and G still go to the top and the bottom; in a PDF a count names a page (decision 6).
     expect(shadowed.sort()).toEqual(["g g", "shift+g"]);
@@ -103,14 +121,14 @@ describe("keymap contexts", () => {
     const block = [];
     for (const l of lines.slice(start + 1)) {
       const m = /^# ("[^"]+" = "[^"]+")$/.exec(l);
-      if (!m) break;
+      if (m?.[1] === undefined) break;
       block.push(m[1]);
     }
     const pdf = Object.fromEntries(
       block.map((l) => /** @type {[string, string]} */ (JSON.parse(`[${l.replace(" = ", ",")}]`))),
     );
     const km = compileKeymap({ modal: { pdf } });
-    for (const [key, action] of [
+    for (const [key, action] of /** @type {const} */ ([
       ["d", "pdf_dual_page"],
       ["r", "pdf_rotate"],
       ["H", "pdf_page_top"],
@@ -119,7 +137,7 @@ describe("keymap contexts", () => {
       ["F", "show_link_target"],
       ["ctrl+f", "pdf_screen_down"],
       ["f5", "pdf_presentation"],
-    ]) {
+    ])) {
       expect(lookup(km.trie("normal", "pdf"), key), key).toBe(action);
     }
   });
@@ -185,7 +203,8 @@ describe("keymap contexts", () => {
   test("config.toml accepts [modal.pdf] and [unbind] pdf", () => {
     const r = parseConfig('[modal.pdf]\n"J" = "next_tab"\n[unbind]\npdf = ["x"]\n');
     expect(r.errors).toEqual([]);
-    expect(lookup(/** @type {any} */ (r.keymap).trie("normal", "pdf"), "J")).toBe("next_tab");
+    if (!r.keymap) throw new Error("no keymap");
+    expect(lookup(r.keymap.trie("normal", "pdf"), "J")).toBe("next_tab");
   });
 });
 
@@ -270,7 +289,8 @@ describe("index mode", () => {
   test("config.toml accepts [modal.index] as a mode table", () => {
     const r = parseConfig('[modal.index]\n"o" = "index_follow"\n[unbind]\nindex = ["q"]\n');
     expect(r.errors).toEqual([]);
-    const trie = /** @type {any} */ (r.keymap).trie("index");
+    if (!r.keymap) throw new Error("no keymap");
+    const trie = r.keymap.trie("index");
     expect(lookup(trie, "o")).toBe("index_follow");
     expect(lookup(trie, "q")).toBeUndefined();
   });

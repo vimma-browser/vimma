@@ -49,6 +49,15 @@ jobs:
           fetch-depth: 0 # the pushed range, for commitlint below
           persist-credentials: false
 
+      # .nvmrc's Node for the guard: the runner image's own may be older than the 22.18 a .ts tool
+      # needs (ADR-025). No cache here; the setup below adds it when commitlint needs npm ci.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
       # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
       # can name another here and skip on its passes.
       - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)
@@ -145,6 +154,12 @@ jobs:
       # cycle; every folder has its README.md (ADR-026). On docs-only changes too: a README counts.
       - name: Imports follow the module layering, ADR-026 (npm run layering)
         run: npm run layering
+
+      # ARCHITECTURE.md's two SVG pictures match their D2 sources, and the module graph's source
+      # matches the imports under vimma/ (issue #943). Needs no D2: each SVG records its source's
+      # hash. On docs-only changes too, like arch-lint.
+      - name: Diagrams match their sources (npm run diagrams:check)
+        run: npm run diagrams:check
 
       # CHANGELOG.md's [Unreleased] is its first heading, appears once and holds only what the
       # release PR's firefox-notes job can move into the new version's entry (issue #529).

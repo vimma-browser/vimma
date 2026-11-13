@@ -10,13 +10,13 @@
  * a day into `downloads.csv` on the `stats` branch; this script takes the snapshot, adds it to
  * the history and summarises the daily changes.
  *
- *   node tools/stats/downloads.mjs collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
+ *   node tools/stats/downloads.ts collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
  *       today's (UTC) count of every asset of every published release; GITHUB_TOKEN or GH_TOKEN
  *       is used when set (public data: the token only raises the rate limit), GITHUB_API_URL
  *       when set; the CSV goes to stdout, a one-line total to stderr
- *   node tools/stats/downloads.mjs merge --csv <downloads.csv> --day <day.csv>
+ *   node tools/stats/downloads.ts merge --csv <downloads.csv> --day <day.csv>
  *       appends the day to the history, unless that date is already recorded
- *   node tools/stats/downloads.mjs summary --csv <downloads.csv> [--assets] [--markdown]
+ *   node tools/stats/downloads.ts summary --csv <downloads.csv> [--assets] [--markdown]
  *       per-release totals per day and the change since the release's previous snapshot;
  *       --assets adds each asset's change
  *
@@ -33,25 +33,22 @@ export const HEADER = "date,tag,asset,downloads";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PER_PAGE = 100;
 
-/** @typedef {{ date: string, tag: string, asset: string, downloads: number }} Row */
-/** @typedef {{ name: string, download_count: number }} Asset */
-/** @typedef {{ tag_name: string, draft?: boolean, assets: Asset[] }} Release */
-/** @typedef {{ date: string, tag: string, downloads: number, delta: number | null }} ReleaseDay */
-/** @typedef {ReleaseDay & { asset: string }} AssetDay */
-/** @typedef {{ date: string, downloads: number, delta: number | null }} Day */
-/** @typedef {{ releases: ReleaseDay[], assets: AssetDay[], days: Day[] }} Summary */
+export type Row = { date: string; tag: string; asset: string; downloads: number };
+export type Asset = { name: string; download_count: number };
+export type Release = { tag_name: string; draft?: boolean; assets: Asset[] };
+export type ReleaseDay = { date: string; tag: string; downloads: number; delta: number | null };
+export type AssetDay = ReleaseDay & { asset: string };
+export type Day = { date: string; downloads: number; delta: number | null };
+export type Summary = { releases: ReleaseDay[]; assets: AssetDay[]; days: Day[] };
 
-/** @param {string} a @param {string} b */
-const byName = (a, b) => a.localeCompare(b, "en", { numeric: true });
+const byName = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 
 /**
  * One row per asset of every published release. Drafts are left out: nobody outside the
  * repository can download their assets.
- * @param {Release[]} releases
- * @param {string} date YYYY-MM-DD
- * @returns {Row[]}
+ * @param date YYYY-MM-DD
  */
-export function assetRows(releases, date) {
+export function assetRows(releases: Release[], date: string): Row[] {
   if (!DATE.test(date)) throw new Error(`not a YYYY-MM-DD date: ${date}`);
   return releases
     .filter((r) => !r.draft)
@@ -61,26 +58,22 @@ export function assetRows(releases, date) {
     .sort((a, b) => byName(a.tag, b.tag) || byName(a.asset, b.asset));
 }
 
-/** @param {string} field */
-const quote = (field) => (/[",\n]/.test(field) ? `"${field.replaceAll('"', '""')}"` : field);
+const quote = (field: string) =>
+  /[",\n]/.test(field) ? `"${field.replaceAll('"', '""')}"` : field;
 
 /**
- * @param {Row[]} rows
- * @returns {string} the CSV text, header first
+ * @returns the CSV text, header first
  */
-export function toCsv(rows) {
+export function toCsv(rows: Row[]): string {
   const lines = rows.map((r) => [r.date, r.tag, r.asset, String(r.downloads)].map(quote).join(","));
   return [HEADER, ...lines].join("\n") + "\n";
 }
 
 /**
  * Splits one CSV line into fields (RFC 4180 quoting; no field spans lines).
- * @param {string} line
- * @returns {string[]}
  */
-function fields(line) {
-  /** @type {string[]} */
-  const out = [];
+function fields(line: string): string[] {
+  const out: string[] = [];
   let i = 0;
   while (i <= line.length) {
     if (line[i] === '"') {
@@ -107,11 +100,7 @@ function fields(line) {
   return out;
 }
 
-/**
- * @param {string} text
- * @returns {Row[]}
- */
-export function parseCsv(text) {
+export function parseCsv(text: string): Row[] {
   const lines = text.split("\n").filter((l) => l !== "");
   if (lines.length === 0) return [];
   if (lines[0] !== HEADER) throw new Error(`unexpected header: ${lines[0]} (want ${HEADER})`);
@@ -127,45 +116,35 @@ export function parseCsv(text) {
 /**
  * Adds a day's rows to the history unless a date among them is already recorded, so a second
  * run on the same day changes nothing.
- * @param {Row[]} history
- * @param {Row[]} day
- * @returns {{ rows: Row[], added: number }}
  */
-export function mergeRows(history, day) {
+export function mergeRows(history: Row[], day: Row[]): { rows: Row[]; added: number } {
   const recorded = new Set(history.map((r) => r.date));
   if (day.some((r) => recorded.has(r.date))) return { rows: history, added: 0 };
   return { rows: [...history, ...day], added: day.length };
 }
 
 /**
- * @template {{ downloads: number }} T
- * @param {Map<string, T[]>} groups snapshots per key, in date order
- * @param {(key: string, item: T) => Omit<T, "delta">} make
+ * @param groups snapshots per key, in date order
  */
-function withDeltas(groups, make) {
-  /** @type {(T & { delta: number | null })[]} */
-  const out = [];
+function withDeltas<T extends { downloads: number }>(
+  groups: Map<string, T[]>,
+  make: (key: string, item: T) => Omit<T, "delta">,
+) {
+  const out: (T & { delta: number | null })[] = [];
   for (const [key, items] of groups) {
-    /** @type {number | null} */
-    let prev = null;
+    let prev: number | null = null;
     for (const item of items) {
-      out.push(
-        /** @type {T & { delta: number | null }} */ ({
-          ...make(key, item),
-          delta: prev === null ? null : item.downloads - prev,
-        }),
-      );
+      out.push({
+        ...make(key, item),
+        delta: prev === null ? null : item.downloads - prev,
+      } as T & { delta: number | null });
       prev = item.downloads;
     }
   }
   return out;
 }
 
-/**
- * @template T
- * @param {Map<string, T[]>} map @param {string} key @param {T} item
- */
-function push(map, key, item) {
+function push<T>(map: Map<string, T[]>, key: string, item: T) {
   const list = map.get(key);
   if (list) list.push(item);
   else map.set(key, [item]);
@@ -174,17 +153,12 @@ function push(map, key, item) {
 /**
  * Totals per release and per day, and each asset's count, each with the change since its own
  * previous snapshot (null on its first).
- * @param {Row[]} rows
- * @returns {Summary}
  */
-export function summarise(rows) {
+export function summarise(rows: Row[]): Summary {
   const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
-  /** @type {Map<string, { date: string, tag: string, downloads: number }>} */
-  const releaseTotals = new Map();
-  /** @type {Map<string, { date: string, downloads: number }>} */
-  const dayTotals = new Map();
-  /** @type {Map<string, Row[]>} */
-  const assets = new Map();
+  const releaseTotals: Map<string, { date: string; tag: string; downloads: number }> = new Map();
+  const dayTotals: Map<string, { date: string; downloads: number }> = new Map();
+  const assets: Map<string, Row[]> = new Map();
   for (const r of sorted) {
     const key = `${r.date}\n${r.tag}`;
     const rel = releaseTotals.get(key) ?? { date: r.date, tag: r.tag, downloads: 0 };
@@ -195,12 +169,11 @@ export function summarise(rows) {
     dayTotals.set(r.date, day);
     push(assets, `${r.tag}\n${r.asset}`, r);
   }
-  /** @type {Map<string, { date: string, tag: string, downloads: number }[]>} */
-  const perRelease = new Map();
+  const perRelease: Map<string, { date: string; tag: string; downloads: number }[]> = new Map();
   for (const rel of releaseTotals.values()) push(perRelease, rel.tag, rel);
 
-  /** @param {{ date: string, tag: string }} a @param {{ date: string, tag: string }} b */
-  const order = (a, b) => a.date.localeCompare(b.date) || byName(a.tag, b.tag);
+  const order = (a: { date: string; tag: string }, b: { date: string; tag: string }) =>
+    a.date.localeCompare(b.date) || byName(a.tag, b.tag);
   const releases = withDeltas(perRelease, (_k, r) => ({ ...r })).sort(order);
   const assetDays = withDeltas(assets, (_k, r) => ({ ...r }))
     .sort((a, b) => order(a, b) || byName(a.asset, b.asset))
@@ -209,18 +182,17 @@ export function summarise(rows) {
   return { releases, assets: assetDays, days };
 }
 
-/** @param {number | null} delta */
-const signed = (delta) => (delta === null ? "" : delta > 0 ? `+${delta}` : String(delta));
+const signed = (delta: number | null) =>
+  delta === null ? "" : delta > 0 ? `+${delta}` : String(delta);
 
 /**
  * The summary as text, newest day first: Markdown tables for a job summary, or aligned columns.
- * @param {Summary} summary
- * @param {{ markdown?: boolean, assets?: boolean }} [opts]
- * @returns {string}
  */
-export function formatSummary(summary, opts = {}) {
-  /** @param {{ date: string }} a @param {{ date: string }} b */
-  const newestFirst = (a, b) => b.date.localeCompare(a.date);
+export function formatSummary(
+  summary: Summary,
+  opts: { markdown?: boolean; assets?: boolean } = {},
+): string {
+  const newestFirst = (a: { date: string }, b: { date: string }) => b.date.localeCompare(a.date);
   // Array sort is stable, so the release and asset order within a day stays.
   const releases = [...summary.releases].sort(newestFirst);
   const assets = [...summary.assets].sort(newestFirst);
@@ -242,8 +214,8 @@ export function formatSummary(summary, opts = {}) {
   }
   const tagWidth = Math.max(0, ...summary.releases.map((r) => r.tag.length));
   const assetWidth = Math.max(0, ...summary.assets.map((a) => a.asset.length));
-  /** @param {number} n @param {number | null} delta */
-  const nums = (n, delta) => `${String(n).padStart(8)}  ${signed(delta).padStart(6)}`;
+  const nums = (n: number, delta: number | null) =>
+    `${String(n).padStart(8)}  ${signed(delta).padStart(6)}`;
   const out = ["All releases"];
   for (const d of days) out.push(`${d.date}  ${nums(d.downloads, d.delta)}`.trimEnd());
   out.push("", "Per release");
@@ -261,39 +233,38 @@ export function formatSummary(summary, opts = {}) {
 
 /**
  * Every release of the repository, following the pages.
- * @param {string} repo owner/name
- * @param {{ token?: string, api?: string, fetch?: typeof fetch }} [opts] `api` is the REST
- *   API's base URL (the runner's GITHUB_API_URL), api.github.com by default
- * @returns {Promise<Release[]>}
+ * @param repo owner/name
+ * @param opts `api` is the REST API's base URL (the runner's GITHUB_API_URL), api.github.com by
+ *   default
  */
-export async function fetchReleases(repo, opts = {}) {
+export async function fetchReleases(
+  repo: string,
+  opts: { token?: string; api?: string; fetch?: typeof fetch } = {},
+): Promise<Release[]> {
   const get = opts.fetch ?? fetch;
   const api = (opts.api ?? "https://api.github.com").replace(/\/+$/, "");
-  /** @type {Record<string, string>} */
-  const headers = {
+  const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "x-github-api-version": "2022-11-28",
   };
   if (opts.token) headers.authorization = `Bearer ${opts.token}`;
-  /** @type {Release[]} */
-  const all = [];
+  const all: Release[] = [];
   for (let page = 1; ; page++) {
     const url = `${api}/repos/${repo}/releases?per_page=${PER_PAGE}&page=${page}`;
     const res = await get(url, { headers });
     if (!res.ok) throw new Error(`GET ${url}: HTTP ${res.status} ${await res.text()}`);
-    const batch = /** @type {Release[]} */ (await res.json());
+    const batch = (await res.json()) as Release[];
     all.push(...batch);
     if (batch.length < PER_PAGE) return all;
   }
 }
 
 const USAGE = `usage:
-  downloads.mjs collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
-  downloads.mjs merge --csv <downloads.csv> --day <day.csv>
-  downloads.mjs summary --csv <downloads.csv> [--assets] [--markdown]`;
+  downloads.ts collect --repo <owner/name> [--date YYYY-MM-DD] > <day.csv>
+  downloads.ts merge --csv <downloads.csv> --day <day.csv>
+  downloads.ts summary --csv <downloads.csv> [--assets] [--markdown]`;
 
-/** @param {string[]} argv */
-async function main(argv) {
+async function main(argv: string[]) {
   const [command, ...rest] = argv;
   const { values } = parseArgs({
     args: rest,

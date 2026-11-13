@@ -222,7 +222,9 @@ const workspaceArb = fc
       const ls = leaves(p);
       const shown = new Set(ls.map((l) => l.tab));
       const free = TABS.filter((t) => !shown.has(t));
-      const target = /** @type {any} */ (ls[(o.pick ?? 0) % ls.length]).pane;
+      const leaf = ls[("pick" in o ? o.pick : 0) % ls.length];
+      if (!leaf) throw new Error("a pane tree has a leaf");
+      const target = leaf.pane;
       if (o.op === "split" && free.length)
         p = split(p, target, o.dir, /** @type {string} */ (free[0]));
       else if (o.op === "close" && ls.length > 1) p = closePane(p, target);

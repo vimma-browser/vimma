@@ -92,9 +92,9 @@ describe("workspaceReport", () => {
 
   it("keeps a long error to one short line", () => {
     const line = workspaceReport({ ...base, lastError: `a\n${"b".repeat(500)}` })[1];
-    expect(line.startsWith("  error: a b")).toBe(true);
-    expect(line.length).toBeLessThanOrEqual(210);
-    expect(line.endsWith("…")).toBe(true);
+    expect(line?.startsWith("  error: a b")).toBe(true);
+    expect(line?.length).toBeLessThanOrEqual(210);
+    expect(line?.endsWith("…")).toBe(true);
   });
 
   it("says none for a window without workspaces, and leaves out an unknown tab count", () => {
