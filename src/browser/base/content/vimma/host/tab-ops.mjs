@@ -8,7 +8,7 @@
 
 import { refusedScheme } from "../core/pageurl.mjs";
 import { tabTarget } from "../core/tabs.mjs";
-import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
+import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */

@@ -58,7 +58,7 @@ import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./b
 import { pickerWorkspaces, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
-import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
+import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { closeTabById, openOrSay } from "./tab-ops.mjs";
