@@ -1,7 +1,7 @@
 /**
  * Bench regression gate (spec ci-quality-gates, plan §5 "Performance", issues #17 and #342).
  * Compares the working tree's cases with the baseline commit's cases, both measured by
- * tools/bench/bench.mjs in the same processes, sample by sample. It fails when
+ * tools/bench/bench.ts in the same processes, sample by sample. It fails when
  *   - any case of the working tree takes BUDGET_US or more (plan: key-to-action in core < 50 µs);
  *   - the geometric mean of the cases' changes is more than THRESHOLD (10 %) above the baseline
  *     commit's, or one case is more than CASE_THRESHOLD (25 %) above it, or a case of the
@@ -20,30 +20,44 @@ export const CASE_THRESHOLD = 0.25;
 const EPSILON = 1e-9;
 
 /**
- * @typedef {{ us: number, ratio: number }} CaseResult µs per key-to-action, and that over the
- *   reference workload's µs (min of per-round medians, both)
- * @typedef {{ machine: string, referenceUs: number, cases: Record<string, CaseResult> }} Result
- * @typedef {Record<string, { change: number, why: string }>} Accepted costs the baseline accepts
- *   on top of the baseline commit, per case: a change meant to cost time cannot name its own
- *   commit before it is merged, so it states the cost here and the next move of the commit
- *   folds it in (docs/runbook.md, "Bench baseline")
- * @typedef {{ name: string, us: number, ratio: number, base: number | null,
- *   change: number | null }} Row
+ * µs per key-to-action, and that over the reference workload's µs (min of per-round medians,
+ * both)
  */
+export interface CaseResult {
+  us: number;
+  ratio: number;
+}
+export interface Result {
+  machine: string;
+  referenceUs: number;
+  cases: Record<string, CaseResult>;
+}
+/**
+ * Costs the baseline accepts on top of the baseline commit, per case: a change meant to cost
+ * time cannot name its own commit before it is merged, so it states the cost here and the next
+ * move of the commit folds it in (docs/runbook.md, "Bench baseline")
+ */
+export type Accepted = Record<string, { change: number; why: string }>;
+export interface Row {
+  name: string;
+  us: number;
+  ratio: number;
+  base: number | null;
+  change: number | null;
+}
 
-/** @param {number[]} xs */
-export function median(xs) {
+export function median(xs: number[]) {
   if (xs.length === 0) throw new RangeError("median of an empty sample");
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
-  return s.length % 2 ? /** @type {number} */ (s[mid]) : (Number(s[mid - 1]) + Number(s[mid])) / 2;
+  return s.length % 2 ? (s[mid] as number) : (Number(s[mid - 1]) + Number(s[mid])) / 2;
 }
 
 /**
  * Noise on a shared machine only ever adds time, so the quietest round is the best estimate.
- * @param {number[][]} rounds samples per round
+ * @param rounds samples per round
  */
-export function minOfMedians(rounds) {
+export function minOfMedians(rounds: number[][]) {
   return Math.min(...rounds.map(median));
 }
 
@@ -55,10 +69,10 @@ export function minOfMedians(rounds) {
  * median lands on whichever mode got one more sample. Two sides of identical code then read up to
  * +50 % apart (issue #667). A sweep measures both sides in the same phase, so their quotient
  * cancels it unless a phase changes between them.
- * @param {number[][]} a per round, the case's ratio in each sweep
- * @param {number[][]} b the same for the case it is compared with, from the same measurement
+ * @param a per round, the case's ratio in each sweep
+ * @param b the same for the case it is compared with, from the same measurement
  */
-export function pairedChange(a, b) {
+export function pairedChange(a: number[][], b: number[][]) {
   if (a.length !== b.length || a.some((round, r) => round.length !== b[r]?.length)) {
     throw new Error("pairedChange: both cases must come from the same sweeps");
   }
@@ -66,17 +80,17 @@ export function pairedChange(a, b) {
 }
 
 /**
- * One result from several bench processes (each with its own fixed hash seed, bench.mjs).
+ * One result from several bench processes (each with its own fixed hash seed, bench.ts).
  *   - µs, for the budget: the lowest over the processes, since noise only adds time.
  *   - ratio, for the regression gate: the median over the processes. Not the lowest: noise in
  *     the reference's time lowers a ratio, so the lowest ratio picks the process whose reference
  *     ran slowest, and the gate then compares that outlier with the next run's (issue #125).
  * `referenceSpread` is (slowest − fastest) / fastest of the processes' reference times, printed so
  * a reference that stops being steady shows in the log.
- * @param {Result[]} results
- * @returns {Result & { processes: number, referenceSpread: number }}
  */
-export function combine(results) {
+export function combine(
+  results: Result[],
+): Result & { processes: number; referenceSpread: number } {
   const [first] = results;
   if (!first) throw new RangeError("combine: no results");
   const names = Object.keys(first.cases).sort();
@@ -86,10 +100,9 @@ export function combine(results) {
       throw new Error("combine: results with different cases");
     }
   }
-  /** @type {Record<string, CaseResult>} */
-  const cases = {};
+  const cases: Record<string, CaseResult> = {};
   for (const name of Object.keys(first.cases)) {
-    const of = results.map((r) => /** @type {CaseResult} */ (r.cases[name]));
+    const of = results.map((r) => r.cases[name] as CaseResult);
     cases[name] = {
       us: Math.min(...of.map((c) => c.us)),
       ratio: median(of.map((c) => c.ratio)),
@@ -109,32 +122,30 @@ export function combine(results) {
 /**
  * The working tree's and the baseline commit's results from the same processes, combined so that
  * loading one side first cannot lean the gate. Loading first moves a sub-microsecond case by
- * several per cent, so half of the processes load the baseline first (bench.mjs, childArgs). A
+ * several per cent, so half of the processes load the baseline first (bench.ts, childArgs). A
  * median of each side alone keeps the lean whenever one order has more processes (8 to 7 of 15),
  * and so does a median of the processes' own changes, which then all read the lean one way or
  * the other. So: per case, each process's own change (working tree over baseline), the median of
  * those per load order, and the geometric mean of the two orders' medians, in which a lean of the
  * same size either way cancels. `base`'s ratio is the working tree's combined ratio over that
  * change, so compare() reads it; its µs is the baseline's own (budget only).
- * @param {Result[]} heads the working tree's results, one per process
- * @param {Result[]} bases the baseline commit's, in the same order
- * @param {boolean[]} headFirst per process, whether it loaded the working tree first
+ * @param heads the working tree's results, one per process
+ * @param bases the baseline commit's, in the same order
+ * @param headFirst per process, whether it loaded the working tree first
  */
-export function combinePaired(heads, bases, headFirst) {
+export function combinePaired(heads: Result[], bases: Result[], headFirst: boolean[]) {
   if (heads.length !== bases.length || heads.length !== headFirst.length) {
     throw new Error("combinePaired: both sides must come from the same processes");
   }
   const head = combine(heads);
   const base = combine(bases);
-  /** @param {string} name @param {boolean} first */
-  const changes = (name, first) =>
+  const changes = (name: string, first: boolean) =>
     heads.flatMap((h, p) =>
       headFirst[p] === first
         ? [Number(h.cases[name]?.ratio) / Number(bases[p]?.cases[name]?.ratio)]
         : [],
     );
-  /** @type {Record<string, CaseResult>} */
-  const cases = {};
+  const cases: Record<string, CaseResult> = {};
   for (const [name, c] of Object.entries(base.cases)) {
     const own = head.cases[name];
     if (!own) {
@@ -150,31 +161,25 @@ export function combinePaired(heads, bases, headFirst) {
   return { head, base: { ...base, cases } };
 }
 
-/** @param {number} x */
-const pct = (x) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
+const pct = (x: number) => `${x >= 0 ? "+" : ""}${(x * 100).toFixed(1)} %`;
 
 /**
- * @param {Result} result the working tree's cases
- * @param {Result} base the baseline commit's cases, measured in the same processes
- * @param {{ threshold?: number, caseThreshold?: number, budgetUs?: number,
- *   accepted?: Accepted }} [opts]
+ * @param result the working tree's cases
+ * @param base the baseline commit's cases, measured in the same processes
  */
 export function compare(
-  result,
-  base,
+  result: Result,
+  base: Result,
   {
     threshold = THRESHOLD,
     caseThreshold = CASE_THRESHOLD,
     budgetUs = BUDGET_US,
     accepted = {},
-  } = {},
+  }: { threshold?: number; caseThreshold?: number; budgetUs?: number; accepted?: Accepted } = {},
 ) {
-  /** @type {string[]} */
-  const failures = [];
-  /** @type {string[]} */
-  const notes = [];
-  /** @type {Row[]} */
-  const rows = [];
+  const failures: string[] = [];
+  const notes: string[] = [];
+  const rows: Row[] = [];
   let logSum = 0;
   let compared = 0;
   for (const [name, { us, ratio }] of Object.entries(result.cases)) {
@@ -220,8 +225,7 @@ export function compare(
   return { ok: failures.length === 0, failures, notes, rows, suiteChange };
 }
 
-/** @param {ReturnType<typeof compare>} r */
-export function formatTable(r) {
+export function formatTable(r: ReturnType<typeof compare>) {
   const width = Math.max(4, ...r.rows.map((row) => row.name.length));
   const lines = [`${"case".padEnd(width)}  ${"µs".padStart(8)}  ratio  baseline  change`];
   for (const { name, us, ratio, base, change } of r.rows) {

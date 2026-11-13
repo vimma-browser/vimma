@@ -37,7 +37,7 @@
     "license-check": "node tools/license-check/license-check.ts",
     "security-links": "node tools/security/check-doc-links.mjs",
     "license-check:crates": "node tools/license-check/cargo-license-check.ts",
-    "bench": "node tools/bench/bench.mjs",
+    "bench": "node tools/bench/bench.ts",
     "agent-bench": "node tools/agent-bench/agent-bench.mjs",
     "mutation": "stryker run",
     "gen-agent-tools": "node tools/gen-agent-tools.mjs",
