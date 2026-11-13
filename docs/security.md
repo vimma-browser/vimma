@@ -1235,7 +1235,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`a_read_reaches_vimma_as_the_agent_role`](../tools/vimma-ctl/tests/mcp.rs),
   [`the_token_never_leaves_the_handshake`](../tools/vimma-ctl/tests/mcp.rs),
   [`bad_arguments_never_reach_vimma`](../tools/vimma-ctl/tests/mcp.rs),
-  [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs)
+  [`bad_arguments_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp/args.rs)
 - M16. `agent-keys` **must** run only the whitelisted action ids of mcp-drive D9, parsed with a
   dispatcher of its own over Vimma's default keymap, never the user's; the whitelist is checked
   on the action ids the dispatcher returns. It **never** sends a key event to the page and
@@ -1355,7 +1355,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_keys_under_a_grant_notice_and_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`the refusal names the calls, the limit and the wait`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`retryAfter: 1 to 60000 whole milliseconds, on a busy denial only`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_rate_limit_names_the_limit_and_the_wait`](../tools/vimma-ctl/src/mcp/render.rs),
   [`a_busy_denial_with_retry_after_is_a_rate_limit`](../tools/vimma-ctl/src/mcp_serve.rs),
   [`a used-up rate`](../packages/vimma-core/test/agent-results.test.mjs),
   [`test_a_used_up_rate_is_waited_out_not_reported_as_questions`](../tests/browser/browser_vimma_agent_chat.js),
@@ -1363,7 +1363,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_loads_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_keys.js),
   [`test_follows_count_towards_the_open_rate`](../tests/browser/browser_vimma_mcp_follow.js),
   [`a label is lowercase hint characters, at most the longest label of 200 links`](../packages/vimma-core/test/agent-keys.test.mjs),
-  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp.rs),
+  [`bad_keys_are_tool_errors_and_never_reach_vimma`](../tools/vimma-ctl/src/mcp/args.rs),
   [`at most 6 agent-show per connection a minute`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`test_show_refuses_other_tabs_and_six_a_minute_is_the_most`](../tests/browser/browser_vimma_mcp_show.js)
 - M21. `f`'s link list **must** be one string inside the untrusted-content delimiters, wrapped
@@ -1381,7 +1381,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`text is one line: whitespace collapsed, bidi and control characters dropped`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`links past the byte budget are left out and counted`](../packages/vimma-core/test/agent-keys.test.mjs),
   [`agent-keys: a link list inside the untrusted delimiters, and how many were dropped`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`keys_list_links_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+  [`keys_list_links_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
 - M22. While MCP is on, `:control on`'s question **must** say that full control reaches every
   workspace and tab, not only the agent workspace, and that any local AI agent with a shell can
   use it, and a yes given after MCP went on or off **never** turns it on; each new full
@@ -1395,7 +1395,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`while MCP is on, the question says full control reaches beyond the agent workspace`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`full control names the agent workspace it reaches beyond`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`the desktop notification names the client and the kind of request, never a URL`](../packages/vimma-core/test/agent-prompt.test.mjs),
-  [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp.rs)
+  [`the_instructions_advise_against_full_control`](../tools/vimma-ctl/src/mcp/instructions.rs)
 - M23. Every agent request that is answered, runs under a grant or is denied (by the gate, or
   after it: `in-use`, `changed`, the keys and show rates) **must** be in `:mcp log`, as must a `vimma_keys`
   call that stopped early (the last 100, in memory only, cleared by `:mcp off`). Each row's
@@ -1511,12 +1511,12 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   so it opens nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
-  [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp.rs),
+  [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp/render.rs),
   [`agent-activate: what changed in place, from a fixed list`](../packages/vimma-core/test/control-v2.test.mjs),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_activate_reports_a_dialog`](../tests/browser/browser_vimma_mcp_activate.js),
   [`agent-activate: the page after the click, a dialog, a stopped submission`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`activate_says_what_the_click_did`](../tools/vimma-ctl/src/mcp.rs)
+  [`activate_says_what_the_click_did`](../tools/vimma-ctl/src/mcp/render.rs)
 - M27. `agent-fill` (mcp-forms F12, F13) **must never** set a sensitive field: one that is or
   ever was a password field, one the page draws as dots (`-webkit-text-security`), one whose
   autocomplete field name is `current-password`, `new-password`, `one-time-code` or any `cc-*`,
@@ -1548,8 +1548,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`password, payment card and one-time-code fields are never filled`](../packages/vimma-core/test/agent-act.test.mjs),
   [`file fields, rich text editors, hidden, disabled and read-only fields are refused`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a value of the wrong kind, a line break in one line, a value that does not parse`](../packages/vimma-core/test/agent-act.test.mjs),
-  [`fill_limits_are_tool_errors`](../tools/vimma-ctl/src/mcp.rs),
-  [`fill_values_with_invisible_characters_are_tool_errors`](../tools/vimma-ctl/src/mcp.rs),
+  [`fill_limits_are_tool_errors`](../tools/vimma-ctl/src/mcp/args.rs),
+  [`fill_values_with_invisible_characters_are_tool_errors`](../tools/vimma-ctl/src/mcp/args.rs),
   [`vimma_fill: each field and value in the question, how many in the notice`](../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
   method is not `dialog`, the element itself, the button it is in or its label's control)
@@ -1718,7 +1718,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a request failed at status 400 and above, or with a channel error but a cancel`](../packages/vimma-core/test/agent-act.test.mjs),
   [`an entry from a content process is checked, and its strings cut`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-console: a tab and an optional since, nothing else`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`console_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs),
+  [`console_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp/command.rs),
   [`test_a_noisy_page_sends_one_replys_worth`](../tests/browser/browser_vimma_mcp_console.js),
   [`a console call's huge arguments are cut before they are joined`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a frame answers only its newest entries after since, at most a list's worth`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1790,20 +1790,20 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a sensitive field is left out only when its line, without a value, is the same`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a sensitive field's value is never matched`](../packages/vimma-core/test/agent-act.test.mjs),
   [`a list's repeated labels come with it, each a label, at most once`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`a_compact_list_names_the_labels_it_left_out`](../tools/vimma-ctl/src/mcp.rs),
-  [`element_lists_take_query_kinds_and_full`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_compact_list_names_the_labels_it_left_out`](../tools/vimma-ctl/src/mcp/render.rs),
+  [`element_lists_take_query_kinds_and_full`](../tools/vimma-ctl/src/mcp/args.rs),
   [`test_a_steps_list_says_nothing_of_a_tab_that_left`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_steps_return_the_element_list_vimma_elements_would`](../tests/browser/browser_vimma_mcp_elements.js),
   [`a step's list is inside the untrusted delimiters, with its dropped count`](../packages/vimma-core/test/control-v2.test.mjs),
   [`why a step's list is missing: fixed words, never with a list`](../packages/vimma-core/test/control-v2.test.mjs),
   [`a load error: one of Firefox's codes, only with unlisted error`](../packages/vimma-core/test/control-v2.test.mjs),
   [`a code outside the fixed list is other, never the page's text`](../packages/vimma-core/test/load-errors.test.mjs),
-  [`a_load_that_ended_on_an_error_page_is_an_error_naming_it`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_load_that_ended_on_an_error_page_is_an_error_naming_it`](../tools/vimma-ctl/src/mcp/render.rs),
   [`a load that ended on Firefox's error page is an error result naming the error`](../packages/vimma-core/test/agent-results.test.mjs),
   [`an open that ends on Firefox's error page three times ends the task`](../packages/vimma-core/test/agent-loop.test.mjs),
   [`test_builtin_open_names_the_error_page`](../tests/browser/browser_vimma_agent_load_error.js),
-  [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp.rs),
-  [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp.rs),
+  [`a_steps_element_list_is_untrusted_content_as_vimma_elements`](../tools/vimma-ctl/src/mcp/render.rs),
+  [`an_open_with_elements_lists_the_page_it_loaded`](../tools/vimma-ctl/src/mcp/render.rs),
   [`a step that returns the element list says so in the question and the notice`](../packages/vimma-core/test/agent-prompt.test.mjs),
   [`test_password_and_card_fields_are_sensitive_without_values`](../tests/browser/browser_vimma_mcp_elements.js),
   [`test_elements_lists_kinds_fields_and_forms`](../tests/browser/browser_vimma_mcp_elements.js),
@@ -1818,7 +1818,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`page strings are NFKC, one line, without bidi, control or invisible characters`](../packages/vimma-core/test/agent-act.test.mjs),
   [`elements past the byte budget are left out and counted; their forms too`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+  [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
 
   `agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
   base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; unless asked `full`, it is at most
@@ -1853,8 +1853,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
   [`labels at their element's corner, scaled; those off the image are left out`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-screenshot: the image, its size, the page, and the labels drawn`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp.rs),
-  [`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp.rs)
+  [`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp/render.rs),
+  [`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp/command.rs)
 
   `agent-console`'s errors and failed requests (F24) **must** each be one string inside the
   untrusted-content delimiters, wrapped by the browser as above, and the protocol validator and
@@ -1867,7 +1867,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`the lists: newest first, only after since, at most 100 each, within the bytes`](../packages/vimma-core/test/agent-act.test.mjs),
   [`no page string can spell a delimiter or a line of its own`](../packages/vimma-core/test/agent-act.test.mjs),
   [`agent-console: the page, its errors and requests inside the delimiters, the time`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`console_lists_as_untrusted_content`](../tools/vimma-ctl/src/mcp.rs)
+  [`console_lists_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
 
 - M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
   together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the

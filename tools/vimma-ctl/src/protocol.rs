@@ -1282,7 +1282,7 @@ mod tests {
         out
     }
 
-    /// Agent commands and their results: `vimma-ctl mcp` sends and decodes them; mcp.rs tests
+    /// Agent commands and their results: `vimma-ctl mcp` sends and decodes them; mcp/command.rs tests
     /// them against these fixtures.
     fn agent_only(name: &str) -> bool {
         name.starts_with("request-agent-") || name.starts_with("response-agent-")

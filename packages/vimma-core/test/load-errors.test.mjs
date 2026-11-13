@@ -39,7 +39,7 @@ describe("loadErrorOf", () => {
 
   test("every code has its words, and vimma-ctl has the same", () => {
     const rs = readFileSync(
-      new URL("../../../tools/vimma-ctl/src/mcp.rs", import.meta.url),
+      new URL("../../../tools/vimma-ctl/src/mcp/render.rs", import.meta.url),
       "utf8",
     ).replace(/\\\n\s*/g, "");
     for (const [code, words] of Object.entries(LOAD_ERRORS)) {

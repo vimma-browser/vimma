@@ -117,7 +117,7 @@ export async function runOne(o) {
   return { ...score, calls, turns, reply: result.reply ?? "", error: result.error ?? null };
 }
 
-/** vimma-ctl's wording for a used-up rate (mcp.rs, `Failure::RateLimited`). */
+/** vimma-ctl's wording for a used-up rate (mcp/render.rs, `Failure::RateLimited`). */
 const RATE_LIMITED =
   /^Vimma's rate limit for this agent: .* No question is waiting for the user\. The next call is allowed in (\d+) s\.$/;
 

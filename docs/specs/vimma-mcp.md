@@ -12,6 +12,12 @@ Status: implemented · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`
 `URILoadingHelper-sys-mjs.patch`, `Tabbrowser-sys-mjs.patch` and `AccountsGlue-sys-mjs.patch`
 (decision 42) · ADR: [ADR-019](../adr/019-agents-over-mcp.md)
 
+Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
+([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
+`INSTRUCTIONS` in `instructions.rs`, the tool list in `tool_list.rs`, the argument checks in
+`args.rs`, the agent commands in `command.rs`, the result texts in `render.rs` and the JSON-RPC side
+in `server.rs`, each file with its tests.
+
 Issues: [#229](https://github.com/vimma-browser/vimma/issues/229),
 [#230](https://github.com/vimma-browser/vimma/issues/230),
 [#231](https://github.com/vimma-browser/vimma/issues/231)
