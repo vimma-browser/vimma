@@ -9,6 +9,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync, privateEncrypt, constants } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
   base64Encode,
@@ -43,7 +44,7 @@ import {
 } from "../manifest.mjs";
 
 const subtle = globalThis.crypto.subtle;
-const HASH = (c) => c.repeat(128);
+const HASH = (/** @type {string} */ c) => c.repeat(128);
 const RELEASES = "https://github.com/vimma-browser/vimma/releases";
 
 /** An RSA-4096 key as Cloud KMS holds it, and the pin for it. */
@@ -172,31 +173,35 @@ describe("buildManifest (spec §2)", () => {
     expect(parseManifest(body)).toMatchObject({ ok: true, manifest: { update: null } });
   });
 
-  it.each([
-    ["a serial that is not a UTC time", { serial: "2026" }],
-    ["a version that is not X.Y.Z", { update: { displayVersion: '0.3.1" x="' } }],
-    ["a Firefox version with a quote", { update: { appVersion: '158.0"' } }],
-    ["a build ID that is not digits", { update: { buildId: "2026-10-28" } }],
-    ["an unknown urgency", { update: { urgency: "panic" } }],
-    ["an advisory that is not an MFSA ID", { update: { advisories: ["CVE-2026-1"] } }],
-    [
-      "a hash that is not SHA-512 hex",
-      { update: { assets: { ...offer().assets, deb: { size: 1, sha512: "ab" } } } },
-    ],
-    [
-      "a size that is not a whole number",
-      { update: { assets: { ...offer().assets, deb: { size: 1.5, sha512: HASH("c") } } } },
-    ],
-    [
-      "a missing asset",
-      {
-        update: { assets: { tarball: offer().assets.tarball, appimage: offer().assets.appimage } },
-      },
-    ],
-  ])("refuses %s rather than writing it", (_name, change) => {
+  it.each(
+    /** @type {[string, { serial?: string, update?: Record<string, unknown> }][]} */ ([
+      ["a serial that is not a UTC time", { serial: "2026" }],
+      ["a version that is not X.Y.Z", { update: { displayVersion: '0.3.1" x="' } }],
+      ["a Firefox version with a quote", { update: { appVersion: '158.0"' } }],
+      ["a build ID that is not digits", { update: { buildId: "2026-10-28" } }],
+      ["an unknown urgency", { update: { urgency: "panic" } }],
+      ["an advisory that is not an MFSA ID", { update: { advisories: ["CVE-2026-1"] } }],
+      [
+        "a hash that is not SHA-512 hex",
+        { update: { assets: { ...offer().assets, deb: { size: 1, sha512: "ab" } } } },
+      ],
+      [
+        "a size that is not a whole number",
+        { update: { assets: { ...offer().assets, deb: { size: 1.5, sha512: HASH("c") } } } },
+      ],
+      [
+        "a missing asset",
+        {
+          update: {
+            assets: { tarball: offer().assets.tarball, appimage: offer().assets.appimage },
+          },
+        },
+      ],
+    ]),
+  )("refuses %s rather than writing it", (_name, change) => {
     const input = {
       serial: change.serial ?? "20261028041207",
-      update: { ...offer(), .../** @type {any} */ (change.update ?? {}) },
+      update: { ...offer(), ...change.update },
     };
     expect(() => buildManifest(/** @type {any} */ (input))).toThrow();
   });
@@ -503,7 +508,7 @@ describe("signing round trip (the verifier the browser runs)", () => {
  * A release directory as the download step leaves it: the three assets (a real tar.xz with
  * vimma/application.ini, as `./mach package` makes) and SHA256SUMS.
  * @param {string} version
- * @param {{ ini?: string }} [options]
+ * @param {{ ini?: string, mar?: boolean }} [options]
  */
 function fakeRelease(version, { ini, mar = false } = {}) {
   const dir = tempDir("vimma-release-");
@@ -514,10 +519,10 @@ function fakeRelease(version, { ini, mar = false } = {}) {
     join(src, "vimma", "application.ini"),
     ini ?? "[App]\nVendor=Vimma\nName=Vimma\nVersion=158.0\nBuildID=20261016111135\n",
   );
-  execFileSync("tar", ["-cJf", join(dir, names.tarball), "-C", src, "vimma"]);
-  writeFileSync(join(dir, names.appimage), `appimage ${version}`);
-  writeFileSync(join(dir, names.deb), `deb ${version}`);
-  writeFileSync(join(dir, names.rpm), `rpm ${version}`);
+  execFileSync("tar", ["-cJf", join(dir, defined(names.tarball)), "-C", src, "vimma"]);
+  writeFileSync(join(dir, defined(names.appimage)), `appimage ${version}`);
+  writeFileSync(join(dir, defined(names.deb)), `deb ${version}`);
+  writeFileSync(join(dir, defined(names.rpm)), `rpm ${version}`);
   const listed = Object.values(names);
   if (mar) {
     writeFileSync(join(dir, marName(version)), `MAR1 ${version}`);
@@ -539,7 +544,7 @@ describe("prepareRelease and checkSigned (the jobs' checks)", () => {
 
   it("reads Firefox's version and the build ID from the tarball's application.ini", () => {
     const dir = fakeRelease("0.3.1");
-    expect(releaseInfo(join(dir, assetNames("0.3.1").tarball))).toEqual({
+    expect(releaseInfo(join(dir, defined(assetNames("0.3.1").tarball)))).toEqual({
       appVersion: "158.0",
       buildId: "20261016111135",
     });
@@ -777,7 +782,7 @@ describe("the complete MAR (<patch>)", () => {
  */
 function fakeMacRelease(version) {
   const dir = tempDir("vimma-release-macos-");
-  const dmg = assetNames(version, "macos").dmg;
+  const dmg = defined(assetNames(version, "macos").dmg);
   writeFileSync(join(dir, dmg), `dmg ${version}`);
   writeFileSync(join(dir, "vimma.rb"), "cask");
   const sha = (/** @type {string} */ n) =>
@@ -931,7 +936,7 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
     writeFileSync(dmg, "");
     /** @param {string[]} args */
     const hdiutil = (args) => {
-      writeFileSync(join(args[args.indexOf("-mountpoint") + 1], "mounted"), "");
+      writeFileSync(join(defined(args[args.indexOf("-mountpoint") + 1]), "mounted"), "");
       // as execFileSync reports a failure: the command, then hdiutil's stderr
       const stderr = "hdiutil: attach failed - Resource temporarily unavailable\n";
       throw Object.assign(new Error(`Command failed: hdiutil ${args.join(" ")}\n${stderr}`), {
@@ -952,7 +957,7 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
     /** @param {string[]} args */
     const hdiutil = (args) => {
       if (args[0] === "attach") {
-        const mount = args[args.indexOf("-mountpoint") + 1];
+        const mount = defined(args[args.indexOf("-mountpoint") + 1], "-mountpoint's value");
         mounts.push(mount);
         if (ini !== null) {
           const res = join(mount, "Vimma.app", "Contents", "Resources");
@@ -983,12 +988,12 @@ describe("the macOS manifest (spec macos-homebrew, decisions 16 to 18)", () => {
     try {
       expect(dmgInfo(dmg, hdiutil)).toEqual({ appVersion: "158.0", buildId: "20261019132138" });
       expect(log).toHaveBeenCalledWith(expect.stringMatching(/hdiutil: detach failed/));
-      expect(log).toHaveBeenCalledWith(expect.stringContaining(mounts[0]));
+      expect(log).toHaveBeenCalledWith(expect.stringContaining(defined(mounts[0])));
     } finally {
       log.mockRestore();
     }
     // the mount point stays: removing it could reach into the volume still mounted there
-    expect(existsSync(mounts[0])).toBe(true);
+    expect(existsSync(defined(mounts[0]))).toBe(true);
   });
 
   it("throws the read's error, not the detach's, when both fail", () => {

@@ -502,6 +502,7 @@ esac
   // read or write a file outside it, such as the credentials. A chain of links that each look
   // harmless as text (x -> ., then x/x/../..) still gets out.
   it("refuses a symlink that leaves the app, before rcodesign runs", () => {
+    /** @type {Record<string, string>[]} */
     const cases = [
       { "Contents/MacOS/escape": "/etc/hosts" },
       { "Contents/MacOS/escape": "../../../secrets/p12-password" },
@@ -520,7 +521,9 @@ esac
   // An installed Vimma.app on Firefox 158.0.1 has no symlink in the bundle;
   // its frameworks are flat. So any link is refused, inside or out.
   it("refuses every symlink, even one that stays inside the app, and an app that is a link", () => {
-    for (const links of [{ "Contents/MacOS/link-to-xul": "XUL" }, { "Contents/up": "MacOS" }]) {
+    /** @type {Record<string, string>[]} */
+    const cases = [{ "Contents/MacOS/link-to-xul": "XUL" }, { "Contents/up": "MacOS" }];
+    for (const links of cases) {
       const { dir, app, log, env } = setup(undefined, { links });
       const { status, stderr } = run(SIGN, [app], dir, env);
       expect(status, JSON.stringify(links)).not.toBe(0);

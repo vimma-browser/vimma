@@ -41,6 +41,7 @@ import {
 } from "../launcher.mjs";
 import { READ_PATH_PREF, devPrefs } from "../../start.mjs";
 import { startFakeServer } from "./fake-server.mjs";
+import { defined } from "../../test/defined.ts";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
@@ -229,7 +230,7 @@ describe("profile", () => {
     // A local objdir's chrome files are symlinks into src/; without this VimmaChild never loads
     // in the default content sandbox (m0-content-actor checks it against a real build).
     const js = readFileSync(join(createProfile(tempDir()), "user.js"), "utf8");
-    const [[name, value]] = devPrefs(REPO_ROOT);
+    const [name, value] = defined(devPrefs(REPO_ROOT)[0]);
     expect(js).toContain(`user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
   });
 
@@ -242,7 +243,7 @@ describe("profile", () => {
       "utf8",
     );
     // On macOS the repo's src/ goes in another pref (devPrefs), so the list holds the fonts alone.
-    const [[name, src]] = devPrefs(REPO_ROOT);
+    const [name, src] = defined(devPrefs(REPO_ROOT)[0]);
     const list = name === READ_PATH_PREF ? `${src},${fonts}` : fonts;
     expect(js).toContain(`user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(list)});`);
   });

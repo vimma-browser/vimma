@@ -4,6 +4,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ROOTS, classify, releasePath } from "../release-path.mjs";
+import { defined } from "../../test/defined.ts";
 import { jobs } from "../../test/workflow-runners.mjs";
 
 // docs/specs/build-supply-chain.md, decisions 13 to 15; docs/security.md, B3. Every package the
@@ -15,9 +16,16 @@ const read = (path) => readFileSync(new URL(path, root), "utf8");
 const cli = new URL("../release-path.mjs", import.meta.url).pathname;
 
 /**
+ * A package-lock.json entry, with the fields npm writes that release-path.mjs does not read.
+ * @typedef {import("../release-path.mjs").Entry
+ *   & { devDependencies?: Record<string, string>, optional?: boolean }} LockEntry
+ */
+
+/**
  * @param {string} name
  * @param {string} version
- * @param {Record<string, unknown>} [extra]
+ * @param {LockEntry} [extra]
+ * @returns {LockEntry}
  */
 const entry = (name, version, extra = {}) => ({
   version,
@@ -26,7 +34,10 @@ const entry = (name, version, extra = {}) => ({
   ...extra,
 });
 
-/** A small lockfile: Surfer and ajv with transitive, nested and optional packages, and others. */
+/**
+ * A small lockfile: Surfer and ajv with transitive, nested and optional packages, and others.
+ * @returns {{ name: string, lockfileVersion: number, packages: Record<string, LockEntry> }}
+ */
 const fixture = () => ({
   name: "fixture",
   lockfileVersion: 3,
@@ -55,7 +66,7 @@ const fixture = () => ({
 /**
  * @param {ReturnType<typeof fixture>} lock
  * @param {string} key
- * @param {Record<string, unknown>} change
+ * @param {LockEntry} change
  */
 const bump = (lock, key, change) => {
   const next = structuredClone(lock);
@@ -217,7 +228,10 @@ describe("release path", () => {
     });
     // A package new to the release path in the head lockfile counts too, with nothing to diff.
     const added = structuredClone(base);
-    added.packages["node_modules/chalk"].dependencies = { "ansi-styles": "^4", "has-flag": "^4" };
+    defined(added.packages["node_modules/chalk"]).dependencies = {
+      "ansi-styles": "^4",
+      "has-flag": "^4",
+    };
     added.packages["node_modules/has-flag"] = entry("has-flag", "4.0.0");
     expect(classify(base, added)).toEqual({
       decision: "review",

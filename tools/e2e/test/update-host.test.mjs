@@ -1,7 +1,7 @@
 // The update scenarios' harness pieces (docs/specs/m6a-updater.md, "Tests", e2e): the local
 // update host, the test-signed manifest and MAR, and the installs they update.
 import { afterEach, describe, expect, it } from "vitest";
-import { generateKeyPairSync, webcrypto } from "node:crypto";
+import { generateKeyPairSync } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { request } from "node:https";
 import {
@@ -119,7 +119,7 @@ describe("the test-signed manifest", () => {
   it("offers the local MAR, signed by a key the build pins only in automation", async () => {
     const key = await makeManifestKey();
     const text = signManifest(localManifest({ serial: "20261106110000", offer, mar }), key);
-    const verified = await verifyManifest(text, [key], webcrypto.subtle);
+    const verified = await verifyManifest(text, [key], globalThis.crypto.subtle);
     expect(verified.ok).toBe(true);
     const parsed = parseManifest(/** @type {any} */ (verified).body);
     expect(parsed.ok).toBe(true);
@@ -134,7 +134,7 @@ describe("the test-signed manifest", () => {
     const key = await makeManifestKey();
     const stranger = await makeManifestKey();
     const text = signManifest(localManifest({ serial: "20261106110000", offer, mar }), stranger);
-    const verified = await verifyManifest(text, [key], webcrypto.subtle);
+    const verified = await verifyManifest(text, [key], globalThis.crypto.subtle);
     expect(verified).toMatchObject({ ok: false });
   });
 
@@ -142,7 +142,9 @@ describe("the test-signed manifest", () => {
     const key = await makeManifestKey();
     const same = { ...offer, buildId: running.buildId, displayVersion: "0.4.4" };
     const text = signManifest(localManifest({ serial: "20261106110000", offer: same, mar }), key);
-    const verified = /** @type {any} */ (await verifyManifest(text, [key], webcrypto.subtle));
+    const verified = /** @type {any} */ (
+      await verifyManifest(text, [key], globalThis.crypto.subtle)
+    );
     const manifest = /** @type {any} */ (parseManifest(verified.body)).manifest;
     expect(judgeManifest(manifest, running, compare)).toMatchObject({ ok: true, offer: null });
   });

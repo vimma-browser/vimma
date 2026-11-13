@@ -79,7 +79,7 @@ describe("runScenarios", () => {
     const { startSession } = sessions();
     const [r] = await runScenarios(
       [scn("m0-file", { steps: [{ "wait-for-profile-file": "search.json.mozlz4" }] })],
-      { startSession: async (s, o) => ({ ...(await startSession(s, o)), profile }) },
+      { startSession: async (s) => ({ ...(await startSession(s)), profile }) },
     );
     expect(r).toMatchObject({ status: "pass" });
   });

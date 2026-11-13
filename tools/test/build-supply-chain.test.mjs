@@ -297,7 +297,8 @@ describe("the Safe Browsing key (decision 18, B6)", () => {
     const inBuild = [];
     for (const name of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
       for (const [id, job] of jobs(workflow(name))) {
-        const env = typeof job.environment === "object" ? job.environment?.name : job.environment;
+        const e = job.environment;
+        const env = typeof e === "object" ? (e !== null && "name" in e ? e.name : undefined) : e;
         if (env === "build") inBuild.push(`${name}:${id}`);
         if (JSON.stringify(job).includes("secrets.SAFEBROWSING_API_KEY")) {
           users.push(`${name}:${id}`);

@@ -49,7 +49,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 3. `package.json` asks for Node `^22.18.0 || >=24.3.0`: the versions measured above to run `.ts`
    with no flag and no warning.
 4. `.ts` files get what `.mjs` files get: `npm run typecheck` checks them (their tests too, unlike
-   the `.mjs` tests, issue #947), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the
+   the `.mjs` tests, issue #947. Since changed: the `.mjs` tests are checked as well, except the
+   key guard's own test), Vitest collects `tools/**/test/**/*.test.ts`, eslint applies the
    same rules (`no-undef` and `no-unused-vars` among them) and prettier formats them.
 5. eslint reads a `.ts` file through amaro, the type stripper Node itself uses (MIT, no
    dependencies, no install script): in strip-only mode it replaces each type with spaces, so the

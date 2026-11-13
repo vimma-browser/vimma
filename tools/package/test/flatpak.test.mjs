@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
 import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates.mjs";
 import { loadScenarios } from "../../e2e/scenario.mjs";
+import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
   APP_ID,
@@ -38,6 +39,14 @@ const vimmaModule = (m) => {
   const mod = m.modules.find((x) => x.name === "vimma");
   if (!mod) throw new Error("no vimma module");
   return mod;
+};
+
+/** @param {ReturnType<typeof flatpakManifest>} m */
+const vimmaArchive = (m) => {
+  const src = vimmaModule(m).sources[0];
+  if (!src || !("sha256" in src))
+    throw new Error("the vimma module does not start with its archive");
+  return src;
 };
 
 describe("Flatpak manifest", () => {
@@ -201,14 +210,14 @@ describe("Flatpak metainfo", () => {
   it("shows the screenshots, one default, each captioned, at raw URLs pinned to the release tag", () => {
     expect(SCREENSHOTS.length).toBeGreaterThanOrEqual(3);
     const shots = [...xml.matchAll(/<screenshot( type="default")?>([\s\S]*?)<\/screenshot>/g)];
-    expect(shots.map((m) => m[2].match(/<image>(.*)<\/image>/)?.[1])).toEqual(
+    expect(shots.map((m) => defined(m[2]).match(/<image>(.*)<\/image>/)?.[1])).toEqual(
       SCREENSHOTS.map(
         (s) =>
           `https://raw.githubusercontent.com/vimma-browser/vimma/v0.1.6/docs/assets/screenshots/${s.file}`,
       ),
     );
     expect(shots.filter((m) => m[1]).length).toBe(1);
-    expect(shots[0][1]).toBe(' type="default"');
+    expect(defined(shots[0])[1]).toBe(' type="default"');
     for (const [, , body] of shots) expect(body).toMatch(/<caption>[^<]{10,100}<\/caption>/);
   });
 
@@ -238,7 +247,9 @@ describe("Flatpak metainfo", () => {
     const kinds = ["open", "keys", "wait-for-state", "sleep", "screenshot"];
     for (const step of steps) {
       const kind = Object.keys(step).filter((k) => k !== "timeoutSeconds");
-      expect(kind.length === 1 && kinds.includes(kind[0]), JSON.stringify(step)).toBe(true);
+      expect(kind.length === 1 && kinds.includes(defined(kind[0])), JSON.stringify(step)).toBe(
+        true,
+      );
     }
     const taken = steps.filter((s) => "screenshot" in s).map((s) => `${s.screenshot}.png`);
     expect(taken.sort()).toEqual(SCREENSHOTS.map((s) => s.file).sort());
@@ -294,9 +305,7 @@ describe("writeFlatpak", () => {
     for (const src of vimmaModule(m).sources) {
       expect(existsSync(join(out, "fp", src.path ?? "")), src.path).toBe(true);
     }
-    expect(vimmaModule(m).sources[0].sha256).toBe(
-      createHash("sha256").update("stub").digest("hex"),
-    );
+    expect(vimmaArchive(m).sha256).toBe(createHash("sha256").update("stub").digest("hex"));
     expect(readFileSync(join(out, "fp", "dev.vimma.browser.png"))).toEqual(
       readFileSync(join(brandDir, "logo512.png")),
     );
@@ -306,7 +315,7 @@ describe("writeFlatpak", () => {
     const out = tempDir("vimma-flatpak-");
     writeFlatpak({ out, version: "0.1.6", date: "2026-10-19", sha256: SHA, brandDir });
     const m = JSON.parse(readFileSync(join(out, "dev.vimma.browser.json"), "utf8"));
-    expect(vimmaModule(m).sources[0].url).toMatch(/\/releases\/download\/v0\.1\.6\//);
+    expect(vimmaArchive(m).url).toMatch(/\/releases\/download\/v0\.1\.6\//);
     expect(existsSync(join(out, "vimma-0.1.6-linux-x86_64.tar.xz"))).toBe(false);
   });
 });
