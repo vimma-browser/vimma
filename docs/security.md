@@ -3214,18 +3214,21 @@ of the same commit read it too, so a tree without it could not be released anywa
 - B18. A guard that a workflow runs from the base branch (`git show "$BASE:tools/…"`: the
   docs-only classifier in ci.yml and e2e.yml, the release key guard in key-guard.yml) judges the
   pull request whose checkout it runs in, so **nothing** of that checkout may run before it. In
-  such a job only `actions/checkout` comes before the guard, with no input but `fetch-depth` and
-  `persist-credentials`, and no `run:` step of any kind: a script from the checkout, `make`,
+  such a job exactly one step runs the guard, and only `actions/checkout`, pinned by its full
+  commit, comes before it, with no input but `fetch-depth` and `persist-credentials`, and no
+  `run:` step of any kind: a script from the checkout, `make`,
   corepack, pnpm, bun or node by its path would each run the pull request's code, so the rule
   refuses every `run:` step rather than judging commands. Setting up a tool counts:
   `actions/setup-node` prints the versions of `npm` and `yarn` in the checkout, and a package
   manager reads its configuration, which can name a program to start, from the current
   directory, so a pull request could run its own code before the guard and change what the guard
-  answers. The guard step has no `shell:` or `working-directory:`, and its environment holds only
-  the event values it reads (`BASE`, `HEAD`, `PR_LABELS`): `NODE_OPTIONS` or `BASH_ENV` would make
-  its own node or bash load a file from the checkout. The job has no `container:`, `services:`,
-  `defaults:` or `env:`, and its workflow no `defaults:` or `env:`, since each changes how the
-  guard step runs. All four guard jobs (ci.yml `check` and `vimma-ctl-macos`, e2e.yml `changes`,
+  answers. The guard step's `run:` text is pinned exactly, so a command appended after it fails
+  the test; it has no `shell:` or `working-directory:`, and its environment holds only the event
+  values it reads, each pinned (`BASE` is the base commit, `HEAD`, `PR_LABELS`): `NODE_OPTIONS` or
+  `BASH_ENV` would make its own node or bash load a file from the checkout. The job's keys come
+  from a short allow-list (no `container:`, `services:`, `defaults:`, `env:` or
+  `continue-on-error:`), and so do its workflow's (no `defaults:` or `env:`), since each changes
+  how the guard step runs or what its failure means. All four guard jobs (ci.yml `check` and `vimma-ctl-macos`, e2e.yml `changes`,
   key-guard.yml) meet this with no exception. These guards therefore run on the runner image's
   own Node and stay `.mjs` (ADR-025, decision 7). The `actions/setup-node` steps that run before
   other tools, on trusted refs only, set `YARN_IGNORE_PATH`, which Yarn 1 honours, and
@@ -3235,7 +3238,8 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`refuses a workflow-level defaults or env in a guard's workflow`](../tools/test/runner-node.test.ts),
   [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts)
 - B19. Every `actions/checkout` in a job that a pull request runs (a workflow with a
-  `pull_request*` trigger, or one such a workflow calls) **must** set
+  `pull_request*`, `merge_group`, `issue_comment` or `workflow_run` trigger, or one such a
+  workflow calls) **must** set
   `persist-credentials: false`. Without it the checkout writes the job's token into
   `.git/config`, where every later step reads it, and in these jobs the later steps are the pull
   request's own `npm ci`, scripts and tests; a read-only token still reads the repository and its
@@ -3243,8 +3247,10 @@ of the same commit read it too, so a tree without it could not be released anywa
   checkout fetched (`fetch-depth: 0` where commitlint or a classifier needs the range), and a
   fetch of a missing commit works without credentials while the repository is public. The one
   exception is claude.yml `spec-pr`, which pushes the `claude/spec-*` branch with the checkout's
-  credentials and runs only after an `issues` event, never a pull request event.
+  credentials and runs only after `spec`, which only an `issues` event starts; the test checks
+  that condition as well as the list.
   [`every checkout a pull request runs sets persist-credentials: false, but the listed ones`](../tools/test/checkout-credentials.test.ts),
+  [`a listed checkout runs only after a job that no pull request event starts`](../tools/test/checkout-credentials.test.ts),
   [`follows a reusable workflow that a pull request workflow calls`](../tools/test/checkout-credentials.test.ts)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
