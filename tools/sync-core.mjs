@@ -12,6 +12,7 @@ rmSync(to, { recursive: true, force: true });
 // chrome code that imports theme.mjs or config.mjs sees the same types as packages/ (jar.mn
 // does not pack them). Vendored LICENSE/README stay in packages/ (the .mjs files carry their
 // own licence headers).
+/** @param {string} p */
 const wanted = (p) =>
   !p.endsWith(".test.mjs") &&
   (statSync(p).isDirectory() || p.endsWith(".mjs") || p.endsWith(".d.mts"));

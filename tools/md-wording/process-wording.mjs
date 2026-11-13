@@ -65,7 +65,7 @@ export function findProcessWording(md) {
   let start = 0;
   while (start < lines.length) {
     let end = start;
-    while (end < lines.length && lines[end].trim() !== "") end++;
+    while (end < lines.length && (lines[end] ?? "").trim() !== "") end++;
     if (end > start) found.push(...inParagraph(lines.slice(start, end), start + 1));
     start = end + 1;
   }
@@ -101,7 +101,7 @@ export function matchPatterns(lines, first, patterns) {
   }
   const lineOf = (/** @type {number} */ index) => {
     let i = 0;
-    while (i + 1 < offsets.length && offsets[i + 1] <= index) i++;
+    while (i + 1 < offsets.length && (offsets[i + 1] ?? Infinity) <= index) i++;
     return first + i;
   };
   const hits = [];

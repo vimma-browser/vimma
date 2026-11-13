@@ -50,6 +50,7 @@ export function decodeXwd(file) {
     { length: 13 },
     (_, i) => field(i),
   );
+  /** @type {[number, number, number]} */
   const masks = [field(14), field(15), field(16)];
   const ncolors = field(19);
   if (/** @type {number} */ (headerSize) < HEADER_FIELDS * 4) {

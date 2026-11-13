@@ -107,7 +107,7 @@ const OPTIONS = /** @type {const} */ ({
   "vimma-ctl": { type: "string" },
   out: { type: "string" },
   sites: { type: "string", default: join(REPO, "tools/sites/sites.json") },
-  pref: { type: "string", multiple: true, default: [] },
+  pref: { type: "string", multiple: true, default: /** @type {string[]} */ ([]) },
   "site-timeout": { type: "string", default: "180" },
   keep: { type: "boolean", default: false },
   "retry-blocked": { type: "boolean", default: false },
@@ -116,7 +116,10 @@ const OPTIONS = /** @type {const} */ ({
   help: { type: "boolean", short: "h", default: false },
 });
 
-/** @param {string} message */
+/**
+ * @param {string} message
+ * @returns {never}
+ */
 function usage(message) {
   process.stderr.write(`sites: ${message}\nSee the comment at the top of tools/sites/sites.mjs.\n`);
   process.exit(2);
@@ -198,6 +201,7 @@ async function main() {
   } catch (e) {
     return usage(/** @type {Error} */ (e).message);
   }
+  /** @type {import("./site-list.mjs").Site[]} the shape validateSites checks next */
   const list = JSON.parse(readFileSync(values.sites, "utf8"));
   const problems = validateSites(list);
   if (problems.length) return usage(`${values.sites}:\n  ${problems.join("\n  ")}`);
@@ -205,15 +209,15 @@ async function main() {
   if (offline && (values.record || values["retry-blocked"]))
     return usage("--offline runs no live site: no --record or --retry-blocked with it");
   if (values.record && values["retry-blocked"]) return usage("--record takes no --retry-blocked");
-  /** @type {Array<{ id: string, url: string }>} */
+  /** @type {Array<{ id: string, url: string, site: import("./site-list.mjs").Site }>} */
   const recordings = [];
   for (const item of (values.record ?? "").split(",").filter((x) => x.trim())) {
     const [id = "", from] = item.trim().split(/=(.*)/s);
-    const site = list.find((/** @type {any} */ s) => s.id === id);
+    const site = list.find((s) => s.id === id);
     if (!site) return usage(`--record ${id}: not in ${values.sites}`);
     if (!recordable(id))
       return usage(`--record ${id}: its licence does not allow a committed copy (snapshot.mjs)`);
-    recordings.push({ id, url: from || site.url });
+    recordings.push({ id, url: from || site.url, site });
   }
   if (values.record !== undefined && !recordings.length) return usage("--record wants site ids");
   /** @type {import("./snapshot.mjs").SnapshotEntry[]} */
@@ -229,7 +233,8 @@ async function main() {
     manifest = filterSites(
       manifest.map((e) => ({
         ...e,
-        name: list.find((/** @type {any} */ s) => s.id === e.id).name,
+        // validateManifest has checked that every entry's id is in the list
+        name: list.find((s) => s.id === e.id)?.name ?? e.id,
       })),
       values.filter,
     );
@@ -381,8 +386,8 @@ async function main() {
 
     if (recordings.length) {
       mkdirSync(join(out, "snapshots"), { recursive: true });
-      for (const { id, url } of recordings) {
-        const site = { ...list.find((/** @type {any} */ s) => s.id === id), url };
+      for (const { id, url, site: listed } of recordings) {
+        const site = { ...listed, url };
         const result = await visit(site, `${id}.record`, async (ctx, r) => {
           const snap = await recordSnapshot(url, ctx);
           const html = finishSnapshot(snap.html);

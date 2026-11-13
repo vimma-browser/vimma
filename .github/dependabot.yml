@@ -21,6 +21,11 @@ updates:
     cooldown:
       default-days: 3
     open-pull-requests-limit: 5
+    # @types/node follows the Node major in .nvmrc, which is bumped by hand (CONTRIBUTING.md,
+    # "Dependency updates"): its minor and patch updates come in the group below.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: build
       prefix-development: build

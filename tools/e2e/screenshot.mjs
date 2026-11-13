@@ -52,7 +52,7 @@ export function diffImages(
       const a = actual.data;
       const grey =
         /** @type {number} */ (
-          a[p] + /** @type {number} */ (a[p + 1]) + /** @type {number} */ (a[p + 2])
+          (a[p] ?? 0) + /** @type {number} */ (a[p + 1]) + /** @type {number} */ (a[p + 2])
         ) / 3;
       diff.set([grey / 3 + 128, grey / 3 + 128, grey / 3 + 128, 255].map(Math.round), p);
     }

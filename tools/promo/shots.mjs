@@ -43,7 +43,10 @@ const inbox = (who) => `Inbox (${who}) · mail.example`;
  */
 function paneCount(s) {
   /** @param {any} n @returns {number} */
-  const leaves = (n) => (n.children ? n.children.reduce((a, c) => a + leaves(c), 0) : 1);
+  const leaves = (n) =>
+    n.children
+      ? n.children.reduce((/** @type {number} */ a, /** @type {unknown} */ c) => a + leaves(c), 0)
+      : 1;
   return s.panes?.root ? leaves(s.panes.root) : 1;
 }
 
@@ -309,10 +312,10 @@ const flip = {
   },
   async run(d) {
     await d.hold(1.0);
-    for (const [ws, who] of [
+    for (const [ws, who] of /** @type {const} */ ([
       ["work", "work"],
       ["main", "personal"],
-    ]) {
+    ])) {
       await d.key("ctrl+^", 0);
       await d.until(
         (s) => s.workspace === ws && selected(s)?.title === inbox(who),

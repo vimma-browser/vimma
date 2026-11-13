@@ -31,10 +31,11 @@ export const UPDATE_KEYS_FILE = "packages/vimma-core/src/update-keys.mjs";
 
 /**
  * @param {string} dir a directory with primary.der and secondary.der
- * @returns {SlotKey[]} the primary, then the secondary
+ * @returns {[SlotKey, SlotKey]} the primary, then the secondary
  */
 export function readCertificates(dir) {
-  return /** @type {const} */ (["primary", "secondary"]).map((slot) => {
+  /** @param {SlotKey["slot"]} slot @returns {SlotKey} */
+  const read = (slot) => {
     const file = join(dir, `${slot}.der`);
     let cert;
     try {
@@ -54,7 +55,8 @@ export function readCertificates(dir) {
       throw new Error(`${file}: update keys are RSA-4096 (docs/specs/m6a-updater.md §6)`);
     }
     return { slot, spki: new Uint8Array(key.export({ type: "spki", format: "der" })) };
-  });
+  };
+  return [read("primary"), read("secondary")];
 }
 
 const HEADER = `/* This Source Code Form is subject to the terms of the Mozilla Public
@@ -84,7 +86,7 @@ const HEADER = `/* This Source Code Form is subject to the terms of the Mozilla 
 
 /**
  * The text of update-keys.mjs for these keys, formatted as prettier formats it.
- * @param {SlotKey[]} keys from readCertificates
+ * @param {[SlotKey, SlotKey]} keys from readCertificates
  * @returns {Promise<string>}
  */
 export async function renderUpdateKeys(keys) {
@@ -115,8 +117,14 @@ async function main(argv) {
   let out = join(root, UPDATE_KEYS_FILE);
   let check = false;
   for (let i = 0; i < argv.length; i++) {
-    if (argv[i] === "--certs") certs = argv[++i];
-    else if (argv[i] === "--out") out = argv[++i];
+    const flag = argv[i];
+    const value = () => {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${flag} needs a value`);
+      return v;
+    };
+    if (flag === "--certs") certs = value();
+    else if (flag === "--out") out = value();
     else if (argv[i] === "--check") check = true;
     else throw new Error(`unexpected argument: ${argv[i]}`);
   }

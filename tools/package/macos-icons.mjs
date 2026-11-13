@@ -38,6 +38,8 @@ const MARK_AQUA = "#1afaca";
  * and where the app and the Applications link (named " ") sit, by the centre of their icons.
  * tools/package/macos-dsstore.sh lays the window out to match.
  */
+/** @type {{ window: { width: number, height: number }, iconSize: number,
+ *   icons: { "Vimma.app": [number, number], " ": [number, number] } }} */
 export const DMG_LAYOUT = {
   window: { width: 640, height: 400 },
   iconSize: 128,
@@ -77,7 +79,8 @@ export function pageSvg(background) {
  */
 export function dmgBackgroundSvg(background, accent) {
   const { window, iconSize, icons } = DMG_LAYOUT;
-  const [[appX, y], [linkX]] = Object.values(icons).map(([x, y]) => [x * 2, y * 2]);
+  const [app, link] = [icons["Vimma.app"], icons[" "]];
+  const [appX, y, linkX] = [app[0] * 2, app[1] * 2, link[0] * 2];
   // from beside the app's icon to beside the link's, with a gap of a fifth of an icon
   const gap = iconSize + iconSize / 2.5;
   const [from, to] = [appX + gap, linkX - gap];
@@ -194,14 +197,27 @@ export function catalogSummary(info) {
 /** @param {string} car */
 const catalog = (car) => catalogSummary(JSON.parse(run("assetutil", ["--info", car])));
 
+/**
+ * Where the files go: a scratch folder under `work` for --check, else --out's value, else the
+ * branding folder.
+ * @param {string[]} argv @param {string} work
+ */
+export function outDirOf(argv, work) {
+  if (argv.includes("--check")) return join(work, "out");
+  const outIndex = argv.indexOf("--out");
+  if (outIndex < 0) return BRANDING;
+  const out = argv[outIndex + 1];
+  if (out === undefined) throw new Error("--out needs a value");
+  return out;
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   const check = argv.includes("--check");
-  const outIndex = argv.indexOf("--out");
   if (process.platform !== "darwin") throw new Error("macos-icons.mjs needs macOS with Xcode");
   const work = mkdtempSync(join(tmpdir(), "vimma-icons-"));
   try {
-    const out = check ? join(work, "out") : outIndex >= 0 ? argv[outIndex + 1] : BRANDING;
+    const out = outDirOf(argv, work);
     mkdirSync(out, { recursive: true });
     await generate(out, work);
     if (!check) return;

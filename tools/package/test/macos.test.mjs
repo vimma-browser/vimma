@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
-import { DMG_LAYOUT, FILES, catalogSummary } from "../macos-icons.mjs";
+import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.mjs";
 import { readDsStore } from "./dsstore.mjs";
 
 // Spec macos-build, sub-PRs 3 and 4: an arm64 macOS build cross-compiled on a GitHub-hosted Linux
@@ -433,6 +433,14 @@ describe("macOS icons", () => {
   /** @param {string} path */
   const bytes = (path) => readFileSync(join(repo, path));
   const surfer = JSON.parse(read("surfer.json"));
+
+  it("macos-icons.mjs writes to --out, the branding folder, or a scratch folder for --check", () => {
+    expect(outDirOf(["--out", "/x"], "/w")).toBe("/x");
+    expect(outDirOf(["--check"], "/w")).toBe(join("/w", "out"));
+    expect(outDirOf([], "/w")).toBe(join(repo, branding));
+    // A missing value is an error, not an undefined path for mkdirSync.
+    expect(() => outDirOf(["--out"], "/w")).toThrow("--out needs a value");
+  });
 
   it("logo-mac.png is byte-identical to logo.png", () => {
     expect(

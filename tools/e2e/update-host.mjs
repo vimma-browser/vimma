@@ -15,14 +15,7 @@
 // https (core/updates.mjs readPatch).
 
 import { execFileSync } from "node:child_process";
-import {
-  constants,
-  createHash,
-  createPrivateKey,
-  generateKeyPairSync,
-  sign,
-  webcrypto,
-} from "node:crypto";
+import { constants, createHash, createPrivateKey, generateKeyPairSync, sign } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -138,7 +131,9 @@ export function laterVersion(version, n) {
 export async function makeManifestKey() {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 });
   const spki = new Uint8Array(publicKey.export({ type: "spki", format: "der" }));
-  const id = await spkiKeyId(webcrypto.subtle, spki);
+  // Node's global Web Crypto (the same object as node:crypto's webcrypto), typed as the DOM's
+  // SubtleCrypto that spkiKeyId takes, as tools/update/manifest.mjs passes it.
+  const id = await spkiKeyId(globalThis.crypto.subtle, spki);
   return { id, slot: "primary", spki: base64Encode(spki), privateKey };
 }
 
@@ -338,7 +333,8 @@ export function hostCertificate(dir) {
  */
 export function trustCa(profile, caFile) {
   const db = `sql:${profile}`;
-  const opts = { stdio: /** @type {const} */ (["ignore", "ignore", "pipe"]) };
+  /** @type {import("node:child_process").ExecFileSyncOptions} */
+  const opts = { stdio: ["ignore", "ignore", "pipe"] };
   if (!existsSync(join(profile, "cert9.db"))) {
     execFileSync("certutil", ["-N", "-d", db, "--empty-password"], opts);
   }
@@ -446,6 +442,7 @@ export function fileDigest(file) {
  * (testing/profiles/unittest-required/user.js). And Firefox's updater on, which the harness's
  * profile turns off for every other scenario.
  * @param {{ id: string, slot: string, spki: string }} key
+ * @param {string} url the manifest's URL on the update host
  */
 export const updatePrefs = (key, url) => ({
   "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer": true,

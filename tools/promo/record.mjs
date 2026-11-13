@@ -95,7 +95,10 @@ const OPTIONS = /** @type {const} */ ({
   help: { type: "boolean", short: "h", default: false },
 });
 
-/** @param {string} message */
+/**
+ * @param {string} message
+ * @returns {never}
+ */
 function usage(message) {
   process.stderr.write(
     `promo: ${message}\nSee the comment at the top of tools/promo/record.mjs.\n`,
@@ -297,6 +300,7 @@ async function startRecording({ display, width, height, fps, file }) {
 }
 
 /**
+ * @param {string} cmd
  * @param {string[]} args
  * @returns {Promise<string>} stdout
  */
@@ -634,6 +638,7 @@ async function main() {
     );
     // our own Xvfb at the full screen size, with the window in CSS pixels: launch()'s own
     // Xvfb would be the window's size, which is smaller once devPixelsPerPx is over 1
+    /** @type {NodeJS.ProcessEnv} */
     const baseEnv = { ...process.env, DISPLAY: display.display };
     delete baseEnv.WAYLAND_DISPLAY;
     const env = { ...build.env, GDK_BACKEND: "x11", MOZ_ENABLE_WAYLAND: "0" };

@@ -39,7 +39,7 @@ const SHA = /^[0-9a-f]{40}$/;
  *   compare?: { status?: string }, releases?: unknown[],
  * }} Input
  * @typedef {{ action: "merge", release: number, head: string, bump: number, ready: boolean }} Merge
- * @typedef {Merge | { action: "skip" | "fail", reason: string }} Decision
+ * @typedef {Merge | { action: "skip", reason: string } | { action: "fail", reason: string }} Decision
  */
 
 /** @param {string} reason @returns {Decision} */
@@ -204,7 +204,7 @@ export async function gather(env, api) {
   if (gate(input) || !SHA.test(input.sha ?? "")) return input;
   const repo = `repos/${REPOSITORY}`;
   const commit = await api(`${repo}/commits/${input.sha}`);
-  input.subject = String(commit?.commit?.message ?? "").split("\n")[0];
+  input.subject = String(commit?.commit?.message ?? "").split("\n")[0] ?? "";
   if (!BUMP_SUBJECT.test(input.subject)) return input;
   input.bumpPulls = await api(`${repo}/commits/${input.sha}/pulls`);
   const owner = REPOSITORY.split("/")[0];

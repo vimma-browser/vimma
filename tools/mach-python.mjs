@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, symlinkSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-/** @typedef {{ min: number[], max: number[] }} PythonBounds */
+/** @typedef {{ min: [number, number], max: [number, number] }} PythonBounds */
 
 /**
  * The Python range engine/mach declares it supports. Outside it mach may break in odd places:
@@ -15,7 +15,7 @@ import { delimiter, join } from "node:path";
  * @returns {PythonBounds | null}
  */
 export function machPythonBounds(machSource) {
-  /** @param {string} name */
+  /** @param {string} name @returns {[number, number] | null} */
   const tuple = (name) => {
     const m = machSource.match(new RegExp(`^${name} = \\((\\d+), (\\d+)\\)`, "m"));
     return m ? [Number(m[1]), Number(m[2])] : null;
@@ -54,7 +54,8 @@ export function pickMachPython(env, bounds, exists, probe) {
         tried.push(`${path} (did not run)`);
         continue;
       }
-      const [ma, mi] = version.split(".").map(Number);
+      // A version without a minor gives NaN, which no range holds.
+      const [ma = NaN, mi = NaN] = version.split(".").map(Number);
       const v = ma * 1000 + mi;
       const lo = bounds.min[0] * 1000 + bounds.min[1];
       const hi = bounds.max[0] * 1000 + bounds.max[1];

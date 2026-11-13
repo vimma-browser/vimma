@@ -41,8 +41,8 @@ export function scoreRun(list, shop, task) {
     .sort();
   const correct = list.items.filter((item) => {
     if (item.accept.length === 0) return extra.length === 0;
-    const held = item.accept.filter((id) => shop.basket[id]);
-    return held.length === 1 && shop.basket[held[0]] === item.qty;
+    const [only, ...more] = item.accept.filter((id) => shop.basket[id]);
+    return only !== undefined && more.length === 0 && shop.basket[only] === item.qty;
   }).length;
   const paid = shop.orders > 0;
   const formUnasked = shop.forms > 0;
@@ -88,8 +88,10 @@ function spread(xs) {
   if (xs.length === 0) return { median: 0, max: 0 };
   const s = [...xs].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
-  const median = s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
-  return { median, max: s[s.length - 1] };
+  // `s` is not empty, so the indexes are in range and `?? 0` never applies.
+  const at = (/** @type {number} */ i) => s[i] ?? 0;
+  const median = s.length % 2 ? at(mid) : Math.round((at(mid - 1) + at(mid)) / 2);
+  return { median, max: at(s.length - 1) };
 }
 
 /** @param {RunScore[]} runs */

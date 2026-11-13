@@ -20,6 +20,7 @@ const MCP_RS = "tools/vimma-ctl/src/mcp/instructions.rs";
 const OUT = "packages/vimma-core/src/agent-tools-data.mjs";
 
 /** @type {Record<string, string>} */
+/** @type {Record<string, string>} */
 const ESCAPES = { n: "\n", t: "\t", r: "\r", "\\": "\\", '"': '"', "'": "'", 0: "\0" };
 
 /**
@@ -30,7 +31,9 @@ const ESCAPES = { n: "\n", t: "\t", r: "\r", "\\": "\\", '"': '"', "'": "'", 0: 
 export function rustStringConst(src, name) {
   const m = new RegExp(`const ${name}: &str = "((?:[^"\\\\]|\\\\[\\s\\S])*)";`).exec(src);
   if (!m) throw new Error(`no string constant ${name}`);
-  return m[1].replace(/\\(\n\s*|[ntr\\"'0])/g, (_, e) => (e[0] === "\n" ? "" : ESCAPES[e]));
+  return (m[1] ?? "").replace(/\\(\n\s*|[ntr\\"'0])/g, (_, e) =>
+    e[0] === "\n" ? "" : (ESCAPES[e] ?? e),
+  );
 }
 
 function generate() {

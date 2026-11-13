@@ -55,7 +55,7 @@ function iniValue(text, section, key) {
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     const head = /^\[(.+)\]$/.exec(line);
-    if (head) current = head[1];
+    if (head) current = head[1] ?? "";
     else if (current === section && line.startsWith(`${key}=`)) return line.slice(key.length + 1);
   }
   return null;
@@ -128,10 +128,15 @@ function main(argv) {
     channel: "vimma",
   };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--certs") o.certs = argv[++i];
-    else if (a === "--mozilla-certs") o.mozilla = argv[++i];
-    else if (a === "--channel") o.channel = argv[++i];
+    const a = argv[i] ?? "";
+    const value = () => {
+      const v = argv[++i];
+      if (v === undefined) throw new Error(`${a} needs a value`);
+      return v;
+    };
+    if (a === "--certs") o.certs = value();
+    else if (a === "--mozilla-certs") o.mozilla = value();
+    else if (a === "--channel") o.channel = value();
     else if (!a.startsWith("--") && o.install === undefined) o.install = a;
     else throw new Error(`unexpected argument: ${a}`);
   }

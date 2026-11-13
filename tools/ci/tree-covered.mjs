@@ -59,7 +59,11 @@ export const GUARD_JOB = "tree already checked on a pull request?";
  * @param {any} list the JSON of `actions/runs/{id}/jobs`
  */
 export function completeRun(list) {
-  const jobs = Array.isArray(list?.jobs) ? list.jobs.filter((j) => j?.name !== GUARD_JOB) : [];
+  /** @typedef {{ name?: unknown, conclusion?: unknown } | null | undefined} Job */
+  /** @type {Job[]} */
+  const jobs = Array.isArray(list?.jobs)
+    ? list.jobs.filter((/** @type {Job} */ j) => j?.name !== GUARD_JOB)
+    : [];
   return jobs.length > 0 && jobs.every((j) => j?.conclusion !== "skipped");
 }
 
