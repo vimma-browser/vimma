@@ -534,7 +534,14 @@ add_task(async function settings_keep_sync_and_support() {
 });
 
 add_task(async function settings_show_firefox_home_without_the_start_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+  // No preloaded Firefox new tab: once one loads, typed Firefox pages stay Firefox's while its
+  // process runs (#950), and later tests expect the start page.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.startpage.newtab", false],
+      ["browser.newtab.preload", false],
+    ],
+  });
   await inSettingsPane("home", 'setting-group[groupid="home"]', (doc, group) => {
     Assert.notEqual(
       doc.defaultView.getComputedStyle(group).display,
@@ -670,26 +677,4 @@ add_task(async function typed_firefox_pages_open_the_start_page() {
     Assert.equal(spec, START, `${url} opens the start page`);
     Assert.equal(loads, 1, `${url} starts no load of Firefox's page`);
   }
-});
-
-add_task(async function firefox_new_tab_stays_without_the_start_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
-  const { spec } = await typeInNewTab("about:newtab", "about:newtab");
-  Assert.equal(spec, "about:newtab", "with the start page off, Firefox's new tab page loads");
-  await SpecialPowers.popPrefEnv();
-});
-
-add_task(async function firefox_page_from_history_reloads_as_the_start_page() {
-  await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
-  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:blank");
-  const browser = tab.linkedBrowser;
-  let loaded = BrowserTestUtils.browserLoaded(browser, false, "about:newtab");
-  BrowserTestUtils.startLoadingURIString(browser, "about:newtab");
-  await loaded;
-  await SpecialPowers.popPrefEnv();
-  loaded = BrowserTestUtils.browserLoaded(browser, false, START);
-  browser.reload();
-  await loaded;
-  Assert.equal(browser.currentURI.spec, START, "the reloaded entry is the start page's URL");
-  BrowserTestUtils.removeTab(tab);
 });

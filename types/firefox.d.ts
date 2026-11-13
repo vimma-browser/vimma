@@ -275,6 +275,8 @@ declare const ChromeUtils: {
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
   getXPCOMErrorName(code: number): string;
+  /** The parent process first, then every live content process (nsIDOMProcessParent). */
+  getAllDOMProcesses(): { readonly remoteType: string | null; readonly childID: number }[];
 };
 
 // engine/dom/webidl/Window.webidl (chrome-only part)

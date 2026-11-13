@@ -27,8 +27,51 @@ let started = false;
 // MAKE_LINKABLE flag), so only the user, Vimma or Firefox's own code starts these loads.
 const FIREFOX_START = ["home", "newtab", "welcome"];
 
+// Whether Firefox's own page may still live in a content process. Firefox's pages load in the
+// privilegedabout process, and the parent checks each principal that process sends against the
+// about: module's flags as they are when the message arrives (ProcessIsolation.cpp,
+// ValidatePrincipalCouldPotentiallyBeLoadedBy). The start page's flags say "parent process", so
+// with them the parent kills the process over the next message from Firefox's page, such as a
+// blob URL registration, and every tab in it crashes (#950). Set when Firefox's page is handed
+// out; cleared only when the last privilegedabout process that ran ends. Firefox keeps one alive
+// (dom.ipc.keepProcessesAlive.privilegedabout), so in practice it stays set until the next start.
+// Staying set too long only shows Firefox's page; clearing too early brings the kill back, so
+// nothing else clears it: getAllDOMProcesses leaves out a process that is still launching.
+let firefoxServed = false;
+
+// The childIDs of the privilegedabout processes seen starting (ipc:content-created, sent once a
+// process is alive, with its remote type already set) and not yet ended.
+const aboutIDs = new Set();
+
+/**
+ * Whether a privilegedabout content process other than `except` is alive.
+ * @param {number} except  the childID of a process that is ending
+ */
+const privilegedAboutRuns = (except) =>
+  ChromeUtils.getAllDOMProcesses().some(
+    (p) => p.remoteType === "privilegedabout" && p.childID !== except,
+  );
+
+/** @param {any} process  an nsIDOMProcessParent */
+function noteProcess(process) {
+  if (process?.remoteType === "privilegedabout") aboutIDs.add(process.childID);
+}
+
+/**
+ * ipc:content-shutdown: only the end of a privilegedabout process may clear firefoxServed.
+ * @param {unknown} _subject
+ * @param {string} _topic
+ * @param {string | null} id  the childID of the process that ended
+ */
+function processEnded(_subject, _topic, id) {
+  const childID = Number(id);
+  if (aboutIDs.delete(childID) && aboutIDs.size === 0 && !privilegedAboutRuns(childID)) {
+    firefoxServed = false;
+  }
+}
+
 /** Whether a load of a Firefox start page opens Vimma's instead. */
-const redirecting = () => Services.prefs.getBoolPref(NEWTAB_PREF, true);
+const redirecting = () => Services.prefs.getBoolPref(NEWTAB_PREF, true) && !firefoxServed;
 
 /**
  * Stands in for Firefox's about: module of `page` in this (the parent) process, so the load is
@@ -64,7 +107,10 @@ function standIn(page) {
      * @param {any} loadInfo
      */
     newChannel(uri, loadInfo) {
-      if (!redirecting()) return firefox.newChannel(uri, loadInfo);
+      if (!redirecting()) {
+        firefoxServed = true;
+        return firefox.newChannel(uri, loadInfo);
+      }
       const start = startURI();
       loadInfo.resultPrincipalURI = start;
       return Services.io.newChannelFromURIWithLoadInfo(start, loadInfo);
@@ -119,5 +165,10 @@ export const StartPage = {
     Services.prefs.addObserver(NEWTAB_PREF, apply);
     // An extension that overrode the new tab resets it when it goes: apply makes it ours again.
     Services.obs.addObserver(apply, NEWTAB_TOPIC);
+    for (const process of ChromeUtils.getAllDOMProcesses()) noteProcess(process);
+    Services.obs.addObserver((subject) => {
+      noteProcess(/** @type {any} */ (subject).QueryInterface(Ci.nsIDOMProcessParent));
+    }, "ipc:content-created");
+    Services.obs.addObserver(processEnded, "ipc:content-shutdown");
   },
 };
