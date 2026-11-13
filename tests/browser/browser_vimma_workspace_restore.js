@@ -24,7 +24,7 @@ const { PaneViews } = ChromeUtils.importESModule(
 );
 const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
 const { getTabLabel, setTabLabel, TAB_LABEL_KEY } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/tab-labels.mjs",
+  "chrome://browser/content/vimma/workspaces/tab-labels.mjs",
 );
 const { SessionStore } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",

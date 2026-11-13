@@ -329,7 +329,7 @@ describe("exceptionErrors", () => {
   test("the list does not grow without a change to ADR-026", () => {
     // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
     // why it cannot be avoided. Lower it whenever an exception goes.
-    const PINNED = 16;
+    const PINNED = 15;
     expect(
       EXCEPTIONS.length,
       `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,

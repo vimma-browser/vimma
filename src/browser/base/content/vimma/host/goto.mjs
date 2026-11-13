@@ -9,7 +9,7 @@
 
 import { pickerItems } from "../core/picker.mjs";
 import { tabIds } from "../core/tabs.mjs";
-import { getTabLabel } from "./tab-labels.mjs";
+import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { selectableTabs } from "./tab-ops.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 
