@@ -662,7 +662,7 @@ title or body); ci.yml and e2e.yml run it as the base branch has it, so a pull
 request cannot change the classifier that judges it. It runs on the runner image's own Node, and
 only the checkout comes before it: no step runs anything in the pull request's checkout first,
 not even `actions/setup-node`, whose version checks start the package managers there, and those
-read their configuration from the checkout (docs/security.md, B17). That is why it stays `.mjs`
+read their configuration from the checkout (docs/security.md, B18). That is why it stays `.mjs`
 (ADR-025, decision 7). Started through a symlinked path the classifier does nothing and exits 0,
 which runs everything; the runners' `$RUNNER_TEMP` is a real path.
 
@@ -1130,8 +1130,8 @@ issue with the log; do not re-run to green), and look at the numbers before touc
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
 pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the base-branch
-guards run on the runner's own Node, docs/security.md B17), and so do the nightly build jobs and most
-release jobs. Five release.yml jobs (`ctl`, `package`, `mar`, `macos-ctl`, `macos-smoke`) and
+guards run on the runner's own Node, docs/security.md B18), and so do the nightly build jobs and
+most release jobs. Five release.yml jobs (`ctl`, `package`, `mar`, `macos-ctl`, `macos-smoke`) and
 macos.yml's `smoke` set up `node-version: 22`, the newest 22.x the runner has; the package job
 checks out a release tag, and tags from before `.nvmrc` lack it. `tools/test/runner-node.test.ts`
 lists those jobs, and the ones that still run `node` or `npm` on the runner image's own Node,
