@@ -110,7 +110,7 @@ describe("the context length of a local Ollama model", () => {
     expect(OLLAMA_DEFAULT_CONTEXT).toBe(4096);
     const set = fake({ [SHOW]: { parameters: "stop <|im_end|>\nnum_ctx 65536\n" } });
     expect(await ollamaContext(set.fetch, "http://127.0.0.1:11434/v1", "m")).toBe(65536);
-    expect(JSON.parse(set.calls[0].init.body)).toEqual({ model: "m" });
+    expect(JSON.parse(set.calls[0]?.init.body)).toEqual({ model: "m" });
     const unset = fake({ [SHOW]: { parameters: "stop x" } });
     expect(await ollamaContext(unset.fetch, "http://127.0.0.1:11434/v1", "m")).toBe(4096);
   });
@@ -136,7 +136,7 @@ describe("the context length of a local Ollama model", () => {
       context: 32768,
       made: true,
     });
-    expect(JSON.parse(calls[1].init.body)).toEqual({
+    expect(JSON.parse(calls[1]?.init.body)).toEqual({
       model: "qwen3:14b-ctx32768",
       from: "qwen3:14b",
       parameters: { num_ctx: 32768 },
@@ -182,7 +182,7 @@ describe("where a local Ollama model runs", () => {
       { gpu: 1, context: 32768 },
     );
     expect(calls.map((c) => c.url)).toEqual([GENERATE, PS]);
-    expect(JSON.parse(calls[0].init.body)).toEqual({ model: "qwen3:14b-ctx32768", stream: false });
+    expect(JSON.parse(calls[0]?.init.body)).toEqual({ model: "qwen3:14b-ctx32768", stream: false });
     for (const { init } of calls) {
       expect(init.credentials).toBe("omit");
       expect(init.redirect).toBe("error");
@@ -246,8 +246,8 @@ describe("whether a local model is still there", () => {
     const { fetch, calls } = fake({ [MODELS]: { data: [{ id: "qwen3:14b" }] } });
     expect(await localModelState(fetch, local("qwen3:14b"))).toBe("available");
     expect(await localModelState(fetch, local("llama3:8b"))).toBe("gone");
-    expect(calls[0].url).toBe(MODELS);
-    expect(calls[0].init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
+    expect(calls[0]?.url).toBe(MODELS);
+    expect(calls[0]?.init).toMatchObject({ method: "GET", credentials: "omit", redirect: "error" });
   });
 
   test("nothing answers on its port", async () => {

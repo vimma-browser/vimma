@@ -20,6 +20,7 @@ import {
 // the focus colour (focus rings, the focused pane's outline) on every surface it touches.
 
 /** @import { Announced } from "../src/statusbar.mjs" */
+/** @import { Mode } from "../src/modes.mjs" */
 
 /** @param {string} name */
 const fixture = (name) =>
@@ -49,9 +50,7 @@ describe("statusAnnouncement: the mode, said once, and only where nothing else s
 
   /**
    * Feeds `inputs` one after another; the texts spoken.
-   * @param {Array<{ mode: import("../src/modes.mjs").Mode,
-   *   find?: import("../src/find.mjs").FindStatus | null, url?: string | null,
-   *   agentWaiting?: number }>} inputs
+   * @param {Array<Parameters<typeof statusAnnouncement>[1]>} inputs
    */
   const speak = (inputs, last = start) => {
     const said = [];
@@ -70,10 +69,10 @@ describe("statusAnnouncement: the mode, said once, and only where nothing else s
     ]);
   });
 
-  test.each([["help"], ["command"], ["panel"]])(
+  test.each(/** @type {Array<[Mode]>} */ ([["help"], ["command"], ["panel"]]))(
     "%s mode is not spoken: its own focused UI says it, and the way back is silent",
     (mode) => {
-      expect(speak([{ mode: /** @type {any} */ (mode) }, { mode: "normal" }])).toEqual([]);
+      expect(speak([{ mode }, { mode: "normal" }])).toEqual([]);
     },
   );
 
@@ -185,9 +184,12 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
     });
 
     test(`${name}: link hints and every mode badge`, () => {
+      /** @type {Array<[string, string]>} */
       const pairs = [
         ["--vimma-hint-fg", "--vimma-hint-bg"],
-        ...BADGES.map((b) => [`--vimma-mode-${b}-fg`, `--vimma-mode-${b}`]),
+        ...BADGES.map(
+          /** @returns {[string, string]} */ (b) => [`--vimma-mode-${b}-fg`, `--vimma-mode-${b}`],
+        ),
       ];
       for (const [fg, bg] of pairs) {
         const ratio = contrastRatio(String(r.tokens[fg]), String(r.tokens[bg]));
@@ -214,12 +216,12 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
   });
 
   test("the focus colour is the accent wherever the accent already reaches 3:1", () => {
-    for (const name of [
+    for (const name of /** @type {const} */ ([
       "vimma dark (built in)",
       "Tokyo Night (built in)",
       "Tokyo Night (Omarchy)",
-    ]) {
-      const t = /** @type {any} */ (THEMES)[name].tokens;
+    ])) {
+      const t = THEMES[name].tokens;
       expect(t["--vimma-focus"], name).toBe(t["--vimma-accent"]);
     }
     // vimma light's #006b5e is 2.93:1 on its pane gap (#a0b3af): one 5% step toward black.

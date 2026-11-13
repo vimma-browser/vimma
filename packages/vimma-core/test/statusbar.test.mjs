@@ -18,7 +18,10 @@ import { THEME_TOKENS } from "../src/theme.mjs";
 import { hintKey, hintStatus, startHints } from "../src/hints.mjs";
 import { parseKey } from "../src/keys.mjs";
 
-/** @import { Segment } from "../src/statusbar.mjs" */
+/**
+ * @import { Announced, Segment, SecurityLevel, StatusInput, UrlOrigin }
+ *   from "../src/statusbar.mjs"
+ */
 
 const base = {
   mode: /** @type {const} */ ("normal"),
@@ -57,8 +60,16 @@ describe("status bar segments", () => {
       if (s.bg) expect(names.has(s.bg), s.bg).toBe(true);
     }
     for (const t of Object.values(WORKSPACE_COLOR_TOKENS)) expect(names.has(t), t).toBe(true);
-    for (const mode of ["insert", "visual", "command", "hint", "element", "help", "panel"]) {
-      const m = statusSegments({ mode: /** @type {any} */ (mode) })[0];
+    for (const mode of /** @type {const} */ ([
+      "insert",
+      "visual",
+      "command",
+      "hint",
+      "element",
+      "help",
+      "panel",
+    ])) {
+      const m = statusSegments({ mode })[0];
       expect(names.has(/** @type {string} */ (m?.bg))).toBe(true);
     }
   });
@@ -156,9 +167,11 @@ describe("status bar segments", () => {
   });
 
   test("starting gF's hints announces both outcomes once", () => {
-    let last = { mode: /** @type {any} */ ("normal"), notFound: null };
+    /** @type {Announced} */
+    let last = { mode: "normal", notFound: null };
+    /** @type {string[]} */
     const said = [];
-    /** @param {any} input */
+    /** @param {Parameters<typeof statusAnnouncement>[1]} input */
     const speak = (input) => {
       const r = statusAnnouncement(last, input);
       if (r.text !== null) said.push(r.text);
@@ -220,13 +233,14 @@ describe("status bar segments", () => {
     const pane = segs.find((s) => s.id === "pane");
     expect(pane?.fg).toBe("--vimma-fg-dim");
     const title = segs.find((s) => s.id === "title");
-    expect(/** @type {any} */ (pane).priority).toBeGreaterThan(/** @type {any} */ (title).priority);
+    if (!pane || !title) throw new Error("no pane or title segment");
+    expect(pane.priority).toBeGreaterThan(title.priority);
   });
 
   // docs/specs/multiple-splits.md behaviour 9, decision 14.
   test("several splits: the shown one's label leads, a lone tab counts the hidden ones", () => {
-    /** @param {object} pane */
-    const pane = (pane) => statusSegments({ ...base, pane: /** @type {any} */ (pane) });
+    /** @param {StatusInput["pane"]} pane */
+    const pane = (pane) => statusSegments({ ...base, pane });
     expect(texts(pane({ index: 1, count: 3, split: 2, splits: 3 })).pane).toBe("S2 pane 1/3");
     expect(texts(pane({ index: 1, count: 3, split: 1, splits: 1 })).pane).toBe("pane 1/3");
     expect(texts(pane({ index: 1, count: 3 })).pane).toBe("pane 1/3");
@@ -238,7 +252,8 @@ describe("status bar segments", () => {
     const seg = several.find((s) => s.id === "pane");
     expect(seg?.fg).toBe("--vimma-fg-dim");
     const title = several.find((s) => s.id === "title");
-    expect(/** @type {any} */ (seg).priority).toBeGreaterThan(/** @type {any} */ (title).priority);
+    if (!seg || !title) throw new Error("no pane or title segment");
+    expect(seg.priority).toBeGreaterThan(title.priority);
   });
 
   test("config errors show file:line, and the count when there are more", () => {
@@ -290,7 +305,7 @@ describe("status bar segments", () => {
   // docs/specs/builtin-agent.md Behaviour 35: the built-in agent's running tasks, unless a
   // question waits, which comes first.
   test("the agent segment shows the built-in agent's running tasks", () => {
-    const at = (/** @type {any} */ agent) =>
+    const at = (/** @type {StatusInput["agent"]} */ agent) =>
       statusSegments({ ...base, agent }).find((s) => s.id === "agent");
     const builtin = "◇ built-in 14/60 · 212k tok";
     expect(at({ waiting: 0, minutes: Infinity, ran: true, builtin })).toMatchObject({
@@ -303,7 +318,7 @@ describe("status bar segments", () => {
 
   // docs/specs/vimma-mcp.md decision 24: glyph and word carry it without colour.
   test("the agent segment: ◇ agent, ◇ agent 2?, ◇ agent 14m, ◇ agent · in cyan, on the right", () => {
-    const at = (/** @type {any} */ agent) =>
+    const at = (/** @type {StatusInput["agent"]} */ agent) =>
       statusSegments({ ...base, agent }).find((s) => s.id === "agent");
     expect(at(null)).toBeUndefined();
     expect(at({ waiting: 0, minutes: null, ran: false })).toMatchObject({
@@ -489,7 +504,9 @@ describe("status bar with the toolbar hidden", () => {
     });
   });
 
-  test.each([["secure"], ["neutral"], [undefined]])("nothing for a %s page", (security) => {
+  /** @type {Array<[SecurityLevel | undefined]>} */
+  const quiet = [["secure"], ["neutral"], [undefined]];
+  test.each(quiet)("nothing for a %s page", (security) => {
     const segs = statusSegments({ ...hidden, ...(security ? { security } : {}) });
     expect(segs.some((s) => s.id === "security")).toBe(false);
   });
@@ -576,6 +593,7 @@ describe("the URL keeps its registrable domain while the toolbar is hidden", () 
   test.each([[80], [120], [160]])("the reviewer's spoof URL at %i columns", (width) => {
     const url = texts(renderStatusBar(hiddenInput, width)).url;
     expect(url).toBeDefined();
+    if (url === undefined) return;
     // The base domain is whole and ends the host: what follows is the path or nothing.
     expect(url).toMatch(/evil\.example(…|\/|$)/);
     // Anything that reads like another site comes after the real host, in the path.
@@ -622,6 +640,10 @@ describe("the URL keeps its registrable domain while the toolbar is hidden", () 
   // a URL with no host is cut at its end, never in the middle, while the toolbar is hidden.
   const BLOB_HOST = "accounts.google.com.secure-login-verification-session-0123456789.evil.example";
   test.each([[50], [80], [120]])("blob:, view-source: and no host at %i columns", (width) => {
+    /**
+     * @param {string} url
+     * @param {UrlOrigin | null} [origin]
+     */
     const at = (url, origin) =>
       texts(
         renderStatusBar(
@@ -746,10 +768,8 @@ describe("sharing: devices in use while the toolbar is hidden", () => {
     expect(sharingCues({})).toEqual([]);
     // Firefox's shapes (webrtcUI getCombinedStateForBrowser): camera and microphone are
     // nsIMediaManagerService states, 1 capturing, 2 disabled (paused), 0 none; screen a string.
-    expect(sharingCues({ webRTC: { camera: 1, microphone: 1, sharing: "camera" } })).toEqual([
-      "camera",
-      "mic",
-    ]);
+    const cameraAndMic = { webRTC: { camera: 1, microphone: 1, sharing: "camera" } };
+    expect(sharingCues(cameraAndMic)).toEqual(["camera", "mic"]);
     expect(sharingCues({ webRTC: { camera: 2, microphone: 1 } })).toEqual(["camera paused", "mic"]);
     expect(sharingCues({ webRTC: { camera: 0, microphone: 2 } })).toEqual(["mic paused"]);
     expect(sharingCues({ webRTC: { screen: "Screen" } })).toEqual(["screen"]);
@@ -872,7 +892,7 @@ describe("the security cues outrank the kept URL", () => {
 });
 
 describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
-  const pdf = { page: 4, pages: 120, label: "iv", find: { current: 0, total: 0 } };
+  const pdf = { page: 4, pages: 120, label: "iv", find: { current: 0, total: 0 }, doc: 1 };
   test("page 3/12 and page iv (4/120) beside the tab, nothing outside a PDF", () => {
     expect(
       texts(statusSegments({ ...base, pdf: { ...pdf, page: 3, pages: 12, label: "" } })).page,

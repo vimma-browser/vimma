@@ -228,7 +228,7 @@ describe("downloadSections", () => {
     const many = Array.from({ length: 120 }, (_, i) => rec({ id: i + 10, startTime: 100 + i }));
     const rows = downloadSections([paused({ id: 1, startTime: 1 }), ...many], 0);
     expect(rows).toHaveLength(DOWNLOAD_ROW_CAP);
-    expect(rows[0].downloadId).toBe("1");
+    expect(rows[0]?.downloadId).toBe("1");
   });
 
   test("the list is capped at 100 rows", () => {
@@ -236,7 +236,7 @@ describe("downloadSections", () => {
     const rows = downloadSections(many, 0);
     expect(rows).toHaveLength(DOWNLOAD_ROW_CAP);
     expect(DOWNLOAD_ROW_CAP).toBe(100);
-    expect(rows[0].downloadId).toBe("129");
+    expect(rows[0]?.downloadId).toBe("129");
   });
 
   test("the filter matches name, host, state and workspace", () => {
@@ -384,13 +384,13 @@ describe("downloadKey", () => {
     expect(op(failed({ path: "" }), "enter")).toBe("refuse");
     expect(op(failed(agent), "enter")).toBe("refuse");
     expect(op(blocked(agent), "!")).toBe("refuse");
-    for (const [key, want] of [
+    for (const [key, want] of /** @type {const} */ ([
       ["s", "show"],
       ["y", "copyLink"],
       ["shift+y", "copyPath"],
       ["d", "remove"],
       ["shift+d", "delete"],
-    ]) {
+    ])) {
       expect(op(rec(agent), key)).toBe(want);
     }
   });
@@ -441,7 +441,10 @@ describe("downloadKey", () => {
 });
 
 describe("downloadSegment", () => {
-  /** @param {readonly DownloadRecord[]} list */
+  /**
+   * @param {readonly DownloadRecord[]} list
+   * @param {Parameters<typeof downloadSegment>[1]} [ends]
+   */
   const at = (list, ends = null, now = 0) => downloadSegment(downloadSummary(list), ends, now);
 
   test("the segment shows one, several, unknown size and paused", () => {
@@ -481,7 +484,7 @@ describe("downloadSegment", () => {
   });
 
   test("failed and blocked outrank the title; progress gives way first", () => {
-    const status = (/** @type {any} */ downloads) =>
+    const status = (/** @type {ReturnType<typeof at>} */ downloads) =>
       statusSegments({ mode: "normal", downloads }).find((s) => s.id === "downloads");
     const progress = status(at([running()]));
     expect(progress).toMatchObject({

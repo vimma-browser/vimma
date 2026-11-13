@@ -26,7 +26,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm test`: Vitest for `packages/vimma-core` and `tools/` (fast, run constantly).
 - `npm run typecheck`: `tsc --checkJs` over `src/**/vimma/**` and `packages/**` (`tsconfig.json`,
   no Node types), then over `tools/` without its `.mjs` tests (`tools/tsconfig.json`, with
-  Node's). `tools/` is moving to TypeScript that Node runs unbuilt (ADR-025); the code Firefox
+  Node's), then over `packages/vimma-core`'s tests (`packages/vimma-core/test/tsconfig.json`,
+  with Node's). `tools/` is moving to TypeScript that Node runs unbuilt (ADR-025); the code Firefox
   loads and `packages/vimma-core` stay JavaScript with JSDoc.
 - `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`),
   spec-lint, and arch-lint (`ARCHITECTURE.md` names every `vimma/` folder, `tools/` folder and

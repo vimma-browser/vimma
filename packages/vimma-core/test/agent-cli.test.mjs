@@ -44,6 +44,16 @@ import {
 import { STORE_VERSION, readRecord } from "../src/agent-store.mjs";
 import { parseToml } from "../src/toml.mjs";
 
+/**
+ * The CLIS entry `id`; throws when there is none, so a test never reads one that is missing.
+ * @param {string} id
+ */
+function cliOf(id) {
+  const cli = CLIS[id];
+  if (!cli) throw new Error(`no CLI ${id}`);
+  return cli;
+}
+
 /** @param {string} name */
 const fixture = (name) =>
   readFileSync(new URL(`fixtures/agent-cli/${name}.jsonl`, import.meta.url), "utf8");
@@ -168,7 +178,7 @@ describe("claude-code's command line (C2)", () => {
 
   test("setup suggests each cli's model, and empty is the cli's own default", () => {
     for (const info of Object.values(CLIS)) expect(modelProblem(info.model)).toBeNull();
-    expect(CLIS["claude-code"]?.model).toBe("sonnet");
+    expect(cliOf("claude-code").model).toBe("sonnet");
     expect(modelPrompt("claude-code")).toEqual({
       label: "agent model: ",
       value: "sonnet",
@@ -218,7 +228,7 @@ describe("claude-code's command line (C2)", () => {
   });
 
   test("the run-started line lists the reported tools, each cut, and stays bounded", () => {
-    const cli = CLIS["claude-code"];
+    const cli = cliOf("claude-code");
     expect(runStartedText(cli, "2.1.303", "sonnet", ["Bash", "Read"])).toBe(
       "run started: claude-code 2.1.303 · sonnet · its own tools: Bash, Read",
     );
@@ -233,15 +243,15 @@ describe("claude-code's command line (C2)", () => {
 
   test("the version line names the version and the path", () => {
     expect(
-      versionText(CLIS["claude-code"], "2.1.303 (Claude Code)\n", "/home/u/.local/bin/claude"),
+      versionText(cliOf("claude-code"), "2.1.303 (Claude Code)\n", "/home/u/.local/bin/claude"),
     ).toBe("claude 2.1.303 · /home/u/.local/bin/claude");
-    expect(versionText(CLIS["claude-code"], "\u001b[31mweird\n", "/usr/bin/claude")).toBe(
+    expect(versionText(cliOf("claude-code"), "\u001b[31mweird\n", "/usr/bin/claude")).toBe(
       "claude [31mweird · /usr/bin/claude",
     );
   });
 
   test("a shim's line says which program it runs, and as what", () => {
-    const cli = CLIS["claude-code"];
+    const cli = cliOf("claude-code");
     const shim = shimText(cli, "mise", "/usr/bin/mise");
     expect(shim).toBe("a mise shim (runs /usr/bin/mise as claude)");
     expect(
@@ -269,7 +279,7 @@ describe("the conversation as one task (C5, Behaviour 12)", () => {
   });
 
   test("a CLI's note on Vimma's tools goes first, so a denied tool of its own is not the end", () => {
-    const cli = CLIS["claude-code"];
+    const cli = cliOf("claude-code");
     expect(cli.note).toBe(
       "Vimma's note: search the web and read pages with Vimma's tools in the agent workspace " +
         "(for example, open a search engine's results page with vimma_open and read it with " +
@@ -369,9 +379,10 @@ describe("claude-code's stream (C7, C8)", () => {
   });
 
   test("an init whose vimma server is not connected ends the run", () => {
-    const init = fixture("claude-code-2.1.303-task")
-      .split("\n")[0]
-      .replace('"status":"connected"', '"status":"failed"');
+    const init = (fixture("claude-code-2.1.303-task").split("\n")[0] ?? "").replace(
+      '"status":"connected"',
+      '"status":"failed"',
+    );
     const { out } = events(`${init}\n`);
     expect(out).toEqual([{ type: "fail", error: "claude-code could not start vimma-ctl" }]);
   });
@@ -552,23 +563,23 @@ describe("claude-code's stream (C7, C8)", () => {
 
 describe("the window's words (Behaviour 4, 9, 13)", () => {
   test("an own-tool line is cut at 200 characters", () => {
-    const line = ownToolText(CLIS["claude-code"], "Bash", { command: "echo " + "y".repeat(400) });
+    const line = ownToolText(cliOf("claude-code"), "Bash", { command: "echo " + "y".repeat(400) });
     expect([...line].length).toBe(200);
     expect(line.startsWith('claude-code ran its own tool: Bash "echo yyy')).toBe(true);
     expect(line.endsWith("…")).toBe(true);
-    expect(ownToolText(CLIS["claude-code"], "Read", { file_path: "/etc/hosts" })).toBe(
+    expect(ownToolText(cliOf("claude-code"), "Read", { file_path: "/etc/hosts" })).toBe(
       'claude-code ran its own tool: Read "/etc/hosts"',
     );
-    expect(ownToolText(CLIS["claude-code"], "WebFetch", { url: "https://e.x", prompt: "p" })).toBe(
+    expect(ownToolText(cliOf("claude-code"), "WebFetch", { url: "https://e.x", prompt: "p" })).toBe(
       'claude-code ran its own tool: WebFetch "https://e.x"',
     );
-    expect(ownToolText(CLIS["claude-code"], "Odd\nName", { a: 1 })).toBe(
+    expect(ownToolText(cliOf("claude-code"), "Odd\nName", { a: 1 })).toBe(
       'claude-code ran its own tool: Odd Name {"a":1}',
     );
   });
 
   test("the first-task notice says where data goes and that the cli's own tools are not confined", () => {
-    expect(cliNotice(CLIS["claude-code"])).toBe(
+    expect(cliNotice(cliOf("claude-code"))).toBe(
       "Page text the agent reads, field values it sees, screenshots and your messages go to " +
         "Claude Code, which sends them to the model it is set up for. Claude Code also keeps the " +
         "tools its own settings allow (shell, files, web); Vimma does not confine them. " +
@@ -577,13 +588,13 @@ describe("the window's words (Behaviour 4, 9, 13)", () => {
   });
 
   test("an exit names the cli, its code and the last line of its error output, cut", () => {
-    expect(exitText(CLIS["claude-code"], 1, "warning\nInvalid API key · Please run /login\n")).toBe(
-      "claude-code exited (1): Invalid API key · Please run /login",
-    );
-    expect(exitText(CLIS["claude-code"], 2, "")).toBe("claude-code exited (2)");
-    expect([...exitText(CLIS["claude-code"], 1, "e".repeat(500))].length).toBe(200);
+    expect(
+      exitText(cliOf("claude-code"), 1, "warning\nInvalid API key · Please run /login\n"),
+    ).toBe("claude-code exited (1): Invalid API key · Please run /login");
+    expect(exitText(cliOf("claude-code"), 2, "")).toBe("claude-code exited (2)");
+    expect([...exitText(cliOf("claude-code"), 1, "e".repeat(500))].length).toBe(200);
     // Claude Code reports a refused key in its result, not on stderr.
-    expect(exitText(CLIS["claude-code"], 1, "", "Invalid API key · Fix external API key")).toBe(
+    expect(exitText(cliOf("claude-code"), 1, "", "Invalid API key · Fix external API key")).toBe(
       "claude-code exited (1): Invalid API key · Fix external API key",
     );
   });
@@ -591,14 +602,14 @@ describe("the window's words (Behaviour 4, 9, 13)", () => {
   test("an exit with nothing on stdout names the program that ran", () => {
     expect(
       exitText(
-        CLIS["claude-code"],
+        cliOf("claude-code"),
         2,
         "For more information, try '--help'.\n",
         "",
         "/usr/bin/mise",
       ),
     ).toBe("claude-code at /usr/bin/mise exited (2): For more information, try '--help'.");
-    expect(exitText(CLIS["claude-code"], 2, "", "", "/usr/bin/mise")).toBe(
+    expect(exitText(cliOf("claude-code"), 2, "", "", "/usr/bin/mise")).toBe(
       "claude-code at /usr/bin/mise exited (2)",
     );
   });
@@ -681,7 +692,7 @@ describe("the program's path (C4)", () => {
     });
   });
   test("a program that runs a tool by the name it is started as is a dispatcher", () => {
-    const cli = CLIS["claude-code"];
+    const cli = cliOf("claude-code");
     expect(dispatcherOf(cli, "mise")).toBe("mise");
     expect(dispatcherOf(cli, "volta-shim")).toBe("volta-shim");
     // The CLI itself, Claude Code's native installer (a file per version), npm's script.
@@ -693,7 +704,7 @@ describe("the program's path (C4)", () => {
     );
   });
   test("a refusal setup can repair says how", () => {
-    const cli = CLIS["claude-code"];
+    const cli = cliOf("claude-code");
     expect(refusedText(cli, "/usr/bin/mise", dispatcherProblem(cli, "mise"))).toBe(
       "claude-code at /usr/bin/mise is refused: it is mise, which runs claude only through a " +
         "link named claude; add: agent CLI finds it again",
@@ -806,7 +817,9 @@ const VIMMA_TABLE =
 
 describe("codex's command line (C2, C3, C7)", () => {
   test("codex's arguments are the fixture", () => {
-    expect(codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] })).toEqual([
+    expect(
+      codexArguments({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] }),
+    ).toEqual([
       "exec",
       "--json",
       "--ephemeral",
@@ -828,13 +841,25 @@ describe("codex's command line (C2, C3, C7)", () => {
       "-",
     ]);
     expect(
-      codexArguments({ vimmaCtl: CTL, dir: RUN, model: "gpt-6-astra", others: [] }).slice(-3),
+      codexArguments({
+        mcpConfig: "",
+        vimmaCtl: CTL,
+        dir: RUN,
+        model: "gpt-6-astra",
+        others: [],
+      }).slice(-3),
     ).toEqual(["-m", "gpt-6-astra", "-"]);
     expect(CODEX_SERVER).toBe("vimma_chat");
   });
 
   test("every other mcp server of codex's configuration is off for the run", () => {
-    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: ["vimma", "other"] });
+    const args = codexArguments({
+      mcpConfig: "",
+      vimmaCtl: CTL,
+      dir: RUN,
+      model: "",
+      others: ["vimma", "other"],
+    });
     expect(args.slice(12, 16)).toEqual([
       "-c",
       "mcp_servers.vimma.enabled=false",
@@ -844,7 +869,7 @@ describe("codex's command line (C2, C3, C7)", () => {
   });
 
   test("codex's features that add mcp servers are off, and fail the run once renamed", () => {
-    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    const args = codexArguments({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
     // As a -c key, a feature Codex does not know is ignored; as --disable it ends the run, so
     // a version that renames one fails instead of keeping its servers.
     const off = args.flatMap((a, i) => (args[i - 1] === "--disable" ? [a] : []));
@@ -854,15 +879,15 @@ describe("codex's command line (C2, C3, C7)", () => {
 
   test("a server name that is not a plain word, or is vimma's own, refuses the run", () => {
     for (const name of ['a"b', "a.b", "a b", "", "x=1", CODEX_SERVER]) {
-      expect(() => codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [name] })).toThrow(
-        /MCP server/,
-      );
+      expect(() =>
+        codexArguments({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [name] }),
+      ).toThrow(/MCP server/);
     }
   });
 
   test("vimma-ctl's path is a TOML string whatever it holds", () => {
     const odd = '/home/u/a "b" \\c\u007fd\ne/vimma-ctl';
-    const args = codexArguments({ vimmaCtl: odd, dir: RUN, model: "", others: [] });
+    const args = codexArguments({ mcpConfig: "", vimmaCtl: odd, dir: RUN, model: "", others: [] });
     const parsed = /** @type {any} */ (parseToml(args[7] ?? "")).value;
     expect(parsed.mcp_servers.vimma_chat.command).toBe(odd);
     expect(parsed.mcp_servers.vimma_chat.env_vars).toEqual([
@@ -872,14 +897,14 @@ describe("codex's command line (C2, C3, C7)", () => {
   });
 
   test("the ticket reaches vimma-ctl through codex's environment, never its arguments", () => {
-    const codex = /** @type {any} */ (CLIS.codex);
+    const codex = cliOf("codex");
     const ticket = "ab".repeat(32);
     expect(codex.mcpConfig({ vimmaCtl: CTL, ticket, port: 4123 })).toBeNull();
-    expect(codex.env({ ticket, port: 4123 })).toEqual({
+    expect(codex.env({ ticket, port: 4123, dir: RUN })).toEqual({
       VIMMA_AGENT_TICKET: ticket,
       VIMMA_AGENT_PORT: "4123",
     });
-    expect(CLIS["claude-code"]?.env({ ticket, port: 4123 })).toEqual({});
+    expect(cliOf("claude-code").env({ ticket, port: 4123, dir: RUN })).toEqual({});
     const args = codex.args({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
     expect(args.join(" ")).not.toContain(ticket);
   });
@@ -887,7 +912,7 @@ describe("codex's command line (C2, C3, C7)", () => {
   test("codex's own commands get the ticket's variables empty, the user's policy kept", () => {
     // Codex 0.163.0 gives its shell commands its own environment: VIMMA_AGENT_TICKET included.
     // A `set` key merges into the user's table; an `exclude` list would replace the user's.
-    const args = codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] });
+    const args = codexArguments({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] });
     const values = args.filter((_, i) => args[i - 1] === "-c");
     for (const name of ["VIMMA_AGENT_TICKET", "VIMMA_AGENT_PORT"]) {
       const v = values.find((x) => x.startsWith(`shell_environment_policy.set.${name}=`));
@@ -898,18 +923,20 @@ describe("codex's command line (C2, C3, C7)", () => {
   });
 
   test("the task is never an argument, and goes to stdin, which then closes", () => {
-    const codex = /** @type {any} */ (CLIS.codex);
+    const codex = cliOf("codex");
     const task = '--dangerously-bypass-approvals-and-sandbox; rm -rf ~ "q" $(x)';
     expect(codex.input(task)).toBe(`${task}\n`);
     expect(codex.live).toBe(false);
-    expect(CLIS["claude-code"]?.live).toBe(true);
+    expect(cliOf("claude-code").live).toBe(true);
     // stdin, the last argument: `codex exec` reads the prompt from it to its end.
-    expect(codexArguments({ vimmaCtl: CTL, dir: RUN, model: "", others: [] }).at(-1)).toBe("-");
+    expect(
+      codexArguments({ mcpConfig: "", vimmaCtl: CTL, dir: RUN, model: "", others: [] }).at(-1),
+    ).toBe("-");
   });
 
   test("codex's own mcp servers are read from its list", () => {
-    const codex = /** @type {any} */ (CLIS.codex);
-    expect(codex.servers.args).toEqual(["mcp", "list", "--json"]);
+    const codex = cliOf("codex");
+    expect(codex.servers?.args).toEqual(["mcp", "list", "--json"]);
     const listed = readFileSync(
       new URL("fixtures/agent-cli/codex-0.163.0-mcp-list.json", import.meta.url),
       "utf8",
@@ -924,13 +951,13 @@ describe("codex's command line (C2, C3, C7)", () => {
   });
 
   test("codex's version line drops the program's name", () => {
-    expect(
-      versionText(/** @type {any} */ (CLIS.codex), "codex-cli 0.163.0\n", "/usr/bin/codex"),
-    ).toBe("codex 0.163.0 · /usr/bin/codex");
+    expect(versionText(cliOf("codex"), "codex-cli 0.163.0\n", "/usr/bin/codex")).toBe(
+      "codex 0.163.0 · /usr/bin/codex",
+    );
   });
 
   test("a version killed for time says so, not that the version is unknown", () => {
-    const codex = /** @type {any} */ (CLIS.codex);
+    const codex = cliOf("codex");
     expect(VERSION_MS).toBe(5000);
     expect(versionText(codex, "", "/usr/bin/codex", "", true)).toBe(
       "codex gave no version in 5 s · /usr/bin/codex",
@@ -939,7 +966,7 @@ describe("codex's command line (C2, C3, C7)", () => {
   });
 
   test("codex's suggested model is its own default", () => {
-    expect(CLIS.codex?.model).toBe("");
+    expect(cliOf("codex").model).toBe("");
     expect(modelPrompt("codex")).toEqual({
       label: "agent model: ",
       value: "",
@@ -974,7 +1001,7 @@ describe("codex's stream (C7, C8)", () => {
   });
 
   test("a run with no reported tool list says its configuration decides", () => {
-    expect(runStartedText(/** @type {any} */ (CLIS.codex), "", "", null)).toBe(
+    expect(runStartedText(cliOf("codex"), "", "", null)).toBe(
       "run started: codex · its default model · its own tools: as its configuration allows",
     );
   });
@@ -1063,7 +1090,7 @@ function geminiEvents(/** @type {string} */ text, chunk = 97) {
   return { out, stream: s };
 }
 
-const GEMINI = /** @type {any} */ (CLIS.gemini);
+const GEMINI = cliOf("gemini");
 
 describe("gemini's command line (C2, C3, C5, C7)", () => {
   test("gemini's arguments are the fixture", () => {
@@ -1111,8 +1138,8 @@ describe("gemini's command line (C2, C3, C5, C7)", () => {
     expect(GEMINI.live).toBe(false);
     expect(GEMINI.servers).toBeNull();
     expect(GEMINI.sessions).toBe("gemini-projects");
-    expect(CLIS.codex?.sessions).toBe("none");
-    expect(CLIS["claude-code"]?.sessions).toBe("none");
+    expect(cliOf("codex").sessions).toBe("none");
+    expect(cliOf("claude-code").sessions).toBe("none");
   });
 
   test("gemini's version line and suggested model", () => {

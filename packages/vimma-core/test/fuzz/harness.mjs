@@ -136,7 +136,7 @@ export function replayCommand(seed, path, title) {
  * Check `property` with the run's seed; on failure write the seed, the replay path and the
  * counterexample to VIMMA_FUZZ_OUT, then fail with fast-check's report.
  * @param {string} name   the test's name, for the failure file
- * @param {fc.IRawProperty<any>} property
+ * @param {fc.IProperty<any>} property  a synchronous property: fc.check returns its details
  * @param {{ weight?: number }} [options]  weight: a share of RUNS (slow targets run fewer cases)
  */
 export function fuzz(name, property, { weight = 1 } = {}) {

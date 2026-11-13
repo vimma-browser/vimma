@@ -136,7 +136,7 @@ describe("doorhangerHint", () => {
     const hint = doorhangerHint({ main: `  ${long} `, secondary: "Block" });
     expect(hint.startsWith("y allow this site")).toBe(true);
     expect(hint).toContain("…");
-    expect(hint.split(" · ")[0].length).toBeLessThanOrEqual(26);
+    expect(hint.split(" · ")[0]?.length).toBeLessThanOrEqual(26);
   });
 });
 
