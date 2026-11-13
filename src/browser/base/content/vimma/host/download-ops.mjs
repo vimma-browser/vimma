@@ -31,7 +31,11 @@ import { openUrl } from "./tab-ops.mjs";
 
 /** @import { DownloadEndState, DownloadItem, DownloadOp, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AgentDownloads" | "AppConstants" | "DownloadHistory" | "DownloadIntegration"
+ *   | "Downloads" | "DownloadsCommon" | "Integration" | "PrivateBrowsingUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AgentDownloads: "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
@@ -97,7 +101,7 @@ const abouts = new WeakMap();
 /**
  * The workspace whose container a session download came from, when it is not this window's
  * current one (decision 4). A history entry keeps no container, so it names none.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  */
 function workspaceOf(win, d) {
@@ -124,7 +128,7 @@ function viewsInternally(d) {
 }
 
 /**
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  * @returns {About}
  */
@@ -149,7 +153,7 @@ function aboutOf(win, d) {
  * (DownloadHistory.sys.mjs, HistoryDownload: no byte counts, no referrer, no start time but its
  * Places visit's), as a core record. With `win`, the picker's fields are filled too.
  * @param {any} d
- * @param {Window | null} [win]
+ * @param {BrowserWindow | null} [win]
  * @returns {DownloadRecord}
  */
 export function recordOf(d, win = null) {
@@ -191,7 +195,7 @@ export function recordOf(d, win = null) {
 /**
  * The list a window shows (decision 3): a private window, its private session's downloads only;
  * a normal one, the profile's session downloads then the newest from history, as the Library.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function listFor(win) {
   if (lazy.PrivateBrowsingUtils.isWindowPrivate(win)) {
@@ -211,7 +215,7 @@ function listFor(win) {
  */
 export class DownloadWatch {
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {() => void} emit  the segment changed
    * @param {(text: string) => void} [say]  an announcement for the status bar's live region
    */
@@ -340,7 +344,7 @@ export class DownloadWatch {
  */
 export class DownloadRows {
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {(rows: DownloadItem[]) => void} changed  new rows while open
    */
   constructor(win, changed) {
@@ -455,7 +459,7 @@ async function showInFolder(d) {
 /**
  * The download as it is now, or null when it has left the window's list (removed in the
  * Library, by another window, or by clearing history).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  */
 async function current(win, d) {
@@ -471,7 +475,7 @@ async function current(win, d) {
  * Cancel and delete, after `y/N`, through Firefox's own commands (decision 6): the picker has
  * closed, so the answer goes to the question. The yes stands only for the download asked about:
  * if it changed before the answer, nothing is done and the notice says so (docs/security.md D5).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  * @param {DownloadRecord} asked  the download as it was when the question showed
  * @param {"cancel" | "delete"} op
@@ -508,7 +512,7 @@ async function answered(win, d, asked, op, say) {
 /**
  * Pause, resume, retry and remove, as Firefox's panel runs them (DownloadsViewUI.sys.mjs,
  * downloadsCmd_pauseResume, downloadsCmd_retry and cmd_delete).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  * @param {DownloadRecord} r
  * @param {DownloadOp} op
@@ -529,7 +533,7 @@ function runState(win, d, r, op, say) {
       d.start().catch(() => {});
     } else {
       // A history entry is not a Download: Firefox's Library downloads its URL again.
-      /** @type {any} */ (win).DownloadURL(r.url, r.path ? r.name : null, win.document);
+      win.DownloadURL(r.url, r.path ? r.name : null, win.document);
     }
     say(`retrying "${r.name}"`);
   } else if (op === "remove") {
@@ -548,7 +552,7 @@ function runState(win, d, r, op, say) {
  * window's non-agent one for a history entry, which keeps none. Never the agent workspace's, even
  * with it on screen: the full referrer may carry a token, and an agent can read that workspace's
  * pages (docs/security.md D4). A private window opens it as any private tab.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  * @param {string} referrer  core allows an http: or https: page only
  */
@@ -562,7 +566,7 @@ function openReferrer(win, d, referrer) {
   const own = d.source?.userContextId;
   const userContextId =
     own && own !== agent ? own : (WorkspaceStore.nonAgentUserContextId(win) ?? 0);
-  /** @type {any} */ (win).openTrustedLinkIn(referrer, "tab", {
+  win.openTrustedLinkIn(referrer, "tab", {
     userContextId,
     inBackground: false,
   });
@@ -578,7 +582,7 @@ const allowOverride = () => Services.prefs.getBoolPref("browser.safebrowsing.all
  * a blocked file, and opening is a separate `o` (decision 7, docs/security.md D3). The answer
  * stands only for the download asked about, as in D5: the dialog is modal, but the list, the file
  * and the pref can change under it.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} d
  * @param {DownloadRecord} asked
  * @param {(text: string, error?: boolean) => void} say
@@ -612,15 +616,13 @@ async function unblock(win, d, asked, say) {
 
 /** @param {string} text */
 function copy(text) {
-  /** @type {any} */ (Cc["@mozilla.org/widget/clipboardhelper;1"])
-    .getService(Ci.nsIClipboardHelper)
-    .copyString(text);
+  Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
 }
 
 /**
  * A key on a download row (the table under Behaviour), through core downloadKey and Firefox's
  * own download code.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {DownloadRows} rows
  * @param {string} key
  * @param {string} id

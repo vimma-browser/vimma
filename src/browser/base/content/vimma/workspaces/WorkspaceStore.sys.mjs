@@ -30,7 +30,11 @@ import {
 /** @import { Definitions, WorkspaceDefinition } from "../core/workspacedefs.mjs" */
 /** @import { Workspace } from "../core/config.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"BrowserWindowTracker" | "ContextualIdentityService" | "JSONFile"
+ *   | "PrivateBrowsingUtils" | "WorkspaceRouter"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   ContextualIdentityService:
@@ -494,7 +498,7 @@ export class WorkspaceStoreImpl {
     const ucid = w.userContextId;
     // Never 0: that pattern would be the default container's data, not the agent's.
     if (ucid === null || ucid <= 0) return;
-    /** @type {any} */ (Services).clearData.deleteDataFromOriginAttributesPattern({
+    Services.clearData.deleteDataFromOriginAttributesPattern({
       userContextId: ucid,
     });
   }

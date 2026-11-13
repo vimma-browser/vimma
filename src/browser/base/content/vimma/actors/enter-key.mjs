@@ -43,7 +43,7 @@ export function pressKeyLater(win, key, stillFocused) {
     const tip = Cc["@mozilla.org/text-input-processor;1"].createInstance(Ci.nsITextInputProcessor);
     // False while an IME composes: the key is the IME's then, so none is sent.
     if (!tip.beginInputTransaction(win, () => true)) return;
-    const event = new /** @type {any} */ (win).KeyboardEvent("", {
+    const event = new win.KeyboardEvent("", {
       key,
       code: key,
       keyCode: KEY_CODES[key],

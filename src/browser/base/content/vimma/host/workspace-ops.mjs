@@ -45,7 +45,7 @@ const reason = (e) => /** @type {Error} */ (e).message;
 
 /**
  * The definition of the window's active workspace, or of `text`'s.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} [text]
  */
 function definitionOf(win, text) {
@@ -58,7 +58,7 @@ function definitionOf(win, text) {
 
 /**
  * `prefix+shift+n` / `:wsnew name`: a runtime workspace with its own container, shown at once.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} name
  * @returns {string | null}
  */
@@ -76,7 +76,7 @@ export function newWorkspace(win, name) {
 
 /**
  * The active workspace's name, for `prefix+shift+w` to put on the command line.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function activeWorkspaceName(win) {
   return definitionOf(win).def?.name ?? null;
@@ -84,7 +84,7 @@ export function activeWorkspaceName(win) {
 
 /**
  * `:wsrename name`: renames the active workspace (and its container), in every window.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} name
  * @returns {string | null}
  */
@@ -110,7 +110,7 @@ export function renameWorkspace(win, name) {
  * runtime one whose bookmarks folder has items asks next, through `choose`, what becomes of
  * them (docs/specs/bookmarks.md, decision 12): keep the folder (Enter), move them to another
  * workspace, or delete them; Esc or another key closes nothing.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string | undefined} text
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say  the notice, for a refusal after the answer
@@ -252,9 +252,9 @@ function askBookmarks(def, folder, { unchanged, close, say, choose }) {
  */
 function countTabs(userContextId) {
   let n = 0;
-  for (const w of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+  for (const w of Services.wm.getEnumerator("navigator:browser")) {
     const tabs = /** @type {{ userContextId: number, closing?: boolean }[]} */ (
-      /** @type {any} */ (w).gBrowser?.tabs ?? []
+      w.gBrowser?.tabs ?? []
     );
     n += tabs.filter((t) => t.userContextId === userContextId && !t.closing).length;
   }
@@ -265,7 +265,7 @@ function countTabs(userContextId) {
  * `:wsmove name|number`: the selected tab to that workspace (decision 6), reopened there. Into
  * the agent workspace it asks first, through `ask` (docs/specs/vimma-mcp.md, decision 11):
  * agents can read it there.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} text
  * @param {(question: string, yes: () => void) => void} [ask]
  * @param {(text: string) => void} [say]  the notice, after the answer
@@ -281,7 +281,7 @@ export function moveTabToWorkspace(win, text, ask, say) {
     return refused;
   }
   const to = target?.name;
-  const tab = /** @type {any} */ (win).gBrowser.selectedTab;
+  const tab = win.gBrowser.selectedTab;
   const refused = ww.moveTab(tab, ref);
   if (refused) return refused;
   return `moved to "${to}": reopened there, without its back/forward history`;
@@ -289,7 +289,7 @@ export function moveTabToWorkspace(win, text, ask, say) {
 
 /**
  * The window's workspace names in workspace order, for Tab after `:ws`, `:wd` and `:wsmove`.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {string[]}
  */
 export function workspaceNames(win) {
@@ -298,7 +298,7 @@ export function workspaceNames(win) {
 
 /**
  * The `prefix+w` picker's rows: the window's workspaces, with their tab counts.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {WorkspaceItem[]}
  */
 export function workspacePickerItems(win) {
@@ -320,7 +320,7 @@ export function workspacePickerItems(win) {
  * answered y to the warning that its history stays behind (decision 6). The yes stands for this
  * tab and the workspace as asked about: a tab no longer selected, or a workspace renamed or gone
  * by the time of the `y`, moves nothing.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say  the notice, after the answer
@@ -334,7 +334,7 @@ export function moveTabFromPicker(win, id, ask, say, row) {
   if (!ww || !model) return NO_WORKSPACES;
   const target = model.workspaces.find((w) => w.id === id);
   if (!target) return "that workspace is gone";
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const tab = row ?? gBrowser.selectedTab;
   if (target.tabs.includes(ww.idOf(tab)) && !ww.isForeign(tab)) {
     return `already in "${target.name}"`;

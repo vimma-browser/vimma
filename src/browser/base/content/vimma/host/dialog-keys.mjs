@@ -81,7 +81,7 @@ const shown = (button) => !!button && !button.hidden;
 
 export class DialogKeys {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {{ pending: () => boolean }} host
    */
   constructor(win, host) {
@@ -101,20 +101,20 @@ export class DialogKeys {
     // has labelled its buttons, and before SubDialog measures the frame on load.
     this.win.addEventListener("DOMFrameContentLoaded", this.onFrame, true);
     this.win.addEventListener("dialogopen", this.onOpen, true);
-    /** @type {any} */ (Services).ww.registerNotification(this.onWindow);
+    Services.ww.registerNotification(this.onWindow);
   }
 
   uninit() {
     this.win.removeEventListener("DOMFrameContentLoaded", this.onFrame, true);
     this.win.removeEventListener("dialogopen", this.onOpen, true);
-    /** @type {any} */ (Services).ww.unregisterNotification(this.onWindow);
+    Services.ww.unregisterNotification(this.onWindow);
   }
 
   /**
    * A new window: one of ours when it is a dialog window opened over this browser window. Its
    * load listener is added during openWindow, before HelperAppDlg adds its own (initDialog), so
    * the line is in place before the dialog sizes itself to its content (postShowCallback).
-   * @param {Window} w
+   * @param {Window} w  any window the window watcher reports
    */
   windowOpened(w) {
     w.addEventListener(
@@ -122,7 +122,7 @@ export class DialogKeys {
       () => {
         // Only a window opened over this one: the window watcher sets its opener after
         // domwindowopened, by load.
-        if (/** @type {any} */ (w).opener !== this.win) return;
+        if (w.opener !== this.win) return;
         const doc = w.document;
         const kind = KINDS[doc.documentURI];
         if (!kind?.window || !this.attach(doc, kind)) return;
@@ -185,7 +185,7 @@ export class DialogKeys {
    * @returns {boolean} whether the dialog is now one of ours
    */
   attach(doc, kind) {
-    const view = /** @type {any} */ (doc.defaultView);
+    const view = doc.defaultView;
     if (!view || this.dialogs.has(doc)) return false;
     const dialog = /** @type {any} */ (doc.querySelector(kind.dialog));
     const parent = doc.querySelector(kind.parent);

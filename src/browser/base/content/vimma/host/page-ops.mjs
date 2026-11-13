@@ -22,13 +22,13 @@ export const EMPTY_CLIPBOARD = "the clipboard is empty";
 
 /**
  * The system clipboard's plain text, "" without any. Read in the parent: the page never sees it.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {string}
  */
 export function readClipboard(win) {
   try {
     const trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(Ci.nsITransferable);
-    trans.init(/** @type {any} */ (win).docShell.QueryInterface(Ci.nsILoadContext));
+    trans.init(win.docShell.QueryInterface(Ci.nsILoadContext));
     trans.addDataFlavor("text/plain");
     Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
     /** @type {{ value?: any }} */

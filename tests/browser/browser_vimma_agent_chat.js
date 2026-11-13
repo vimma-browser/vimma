@@ -504,6 +504,8 @@ addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_befor
     endpoint: `http://127.0.0.1:${PORT}/anthropic`,
     model: "claude-mock",
     vision: true,
+    priceIn: 3,
+    priceOut: 15,
   };
   McpHost.configureAgent({ ...AGENT_DEFAULTS, default: anthropic.name, providers: [anthropic] });
   try {
@@ -516,6 +518,12 @@ addTidyTask(async function test_hosted_anthropic_provider_asks_for_its_key_befor
     EventUtils.synthesizeKey("KEY_Enter");
     await until(() => document.activeElement === input(), "back in the input");
     Assert.ok(input().value.startsWith("SCRIPT:"), "with the task still there");
+    // Storing the key picks the provider for new conversations (Behaviour 7): all of it, so
+    // they keep its vision (the screenshot tool) and its prices.
+    Assert.equal(AgentChat.get(openId()).provider.vision, true, "the window sees its vision");
+    Assert.equal(AgentChat.chosen?.vision, true, "and new conversations keep it");
+    Assert.equal(AgentChat.chosen?.priceIn, 3, "with its input price");
+    Assert.equal(AgentChat.chosen?.priceOut, 15, "and its output price");
     EventUtils.synthesizeKey("KEY_Enter");
     await finished();
     await until(() => logText().includes("Opened it."), "the Messages API's reply is shown");

@@ -26,7 +26,7 @@ export const RESIZE_STEP = 0.05;
 /** The side panel's show-together, as its notices name it (m4-side-panel-multiselect). */
 const TOGETHER = "Show together";
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function gBrowserOf(win) {
   return /** @type {{ gBrowser: { selectedBrowser: Element & { focus(): void } } }} */ (
     /** @type {unknown} */ (win)
@@ -36,7 +36,7 @@ function gBrowserOf(win) {
 /**
  * Whether the window shows two panes or more: the <C-w> family is runnable only then, so with
  * one pane the first ctrl+w still passes to Firefox and closes the tab (plan §2).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function hasPanes(win) {
   return !!shownPanes(win);
@@ -46,7 +46,7 @@ export function hasPanes(win) {
  * The window's PaneView while it shows two panes or more; null with one pane or while the split
  * is a hidden view (docs/specs/side-panel-unsplit.md decision 20): the pane keys then act on the
  * tab shown alone, as with one pane.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function shownPanes(win) {
   const view = PaneViews.get(win);
@@ -56,7 +56,7 @@ function shownPanes(win) {
 /**
  * tmux: moving to a pane focuses its page. Firefox's tab switch would otherwise restore the URL
  * bar if that tab last had it, or leave focus where it was. A tab-modal dialog keeps its focus.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function focusPage(win) {
   const browser = gBrowserOf(win).selectedBrowser;
@@ -78,14 +78,14 @@ function refusal(action, result) {
 /**
  * pane.split_vertical / pane.split_horizontal: a new pane with a new tab (the start page) right
  * of or below the focused one, focused, its URL bar ready for an address as after ctrl+b c.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function splitPane(win, action) {
   const view = PaneViews.get(win);
   const direction = action.id === "pane.split_vertical" ? "vertical" : "horizontal";
   const result = view?.split(direction);
-  if (result?.ok) /** @type {any} */ (win).gURLBar?.select();
+  if (result?.ok) win.gURLBar?.select();
   return refusal(action, result);
 }
 
@@ -93,12 +93,12 @@ export function splitPane(win, action) {
  * pane.new (`prefix+enter`, docs/specs/tiling-layouts.md): a new pane without a direction,
  * along the focused pane's longer side (`[panes] layout = "dwindle"`) or right ("manual"); as
  * split_vertical / split_horizontal otherwise.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function newPane(win, action) {
   const result = PaneViews.get(win)?.newPane();
-  if (result?.ok) /** @type {any} */ (win).gURLBar?.select();
+  if (result?.ok) win.gURLBar?.select();
   return refusal(action, result);
 }
 
@@ -106,7 +106,7 @@ export function newPane(win, action) {
  * pane.next_layout (`prefix+space`, `:layout`), pane.select_layout (`:layout <name>`) and
  * pane.layout_<preset>: rearranges the panes, focuses the focused pane's page as after a move,
  * and returns what the notice says: `layout: <name>`, or the refusal.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  * @param {string} [text]  `:layout`'s name
  * @returns {string}
@@ -134,7 +134,7 @@ export function layoutPanes(win, action, text) {
  * The side panel's `Enter` with marks (docs/specs/m4-side-panel-multiselect.md): those tabs, in
  * that order, become the panes, focus on `focusId`'s, whose page then has keyboard focus. A tab
  * never selected (lazy) gets its browser first, as Firefox's split view does for its panels.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * With `aloneId`, that tab then shows by itself and the new split waits as a hidden view
  * (docs/specs/side-panel-unsplit.md decision 25).
  * @param {string[]} tabIds  the panel's row ids (a panel id, or a lazy tab's uuid)
@@ -169,7 +169,7 @@ export function showTabs(win, tabIds, focusId, aloneId) {
 /**
  * The side panel's `Enter` down to one mark or none (docs/specs/side-panel-unsplit.md): the
  * split ends, `tabId`'s tab is shown alone and its page has keyboard focus.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} tabId  the panel's row id
  */
 export function showAlone(win, tabId) {
@@ -185,7 +185,7 @@ export function showAlone(win, tabId) {
  * and its focused pane's tab, as panel ids, and whether it is a hidden view; null without one.
  * With several splits (docs/specs/multiple-splits.md behaviour 6 and decision 9) also every
  * split's number and tabs and the shown one's number; on a lone tab nothing is pre-marked.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {{ panes: string[], focus: string | null, hidden: boolean,
  *   splits?: { number: number, tabs: string[] }[], shown?: number | null } | null}
  */
@@ -210,7 +210,7 @@ export function shownSplit(win) {
 /**
  * The status bar's split fields (docs/specs/multiple-splits.md decision 14): the shown split's
  * number and how many the workspace has; none while a workspace keeps one split.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {{ split?: number, splits?: number }}
  */
 export function splitStatus(win) {
@@ -223,7 +223,7 @@ export function splitStatus(win) {
 /**
  * pane.focus_left / _down / _up / _right: the geometric neighbour (core breaks ties by MRU); no
  * neighbour, or one pane, changes nothing. A move unzooms (core); none keeps the zoom.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function focusPane(win, action) {
@@ -237,7 +237,7 @@ export function focusPane(win, action) {
 
 /**
  * pane.zoom: the focused pane fills the content area, or the layout comes back.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function zoomPane(win, action) {
@@ -249,7 +249,7 @@ export function zoomPane(win, action) {
 /**
  * pane.close (`prefix+x`, `:q`): closes the focused pane, whose tab stays open; the last pane
  * closes the tab, with tab.close's rules (a pinned tab selects the first unpinned one).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function closePane(win, action) {
@@ -266,7 +266,7 @@ export function closePane(win, action) {
 /**
  * pane.swap_left / _down / _up / _right: the focused pane trades places with its neighbour and
  * keeps focus; no neighbour changes nothing.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function swapPane(win, action) {
@@ -281,7 +281,7 @@ export function swapPane(win, action) {
 /**
  * pane.resize_wider / _narrower / _taller / _shorter (resize mode, <C-w> <>+-): one step per
  * key, `count` steps after a count (3l, 3<C-w>>).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function resizePane(win, action) {
@@ -294,7 +294,7 @@ export function resizePane(win, action) {
 /**
  * The split picker's rows (behaviour 7): the shown workspace's splits with their tabs' titles,
  * or the notice to show instead when it has none.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {{ items: SplitItem[] } | { refused: string }}
  */
 export function splitPickerRows(win) {
@@ -308,7 +308,7 @@ export function splitPickerRows(win) {
 /**
  * Shows split `number` by selecting its focused pane's tab: the window's tab selection then
  * shows the split whole (behaviour 2), and its page gets keyboard focus.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {number} number
  */
 export function showSplit(win, number) {
@@ -323,7 +323,7 @@ export function showSplit(win, number) {
 /**
  * pane.next_split / pane.previous_split (behaviour 8): the next or previous split by number,
  * wrapping; from a lone tab the split shown last. Returns the refusal (`no splits`), or null.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  * @returns {string | null}
  */
@@ -342,7 +342,7 @@ export function stepSplits(win, action) {
 /**
  * Runs a pane op (above) and shows its refusal, if any, as the notice. The hidden-split
  * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
- * @param {(win: Window, action: Action) => string | null} op
+ * @param {(win: BrowserWindow, action: Action) => string | null} op
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action) => void}
  */

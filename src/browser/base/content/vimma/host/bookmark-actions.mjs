@@ -33,7 +33,7 @@ import { splitPane } from "./pane-ops.mjs";
 
 /**
  * @typedef {object} BookmarkContext
- * @property {Window} win
+ * @property {BrowserWindow} win
  * @property {RenamePrompt} prompt
  * @property {BookmarksPanel} panel
  * @property {(text: string) => void} say  the notice
@@ -183,7 +183,7 @@ export function runBookmarkEffect(ctx, effect) {
       ctx.say(effect.text);
       return;
     case "yank":
-      /** @type {any} */ (Cc["@mozilla.org/widget/clipboardhelper;1"])
+      Cc["@mozilla.org/widget/clipboardhelper;1"]
         .getService(Ci.nsIClipboardHelper)
         .copyString(effect.url);
       ctx.say(`copied ${effect.url}`);

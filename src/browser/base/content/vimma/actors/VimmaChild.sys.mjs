@@ -45,7 +45,7 @@ import { PdfView } from "./pdf-view.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -1055,7 +1055,7 @@ export class VimmaChild extends JSWindowActorChild {
         // A chrome timer: a hidden tab's page timers are held to one a second.
         await new Promise((resolve) => lazy.setTimeout(resolve, poll));
         try {
-          if (!(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc) {
+          if (!this.manager?.isCurrentGlobal || this.document !== doc) {
             return false;
           }
         } catch {
@@ -1108,7 +1108,7 @@ export class VimmaChild extends JSWindowActorChild {
       case "consume":
         // An agent is about to act here (mcp-forms F16): the user's activation from before its
         // step must not count as the user's for what the page does after it.
-        /** @type {any} */ (this.document)?.consumeTransientUserGestureActivation();
+        this.document?.consumeTransientUserGestureActivation();
         return true;
       case "outcome": {
         const last = this.#agentClick;
@@ -1131,7 +1131,7 @@ export class VimmaChild extends JSWindowActorChild {
       case "loading":
         // After a fill (issue #579): whether the fields' handlers started a load in this frame.
         // Asked after their task, so a submission they queued has started by now.
-        return !!(/** @type {any} */ (this.docShell)?.isLoadingDocument);
+        return !!this.docShell?.isLoadingDocument;
       case "fill-outcome": {
         const last = this.#agentFill;
         return last && last.gen === data.gen && last.id === data.id ? last.outcome : "pending";
@@ -1296,7 +1296,7 @@ export class VimmaChild extends JSWindowActorChild {
     this.#endStepWatch();
     this.#netBase = this.#openRequests();
     const doc = this.document;
-    const win = /** @type {any} */ (this.contentWindow);
+    const win = this.contentWindow;
     if (!doc || !win) return;
     /** @type {{ doc: Document, at: number, last: number | null, observer: any }} */
     const watch = { doc, at: Date.now(), last: null, observer: null };
@@ -1326,7 +1326,7 @@ export class VimmaChild extends JSWindowActorChild {
     try {
       // Every request, not `activeCount`: that counts only foreground ones, and fetches and
       // XHRs are background requests (nsLoadGroup::AddRequest, LOAD_BACKGROUND).
-      const group = /** @type {any} */ (this.document)?.documentLoadGroup;
+      const group = this.document?.documentLoadGroup;
       return group ? [...group.requests].length : 0;
     } catch {
       return 0;
@@ -1357,11 +1357,11 @@ export class VimmaChild extends JSWindowActorChild {
     };
     const until = Math.min(typeof data?.until === "number" ? data.until : 0, Date.now() + 30000);
     const doc = this.document;
-    const win = /** @type {any} */ (this.contentWindow);
+    const win = this.contentWindow;
     if (!doc || !win) return null;
     const gone = () => {
       try {
-        return !(/** @type {any} */ (this.manager)?.isCurrentGlobal) || this.document !== doc;
+        return !this.manager?.isCurrentGlobal || this.document !== doc;
       } catch {
         return true;
       }
@@ -1583,7 +1583,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (!win) return null;
     if (this.#grep.model && !this.#grep.stale) return this.#grep.model;
     if (!this.#grep.observer) {
-      const observer = new /** @type {any} */ (win).MutationObserver(() => {
+      const observer = new win.MutationObserver(() => {
         this.#grep.stale = true;
       });
       observer.observe(this.document, {

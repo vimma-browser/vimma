@@ -10,7 +10,7 @@
 // process, and the URL bar stays empty because it is BROWSER_NEW_TAB_URL (isInitialPage,
 // isBlankPageURL).
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AboutNewTab">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AboutNewTab: "resource:///modules/AboutNewTab.sys.mjs",
 });
@@ -104,7 +104,7 @@ function apply() {
 export const StartPage = {
   /**
    * Once per window (vimma.js); the new-tab URL once per app.
-   * @param {Window & { gInitialPages?: string[] }} win  a browser window
+   * @param {BrowserWindow & { gInitialPages?: string[] }} win  a browser window
    */
   init(win) {
     // The home page alone is not the new-tab URL when vimma.startpage.newtab is off: its URL

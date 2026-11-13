@@ -46,7 +46,7 @@ function fill(id, ...body) {
   section.replaceChildren(/** @type {Element} */ (section.firstElementChild), ...body);
 }
 
-const win = /** @type {Window} */ (window.browsingContext.topChromeWindow);
+const win = /** @type {BrowserWindow} */ (window.browsingContext.topChromeWindow);
 
 /** What each install type is called on the page (docs/specs/m6a-updater.md §3). */
 const INSTALL_TYPES = /** @type {Record<string, string>} */ ({

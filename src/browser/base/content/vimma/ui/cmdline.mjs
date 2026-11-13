@@ -24,7 +24,7 @@ const LIST_ID = "vimma-cmdline-completions";
 const STATUSBAR_ID = "vimma-statusbar";
 const STYLESHEET = "chrome://browser/skin/vimma/cmdline.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 /** Set on the chrome root while the line is open (cmdline.css moves the notice above it). */
@@ -45,7 +45,7 @@ const sharedHistory = { history: createHistory() };
 
 /**
  * Loads cmdline.css into `win` once (loading it twice throws); the rename prompt shares it.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function loadCmdlineSheet(win) {
   if (styled.has(win)) return;
@@ -53,7 +53,7 @@ export function loadCmdlineSheet(win) {
   styled.add(win);
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function isPrivate(win) {
   const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
     "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
@@ -73,7 +73,7 @@ function isPrivate(win) {
 
 export class CommandLine {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {Callbacks} callbacks  `run` gets a parsed line once the command line has closed
    */
   constructor(win, { run, changed = () => {}, args = () => ({}), hidden = () => [] }) {
@@ -410,8 +410,9 @@ export class CommandLine {
     else if (browser) browser.after(container);
     else doc.body.append(container);
 
-    const Observer = /** @type {Window & { ResizeObserver: typeof ResizeObserver }} */ (this.win)
-      .ResizeObserver;
+    const Observer = /** @type {BrowserWindow & { ResizeObserver: typeof ResizeObserver }} */ (
+      this.win
+    ).ResizeObserver;
     const observer = new Observer(() => {
       if (!this.isOpen) return;
       const height = Math.ceil(panel.getBoundingClientRect().height);

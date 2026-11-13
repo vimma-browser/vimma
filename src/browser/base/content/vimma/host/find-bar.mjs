@@ -89,12 +89,13 @@ function decorate(findbar) {
 
 /**
  * Decorates every find bar the window creates from now on (one per tab, on first use).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {() => void} stops
  */
 export function watchFindBars(win) {
   const onInit = (/** @type {Event} */ e) => {
-    const findbar = /** @type {any} */ (win).gBrowser.getCachedFindBar(e.target);
+    // TabFindInitialized is dispatched on the tab (Tabbrowser.getFindBar).
+    const findbar = win.gBrowser.getCachedFindBar(/** @type {MozTabbrowserTab} */ (e.target));
     if (findbar) decorate(findbar);
   };
   win.addEventListener("TabFindInitialized", onInit, true);

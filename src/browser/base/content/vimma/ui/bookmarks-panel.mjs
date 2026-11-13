@@ -113,7 +113,7 @@ function subtitle(row, filtering) {
 
 export class BookmarksPanel {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {BookmarksPanelHost} host
    */
   constructor(win, host) {

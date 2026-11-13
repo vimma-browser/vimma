@@ -80,7 +80,7 @@ function hostChain(node) {
 
 export class PromptKeys {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {PromptKeysHost} host
    */
   constructor(win, host) {
@@ -273,7 +273,7 @@ export class PromptKeys {
    */
   watchNotices(panel) {
     if (this.noticeChanged) return;
-    const observer = new /** @type {any} */ (this.win).MutationObserver(() => {
+    const observer = new this.win.MutationObserver(() => {
       if (!this.noticeIn("open") && this.noticeSeen === null) return;
       this.noticeShown();
       this.host.changed();
@@ -395,7 +395,7 @@ export class PromptKeys {
     this.barGone?.disconnect();
     this.barGone = null;
     if (!bar?.parentNode) return;
-    const observer = new /** @type {any} */ (this.win).MutationObserver(() => {
+    const observer = new this.win.MutationObserver(() => {
       if (bar.isConnected) return;
       observer.disconnect();
       if (this.barGone === observer) this.barGone = null;

@@ -34,7 +34,11 @@ import {
   versionText,
 } from "../core/agent-cli.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AgentDownloads" | "clearInterval" | "clearTimeout" | "FileUtils" | "setInterval"
+ *   | "setTimeout" | "Subprocess" | "VimmaControl"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AgentDownloads: "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
   clearInterval: "resource://gre/modules/Timer.sys.mjs",

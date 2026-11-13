@@ -27,7 +27,7 @@ import { PRIVATE_COLOR_TOKEN, PRIVATE_GLYPH } from "../core/privatews.mjs";
 export const PANEL_ID = "vimma-panel";
 const STYLESHEET = "chrome://browser/skin/vimma/side-panel.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into (once: a second load throws) */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (once: a second load throws) */
 const styled = new WeakSet();
 /** Tab events that change a row: re-render while open. */
 const TAB_EVENTS = ["TabOpen", "TabClose", "TabSelect", "TabAttrModified", "TabMove"];
@@ -86,7 +86,7 @@ export function rowsShown(list) {
 
 export class SidePanel {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {SidePanelHost} host
    */
   constructor(win, host) {
@@ -360,14 +360,14 @@ export class SidePanel {
  * @typedef {{ selectedTab: Element, selectedBrowser: HTMLElement }} PanelTabs
  */
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function tabsOf(win) {
   return /** @type {{ gBrowser?: PanelTabs }} */ (/** @type {unknown} */ (win)).gBrowser;
 }
 
 /**
  * Where focus is as a panel opens, to give it back when it closes (spec m7-a11y).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Opener}
  */
 export function rememberFocus(win) {
@@ -378,7 +378,7 @@ export function rememberFocus(win) {
  * Before a panel hides: when focus is in it, or nowhere, it goes back where it was when the
  * panel opened; to the selected page instead after a tab switch (a row picked, ctrl+b c) or
  * when that element is gone. Focus elsewhere (a click into the page) stays put.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Element} box  the panel
  * @param {Opener | null} opener
  */
@@ -430,7 +430,7 @@ export function panelElement(doc, tag, className, text = "") {
  * A hidden panel box in the left slot (the first child of #browser), styled by side-panel.css:
  * a header, a listbox and a key hint. The side panel and the bookmarks panel
  * (docs/specs/bookmarks.md) are each one.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {{ id: string, label: string, hint: string }} options
  */
 export function buildPanelBox(win, { id, label, hint }) {

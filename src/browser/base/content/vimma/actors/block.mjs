@@ -103,7 +103,7 @@ function hasText(el) {
  * @returns {Iterable<Element>}
  */
 function flatChildren(el) {
-  const root = /** @type {any} */ (el).openOrClosedShadowRoot;
+  const root = el.openOrClosedShadowRoot;
   if (root) return root.children;
   if (el.localName === "slot") {
     const assigned = /** @type {HTMLSlotElement} */ (el).assignedElements();

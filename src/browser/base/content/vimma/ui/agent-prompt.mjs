@@ -19,7 +19,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 export class AgentPrompt {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {{ id?: string, color?: string, parent?: () => Element | null }} [look]  the update
    *   question (docs/specs/update-notices.md) is the same line with its own id and colour; the
    *   built-in agent's prompt slot (docs/specs/builtin-agent.md Behaviour 27) is the same line

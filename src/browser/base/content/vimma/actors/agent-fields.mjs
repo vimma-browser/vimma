@@ -23,7 +23,10 @@ import { IDENTITY_FIELDS, isStatedTotal } from "../core/agent-checkpoint.mjs";
 import { isSensitiveAutocomplete, isSubmitControl } from "../core/agent-element.mjs";
 import { linkText } from "./hint-collect.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AutofillFormFactory" | "FormAutofillHeuristics" | "FormAutofillUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AutofillFormFactory: "resource://gre/modules/shared/AutofillFormFactory.sys.mjs",
   FormAutofillHeuristics: "resource://gre/modules/shared/FormAutofillHeuristics.sys.mjs",
@@ -355,7 +358,7 @@ export function sensitiveValueShown(win) {
           r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh;
         if (onScreen) shown.push(el);
       }
-      const shadow = /** @type {any} */ (el).openOrClosedShadowRoot;
+      const shadow = el.openOrClosedShadowRoot;
       if (shadow) visit(shadow);
     }
   };
@@ -821,7 +824,7 @@ export function pageMarks(doc, listed, clicked) {
   /** @type {Map<Element, string>} */
   const described = new Map();
   live.forEach((el, i) => {
-    const shown = /** @type {any} */ (el).checkVisibility?.() ?? true;
+    const shown = el.checkVisibility?.() ?? true;
     described.set(el, JSON.stringify([elements[i], shown]));
   });
   const markOf = (/** @type {Element | undefined} */ el) => (el && described.get(el)) ?? "gone";
@@ -830,9 +833,7 @@ export function pageMarks(doc, listed, clicked) {
     listed: listed.filter((_, i) => i !== clicked).map(markOf),
     text: textMark(doc),
     dialogs: new Set(
-      [...doc.querySelectorAll(PAGE_DIALOGS)].filter(
-        (el) => /** @type {any} */ (el).checkVisibility?.() ?? true,
-      ),
+      [...doc.querySelectorAll(PAGE_DIALOGS)].filter((el) => el.checkVisibility?.() ?? true),
     ),
   };
 }
@@ -873,7 +874,7 @@ function controlsIn(doc, root) {
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     const el = /** @type {Element} */ (node);
     if (el.localName === "input" || el.localName === "select") out.push(el);
-    const shadow = /** @type {any} */ (el).openOrClosedShadowRoot;
+    const shadow = el.openOrClosedShadowRoot;
     if (shadow) out.push(...controlsIn(doc, shadow));
   }
   return out;

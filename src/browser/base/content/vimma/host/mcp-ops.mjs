@@ -27,7 +27,7 @@ export const MCP_CHANGED_TOPIC = "vimma-mcp-changed";
 /** Told when `[agent]` was (re)read: the built-in agent's `keep_days` may have to run. */
 export const AGENT_CONFIG_TOPIC = "vimma-agent-config";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AgentGate">} */ ({});
 // Lazily, at call time: AgentGate reads `[mcp]` from this module too.
 ChromeUtils.defineESModuleGetters(lazy, {
   AgentGate: "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
@@ -187,9 +187,9 @@ function forget(ask, say) {
 function countTabs({ userContextId }) {
   if (userContextId === null) return 0;
   let n = 0;
-  for (const w of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+  for (const w of Services.wm.getEnumerator("navigator:browser")) {
     const tabs = /** @type {{ userContextId: number, closing?: boolean }[]} */ (
-      /** @type {any} */ (w).gBrowser?.tabs ?? []
+      w.gBrowser?.tabs ?? []
     );
     n += tabs.filter((t) => t.userContextId === userContextId && !t.closing).length;
   }

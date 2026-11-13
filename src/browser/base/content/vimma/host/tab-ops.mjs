@@ -13,7 +13,7 @@ import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
 /** @import { Action } from "../core/dispatcher.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"UrlbarUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   UrlbarUtils: "moz-src:///browser/components/urlbar/UrlbarUtils.sys.mjs",
 });
@@ -30,7 +30,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
  *   METRIC_SOURCE: { KEYBOARD: string } }} TabMetrics
  */
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function gBrowserOf(win) {
   return /** @type {{ gBrowser: TabBrowser }} */ (/** @type {unknown} */ (win)).gBrowser;
 }
@@ -38,7 +38,7 @@ function gBrowserOf(win) {
 /**
  * The tabs prefix+n/p and prefix+1..9 count through, in order. Firefox's visible tabs: hidden
  * tabs (an extension's, or another workspace's from M3) are skipped.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Element[]}
  */
 export function selectableTabs(win) {
@@ -47,7 +47,7 @@ export function selectableTabs(win) {
 
 /**
  * tab.new: Firefox's own new-tab command (ctrl+t): the new-tab page, the URL bar focused.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function newTab(win) {
   /** @type {{ BrowserCommands: { openTab: () => void } }} */ (
@@ -60,7 +60,7 @@ export function newTab(win) {
  * event, browser-commands.js): on a pinned tab it selects the first unpinned tab instead of
  * closing; otherwise it closes the selected tab, and the last tab closes the window unless
  * `browser.tabs.closeWindowWithLastTab` is false (M3 sets it false). Metrics as for ctrl+w.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function closeTab(win) {
   const gBrowser = gBrowserOf(win);
@@ -80,7 +80,7 @@ export function closeTab(win) {
 /**
  * `x` in the side panel (docs/specs/key-handling-batch.md § 4): closes `tab` as the tab
  * strip's close button would, selected or not. A pinned tab stays (core refuses it first).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} tab
  */
 export function closeTabById(win, tab) {
@@ -96,7 +96,7 @@ export function closeTabById(win, tab) {
 /**
  * `tab.restore` (ctrl+shift+t, in every mode): Firefox's own command for its ctrl+shift+t,
  * which reopens the last closed tab (or window, or the last session).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function restoreTab(win) {
   /** @type {any} */ (
@@ -106,7 +106,7 @@ export function restoreTab(win) {
 
 /**
  * tab.next, tab.previous, tab.goto.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Action} action
  */
 export function selectTab(win, action) {
@@ -123,7 +123,7 @@ export function selectTab(win, action) {
  * the default search engine; spec m1-cmdline, Settled). Every Vimma open that loads with the
  * system principal comes through here, so `refusedScheme` (`p`'s check) refuses `javascript:`
  * and `data:` first: Gecko lets a system-principal load put a `data:` page top-level (issue #98).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} text
  * @param {"current" | "tab"} where
  * @returns {boolean} false when refused (a `javascript:` or `data:` URL); nothing is loaded
@@ -144,7 +144,7 @@ export function openUrl(win, text, where) {
  * `javascript:` URL) and loaded without fixup, its POST data passed on. The principal is never
  * inherited (`mayInheritPrincipal` is ignored). `? @gh cats` searches the default engine for
  * the literal text, as URIFixup's `?` prefix does.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} text
  * @param {"current" | "tab"} where
  * @returns {Promise<boolean>} false when refused; nothing is loaded
@@ -153,7 +153,7 @@ export async function openTyped(win, text, where) {
   if (refusedScheme(text)) return false;
   // The tab it was typed in, before the lookup yields: a workspace switch meanwhile (into the
   // agent workspace, say) must not send the query, or a POST body, to another tab.
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const typedIn = gBrowser.selectedBrowser;
   /** @type {{ url: string, postData: unknown }} */
   const r = await lazy.UrlbarUtils.getShortcutOrURIAndPostData(text);

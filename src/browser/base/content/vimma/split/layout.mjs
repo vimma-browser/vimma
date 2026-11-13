@@ -20,12 +20,12 @@ const EDGES = ["--vimma-pane-il", "--vimma-pane-it", "--vimma-pane-ir", "--vimma
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
 /** @typedef {{ linkedPanel: string }} PanelTab */
 
-/** @type {WeakSet<Window>} windows the sheet is loaded into (loading it twice throws) */
+/** @type {WeakSet<BrowserWindow>} windows the sheet is loaded into (loading it twice throws) */
 const styled = new WeakSet();
 
 /**
  * Loads split.css into a window once; it also hides Firefox's own split-view UI.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function loadSheet(win) {
   if (styled.has(win)) return;
@@ -35,7 +35,7 @@ export function loadSheet(win) {
 
 /**
  * The content area panes are laid out in: #tabbrowser-tabpanels, as an integer rect at 0,0.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Rect}
  */
 export function contentArea(win) {
@@ -48,7 +48,7 @@ export function contentArea(win) {
  * Positions each tab's panel at its rectangle, in CSS px relative to #tabbrowser-tabpanels.
  * Edges inside `area` get half the pane gap each (split.css). Panels of tabs not in `rects` keep
  * their last position.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {Map<PanelTab, Rect>} rects
  * @param {Rect} [area]  defaults to the bounding box of `rects`
  */
@@ -87,7 +87,7 @@ function boundingBox(rects) {
 
 /**
  * Hides a tab's panel visually (zoomed away: no paint, no hit, frame and scroll kept) or shows it.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {PanelTab} tab
  * @param {boolean} hidden
  */
@@ -97,7 +97,7 @@ export function setHidden(win, tab, hidden) {
 
 /**
  * Whether a tab's panel is hidden visually by setHidden.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {PanelTab} tab
  */
 export function isHidden(win, tab) {
@@ -107,7 +107,7 @@ export function isHidden(win, tab) {
 /**
  * Removes our attribute and custom properties from the given tabs' panels; `all` also takes the
  * attribute off #tabbrowser-tabpanels (no split left).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {PanelTab[]} tabs
  * @param {{ all?: boolean }} [options]
  */

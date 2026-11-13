@@ -33,7 +33,7 @@ declare const Services: {
   // engine/netwerk/base/nsIIOService.idl
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
-    newURI(spec: string): { readonly scheme: string; readonly spec: string };
+    newURI(spec: string): nsIURI;
     newChannelFromURIWithLoadInfo(uri: unknown, loadInfo: unknown): any;
   };
   // engine/netwerk/dns/nsIEffectiveTLDService.idl
@@ -44,11 +44,15 @@ declare const Services: {
   focus: {
     readonly focusedElement: Element | null;
     readonly focusedContentBrowsingContext: any;
+    readonly activeWindow: Window | null;
     clearFocus(window: Window): void;
   };
   // engine/caps/nsIScriptSecurityManager.idl
   scriptSecurityManager: {
     getSystemPrincipal(): unknown;
+    createNullPrincipal(originAttributes: object): unknown;
+    createContentPrincipal(uri: nsIURI, originAttributes: object): unknown;
+    principalWithOA(principal: unknown, originAttributes: object): unknown;
     checkLoadURIWithPrincipal(principal: unknown, uri: unknown, flags?: number): void;
   };
   // engine/widget/nsIClipboard.idl
@@ -76,6 +80,59 @@ declare const Services: {
     readonly appBuildID: string;
     readonly OS: string;
     readonly XPCOMABI: string;
+    readonly isWayland: boolean;
+    readonly inSafeMode: boolean;
+  };
+  // engine/netwerk/base/nsIPermissionManager.idl
+  perms: {
+    readonly UNKNOWN_ACTION: number;
+    readonly ALLOW_ACTION: number;
+    readonly DENY_ACTION: number;
+    testPermissionFromPrincipal(principal: unknown, type: string): number;
+    testExactPermissionFromPrincipal(principal: unknown, type: string): number;
+    addFromPrincipal(
+      principal: unknown,
+      type: string,
+      permission: number,
+      expireType?: number,
+      expireTime?: number,
+    ): void;
+    addFromPrincipalForBrowser(
+      principal: unknown,
+      type: string,
+      permission: number,
+      browserId: number,
+      expireTimeMS?: number,
+    ): void;
+  };
+  // engine/toolkit/components/startup/public/nsIAppStartup.idl
+  startup: {
+    readonly shuttingDown: boolean;
+    readonly attemptingQuit: boolean;
+    quit(mode: number): void;
+    restartInSafeMode(mode: number): void;
+  };
+  // engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl
+  ww: {
+    registerNotification(
+      observer: (subject: unknown, topic: string, data: string | null) => void,
+    ): void;
+    unregisterNotification(
+      observer: (subject: unknown, topic: string, data: string | null) => void,
+    ): void;
+  };
+  // engine/toolkit/components/cleardata/nsIClearDataService.idl
+  clearData: {
+    deleteDataFromOriginAttributesPattern(pattern: { userContextId?: number }): void;
+  };
+  // engine/toolkit/components/enterprisepolicies/nsIEnterprisePolicies.idl
+  policies: { isAllowed(feature: string): boolean };
+  // engine/toolkit/components/passwordmgr/nsILoginManager.idl
+  logins: {
+    searchLoginsAsync(matchData: object): Promise<nsILoginInfo[]>;
+    addLoginAsync(login: nsILoginInfo): Promise<nsILoginInfo>;
+    modifyLoginAsync(oldLogin: nsILoginInfo, newLogin: nsILoginInfo): Promise<nsILoginInfo>;
+    removeLoginAsync(login: nsILoginInfo): Promise<void>;
   };
   // engine/xpcom/base/nsIVersionComparator.idl
   vc: { compare(a: string, b: string): number };
@@ -102,7 +159,12 @@ declare const Services: {
     set(name: string, value: string): void;
   };
   // engine/xpcom/base/nsIWindowMediator.idl
-  wm: { getMostRecentWindow(type: string): Window | null };
+  wm: {
+    getMostRecentWindow(type: "navigator:browser"): BrowserWindow | null;
+    getMostRecentWindow(type: string | null): Window | null;
+    getEnumerator(type: "navigator:browser"): Iterable<BrowserWindow>;
+    getEnumerator(type: string | null): Iterable<Window>;
+  };
   // engine/xpcom/ds/nsICategoryManager.idl
   catMan: {
     addCategoryEntry(
@@ -206,7 +268,9 @@ interface URL {
 // engine/dom/chrome-webidl/ChromeUtils.webidl
 declare const ChromeUtils: {
   importESModule(url: string): any;
-  defineESModuleGetters(target: object, modules: Record<string, string>): void;
+  // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
+  // map's must match.
+  defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;
   registerWindowActor(name: string, options: object): void;
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
@@ -233,7 +297,11 @@ declare class JSWindowActorChild {
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
-  readonly manager: { getActor(name: string): any; readonly innerWindowId: number };
+  readonly manager: {
+    getActor(name: string): any;
+    readonly innerWindowId: number;
+    readonly isCurrentGlobal: boolean;
+  };
   // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
   readonly docShell: any;
   sendAsyncMessage(name: string, data?: unknown): void;
@@ -272,6 +340,8 @@ interface Window {
     readonly AUTHOR_SHEET: number;
     loadSheetUsingURIString(sheetURI: string, type: number): void;
     removeSheetUsingURIString(sheetURI: string, type: number): void;
+    suppressAnimation(suppress: boolean): void;
+    flushLayoutWithoutThrottledAnimations(): void;
     /** True while an event the user caused (a key, a click) is being handled. */
     readonly isHandlingUserInput: boolean;
     nodesFromRect(
@@ -300,4 +370,369 @@ interface Node {
 }
 interface Event {
   readonly originalTarget: EventTarget | null;
+}
+// engine/dom/webidl/Document.webidl (chrome-only), the FullscreenKeyboardLock enum of
+// Element.webidl
+interface Document {
+  readonly fullscreenKeyboardLock: "none" | "browser";
+  // engine/dom/interfaces/xul/nsIDOMXULCommandDispatcher.idl (chrome documents)
+  readonly commandDispatcher: {
+    readonly focusedElement: Element | null;
+    getControllerForCommand(command: string): {
+      isCommandEnabled(command: string): boolean;
+      doCommand(command: string): void;
+    } | null;
+  } | null;
+  // engine/netwerk/base/nsILoadGroup.idl (an nsISimpleEnumerator of its requests)
+  readonly documentLoadGroup: { readonly requests: Iterable<unknown> } | null;
+  consumeTransientUserGestureActivation(): boolean;
+}
+interface Node {
+  // engine/caps/nsIPrincipal.idl
+  readonly nodePrincipal: { readonly isSystemPrincipal: boolean };
+}
+
+// The exports Vimma's modules read through ChromeUtils.defineESModuleGetters, by export name (each
+// name is exported by one module). A module's `lazy` object is
+// `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
+// next line, which is why the empty object may be asserted to the full shape. Firefox modules
+// list only the members Vimma calls; `any` marks a module Vimma uses beyond a few members whose
+// shape is not typed here yet.
+interface LazyModules {
+  // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
+  // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
+  // takes one, or none).
+  setTimeout(callback: (...args: never[]) => unknown, ms?: number, ...args: unknown[]): number;
+  setInterval(callback: () => unknown, ms?: number): number;
+  clearTimeout(id: number | null | undefined): void;
+  clearInterval(id: number | null | undefined): void;
+  // engine/toolkit/modules/PrivateBrowsingUtils.sys.mjs
+  PrivateBrowsingUtils: {
+    isWindowPrivate(win: Window): boolean;
+    readonly permanentPrivateBrowsing: boolean;
+    readonly enabled: boolean;
+  };
+  // engine/toolkit/modules/AppConstants.sys.mjs
+  AppConstants: {
+    readonly MOZ_APP_VERSION_DISPLAY: string;
+    readonly MOZ_UPDATER: boolean;
+    readonly MOZ_UPDATE_CHANNEL: string;
+    readonly platform: string;
+  };
+  // engine/browser/modules/BrowserWindowTracker.sys.mjs
+  BrowserWindowTracker: {
+    readonly orderedWindows: BrowserWindow[];
+    getTopWindow(options?: { private?: boolean; allowPopups?: boolean }): BrowserWindow | null;
+  };
+  // engine/browser/components/sessionstore/SessionStore.sys.mjs; the closed tab and window data
+  // are SessionStore's own JSON records, read field by field with fallbacks.
+  SessionStore: {
+    getTabState(tab: MozTabbrowserTab): string;
+    isTabRestoring(tab: MozTabbrowserTab): boolean;
+    getCustomTabValue(tab: MozTabbrowserTab, key: string): string;
+    setCustomTabValue(tab: MozTabbrowserTab, key: string, value: string): void;
+    getCustomWindowValue(win: Window, key: string): string;
+    setCustomWindowValue(win: Window, key: string, value: string): void;
+    getClosedTabDataForWindow(win: Window): any[];
+    getClosedTabData(options?: { private?: boolean }): any[];
+    getClosedWindowData(): any[];
+    undoCloseById(closedId: number, includePrivate?: boolean, targetWindow?: Window): unknown;
+  };
+  // engine/toolkit/modules/OSKeyStore.sys.mjs
+  OSKeyStore: {
+    encrypt(plainText: string): Promise<string>;
+    decrypt(cipherText: string, trigger?: string | boolean, reauth?: boolean): Promise<string>;
+  };
+  // engine/toolkit/modules/FileUtils.sys.mjs (an nsIFile constructor)
+  FileUtils: { File: new (path: string) => any };
+  // engine/netwerk/base/NetUtil.sys.mjs
+  NetUtil: { newURI(spec: string, charset?: string | null, base?: unknown): nsIURI };
+  // engine/toolkit/modules/UpdateUtils.sys.mjs
+  UpdateUtils: { readonly ABI: string; readonly UpdateChannel: string };
+  // engine/browser/components/customizableui/CustomizableUI.sys.mjs
+  CustomizableUI: { setToolbarVisibility(toolbarId: string, visible: boolean | string): void };
+  // engine/browser/modules/BrowserUIUtils.sys.mjs
+  BrowserUIUtils: { checkEmptyPageOrigin(browser: MozBrowser, uri?: unknown): boolean };
+  // engine/browser/modules/URILoadingHelper.sys.mjs
+  URILoadingHelper: { guessUserContextId(uri: unknown): number | null };
+  // engine/browser/components/urlbar/UrlbarUtils.sys.mjs
+  UrlbarUtils: {
+    getShortcutOrURIAndPostData(
+      url: string,
+    ): Promise<{ url: string; postData: unknown; mayInheritPrincipal: boolean }>;
+  };
+  // engine/toolkit/components/asyncshutdown/AsyncShutdown.sys.mjs
+  AsyncShutdown: {
+    profileBeforeChange: { addBlocker(name: string, condition: () => unknown): void };
+  };
+  // engine/toolkit/modules/E10SUtils.sys.mjs
+  E10SUtils: { deserializePrincipal(base64: string): unknown };
+
+  // Untyped: wide Firefox APIs Vimma drives in depth (downloads, add-ons, permissions, form
+  // autofill, search, containers, js-ctypes and subprocesses).
+  AboutNewTab: any;
+  AddonManager: any;
+  AutofillFormFactory: any;
+  ContextualIdentityService: any;
+  DownloadHistory: any;
+  DownloadIntegration: any;
+  DownloadPaths: any;
+  Downloads: any;
+  DownloadsCommon: any;
+  ExtensionPermissions: any;
+  FormAutofillHeuristics: any;
+  FormAutofillUtils: any;
+  Integration: any;
+  JSONFile: any;
+  PopupAndRedirectBlockerObserver: any;
+  SearchService: any;
+  SitePermissions: any;
+  Subprocess: any;
+  UrlbarSearchUtils: any;
+  ctypes: any;
+  nsContentDispatchChooser: any;
+  nsUnknownContentTypeDialog: any;
+  // Its per-window count of PiP windows is compared with `> 0`, a window without one (no entry,
+  // undefined) counting as none.
+  PictureInPicture: any;
+
+  // Vimma's own modules, imported lazily to break a load cycle.
+  AgentChat: typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs").AgentChat;
+  AgentCli: typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs").AgentCli;
+  AgentDownloads: typeof import("../src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs").AgentDownloads;
+  AgentGate: typeof import("../src/browser/base/content/vimma/ctl/AgentGate.sys.mjs").AgentGate;
+  AgentKeys: typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs").AgentKeys;
+  ConfigHost: typeof import("../src/browser/base/content/vimma/config/ConfigHost.sys.mjs").ConfigHost;
+  McpHost: typeof import("../src/browser/base/content/vimma/host/mcp-ops.mjs").McpHost;
+  ThemeHost: typeof import("../src/browser/base/content/vimma/ui/theme-host.mjs").ThemeHost;
+  VimmaControl: typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs").VimmaControl;
+  VimmaHost: typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs").VimmaHost;
+  WorkspaceRouter: typeof import("../src/browser/base/content/vimma/workspaces/WorkspaceRouter.sys.mjs").WorkspaceRouter;
+}
+
+/** A module's `lazy` object: the named exports ChromeUtils.defineESModuleGetters defines on it. */
+type Lazy<K extends keyof LazyModules> = { readonly [P in K]: LazyModules[P] };
+
+// engine/toolkit/components/passwordmgr/nsILoginInfo.idl
+interface nsILoginInfo {
+  readonly username: string;
+  readonly password: string;
+  init(
+    origin: string,
+    formActionOrigin: string | null,
+    httpRealm: string | null,
+    username: string,
+    password: string,
+    usernameField?: string,
+    passwordField?: string,
+  ): void;
+}
+
+// engine/netwerk/base/nsIURI.idl (the members Vimma reads)
+interface nsIURI {
+  readonly spec: string;
+  readonly specIgnoringRef: string;
+  readonly displaySpec: string;
+  readonly scheme: string;
+  /** Throws for a URI without a host (about:, data:); callers read it inside a try. */
+  readonly host: string;
+  schemeIs(scheme: string): boolean;
+}
+
+// engine/dom/webidl/Window.webidl: every window's own constructors (a page's differ from
+// chrome's, so code reaching into a content window builds its objects with these).
+interface Window {
+  readonly MutationObserver: typeof MutationObserver;
+  readonly ResizeObserver: typeof ResizeObserver;
+  readonly KeyboardEvent: typeof KeyboardEvent;
+  readonly Event: typeof Event;
+  readonly docShell: any;
+  fullScreen: boolean;
+}
+
+// engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
+interface ChromeWindow extends Window {
+  readonly windowState: number;
+  readonly isFullyOccluded: boolean;
+  getAttention(): void;
+  maximize(): void;
+  restore(): void;
+}
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs (MozBrowser): a <browser>.
+interface MozBrowser extends Element {
+  readonly browsingContext: any;
+  /** Null while the browser has no docshell or remote navigation yet. */
+  readonly currentURI: nsIURI | null;
+  readonly documentURI: { readonly spec: string } | null;
+  readonly contentTitle: string;
+  readonly isRemoteBrowser: boolean;
+  readonly webProgress: any;
+  readonly browserId: number;
+  readonly documentContentType: string | null;
+  /** Null for a non-remote browser without a docshell. */
+  readonly finder: MozFinder | null;
+  // engine/caps/nsIPrincipal.idl; read through Vimma's own checks.
+  readonly contentPrincipal: any;
+  // engine/browser/modules/PopupAndRedirectBlocker.sys.mjs (untyped here)
+  readonly popupAndRedirectBlocker: any;
+  focus(): void;
+  reload(): void;
+  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown }): void;
+}
+
+// A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
+// createLazyBrowser's getters); a live one is remote or has a docshell. Either way currentURI
+// and finder are set.
+interface MozTabBrowser extends MozBrowser {
+  readonly currentURI: nsIURI;
+  readonly finder: MozFinder;
+}
+
+// engine/browser/components/tabbrowser/content/tab.mjs (MozTabbrowserTab): a tab.
+interface MozTabbrowserTab extends Element {
+  readonly linkedBrowser: MozTabBrowser;
+  /** Null for a lazy tab, which has no browser yet (Tabbrowser.insertBrowser; tabbox.js). */
+  readonly linkedPanel: string | null;
+  /** The tab's position among all tabs (Tabbrowser `tabIndex` options take it). */
+  readonly index: number;
+  readonly label: string;
+  readonly pinned: boolean;
+  readonly hidden: boolean;
+  readonly closing: boolean;
+  readonly selected: boolean;
+  readonly userContextId: number;
+  readonly soundPlaying: boolean;
+  readonly muted: boolean;
+  readonly muteReason: string | null | undefined;
+  readonly splitview: MozTabSplitViewWrapper | null;
+  readonly ownerGlobal: BrowserWindow;
+  toggleMuteAudio(muteReason?: string | null): void;
+}
+
+// engine/browser/components/tabbrowser/content/tabsplitview.mjs
+interface MozTabSplitViewWrapper extends Element {
+  readonly splitViewId: number;
+  readonly tabs: MozTabbrowserTab[];
+  unsplitTabs(): void;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs: a browser window's gBrowser.
+interface Tabbrowser {
+  readonly tabs: MozTabbrowserTab[];
+  readonly visibleTabs: MozTabbrowserTab[];
+  readonly browsers: MozTabBrowser[];
+  selectedTab: MozTabbrowserTab;
+  readonly selectedBrowser: MozTabBrowser;
+  readonly pinnedTabCount: number;
+  readonly tabContainer: Element & { selectedIndex: number };
+  readonly tabbox: Element;
+  getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
+  insertBrowser(tab: MozTabbrowserTab): void;
+  hideTab(tab: MozTabbrowserTab, source?: string): void;
+  showTab(tab: MozTabbrowserTab): void;
+  unpinTab(tab: MozTabbrowserTab): void;
+  removeTab(tab: MozTabbrowserTab, options?: TabbrowserRemoveOptions): void;
+  removeCurrentTab(options?: TabbrowserRemoveOptions): void;
+  addTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
+  addTrustedTab(url: string, options?: TabbrowserAddOptions): MozTabbrowserTab;
+  addProgressListener(listener: object): void;
+  removeProgressListener(listener: object): void;
+  addTabsProgressListener(listener: object): void;
+  removeTabsProgressListener(listener: object): void;
+  updateTitlebar(): void;
+  getCachedFindBar(tab?: MozTabbrowserTab): MozFindbar | undefined;
+  /** Null when the window or the tab closes before the find bar is made. */
+  getFindBar(tab?: MozTabbrowserTab): Promise<MozFindbar | null>;
+  readNotificationBox(browser?: MozBrowser): any;
+  moveTabForward(options?: { metricsContext?: unknown }): void;
+  moveTabBackward(options?: { metricsContext?: unknown }): void;
+  // engine/browser/components/tabbrowser/TabMetrics.sys.mjs
+  readonly TabMetrics: {
+    readonly METRIC_SOURCE: { readonly KEYBOARD: string };
+    userTriggeredContext(source?: string): unknown;
+  };
+}
+interface TabbrowserRemoveOptions {
+  animate?: boolean;
+  skipPermitUnload?: boolean;
+  closeWindowWithLastTab?: boolean;
+}
+interface TabbrowserAddOptions {
+  triggeringPrincipal?: unknown;
+  userContextId?: number;
+  skipAnimation?: boolean;
+  inBackground?: boolean;
+  tabIndex?: number;
+  createLazyBrowser?: boolean;
+  lazyTabTitle?: string;
+  ownerTab?: MozTabbrowserTab | null;
+  relatedToCurrent?: boolean;
+}
+
+// engine/browser/base/content/browser.js and the scripts browser.xhtml loads: a browser window.
+interface BrowserWindow extends ChromeWindow {
+  readonly gBrowser: Tabbrowser;
+  // engine/browser/components/urlbar/content/UrlbarInput.mjs
+  readonly gURLBar: HTMLElement & { focused: boolean; view: { isOpen: boolean }; select(): void };
+  readonly gNavToolbox: Element;
+  readonly BROWSER_NEW_TAB_URL: string;
+  // browser-init.js
+  readonly gBrowserInit: { readonly delayedStartupFinished: boolean };
+  readonly delayedStartupPromise: Promise<void>;
+  // tab-bar-visibility.js
+  readonly TabBarVisibility: { update(force?: boolean): void };
+  // browser.js (a lazy getter: PopupNotifications.sys.mjs)
+  readonly PopupNotifications: { readonly panel: Element & { readonly state: string } };
+  UpdatePopupNotificationsVisibility(): void;
+  isInitialPage(url: nsIURI | string): boolean;
+  switchToTabHavingURI(
+    uri: string,
+    openNew?: boolean,
+    params?: { relatedToCurrent?: boolean; triggeringPrincipal?: unknown },
+  ): boolean;
+  // utilityOverlay.js
+  openTrustedLinkIn(
+    url: string,
+    where: string,
+    params?: { userContextId?: number; inBackground?: boolean },
+  ): void;
+  // toolkit globalOverlay.js and contentAreaUtils.js
+  goQuitApplication(event?: { ctrlKey?: boolean; metaKey?: boolean }): boolean;
+  DownloadURL(url: string, fileName: string | null, initiatingDocument: Document): void;
+  // browser-addons.js: extension UI, untyped here (WebExtension internals)
+  readonly gUnifiedExtensions: any;
+  readonly BrowserAddonUI: { manageAddon(addonId: string, source?: string): Promise<void> };
+}
+
+// A browser window from its first script, before its body exists: browser-main.js creates
+// gBrowser at DOMContentLoaded, and PopupNotifications needs the document. Code that runs this
+// early (the status bar, tab strip and toolbar) guards these members.
+type EarlyBrowserWindow = Omit<
+  BrowserWindow,
+  "gBrowser" | "PopupNotifications" | "UpdatePopupNotificationsVisibility"
+> &
+  Partial<
+    Pick<BrowserWindow, "gBrowser" | "PopupNotifications" | "UpdatePopupNotificationsVisibility">
+  >;
+
+// engine/toolkit/content/widgets/findbar.js
+interface MozFindbar extends Element {
+  hidden: boolean;
+  readonly FIND_NORMAL: number;
+  readonly _findField: HTMLInputElement;
+  readonly _typeAheadCaseSensitive: number;
+  open(mode?: number): boolean;
+  close(noAnim?: boolean): void;
+  onFindAgainCommand(findPrevious: boolean): void;
+}
+
+// engine/toolkit/modules/FinderParent.sys.mjs (a <browser>'s finder)
+interface MozFinder {
+  set caseSensitive(sensitive: boolean);
+  addResultListener(listener: object): void;
+  removeResultListener(listener: object): void;
+  findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
+  requestMatchesCount(query: string, args: object): void;
+  removeSelection(keepHighlight?: boolean): void;
 }

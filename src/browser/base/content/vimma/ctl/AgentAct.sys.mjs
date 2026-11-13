@@ -49,7 +49,7 @@ import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 
 /** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
