@@ -320,10 +320,16 @@ npm run e2e -- --xvfb --update-baselines --filter <scenario>   # refused when CI
 
 look at the new PNG, and commit it with a changelog line saying which baseline changed and why
 (CONTRIBUTING.md: never edit a baseline without one). A missing baseline fails; nothing creates one
-silently. Fonts differ between machines: if CI's diff exceeds 0.5 % on a baseline made locally,
-take CI's actual image from the `e2e-output` artifact of the failed run (kept 7 days) instead.
-A missing baseline also leaves `<name>.actual.png` there, so a new scenario's first baseline
-comes from CI the same way: `gh run download <run-id> -n e2e-output`. Baselines are plain git blobs, not LFS
+silently. On Linux the scenarios render with the fonts vendored in `tests/e2e/fonts/` (DejaVu,
+and Liberation Sans for Helvetica), drawn as on CI's ubuntu-24.04: the browser gets that
+folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the profile's HOME, so a local
+run compares with CI's baselines with no font package installed (issue #944). What still differs
+between machines is the FreeType version that rasterises the glyphs (the browser uses the
+system's library), so a baseline still comes from CI: if CI's diff exceeds 0.5 % on a baseline
+made locally, take CI's actual image from the `e2e-output` artifact of the failed run (kept 7
+days) instead. A missing baseline also leaves `<name>.actual.png` there, so a new scenario's
+first baseline comes from CI the same way: `gh run download <run-id> -n e2e-output`. Baselines
+are plain git blobs, not LFS
 (the spec's "LFS: not now" says when to revisit).
 
 **Troubleshooting Xvfb.**

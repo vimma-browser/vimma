@@ -55,6 +55,7 @@ import {
   launch,
   quitBrowser,
   runVimmaOpen,
+  scenarioFontconfig,
   unpackTarball,
   waitForSessionSaved,
 } from "./launcher.mjs";
@@ -239,6 +240,7 @@ async function main() {
         keep: values.keep,
         prefs,
         programs,
+        fontconfig: scenarioFontconfig(),
         // The D-Bus remote vimma-open forwards over needs a session bus (Linux only).
         sessionBus: scenario.steps.some((s) => s.external !== undefined),
         discoveryTimeoutMs,

@@ -3171,6 +3171,17 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`keeps the release event's run, a release dispatch and a bindings dispatch apart`](../tools/test/site-dispatch-workflow.test.mjs),
   [`fails without the app's ID or key instead of skipping the dispatch`](../tools/test/site-dispatch-workflow.test.mjs),
   [`never runs for a pre-release or outside vimma-browser/vimma`](../tools/test/site-dispatch-workflow.test.mjs)
+- B16. The fonts in `tests/e2e/fonts/` are binary files from outside the project that a browser
+  opens: the e2e harness gives them to the scenarios' browser on Linux (issue #944), and
+  no package ships them. Each **must** be an unchanged copy of an upstream release (DejaVu 2.37,
+  whose tarball's SHA-256 matched on GitHub and SourceForge; Liberation 2.1.5, whose font matched
+  Ubuntu's package but for one glyph), and its own SHA-256 **must** be the one
+  `tests/e2e/fonts/README.md` records, so a changed file fails the tests rather than reaching a
+  browser unreviewed. The harness lets the content sandbox read that one folder in the
+  throwaway profile only.
+  [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.mjs),
+  [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.mjs),
+  [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.mjs)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 

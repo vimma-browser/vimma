@@ -13,19 +13,47 @@ import {
   mkdtempSync,
   openSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { validateMessage } from "../../packages/vimma-core/src/control.mjs";
-import { CONFIG_PATH_PREF, devPrefs } from "../start.mjs";
+import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.mjs";
 
 const ENGINE = fileURLToPath(new URL("../../engine/", import.meta.url));
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
+/**
+ * The fonts every screenshot is drawn with (issue #944): DejaVu 2.37, as on CI's ubuntu-24.04,
+ * so a baseline made by CI matches on any Linux machine whatever fonts it has installed.
+ */
+export const E2E_FONTS = join(REPO, "tests", "e2e", "fonts");
+/** The fontconfig file that offers the browser only those fonts (FONTCONFIG_FILE). */
+export const E2E_FONTCONFIG = join(E2E_FONTS, "fonts.conf");
+
+/**
+ * GTK's settings in the profile's HOME, read when the fonts are pinned. Firefox draws its own UI
+ * in GTK's font, and Arch's GTK ships /usr/share/gtk-3.0/settings.ini naming "Adwaita Sans 11",
+ * while Ubuntu's ships none and GTK's built-in "Sans 10" applies there (CI). The user's file
+ * wins over the system's, so every machine gets CI's: fonts.conf maps Sans to DejaVu Sans.
+ */
+export const GTK_SETTINGS = "[Settings]\ngtk-font-name = Sans 10\n";
+
+/**
+ * The fontconfig file for a scenario's browser: E2E_FONTCONFIG, except on macOS, which draws
+ * text with Core Text rather than fontconfig and takes no screenshots (headless). Only the
+ * scenarios pin their fonts: the site suite and the agent bench load real pages, which need the
+ * machine's fonts for the scripts DejaVu lacks.
+ * @param {string} [platform]
+ * @returns {string | null}
+ */
+export function scenarioFontconfig(platform = process.platform) {
+  return platform === "darwin" ? null : E2E_FONTCONFIG;
+}
 /** What the browser prints when a module of ours cannot be loaded (e.g. by the content sandbox). */
 export const VIMMA_LOAD_FAILURE = /Failed to load chrome:\/\/browser\/content\/vimma\/\S*/;
 export const FULL_OBJDIR = "obj-x86_64-pc-linux-gnu";
@@ -104,6 +132,12 @@ export const PROFILE_PREFS = Object.freeze([
   ["network.captive-portal-service.enabled", false],
   ["network.connectivity-service.enabled", false],
   ["browser.urlbar.suggest.searches", false],
+  // The URL bar's placeholder names the default engine from the first paint, as in a used
+  // profile, where Firefox has saved its name here. A new profile shows the engine-less one until
+  // the search service has started, and then keeps it while the bar is empty (UrlbarInputBase's
+  // #deferUpdatePlaceholder), so a screenshot showed either (issue #944). Google is the default
+  // with the region unknown (browser.region.network.url is off).
+  ["browser.urlbar.placeholderName", "Google"],
   ["browser.topsites.contile.enabled", false],
   ["browser.translations.enable", false],
   ["browser.ml.enable", false],
@@ -138,14 +172,20 @@ export function userJs(prefs) {
  * @param {Record<string, boolean | number | string | null>} [overrides] a scenario's `prefs`:
  *   a value replaces ours; null leaves the pref out, so the build's own default applies (e.g.
  *   Vimma's `browser.startup.page = 3`, which a restart scenario needs)
+ * @param {{ readPaths?: readonly string[] }} [o] more folders content processes may read (the
+ *   pinned fonts': the Linux content sandbox reads fonts only from the system's font folders)
  */
-export function createProfile(tmpRoot = tmpdir(), overrides = {}) {
+export function createProfile(tmpRoot = tmpdir(), overrides = {}, { readPaths = [] } = {}) {
   const dir = mkdtempSync(join(tmpRoot, "vimma-e2e-profile-"));
   // plus npm start's dev prefs: content processes may read the repo's src/, where a local
   // objdir's chrome files lead (tools/start.mjs); harmless for a packaged build
   const prefs = new Map([...PROFILE_PREFS, ...devPrefs(REPO)]);
   // A config.toml of the profile's own, whatever HOME the browser is given (tools/start.mjs).
   prefs.set(CONFIG_PATH_PREF, join(dir, "vimma", "config.toml"));
+  if (readPaths.length) {
+    const own = prefs.get(READ_PATH_PREF);
+    prefs.set(READ_PATH_PREF, [...(own ? [own] : []), ...readPaths].join(","));
+  }
   for (const [name, value] of Object.entries(overrides)) {
     if (value === null) prefs.delete(name);
     else prefs.set(name, value);
@@ -256,12 +296,17 @@ const DISPLAY_PASSTHROUGH = ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "X
  * profile, so the user's ~/.config is not read and temp files go away with the profile. Under
  * our Xvfb the browser is forced onto X11.
  * Headless (macOS), it gets MOZ_HEADLESS=1 and no display at all.
+ * With `fontconfig`, fontconfig reads that file instead of the system's /etc/fonts, so the
+ * machine's installed fonts and its choice for monospace or sans-serif do not reach the pixels.
  * @param {Record<string, string | undefined>} base
  * @param {{ display?: string, headless?: boolean, home?: string, tmp?: string,
- *   extra?: Record<string, string> }} o
+ *   fontconfig?: string | null, extra?: Record<string, string> }} o
  * @returns {Record<string, string>}
  */
-export function browserEnv(base, { display, headless = false, home, tmp, extra = {} }) {
+export function browserEnv(
+  base,
+  { display, headless = false, home, tmp, fontconfig = null, extra = {} },
+) {
   /** @type {Record<string, string>} */
   const env = {};
   const keep = display || headless ? ENV_PASSTHROUGH : [...ENV_PASSTHROUGH, ...DISPLAY_PASSTHROUGH];
@@ -275,6 +320,7 @@ export function browserEnv(base, { display, headless = false, home, tmp, extra =
   env.TZ = "UTC";
   env.GTK_THEME = "Adwaita";
   env.MOZ_CRASHREPORTER_DISABLE = "1";
+  if (fontconfig) env.FONTCONFIG_FILE = fontconfig;
   if (headless) env.MOZ_HEADLESS = "1";
   if (display) {
     env.DISPLAY = display;
@@ -884,7 +930,8 @@ export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
  * get the caller's XDG_RUNTIME_DIR (our Xvfb, headless) gets a private 0700 one made under
  * `runtimeRoot` (the caller's XDG_RUNTIME_DIR, else ~/.cache), removed on teardown: the agent
  * CLI's run folder (C6) refuses one with an ancestor others can write, such as the profile's
- * /tmp.
+ * /tmp. `fontconfig` is the fontconfig file the browser reads instead of the system's
+ * (scenarioFontconfig), and with it GTK gets GTK_SETTINGS; null leaves the system's.
  * @param {{
  *   build: Build,
  *   headless?: boolean,
@@ -897,6 +944,7 @@ export function runVimmaOpen(args, { env, timeoutMs = 10_000, signal }) {
  *   programPath?: readonly string[],
  *   runtimeRoot?: string,
  *   prefs?: Record<string, boolean | number | string | null>,
+ *   fontconfig?: string | null,
  *   keep?: boolean,
  *   sessionBus?: boolean,
  *   args?: readonly string[],
@@ -924,6 +972,7 @@ export async function launch({
   programPath = ["/usr/bin", "/bin"],
   runtimeRoot,
   prefs = {},
+  fontconfig = null,
   keep = false,
   sessionBus = false,
   args = [],
@@ -948,10 +997,17 @@ export async function launch({
   /** @type {Record<string, string>} */
   let lastEnv = {};
   const cancel = new AbortController();
-  const profile = createProfile(tmpRoot, prefs);
+  // The sandbox resolves symlinks before it compares paths, hence the real path.
+  const profile = createProfile(tmpRoot, prefs, {
+    readPaths: fontconfig ? [`${realpathSync(dirname(fontconfig))}/`] : [],
+  });
   const home = join(profile, ".e2e-home");
   const tmp = join(profile, ".e2e-tmp");
   mkdirSync(home);
+  if (fontconfig) {
+    mkdirSync(join(home, ".config", "gtk-3.0"), { recursive: true });
+    writeFileSync(join(home, ".config", "gtk-3.0", "settings.ini"), GTK_SETTINGS);
+  }
   mkdirSync(tmp);
   const bin = Object.keys(programs).length ? join(profile, ".e2e-bin") : null;
   if (bin) {
@@ -996,6 +1052,7 @@ export async function launch({
       headless,
       home,
       tmp,
+      fontconfig,
       extra: build.env,
     });
     if (bin) env.PATH = [bin, ...programPath].join(delimiter);

@@ -326,7 +326,24 @@ Supersedes the sections above where they differ.
   private 0700 folder as one, made under the caller's `XDG_RUNTIME_DIR`, else `~/.cache`, and
   removed with the profile. The agent CLI's run folder (docs/specs/builtin-agent-cli.md, C6)
   lies in `XDG_RUNTIME_DIR`, else `~/.cache` under `HOME`, and refuses one with a folder above
-  it that other users can write: the profile's `HOME` lies in the shared `/tmp`.)
+  it that other users can write: the profile's `HOME` lies in the shared `/tmp`.) (Since changed:
+  on Linux a scenario's browser gets `FONTCONFIG_FILE=tests/e2e/fonts/fonts.conf`, which offers only
+  the DejaVu 2.37 faces and Liberation Sans 2.1.5 vendored beside it, maps `monospace`,
+  `sans-serif`, `serif`, `system-ui` and GTK's `Sans` to DejaVu and Helvetica and Arial to
+  Liberation Sans (as fontconfig's metric aliases do on CI), and sets ubuntu-24.04's rendering
+  (slight hinting, antialiasing, rgb order, default LCD filter); the profile's `HOME` gets a GTK
+  `settings.ini` with `gtk-font-name = Sans 10`, GTK's built-in default, which Arch's GTK overrides
+  with "Adwaita Sans 11" in `/usr/share/gtk-3.0/settings.ini`. The system's fonts and fontconfig
+  settings then no longer reach the pixels, so CI's baselines hold on a developer's machine with no
+  font package installed (issue #944). Vendored rather than required as a package, because that
+  needs no setup and the licence allows redistribution; `tests/e2e/fonts/README.md` records the
+  source and checksums. The content sandbox may read that folder (it reads fonts only from the
+  system's font folders otherwise, and drew hex boxes). The site suite and the agent bench keep the
+  machine's fonts, since real pages need scripts DejaVu lacks. macOS runs headless and is unchanged.
+  The profile also sets `browser.urlbar.placeholderName` to "Google", the name a used profile keeps
+  there, so the empty URL bar names the engine from the start: in a new profile it did only when the
+  search service finished starting before another update, since a bar left empty defers the change
+  until the user types (`UrlbarInputBase`'s `#deferUpdatePlaceholder`).)
 - **`ready()` and a server still starting.** The first server build answers
   `failed: no browser window` until its first window exists (≈ 70 % of runs failed at 0.7 s).
   `ready()` retries that one message, within its deadline; any other `failed` and every
@@ -382,4 +399,6 @@ differs by 18.6 % here), and `e2e.yml` uploads `e2e-output/` only when a step fa
 comparison within tolerance writes no actual image at all. To re-record: in a branch, make CI
 produce the image (for example a one-off run with the baseline deleted, which fails as "missing" and
 writes `m0-happy-path-help.actual.png`), take it with `gh run download <run-id> -n e2e-output`,
-check it by eye and commit it with a changelog line in the body.
+check it by eye and commit it with a changelog line in the body. (Since changed: with the fonts
+pinned (issue #944) a local run of this scenario differs from CI's baseline by 0.23 % instead of
+18.6 %; the baseline still comes from CI, because the rasteriser is the machine's FreeType.)

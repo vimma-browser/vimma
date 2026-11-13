@@ -5,6 +5,8 @@ tests/e2e/baselines/*.png binary
 tools/e2e/test/fixtures/*.png binary
 tools/e2e/test/fixtures/*.raw binary
 tools/e2e/test/fixtures/*.xwd binary
+# the fonts the e2e scenarios render with (tests/e2e/fonts/README.md)
+tests/e2e/fonts/*.ttf binary
 
 # Signed by Mozilla byte for byte: line endings must never be rewritten.
 tools/upstream/mozilla-release-key.asc -text

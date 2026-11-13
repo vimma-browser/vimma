@@ -135,6 +135,12 @@ npm run sites -- --filter github                          # live sites, a report
 npm run sites -- --offline --artifact                     # recorded pages, no network: the PR gate
 ```
 
+`npm run e2e -- --artifact --xvfb` runs the socket-driven e2e scenarios and compares their
+screenshots with baselines made on CI. On Linux it needs Xvfb (`xvfb` on Ubuntu,
+`xorg-server-xvfb` on Arch, `xorg-x11-server-Xvfb` on Fedora) and nothing else: the fonts the
+scenarios render with are in `tests/e2e/fonts/`, so the machine's own fonts do not matter
+([runbook](docs/runbook.md), "Baselines").
+
 `npm run mochitest` runs mach with the first `python3`, then `python3.N`, on `PATH` whose
 version is inside the range `engine/mach` declares, and says which one it chose when it skipped
 another. It stops with the interpreters it found when none fits. Set `VIMMA_MACH_PYTHON` to an
