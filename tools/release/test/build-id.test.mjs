@@ -11,7 +11,7 @@ import { buildIdProblem, fullVersionBuildIds, iniBuildId } from "../build-id.mjs
 // the release offers itself to itself as an update.
 
 const SCRIPT = fileURLToPath(new URL("../build-id.mjs", import.meta.url));
-const INI = (id) =>
+const INI = (/** @type {string} */ id) =>
   `; This file is not used.\n[App]\nVendor=Vimma\nName=Vimma\nVersion=159.0\nBuildID=${id}\n` +
   `[Gecko]\nMinVersion=159.0\n`;
 

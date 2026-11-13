@@ -897,8 +897,11 @@ function installedKiB(dir) {
 }
 
 /**
+ * `ctl` and `ctlLicenses` are optional in the type only: packageRelease checks both itself and
+ * throws when either is missing, so a caller that lost one is refused rather than shipping a
+ * release without the client.
  * @typedef {{
- *   tarball: string, ctl: string, ctlLicenses: string, outDir: string, config: SurferConfig,
+ *   tarball: string, ctl?: string, ctlLicenses?: string, outDir: string, config: SurferConfig,
  *   maintainer: string, repo: string, brandDir: string, tag?: string, sbom?: string,
  *   ctlComponent?: string, appimagetool?: string,
  *   runtime?: string, buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
