@@ -539,8 +539,11 @@ Instead:
    result is empty; then check containers (lifecycle above) and write the file if anything
    changed.
 2. Parse the window value with `fromSnapshot` (on error or a newer schema: log, start from the
-   definitions). Align its workspaces with the definitions: drop unknown ones, add missing ones
-   (empty), take names and order from the definitions.
+   definitions). (Since changed: `fromSnapshot` is removed; the host parses it with
+   `readSnapshot` in `WindowWorkspaces.sys.mjs`,
+   [#956](https://github.com/vimma-browser/vimma/issues/956).) Align its workspaces with the
+   definitions: drop unknown ones, add missing ones (empty), take names and order from the
+   definitions.
 3. Read every live tab's `vimma-tab` and `vimma-workspace`; mint a uuid for tabs without one;
    re-mint the second of any duplicate (a duplicated tab copies its values).
 4. Drop snapshot tabs that are not live (`closeTab`); add live tabs the snapshot lacks

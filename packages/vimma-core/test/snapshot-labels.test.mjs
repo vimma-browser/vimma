@@ -1,9 +1,16 @@
 import { describe, test, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import fc from "fast-check";
-import { fromSnapshot, readSnapshot, toSnapshot } from "../src/snapshot.mjs";
+import { readSnapshot, toSnapshot } from "../src/snapshot.mjs";
 import { createWorkspaces, openTab } from "../src/workspaces.mjs";
 import { setTabLabel } from "../src/tablabels.mjs";
+
+/**
+ * The workspace state a snapshot restores to, without its tab renames.
+ * @param {unknown} input
+ * @param {Parameters<typeof readSnapshot>[1]} [options]
+ */
+const stateOf = (input, options) => readSnapshot(input, options).state;
 
 const valid = () =>
   JSON.parse(
@@ -12,7 +19,7 @@ const valid = () =>
 
 describe("tab labels in snapshot v1 (m2-core-logic)", () => {
   test("labels round-trip through toSnapshot / readSnapshot", () => {
-    const state = fromSnapshot(valid());
+    const state = stateOf(valid());
     const labels = setTabLabel(setTabLabel({}, "tab-b", "mail"), "tab-a", "code");
     const json = toSnapshot(state, { tabLabels: labels });
     expect(json.tabLabels).toEqual({ "tab-a": "code", "tab-b": "mail" });
@@ -24,14 +31,14 @@ describe("tab labels in snapshot v1 (m2-core-logic)", () => {
   });
 
   test("without labels the snapshot is unchanged v1 and reads back with none", () => {
-    const state = fromSnapshot(valid());
+    const state = stateOf(valid());
     expect(toSnapshot(state, { tabLabels: {} })).toEqual(valid());
     expect(toSnapshot(state)).not.toHaveProperty("tabLabels");
     expect(readSnapshot(valid())).toMatchObject({ tabLabels: {}, warnings: [] });
   });
 
   test("labels of tabs that are gone are not written", () => {
-    const state = fromSnapshot(valid());
+    const state = stateOf(valid());
     const json = toSnapshot(state, { tabLabels: { "tab-a": "code", closed: "old" } });
     expect(json.tabLabels).toEqual({ "tab-a": "code" });
   });
@@ -40,7 +47,7 @@ describe("tab labels in snapshot v1 (m2-core-logic)", () => {
     const raw = valid();
     raw.tabLabels = { "tab-a": " padded\u202e ", gone: "x", "tab-b": 7, "tab-c": "" };
     const r = readSnapshot(raw);
-    expect(r.state).toEqual(fromSnapshot(valid()));
+    expect(r.state).toEqual(stateOf(valid()));
     expect(r.tabLabels).toEqual({ "tab-a": "padded" });
     expect(r.warnings.map((w) => w.path)).toEqual([
       'tabLabels["tab-a"]',
@@ -50,7 +57,7 @@ describe("tab labels in snapshot v1 (m2-core-logic)", () => {
     ]);
     raw.tabLabels = "nonsense";
     expect(readSnapshot(raw).warnings.map((w) => w.path)).toEqual(["tabLabels"]);
-    expect(fromSnapshot(raw)).toEqual(fromSnapshot(valid()));
+    expect(stateOf(raw)).toEqual(stateOf(valid()));
   });
 
   test("property: any tabLabels value never fails a restore", () => {
@@ -59,7 +66,7 @@ describe("tab labels in snapshot v1 (m2-core-logic)", () => {
         const raw = valid();
         raw.tabLabels = labels;
         const r = readSnapshot(raw);
-        expect(r.state).toEqual(fromSnapshot(valid()));
+        expect(r.state).toEqual(stateOf(valid()));
       }),
     );
   });

@@ -13,6 +13,9 @@ const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subpro
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { ThemeHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ui/theme-host.mjs",
+);
 
 const START = "chrome://browser/content/vimma/start/start.html";
 const POLL_MS = 100;
@@ -258,6 +261,33 @@ add_task(async function status_bar_takes_the_omarchy_background() {
   await waitForBar("#101820", "the status bar's background is the fixture's dark_background");
   Assert.equal(token("--vimma-bg"), "#202020", "--vimma-bg is the fixture's background");
   Assert.equal(token("--vimma-color-scheme"), "dark", "a dark theme");
+});
+
+// The same hazard as browser_vimma_config.js's poll test: a repeating timer leaves the timer list
+// while it fires, and browser-test.js, which lists repeating timers once as the run starts,
+// reports a timer missing from that list after each file. The theme poll runs only with an
+// Omarchy theme to follow, which this file's setup turns on.
+add_task(async function the_poll_is_not_a_repeating_timer_a_test_could_be_blamed_for() {
+  const repeating = () =>
+    Cc["@mozilla.org/timer-manager;1"]
+      .getService(Ci.nsITimerManager)
+      .getTimers()
+      .filter(
+        (t) =>
+          t.type !== Ci.nsITimer.TYPE_ONE_SHOT &&
+          t.type !== Ci.nsITimer.TYPE_ONE_SHOT_LOW_PRIORITY &&
+          t.name.includes("theme-host"),
+      )
+      .map((t) => `${t.name} ${t.delay}`);
+  Assert.ok(ThemeHost.status.polling, "sanity: the Omarchy theme is polled");
+  const busyUntil = Date.now() + 3 * POLL_MS;
+  while (Date.now() < busyUntil) {
+    // The poll fires meanwhile; its callback waits for the main thread.
+  }
+  const listed = repeating();
+  await TestUtils.waitForTick();
+  await new Promise((r) => setTimeout(r, 1.5 * POLL_MS));
+  Assert.deepEqual(repeating(), listed, "the harness's list of repeating timers holds");
 });
 
 add_task(async function start_page_takes_the_theme_and_follows_it() {
