@@ -2583,6 +2583,13 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
 [`reads no secret, deploys to no environment and only reads the repository`](../tools/package/test/macos.test.mjs),
 [`pins one rcodesign release and its SHA-256, checked before the file is used`](../tools/package/test/macos.test.mjs)
 
+Every job of these workflows that sets up Node takes the exact version in `.nvmrc` of the commit it
+checked out (`node-version-file: .nvmrc`), never a bare major such as `node-version: 22`, which
+resolves to whichever 22.x the runner's tool cache or the version manifest has that day: the
+release tools run on the Node their tests ran on. Every release tag has `.nvmrc`; the build jobs
+of the same commit read it too, so a tree without it could not be released anyway.
+[`every setup-node step takes .nvmrc's version`](../tools/test/runner-node.test.ts)
+
 - B1. Nothing is **ever** built from, or reported on, a Firefox source tarball unless its SHA-512
   is listed in a `SHA512SUMS` carrying exactly one good signature by a valid signing subkey of
   Mozilla's release key `14F26682D0916CDD81E37B6D61B7B526D98F0353`, pinned in

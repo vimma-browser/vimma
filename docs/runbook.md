@@ -1139,11 +1139,13 @@ issue with the log; do not re-run to green), and look at the numbers before touc
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
 pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the base-branch
 guards run on the runner's own Node, docs/security.md B18), and so do the nightly build jobs and
-most release jobs. Five release.yml jobs (`ctl`, `package`, `mar`, `macos-ctl`, `macos-smoke`) and
-macos.yml's `smoke` set up `node-version: 22`, the newest 22.x the runner has; the package job
-checks out a release tag, and tags from before `.nvmrc` lack it. `tools/test/runner-node.test.ts`
-lists those jobs, and the ones that still run `node` or `npm` on the runner image's own Node,
-whose version this repository does not choose; both lists only shrink (#946). A Node bump is its
+every release and macos job: no setup-node step takes a bare major such as `node-version: 22`,
+which would give the newest 22.x the runner has. A release job checks out the tag's commit before
+setup-node, so it reads that tag's `.nvmrc`; every release tag has one (from v0.1.1), and the
+build jobs of the same commit read it too, so a tree without it could not be released anyway.
+`tools/test/runner-node.test.ts` fails on a setup-node without `.nvmrc`, and lists the jobs that
+still run `node` or `npm` on the runner image's own Node, whose version this repository does not
+choose; that list only shrinks (#946). A Node bump is its
 own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node` to it
 (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
