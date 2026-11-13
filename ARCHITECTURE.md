@@ -371,7 +371,7 @@ person acting; publishing the draft stays a person's click
 ## Keeping it current
 
 `npm run arch-lint` (part of `npm run lint`, and a step of its own in `ci.yml`, docs-only pull
-requests included) runs `tools/arch-lint/arch-lint.mjs`, which fails when a folder under
+requests included) runs `tools/arch-lint/arch-lint.ts`, which fails when a folder under
 `src/browser/base/content/vimma/`, a folder under `tools/` or a workflow is not named here, or
 when this page names one that no longer exists. A name counts in a code span written as
 `` `vimma/<folder>/` ``, `` `tools/<folder>/` `` or `` `<workflow>.yml` `` (or `.yaml`). Adding a folder or a

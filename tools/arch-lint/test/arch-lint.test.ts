@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, test } from "vitest";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { archErrors, listEntries, namedEntries } from "../arch-lint.mjs";
+import { archErrors, listEntries, namedEntries } from "../arch-lint.ts";
 
 /** What the repository holds, in the shape `listEntries` returns. */
 const repo = {
@@ -93,14 +93,10 @@ describe("archErrors", () => {
 });
 
 describe("listEntries", () => {
-  /**
-   * A git repository holding `files`, each tracked unless listed in `ignored`.
-   * @param {string[]} files
-   * @param {string[]} [untracked]
-   */
-  function repoWith(files, untracked = []) {
+  /** A git repository holding `files`, each tracked unless listed in `ignored`. */
+  function repoWith(files: string[], untracked: string[] = []) {
     const root = tempDir("vimma-arch-lint-");
-    const git = (/** @type {string[]} */ ...args) =>
+    const git = (...args: string[]) =>
       execFileSync("git", ["-c", "init.defaultBranch=main", ...args], { cwd: root, stdio: "pipe" });
     git("init", "-q");
     for (const f of [...files, ...untracked]) {
