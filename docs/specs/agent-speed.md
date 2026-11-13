@@ -8,6 +8,12 @@ breakdown); `packages/vimma-core/src/` (`agent-loop.mjs`, `agent-providers.mjs`,
 `actors/VimmaChild.sys.mjs` for element lists); `docs/agent-bench.md`, `docs/runbook.md`,
 `docs/guide.md`, `docs/security.md` · Upstream patches: none · ADR: none. No new dependency.
 
+Since changed: vimma-ctl's `src/mcp.rs` is now the `src/mcp/` module
+([#934](https://github.com/vimma-browser/vimma/issues/934)), split with no change of behaviour:
+`INSTRUCTIONS` in `instructions.rs`, the tool list in `tool_list.rs`, the argument checks in
+`args.rs`, the agent commands in `command.rs`, the result texts in `render.rs` and the JSON-RPC side
+in `server.rs`, each file with its tests.
+
 Issue: [#596](https://github.com/vimma-browser/vimma/issues/596)
 
 Builds on [builtin-agent](builtin-agent.md) (the model loop, the bench, and its Delivery 7, the

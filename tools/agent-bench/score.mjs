@@ -20,7 +20,7 @@
 
 /**
  * Whether a tool result is vimma-ctl mcp's answer to a question the user answered no
- * (`tools/vimma-ctl/src/mcp.rs`, the `user` denial).
+ * (`tools/vimma-ctl/src/mcp/render.rs`, the `user` denial).
  * @param {{ isError?: boolean, content?: Array<{ type: string, text?: string }> }} result
  */
 export function isUserDenial(result) {

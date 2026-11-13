@@ -32,7 +32,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   after changing `actions.mjs` or `defaults.mjs`.
 - `npm run gen-agent-tools`: regenerate the built-in agent's tool list and system text
   (`packages/vimma-core/src/agent-tools-data.mjs`) after changing vimma-ctl's MCP tool fixture
-  (`tools/vimma-ctl/tests/fixtures/mcp/tools-list.json`) or `INSTRUCTIONS` in `mcp.rs`.
+  (`tools/vimma-ctl/tests/fixtures/mcp/tools-list.json`) or `INSTRUCTIONS` in
+  `tools/vimma-ctl/src/mcp/instructions.rs`.
 - `npm run gen-update-keys`: regenerate the pinned update keys
   (`packages/vimma-core/src/update-keys.mjs`) after changing the updater's certificates
   (`configs/updater/*.der`).

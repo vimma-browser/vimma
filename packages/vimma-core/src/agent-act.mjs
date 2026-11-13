@@ -395,7 +395,7 @@ export const AGENT_FILL = Object.freeze({ fields: 32, value: 1024 });
  * Characters a fill's value must not hold because they draw nothing (F14; security.md M27):
  * format characters (zero-width, bidirectional, tags), line and paragraph separators, variation
  * selectors and fillers. Text hidden in them would pass the question unseen. The same list is in
- * vimma-ctl's mcp.rs.
+ * vimma-ctl's mcp/args.rs.
  */
 export const FILL_INVISIBLE = Object.freeze(
   /** @type {[number, number][]} */ ([

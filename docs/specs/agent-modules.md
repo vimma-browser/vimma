@@ -281,7 +281,7 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
   reaches the model inside delimiters a page cannot close (`wrapUntrusted`,
   `packages/vimma-core/src/agent.mjs:508`), a mitigation and not a guarantee. `vimma_show` always
   asks (`ALWAYS_ASK`, `agent.mjs:134`). The instructions every MCP agent gets are `INSTRUCTIONS`
-  (`tools/vimma-ctl/src/mcp.rs:55`).
+  (`tools/vimma-ctl/src/mcp/instructions.rs:9`).
 - **Sensitive fields.** The actors already tell whether a password, card or one-time-code field
   shows a value (`actors/agent-fields.mjs`, `plainlySensitive` at `:181`, `sensitiveValueShown`
   at `:232`), for agent screenshots (security.md M31).
