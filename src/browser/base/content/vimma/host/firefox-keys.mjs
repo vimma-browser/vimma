@@ -33,7 +33,7 @@ const MENU_MARK = "vimma-key";
 /** The menu bar, where DevTools and others add menu items with keys after startup. */
 const MENUBAR_ID = "main-menubar";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AppConstants">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
 });
@@ -52,7 +52,7 @@ export const DEFAULT_FIREFOX_KEYS = Object.freeze({
 
 export class FirefoxKeys {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {FirefoxKeySetting} setting
    * @param {ReadonlySet<string>} [bound]  the chords Vimma binds (core boundChords)
    */

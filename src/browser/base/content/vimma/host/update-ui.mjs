@@ -33,7 +33,7 @@ import { openOrSay } from "./tab-ops.mjs";
 
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "PrivateBrowsingUtils" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -73,18 +73,18 @@ const REARM_EVENTS = ["activate", "deactivate", "focus", "blur"];
  *   loses: the private workspace's tabs, or every tab (core restartKeepsTabs)
  */
 
-/** @type {Map<Window, UpdateWindow>} */
+/** @type {Map<BrowserWindow, UpdateWindow>} */
 const windows = new Map();
-/** When each window last had a key, or came to the front. @type {WeakMap<Window, number>} */
+/** When each window last had a key, or came to the front. @type {WeakMap<BrowserWindow, number>} */
 const lastKey = new WeakMap();
-/** @type {WeakMap<Window, (e: Event) => void>} */
+/** @type {WeakMap<BrowserWindow, (e: Event) => void>} */
 const rearmers = new WeakMap();
 /** The versions asked about in this session, answered either way. @type {string[]} */
 let asked = [];
 /** When each version's restart question was answered in this session.
  * @type {Record<string, number>} */
 let dismissed = {};
-/** The question on screen, and for the restart what it said is lost. @type {{ win: Window,
+/** The question on screen, and for the restart what it said is lost. @type {{ win: BrowserWindow,
  *   version: string, kind: "steps" | "restart",
  *   said?: { privateTabs: boolean, tabsKept: boolean } } | null} */
 let current = null;
@@ -99,13 +99,13 @@ let removeListener = null;
 
 const armMs = () => Services.prefs.getIntPref(ARMING_PREF, 1000);
 
-/** @param {Window} win */
-const isFocused = (win) => /** @type {any} */ (Services.focus).activeWindow === win;
+/** @param {BrowserWindow} win */
+const isFocused = (win) => Services.focus.activeWindow === win;
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 const isPrivate = (win) => lazy.PrivateBrowsingUtils.isWindowPrivate(win);
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 const isFullscreen = (win) => win.document.documentElement.hasAttribute("inDOMFullscreen");
 
 /** The focused browser window Vimma runs in, if any. */
@@ -143,7 +143,7 @@ function announce() {
 }
 
 /**
- * @param {Window} win @param {string} version @param {"steps" | "restart"} kind
+ * @param {BrowserWindow} win @param {string} version @param {"steps" | "restart"} kind
  * @param {string} question
  * @param {{ privateTabs: boolean, tabsKept: boolean }} [said]  what the restart question says
  *   is lost
@@ -237,7 +237,7 @@ function sync() {
 /**
  * The window came to the front or left it: it counts as one being typed in (no question for
  * 1.5 s), and an open line arms again, so a key meant for another window never answers it.
- * @param {Window} win @param {Event} e
+ * @param {BrowserWindow} win @param {Event} e
  */
 function onWindowChange(win, e) {
   if ((e.type === "focus" || e.type === "blur") && e.target !== win) return;
@@ -250,7 +250,7 @@ function onWindowChange(win, e) {
 export const UpdateUi = {
   /**
    * A browser window and what the host knows about it (VimmaHost.init).
-   * @param {Window} win @param {UpdateWindow} w
+   * @param {BrowserWindow} win @param {UpdateWindow} w
    */
   register(win, w) {
     windows.set(win, w);
@@ -264,7 +264,7 @@ export const UpdateUi = {
     sync();
   },
 
-  /** @param {Window} win  closing (VimmaHost.uninit) */
+  /** @param {BrowserWindow} win  closing (VimmaHost.uninit) */
   unregister(win) {
     const rearm = rearmers.get(win);
     if (rearm) for (const type of REARM_EVENTS) win.removeEventListener(type, rearm, true);
@@ -289,7 +289,7 @@ export const UpdateUi = {
    * Every keydown in `win`, before any binding: the open question's keys (consumed), or a
    * timestamp for the "no key for 1,500 ms" rule. Chords with ctrl, alt or meta go on to the
    * bindings. Nothing counts before the line is armed, and a held key never does.
-   * @param {Window} win @param {KeyboardEvent} e
+   * @param {BrowserWindow} win @param {KeyboardEvent} e
    * @returns {boolean} whether the key was the question's
    */
   onKey(win, e) {
@@ -343,7 +343,7 @@ export const UpdateUi = {
   /**
    * Focus moved in `win`: into a field, the line goes back to waiting, so what is typed there
    * is the field's.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   onFocusChange(win) {
     if (current?.win !== win) return;
@@ -353,7 +353,7 @@ export const UpdateUi = {
     }
   },
 
-  /** Whether the question line is open in `win`. @param {Window} win */
+  /** Whether the question line is open in `win`. @param {BrowserWindow} win */
   isOpen(win) {
     return current?.win === win && !!windows.get(win)?.prompt.isOpen;
   },

@@ -121,7 +121,7 @@ import {
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
 export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AgentChat">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat reaches this module through the agent commands.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
@@ -178,7 +178,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
 
 /**
  * @typedef {object} WindowState
- * @property {Window} win
+ * @property {BrowserWindow} win
  * @property {Keymap} keymap
  * @property {(e: KeyboardEvent) => void} onKeyDown
  * @property {(e: KeyboardEvent) => void} onKeyDownAfter  after the page: text-field keys
@@ -455,10 +455,10 @@ const ON_SELECTED = new Set([
   "find.previous",
 ]);
 
-/** @type {WeakMap<Window, WindowState>} */
+/** @type {WeakMap<BrowserWindow, WindowState>} */
 const states = new WeakMap();
 /** The windows in `states`, for `configure` (a WeakMap cannot be iterated). */
-/** @type {Set<Window>} */
+/** @type {Set<BrowserWindow>} */
 const windows = new Set();
 
 /**
@@ -503,7 +503,7 @@ function siteInsert(browser) {
 
 /**
  * The focused pane's 1-based place in reading order and the pane count, or null with one pane.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function paneStatus(win) {
   const panes = PaneViews.get(win)?.panes;
@@ -546,7 +546,7 @@ export const VimmaHost = {
 
   /**
    * Test-only: the window's live grep session (docs/specs/live-grep.md).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @returns {GrepSession | undefined}
    */
   _grep(win) {
@@ -567,10 +567,10 @@ export const VimmaHost = {
     };
   },
 
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   init(win) {
     if (states.has(win)) return;
-    /** @type {Map<string, Window>} the window of each tab tab search listed (tab-search.mjs) */
+    /** @type {Map<string, BrowserWindow>} the window of each tab tab search listed (tab-search.mjs) */
     let tabWindows = new Map();
     const keymap = settings.keymap ?? compileKeymap({}, { mac: MAC });
     /** @type {WindowState} */
@@ -603,10 +603,7 @@ export const VimmaHost = {
         state.grep.close({ tabChanged: true });
         state.rename.close({ tabChanged: true });
         // The outline belongs to its tab's document; the new tab's PDF shows its own.
-        if (
-          state.outline.isOpen &&
-          state.outline.browser !== /** @type {any} */ (win).gBrowser?.selectedBrowser
-        ) {
+        if (state.outline.isOpen && state.outline.browser !== win.gBrowser?.selectedBrowser) {
           state.outline.close();
         }
         showOutlineBeside(state, OUTLINE_HOST);
@@ -786,7 +783,7 @@ export const VimmaHost = {
         if (state.outline.browser === browser) {
           state.outline.followPage(PdfOps.state(browser)?.page ?? 1);
         }
-        if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+        if (browser === win.gBrowser?.selectedBrowser) {
           showOutlineBeside(state, OUTLINE_HOST);
         }
         this._emit(state);
@@ -796,7 +793,7 @@ export const VimmaHost = {
       stopOutline: PdfOps.subscribeOutline((browser, outline) => {
         if (browser !== state.outlineFor?.browser) {
           // The outline asked for as the PDF opened (decision 19): shown if it still may be.
-          if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
+          if (browser === win.gBrowser?.selectedBrowser) {
             showOutlineBeside(state, OUTLINE_HOST);
             this._emit(state);
           }
@@ -805,7 +802,7 @@ export const VimmaHost = {
         dropOutlineAsk(state);
         // Only into the state Tab was pressed in: its tab selected, in normal mode or with a panel
         // in the slot, which the outline replaces; never under a picker, prompt or the help.
-        const selected = browser === /** @type {any} */ (win).gBrowser?.selectedBrowser;
+        const selected = browser === win.gBrowser?.selectedBrowser;
         const mode = this._mode(state);
         if (selected && (mode === "normal" || mode === "panel")) {
           showOutline(state, browser, outline);
@@ -1045,7 +1042,7 @@ export const VimmaHost = {
     }
   },
 
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   uninit(win) {
     const state = states.get(win);
     if (!state) return;
@@ -1102,7 +1099,7 @@ export const VimmaHost = {
    * sequence (dispatcher.pending() labels); `command` while a `/` or `?` search is typed (Vim's
    * command-line mode), and that search or the page's last one (m1-find); the focused pane's
    * place among two or more (m4-split-panes); the active workspace (m3-workspaces).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @returns {{ mode: Mode, pending: string[], find?: FindStatus | null,
    *   pane?: { index: number, count: number } | null, configErrors?: readonly ConfigError[],
    *   configFile?: string, alerts?: readonly string[],
@@ -1117,7 +1114,7 @@ export const VimmaHost = {
   status(win) {
     const state = states.get(win);
     if (!state) return { mode: "insert", pending: [] };
-    const browser = /** @type {any} */ (win).gBrowser?.selectedBrowser;
+    const browser = win.gBrowser?.selectedBrowser;
     return {
       // The chat window's transcript has focus: its normal mode (docs/specs/builtin-agent.md 14).
       mode: state.find.typing ? "command" : state.agentChat.inNormal ? "normal" : this._mode(state),
@@ -1160,11 +1157,11 @@ export const VimmaHost = {
   inUse(browser) {
     const win = browser?.ownerDocument?.defaultView;
     const state = win && states.get(win);
-    if (!state || /** @type {any} */ (Services.focus).activeWindow !== win) return false;
+    if (!state || Services.focus.activeWindow !== win) return false;
     if (!browser.docShellIsActive) return false;
     // The tab's own find bar open (the user's ctrl+f or `/` there): its finder is the agent's.
-    const tab = /** @type {any} */ (win).gBrowser?.getTabForBrowser(browser);
-    const findbar = tab && /** @type {any} */ (win).gBrowser.getCachedFindBar(tab);
+    const tab = win.gBrowser?.getTabForBrowser(browser);
+    const findbar = tab && win.gBrowser.getCachedFindBar(tab);
     // A page without our actor takes every key itself: in use while shown.
     return (
       (!!findbar && !findbar.hidden) ||
@@ -1182,14 +1179,14 @@ export const VimmaHost = {
    */
   isFocusedPage(browser) {
     const win = browser?.ownerDocument?.defaultView;
-    if (!win || /** @type {any} */ (Services.focus).activeWindow !== win) return false;
+    if (!win || Services.focus.activeWindow !== win) return false;
     return this._focusedBrowser(win) === browser;
   },
 
   /**
    * Firefox's own shortcuts that are off in `win`, and the chords of `[firefox] disable` that
    * match none (about:vimma; docs/specs/key-handling-batch.md § 1).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   firefoxKeys(win) {
     return states.get(win)?.firefoxKeys?.status() ?? { on: [], off: [], unmatched: [] };
@@ -1197,7 +1194,7 @@ export const VimmaHost = {
 
   /**
    * Shows `text` as the window's notice (ConfigHost's `:config` when it cannot create the file).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {string} text
    */
   say(win, text) {
@@ -1247,7 +1244,7 @@ export const VimmaHost = {
   /**
    * Calls `fn` after anything that may change `status(win)`. Cheap to call often: listeners
    * debounce. Whatever changes the mode (focus detection, a content actor) calls `_emit`.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {() => void} fn
    * @returns {() => void} unsubscribe
    */
@@ -1363,7 +1360,7 @@ export const VimmaHost = {
 
   /**
    * The content <browser> that has focus, or null when focus is in chrome (URL bar, find bar).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   _focusedBrowser(win) {
     const el = win.document.activeElement;
@@ -1414,7 +1411,7 @@ export const VimmaHost = {
    * @param {WindowState} state
    */
   _selectedBrowser(state) {
-    return /** @type {any} */ (state.win).gBrowser?.selectedBrowser ?? null;
+    return state.win.gBrowser?.selectedBrowser ?? null;
   },
 
   /**
@@ -1441,7 +1438,7 @@ export const VimmaHost = {
   },
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowState} state
    * @param {KeyboardEvent} e
    */
@@ -1545,7 +1542,7 @@ export const VimmaHost = {
   },
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowState} state
    * @param {KeyboardEvent} e
    * @param {Mode} mode
@@ -1555,7 +1552,7 @@ export const VimmaHost = {
     const first = state.dispatcher.pending().length === 0;
     this._clearTimer(win, state);
     // The PDF viewer's bindings while its tab is selected (ADR-024): the parent's own view.
-    const context = PdfOps.context(/** @type {any} */ (win).gBrowser?.selectedBrowser);
+    const context = PdfOps.context(win.gBrowser?.selectedBrowser);
     const result = state.dispatcher.dispatch(mode, chord, context);
     // about:vimma's last keys; never a private window's (private-workspace decision 8b).
     if (!("replay" in result) && !state.private) KeyLog.record(mode, chord, result);
@@ -1665,7 +1662,7 @@ export const VimmaHost = {
   _pageFirst(state, chord, mode) {
     const key = formatKey(chord);
     if (settings.firefox.enable.includes(key)) return false;
-    const win = /** @type {any} */ (state.win);
+    const win = state.win;
     let keyboardLock = false;
     try {
       keyboardLock = (win.document.fullscreenKeyboardLock ?? "none") !== "none";
@@ -1729,7 +1726,7 @@ export const VimmaHost = {
     const principal = browser?.contentPrincipal;
     if (!principal) return false;
     try {
-      const perms = /** @type {any} */ (Services).perms;
+      const perms = Services.perms;
       return perms.testPermissionFromPrincipal(principal, "shortcuts") === perms.DENY_ACTION;
     } catch {
       return false;
@@ -1959,7 +1956,7 @@ export const VimmaHost = {
 
   /**
    * Test-only: a window's state.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   _state(win) {
     return states.get(win);
@@ -1967,7 +1964,7 @@ export const VimmaHost = {
 
   /**
    * Test-only: the window's hint mode, or null.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   _hints(win) {
     const hint = states.get(win)?.hint;
@@ -1977,7 +1974,7 @@ export const VimmaHost = {
 
   /**
    * Test-only: the window's focused text block, or null.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   _element(win) {
     const s = states.get(win)?.element.session;
@@ -2124,7 +2121,7 @@ export const VimmaHost = {
     const own = !!here && href.startsWith(`${here}#`);
     const page = own ? await PdfOps.linkPage(browser, target) : 0;
     // The answer can come after the user has gone to another tab or pressed another key.
-    if (state.hint || browser !== /** @type {any} */ (state.win).gBrowser?.selectedBrowser) return;
+    if (state.hint || browser !== state.win.gBrowser?.selectedBrowser) return;
     state.notice.show(page ? `page ${page}` : href);
   },
 
@@ -2141,7 +2138,7 @@ export const VimmaHost = {
   },
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowState} state
    */
   _cancelPending(win, state) {
@@ -2151,7 +2148,7 @@ export const VimmaHost = {
   },
 
   /**
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @param {WindowState} state
    */
   _clearTimer(win, state) {

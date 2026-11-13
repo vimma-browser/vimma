@@ -10,7 +10,7 @@
 // is installed here when Omarchy is found (pref vimma.theme.omarchyHook): ThemeHost looks for
 // Omarchy once (docs/specs/theme-appearance.md, A); without it nothing here touches the disk.
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils" | "ThemeHost">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
   ThemeHost: "chrome://browser/content/vimma/ui/theme-host.mjs",

@@ -15,11 +15,11 @@ export const HINT_OVERLAY_ID = "vimma-hints";
 export const ELEMENT_OUTLINE_ID = "vimma-element";
 const STYLESHEET = "chrome://browser/skin/vimma/hints.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 export class HintOverlay {
-  /** @param {Window} win  a browser window */
+  /** @param {BrowserWindow} win  a browser window */
   constructor(win) {
     this.win = win;
     /** @type {HTMLElement | null} */

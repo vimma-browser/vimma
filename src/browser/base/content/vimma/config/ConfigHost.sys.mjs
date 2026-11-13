@@ -45,7 +45,7 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
 /** @import { ActiveConfig, ConfigError, ResolvedConfig } from "../core/config.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -98,9 +98,9 @@ let signature = "";
 let running = null;
 /** Another read was asked for while one ran (`:source` during a poll). */
 let again = false;
-/** @type {unknown} */
+/** @type {number | null} */
 let timer = null;
-/** @type {Set<Window>} */
+/** @type {Set<BrowserWindow>} */
 const windows = new Set();
 /**
  * `[ui] toolbar` of the last config applied; null before the first. The pref is written only
@@ -126,7 +126,7 @@ async function stat(path) {
   }
 }
 
-/** @param {Window} win @param {ResolvedConfig} config */
+/** @param {BrowserWindow} win @param {ResolvedConfig} config */
 function applyToWindow(win, config) {
   const view = PaneViews.get(win);
   if (!view) return;
@@ -363,7 +363,7 @@ function tilde(/** @type {string} */ path) {
 /**
  * First run: creates a missing config.toml from the template (as `:config` would), with one
  * notice, and marks the profile done either way. An existing file, even empty, is left alone.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Promise<"created" | "exists" | "failed">}
  */
 async function firstRun(win) {
@@ -399,7 +399,7 @@ function firstRunBlocked() {
 /**
  * `:config`: config.toml in a new tab (view-source, read-only), first created from the
  * commented template, folders too, when it does not exist. An existing file is never written.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 async function edit(win) {
   const path = configPath();
@@ -450,10 +450,12 @@ const reloadObserver = (_subject, _topic, data) => {
 
 /** @param {unknown} subject  the window `:config` was typed in */
 const editObserver = (subject) => {
-  edit(/** @type {Window} */ (subject)).catch((e) => console.error("vimma: :config failed", e));
+  edit(/** @type {BrowserWindow} */ (subject)).catch((e) =>
+    console.error("vimma: :config failed", e),
+  );
 };
 
-/** @param {Window} win  the first window, for the first run's notice */
+/** @param {BrowserWindow} win  the first window, for the first run's notice */
 function start(win) {
   Services.prefs.addObserver(PATH_PREF, onPref);
   Services.prefs.addObserver(POLL_PREF, onPref);
@@ -491,7 +493,7 @@ export const ConfigHost = {
   /**
    * Once per browser window (vimma.js), after VimmaHost and PaneViews: the config in force now,
    * and polling while any window is open.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   init(win) {
     if (windows.has(win)) return;

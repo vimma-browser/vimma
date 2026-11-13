@@ -82,7 +82,7 @@ import {
 /**
  * The host's module state the runners reach, through functions the host passes in.
  * @typedef {object} HostState
- * @property {(win: Window) => WindowState | undefined} stateOf  a window's state
+ * @property {(win: BrowserWindow) => WindowState | undefined} stateOf  a window's state
  * @property {(browser: any) => PageMode | undefined} browserMode  absent: normal
  * @property {(browser: any, mode: PageMode) => void} setBrowserMode
  * @property {(browser: any) => void} blurPage  Esc: focus out of the page, held in normal
@@ -133,8 +133,8 @@ function switchWorkspace(s, text) {
 /**
  * A workspace operation (workspace-ops.mjs) that takes the rest of a command line; without one
  * (its key) it asks on the command line, starting with `prompt`.
- * @param {(win: Window, text: string) => string | null} op
- * @param {(win: Window) => string} prompt
+ * @param {(win: BrowserWindow, text: string) => string | null} op
+ * @param {(win: BrowserWindow) => string} prompt
  * @param {(s: WindowState) => void} emit  the host's redraw
  * @returns {(state: WindowState, action: Action, text?: string) => void}
  */
@@ -589,7 +589,7 @@ export function hostRunners(host, page) {
     "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
     // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).
     "config.edit": (/** @type {WindowState} */ s) =>
-      Services.obs.notifyObservers(/** @type {any} */ (s.win), CONFIG_EDIT_TOPIC),
+      Services.obs.notifyObservers(s.win, CONFIG_EDIT_TOPIC),
     // `:mcp [on|off|forget]` (docs/specs/vimma-mcp.md): agents and the agent workspace.
     "mcp.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
       s.notice.hide();

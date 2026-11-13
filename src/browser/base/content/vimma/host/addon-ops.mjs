@@ -15,7 +15,7 @@ import { Toolbar } from "../ui/toolbar.mjs";
 /** @import { AddonOp } from "../core/picker.mjs" */
 /** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AddonManager" | "ExtensionPermissions">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
@@ -137,18 +137,18 @@ export function addonNames() {
  * own keyboard path (the `_execute_action` shortcut's `triggerAction`): its popup, which takes
  * focus, or its `onClicked` command. A button in the Unified Extensions panel opens that panel
  * first and the popup anchors there.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {AddonItem} item
  * @returns {string | null}
  */
 export function openAddonPopup(win, item) {
   if (!item.enabled) return `${item.display} is disabled (x in ctrl+b e enables it)`;
   const policy = /** @type {any} */ (globalThis).WebExtensionPolicy.getByID(item.addonId);
-  const action = policy && /** @type {any} */ (win).gUnifiedExtensions?.browserActionFor(policy);
+  const action = policy && win.gUnifiedExtensions?.browserActionFor(policy);
   if (!action) return `${item.display}: no popup or button`;
   // A hidden toolbar shows in full first, so the popup hangs from its own button or the
   // extensions menu as with the toolbar shown (docs/specs/toolbar-toggle.md decision 10).
-  if (action.action?.getPopupUrl?.(/** @type {any} */ (win).gBrowser.selectedTab)) {
+  if (action.action?.getPopupUrl?.(win.gBrowser.selectedTab)) {
     Toolbar.get(win)?.holdForPopup("addon", "full");
   }
   action.triggerAction(win);
@@ -157,7 +157,7 @@ export function openAddonPopup(win, item) {
 
 /**
  * `:addon <name>`: the best match's popup.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} text
  * @returns {Promise<string | null>}
  */
@@ -169,7 +169,7 @@ export async function openAddonByName(win, text) {
 
 /**
  * Enter in the picker: the add-on with `id`.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {Promise<string | null>}
  */
@@ -181,14 +181,14 @@ export async function openAddonById(win, id) {
 /**
  * `o`: the options page in a tab (a tab already showing it is selected), as about:addons'
  * openOptionsInTab, also for an inline options page; without one, about:addons' details.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  * @returns {Promise<string | null>}
  */
 export async function openAddonOptions(win, id) {
   const found = await listed(id);
   if (!found) return ADDON_GONE;
-  const w = /** @type {any} */ (win);
+  const w = win;
   const url = found.addon.optionsURL;
   if (url) {
     w.switchToTabHavingURI(url, true, {

@@ -21,7 +21,7 @@ import { setSitePopups } from "./permission-ops.mjs";
 
 /** @import { PopupItem } from "../core/popups.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"PopupAndRedirectBlockerObserver">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   PopupAndRedirectBlockerObserver: "resource:///modules/PopupAndRedirectBlockerObserver.sys.mjs",
 });
@@ -35,12 +35,12 @@ const SHOW_PREF = "privacy.popups.showBrowserMessage";
  * What the picker last listed, per window: the browser it read, its page's principal and
  * Firefox's own records, which a row's id indexes. The picker closes when the tab changes but not
  * when the page navigates, so a row runs only while the principal is the one listed.
- * @type {WeakMap<Window, { browser: any, principal: any, popups: any[], redirect: any }>}
+ * @type {WeakMap<BrowserWindow, { browser: any, principal: any, popups: any[], redirect: any }>}
  */
 const listed = new WeakMap();
 
 /** The permission manager, which types/firefox.d.ts does not describe. */
-const perms = () => /** @type {any} */ (Services).perms;
+const perms = () => Services.perms;
 
 /**
  * Whether `dom.disable_open_during_load` is locked (enterprise policy): Firefox's options menu
@@ -49,13 +49,13 @@ const perms = () => /** @type {any} */ (Services).perms;
  */
 export const popupLocked = () => Services.prefs.prefIsLocked(LOCK_PREF);
 
-/** @param {Window} win */
-const gBrowserOf = (win) => /** @type {any} */ (win).gBrowser;
+/** @param {BrowserWindow} win */
+const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * Whether the selected tab is in the agent workspace, whose pages get no permissions
  * (docs/security.md M10).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 export function inAgentTab(win) {
   return WorkspaceStore.isAgentContainer(gBrowserOf(win)?.selectedTab?.userContextId);
@@ -106,7 +106,7 @@ function siteOf(browser) {
 /**
  * The picker's rows for the selected page, read from its pop-up blocker. Empty when nothing is
  * blocked or the tab is the agent workspace's.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Promise<PopupItem[]>}
  */
 export async function popupPickerItems(win) {
@@ -135,7 +135,7 @@ export async function popupPickerItems(win) {
 
 /**
  * Why the picker does not open on this page, or null when it has rows to show.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {readonly PopupItem[]} items  popupPickerItems' answer
  * @returns {string | null}
  */
@@ -149,7 +149,7 @@ export function popupRefusal(win, items) {
  * principal changed (a navigation under the open picker must not land Allow on another site) or
  * in the agent workspace. The observer's methods read only the event's window, so a stand-in
  * event runs them exactly as the bar's menu does.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id
  */
 export function runPopupRow(win, id) {
@@ -201,7 +201,7 @@ export function runPopupRow(win, id) {
 /**
  * The selected browser's pop-up blocked bar, or null (each split pane has its own notification
  * box; the focused pane's browser is the selected one).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {any}
  */
 export function popupBar(win) {
@@ -216,7 +216,7 @@ export function popupBar(win) {
  * block in the site's permission, then closes the bar; it is written as the pickers' block rows
  * write it (setSitePopups), so `:popups` and `:site` can undo it. `close` is the bar's close
  * button: no permission changes, and Firefox does not show the bar again for this page.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {"allow" | "block" | "close"} kind
  */
 export function answerPopupBar(win, kind) {
@@ -234,7 +234,7 @@ export function answerPopupBar(win, kind) {
 
 /**
  * The status bar's cue for the selected page: the bar's, or the way to undo a block.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string | null} hint  the bar's keys line once armed (PromptKeys.popupHint)
  * @returns {string | null}
  */

@@ -24,7 +24,10 @@ import { formatPath } from "../core/toml.mjs";
 /** @import { InstalledEngine, ResolvedSearch, SearchState, SearchStep } from "../core/search.mjs" */
 /** @import { Path } from "../core/toml.mjs" */
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"clearTimeout" | "SearchService" | "setTimeout" | "UrlbarSearchUtils"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
   UrlbarSearchUtils: "moz-src:///browser/components/urlbar/UrlbarSearchUtils.sys.mjs",
@@ -53,7 +56,7 @@ let tokenAliases = [];
 /** @type {Promise<void> | null} */
 let running = null;
 let again = false;
-/** @type {unknown} */
+/** @type {number | null} */
 let timer = null;
 /** @type {((done: Promise<void>) => void)[]} settled() calls waiting for the timer */
 const timerWaiters = [];

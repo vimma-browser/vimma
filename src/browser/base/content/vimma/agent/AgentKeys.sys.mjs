@@ -11,7 +11,7 @@
 // desktop keyring (or, without one, the profile's key4.db, as for saved cards). Never a pref,
 // config.toml or a file of Vimma's. The key leaves this module only for the provider's request.
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"OSKeyStore">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   OSKeyStore: "resource://gre/modules/OSKeyStore.sys.mjs",
 });
@@ -24,7 +24,7 @@ const REALM = "Vimma agent API key";
 const TRIGGER = "vimma_agent_key";
 
 /** Login storage (nsILoginManager), which the Services typings leave out. */
-const logins = () => /** @type {any} */ (Services).logins;
+const logins = () => Services.logins;
 
 /** @param {string} provider */
 const search = (provider) =>
