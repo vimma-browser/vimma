@@ -4,8 +4,8 @@
  * several agents can run `npm run mochitest -- --artifact` at once without sharing a tree.
  *
  * Everything here writes only under the lane's engine/; the source checkout is read, never
- * written. assertLane and teardownTarget are the guards; the CLIs are lane-setup.mjs and
- * lane-teardown.mjs.
+ * written. assertLane and teardownTarget are the guards; the CLIs are lane-setup.ts and
+ * lane-teardown.ts.
  */
 import { spawn, spawnSync } from "node:child_process";
 import {
@@ -24,35 +24,31 @@ import { dirname, join, resolve, sep } from "node:path";
 const OBJDIR = /^obj-/;
 
 /**
- * @param {string} porcelain output of `git worktree list --porcelain`
- * @returns {string} the main worktree (git lists it first)
+ * @param porcelain output of `git worktree list --porcelain`
+ * @returns the main worktree (git lists it first)
  */
-export function mainWorktree(porcelain) {
+export function mainWorktree(porcelain: string): string {
   const match = /^worktree (.+)$/m.exec(porcelain);
   if (!match?.[1]) throw new Error("no worktree in `git worktree list --porcelain` output");
   return match[1];
 }
 
-/**
- * @param {string} p
- * @param {string} dir
- */
-function inside(p, dir) {
+function inside(p: string, dir: string) {
   return p === dir || p.startsWith(dir.endsWith(sep) ? dir : dir + sep);
 }
 
-/** @param {string} p the path, and its real path when it exists */
-function forms(p) {
+/** @param p the path, and its real path when it exists */
+function forms(p: string) {
   const abs = resolve(p);
   return existsSync(abs) ? [...new Set([abs, realpathSync(abs)])] : [abs];
 }
 
 /**
  * Throws unless `root` is a checkout other than `main`: a lane never is the main checkout.
- * @param {string} root the would-be lane (a worktree root)
- * @param {string} main the main checkout
+ * @param root the would-be lane (a worktree root)
+ * @param main the main checkout
  */
-export function assertLane(root, main) {
+export function assertLane(root: string, main: string) {
   if (realpathSync(root) === realpathSync(main)) {
     throw new Error(
       `${root} is the main checkout; lanes are for worktrees (git worktree add, or an agent ` +
@@ -62,33 +58,28 @@ export function assertLane(root, main) {
 }
 
 /**
- * @param {string[]} names top-level entries of the source engine/
- * @returns {string[]} the ones a lane copies: all but the objdirs
+ * @param names top-level entries of the source engine/
+ * @returns the ones a lane copies: all but the objdirs
  */
-export function copyEntries(names) {
+export function copyEntries(names: string[]): string[] {
   return names.filter((n) => !OBJDIR.test(n));
 }
 
-/**
- * @typedef {(args: string[]) => Promise<{ code: number, stderr: string }>} Cp
- */
+export type Cp = (args: string[]) => Promise<{ code: number; stderr: string }>;
 
 /**
  * GNU cp's reflink flags as BSD cp (macOS) spells them: `-c` clones with clonefile(2) on APFS
  * and fails where it cannot, like --reflink=always; --reflink=auto is a plain copy.
- * @param {string[]} args GNU cp arguments
- * @param {NodeJS.Platform} [platform]
- * @returns {string[]}
+ * @param args GNU cp arguments
  */
-export function cpArgs(args, platform = process.platform) {
+export function cpArgs(args: string[], platform: NodeJS.Platform = process.platform): string[] {
   if (platform !== "darwin") return args;
   return args.flatMap((a) =>
     a === "--reflink=always" ? ["-c"] : a === "--reflink=auto" ? [] : [a],
   );
 }
 
-/** @type {Cp} */
-function runCp(args) {
+function runCp(args: string[]): Promise<{ code: number; stderr: string }> {
   return new Promise((done) => {
     const child = spawn("cp", cpArgs(args), { stdio: ["ignore", "ignore", "pipe"] });
     let stderr = "";
@@ -99,9 +90,8 @@ function runCp(args) {
 
 /**
  * A file to probe reflinks with: the index is large enough not to be inlined in btrfs metadata.
- * @param {string} src
  */
-function probeFile(src) {
+function probeFile(src: string) {
   for (const p of [".git/index", "mach", ".git/HEAD"]) {
     const abs = join(src, p);
     if (existsSync(abs) && lstatSync(abs).isFile()) return abs;
@@ -113,17 +103,18 @@ function probeFile(src) {
  * Reflink-copies `src` (an engine/) to `dest`, without its objdirs. `cp -a` keeps modes,
  * timestamps and symlinks as they are (they are fixed up afterwards by removeForeignLinks).
  * Refuses an existing `dest`; refuses a non-reflink copy (6 GB, minutes) unless allowCopy.
- * @param {string} src
- * @param {string} dest
- * @param {{ allowCopy?: boolean, cp?: Cp, jobs?: number }} [opts]
  */
-export async function copyEngine(src, dest, { allowCopy = false, cp = runCp, jobs = 8 } = {}) {
+export async function copyEngine(
+  src: string,
+  dest: string,
+  { allowCopy = false, cp = runCp, jobs = 8 }: { allowCopy?: boolean; cp?: Cp; jobs?: number } = {},
+) {
   // One atomic, non-recursive mkdir: a second setup in the same worktree fails here (EEXIST),
   // and so does a dangling symlink at dest; a missing lane root is not created.
   try {
     mkdirSync(dest);
   } catch (e) {
-    if (/** @type {NodeJS.ErrnoException} */ (e).code === "EEXIST") {
+    if ((e as NodeJS.ErrnoException).code === "EEXIST") {
       throw new Error(`${dest} already exists; pass --force to replace it`, { cause: e });
     }
     throw e;
@@ -144,8 +135,7 @@ export async function copyEngine(src, dest, { allowCopy = false, cp = runCp, job
     mode = "--reflink=auto";
   }
   const queue = copyEntries(readdirSync(src));
-  /** @type {string[]} */
-  const failures = [];
+  const failures: string[] = [];
   const worker = async () => {
     for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
       const r = await cp(["-a", mode, join(src, name), join(dest, name)]);
@@ -160,14 +150,13 @@ export async function copyEngine(src, dest, { allowCopy = false, cp = runCp, job
 /**
  * Removes *.lock files under the lane's .git: copied while a git command ran in the source
  * (say, mid-import), they would block every git call in the lane. Only ever called on the lane.
- * @param {string} engine the lane's engine/
- * @returns {string[]} the removed locks
+ * @param engine the lane's engine/
+ * @returns the removed locks
  */
-function removeStaleLocks(engine) {
+function removeStaleLocks(engine: string): string[] {
   const gitDir = join(engine, ".git");
   if (!existsSync(gitDir) || isLink(gitDir)) return [];
-  /** @type {string[]} */
-  const locks = [];
+  const locks: string[] = [];
   const stack = [gitDir];
   for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -180,8 +169,7 @@ function removeStaleLocks(engine) {
   return locks;
 }
 
-/** @param {string} p */
-function isLink(p) {
+function isLink(p: string) {
   try {
     return lstatSync(p).isSymbolicLink();
   } catch {
@@ -192,12 +180,9 @@ function isLink(p) {
 /**
  * Every symlink under `engine`, skipping its .git and objdirs, with the absolute path it points
  * at (not resolved further; Surfer's links are absolute).
- * @param {string} engine
- * @returns {Array<[string, string]>}
  */
-function symlinks(engine) {
-  /** @type {Array<[string, string]>} */
-  const out = [];
+function symlinks(engine: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
   const stack = [engine];
   for (let dir = stack.pop(); dir !== undefined; dir = stack.pop()) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -215,12 +200,11 @@ function symlinks(engine) {
  * from the import there), excluding those into the lane, which lives under the source's path
  * when it is an agent worktree. Pass both --source and the main checkout: a non-default
  * source's engine may itself have been copied from main's and still carry links into it.
- * @param {string} engine the lane's engine/
- * @param {string | string[]} sources the source checkout(s)
- * @param {string} lane the lane (worktree root)
- * @returns {string[]}
+ * @param engine the lane's engine/
+ * @param sources the source checkout(s)
+ * @param lane the lane (worktree root)
  */
-export function foreignLinks(engine, sources, lane) {
+export function foreignLinks(engine: string, sources: string | string[], lane: string): string[] {
   const src = [sources].flat().flatMap(forms);
   const own = forms(lane);
   return symlinks(engine)
@@ -231,11 +215,8 @@ export function foreignLinks(engine, sources, lane) {
 /**
  * Symlinks in the lane's engine that point into the lane outside its engine (its src/, tests/):
  * what its own `surfer import` made. Upstream's links within the engine are not counted.
- * @param {string} engine
- * @param {string} lane
- * @returns {string[]}
  */
-export function laneLinks(engine, lane) {
+export function laneLinks(engine: string, lane: string): string[] {
   const own = forms(lane);
   const eng = forms(engine);
   return symlinks(engine)
@@ -246,12 +227,14 @@ export function laneLinks(engine, lane) {
 /**
  * Unlinks the foreign links (never their targets). Refuses unless `engine` is inside a lane
  * that is none of the source checkouts.
- * @param {string} engine
- * @param {string | string[]} sources see foreignLinks
- * @param {string} lane
- * @returns {string[]} the removed links
+ * @param sources see foreignLinks
+ * @returns the removed links
  */
-export function removeForeignLinks(engine, sources, lane) {
+export function removeForeignLinks(
+  engine: string,
+  sources: string | string[],
+  lane: string,
+): string[] {
   for (const source of [sources].flat()) assertLane(lane, source);
   if (!forms(lane).some((l) => inside(realpathSync(engine), l))) {
     throw new Error(`${engine} is not inside the lane ${lane}`);
@@ -265,9 +248,8 @@ export function removeForeignLinks(engine, sources, lane) {
  * The environment for git children, without GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE or any other
  * GIT_* variable: from a hook or `git rebase --exec` they point at the calling repo (possibly
  * main's), and `git -C <engine> reset` would then reset that repo's index.
- * @returns {NodeJS.ProcessEnv}
  */
-export function gitEnv() {
+export function gitEnv(): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GIT_")));
 }
 
@@ -287,11 +269,11 @@ const IMPORT_IGNORED = ["mozconfig", "mozconfig.artifact"];
  * - mozconfig and mozconfig.artifact, which upstream ignores, are removed by name.
  * Call removeForeignLinks first: git checkout over a link into the source would replace the
  * link, not write through it, but nothing here should depend on that.
- * @param {string} engine the lane's engine/
- * @returns {string[]} the paths git clean removed
+ * @param engine the lane's engine/
+ * @returns the paths git clean removed
  */
-export function resetEngine(engine) {
-  const git = (/** @type {string[]} */ ...args) => {
+export function resetEngine(engine: string): string[] {
+  const git = (...args: string[]) => {
     const res = spawnSync("git", ["-C", engine, ...args], { encoding: "utf8", env: gitEnv() });
     if (res.status !== 0) throw new Error(`git ${args.join(" ")} in ${engine}: ${res.stderr}`);
     return res.stdout;
@@ -323,11 +305,10 @@ export function resetEngine(engine) {
 /**
  * The engine/ that `lane:teardown` may remove: the worktree's own, a real directory, never the
  * main checkout's.
- * @param {string} root the worktree root
- * @param {string} main the main checkout
- * @returns {string}
+ * @param root the worktree root
+ * @param main the main checkout
  */
-export function teardownTarget(root, main) {
+export function teardownTarget(root: string, main: string): string {
   assertLane(root, main);
   const engine = join(resolve(root), "engine");
   if (!existsSync(engine) && !isLink(engine)) throw new Error(`${root} has no engine/`);
@@ -349,10 +330,10 @@ export function teardownTarget(root, main) {
 }
 
 /**
- * @param {string} out stdout of `btrfs filesystem du -s --raw <path>`
- * @returns {{ total: number, exclusive: number }} bytes
+ * @param out stdout of `btrfs filesystem du -s --raw <path>`
+ * @returns bytes
  */
-export function parseBtrfsDu(out) {
+export function parseBtrfsDu(out: string): { total: number; exclusive: number } {
   const row = out
     .split("\n")
     .map((l) => l.trim().split(/\s+/))
