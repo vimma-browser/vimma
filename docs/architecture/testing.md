@@ -170,8 +170,8 @@ theme.
 On Linux the browser renders with the fonts vendored in `tests/e2e/fonts/`, and the fixture
 pages are served on the fixed port 28471 (a second run on the machine stops with a message
 rather than take another port), so two runs draw the same pixels. A baseline comes from CI's
-runner: with GTK's dialog text colour also pinned in the profile, a local run compares with it at
-0.00 to 0.03 % (the system's FreeType), and CI at 0.00 %. A scenario carries on past a screenshot that differs and fails at its end, so one CI run
+runner: CI compares with it at 0.00 %, and a local run at up to 0.13 % (the line under the
+toolbar, drawn in a GTK colour, and the system's FreeType). A scenario carries on past a screenshot that differs and fails at its end, so one CI run
 supplies every image of a re-record (docs/runbook.md, "End-to-end tests", "Baselines").
 
 The same job then runs the site snapshot gate (section 8) and the agent bench with its scripted

@@ -339,15 +339,16 @@ What a local run differs by. On Linux the scenarios render with the fonts vendor
 the browser gets that folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the
 profile's HOME, so a local run compares with CI's baselines with no font package installed
 (issue #944). The fixture pages are served on the fixed port 28471 (`PAGE_PORT` in
-`tools/e2e/pages.mjs`), so the URL and status bars read the same in every run, and the profile
-pins GTK's dialog text colour (`ui.-moz-dialogtext`) to the one CI's GTK gives: Firefox draws the
-line under the toolbar in that colour at 10 %, and Arch's GTK drew it a shade lighter, one row of
-1280 pixels (0.125 %) in every screenshot with a toolbar (issue #953). Measured on an Arch machine
-against baselines taken in CI, a local run then compares at 0.00 % on 29 of 31 screenshots; the
-PDF page's text (`pdf-outline`, 0.03 %) and the private window (`m3-private-workspace`, 0.02 %)
-keep a few pixels of the system's FreeType (2.15 there, 2.13 on CI). Run to run, the downloads
-picker's end time, the agent setup list's profile path and the versions on the start page
-(`m3-private-workspace`, which therefore changes at each release or Firefox update) vary by a
+`tools/e2e/pages.mjs`), so the URL and status bars read the same in every run (issue #953).
+Measured on an Arch machine against baselines taken in CI, what remains is mostly one row: Firefox
+draws the line under the toolbar as the window's text colour at 10 % (`--card-border-color`), and
+that colour comes from GTK, whose Arch build draws the line a shade lighter than CI's Ubuntu
+24.04. That is 1280 pixels (0.125 %, shown as 0.13 %) in every screenshot with a toolbar, and
+0.00 % in those without one. Pinning `ui.-moz-dialogtext` in the profile made a local run match
+CI's images but moved CI's own line, so the profile does not pin it. The PDF page's text
+(`pdf-outline`) adds a few pixels of the system's FreeType (2.15 there, 2.13 on CI). Run to run,
+the downloads picker's end time, the agent setup list's profile path and the versions on the start
+page (`m3-private-workspace`, which therefore changes at each release or Firefox update) vary by a
 few digits.
 
 **When the port is taken.** Another e2e run on the same machine (a second lane, for example) holds

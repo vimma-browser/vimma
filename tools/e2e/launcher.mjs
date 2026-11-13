@@ -157,11 +157,6 @@ export const PROFILE_PREFS = Object.freeze([
   ["layout.css.devPixelsPerPx", "1.0"],
   ["ui.systemUsesDarkTheme", 0],
   ["layout.css.prefers-color-scheme.content-override", 1],
-  // The line under the toolbar is Firefox's --card-border-color, the window's text colour at
-  // 10 %, and that colour is GTK's dialog text, which GTK versions give differently: Arch's GTK
-  // drew the line a shade lighter than CI's Ubuntu 24.04, where the baselines are made, in every
-  // screenshot with a toolbar (issue #953). This is the value that draws CI's line.
-  ["ui.-moz-dialogtext", "#0c0c0d"],
 ]);
 
 /**
