@@ -4041,7 +4041,7 @@ which Firefox's site information panel shows already, and stores nothing of its 
   [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
   [`the whitelist is the spec's table`](../packages/vimma-core/test/agent-keys.test.mjs)
 
-## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
+## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`, `host/outline-ops.mjs`)
 
 Vimma drives Firefox's pdf.js viewer through its content actor: it reads the page, page count,
 page label and find count to show them in the status bar, chooses the PDF viewer's key

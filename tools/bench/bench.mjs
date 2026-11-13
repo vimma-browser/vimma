@@ -308,7 +308,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     /** @type {CasesModule[]} */
     const loaded = [];
     for (const root of headFirst ? [REPO, dir] : [dir, REPO]) loaded.push(await load(root));
-    const [head, base] = /** @type {CasesModule[]} */ (headFirst ? loaded : loaded.reverse());
+    const [head, base] = /** @type {[CasesModule, CasesModule]} */ (
+      headFirst ? loaded : loaded.reverse()
+    );
     verify("working tree", head.CASES);
     verify("baseline", base.CASES);
     const result = run(head, base, headFirst);

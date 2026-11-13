@@ -91,7 +91,10 @@ const OPTIONS = /** @type {const} */ ({
   help: { type: "boolean", short: "h", default: false },
 });
 
-/** @param {string} message */
+/**
+ * @param {string} message
+ * @returns {never}
+ */
 function usage(message) {
   process.stderr.write(`e2e: ${message}\nSee the comment at the top of tools/e2e/e2e.mjs.\n`);
   process.exit(2);
@@ -202,7 +205,7 @@ async function main() {
     /** @type {string[]} */
     const rewritten = [];
     /**
-     * @param {import("./scenario.mjs").Scenario} _scenario
+     * @param {import("./scenario.mjs").Scenario} scenario
      * @param {{ signal: AbortSignal }} options the scenario's timeout
      */
     const startSession = async (scenario, { signal }) => {

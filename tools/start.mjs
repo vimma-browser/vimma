@@ -215,7 +215,9 @@ export function startPrefs(root, platform = process.platform, profile) {
   return [
     ...devPrefs(root, platform),
     ...DEVTOOLS_PREFS,
-    ...(profile ? [[CONFIG_PATH_PREF, join(profile, "vimma", "config.toml")]] : []),
+    ...(profile
+      ? [/** @type {const} */ ([CONFIG_PATH_PREF, join(profile, "vimma", "config.toml")])]
+      : []),
   ];
 }
 

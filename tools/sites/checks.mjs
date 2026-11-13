@@ -126,6 +126,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
   const tab = new Tab(ctx);
   /** @type {CheckResult[]} */
   const checks = (result.checks = []);
+  /** @type {import("./results.mjs").ModeStep[]} */
   const steps = (result.steps = []);
   let failureShots = 0;
   /** @param {Function} fn @param {unknown} [arg] */

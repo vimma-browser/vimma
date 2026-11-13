@@ -18,6 +18,7 @@ import { tabById } from "./goto.mjs";
 /** @import { Direction, ResizeDirection } from "../core/panes.mjs" */
 /** @import { PaneResult } from "../split/PaneView.mjs" */
 /** @import { SplitItem } from "../core/splits.mjs" */
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 /** One resize key's step: a share of the split (m3-m4-core-models, For the host specs). */
 export const RESIZE_STEP = 0.05;
@@ -336,4 +337,31 @@ export function stepSplits(win, action) {
   if (refused || splits.shown === null) return refused;
   showSplit(win, splits.shown);
   return null;
+}
+
+/**
+ * Runs a pane op (above) and shows its refusal, if any, as the notice. The hidden-split
+ * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
+ * @param {(win: Window, action: Action) => string | null} op
+ * @param {(s: WindowState) => void} emit  the host's redraw
+ * @returns {(state: WindowState, action: Action) => void}
+ */
+export function paneRunner(op, emit) {
+  return (s, a) => {
+    const refused = op(s.win, a);
+    if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
+    emit(s);
+  };
+}
+
+/**
+ * A layout preset (`layoutPanes`): its notice is the preset's name or the refusal.
+ * @param {(s: WindowState) => void} emit  the host's redraw
+ * @returns {(s: WindowState, a: Action, text?: string) => void}
+ */
+export function layoutRunner(emit) {
+  return (s, a, text) => {
+    s.notice.show(layoutPanes(s.win, a, text));
+    emit(s);
+  };
 }

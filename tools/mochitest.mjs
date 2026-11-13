@@ -86,6 +86,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   // A bare `./mach build` since the artifact build regenerates application.ini, not our copy.
   if (env.MOZCONFIG) refreshAppIni(engine);
   const python = machPythonOrExit(engine, "npm run mochitest");
+  /** @type {[string, ...string[]]} */
   const command = python ? [python, "./mach"] : ["./mach"];
   const res = spawnSync(command[0], [...command.slice(1), ...args], {
     cwd: engine,

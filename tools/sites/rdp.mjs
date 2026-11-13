@@ -83,6 +83,7 @@ export class Rdp {
     /** @type {((p: any) => void) | null} */
     this.onGreeting = null;
     this.closed = false;
+    /** @type {Buffer} */
     let buffer = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
@@ -149,7 +150,8 @@ export class Rdp {
       } else {
         this.early.set(packet.resultID, packet);
         // only the newest few matter: drop results nobody waits for
-        if (this.early.size > 64) this.early.delete(this.early.keys().next().value);
+        const oldest = this.early.keys().next();
+        if (this.early.size > 64 && !oldest.done) this.early.delete(oldest.value);
       }
       return;
     }

@@ -250,7 +250,7 @@ ${
     }
     const prod = /^\/product\/([\w-]+)$/.exec(path);
     if (prod) {
-      const p = byId.get(prod[1]);
+      const p = byId.get(prod[1] ?? "");
       if (!p) return send(res, 404, page("Not found", "<p>No such product.</p>"));
       return send(res, 200, page(fullName(p), listing([p])));
     }
@@ -304,7 +304,9 @@ ${
 export async function startTwoShops(fixture = loadTwoShops()) {
   const hosts = ["127.0.0.1", "localhost"];
   if (fixture.shops.length > hosts.length) throw new Error("at most two shops");
-  const shops = await Promise.all(fixture.shops.map((s, i) => startOne(s, hosts[i])));
+  const shops = await Promise.all(
+    fixture.shops.map((s, i) => startOne(s, hosts[i] ?? "127.0.0.1")),
+  );
   return {
     shops: Object.fromEntries(shops.map((s) => [s.id, s])),
     bases: Object.fromEntries(shops.map((s) => [s.id, s.base])),
@@ -344,10 +346,12 @@ export function scoreTwoShops(fixture, records, task, calls) {
   const extra = [];
   for (const shop of fixture.shops) {
     const basket = records[shop.id]?.basket ?? {};
-    const wanted = new Set(Object.values(want[shop.id]));
+    // cheapest() has an entry for every shop and item, or it throws.
+    const wantHere = want[shop.id] ?? {};
+    const wanted = new Set(Object.values(wantHere));
     for (const item of fixture.items) {
-      const held = shop.products.filter((p) => p.item === item.id && basket[p.id]);
-      if (held.length === 1 && held[0].id === want[shop.id][item.id] && basket[held[0].id] === 1)
+      const [only, ...more] = shop.products.filter((p) => p.item === item.id && basket[p.id]);
+      if (only && more.length === 0 && only.id === wantHere[item.id] && basket[only.id] === 1)
         correct++;
     }
     for (const id of Object.keys(basket).sort())
@@ -446,7 +450,7 @@ export function twoShopShopper({ fixture, bases }) {
     fixture.shops.flatMap((shop) =>
       fixture.items.map((item) => {
         const p = /** @type {ShopProduct} */ (
-          shop.products.find((x) => x.id === want[shop.id][item.id])
+          shop.products.find((x) => x.id === want[shop.id]?.[item.id])
         );
         const name = fullName(p).toLowerCase();
         const q = new URLSearchParams({ q: item.search });
@@ -494,7 +498,7 @@ export function twoShopShopper({ fixture, bases }) {
       }
       if (j.tries > MAX_RETRIES) return { text: `I could not get past ${j.url}.` };
     }
-    while (stage < stages.length && stages[stage].every((j) => j.phase === "done")) stage++;
+    while (stages[stage]?.every((j) => j.phase === "done")) stage++;
     const jobs = stages[stage];
     if (!jobs)
       return {

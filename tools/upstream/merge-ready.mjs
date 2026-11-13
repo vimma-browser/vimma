@@ -23,7 +23,7 @@ const GREEN = new Set(["success", "skipped", "neutral"]);
  */
 export function markerSha(body) {
   const m = /<!-- upstream-auto-merge: ([0-9a-f]{40}) -->/.exec(body ?? "");
-  return m ? m[1] : null;
+  return m?.[1] ?? null;
 }
 
 /**

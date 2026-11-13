@@ -99,7 +99,7 @@ export function certificateRequest(spki, slot) {
   // A positive 16-byte serial derived from the key and slot: unique per certificate, and the
   // same every time.
   const serial = createHash("sha256").update(slot).update(spki).digest().subarray(0, 16);
-  serial[0] = (serial[0] & 0x7f) | 0x01;
+  serial[0] = ((serial[0] ?? 0) & 0x7f) | 0x01; // a 16-byte digest slice: byte 0 exists
   const tbs = tlv(
     0x30,
     tlv(0x02, serial),
@@ -158,7 +158,7 @@ function parseArgs(argv) {
   /** @type {Record<string, string | boolean>} */
   const out = {};
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
+    const a = argv[i] ?? "";
     if (!a.startsWith("--")) throw new Error(`unexpected argument: ${a}`);
     if (a === "--any-key") out["any-key"] = true;
     else {

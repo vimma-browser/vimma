@@ -127,7 +127,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs
+npm run typecheck        # tsc --checkJs: browser code and packages, then tools/
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
@@ -422,7 +422,8 @@ its Rust toolchain and the GitHub Actions current:
 - **No install scripts.** `.npmrc` sets `ignore-scripts=true`, so `npm ci` and `npm install` run
   no package's install scripts (`npm run` still runs ours). A new dependency that needs one is a
   security decision for its PR, not a reason to drop the setting.
-- **By hand.** Node in `.nvmrc` (see the bench baseline in [docs/runbook.md](docs/runbook.md))
+- **By hand.** Node in `.nvmrc` (see the bench baseline in [docs/runbook.md](docs/runbook.md)),
+  with `@types/node`'s major, which follows it (Dependabot updates only its minor and patch),
   and the Semgrep image digest in `semgrep.yml` are not covered; bump them in their own PR.
 
 ## Known build and CI limits

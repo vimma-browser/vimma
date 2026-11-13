@@ -1046,7 +1046,10 @@ export async function launch({
   const stderrTail = () => stderr.split("\n").slice(-15).join("\n");
 
   /** Spawn the browser on the profile (with `url` on the command line) and wait for its socket. */
-  const start = async (/** @type {string | null} */ url, stalePid = null) => {
+  const start = async (
+    /** @type {string | null} */ url,
+    /** @type {number | null} */ stalePid = null,
+  ) => {
     const env = browserEnv(baseEnv, {
       display: display?.display,
       headless,
