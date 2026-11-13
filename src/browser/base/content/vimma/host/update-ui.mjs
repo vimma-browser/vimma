@@ -29,6 +29,9 @@ import {
   shouldAskRestart,
 } from "../core/update-notices.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
+import { openOrSay } from "./tab-ops.mjs";
+
+/** @import { WindowState } from "./VimmaHost.sys.mjs" */
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -377,3 +380,42 @@ export const UpdateUi = {
     dismissed[version] = Date.now() - ms;
   },
 };
+
+/**
+ * `:update` (docs/specs/m6a-updater.md): checks now and says the result; an update opens
+ * about:vimma's Updates section, which shows the exact steps for this install.
+ * @param {WindowState} s
+ */
+export async function checkUpdates(s) {
+  s.notice.show("checking for updates…");
+  const r = await VimmaUpdates.check({ asked: true });
+  switch (r.outcome) {
+    case "offer": {
+      const offer = /** @type {NonNullable<typeof r.offer>} */ (r.offer);
+      // The AppImage replaces its own file (decision 19): say how far it got.
+      const stage = VimmaUpdates.status().stage;
+      if (stage === "staged") {
+        s.notice.show(`Vimma ${offer.displayVersion} is installed · restart Vimma to use it`);
+        return;
+      }
+      if (stage === "pending") {
+        s.notice.show(`Vimma ${offer.displayVersion} is downloading; it replaces this AppImage`);
+        return;
+      }
+      s.notice.show(`Vimma ${offer.displayVersion} is available`);
+      openOrSay(s, "about:vimma#updates", "tab");
+      return;
+    }
+    case "current":
+      s.notice.show(`Vimma ${VimmaUpdates.runningVersion} is up to date`);
+      return;
+    case "off":
+      s.notice.show("updates are off ([updates] check or vimma.update.enabled)");
+      return;
+    case "source":
+      s.notice.show("a source build: pull and rebuild to update");
+      return;
+    default:
+      s.notice.show(`update check ${r.outcome}: ${r.reason}`, { error: true });
+  }
+}

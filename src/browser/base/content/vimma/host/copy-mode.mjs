@@ -4,7 +4,7 @@
 
 // Copy mode's actions on the focused page (spec: docs/specs/m1-copy-mode.md): `v` / `prefix+[`
 // enter it (the `visual` mode), the motions move the caret in the focused frame, `v` starts or
-// drops a selection, `y` copies it as plain text. VimmaHost spreads these into CONTENT_RUNNERS;
+// drops a selection, `y` copies it as plain text. runners.mjs spreads these into CONTENT_RUNNERS;
 // Esc is its `mode.normal`, which asks the frame to leave copy mode first.
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";

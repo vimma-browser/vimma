@@ -25,29 +25,18 @@ import { SUGGESTION_ACTIONS } from "../core/suggestions.mjs";
 import { pressingKey } from "../actors/enter-key.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
-import { describeAction, notImplementedText } from "../core/actions.mjs";
-import {
-  PENDING_ACTIONS,
-  parseBookmarksToolbarCommand,
-  parseCommandLine,
-  parseToolbarCommand,
-  parseSettingsCommand,
-} from "../core/cmdline.mjs";
+import { notImplementedText } from "../core/actions.mjs";
+import { PENDING_ACTIONS } from "../core/cmdline.mjs";
 import { CommandLine } from "../ui/cmdline.mjs";
 import { HelpOverlay } from "../ui/help-overlay.mjs";
 import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
 import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
 import { Find } from "./find.mjs";
-import { copyModeRunners } from "./copy-mode.mjs";
 import { ElementFocus } from "./element-focus.mjs";
-import { pageRunners } from "./page-ops.mjs";
 import { Notice } from "../ui/notice.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
-import { BookmarksToolbar } from "../ui/bookmarks-toolbar.mjs";
-import { bookmarksToolbarNotice } from "../core/bookmarks-toolbar.mjs";
-import { ThemeHost } from "../ui/theme-host.mjs";
 import {
   AddonPicker,
   DownloadPicker,
@@ -63,8 +52,8 @@ import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
 import { OutlinePanel } from "../ui/pdf-outline.mjs";
 import { AgentChatWindow } from "../ui/agent-chat.mjs";
-import { giveSelectedTab, runAgentCommand } from "./agent-chat-ops.mjs";
-import { quickAdd, runBookmarkEffect } from "./bookmark-actions.mjs";
+import { giveSelectedTab } from "./agent-chat-ops.mjs";
+import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
@@ -72,104 +61,65 @@ import { GrepSession } from "./grep.mjs";
 import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { refusedScheme } from "../core/pageurl.mjs";
-import {
-  BLOCKED_URL_TEXT,
-  closeTab,
-  closeTabById,
-  newTab,
-  openTyped,
-  restoreTab,
-  selectTab,
-} from "./tab-ops.mjs";
+import { closeTabById, openOrSay } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
-import { BROWSER_KEYS, browserRunners, firefoxIds, openSettings, runKey } from "./browser-ops.mjs";
+import { firefoxIds } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
-import { runRoute } from "./route-ops.mjs";
 import {
-  closePane,
-  focusPane,
   hasPanes,
-  layoutPanes,
-  newPane,
-  resizePane,
   showAlone,
   showSplit,
   showTabs,
   shownSplit,
-  splitPane,
   splitPickerRows,
   splitStatus,
-  stepSplits,
-  swapPane,
-  zoomPane,
 } from "./pane-ops.mjs";
-import { PaneViews, isHiddenRefusal } from "../split/PaneView.mjs";
+import { PaneViews } from "../split/PaneView.mjs";
 import { leaves } from "../core/panes.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { moveTabFromPicker, workspaceNames } from "./workspace-ops.mjs";
 import {
-  NO_WORKSPACES,
-  activeWorkspaceName,
-  closeWorkspace,
-  moveTabFromPicker,
-  moveTabToWorkspace,
-  newWorkspace,
-  renameWorkspace,
-  workspaceNames,
-  workspaceRef,
-} from "./workspace-ops.mjs";
-import {
-  MOVE_OUT_REFUSED,
   PRIVATE_WORKSPACE_ID,
-  closePrivate,
-  cycleOutOfPrivate,
   isPrivateBrowsing,
   isPrivateWorkspace,
-  leavePrivate,
   pickerItemsWithPrivate,
   pickerMove,
   pickerSelect,
   privatePanel,
   privateStatus,
   privateTabCount,
-  switchFromPrivate,
-  togglePrivate,
 } from "./private-ops.mjs";
-import { restartVimma, tabsKeptBy } from "./restart.mjs";
-import { restartConfirmation } from "../core/restart.mjs";
-import { McpHost } from "./mcp-ops.mjs";
-import { ControlHost } from "./control-ops.mjs";
+import { restartAsking, restartOrSay, tabsKeptBy } from "./restart.mjs";
 import { AgentUi } from "./agent-ui.mjs";
 import { AgentGate } from "../ctl/AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { AgentPrompt } from "../ui/agent-prompt.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
-import { parsePrivateCommand } from "../core/privatews.mjs";
-import { findWorkspace } from "../core/workspaces.mjs";
 import { KeyLog } from "../about/key-log.mjs";
-import {
-  addonNames,
-  addonPickerItems,
-  checkAddonUpdate,
-  openAddonById,
-  openAddonByName,
-  openAddonOptions,
-  removeAddon,
-  toggleAddon,
-  togglePrivateAccess,
-} from "./addon-ops.mjs";
+import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "./addon-ops.mjs";
 import {
   forgetSitePermissions,
-  openSitePermissions,
   sitePermissionItems,
   sitePermissionKey,
 } from "./permission-ops.mjs";
 import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
-import { NOT_PDF, PdfOps, pdfFindStatus, pdfRunners } from "./pdf-ops.mjs";
+import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
+import { contentRunners, hostRunners } from "./runners.mjs";
+import {
+  dropOutlineAsk,
+  followOutline,
+  outlineClosed,
+  showOutline,
+  showOutlineBeside,
+} from "./outline-ops.mjs";
+
+// Defined with the code that uses them; importers reach them here, as before the runners moved.
+export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
+export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.mjs";
 
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -191,6 +141,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 /** @import { AddonOp } from "../core/picker.mjs" */
 /** @import { FirefoxKeySetting } from "../core/config.mjs" */
 /** @import { BookmarksRoot } from "../core/bookmarks.mjs" */
+/** @import { OutlineHost } from "./outline-ops.mjs" */
+/** @import { HostState } from "./runners.mjs" */
 
 /**
  * Hint mode in one window (m1-hints): from `f` until a label is chosen or Esc. While the
@@ -289,22 +241,6 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  */
 
 /**
- * `tab.rename`: with a name (`:tabrename foo`) sets the label at once, else opens the prompt.
- * @param {WindowState} s
- * @param {string} [text]
- */
-function renameTab(s, text) {
-  const tab = /** @type {{ gBrowser: { selectedTab: Element } }} */ (/** @type {unknown} */ (s.win))
-    .gBrowser.selectedTab;
-  if (text) {
-    setTabLabel(tab, text);
-    VimmaHost._emit(s);
-  } else {
-    s.rename.open(tab, getTabLabel(tab) ?? "");
-  }
-}
-
-/**
  * Whether one of Vimma's own surfaces holds the keyboard: the help overlay, a picker, live grep,
  * the command line, a prompt, the side panel, the bookmarks or a search being typed. The agent
  * question, the update question and the permission prompt keys all stand back for these, from
@@ -348,487 +284,14 @@ function keysHeld(s) {
 }
 
 /**
- * `:open` / `:tabnew` text, or the notice saying why not.
- * @param {WindowState} s
- * @param {string} text
- * @param {"current" | "tab"} where
+ * What the PDF outline (outline-ops.mjs) needs from the host.
+ * @type {OutlineHost}
  */
-function openOrSay(s, text, where) {
-  const refused = () => s.notice.show(BLOCKED_URL_TEXT, { error: true });
-  // Said at once for the text as typed; a keyword resolving to one is known after the lookup.
-  if (refusedScheme(text)) {
-    refused();
-    return;
-  }
-  openTyped(s.win, text, where)
-    .then((opened) => {
-      if (!opened) refused();
-    })
-    .catch((e) => console.error("vimma: cannot open", e));
-}
-
-/**
- * Runs a pane op (pane-ops.mjs) and shows its refusal, if any, as the notice. The hidden-split
- * refusal stays until the next key (docs/specs/multiple-splits.md, decision 4).
- * @param {(win: Window, action: Action) => string | null} op
- * @returns {(state: WindowState, action: Action) => void}
- */
-function paneRunner(op) {
-  return (s, a) => {
-    const refused = op(s.win, a);
-    if (refused) s.notice.show(refused, { untilKey: isHiddenRefusal(refused) });
-    VimmaHost._emit(s);
-  };
-}
-
-/**
- * A layout preset (pane-ops.mjs `layoutPanes`): its notice is the preset's name or the refusal.
- * @param {WindowState} s
- * @param {Action} a
- * @param {string} [text]
- */
-function layoutRunner(s, a, text) {
-  s.notice.show(layoutPanes(s.win, a, text));
-  VimmaHost._emit(s);
-}
-
-/**
- * `workspace.switch`: by number (`:workspace 2`) or name (`:workspace work`), `#` the previous
- * workspace as Vim's `:b#` (unless a workspace is named `#`); a key bound to switch_workspace
- * asks on the command line.
- * @param {WindowState} s
- * @param {string} [text]
- */
-function switchWorkspace(s, text) {
-  if (!text) {
-    s.cmdline.open("workspace ");
-    return;
-  }
-  // docs/specs/private-workspace.md: from private, `:ws name` is the normal window's workspace.
-  if (isPrivateWorkspace(s.win)) {
-    const back = text === "#";
-    const refused = back
-      ? leavePrivate()
-      : switchFromPrivate((m) => findWorkspace(m, workspaceRef(text, m))?.id ?? null, text);
-    if (refused) s.notice.show(refused);
-    return;
-  }
-  const ww = WindowWorkspaces.get(s.win);
-  const alternate = text === "#" && !ww?.model?.workspaces.some((w) => w.name === "#");
-  // null is success, not "no model": `?? NO_WORKSPACES` would show it after every switch.
-  /** @type {string | null} */
-  let refused = NO_WORKSPACES;
-  if (ww) refused = alternate ? ww.last() : ww.switchTo(workspaceRef(text, ww.model));
-  if (refused) s.notice.show(refused);
-}
-
-/**
- * A workspace operation (workspace-ops.mjs) that takes the rest of a command line; without one
- * (its key) it asks on the command line, starting with `prompt`.
- * @param {(win: Window, text: string) => string | null} op
- * @param {(win: Window) => string} prompt
- * @returns {(state: WindowState, action: Action, text?: string) => void}
- */
-function workspaceRunner(op, prompt) {
-  return (s, _a, text) => {
-    if (!text) {
-      s.cmdline.open(prompt(s.win));
-      return;
-    }
-    const said = op(s.win, text);
-    if (said) s.notice.show(said);
-    VimmaHost._emit(s);
-  };
-}
-
-/**
- * `workspace.move_tab` in a normal window: `:wsmove name`, or its key asks. A move into the agent
- * workspace asks y/N first (docs/specs/vimma-mcp.md, decision 11).
- * @param {WindowState} s
- * @param {Action} a
- * @param {string} [text]
- */
-const moveTab = (s, a, text) =>
-  workspaceRunner(
-    (win, t) =>
-      moveTabToWorkspace(
-        win,
-        t,
-        (question, yes) => s.rename.ask(question, yes),
-        (said) => s.notice.show(said),
-      ),
-    () => "wsmove ",
-  )(s, a, text);
-
-/**
- * A workspace step (ctrl+b ) / ctrl+b (, ]w / [w, ctrl+^); shows its refusal, if any.
- * @param {"next" | "previous" | "last"} step
- * @returns {(state: WindowState) => void}
- */
-function workspaceStep(step) {
-  return (s) => {
-    // docs/specs/private-workspace.md decision 5: from private, ) and ( go to the first and
-    // last normal workspace, ctrl+^ back to the one left; in a normal window private is never
-    // a target.
-    if (isPrivateWorkspace(s.win)) {
-      const refused = step === "last" ? leavePrivate() : cycleOutOfPrivate(step);
-      if (refused) s.notice.show(refused);
-      return;
-    }
-    const ww = WindowWorkspaces.get(s.win);
-    const refused = ww ? ww[step]() : NO_WORKSPACES;
-    if (refused) s.notice.show(refused);
-  };
-}
-
-/**
- * The open panel `j`, `k`, `Enter`, `Esc` and digits go to: the bookmarks panel's, else the
- * side panel's (only one is open at a time).
- * @param {WindowState} s
- * @param {Action} a
- */
-function panelAction(s, a) {
-  if (s.bookmarks.isOpen) s.bookmarks.action(a);
-  else s.panel.action(a);
-}
-
-/**
- * An `[modal.index]` action, for the outline panel when it is open.
- * @param {WindowState} s
- * @param {Action} a
- */
-function outlineAction(s, a) {
-  s.outline.action(a);
-}
-
-/**
- * How long Tab waits for the viewer's outline. A reply after it, or after another key, opens
- * nothing: a slow or hostile viewer cannot open the panel under keys meant for something else.
- */
-const OUTLINE_WAIT_MS = 2000;
-
-/**
- * Forgets the outline Tab asked for.
- * @param {WindowState} s
- */
-function dropOutlineAsk(s) {
-  if (!s.outlineFor) return;
-  s.win.clearTimeout(s.outlineFor.timer);
-  s.outlineFor = null;
-}
-
-/** What Tab says in a PDF without an outline (docs/specs/pdf-mode.md Behaviour 5). */
-export const NO_OUTLINE = "no outline in this PDF";
-/** What following an attachment entry says (decisions 10 and 18: pdf.js's sidebar is hidden). */
-export const OUTLINE_ATTACHMENT = "the PDF viewer does not open attachments";
-
-/** `[ui] pdf_outline = "hidden"` (docs/specs/pdf-mode.md decision 19), applied by ConfigHost. */
-export const PDF_OUTLINE_PREF = "vimma.ui.pdf_outline.hidden";
-/**
- * Per tab, the document (PdfOps.documentKey) whose outline the host asked for to show beside it,
- * and the one whose outline the user closed: it stays hidden until the tab shows another.
- * @type {WeakMap<object, string>}
- */
-const outlineAsked = new WeakMap();
-/** @type {WeakMap<object, string>} */
-const outlineHidden = new WeakMap();
-
-/**
- * Shows the selected tab's PDF outline beside the document, without the keys (decision 19):
- * when `[ui] pdf_outline` is "shown", the user has not closed it for this document, the window is
- * in normal mode and no other panel or Vimma surface is open. The outline is asked for once per
- * document (V8); its answer comes back here through the outline subscription. Called again when
- * focus moves, so a PDF opened from the address bar shows it once focus reaches the page.
- * @param {WindowState} s
- */
-function showOutlineBeside(s) {
-  if (Services.prefs.getBoolPref(PDF_OUTLINE_PREF, false)) return;
-  const browser = /** @type {any} */ (s.win).gBrowser?.selectedBrowser;
-  const key = browser && PdfOps.documentKey(browser);
-  if (!key || s.outline.isOpen || outlineHidden.get(browser) === key) return;
-  if (vimmaSurfaceOpen(s) || s.agentChat.isOpen) return;
-  if (VimmaHost._mode(s) !== "normal") return;
-  const outline = PdfOps.outline(browser);
-  if (outline) {
-    if (outline.entries.length) {
-      s.outline.open(browser, outline, PdfOps.state(browser)?.page ?? 1, false);
-    }
-    return;
-  }
-  if (outlineAsked.get(browser) === key) return;
-  outlineAsked.set(browser, key);
-  PdfOps.askOutline(browser);
-}
-
-/**
- * Tab in the PDF viewer: the outline read once per document (V8), then shown at once; the
- * other panels in the slot close (one at a time).
- * @param {WindowState} s
- */
-function openOutline(s) {
-  s.notice.hide();
-  if (s.outline.isActive) {
-    s.outline.hide();
-    return;
-  }
-  const browser = VimmaHost._selectedBrowser(s);
-  if (s.outline.isOpen && s.outline.browser === browser) {
-    // Shown beside the document (decision 19): Tab gives it the keys.
-    s.outline.focus();
-    return;
-  }
-  const outline = PdfOps.outline(browser);
-  if (outline) {
-    showOutline(s, browser, outline);
-    return;
-  }
-  dropOutlineAsk(s);
-  if (!PdfOps.askOutline(browser)) {
-    s.notice.show(NOT_PDF);
-    return;
-  }
-  s.outlineFor = { browser, timer: s.win.setTimeout(() => dropOutlineAsk(s), OUTLINE_WAIT_MS) };
-}
-
-/**
- * @param {WindowState} s
- * @param {any} browser
- * @param {import("../core/pdfoutline.mjs").PdfOutline | null} outline  null: malformed
- */
-function showOutline(s, browser, outline) {
-  dropOutlineAsk(s);
-  if (!outline?.entries.length) {
-    s.notice.show(NO_OUTLINE);
-    return;
-  }
-  s.panel.close();
-  s.bookmarks.close();
-  s.agentChat.close();
-  s.outline.open(browser, outline, PdfOps.state(browser)?.page ?? 1);
-}
-
-/**
- * Enter on an outline entry (decision 10): the viewer follows a destination, a named action or
- * a layer change by the entry's index (V7); Vimma opens a URL entry under section 4 (http and
- * https only); an attachment is pdf.js's to open.
- * @param {WindowState} s
- * @param {any} browser
- * @param {number} index
- */
-function followOutline(s, browser, index) {
-  const entry = PdfOps.outline(browser)?.entries[index];
-  if (!entry) return;
-  if (entry.kind === "url") {
-    if (!PdfOps.openUrl(browser, entry.url ?? "")) s.notice.show(BLOCKED_URL_TEXT, { error: true });
-  } else if (entry.kind === "attachment") s.notice.show(OUTLINE_ATTACHMENT);
-  else if (entry.kind !== "none") PdfOps.run(browser, "follow", index);
-}
-
-/**
- * The bookmarks panel's own keys (`[modal.panel]` h, l, t, s, S, a, A, r, m, d, y, /); nothing
- * while it is closed (the side panel shares the mode).
- * @param {WindowState} s
- * @param {Action} a
- */
-function bookmarksAction(s, a) {
-  if (s.bookmarks.isOpen) s.bookmarks.action(a);
-}
-
-/**
- * `I` (focus_urlbar): Firefox's ctrl+l, the Browser:OpenLocation command (browser.js
- * openLocation: select the URL bar's text, open its results as a click would). The URL bar is
- * the selected tab's, so in a split the focused pane's. An open side or bookmarks panel closes
- * first, and copy mode ends, so neither is waiting when focus comes back to the page.
- * @param {WindowState} s
- */
-function focusUrlbar(s) {
-  s.panel.close();
-  s.bookmarks.close();
-  const browser = VimmaHost._contentBrowser(s);
-  if (browser && browserModes.get(browser) === "visual") {
-    VimmaActors.caret(browser, "exit");
-    setBrowserMode(browser, "normal");
-  }
-  /** @type {any} */ (s.win.document.getElementById("Browser:OpenLocation"))?.doCommand();
-}
-
-/**
- * `ctrl+b u`, `:toolbar [show|hide]` (docs/specs/toolbar-toggle.md decisions 1, 2): one state
- * for every window (the pref); the notice says which, through the polite live region.
- * @param {WindowState} s
- * @param {ReturnType<typeof parseToolbarCommand>} command
- */
-function setToolbar(s, command) {
-  s.notice.hide();
-  if (command.kind === "refuse") {
-    s.notice.show(command.text, { error: true });
-    return;
-  }
-  const hidden = command.kind === "toggle" ? !Toolbar.hidden : command.kind === "hide";
-  Toolbar.setHidden(hidden);
-  s.notice.show(hidden ? "toolbar hidden" : "toolbar shown");
-}
-
-/**
- * Firefox's Bookmarks Toolbar (docs/specs/bookmarks-toolbar-hidden.md): one state for every
- * window. Without a word, Firefox's own toggle (its ctrl+shift+b handler, between "always" and
- * "never"); a word sets that state. The notice says which, and "until restart" while
- * config.toml sets the key (decision 4).
- * @param {WindowState} s
- * @param {ReturnType<typeof parseBookmarksToolbarCommand>} command
- */
-function setBookmarksToolbar(s, command) {
-  s.notice.hide();
-  if (command.kind === "refuse") {
-    s.notice.show(command.text, { error: true });
-    return;
-  }
-  if (command.kind === "set") BookmarksToolbar.set(command.setting);
-  else if (!runKey(s.win, BROWSER_KEYS["browser.bookmarks_toolbar"])) return;
-  s.notice.show(bookmarksToolbarNotice(BookmarksToolbar.visibility, BookmarksToolbar.configured));
-}
-
-/**
- * Shows an add-on op's answer, if any, as the notice; a failure too.
- * @param {WindowState} s
- * @param {Promise<string | null>} op
- * @returns {Promise<void>}
- */
-function sayAddon(s, op) {
-  return op.then(
-    (text) => {
-      if (text) s.notice.show(text);
-    },
-    (e) => {
-      console.error("vimma: add-on", e);
-      s.notice.show(`add-on: ${e?.message ?? e}`, { error: true });
-    },
-  );
-}
-
-/**
- * A key in the add-on picker (docs/specs/addon-manager.md): `o` and `d` close it first (a tab,
- * the y/N prompt); `x`, `shift+p` and `u` keep it open and refresh its rows.
- * @param {WindowState} s
- * @param {AddonOp} op
- * @param {string} id
- */
-function addonOp(s, op, id) {
-  const refresh = () => s.addonPicker.refresh().catch((e) => console.error("vimma: add-ons", e));
-  switch (op) {
-    case "options":
-      s.addonPicker.close();
-      sayAddon(s, openAddonOptions(s.win, id));
-      return;
-    case "remove":
-      s.addonPicker.close();
-      sayAddon(
-        s,
-        removeAddon(
-          id,
-          (question, yes) => s.rename.ask(question, yes),
-          (said) => s.notice.show(said),
-        ),
-      );
-      return;
-    case "toggle":
-      sayAddon(s, toggleAddon(id)).then(refresh);
-      return;
-    case "private":
-      sayAddon(s, togglePrivateAccess(id)).then(refresh);
-      return;
-    case "update":
-      s.notice.show("checking for updates…");
-      sayAddon(s, checkAddonUpdate(id)).then(refresh);
-  }
-}
-
-/**
- * Restarts Vimma now (docs/specs/m6a-updater.md §5); says so when something cancelled it. An
- * AppImage starts its own file again, and only when this Vimma is the AppImage `$APPIMAGE`
- * names, never one it inherited the variable from.
- * @param {WindowState} s
- */
-async function restartNow(s) {
-  const appImage = await VimmaUpdates.ownAppImage();
-  const going = restartVimma({ installType: appImage ? "appimage" : null, appImage });
-  if (!going) s.notice.show("restart cancelled");
-}
-
-/** @param {WindowState} s */
-function restartOrSay(s) {
-  restartNow(s).catch((e) => {
-    console.error("vimma: :restart failed", e);
-    s.notice.show(`restart failed: ${e?.message ?? e}`, { error: true });
-  });
-}
-
-/**
- * `:restart`: asks first when tabs would be lost (core restartConfirmation), as `:private close`
- * asks before it closes the private workspace.
- * @param {WindowState} s
- */
-async function restartAsking(s) {
-  const appImage = await VimmaUpdates.ownAppImage();
-  const question = restartConfirmation({
-    privateTabs: privateTabCount(),
-    tabsKept: tabsKeptBy(appImage),
-  });
-  if (question) s.rename.ask(question, () => restartOrSay(s));
-  else restartOrSay(s);
-}
-
-/**
- * `:update` (docs/specs/m6a-updater.md): checks now and says the result; an update opens
- * about:vimma's Updates section, which shows the exact steps for this install.
- * @param {WindowState} s
- */
-async function checkUpdates(s) {
-  s.notice.show("checking for updates…");
-  const r = await VimmaUpdates.check({ asked: true });
-  switch (r.outcome) {
-    case "offer": {
-      const offer = /** @type {NonNullable<typeof r.offer>} */ (r.offer);
-      // The AppImage replaces its own file (decision 19): say how far it got.
-      const stage = VimmaUpdates.status().stage;
-      if (stage === "staged") {
-        s.notice.show(`Vimma ${offer.displayVersion} is installed · restart Vimma to use it`);
-        return;
-      }
-      if (stage === "pending") {
-        s.notice.show(`Vimma ${offer.displayVersion} is downloading; it replaces this AppImage`);
-        return;
-      }
-      s.notice.show(`Vimma ${offer.displayVersion} is available`);
-      openOrSay(s, "about:vimma#updates", "tab");
-      return;
-    }
-    case "current":
-      s.notice.show(`Vimma ${VimmaUpdates.runningVersion} is up to date`);
-      return;
-    case "off":
-      s.notice.show("updates are off ([updates] check or vimma.update.enabled)");
-      return;
-    case "source":
-      s.notice.show("a source build: pull and rebuild to update");
-      return;
-    default:
-      s.notice.show(`update check ${r.outcome}: ${r.reason}`, { error: true });
-  }
-}
-
-/**
- * What the bookmark effects run with.
- * @param {WindowState} s
- */
-function bookmarkContext(s) {
-  return {
-    win: s.win,
-    prompt: s.rename,
-    panel: s.bookmarks,
-    say: (/** @type {string} */ text) => s.notice.show(text),
-  };
-}
+const OUTLINE_HOST = {
+  mode: (s) => VimmaHost._mode(s),
+  selectedBrowser: (s) => VimmaHost._selectedBrowser(s),
+  surfaceOpen: vimmaSurfaceOpen,
+};
 
 /**
  * Pane actions that do something only with two panes or more: as single keys they are
@@ -851,378 +314,6 @@ const MULTI_PANE = new Set([
   "pane.resize_taller",
   "pane.resize_shorter",
 ]);
-
-/**
- * What the host can execute so far, with CONTENT_RUNNERS. An action without an entry is left to
- * Firefox when it is a single key outside help; inside a sequence (or after a count) it is
- * consumed and shows "<action>: not implemented yet", so `ctrl+b <key>` never leaks the second key to the page and is never silent
- * (m2-tab-keys). Unbound keys always pass (m1-actor-insert-scroll, Settled). `text` is a
- * command's free-text argument (`:open example.com`, m1-cmdline); keys never carry one.
- * @type {Record<string, (state: WindowState, action: Action, text?: string) => void>}
- */
-export const RUNNERS = Object.freeze({
-  // The overlay is the one list of bindings on screen: a toast from an earlier key gives way.
-  "help.show": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    s.help.toggle();
-  },
-  "help.close": (/** @type {WindowState} */ s) => s.help.close(),
-  // Run from a key, they wait for the page (`_runAfterPage`); from anywhere else (the `:` line)
-  // there is no chord to fall back to.
-  "page.suggestion_next": (/** @type {WindowState} */ s, a) =>
-    VimmaHost._suggest(s, a, null, VimmaHost._mode(s)),
-  "page.suggestion_prev": (/** @type {WindowState} */ s, a) =>
-    VimmaHost._suggest(s, a, null, VimmaHost._mode(s)),
-  "help.filter": (/** @type {WindowState} */ s) => s.help.focusFilter(),
-  "hint.cancel": (/** @type {WindowState} */ s) => VimmaHost._cancelHints(s),
-  "tab.new": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
-    text ? openOrSay(s, text, "tab") : newTab(s.win),
-  "tab.next": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
-  "tab.previous": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
-  "tab.goto": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
-  // Firefox's alt+9: the workspace's last visible tab (docs/specs/firefox-keys.md).
-  "tab.goto_last": (/** @type {WindowState} */ s, /** @type {Action} */ a) => selectTab(s.win, a),
-  "tab.close": (/** @type {WindowState} */ s) => closeTab(s.win),
-  // The focused pane; the last pane closes the tab (`:q`, prefix+x; m4-split-panes).
-  "pane.close": paneRunner(closePane),
-  "pane.split_vertical": paneRunner(splitPane),
-  "pane.split_horizontal": paneRunner(splitPane),
-  "pane.focus_left": paneRunner(focusPane),
-  "pane.focus_down": paneRunner(focusPane),
-  "pane.focus_up": paneRunner(focusPane),
-  "pane.focus_right": paneRunner(focusPane),
-  "pane.zoom": paneRunner(zoomPane),
-  "pane.swap_left": paneRunner(swapPane),
-  "pane.swap_down": paneRunner(swapPane),
-  "pane.swap_up": paneRunner(swapPane),
-  "pane.swap_right": paneRunner(swapPane),
-  "pane.resize_narrower": paneRunner(resizePane),
-  "pane.resize_wider": paneRunner(resizePane),
-  "pane.resize_taller": paneRunner(resizePane),
-  "pane.resize_shorter": paneRunner(resizePane),
-  // docs/specs/multiple-splits.md behaviours 7 and 8.
-  "pane.split_picker": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    const rows = splitPickerRows(s.win);
-    if ("refused" in rows) s.notice.show(rows.refused);
-    else s.splitPicker.open();
-  },
-  "pane.next_split": paneRunner(stepSplits),
-  "pane.previous_split": paneRunner(stepSplits),
-  // docs/specs/tiling-layouts.md: dwindle's new pane, tmux's presets; the notice names the preset.
-  "pane.new": paneRunner(newPane),
-  "pane.next_layout": layoutRunner,
-  "pane.layout_even_horizontal": layoutRunner,
-  "pane.layout_even_vertical": layoutRunner,
-  "pane.layout_main_vertical": layoutRunner,
-  "pane.layout_main_horizontal": layoutRunner,
-  "pane.layout_tiled": layoutRunner,
-  "pane.layout_dwindle": layoutRunner,
-  // A key bound to select_layout asks for the name on the command line.
-  "pane.select_layout": (/** @type {WindowState} */ s, /** @type {Action} */ a, text) =>
-    text ? layoutRunner(s, a, text) : s.cmdline.open("layout "),
-  // Resize mode (ADR-014): modal, window-wide, while the window shows two panes or more.
-  "pane.resize_mode": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-    if (!hasPanes(s.win)) {
-      s.notice.show(`${describeAction(a)}: only one pane`);
-      return;
-    }
-    s.notice.hide();
-    s.resize = true;
-  },
-  "pane.resize_exit": (/** @type {WindowState} */ s) => {
-    s.resize = false;
-  },
-  // Without text (a key bound to open_url) it asks for the URL on the command line.
-  "page.open": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
-    text ? openOrSay(s, text, "current") : s.cmdline.open("open "),
-  "urlbar.focus": focusUrlbar,
-  "command.open": (/** @type {WindowState} */ s) => s.cmdline.open(),
-  "command.cancel": (/** @type {WindowState} */ s) => s.cmdline.close(),
-  // Tab search (docs/specs/tab-search.md); `:tabsearch text` opens it with the text typed.
-  "goto.picker": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    s.notice.hide();
-    s.picker.open({ query: text ?? "" });
-  },
-  // docs/specs/live-grep.md: the key opens it empty, `:grep text` with that query.
-  "grep.open": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    s.notice.hide();
-    s.grep.open(text);
-  },
-  "grep.resume": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    s.grep.resume();
-  },
-  "grep.next": (/** @type {WindowState} */ s) => void s.grep.step(1),
-  "grep.previous": (/** @type {WindowState} */ s) => void s.grep.step(-1),
-  "tab.rename": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
-    renameTab(s, text),
-  // m3-workspaces 5: prefix+w (and `:workspace` without a name).
-  "workspace.picker": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    // The private workspace lists the normal ones too (private-workspace decision 5).
-    if (WindowWorkspaces.get(s.win)?.model || isPrivateWorkspace(s.win)) s.wsPicker.open();
-    else s.notice.show(NO_WORKSPACES);
-  },
-  // m3-workspaces 2b: one workspace's tabs visible at a time (WindowWorkspaces).
-  "workspace.next": workspaceStep("next"),
-  "workspace.previous": workspaceStep("previous"),
-  // Vim's ctrl+^ (alternate buffer), tmux's last session: the window's previous workspace.
-  "workspace.last": workspaceStep("last"),
-  "workspace.switch": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
-    switchWorkspace(s, text),
-  // m3-workspaces 4a/4b: new, rename, close (asks y/N), move the tab (workspace-ops.mjs).
-  "workspace.new": workspaceRunner(newWorkspace, () => "wsnew "),
-  "workspace.rename": workspaceRunner(
-    renameWorkspace,
-    (win) => `wsrename ${activeWorkspaceName(win) ?? ""}`,
-  ),
-  "workspace.move_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a, text) => {
-    // private-workspace decision 5: a private tab never leaves the private workspace.
-    if (isPrivateWorkspace(s.win)) s.notice.show(MOVE_OUT_REFUSED);
-    else moveTab(s, a, text);
-  },
-  // docs/specs/private-workspace.md: toggles; `:private close` closes it after y/N.
-  "workspace.private": (
-    /** @type {WindowState} */ s,
-    _a,
-    /** @type {string | undefined} */ text,
-  ) => {
-    s.notice.hide();
-    const command = parsePrivateCommand(text);
-    const said =
-      command.kind === "refuse"
-        ? command.text
-        : command.kind === "close"
-          ? closePrivate((q, yes) => s.rename.ask(q, yes))
-          : togglePrivate(s.win);
-    if (said) s.notice.show(said);
-  },
-  // workspace-routing: `:route` lists the rules (about:vimma); `add [workspace]`, `move`.
-  "workspace.route": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    s.notice.hide();
-    const said = runRoute(s.win, text ?? "", (t) => s.notice.show(t));
-    if (said) s.notice.show(said);
-  },
-  "workspace.close": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    s.notice.hide();
-    // In private, ctrl+b shift+d and `:wd` close the private workspace (decision 3).
-    if (!text && isPrivateWorkspace(s.win)) {
-      const refused = closePrivate((q, yes) => s.rename.ask(q, yes));
-      if (refused) s.notice.show(refused);
-      return;
-    }
-    const refused = closeWorkspace(
-      s.win,
-      text,
-      (question, yes) => s.rename.ask(question, yes),
-      (said) => s.notice.show(said),
-      (question, choices) => s.rename.choose(question, choices),
-    );
-    if (refused) s.notice.show(refused);
-  },
-  // m3-workspaces 6: the side panel; its own keys run in `panel` mode while it is open.
-  "sidebar.toggle": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    if (s.panel.isOpen) s.panel.close();
-    else {
-      s.bookmarks.close(); // one panel in the slot at a time
-      s.outline.close();
-      s.agentChat.close();
-      if (!s.panel.open()) s.notice.show(NO_WORKSPACES);
-    }
-  },
-  "toolbar.toggle": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) =>
-    setToolbar(s, parseToolbarCommand(text)),
-  "toolbar.show": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "show" }),
-  "toolbar.hide": (/** @type {WindowState} */ s) => setToolbar(s, { kind: "hide" }),
-  "panel.down": panelAction,
-  "panel.up": panelAction,
-  "panel.first": panelAction,
-  "panel.last": panelAction,
-  "panel.half_down": panelAction,
-  "panel.half_up": panelAction,
-  "panel.open": panelAction,
-  "panel.select": panelAction,
-  "panel.close": panelAction,
-  // key-handling-batch § 4: x in the side panel; nothing in the bookmarks panel (d deletes there).
-  "panel.close_tab": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-    if (!s.bookmarks.isOpen) s.panel.action(a);
-  },
-  // m4-side-panel-multiselect: marks in the side panel; nothing in the bookmarks panel.
-  "panel.mark": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-    if (!s.bookmarks.isOpen) s.panel.action(a);
-  },
-  "panel.visual": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-    if (!s.bookmarks.isOpen) s.panel.action(a);
-  },
-  // `m`: the bookmarks panel's move to a folder, or the side panel's move to a workspace.
-  "panel.move": panelAction,
-  // Firefox's ctrl+shift+t, in every mode (docs/specs/firefox-keys.md decision 7).
-  "tab.restore": (/** @type {WindowState} */ s) => restoreTab(s.win),
-  // docs/specs/firefox-keys.md decision 4: the Browser and Developer tools actions, each what
-  // Firefox's key ran (browser-ops.mjs).
-  ...browserRunners((win, text) => states.get(win)?.notice.show(text)),
-  // ctrl+shift+b and `:bookmarkstoolbar [show|hide|newtab]` (bookmarks-toolbar-hidden decision
-  // 5): Firefox's own toggle, or a known state, with a notice.
-  "browser.bookmarks_toolbar": (
-    /** @type {WindowState} */ s,
-    /** @type {Action} */ _a,
-    /** @type {string | undefined} */ text,
-  ) => setBookmarksToolbar(s, parseBookmarksToolbarCommand(text)),
-  // A `:` binding in config.toml (docs/specs/firefox-keys.md decision 5): its line, as typed.
-  "cmdline.run": (/** @type {WindowState} */ s, /** @type {Action} */ a) => {
-    const result = parseCommandLine(a.line ?? "");
-    if (result.kind === "run") VimmaHost._runCommand(s, result);
-    else if (result.kind === "error") s.notice.show(result.error.message, { error: true });
-  },
-  // `:restart`: asks first when tabs would be lost (private ones, or all of them).
-  "app.restart": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    restartAsking(s).catch((e) => {
-      console.error("vimma: :restart failed", e);
-      s.notice.show(`restart failed: ${e?.message ?? e}`, { error: true });
-    });
-  },
-  "app.update_check": (/** @type {WindowState} */ s) => {
-    checkUpdates(s).catch((e) => {
-      console.error("vimma: :update failed", e);
-      s.notice.show(`update check failed: ${e?.message ?? e}`, { error: true });
-    });
-  },
-  // docs/specs/bookmarks.md: the bookmarks panel, in the side panel's slot and mode.
-  "bookmarks.toggle": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    if (s.bookmarks.isOpen) s.bookmarks.close();
-    else {
-      s.panel.close();
-      s.outline.close();
-      s.agentChat.close();
-      s.bookmarks.open();
-    }
-  },
-  "bookmark.add": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    quickAdd(bookmarkContext(s), text).catch((e) => {
-      console.error("vimma: bookmark failed", e);
-      s.notice.show(`bookmark: ${e?.message ?? e}`, { error: true });
-    });
-  },
-  "bookmarks.collapse": bookmarksAction,
-  "bookmarks.expand": bookmarksAction,
-  "bookmarks.open_tab": bookmarksAction,
-  "bookmarks.open_vsplit": bookmarksAction,
-  "bookmarks.open_hsplit": bookmarksAction,
-  "bookmarks.add": bookmarksAction,
-  "bookmarks.add_folder": bookmarksAction,
-  "bookmarks.rename": bookmarksAction,
-  "bookmarks.move": bookmarksAction,
-  "bookmarks.delete": bookmarksAction,
-  "bookmarks.yank": bookmarksAction,
-  "bookmarks.filter": bookmarksAction,
-  // docs/specs/pdf-mode.md decision 10: Tab in the PDF viewer, the outline in the side panel's
-  // slot; its keys run in `index` mode while it is open.
-  "pdf.outline": (/** @type {WindowState} */ s) => openOutline(s),
-  "index.down": outlineAction,
-  "index.up": outlineAction,
-  "index.expand": outlineAction,
-  "index.collapse": outlineAction,
-  "index.expand_subtree": outlineAction,
-  "index.collapse_subtree": outlineAction,
-  "index.expand_all": outlineAction,
-  "index.collapse_all": outlineAction,
-  "index.first": outlineAction,
-  "index.last": outlineAction,
-  "index.half_down": outlineAction,
-  "index.half_up": outlineAction,
-  "index.follow": outlineAction,
-  "index.close": outlineAction,
-  "index.filter": outlineAction,
-  // docs/specs/addon-manager.md: prefix+e / :addons, and :addon <name> (without one it asks).
-  "addons.picker": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    s.addonPicker.open();
-  },
-  // docs/specs/site-permissions.md: `:site`, the selected page's permissions (security.md §19).
-  "site.permissions": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    const opened = openSitePermissions(s.win);
-    if ("refused" in opened) s.notice.show(opened.refused, { error: true });
-    else s.permissionPicker.openWithTitle(opened.title);
-  },
-  // docs/specs/popup-blocked.md: :popups (no default key), the pop-up blocked bar's options.
-  "popups.picker": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    s.popups.open();
-  },
-  // docs/specs/downloads.md: prefix+d / :downloads.
-  "downloads.picker": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    // The segment's `done`, `failed` and `blocked` have been seen once the picker opens.
-    s.downloads.clearEnd();
-    s.downloadPicker.open();
-  },
-  // `:settings [pane]` (m1-cmdline, Since changed): an unknown pane is refused as a notice.
-  "browser.settings": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
-    const settings = parseSettingsCommand(t);
-    if (settings.kind === "refuse") s.notice.show(settings.text, { error: true });
-    else openSettings(s.win, settings.url);
-  },
-  "addons.popup": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    if (!text) s.cmdline.open("addon ");
-    else sayAddon(s, openAddonByName(s.win, text));
-  },
-  // `:source` (m5-config-load): ConfigHost reads config.toml now instead of at the next poll;
-  // `:source <path>` passes the path as typed, which ConfigHost expands.
-  "config.reload": (_s, _a, /** @type {string | undefined} */ text) =>
-    Services.obs.notifyObservers(null, CONFIG_RELOAD_TOPIC, text ?? ""),
-  // `:setup` (first-run-setup decision 14): the setup page in a new tab, at the welcome screen.
-  "setup.open": (/** @type {WindowState} */ s) => openOrSay(s, "about:vimma-setup", "tab"),
-  // `:config`: ConfigHost opens config.toml in a tab of this window (creating it if missing).
-  "config.edit": (/** @type {WindowState} */ s) =>
-    Services.obs.notifyObservers(/** @type {any} */ (s.win), CONFIG_EDIT_TOPIC),
-  // `:mcp [on|off|forget]` (docs/specs/vimma-mcp.md): agents and the agent workspace.
-  "mcp.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ text) => {
-    s.notice.hide();
-    const said = McpHost.run(
-      text,
-      (question, yes) => s.rename.ask(question, yes),
-      (t) => s.notice.show(t),
-      () => s.mcpLog.open(),
-    );
-    if (said) s.notice.show(said);
-  },
-  // `:agent [word]` and prefix+i (docs/specs/builtin-agent.md Behaviour 14, B13): the built-in
-  // agent's window, in the side panel's slot, one panel at a time.
-  "agent.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
-    s.notice.hide();
-    s.panel.close();
-    s.bookmarks.close();
-    s.outline.close();
-    runAgentCommand(s.agentChat, t, (text, error) => s.notice.show(text, { error: !!error }));
-  },
-  // prefix+shift+a (docs/specs/vimma-mcp.md decision 14): the waiting agent question, or with
-  // none, revoke the grants after y/N.
-  "mcp.answer": (/** @type {WindowState} */ s) => {
-    s.notice.hide();
-    AgentUi.answer(s.win);
-  },
-  // `:control [on <minutes>|off]` (decision 29 D): full control for a while.
-  "control.command": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
-    s.notice.hide();
-    const said = ControlHost.run(
-      t,
-      (question, yes) => s.rename.ask(question, yes),
-      (text) => s.notice.show(text),
-      () => (McpHost.state.enabled ? McpHost.workspaceName : null),
-    );
-    if (said) s.notice.show(said);
-  },
-  // `:theme [dark|light|system]` (docs/specs/theme-appearance.md): the built-in palette.
-  "theme.appearance": (/** @type {WindowState} */ s, _a, /** @type {string | undefined} */ t) => {
-    const said = ThemeHost.setAppearance(s.win, t);
-    s.notice.show(said.text, { error: said.error });
-  },
-});
 
 /**
  * The page mode of each tab's <browser>, from the actor's focus reports; absent = normal.
@@ -1325,87 +416,6 @@ function blurPage(browser) {
 }
 
 /**
- * Actions on the focused page (m1-actor-insert-scroll). Runnable only while a content browser
- * with our actor has focus; elsewhere (the URL bar) they count as not runnable, so Esc there
- * still reaches Firefox. Every runnable id is a key of RUNNERS or CONTENT_RUNNERS; whether one
- * runs right now is `VimmaHost._runnable(state, id)`.
- * @type {Readonly<Record<string, (browser: any, action: Action) => void>>}
- */
-export const CONTENT_RUNNERS = Object.freeze({
-  "scroll.down": (b, a) => VimmaActors.scroll(b, "down", a.count),
-  "scroll.up": (b, a) => VimmaActors.scroll(b, "up", a.count),
-  "scroll.left": (b, a) => VimmaActors.scroll(b, "left", a.count),
-  "scroll.right": (b, a) => VimmaActors.scroll(b, "right", a.count),
-  "scroll.half_down": (b, a) => VimmaActors.scroll(b, "half_down", a.count),
-  "scroll.half_up": (b, a) => VimmaActors.scroll(b, "half_up", a.count),
-  "scroll.top": (b) => VimmaActors.scroll(b, "top"),
-  "scroll.bottom": (b) => VimmaActors.scroll(b, "bottom"),
-  // History and reload act on the focused page's <browser>, so in a split the focused pane's
-  // (plan §2, M1 navigation keys). In insert mode the keys are the page's (normal-only bindings).
-  "history.back": (b, a) => goHistory(b, -(a.count ?? 1)),
-  "history.forward": (b, a) => goHistory(b, a.count ?? 1),
-  "page.reload": (b) => b.reload(),
-  // Esc in insert (escape.mjs: blur); the focusout recheck that follows stays in normal.
-  "mode.normal": (b) => {
-    // Esc in copy mode: the frame drops its selection and caret first.
-    if (browserModes.get(b) === "visual") VimmaActors.caret(b, "exit");
-    setBrowserMode(b, "normal");
-    blurPage(b);
-  },
-  "hint.follow": (b, a) => VimmaHost._startHints(b, a),
-  "hint.follow_new_tab": (b, a) => VimmaHost._startHints(b, a),
-  "hint.follow_new_tab_fg": (b, a) => VimmaHost._startHints(b, a),
-  "hint.element": (b, a) => VimmaHost._startHints(b, a),
-  "hint.show_target": (b, a) => VimmaHost._startHints(b, a),
-  "hint.copy_target": (b, a) => VimmaHost._startHints(b, a),
-  // The ELEMENT mode's keys (docs/specs/element-focus.md decision 7).
-  "element.visual": (b) => elementOf(b)?.visual(false),
-  "element.visual_line": (b) => elementOf(b)?.visual(true),
-  "element.yank": (b) => elementOf(b)?.yank(),
-  "element.parent": (b, a) => elementOf(b)?.move("parent", a.count),
-  "element.child": (b, a) => elementOf(b)?.move("child", a.count),
-  "element.next": (b, a) => elementOf(b)?.move("next", a.count),
-  "element.prev": (b, a) => elementOf(b)?.move("prev", a.count),
-  // Explicit insert, even with no text field to focus (pass-through for pages that take keys).
-  // The field the user was last in comes first, then the page's first one (insert-focus).
-  "mode.insert": (b) => {
-    enterExplicitInsert(b);
-    VimmaActors.focusInput(b, lastFieldFrame.get(b));
-  },
-  // Find in page over Firefox's find bar (m1-find).
-  "find.forward": (b) => findOf(b)?.start(b, false),
-  "find.backward": (b) => findOf(b)?.start(b, true),
-  "find.next": (b) => findOf(b)?.again(b, false),
-  "find.previous": (b) => findOf(b)?.again(b, true),
-  // Copy mode: caret, selection and yank in the focused frame (m1-copy-mode).
-  ...copyModeRunners(setBrowserMode, noticeFor),
-  // yy, p / P, gi, gu / gU, gf (m1-actor-insert-scroll, follow-up: normal-mode extras).
-  ...pageRunners(enterExplicitInsert, noticeFor),
-  // The PDF viewer's page, zoom and layout keys (docs/specs/pdf-mode.md).
-  ...pdfRunners(noticeFor),
-});
-
-/**
- * Moves `browser` `delta` entries through its session history, clamped to the first and last
- * entry (`5H` on the third page lands on the first). One step goes through goBack/goForward,
- * which skip entries the user never interacted with, like the toolbar buttons; in the PDF viewer
- * a step to another jump inside the PDF goes there directly (PdfOps.jumpIndex).
- * @param {any} browser
- * @param {number} delta  negative goes back
- */
-function goHistory(browser, delta) {
-  const jump = PdfOps.jumpIndex(browser, delta);
-  if (jump !== null) return browser.gotoIndex(jump);
-  if (delta === -1) return browser.goBack();
-  if (delta === 1) return browser.goForward();
-  const history = browser.browsingContext?.sessionHistory;
-  if (!history) return undefined;
-  const index = Math.min(Math.max(history.index + delta, 0), history.count - 1);
-  if (index !== history.index) browser.gotoIndex(index);
-  return undefined;
-}
-
-/**
  * The find state of the window that owns `browser`.
  * @param {any} browser
  * @returns {Find | undefined}
@@ -1414,6 +424,23 @@ function findOf(browser) {
   const win = browser?.ownerDocument?.defaultView;
   return (win && states.get(win))?.find ?? undefined;
 }
+
+/**
+ * The page and window state the runners (runners.mjs) reach.
+ * @type {HostState}
+ */
+const HOST_STATE = {
+  stateOf: (win) => states.get(win),
+  browserMode: (browser) => browserModes.get(browser),
+  setBrowserMode,
+  blurPage,
+  enterExplicitInsert,
+  lastFieldFrame: (browser) => lastFieldFrame.get(browser),
+  elementOf,
+  findOf,
+  noticeFor,
+  outline: OUTLINE_HOST,
+};
 
 /**
  * Content actions that Firefox's keys also run where no page of ours has focus (the address bar,
@@ -1427,19 +454,6 @@ const ON_SELECTED = new Set([
   "find.next",
   "find.previous",
 ]);
-
-/** Every action id the host implements. */
-const BUILT = Object.freeze([...Object.keys(RUNNERS), ...Object.keys(CONTENT_RUNNERS)]);
-
-/**
- * The action ids the host runs: the one source for the help overlay's dimmed rows, the
- * not-implemented notice. Whether one runs right now is
- * `VimmaHost._runnable(state, id)`, which adds "a page with our actor has focus" for
- * CONTENT_RUNNERS. Every action is built since the navigation keys (M1), so this is BUILT
- * unless the test-only `VimmaHost._withhold(id)` takes one out.
- * @type {ReadonlySet<string>}
- */
-export const RUNNABLE = new Set(BUILT);
 
 /** @type {WeakMap<Window, WindowState>} */
 const states = new WeakMap();
@@ -1470,11 +484,6 @@ const settings = {
 /** Keydowns from a parent-process page whose text-field key waits for the page (`_editKey`). */
 /** @type {WeakSet<Event>} */
 const editAfterPage = new WeakSet();
-
-/** Told by `:source` (config.reload); ConfigHost observes it, so the host never imports it. */
-export const CONFIG_RELOAD_TOPIC = "vimma-config-reload";
-/** Told by `:config` (config.edit), with the window as the subject; ConfigHost observes it. */
-export const CONFIG_EDIT_TOPIC = "vimma-config-edit";
 
 /**
  * The `[sites."<host>"] insert` rule for the page in `browser`, "auto" without one.
@@ -1600,7 +609,7 @@ export const VimmaHost = {
         ) {
           state.outline.close();
         }
-        showOutlineBeside(state);
+        showOutlineBeside(state, OUTLINE_HOST);
       },
       dispatcher: createDispatcher(keymap),
       help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
@@ -1778,7 +787,7 @@ export const VimmaHost = {
           state.outline.followPage(PdfOps.state(browser)?.page ?? 1);
         }
         if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
-          showOutlineBeside(state);
+          showOutlineBeside(state, OUTLINE_HOST);
         }
         this._emit(state);
       }),
@@ -1788,7 +797,7 @@ export const VimmaHost = {
         if (browser !== state.outlineFor?.browser) {
           // The outline asked for as the PDF opened (decision 19): shown if it still may be.
           if (browser === /** @type {any} */ (win).gBrowser?.selectedBrowser) {
-            showOutlineBeside(state);
+            showOutlineBeside(state, OUTLINE_HOST);
             this._emit(state);
           }
           return;
@@ -1811,7 +820,7 @@ export const VimmaHost = {
       onFocus: () => {
         AgentUi.onFocusChange(win);
         UpdateUi.onFocusChange(win);
-        showOutlineBeside(state);
+        showOutlineBeside(state, OUTLINE_HOST);
       },
       panel: new SidePanel(win, {
         // A private window lists its tabs as the private workspace (private-workspace 6).
@@ -1864,10 +873,7 @@ export const VimmaHost = {
           if (effect.type === "follow") followOutline(state, browser, effect.index);
         },
         left: (browser) => PdfOps.forget(browser),
-        hidden: (browser) => {
-          const key = PdfOps.documentKey(browser);
-          if (key) outlineHidden.set(browser, key);
-        },
+        hidden: (browser) => outlineClosed(browser),
       }),
       bookmarks: new BookmarksPanel(win, {
         load: () => loadTree(win),
@@ -3154,6 +2160,28 @@ export const VimmaHost = {
     state.timer = null;
   },
 };
+
+/**
+ * What the host can execute (runners.mjs): chrome actions, run with the window's state, and
+ * actions on the focused page, run with its <browser>. Built after VimmaHost, which the runners
+ * call only when they run.
+ * @type {Readonly<Record<string, (state: WindowState, action: Action, text?: string) => void>>}
+ */
+export const RUNNERS = hostRunners(VimmaHost, HOST_STATE);
+export const CONTENT_RUNNERS = contentRunners(VimmaHost, HOST_STATE);
+
+/** Every action id the host implements. */
+const BUILT = Object.freeze([...Object.keys(RUNNERS), ...Object.keys(CONTENT_RUNNERS)]);
+
+/**
+ * The action ids the host runs: the one source for the help overlay's dimmed rows, the
+ * not-implemented notice. Whether one runs right now is
+ * `VimmaHost._runnable(state, id)`, which adds "a page with our actor has focus" for
+ * CONTENT_RUNNERS. Every action is built since the navigation keys (M1), so this is BUILT
+ * unless the test-only `VimmaHost._withhold(id)` takes one out.
+ * @type {ReadonlySet<string>}
+ */
+export const RUNNABLE = new Set(BUILT);
 
 // A finished update check redraws every status bar (docs/specs/m6a-updater.md §5).
 VimmaUpdates.addListener(() => {
