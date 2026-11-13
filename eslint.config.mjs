@@ -6,13 +6,25 @@ import globals from "globals";
 // TypeScript under tools/ (ADR-025): eslint reads the code Node runs. amaro is the type stripper
 // Node itself uses; in strip-only mode it replaces each type with spaces, so lines and columns stay
 // those of the .ts file, and it throws on syntax Node cannot erase (an enum, say), which eslint
-// reports as a parsing error. typescript-eslint's parser is not used: it needs TypeScript's
-// JavaScript API, which TypeScript 7 no longer has. Type annotations themselves are not linted;
-// tsc checks them (npm run typecheck).
+// reports as a parsing error at that syntax. typescript-eslint's parser is not used: it needs
+// TypeScript's JavaScript API, which TypeScript 7 no longer has. Type annotations themselves are
+// not linted; tsc checks them (npm run typecheck). ADR-025 lists the limits.
 const erasedTypes = {
   meta: { name: "vimma-erased-types" },
   /** @param {string} code @param {import("espree").Options} options */
-  parse: (code, options) => espree.parse(transformSync(code, { mode: "strip-only" }).code, options),
+  parse: (code, options) => {
+    let stripped;
+    try {
+      stripped = transformSync(code, { mode: "strip-only" }).code;
+    } catch (e) {
+      // amaro counts lines from 1 and columns from 0; eslint reads espree's fields, both from 1.
+      const at = /** @type {{ startLine?: number, startColumn?: number }} */ (e);
+      if (at.startLine !== undefined && at.startColumn !== undefined)
+        Object.assign(at, { lineNumber: at.startLine, column: at.startColumn + 1 });
+      throw e;
+    }
+    return espree.parse(stripped, options);
+  },
 };
 
 export default [

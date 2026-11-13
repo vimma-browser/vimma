@@ -24,9 +24,10 @@ describe("TypeScript under tools/ (ADR-025)", () => {
     expect(run.status).toBe(0);
   });
 
-  it("package.json asks for a Node that does that: 22.18 or later", () => {
+  it("package.json asks for a Node that does that: 22.18 or later in 22, 24.3 or later", () => {
     const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
-    expect(pkg.engines.node).toBe(">=22.18");
+    // 22.17 and 23.0-23.5 cannot run .ts without a flag; 23.6-24.2 print an ExperimentalWarning.
+    expect(pkg.engines.node).toBe("^22.18.0 || >=24.3.0");
     const [major = 0, minor = 0] = readFileSync(new URL("../../.nvmrc", import.meta.url), "utf8")
       .split(".")
       .map(Number);
@@ -68,10 +69,15 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       expect(await lint(code)).toEqual([]);
     });
 
-    it("fails on syntax Node cannot erase", async () => {
-      const messages = await lint("export enum E {\n  A,\n}\n");
+    it("fails on syntax Node cannot erase, at its line and column", async () => {
+      const messages = await lint("const a = 1;\nexport enum E {\n  A,\n}\nexport { a };\n");
       expect(messages).toHaveLength(1);
-      expect(messages[0]?.fatal).toBe(true);
+      expect(messages[0]).toMatchObject({
+        fatal: true,
+        line: 2,
+        column: 8,
+        message: expect.stringMatching(/enum is not supported in strip-only mode/),
+      });
     });
   });
 
