@@ -808,12 +808,13 @@ export function updateVersionLine(offer) {
 }
 
 /**
- * `[updates] check` after a read of config.toml (decision 31). A file with errors never turns
- * checks off that it does not state: when its TOML parses, its `check` (true when missing)
- * applies as in a valid file, so a value from a newer build never keeps the user from the
- * release that accepts it. Only when `check` cannot be read, since the file may then say
- * `check = false`, does the config in force before keep its value, and when only the defaults
- * stand in for the file (at startup) checks are held until it is fixed.
+ * `[updates] check` after a read of config.toml (decision 31 as since changed, #741). A file
+ * with errors whose `check` can be read applies it as a valid file would, true when missing, so
+ * a value from a newer build never keeps the user from the release that accepts it; that can
+ * turn checks on that the config in force had off. Only when `check` cannot be read, since the
+ * file may then say `check = false`, does the config in force before keep its value, and when
+ * only the defaults stand in for the file (at startup) checks are held, `:update` aside, until
+ * it is fixed.
  * @param {{ errors: number, inForce: boolean, raw: boolean | "missing" | null,
  *   hadConfig: boolean }} read
  *   `inForce`: `updates.check` of the config in force after the read; `raw`: rawUpdatesCheck;
