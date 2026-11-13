@@ -215,13 +215,13 @@ enable, set OLLAMA_IGPU_ENABLE=1` for the device `AMD Radeon 860M Graphics (RADV
 
 ## Design
 
-1. **Measure before and after each change** (S1), because each change below trades something
-   (cache stability, what the model sees, instruction length) and only the bench shows whether
-   it pays. The per-step breakdown (Behaviour 1) is the bench's instrument: it lives in
-   `tools/agent-bench/breakdown.mjs`, wraps the provider's `fetch` and reads the request body,
-   so the loop itself is unchanged and the figures come from what was actually sent.
-   Rejected: counting tokens inside the loop, because the loop would then carry bench-only
-   code.
+1. **Measure before and after each change** (S1), because each change below trades something (cache
+   stability, what the model sees, instruction length) and only the bench shows whether it pays. The
+   per-step breakdown (Behaviour 1) is the bench's instrument: it lives in
+   `tools/agent-bench/breakdown.mjs` (Since changed: `breakdown.ts`, ADR-025), wraps the provider's
+   `fetch` and reads the request body, so the loop itself is unchanged and the figures come from
+   what was actually sent. Rejected: counting tokens inside the loop, because the loop would then
+   carry bench-only code.
 2. **Fewer steps first** (S2), because every step costs a model turn whatever its size: on a
    hosted model the turn's latency, on a local one the new text it reads and the output it
    writes. Opening a site's search results by URL with `elements: true` takes one step where

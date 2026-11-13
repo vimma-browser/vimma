@@ -379,7 +379,7 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
 - `--retry-blocked` loads each blocked site once more at the end of the run. The nightly passes
   it; leave it off at home, where every extra visit makes the next bot check more likely.
 - **The nightly diff and the `site-compat` issue.** After the run, `sites.yml` downloads the
-  previous scheduled run's artifact and runs `tools/sites/compare.mjs`: the changes go into the
+  previous scheduled run's artifact and runs `tools/sites/compare.ts`: the changes go into the
   job summary and `diff.md`, and the regressions it tracks (checks that passed before and fail
   now) into `diff.json` for the next night. A new regression opens one issue labelled
   `site-compat`; each scheduled run updates it and closes it once every tracked check passes
@@ -401,7 +401,7 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
   anywhere: it loads no live site. A failure is Vimma's, since the page cannot have changed.
 - **Recording a snapshot.** `npm run sites -- --record wikipedia` loads the live page once and
   writes a checked snapshot into `site-compat-output/snapshots/`; `--record <id>=<url>` records
-  from a saved copy instead. Only the ids in `SNAPSHOT_LICENCES` (`tools/sites/snapshot.mjs`) are
+  from a saved copy instead. Only the ids in `SNAPSHOT_LICENCES` (`tools/sites/snapshot.ts`) are
   accepted. Copy the file into the fixtures, set its `snapshots.json` entry from an offline run
   and add its attribution row to the README there. A site whose licence allows no copy gets a
   hand-written minimal fixture of the structure that broke instead.
@@ -416,7 +416,7 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
 ([builtin-agent](specs/builtin-agent.md) B14). It runs vimma-core's model loop
 (`packages/vimma-core/src/agent-loop.mjs`) in Node against `vimma-ctl mcp` on a real build under
 its own Xvfb, and shops the ten fixed lists of `tests/e2e/fixtures/bench-shop/lists.json` in a
-local shop (`tools/agent-bench/shop.mjs`, about 60 products, with injected instructions in some
+local shop (`tools/agent-bench/shop.ts`, about 60 products, with injected instructions in some
 descriptions and reviews). Each run is one `vimma-ctl mcp` connection: the harness answers its
 first question with `a`, as sending a task with `Enter` will grant it, and every later
 question, which under that grant only a checkpoint asks, with `n`. The scores come from what
@@ -437,7 +437,7 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   bug in the bench or in Vimma.
 - `--two-shops` adds the two-shop scenario of issue #693 ([mcp-consequence](specs/mcp-consequence.md),
   Tests): five items compared across two local shops, Kauppa on `127.0.0.1` and Market on
-  `localhost` (`tools/agent-bench/two-shops.mjs`, `tests/e2e/fixtures/bench-shop/two-shops.json`),
+  `localhost` (`tools/agent-bench/two-shops.ts`, `tests/e2e/fixtures/bench-shop/two-shops.json`),
   both baskets filled with each shop's cheapest match and both checkouts asked. Kauppa's add
   buttons are icon-only buttons named by `aria-label`; Market's are a repeated "Add" that
   submits a small form. Alone it runs only that scenario. `--check` also fails it when anything
@@ -455,7 +455,7 @@ ANTHROPIC_API_KEY=… npm run agent-bench -- --artifact --provider anthropic \
   tools') and what a request held: the mean and largest input tokens a model turn, the mean
   output tokens, and the share of the characters sent that were tool definitions,
   instructions, the model's calls, earlier results and new results
-  (`tools/agent-bench/breakdown.mjs`). `--out` has the same per turn (`turns`), and each call's
+  (`tools/agent-bench/breakdown.ts`). `--out` has the same per turn (`turns`), and each call's
   time (`ms`). Use it to measure a change that should make the agent faster or cheaper before
   and after.
 - `--keep-results N` is `[agent] keep_results`: how many of the latest tool results a request

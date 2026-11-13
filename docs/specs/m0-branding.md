@@ -59,9 +59,9 @@ local or CI build picks this brand without anyone remembering a flag.
   `app.update.checkInstallTime` true, BrowserGlue's `_checkForOldBuildUpdates` does not throw;
   `about:home` and `about:newtab` render `body.activity-stream` with no `AboutNewTabRedirector`
   console error.
-- `tools/branding/test/branding-prefs.test.mjs` (Vitest): our prefs file sets every pref name
-  upstream's `unofficial/pref/firefox-branding.js` sets. Needs `engine/`, so it skips in the CI
-  job and runs in the e2e job after `npm run import`.
+- `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`, ADR-025)
+  (Vitest): our prefs file sets every pref name upstream's `unofficial/pref/firefox-branding.js`
+  sets. Needs `engine/`, so it skips in the CI job and runs in the e2e job after `npm run import`.
 - `--version` smoke check (runbook): `engine/obj-*/dist/bin/vimma --version` prints
   `Vimma Vimma 0.1.0` (since spec firefox-versions: `Vimma 0.1.0 · Firefox <version>`).
 

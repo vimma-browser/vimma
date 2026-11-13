@@ -9,7 +9,7 @@ export const HOSTS = Object.freeze({
   wiki: "http://wiki.example/",
   notes: "http://notes.example/",
   tracker: "http://tracker.example/",
-  /** the agent bench's stand-in shop (tools/agent-bench/shop.mjs), for the agent shot */
+  /** the agent bench's stand-in shop (tools/agent-bench/shop.ts), for the agent shot */
   shop: "http://shop.example/",
   /** the default search engine's host; nothing in a shot searches it */
   search: "http://search.example/",
