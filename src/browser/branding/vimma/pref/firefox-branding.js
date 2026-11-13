@@ -31,7 +31,7 @@ pref("app.releaseNotesURL.prompt", "");
 
 // Every stock brand defines these two, and Firefox reads them with no fallback: without the first,
 // BrowserGlue's old-build check throws at the first window and skips the rest of its first-window
-// work, about:home and about:newtab included (tools/branding/test/branding-prefs.test.mjs).
+// work, about:home and about:newtab included (tools/branding/test/branding-prefs.test.ts).
 // Values as upstream's unofficial brand.
 // The number of days a binary is permitted to be old without checking for an update.
 pref("app.update.checkInstallTime.days", 2);

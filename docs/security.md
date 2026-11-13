@@ -6,7 +6,7 @@ vulnerability: [SECURITY.md](../SECURITY.md).
 
 **How to read it.** Each rule is one "must" or "never" sentence, followed by the tests that
 enforce it, as `test name` links into the test file. CI fails if a link stops resolving
-(`tools/security/check-doc-links.mjs`), so a renamed or deleted test cannot leave a rule
+(`tools/security/check-doc-links.ts`), so a renamed or deleted test cannot leave a rule
 unguarded. **⚠ gap** marks a rule the code does not meet yet, with its issue.
 
 **Fuzzing.** Every parser of outside input (the control protocol, vimma-ctl's JSON, `config.toml`,
@@ -319,7 +319,7 @@ The add-on picker lists, enables, disables and removes extensions. Spec:
   (spec [first-run-setup](specs/first-run-setup.md)). It never installs an add-on update; an
   update goes through about:addons, where Firefox asks about new permissions.
   [`u_reports_the_update_check`](../tests/browser/browser_vimma_addons.js),
-  [`installs an add-on only from the setup page`](../tools/security/test/chrome-source.test.mjs),
+  [`installs an add-on only from the setup page`](../tools/security/test/chrome-source.test.ts),
   [`an AMO result off addons.mozilla.org or without a sha256 hash is dropped`](../packages/vimma-core/test/setup.test.mjs)
 - A2. Removal **must** ask y/N, and a y stands only for the add-on and version asked about.
   [`d_removes_after_yes_and_keeps_after_no`](../tests/browser/browser_vimma_addons.js),
@@ -342,7 +342,7 @@ text that pages, add-ons and bookmarks choose.
   [`names_with_html_are_text`](../tests/browser/browser_vimma_addons.js),
   [`test_names_with_html_stay_text`](../tests/browser/browser_vimma_downloads.js),
   [`toggles_in_the_side_panels_slot_one_panel_at_a_time`](../tests/browser/browser_vimma_bookmarks.js),
-  [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
+  [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.ts)
 - C2. Chrome code **never** builds code from text (`eval`, `Function`) and **never** starts a
   process, with three exceptions. First, the system's ClamAV scanners, `clamscan` (only
   `/usr/bin/clamscan` or `/usr/local/bin/clamscan`) and `clamdscan` (only `/usr/bin/clamdscan`
@@ -380,14 +380,14 @@ text that pages, add-ons and bookmarks choose.
   which dyld resolves from its shared cache, because for a bare name dyld also searches the
   working directory of a process without the hardened runtime, so a library planted where Vimma
   starts would be loaded. Any other system or architecture, a failed call or a struct of
-  another size gives no owner, so clamd is not used and an agent CLI is refused. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
-  [`never starts a process, but ClamAV, an AppImage's restart and an agent CLI`](../tools/security/test/chrome-source.test.mjs),
-  [`starts an agent CLI only from its checked path, with fixed arguments and no shell`](../tools/security/test/chrome-source.test.mjs),
-  [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.mjs),
+  another size gives no owner, so clamd is not used and an agent CLI is refused. [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.ts),
+  [`never starts a process, but ClamAV, an AppImage's restart and an agent CLI`](../tools/security/test/chrome-source.test.ts),
+  [`starts an agent CLI only from its checked path, with fixed arguments and no shell`](../tools/security/test/chrome-source.test.ts),
+  [`restarts an AppImage through one fixed script, with its path never shell text`](../tools/security/test/chrome-source.test.ts),
   [`/bin/sh runs a fixed script; the pid and the path are arguments, never script text`](../packages/vimma-core/test/restart.test.mjs),
   [`starts the AppImage only once the old process has exited, with no arguments`](../packages/vimma-core/test/restart.test.mjs),
-  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.mjs),
-  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs),
+  [`never calls native code, but statx, lstat or readlink for a file's owner, mode or link`](../tools/security/test/chrome-source.test.ts),
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.ts),
   [`test_enter_and_o_open_through_launchDownload`](../tests/browser/browser_vimma_downloads.js),
   [`test_an_executable_asks_firefoxs_prompt_first`](../tests/browser/browser_vimma_downloads.js)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
@@ -649,7 +649,7 @@ A local file you trust and edit. Spec: [m5-config-load](specs/m5-config-load.md)
 - F3. The config is **never** executed: no value is evaluated as code or run as a command. An
   agent CLI provider names only which supported CLI it is and its model; a `command`, `path`,
   `args` or `env` key in one is an error (M60).
-  [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.mjs),
+  [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.ts),
   [`command, path, args and env in a cli provider are errors with their line`](../packages/vimma-core/test/config-agent.test.mjs)
 - F4. `:route add` **must** write each value as one escaped TOML string, and write nothing when
   the result would not parse.
@@ -3230,7 +3230,7 @@ Rules:
   ones included, as text nodes and `<mark>` elements made in chrome, **never** parsed as HTML
   (C1).
   [`page_text_with_markup_stays_text`](../tests/browser/browser_vimma_live_grep.js),
-  [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.mjs)
+  [`never parses strings as HTML: page titles, add-on and bookmark names stay text`](../tools/security/test/chrome-source.test.ts)
 - L4. The agent workspace's tabs **must** be searched only when the scope includes them, and
   their results **must** be marked as the agent's, so an agent's page is never taken for yours;
   a recently closed tab or window is the agent's when the tab its row shows was in the agent
@@ -3344,7 +3344,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`newer_build_is_offered_and_the_request_is_anonymous`](../tests/browser/browser_vimma_update_check.js),
   [`the_url_may_name_only_platform_and_channel`](../tests/browser/browser_vimma_update_check.js),
   [`redirects_are_not_followed`](../tests/browser/browser_vimma_update_check.js),
-  [`ask updates.vimma.dev with the platform and channel only`](../tools/branding/test/branding-prefs.test.mjs)
+  [`ask updates.vimma.dev with the platform and channel only`](../tools/branding/test/branding-prefs.test.ts)
 - UP4. With `[updates] check = false` or `vimma.update.enabled` = `false`, and in a build run from
   its objdir, Vimma **never** makes an update request, and shows no update message or question.
   A `config.toml` with errors **never** turns checks on past an opt-out it may state: a
@@ -3891,23 +3891,23 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   backticks than it contains. Lists stop at 50 entries and the body at 60 000 characters. The run
   link is written only when it is a GitHub Actions run URL, and the baseline's commit only when
   it is hexadecimal.
-  [`puts no untrusted text outside a code span`](../tools/sites/test/diff.test.mjs),
-  [`wraps text in a code span, where GitHub renders no mention, reference, link or HTML`](../tools/sites/test/diff.test.mjs),
-  [`picks a fence longer than any run of backticks inside, padded at a backtick edge`](../tools/sites/test/diff.test.mjs),
-  [`puts everything on one line: newlines, control and bidirectional characters`](../tools/sites/test/diff.test.mjs),
-  [`cuts to MAX_TEXT characters, and says when it is empty`](../tools/sites/test/diff.test.mjs),
-  [`caps the list and the body`](../tools/sites/test/diff.test.mjs),
-  [`drops a run URL that is not GitHub's`](../tools/sites/test/diff.test.mjs)
+  [`puts no untrusted text outside a code span`](../tools/sites/test/diff.test.ts),
+  [`wraps text in a code span, where GitHub renders no mention, reference, link or HTML`](../tools/sites/test/diff.test.ts),
+  [`picks a fence longer than any run of backticks inside, padded at a backtick edge`](../tools/sites/test/diff.test.ts),
+  [`puts everything on one line: newlines, control and bidirectional characters`](../tools/sites/test/diff.test.ts),
+  [`cuts to MAX_TEXT characters, and says when it is empty`](../tools/sites/test/diff.test.ts),
+  [`caps the list and the body`](../tools/sites/test/diff.test.ts),
+  [`drops a run URL that is not GitHub's`](../tools/sites/test/diff.test.ts)
 - SC4. The previous run's `results.json` and `diff.json` are used **only** when they have the
   expected shape: site ids of lowercase letters, digits and dashes, statuses and check ids from
   fixed sets, strings where strings belong. Anything else is reported and compared as no
   baseline, so a damaged artifact cannot inject names or open an issue. Site names come from the
   repository's `sites.json`, whose test forbids anything GitHub would turn into a mention,
   reference or link.
-  [`names nothing GitHub would turn into a mention, reference or link`](../tools/sites/test/sites-data.test.mjs),
-  [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.mjs),
-  [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.mjs),
-  [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.mjs)
+  [`names nothing GitHub would turn into a mention, reference or link`](../tools/sites/test/sites-data.test.ts),
+  [`rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids`](../tools/sites/test/diff.test.ts),
+  [`round-trips the tracked list through diff.json, and rejects one of the wrong shape`](../tools/sites/test/diff.test.ts),
+  [`reports no baseline when the previous artifact is missing or malformed`](../tools/sites/test/compare.test.ts)
 - SC5. The **snapshot gate** (`npm run sites -- --offline`, run by e2e.yml on every pull request)
   loads only the files in `tests/e2e/fixtures/sites/`, from a page server on 127.0.0.1, and never
   a live site: no other mode of the suite runs in e2e.yml. Each snapshot is third-party page
@@ -3926,16 +3926,16 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   request like code. The step runs in the mochitest job (`contents: read`, no secret); its report
   and screenshots, which show only committed snapshots, are uploaded as an artifact when it
   fails, and nothing from it reaches an issue.
-  [`rejects scripts and every element that loads or embeds something`](../tools/sites/test/snapshot.test.mjs),
-  [`rejects event handlers however they are written`](../tools/sites/test/snapshot.test.mjs),
-  [`allows only fragment links and the follow target as href`](../tools/sites/test/snapshot.test.mjs),
-  [`rejects every other attribute that names a URL`](../tools/sites/test/snapshot.test.mjs),
-  [`rejects url(), @import and image-set() in styles`](../tools/sites/test/snapshot.test.mjs),
-  [`wants the doctype, and the CSP as the first thing in <head>`](../tools/sites/test/snapshot.test.mjs),
-  [`ends a comment where the parser does: <!-->, <!--->, --!>`](../tools/sites/test/snapshot.test.mjs),
-  [`reads markup inside raw-text elements too, as in <svg>, where they are not raw`](../tools/sites/test/snapshot.test.mjs),
-  [`reads CSS escapes and comments before looking for loads`](../tools/sites/test/snapshot.test.mjs),
-  [`each have a manifest entry with a licence that allows redistribution`](../tools/sites/test/snapshot.test.mjs),
+  [`rejects scripts and every element that loads or embeds something`](../tools/sites/test/snapshot.test.ts),
+  [`rejects event handlers however they are written`](../tools/sites/test/snapshot.test.ts),
+  [`allows only fragment links and the follow target as href`](../tools/sites/test/snapshot.test.ts),
+  [`rejects every other attribute that names a URL`](../tools/sites/test/snapshot.test.ts),
+  [`rejects url(), @import and image-set() in styles`](../tools/sites/test/snapshot.test.ts),
+  [`wants the doctype, and the CSP as the first thing in <head>`](../tools/sites/test/snapshot.test.ts),
+  [`ends a comment where the parser does: <!-->, <!--->, --!>`](../tools/sites/test/snapshot.test.ts),
+  [`reads markup inside raw-text elements too, as in <svg>, where they are not raw`](../tools/sites/test/snapshot.test.ts),
+  [`reads CSS escapes and comments before looking for loads`](../tools/sites/test/snapshot.test.ts),
+  [`each have a manifest entry with a licence that allows redistribution`](../tools/sites/test/snapshot.test.ts),
   [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../tools/test/sites-workflow.test.mjs)
 
 ## 18. Release download counts workflow (`downloads.yml`, `tools/stats`)
@@ -4028,7 +4028,7 @@ which Firefox's site information panel shows already, and stores nothing of its 
   `n` and `:popups`' allow, block and reset rows (`host/popup-ops.mjs`) write only through this
   file's `setSitePopups`, which refuses an agent workspace page and a locked pop-up pref, so a
   block from any of them is the same stored block.
-  [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
+  [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.ts),
   [`test_popups_can_be_allowed_blocked_and_reset`](../tests/browser/browser_vimma_site_permissions.js),
   [`test_site_and_popups_share_one_popup_permission`](../tests/browser/browser_vimma_site_permissions.js),
   [`test_a_private_window_keeps_a_popup_block_for_its_session`](../tests/browser/browser_vimma_site_permissions.js),
@@ -4038,7 +4038,7 @@ which Firefox's site information panel shows already, and stores nothing of its 
   [`test_a_locked_default_makes_the_row_read_only`](../tests/browser/browser_vimma_site_permissions.js)
 - SP5. No control, MCP or agent code **must** reach it: nothing under `ctl/` or `agent/` imports
   the picker's ops, and the agent's keys are the spec's fixed list.
-  [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.mjs),
+  [`changes a site permission only from the site permissions picker`](../tools/security/test/chrome-source.test.ts),
   [`the whitelist is the spec's table`](../packages/vimma-core/test/agent-keys.test.mjs)
 
 ## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`, `host/outline-ops.mjs`)
@@ -4284,4 +4284,4 @@ referring pages are chosen by the sites the files came from.
   one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
   `ctl/` or `agent/` module imports the picker's ops.
   [`downloads.picker is not an agent key action (docs/specs/downloads.md decision 16)`](../packages/vimma-core/test/agent-keys.test.mjs),
-  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.mjs)
+  [`opens and reveals downloads only through Firefox's Download, from download-ops`](../tools/security/test/chrome-source.test.ts)

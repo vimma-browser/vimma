@@ -1,9 +1,9 @@
-// The checks of one site (docs/specs/site-compat.md, decision 5), on a browser that sites.mjs
+// The checks of one site (docs/specs/site-compat.md, decision 5), on a browser that sites.ts
 // has launched: keys and modes through vimma-ctl, everything else read over RDP with the probes.
 // Results are written into `result` as they come, so a timed-out site keeps what it found.
 import { setTimeout as sleep } from "node:timers/promises";
-import { canScroll, chooseHintLink, reactionOf, scrollMovement } from "./analysis.mjs";
-import { CONSENT_SELECTORS, REJECT_SOURCES, classifyPage } from "./classify.mjs";
+import { canScroll, chooseHintLink, reactionOf, scrollMovement } from "./analysis.ts";
+import { CONSENT_SELECTORS, REJECT_SOURCES, classifyPage } from "./classify.ts";
 import {
   chromeCloseFindbar,
   chromeFindStatus,
@@ -28,13 +28,12 @@ import {
   contentScrollSnapshot,
   contentSnapshot,
   probe,
-} from "./probes.mjs";
-import { completeChecks, siteStatus, statusbarCheck } from "./results.mjs";
-import { FOLLOW_TARGET, SNAPSHOT_CSP } from "./snapshot.mjs";
-
-/** @typedef {import("./results.mjs").CheckResult} CheckResult */
-/** @typedef {import("./results.mjs").SiteResult} SiteResult */
-/** @typedef {import("./site-list.mjs").Site} Site */
+} from "./probes.ts";
+import type { Rdp } from "./rdp.ts";
+import { completeChecks, siteStatus, statusbarCheck } from "./results.ts";
+import type { CheckResult, ModeStep, SiteResult } from "./results.ts";
+import type { Site } from "./site-list.ts";
+import { FOLLOW_TARGET, SNAPSHOT_CSP } from "./snapshot.ts";
 
 /**
  * Vimma's single normal-mode keys (packages/vimma-core/src/defaults.mjs, `modal.normal`), pressed
@@ -47,24 +46,27 @@ export const LOAD_TIMEOUT_MS = 45_000;
 const SETTLE_MS = 2000;
 const MAX_FAILURE_SHOTS = 3;
 
-/**
- * @typedef {object} Context
- * @property {{ state: () => Promise<Record<string, any>>, sendKeys: (keys: string) => Promise<void>,
- *   open: (url: string) => Promise<string> }} ctl
- * @property {import("./rdp.mjs").Rdp} rdp
- * @property {string} parent  the parent process's console actor
- * @property {(label: string) => Promise<string | null>} screenshot  returns the file name
- * @property {(line: string) => void} log
- */
+export interface Context {
+  ctl: {
+    state: () => Promise<Record<string, any>>;
+    sendKeys: (keys: string) => Promise<void>;
+    open: (url: string) => Promise<string>;
+  };
+  rdp: Rdp;
+  /** the parent process's console actor */
+  parent: string;
+  /** returns the file name */
+  screenshot: (label: string) => Promise<string | null>;
+  log: (line: string) => void;
+}
 
 /**
  * Poll `fn` until it returns a truthy value or `timeoutMs` passes; errors count as falsy.
- * @template T
- * @param {() => Promise<T>} fn
- * @param {{ timeoutMs: number, intervalMs?: number }} options
- * @returns {Promise<T | null>}
  */
-export async function poll(fn, { timeoutMs, intervalMs = 10 }) {
+export async function poll<T>(
+  fn: () => Promise<T>,
+  { timeoutMs, intervalMs = 10 }: { timeoutMs: number; intervalMs?: number },
+): Promise<T | null> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const value = await fn().catch(() => null);
@@ -74,15 +76,17 @@ export async function poll(fn, { timeoutMs, intervalMs = 10 }) {
   }
 }
 
-/** The selected tab of a vimma-ctl state. @param {Record<string, any>} state */
-const selectedTab = (state) => state.tabs?.find((/** @type {any} */ t) => t.selected) ?? null;
+/** The selected tab of a vimma-ctl state. */
+const selectedTab = (state: Record<string, any>) =>
+  state.tabs?.find((t: any) => t.selected) ?? null;
 
 /** Probes in the selected tab, re-attaching after a navigation destroyed the target. */
 class Tab {
-  /** @param {Context} ctx */
-  constructor(ctx) {
+  declare ctx: Context;
+  declare actor: string | null;
+
+  constructor(ctx: Context) {
     this.ctx = ctx;
-    /** @type {string | null} */
     this.actor = null;
   }
 
@@ -90,13 +94,8 @@ class Tab {
     this.actor = null;
   }
 
-  /**
-   * @param {Function} fn a content probe
-   * @param {unknown} [arg]
-   * @param {{ timeoutMs?: number }} [options]
-   * @returns {Promise<any>}
-   */
-  async eval(fn, arg, options) {
+  /** @param fn a content probe */
+  async eval(fn: Function, arg?: unknown, options?: { timeoutMs?: number }): Promise<any> {
     for (let attempt = 0; ; attempt++) {
       try {
         if (!this.actor) {
@@ -114,25 +113,23 @@ class Tab {
 }
 
 /**
- * Run every check on `site`, filling `result`. `offline`: the site is a snapshot (snapshot.mjs),
+ * Run every check on `site`, filling `result`. `offline`: the site is a snapshot (snapshot.ts),
  * which has none of the site's scripts, so its shortcuts are not probed.
- * @param {Site} site
- * @param {Context} ctx
- * @param {SiteResult} result
- * @param {{ offline?: boolean }} [options]
  */
-export async function runSite(site, ctx, result, { offline = false } = {}) {
+export async function runSite(
+  site: Site,
+  ctx: Context,
+  result: SiteResult,
+  { offline = false }: { offline?: boolean } = {},
+) {
   const { ctl, rdp, parent, log } = ctx;
   const tab = new Tab(ctx);
-  /** @type {CheckResult[]} */
-  const checks = (result.checks = []);
-  /** @type {import("./results.mjs").ModeStep[]} */
-  const steps = (result.steps = []);
+  const checks: CheckResult[] = (result.checks = []);
+  const steps: ModeStep[] = (result.steps = []);
   let failureShots = 0;
-  /** @param {Function} fn @param {unknown} [arg] */
-  const chrome = async (fn, arg) => JSON.parse(await rdp.evaluate(parent, probe(fn, arg)));
-  /** @param {CheckResult} c */
-  const record = async (c) => {
+  const chrome = async (fn: Function, arg?: unknown) =>
+    JSON.parse(await rdp.evaluate(parent, probe(fn, arg)));
+  const record = async (c: CheckResult) => {
     checks.push(c);
     log(`    ${c.id}: ${c.status}${c.reason ? ` (${c.reason})` : ""}`);
     if (c.status === "fail" && failureShots < MAX_FAILURE_SHOTS) {
@@ -140,21 +137,16 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
       await shot(`fail-${c.id}`);
     }
   };
-  /** @param {string} label */
-  const shot = async (label) => {
+  const shot = async (label: string) => {
     const file = await ctx.screenshot(label).catch(() => null);
     if (file) result.screenshots.push({ label, file });
   };
   /**
    * Wait for vimma-ctl's mode and the status bar to show `expected`; record the step.
-   * @param {string} step
-   * @param {string} expected
    */
-  const expectMode = async (step, expected, timeoutMs = 1500) => {
-    /** @type {string | null} */
-    let state = null;
-    /** @type {string | null} */
-    let bar = null;
+  const expectMode = async (step: string, expected: string, timeoutMs = 1500) => {
+    let state: string | null = null;
+    let bar: string | null = null;
     const ok = await poll(
       async () => {
         state = (await ctl.state()).mode ?? null;
@@ -166,14 +158,11 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     steps.push({ step, expected, state, statusbar: bar });
     return !!ok;
   };
-  /** @param {string} keys */
-  const send = (keys) => ctl.sendKeys(keys);
+  const send = (keys: string) => ctl.sendKeys(keys);
   /**
    * Send `keys` and time how long until `until` is truthy.
-   * @param {string} keys
-   * @param {() => Promise<unknown>} until
    */
-  const timed = async (keys, until, timeoutMs = 2000) => {
+  const timed = async (keys: string, until: () => Promise<unknown>, timeoutMs = 2000) => {
     const t0 = performance.now();
     await send(keys);
     const ok = await poll(until, { timeoutMs });
@@ -188,21 +177,19 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
       await sleep(100);
     }
   };
-  /** @param {string} name @param {() => Promise<CheckResult>} body */
-  const check = async (name, body) => {
+  const check = async (name: string, body: () => Promise<CheckResult>) => {
     try {
       await record(await body());
     } catch (e) {
       await record({
         id: name,
         status: "fail",
-        reason: `harness error: ${/** @type {Error} */ (e).message}`,
+        reason: `harness error: ${(e as Error).message}`,
       });
     }
   };
   const waitLoaded = async (timeoutMs = LOAD_TIMEOUT_MS) => {
-    /** @type {any} */
-    let last = null;
+    let last: any = null;
     const done = await poll(
       async () => {
         last = await tab.eval(contentPageInfo, { consentSelectors: CONSENT_SELECTORS });
@@ -221,8 +208,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
   const t0 = performance.now();
   await ctl.open(site.url);
   const { done, last } = await waitLoaded();
-  /** @type {any} */
-  let info = done ?? last;
+  let info: any = done ?? last;
   if (!info || (!done && info.readyState !== "interactive")) {
     await shot("load");
     await record({
@@ -238,8 +224,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
   info = settled.done ?? settled.last ?? info;
   result.loadMs = info.loadMs ?? Math.round(performance.now() - t0);
   let block = classifyPage(info);
-  /** @type {string | null} */
-  let consentClicked = null;
+  let consentClicked: string | null = null;
   if (block.kind === "consent") {
     consentClicked = await tab.eval(contentClickReject, { patterns: REJECT_SOURCES });
     if (consentClicked) {
@@ -283,8 +268,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     const start = await tab.eval(contentScrollSnapshot);
     if (!canScroll(start))
       return { id: "scroll", status: "skip", reason: "nothing on the page scrolls" };
-    /** @type {Array<[string, "down" | "up"]>} */
-    const moves = [
+    const moves: Array<[string, "down" | "up"]> = [
       ["j", "down"],
       ["k", "up"],
       ["G", "down"],
@@ -292,14 +276,11 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
       ["ctrl+d", "down"],
       ["ctrl+u", "up"],
     ];
-    /** @type {string[]} */
-    const bad = [];
-    /** @type {Record<string, string>} */
-    const where = {};
+    const bad: string[] = [];
+    const where: Record<string, string> = {};
     for (const [keys, want] of moves) {
       const before = await tab.eval(contentScrollSnapshot);
-      /** @type {ReturnType<typeof scrollMovement>} */
-      let move = { moved: "none", where: null, by: 0 };
+      let move: ReturnType<typeof scrollMovement> = { moved: "none", where: null, by: 0 };
       const ms = await timed(
         keys,
         async () => {
@@ -334,8 +315,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     await send("/");
     await expectMode("/", "command");
     await send([...word, "enter"].join(" "));
-    /** @type {any} */
-    const status = await poll(
+    const status: any = await poll(
       async () => {
         const s = await chrome(chromeFindStatus);
         return s && s.query === word && (s.notFound || (s.total ?? 0) > 0) ? s : null;
@@ -364,8 +344,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     await toNormal();
     const sentinel = `vimma-site-compat-${Date.now()}`;
     await chrome(chromeSetClipboard, { text: sentinel });
-    /** @type {string | null} */
-    let clip = null;
+    let clip: string | null = null;
     const ms = await timed("y y", async () => {
       clip = await chrome(chromeReadClipboard);
       return clip !== sentinel;
@@ -383,12 +362,10 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
   });
 
   // 6a. prefix in normal mode (recorded with 6b below) ---------------------------------------
-  /** @type {string[]} */
-  const prefixBad = [];
-  /** @type {string[]} */
-  const prefixWhere = [];
-  /** @param {string} where @param {string} after the mode esc should leave */
-  const prefixProbe = async (where, after) => {
+  const prefixBad: string[] = [];
+  const prefixWhere: string[] = [];
+  /** @param after the mode esc should leave */
+  const prefixProbe = async (where: string, after: string) => {
     await tab.eval(contentRecorder);
     await send("ctrl+b");
     const pending = (await ctl.state()).pending;
@@ -406,7 +383,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     await toNormal();
     await prefixProbe("normal mode", "normal");
   } catch (e) {
-    prefixError = /** @type {Error} */ (e).message;
+    prefixError = (e as Error).message;
   }
 
   // 5. insert (and 6b, prefix in a field) ----------------------------------------------------
@@ -431,7 +408,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     try {
       await prefixProbe("in a field", "insert");
     } catch (e) {
-      prefixError = /** @type {Error} */ (e).message;
+      prefixError = (e as Error).message;
     }
     await send("esc");
     const normal = await expectMode("esc in the field", "normal");
@@ -459,8 +436,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
       };
     await toNormal();
     const startUrl = selectedTab(await ctl.state())?.url;
-    /** @type {Array<{ key: string, reaction: string, to?: string }>} */
-    const found = [];
+    const found: Array<{ key: string; reaction: string; to?: string }> = [];
     let stopped = null;
     // Synthetic keys at the page (contentPressKey): Vimma's `i` is no clean pass-through (it
     // focuses the first text field), and a key that reached Vimma's normal mode instead would
@@ -530,8 +506,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     await send("g g");
     await sleep(300);
     const clickables = await tab.eval(contentClickables);
-    /** @type {Array<{ label: string, x: number, y: number }>} */
-    let labels = [];
+    let labels: Array<{ label: string; x: number; y: number }> = [];
     const ms = await timed(
       "f",
       async () => {
@@ -605,8 +580,7 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
   await check("errors", errorsCheck);
   return finish("");
 
-  /** @returns {Promise<CheckResult>} */
-  async function errorsCheck() {
+  async function errorsCheck(): Promise<CheckResult> {
     const errors = await chrome(chromeTakeErrors);
     if (!errors.length) return { id: "errors", status: "pass" };
     return {
@@ -618,8 +592,8 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
     };
   }
 
-  /** @param {string} reason why checks that never ran were skipped */
-  function finish(reason) {
+  /** @param reason why checks that never ran were skipped */
+  function finish(reason: string) {
     if (!checks.some((c) => c.id === "statusbar") && steps.length)
       checks.push(statusbarCheck(steps));
     result.checks = completeChecks(checks, reason || "not reached");
@@ -629,17 +603,16 @@ export async function runSite(site, ctx, result, { offline = false } = {}) {
 }
 
 /**
- * Load `url` and take its snapshot (snapshot.mjs, contentSnapshot) once it has loaded and
+ * Load `url` and take its snapshot (snapshot.ts, contentSnapshot) once it has loaded and
  * settled, as the checks would see it.
- * @param {string} url
- * @param {Context} ctx
- * @returns {Promise<{ html: string, skippedSheets: number, cssBytes: number, title: string }>}
  */
-export async function recordSnapshot(url, ctx) {
+export async function recordSnapshot(
+  url: string,
+  ctx: Context,
+): Promise<{ html: string; skippedSheets: number; cssBytes: number; title: string }> {
   const tab = new Tab(ctx);
-  /** @param {Function} fn */
-  const chrome = async (fn) => JSON.parse(await ctx.rdp.evaluate(ctx.parent, probe(fn)));
-  const loaded = async (/** @type {number} */ timeoutMs) =>
+  const chrome = async (fn: Function) => JSON.parse(await ctx.rdp.evaluate(ctx.parent, probe(fn)));
+  const loaded = async (timeoutMs: number) =>
     poll(
       async () => {
         const info = await tab.eval(contentPageInfo, { consentSelectors: CONSENT_SELECTORS });

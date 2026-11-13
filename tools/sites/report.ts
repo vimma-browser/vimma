@@ -1,25 +1,20 @@
 // The readable reports of a site-compatibility run (docs/specs/site-compat.md, decision 8):
 // Markdown (also the workflow's job summary) and a self-contained HTML page whose screenshots
 // sit next to it. Pure. Site titles and reasons come from live pages, so both escape them.
-import { CHECKS, summarize } from "./results.mjs";
+import { CHECKS, summarize } from "./results.ts";
+import type { CheckResult, Run, SiteResult } from "./results.ts";
 
-/** @typedef {import("./results.mjs").Run} Run */
-/** @typedef {import("./results.mjs").SiteResult} SiteResult */
-/** @typedef {import("./results.mjs").CheckResult} CheckResult */
-
-const SYMBOL = /** @type {const} */ ({ pass: "✓", fail: "✗", skip: "–", info: "i" });
+const SYMBOL = { pass: "✓", fail: "✗", skip: "–", info: "i" } as const;
 const LEGEND = "✓ pass · ✗ fail · – skipped · i info";
-const LATENCY_KEYS = /** @type {const} */ (["j", "f"]);
+const LATENCY_KEYS = ["j", "f"] as const;
 
-/** @param {SiteResult["status"]} status */
-const statusLabel = (status) => (status === "blocked" ? "blocked (bot check)" : status);
+const statusLabel = (status: SiteResult["status"]) =>
+  status === "blocked" ? "blocked (bot check)" : status;
 
-/** @param {Run} run */
-const networkLabel = (run) =>
+const networkLabel = (run: Run) =>
   run.network === "github-hosted" ? "GitHub-hosted runner" : "local network";
 
-/** @param {Run} run */
-export function summaryLine(run) {
+export function summaryLine(run: Run) {
   const s = summarize(run.sites).sites;
   return (
     `${s.total} sites: ${s.ok} ok, ${s.fail} fail, ${s.blocked} blocked (bot check), ` +
@@ -27,27 +22,23 @@ export function summaryLine(run) {
   );
 }
 
-/** Escapes what would break a Markdown table cell or become HTML. @param {string} text */
-export function md(text) {
+/** Escapes what would break a Markdown table cell or become HTML. */
+export function md(text: string) {
   return String(text)
     .replace(/[\\|<>[\]`*_]/g, (c) => `\\${c}`)
     .replace(/\s+/g, " ");
 }
 
-/** @param {number | undefined} n */
-const num = (n) => (typeof n === "number" && Number.isFinite(n) ? String(Math.round(n)) : "");
+const num = (n: number | undefined) =>
+  typeof n === "number" && Number.isFinite(n) ? String(Math.round(n)) : "";
 
-/** @param {SiteResult} site @returns {string[]} the keys the site reacted to */
-function shortcutKeys(site) {
+/** @returns the keys the site reacted to */
+function shortcutKeys(site: SiteResult): string[] {
   const keys = site.checks.find((c) => c.id === "shortcuts")?.details?.keys;
   return Array.isArray(keys) ? keys.map(String) : [];
 }
 
-/**
- * @param {Run} run
- * @returns {string}
- */
-export function renderMarkdown(run) {
+export function renderMarkdown(run: Run): string {
   const date = run.startedAt.slice(0, 10);
   const out = [`## Site compatibility, ${date} (${networkLabel(run)})`, "", summaryLine(run), ""];
   if (run.harnessError) out.push(`**The harness failed:** ${md(run.harnessError)}`, "");
@@ -143,8 +134,7 @@ export function renderMarkdown(run) {
   return out.join("\n");
 }
 
-/** @param {unknown} text */
-function html(text) {
+function html(text: unknown) {
   return String(text)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -153,8 +143,8 @@ function html(text) {
     .replace(/'/g, "&#39;");
 }
 
-/** @param {string} file a screenshot's file name (ours, from the site id) */
-const shot = (file) => `screenshots/${encodeURIComponent(file)}`;
+/** @param file a screenshot's file name (ours, from the site id) */
+const shot = (file: string) => `screenshots/${encodeURIComponent(file)}`;
 
 const STYLE = `
 :root { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --line: #d1d9e0; --pass: #1a7f37;
@@ -184,11 +174,7 @@ details img { max-width: 100%; border: 1px solid var(--line); margin: 4px 0; }
 code { font-size: 12px; }
 `;
 
-/**
- * @param {Run} run
- * @returns {string}
- */
-export function renderHtml(run) {
+export function renderHtml(run: Run): string {
   const head = ["Site", "Status", ...CHECKS, "Load ms", ...LATENCY_KEYS.map((k) => `${k} ms`)]
     .map((h) => `<th>${html(h)}</th>`)
     .join("");

@@ -1,12 +1,11 @@
 import { createServer } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { httpFetch } from "../http-fetch.mjs";
-import { ctxModelName, describe as describeModel, ollamaRoot, withContext } from "../ollama.mjs";
+import { httpFetch } from "../http-fetch.ts";
+import { ctxModelName, describe as describeModel, ollamaRoot, withContext } from "../ollama.ts";
+import type { Server } from "node:http";
 
-/** @type {Array<{ method: string, url: string, body: any }>} */
-const seen = [];
-/** @type {import("node:http").Server} */
-let server;
+const seen: Array<{ method: string; url: string; body: any }> = [];
+let server: Server;
 let root = "";
 
 beforeAll(async () => {
@@ -19,7 +18,7 @@ beforeAll(async () => {
         url: req.url ?? "",
         body: body ? JSON.parse(body) : null,
       });
-      const json = (/** @type {any} */ v) => {
+      const json = (v: any) => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(v));
       };

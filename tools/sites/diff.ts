@@ -6,39 +6,39 @@
 // Page titles and check reasons come from live pages and reach a GitHub issue, where Markdown
 // renders, `@name` notifies a user and `#123` or a URL links another issue. Every such value goes
 // through inertCode; the previous run's files are checked for shape before they are used.
-import { md } from "./report.mjs";
-import { CHECKS } from "./results.mjs";
+import { md } from "./report.ts";
+import { CHECKS } from "./results.ts";
 
-/** @typedef {import("./results.mjs").Run} Run */
-/** @typedef {import("./results.mjs").SiteResult} SiteResult */
-/** @typedef {import("./results.mjs").SiteStatus} SiteStatus */
-/**
- * @typedef {object} Regression  a check that passed in the baseline and fails now
- * @property {string} site
- * @property {string} name
- * @property {string} check
- * @property {string} [reason]
- * @property {string} [title]
- */
-/**
- * @typedef {object} Tracked  a regression carried from night to night until it passes
- * @property {string} site
- * @property {string} check
- * @property {string} since    startedAt of the run that first saw it fail
- * @property {string} [reason] the latest failure's reason
- * @property {boolean} checked whether this run checked it (false: blocked, skipped and so on)
- */
-/**
- * @typedef {object} Diff
- * @property {{ startedAt: string, commit: string | null } | null} baseline
- * @property {Regression[]} regressions
- * @property {Tracked[]} tracked
- * @property {Array<{ site: string, name: string, check: string }>} fixed
- * @property {Array<{ site: string, name: string, from: SiteStatus, to: SiteStatus }>} changes
- * @property {string[]} added
- * @property {string[]} removed
- */
-/** @typedef {"create" | "update" | "close" | "none"} IssueAction */
+import type { Run, SiteResult, SiteStatus } from "./results.ts";
+/** a check that passed in the baseline and fails now */
+export interface Regression {
+  site: string;
+  name: string;
+  check: string;
+  reason?: string;
+  title?: string;
+}
+/** a regression carried from night to night until it passes */
+export interface Tracked {
+  site: string;
+  check: string;
+  /** startedAt of the run that first saw it fail */
+  since: string;
+  /** the latest failure's reason */
+  reason?: string;
+  /** whether this run checked it (false: blocked, skipped and so on) */
+  checked: boolean;
+}
+export interface Diff {
+  baseline: { startedAt: string; commit: string | null } | null;
+  regressions: Regression[];
+  tracked: Tracked[];
+  fixed: Array<{ site: string; name: string; check: string }>;
+  changes: Array<{ site: string; name: string; from: SiteStatus; to: SiteStatus }>;
+  added: string[];
+  removed: string[];
+}
+export type IssueAction = "create" | "update" | "close" | "none";
 
 /** Characters of one untrusted value in the issue body. */
 export const MAX_TEXT = 160;
@@ -51,7 +51,7 @@ const SITE_ID = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const SITE_STATUSES = new Set(["ok", "fail", "blocked", "consent", "error"]);
 const CHECK_STATUSES = new Set(["pass", "fail", "skip", "info"]);
 const BLOCK_KINDS = new Set(["bot-check", "consent"]);
-const CHECK_IDS = new Set(/** @type {readonly string[]} */ (CHECKS));
+const CHECK_IDS = new Set(CHECKS as readonly string[]);
 const ISO_TIME = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
 const COMMIT = /^[0-9a-f]{7,40}$/;
 const RUN_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+$/;
@@ -60,10 +60,8 @@ const RUN_URL = /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+$/;
  * One untrusted value as an inline code span, inside which GitHub renders no mention, issue
  * reference, autolink, emphasis or HTML. On one line, with control and format characters
  * (bidirectional overrides among them) replaced, and cut to `max` characters.
- * @param {unknown} text
- * @param {number} [max]
  */
-export function inertCode(text, max = MAX_TEXT) {
+export function inertCode(text: unknown, max: number = MAX_TEXT) {
   let s = String(text ?? "")
     .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, " ")
     .replace(/\s+/g, " ")
@@ -77,21 +75,20 @@ export function inertCode(text, max = MAX_TEXT) {
   return `${fence}${pad}${s}${pad}${fence}`;
 }
 
-/** @param {unknown} v @returns {v is Record<string, unknown>} */
-const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-/** @param {unknown} v */
-const optionalString = (v) => v === undefined || typeof v === "string";
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+const optionalString = (v: unknown) => v === undefined || typeof v === "string";
 
 /**
  * A results.json checked for the shape this module reads, or null with the problems. A filtered
  * run is no baseline: the sites it skipped would look removed.
- * @param {unknown} value
- * @param {{ baseline?: boolean }} [o]  false for the current run, which may be filtered
- * @returns {{ run: Run | null, problems: string[] }}
+ * @param o false for the current run, which may be filtered
  */
-export function parseRun(value, { baseline = true } = {}) {
-  /** @type {string[]} */
-  const problems = [];
+export function parseRun(
+  value: unknown,
+  { baseline = true }: { baseline?: boolean } = {},
+): { run: Run | null; problems: string[] } {
+  const problems: string[] = [];
   if (!isObject(value)) return { run: null, problems: ["not an object"] };
   if (typeof value.startedAt !== "string" || !ISO_TIME.test(value.startedAt))
     problems.push("startedAt is not a time");
@@ -133,23 +130,31 @@ export function parseRun(value, { baseline = true } = {}) {
   }
   return problems.length
     ? { run: null, problems: problems.slice(0, 10) }
-    : { run: /** @type {Run} */ (/** @type {unknown} */ (value)), problems };
+    : { run: value as unknown as Run, problems };
 }
 
-/** @typedef {Record<string, "pass" | "fail">} Known  "site/check" → its last pass or fail */
+/** "site/check" → its last pass or fail */
+export type Known = Record<string, "pass" | "fail">;
 
 /**
  * A previous run's diff.json: the tracked regressions, the last known status of each check, and
  * whether its chain of comparisons was unbroken. Absent (an artifact from before diff.json):
  * nothing tracked, and an unbroken chain. The wrong shape: nothing, and a broken chain. Entries
  * for checks that no longer exist are dropped.
- * @param {unknown} value
- * @returns {{ tracked: Tracked[], known: Known, complete: boolean, problems: string[] }}
  */
-export function parseState(value) {
+export function parseState(value: unknown): {
+  tracked: Tracked[];
+  known: Known;
+  complete: boolean;
+  problems: string[];
+} {
   if (value === undefined) return { tracked: [], known: {}, complete: true, problems: [] };
-  /** @param {string} problem */
-  const broken = (problem) => ({ tracked: [], known: {}, complete: false, problems: [problem] });
+  const broken = (problem: string) => ({
+    tracked: [],
+    known: {},
+    complete: false,
+    problems: [problem],
+  });
   if (
     !isObject(value) ||
     value.version !== 1 ||
@@ -170,35 +175,28 @@ export function parseState(value) {
       typeof t.checked === "boolean",
   );
   if (!ok) return broken("diff.json has a tracked entry of the wrong shape");
-  /** @type {Known} */
-  const known = {};
+  const known: Known = {};
   for (const [k, v] of Object.entries(value.known)) {
     const [site = "", check = "", extra] = k.split("/");
     if (extra === undefined && SITE_ID.test(site) && CHECK_IDS.has(check))
       if (v === "pass" || v === "fail") known[k] = v;
   }
-  const tracked = /** @type {Tracked[]} */ (value.tracked).filter((t) => CHECK_IDS.has(t.check));
+  const tracked = (value.tracked as Tracked[]).filter((t) => CHECK_IDS.has(t.check));
   return { tracked, known, complete: value.complete, problems: [] };
 }
 
-/** @param {SiteResult | undefined} site @param {string} id */
-const checkOf = (site, id) => site?.checks.find((c) => c.id === id);
-/** @param {{ site: string, check: string }} r */
-const keyOf = (r) => `${r.site}/${r.check}`;
+const checkOf = (site: SiteResult | undefined, id: string) => site?.checks.find((c) => c.id === id);
+const keyOf = (r: { site: string; check: string }) => `${r.site}/${r.check}`;
 /** A run that did not visit every listed site: filtered, or stopped by a harness error. */
-const isPartial = (/** @type {Run} */ run) => Boolean(run.filter || run.harnessError);
+const isPartial = (run: Run) => Boolean(run.filter || run.harnessError);
 
 /**
  * The last pass or fail of each check, `base` updated with `run`'s results. A check that was
  * skipped (its site blocked, say) keeps its earlier status, so a regression after a blocked night
  * is still seen.
- * @param {Run | null} run
- * @param {Known} base
- * @returns {Known}
  */
-function withStatuses(run, base) {
-  /** @type {Known} */
-  const known = { ...base };
+function withStatuses(run: Run | null, base: Known): Known {
+  const known: Known = { ...base };
   for (const site of run?.sites ?? [])
     for (const c of site.checks)
       if (c.status === "pass" || c.status === "fail") known[`${site.id}/${c.id}`] = c.status;
@@ -208,12 +206,8 @@ function withStatuses(run, base) {
 /**
  * The known statuses to keep in this run's diff.json. Sites that left the list are forgotten,
  * unless this run was partial and did not visit them.
- * @param {Run | null} prev
- * @param {Run} cur
- * @param {Known} prevKnown
- * @returns {Known}
  */
-export function nextKnown(prev, cur, prevKnown) {
+export function nextKnown(prev: Run | null, cur: Run, prevKnown: Known): Known {
   const known = withStatuses(cur, withStatuses(prev, prevKnown));
   if (isPartial(cur)) return known;
   const listed = new Set(cur.sites.map((s) => s.id));
@@ -223,25 +217,25 @@ export function nextKnown(prev, cur, prevKnown) {
 }
 
 /**
- * @param {Run | null} prev  the previous scheduled run, null when there is none to read
- * @param {Run} cur
- * @param {Tracked[]} prevTracked  the previous run's tracked regressions
- * @param {Known} [prevKnown]      the previous run's known statuses
- * @returns {Diff}
+ * @param prev the previous scheduled run, null when there is none to read
+ * @param prevTracked the previous run's tracked regressions
+ * @param prevKnown the previous run's known statuses
  */
-export function compareRuns(prev, cur, prevTracked, prevKnown = {}) {
+export function compareRuns(
+  prev: Run | null,
+  cur: Run,
+  prevTracked: Tracked[],
+  prevKnown: Known = {},
+): Diff {
   const before = new Map((prev?.sites ?? []).map((s) => [s.id, s]));
   const now = new Map(cur.sites.map((s) => [s.id, s]));
-  const name = (/** @type {string} */ id) => now.get(id)?.name ?? id;
+  const name = (id: string) => now.get(id)?.name ?? id;
   const known = withStatuses(prev, prevKnown);
   const partial = isPartial(cur);
 
-  /** @type {Regression[]} */
-  const regressions = [];
-  /** @type {Diff["fixed"]} */
-  const fixed = [];
-  /** @type {Diff["changes"]} */
-  const changes = [];
+  const regressions: Regression[] = [];
+  const fixed: Diff["fixed"] = [];
+  const changes: Diff["changes"] = [];
   for (const site of cur.sites) {
     const old = before.get(site.id);
     if (old && old.status !== site.status)
@@ -261,8 +255,7 @@ export function compareRuns(prev, cur, prevTracked, prevKnown = {}) {
     }
   }
 
-  /** @type {Map<string, Tracked>} */
-  const tracked = new Map();
+  const tracked: Map<string, Tracked> = new Map();
   for (const t of prevTracked) {
     const site = now.get(t.site);
     if (!site) {
@@ -304,11 +297,12 @@ export function compareRuns(prev, cur, prevTracked, prevKnown = {}) {
  * What diff.json keeps for the next night. `complete` is false once a night could not compare
  * (no baseline, a broken diff.json, a partial run) while an issue was open: that issue's list
  * may then be missing entries, so it is never closed automatically until it is closed by hand.
- * @param {Diff} diff
- * @param {Run} cur
- * @param {{ known: Known, complete: boolean }} o
  */
-export function diffState(diff, cur, { known, complete }) {
+export function diffState(
+  diff: Diff,
+  cur: Run,
+  { known, complete }: { known: Known; complete: boolean },
+) {
   return { version: 1, startedAt: cur.startedAt, complete, known, tracked: diff.tracked };
 }
 
@@ -318,11 +312,16 @@ export function diffState(diff, cur, { known, complete }) {
  * tracked and closed when nothing is, but only after a full run on an unbroken chain (else it is
  * updated, and says why). Closed by hand while something is still tracked, it stays closed until
  * a new regression appears.
- * @param {Diff} diff
- * @param {{ scheduled: boolean, openIssue: number | null, trusted?: boolean, partial?: boolean }} o
- * @returns {IssueAction}
  */
-export function issueAction(diff, { scheduled, openIssue, trusted = true, partial = false }) {
+export function issueAction(
+  diff: Diff,
+  {
+    scheduled,
+    openIssue,
+    trusted = true,
+    partial = false,
+  }: { scheduled: boolean; openIssue: number | null; trusted?: boolean; partial?: boolean },
+): IssueAction {
   if (!scheduled) return "none";
   // Without a baseline, only a regression found against diff.json's known results counts.
   if (!diff.baseline && !diff.regressions.length) return "none";
@@ -334,37 +333,26 @@ export function issueAction(diff, { scheduled, openIssue, trusted = true, partia
   return diff.regressions.length ? "create" : "none";
 }
 
-/** @param {SiteStatus} status */
-const statusLabel = (status) => (status === "blocked" ? "blocked (bot check)" : status);
+const statusLabel = (status: SiteStatus) => (status === "blocked" ? "blocked (bot check)" : status);
 
-/** @param {string} time an ISO time, validated by parseRun or parseState */
-const day = (time) => (ISO_TIME.test(time) ? time.slice(0, 10) : "an earlier run");
+/** @param time an ISO time, validated by parseRun or parseState */
+const day = (time: string) => (ISO_TIME.test(time) ? time.slice(0, 10) : "an earlier run");
 
-/**
- * @param {string[]} items
- * @returns {string[]}
- */
-function capped(items) {
+function capped(items: string[]): string[] {
   if (items.length <= MAX_ITEMS) return items;
   return [...items.slice(0, MAX_ITEMS), `- … and ${items.length - MAX_ITEMS} more`];
 }
 
-/** @param {Diff["baseline"]} baseline */
-function baselineLine(baseline) {
+function baselineLine(baseline: Diff["baseline"]) {
   if (!baseline) return "";
   const commit =
     baseline.commit && COMMIT.test(baseline.commit) ? `, commit ${baseline.commit}` : "";
   return `the scheduled run of ${day(baseline.startedAt)}${commit}`;
 }
 
-/**
- * @param {Diff} diff
- * @param {(id: string) => string} name
- */
-function lists(diff, name) {
+function lists(diff: Diff, name: (id: string) => string) {
   const fresh = new Set(diff.regressions.map(keyOf));
-  const label = (/** @type {string} */ id, /** @type {string} */ known = name(id)) =>
-    `**${md(known)}**`;
+  const label = (id: string, known: string = name(id)) => `**${md(known)}**`;
   return {
     regressions: diff.regressions.map(
       (r) =>
@@ -387,35 +375,24 @@ function lists(diff, name) {
   };
 }
 
-/**
- * @param {string[]} out
- * @param {string} heading
- * @param {string[]} items
- */
-function section(out, heading, items) {
+function section(out: string[], heading: string, items: string[]) {
   if (items.length) out.push(heading, "", ...capped(items), "");
 }
 
-/** @param {string} body */
-function capBody(body) {
+function capBody(body: string) {
   if (body.length <= MAX_BODY) return body;
   const note = "\n\n(Cut here: the full diff is diff.md in the run's site-compat artifact.)\n";
   const cut = body.lastIndexOf("\n", MAX_BODY - note.length);
   return `${body.slice(0, cut)}${note}`;
 }
 
-/** @param {Run | undefined} cur */
-const namesOf = (cur) => {
+const namesOf = (cur: Run | undefined) => {
   const names = new Map((cur?.sites ?? []).map((s) => [s.id, s.name]));
-  return (/** @type {string} */ id) => names.get(id) ?? id;
+  return (id: string) => names.get(id) ?? id;
 };
 
-/**
- * The job summary's diff (also diff.md).
- * @param {Diff} diff
- * @param {Run} cur
- */
-export function renderDiff(diff, cur) {
+/** The job summary's diff (also diff.md). */
+export function renderDiff(diff: Diff, cur: Run) {
   const l = lists(diff, namesOf(cur));
   const out = diff.baseline
     ? [`### Changes since ${baselineLine(diff.baseline)}`, ""]
@@ -448,10 +425,16 @@ export function renderDiff(diff, cur) {
 
 /**
  * The rolling issue's body (or, for "close", the closing comment).
- * @param {Diff} diff
- * @param {{ action: IssueAction, runUrl?: string, cur?: Run, trusted?: boolean }} o
  */
-export function renderIssue(diff, { action, runUrl, cur, trusted = true }) {
+export function renderIssue(
+  diff: Diff,
+  {
+    action,
+    runUrl,
+    cur,
+    trusted = true,
+  }: { action: IssueAction; runUrl?: string; cur?: Run; trusted?: boolean },
+) {
   const l = lists(diff, namesOf(cur));
   const out = [
     "Checks of the nightly site-compatibility suite (`sites.yml`, spec site-compat, " +

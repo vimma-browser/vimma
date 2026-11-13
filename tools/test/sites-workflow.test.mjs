@@ -102,9 +102,9 @@ describe("site-compat workflow (sites.yml)", () => {
   it("compares with the previous scheduled run and touches the issue on schedule only", () => {
     const compare = job("compare");
     expect(compare).toMatch(/gh run list --workflow sites\.yml --event schedule --branch main/);
-    expect(compare).toContain("node tools/sites/compare.mjs");
+    expect(compare).toContain("node tools/sites/compare.ts");
     expect(compare).toContain("site-compat:results.json site-compat-diff:diff.json");
-    expect(compare.indexOf("tools/sites/compare.mjs")).toBeLessThan(
+    expect(compare.indexOf("tools/sites/compare.ts")).toBeLessThan(
       compare.indexOf("actions/upload-artifact"),
     );
     expect(compare).toMatch(/github\.event_name == 'schedule'/);
@@ -148,7 +148,7 @@ describe("the snapshot gate in e2e.yml", () => {
     expect(runs).toEqual(["npm run sites -- --offline --artifact --out site-compat-offline/"]);
     expect(step("sites-offline")).toContain(runs[0]);
     expect(e2e.indexOf("id: e2e\n")).toBeLessThan(e2e.indexOf("id: sites-offline\n"));
-    expect(e2e).not.toMatch(/--record|--retry-blocked|tools\/sites\/sites\.mjs/);
+    expect(e2e).not.toMatch(/--record|--retry-blocked|tools\/sites\/sites\.(?:mjs|ts)/);
   });
 
   it("is a suite of Beta mode like the others, recorded in suite-results.json", () => {

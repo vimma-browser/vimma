@@ -1,7 +1,7 @@
-// The browser window's globals that probes.mjs's chrome* functions use: they are sent over the
+// The browser window's globals that probes.ts's chrome* functions use: they are sent over the
 // DevTools protocol and run in Firefox's parent process, never in Node (docs/specs/site-compat.md).
 // tsc has no per-file globals, so tools/tsconfig.json makes these visible to every file it checks;
-// ESLint's no-undef (eslint.config.mjs, "The site suite's probes") keeps them to probes.mjs.
+// ESLint's no-undef (eslint.config.mjs, "The site suite's probes") keeps them to probes.ts.
 // The full chrome declarations are types/firefox.d.ts, which the browser code's check uses.
 
 // XPCOM's component and interface tables (Components.classes and .interfaces), indexed by

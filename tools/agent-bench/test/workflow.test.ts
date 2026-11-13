@@ -4,8 +4,8 @@ import { STEPS } from "../../upstream/suite-results.mjs";
 
 const e2e = readFileSync(new URL("../../../.github/workflows/e2e.yml", import.meta.url), "utf8");
 
-/** @param {string} id @returns {string} the step with this id */
-function step(id) {
+/** @returns the step with this id */
+function step(id: string): string {
   const found = e2e.split(/^(?= {6}- )/m).find((s) => new RegExp(`^ {8}id: ${id}$`, "m").test(s));
   if (!found) throw new Error(`no step with id ${id}`);
   return found;

@@ -10,6 +10,7 @@
 // `{ from, ... }`. Events carry a `type` too; the one we use is the console actor's
 // `evaluationResult`, which follows the `{ resultID }` reply to evaluateJSAsync.
 import { connect } from "node:net";
+import type { Socket } from "node:net";
 
 /** Events we never mistake for a reply; everything else with a pending request is one. */
 const EVENTS = new Set([
@@ -38,14 +39,9 @@ const EVENTS = new Set([
   "workerHelper",
 ]);
 
-/**
- * Split a byte buffer into complete RDP packets.
- * @param {Buffer} buffer
- * @returns {{ packets: any[], rest: Buffer }}
- */
-export function parsePackets(buffer) {
-  /** @type {any[]} */
-  const packets = [];
+/** Split a byte buffer into complete RDP packets. */
+export function parsePackets(buffer: Buffer): { packets: any[]; rest: Buffer } {
+  const packets: any[] = [];
   let rest = buffer;
   for (;;) {
     const colon = rest.indexOf(0x3a); // ":"
@@ -60,38 +56,39 @@ export function parsePackets(buffer) {
   return { packets, rest };
 }
 
-/** @param {object} packet @returns {Buffer} */
-export function encodePacket(packet) {
+export function encodePacket(packet: object): Buffer {
   const body = Buffer.from(JSON.stringify(packet), "utf8");
   return Buffer.concat([Buffer.from(`${body.length}:`, "latin1"), body]);
 }
 
 export class Rdp {
-  /** @param {import("node:net").Socket} socket */
-  constructor(socket) {
+  declare socket: Socket;
+  declare pending: Map<string, Array<{ resolve: (p: any) => void; reject: (e: Error) => void }>>;
+  /** evaluateJSAsync resultID → resolve */
+  declare results: Map<string, (p: any) => void>;
+  /**
+   * Results that came before evaluate() saw their resultID: the reply and its event often
+   * arrive in one chunk, and the reply's promise settles only after the chunk is dispatched.
+   */
+  declare early: Map<string, any>;
+  declare onGreeting: ((p: any) => void) | null;
+  declare closed: boolean;
+
+  constructor(socket: Socket) {
     this.socket = socket;
-    /** @type {Map<string, Array<{ resolve: (p: any) => void, reject: (e: Error) => void }>>} */
     this.pending = new Map();
-    /** @type {Map<string, (p: any) => void>} evaluateJSAsync resultID → resolve */
     this.results = new Map();
-    /**
-     * Results that came before evaluate() saw their resultID: the reply and its event often
-     * arrive in one chunk, and the reply's promise settles only after the chunk is dispatched.
-     * @type {Map<string, any>}
-     */
     this.early = new Map();
-    /** @type {((p: any) => void) | null} */
     this.onGreeting = null;
     this.closed = false;
-    /** @type {Buffer} */
-    let buffer = Buffer.alloc(0);
+    let buffer: Buffer = Buffer.alloc(0);
     socket.on("data", (chunk) => {
       buffer = Buffer.concat([buffer, chunk]);
       let parsed;
       try {
         parsed = parsePackets(buffer);
       } catch (e) {
-        this.#fail(/** @type {Error} */ (e));
+        this.#fail(e as Error);
         return;
       }
       buffer = parsed.rest;
@@ -103,11 +100,9 @@ export class Rdp {
 
   /**
    * Connect to a server started with `--start-debugger-server <path>` (a Unix socket).
-   * @param {string} path
-   * @param {{ timeoutMs?: number }} [options]
    */
-  static connect(path, { timeoutMs = 10_000 } = {}) {
-    return new Promise((resolve, reject) => {
+  static connect(path: string, { timeoutMs = 10_000 }: { timeoutMs?: number } = {}) {
+    return new Promise<Rdp>((resolve, reject) => {
       const socket = connect(path);
       const timer = setTimeout(() => {
         socket.destroy();
@@ -125,8 +120,7 @@ export class Rdp {
     });
   }
 
-  /** @param {Error} e */
-  #fail(e) {
+  #fail(e: Error) {
     if (this.closed) return;
     this.closed = true;
     for (const queue of this.pending.values()) for (const p of queue) p.reject(e);
@@ -134,8 +128,7 @@ export class Rdp {
     this.results.clear();
   }
 
-  /** @param {any} packet */
-  #dispatch(packet) {
+  #dispatch(packet: any) {
     if (this.onGreeting && packet.from === "root" && packet.applicationType) {
       const greet = this.onGreeting;
       this.onGreeting = null;
@@ -164,12 +157,10 @@ export class Rdp {
   }
 
   /**
-   * @param {string} to actor id
-   * @param {string} type method
-   * @param {object} [args]
-   * @returns {Promise<any>}
+   * @param to actor id
+   * @param type method
    */
-  request(to, type, args = {}) {
+  request(to: string, type: string, args: object = {}): Promise<any> {
     if (this.closed) return Promise.reject(new Error("rdp: connection closed"));
     return new Promise((resolve, reject) => {
       const queue = this.pending.get(to) ?? [];
@@ -183,33 +174,33 @@ export class Rdp {
   async parentConsole() {
     const { processDescriptor } = await this.request("root", "getProcess", { id: 0 });
     const { process } = await this.request(processDescriptor.actor, "getTarget");
-    return /** @type {string} */ (process.consoleActor);
+    return process.consoleActor as string;
   }
 
   /**
    * A tab's console actor, by the browserId vimma-ctl's state reports as the tab id.
-   * @param {number} browserId
    */
-  async tabConsole(browserId) {
+  async tabConsole(browserId: number) {
     const { tab } = await this.request("root", "getTab", { browserId });
     const { frame } = await this.request(tab.actor, "getTarget");
-    return /** @type {string} */ (frame.consoleActor);
+    return frame.consoleActor as string;
   }
 
   /**
    * Evaluate `text` with a console actor and return its value. Probes return JSON strings, so
    * only primitives come back; anything else is a grip, returned as is.
-   * @param {string} consoleActor
-   * @param {string} text
-   * @param {{ timeoutMs?: number }} [options]
    */
-  async evaluate(consoleActor, text, { timeoutMs = 10_000 } = {}) {
+  async evaluate(
+    consoleActor: string,
+    text: string,
+    { timeoutMs = 10_000 }: { timeoutMs?: number } = {},
+  ) {
     const { resultID } = await this.request(consoleActor, "evaluateJSAsync", {
       text,
       eager: false,
       disableBreaks: true,
     });
-    const packet = await new Promise((resolve, reject) => {
+    const packet = await new Promise<any>((resolve, reject) => {
       const early = this.early.get(resultID);
       if (early) {
         this.early.delete(resultID);
@@ -220,7 +211,7 @@ export class Rdp {
         this.results.delete(resultID);
         reject(new Error(`rdp: no evaluation result in ${timeoutMs} ms`));
       }, timeoutMs);
-      this.results.set(resultID, (/** @type {any} */ p) => {
+      this.results.set(resultID, (p: any) => {
         clearTimeout(timer);
         resolve(p);
       });
@@ -249,9 +240,8 @@ export class Rdp {
 /**
  * A primitive result as is; the `undefined`/`null` grips as JS values; a long string's initial
  * part (probes keep their JSON short, so this only guards).
- * @param {any} result
  */
-export function longStringOrValue(result) {
+export function longStringOrValue(result: any) {
   if (result === null || typeof result !== "object") return result;
   if (result.type === "undefined") return undefined;
   if (result.type === "null") return null;

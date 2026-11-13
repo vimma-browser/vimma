@@ -6,17 +6,12 @@
 // search field, the consent click, leaving fullscreen, and the clipboard sentinel. Each returns
 // JSON text, so only a string crosses the protocol.
 
-/**
- * The source to evaluate: `fn(arg)`, its result as JSON.
- * @param {Function} fn
- * @param {unknown} [arg]
- */
-export function probe(fn, arg = null) {
+/** The source to evaluate: `fn(arg)`, its result as JSON. */
+export function probe(fn: Function, arg: unknown = null) {
   return `(() => JSON.stringify((${fn.toString()})(${jsonLiteral(arg)})))()`;
 }
 
-/** @type {Record<string, string>} */
-const LITERAL_ESCAPES = {
+const LITERAL_ESCAPES: Record<string, string> = {
   "<": "\\u003C",
   ">": "\\u003E",
   "/": "\\u002F",
@@ -28,9 +23,8 @@ const LITERAL_ESCAPES = {
  * `arg` as a JSON literal that is also safe to embed in code: the characters that could close
  * a surrounding script or comment, or end a line, become \u escapes, which decode to the same
  * value. In JSON text they occur only inside strings, so the escapes stay valid.
- * @param {unknown} arg
  */
-export function jsonLiteral(arg) {
+export function jsonLiteral(arg: unknown) {
   return JSON.stringify(arg).replace(/[<>/\u2028\u2029]/g, (ch) => LITERAL_ESCAPES[ch] ?? ch);
 }
 
@@ -38,18 +32,16 @@ export function jsonLiteral(arg) {
 // In the page
 
 /**
- * What classify.mjs needs, plus load state and timing.
- * @param {{ consentSelectors: string[] }} arg
+ * What classify.ts needs, plus load state and timing.
  */
-export function contentPageInfo({ consentSelectors }) {
-  const visible = (/** @type {Element} */ el) => {
+export function contentPageInfo({ consentSelectors }: { consentSelectors: string[] }) {
+  const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
   };
-  const nav = /** @type {PerformanceNavigationTiming | undefined} */ (
-    performance.getEntriesByType("navigation")[0]
-  );
+  const nav = performance.getEntriesByType("navigation")[0] as
+    PerformanceNavigationTiming | undefined;
   return {
     url: location.href,
     title: document.title,
@@ -70,19 +62,18 @@ export function contentPageInfo({ consentSelectors }) {
 /** The document's scroller and every inner element that can scroll vertically. */
 export function contentScrollSnapshot() {
   const root = document.scrollingElement ?? document.documentElement;
-  const desc = (/** @type {Element} */ el) =>
+  const desc = (el: Element) =>
     el.tagName.toLowerCase() +
     (el.id ? `#${el.id}` : "") +
     (typeof el.className === "string" && el.className.trim()
       ? `.${el.className.trim().split(/\s+/).slice(0, 2).join(".")}`
       : "");
-  /** @type {Array<{ key: string, top: number, max: number, area: number }>} */
-  const inner = [];
+  const inner: Array<{ key: string; top: number; max: number; area: number }> = [];
   const seen = new Map();
   const walker = document.createTreeWalker(document.body ?? root, NodeFilter.SHOW_ELEMENT);
   let n = 0;
-  for (let el = /** @type {Element | null} */ (walker.currentNode); el && n < 6000; n++) {
-    const max = /** @type {any} */ (el).scrollTopMax ?? el.scrollHeight - el.clientHeight;
+  for (let el = walker.currentNode as Element | null; el && n < 6000; n++) {
+    const max = (el as any).scrollTopMax ?? el.scrollHeight - el.clientHeight;
     if (max > 0 && el !== root && el !== document.body) {
       const oy = getComputedStyle(el).overflowY;
       if (oy === "auto" || oy === "scroll" || oy === "overlay") {
@@ -98,15 +89,13 @@ export function contentScrollSnapshot() {
         });
       }
     }
-    el = /** @type {Element | null} */ (walker.nextNode());
+    el = walker.nextNode() as Element | null;
   }
   inner.sort((a, b) => b.area - a.area);
   return {
     main: {
       top: Math.round(root.scrollTop),
-      max: Math.round(
-        /** @type {any} */ (root).scrollTopMax ?? root.scrollHeight - root.clientHeight,
-      ),
+      max: Math.round((root as any).scrollTopMax ?? root.scrollHeight - root.clientHeight),
     },
     inner: inner.slice(0, 40),
   };
@@ -117,10 +106,9 @@ export function contentScrollSnapshot() {
  * the focus, else the first visible textarea or contenteditable text box that does (a code
  * editor). A visible field can refuse the focus: a component library's hidden form input (a
  * select's value on regex101) is one, so the next candidate is tried.
- * @param {{ selector: string | null }} arg
  */
-export function contentFocusField({ selector }) {
-  const visible = (/** @type {Element} */ el) => {
+export function contentFocusField({ selector }: { selector: string | null }) {
+  const visible = (el: Element) => {
     const r = el.getBoundingClientRect();
     const s = getComputedStyle(el);
     return r.width > 0 && r.height > 0 && s.visibility !== "hidden" && s.display !== "none";
@@ -133,13 +121,12 @@ export function contentFocusField({ selector }) {
           "input[type=text], input:not([type])",
         "textarea, [contenteditable=true][role=textbox], [contenteditable=''][role=textbox]",
       ];
-  const describe = (/** @type {Element} */ el) =>
+  const describe = (el: Element) =>
     `${el.tagName.toLowerCase()}${el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""}${el.id ? `#${el.id}` : ""}`;
-  /** @type {HTMLElement | null} */
-  let first = null;
+  let first: HTMLElement | null = null;
   for (const list of lists) {
     for (const node of document.querySelectorAll(list)) {
-      const el = /** @type {HTMLElement} */ (node);
+      const el = node as HTMLElement;
       if (!visible(el)) continue;
       first ??= el;
       el.focus();
@@ -152,7 +139,7 @@ export function contentFocusField({ selector }) {
 
 /** The focused element: is it a text field? */
 export function contentActive() {
-  const el = /** @type {HTMLElement | null} */ (document.activeElement);
+  const el = document.activeElement as HTMLElement | null;
   const tag = el?.tagName.toLowerCase() ?? null;
   const type = el instanceof HTMLInputElement ? el.type : null;
   const textInput =
@@ -184,10 +171,10 @@ export function contentActive() {
  */
 export function contentRecorder() {
   const key = Symbol.for("vimma-site-compat");
-  const w = /** @type {any} */ (window);
+  const w = window as any;
   if (!w[key]) {
-    const rec = { seen: /** @type {string[]} */ ([]), prevented: /** @type {string[]} */ ([]) };
-    const name = (/** @type {KeyboardEvent} */ e) =>
+    const rec = { seen: [] as string[], prevented: [] as string[] };
+    const name = (e: KeyboardEvent) =>
       `${e.ctrlKey ? "ctrl+" : ""}${e.altKey ? "alt+" : ""}${e.metaKey ? "meta+" : ""}${e.key}`;
     window.addEventListener("keydown", (e) => rec.seen.push(name(e)), true);
     window.addEventListener("keydown", (e) => {
@@ -222,17 +209,15 @@ export function contentReaction() {
  * Press `key` for the page alone: keydown, keypress and keyup dispatched at the focused element
  * (synthetic, so Vimma never sees them and Firefox runs no default action such as quick find).
  * Returns whether the page's handlers called preventDefault() on the keydown.
- * @param {{ key: string }} arg
  */
-export function contentPressKey({ key }) {
+export function contentPressKey({ key }: { key: string }) {
   const shifted = /^[A-Z?:]$/.test(key);
   const code = /^[a-z]$/i.test(key)
     ? `Key${key.toUpperCase()}`
     : ({ "/": "Slash", "?": "Slash", ":": "Semicolon" }[key] ?? "");
   const target = document.activeElement ?? document.body;
   if (!target) return false;
-  /** @param {string} type */
-  const fire = (type) =>
+  const fire = (type: string) =>
     target.dispatchEvent(
       new KeyboardEvent(type, {
         key,
@@ -256,7 +241,7 @@ export function contentPressKey({ key }) {
  */
 export function contentExitFullscreen() {
   if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-  const el = /** @type {HTMLElement | null} */ (document.activeElement);
+  const el = document.activeElement as HTMLElement | null;
   if (el && el !== document.body) {
     el.dispatchEvent(
       new KeyboardEvent("keydown", {
@@ -273,13 +258,16 @@ export function contentExitFullscreen() {
 
 /**
  * The link under each hint label's top-left corner (+2 px).
- * @param {{ points: Array<{ label: string, x: number, y: number }> }} arg
  */
-export function contentLinksAt({ points }) {
+export function contentLinksAt({
+  points,
+}: {
+  points: Array<{ label: string; x: number; y: number }>;
+}) {
   const here = location.href.split("#")[0];
   return points.map(({ label, x, y }) => {
     const el = document.elementFromPoint(x + 2, y + 2);
-    const a = /** @type {HTMLAnchorElement | null} */ (el?.closest("a[href]") ?? null);
+    const a = (el?.closest("a[href]") ?? null) as HTMLAnchorElement | null;
     if (!a) return { label, href: null };
     const href = a.href;
     return {
@@ -336,10 +324,9 @@ export function contentPickWord() {
 }
 
 /**
- * Click a consent wall's reject-only button. `patterns` are classify.mjs's REJECT sources.
- * @param {{ patterns: string[] }} arg
+ * Click a consent wall's reject-only button. `patterns` are classify.ts's REJECT sources.
  */
-export function contentClickReject({ patterns }) {
+export function contentClickReject({ patterns }: { patterns: string[] }) {
   const res = patterns.map((p) => new RegExp(p));
   for (const el of document.querySelectorAll(
     "button, [role=button], input[type=submit], input[type=button]",
@@ -354,7 +341,7 @@ export function contentClickReject({ patterns }) {
       .replace(/\s+/g, " ");
     const r = el.getBoundingClientRect();
     if (r.width > 0 && r.height > 0 && res.some((re) => re.test(text))) {
-      /** @type {HTMLElement} */ (el).click();
+      (el as HTMLElement).click();
       return text;
     }
   }
@@ -366,9 +353,8 @@ export function contentClickReject({ patterns }) {
  * references removed, the stylesheets it uses inlined, media replaced by placeholders of the
  * same size and inner scrollers kept at their rendered height. Reads the page and changes only
  * a clone of it. Self-contained, like every probe.
- * @param {{ csp: string, follow: string }} arg
  */
-export function contentSnapshot({ csp, follow }) {
+export function contentSnapshot({ csp, follow }: { csp: string; follow: string }) {
   const doc = document;
   const LOADS_CSS = [
     /url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/gi,
@@ -376,7 +362,7 @@ export function contentSnapshot({ csp, follow }) {
     /\bsrc\((?:[^()]|\([^()]*\))*\)/gi,
   ];
   // Until nothing changes: a replacement must not join the text around it into a new match.
-  const cleanCss = (/** @type {string} */ text) => {
+  const cleanCss = (text: string) => {
     for (let before = ""; before !== text;) {
       before = text;
       text = LOADS_CSS.reduce((t, re) => t.replace(re, "none"), text).replace(
@@ -388,7 +374,7 @@ export function contentSnapshot({ csp, follow }) {
   };
   // A style rule is kept when its selector, without pseudo-classes and pseudo-elements, matches
   // something; a selector the engine cannot read that way is kept.
-  const used = (/** @type {string} */ selector) => {
+  const used = (selector: string) => {
     const bare = selector.replace(/::?[\w-]+(\((?:[^()]|\([^()]*\))*\))?/g, "").trim();
     if (!bare || /^[\s,>+~*]*$/.test(bare)) return true;
     try {
@@ -398,9 +384,8 @@ export function contentSnapshot({ csp, follow }) {
     }
   };
   let skippedSheets = 0;
-  /** @param {CSSRule} rule @returns {string} */
-  const ruleText = (rule) => {
-    const r = /** @type {any} */ (rule);
+  const ruleText = (rule: CSSRule): string => {
+    const r = rule as any;
     if (typeof r.selectorText === "string") return used(r.selectorText) ? r.cssText : "";
     if (r.constructor?.name === "CSSFontFaceRule") return "";
     if (r.constructor?.name === "CSSImportRule") {
@@ -414,8 +399,7 @@ export function contentSnapshot({ csp, follow }) {
     }
     return r.cssText;
   };
-  /** @param {CSSStyleSheet} sheet */
-  const sheetText = (sheet) => {
+  const sheetText = (sheet: CSSStyleSheet) => {
     try {
       if (sheet.disabled) return "";
       const text = [...sheet.cssRules].map(ruleText).join("\n");
@@ -430,7 +414,7 @@ export function contentSnapshot({ csp, follow }) {
     [...doc.styleSheets, ...(doc.adoptedStyleSheets ?? [])].map(sheetText).join("\n"),
   );
 
-  const clone = /** @type {HTMLElement} */ (doc.documentElement.cloneNode(true));
+  const clone = doc.documentElement.cloneNode(true) as HTMLElement;
   const originals = [...doc.documentElement.querySelectorAll("*")];
   const copies = [...clone.querySelectorAll("*")];
   const REMOVE = new Set(
@@ -449,8 +433,7 @@ export function contentSnapshot({ csp, follow }) {
     ),
   );
   const HTML_NS = "http://www.w3.org/1999/xhtml";
-  /** @type {Array<() => void>} */
-  const edits = [];
+  const edits: Array<() => void> = [];
   copies.forEach((copy, i) => {
     const original = originals[i];
     if (!original) return;
@@ -518,8 +501,7 @@ export function contentSnapshot({ csp, follow }) {
   for (const edit of edits) edit();
   // Comments: conditional markup and build notes, never needed to replay the page.
   const walker = doc.createTreeWalker(clone, NodeFilter.SHOW_COMMENT);
-  /** @type {Node[]} */
-  const comments = [];
+  const comments: Node[] = [];
   while (walker.nextNode()) comments.push(walker.currentNode);
   for (const c of comments) c.parentNode?.removeChild(c);
 
@@ -549,14 +531,12 @@ export function contentSnapshot({ csp, follow }) {
  * whose source or stack is ours, and Vimma's own console.error calls. Kept on the window.
  */
 export function chromeWatchErrors() {
-  const w = /** @type {any} */ (window);
+  const w = window as any;
   if (w.__vimmaSiteCompat) return "already";
   const ours = /chrome:\/\/browser\/(content|skin)\/vimma\//;
-  /** @type {string[]} */
-  const errors = [];
+  const errors: string[] = [];
   const listener = {
-    /** @param {any} m */
-    observe(m) {
+    observe(m: any) {
       try {
         if (!(m instanceof Ci.nsIScriptError)) return;
         if (m.flags & Ci.nsIScriptError.warningFlag || m.flags & Ci.nsIScriptError.infoFlag) return;
@@ -573,11 +553,10 @@ export function chromeWatchErrors() {
     },
   };
   const consoleObserver = {
-    /** @param {any} subject */
-    observe(subject) {
+    observe(subject: any) {
       const msg = subject?.wrappedJSObject ?? subject;
       if (msg?.level !== "error" || !ours.test(String(msg.filename ?? ""))) return;
-      const args = (msg.arguments ?? []).map((/** @type {unknown} */ a) => String(a)).join(" ");
+      const args = (msg.arguments ?? []).map((a: unknown) => String(a)).join(" ");
       errors.push(`console.error: ${args} (${msg.filename}:${msg.lineNumber})`);
     },
   };
@@ -589,7 +568,7 @@ export function chromeWatchErrors() {
 
 /** The errors collected since the last call. */
 export function chromeTakeErrors() {
-  const w = /** @type {any} */ (window);
+  const w = window as any;
   const errors = w.__vimmaSiteCompat?.errors ?? [];
   return errors.splice(0);
 }
@@ -608,11 +587,11 @@ export function chromeStatusbarMode() {
 export function chromeHints() {
   const zoom = Number(gBrowser.selectedBrowser.fullZoom) || 1;
   return [...document.querySelectorAll("#vimma-hints .vimma-hint")]
-    .filter((el) => !(/** @type {HTMLElement} */ (el).hidden))
+    .filter((el) => !(el as HTMLElement).hidden)
     .map((el) => {
-      const s = /** @type {HTMLElement} */ (el).style;
+      const s = (el as HTMLElement).style;
       return {
-        label: /** @type {HTMLElement} */ (el).dataset.label ?? "",
+        label: (el as HTMLElement).dataset.label ?? "",
         x: parseFloat(s.left) / zoom,
         y: parseFloat(s.top) / zoom,
       };
@@ -637,8 +616,7 @@ export function chromeCloseFindbar() {
   return false;
 }
 
-/** @param {{ text: string }} arg */
-export function chromeSetClipboard({ text }) {
+export function chromeSetClipboard({ text }: { text: string }) {
   Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper).copyString(text);
   return true;
 }
@@ -658,5 +636,5 @@ export function chromeReadClipboard() {
   } catch {
     return null;
   }
-  return /** @type {any} */ (out).value?.QueryInterface(Ci.nsISupportsString).data ?? null;
+  return (out as any).value?.QueryInterface(Ci.nsISupportsString).data ?? null;
 }

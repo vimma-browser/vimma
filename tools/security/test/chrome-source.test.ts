@@ -14,10 +14,8 @@ const CLI = "src/browser/base/content/vimma/agent/AgentCli.sys.mjs";
 
 /** Our chrome sources; core/ is a copy of packages/vimma-core/src (npm run sync-core). */
 function sources() {
-  /** @type {{ path: string, text: string }[]} */
-  const out = [];
-  /** @param {string} dir */
-  const walk = (dir) => {
+  const out: { path: string; text: string }[] = [];
+  const walk = (dir: string) => {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
       if (e.isDirectory()) {
@@ -33,7 +31,7 @@ function sources() {
 }
 
 /** "path:line: text" for every line of our sources that matches `re`. */
-function hits(/** @type {RegExp} */ re) {
+function hits(re: RegExp) {
   return sources().flatMap(({ path, text }) =>
     text
       .split("\n")
@@ -267,7 +265,7 @@ describe("chrome code", () => {
     const all = hits(
       /\.launch\(|\.reveal\(|launchFile\(|gExternalProtocolService|openDownload\(|showDownloadedFile\(|showDirectory\(|launchDownload\(|loadFileIn\(|launchWithFile\(|showContainingDirectory\(/,
     );
-    const at = (/** @type {string} */ h) => h.replace(/:\d+:/, ":");
+    const at = (h: string) => h.replace(/:\d+:/, ":");
     expect(all.filter((h) => !h.startsWith(`${OPS}:`)).map(at)).toEqual([
       // The agent rule's override and its delegation to Firefox's own launchDownload (M12).
       `${AGENT}: launchDownload(download, options) {`,

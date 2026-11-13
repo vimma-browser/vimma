@@ -486,8 +486,8 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 ### docs/security.md (§12, rules added by the sub-PR that builds each)
 
 Each rule enters `docs/security.md` with links to its tests in the sub-PR that implements it,
-because the page links every rule to a test that exists (`tools/security/check-doc-links.mjs`).
-Until then §12 names this spec as planned.
+because the page links every rule to a test that exists (`tools/security/check-doc-links.mjs` (Since
+changed: `check-doc-links.ts`, ADR-025)). Until then §12 names this spec as planned.
 
 - **M16.** `agent-keys` **must** run only the whitelisted action ids of D9, from the fixed agent
   keymap; it **never** sends a key event to the page and **never** focuses a field.

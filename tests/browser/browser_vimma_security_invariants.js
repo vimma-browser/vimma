@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Cross-cutting rules of docs/security.md that no feature's own test file covers. Each task is
-// linked from that page by name (tools/security/check-doc-links.mjs keeps the links honest).
+// linked from that page by name (tools/security/check-doc-links.ts keeps the links honest).
 
 "use strict";
 

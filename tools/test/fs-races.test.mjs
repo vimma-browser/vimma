@@ -19,7 +19,7 @@ import { beforeUse, fired } from "./fs-race.mjs";
 import { prepareProfile } from "../start.mjs";
 import { waitForDiscovery } from "../e2e/launcher.mjs";
 import { relocate } from "../import/relocate-checkout.mjs";
-import { checkFile } from "../security/check-doc-links.mjs";
+import { checkFile } from "../security/check-doc-links.ts";
 
 vi.mock("node:fs", async (original) =>
   (await import("./fs-race.mjs")).racyFs(/** @type {any} */ (await original())),

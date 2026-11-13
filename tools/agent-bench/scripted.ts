@@ -10,21 +10,25 @@
 // a model.
 
 import { setTimeout as delay } from "node:timers/promises";
-import { fullName, loadCatalog } from "./shop.mjs";
+import { fullName, loadCatalog } from "./shop.ts";
+import type { Fetch, Provider } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { ShoppingList } from "./score.ts";
+import type { Catalog } from "./shop.ts";
 
-/** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Provider} */
-export const SCRIPTED_PROVIDER = Object.freeze({
+export const SCRIPTED_PROVIDER: Provider = Object.freeze({
   kind: "openai",
   // Never contacted: scriptedFetch answers this address itself and refuses every other one.
   endpoint: "http://127.0.0.1:9/scripted/v1",
   model: "scripted",
 });
 
-/**
- * @typedef {{ messages: any[], tools: any[] }} ScriptRequest  the request body, as sent
- * @typedef {{ text?: string, calls?: Array<{ name: string, args: Record<string, any> }> }} ScriptTurn
- * @typedef {(req: ScriptRequest) => ScriptTurn} Script
- */
+/** the request body, as sent */
+export type ScriptRequest = { messages: any[]; tools: any[] };
+export type ScriptTurn = {
+  text?: string;
+  calls?: Array<{ name: string; args: Record<string, any> }>;
+};
+export type Script = (req: ScriptRequest) => ScriptTurn;
 
 /**
  * A pace that keeps the shopper under Vimma's open rate (10 a minute) on every list: the longest
@@ -38,11 +42,11 @@ export const RATE_PACE_MS = 3000;
  * every run, and reported as the server's, so the budget code runs as with a real server.
  * `paceMs` makes each answer wait that long first, as a model's turn takes time; unpaced, the
  * script runs faster than any model and than Vimma's per-agent rates allow.
- * @param {Script} script
- * @param {{ paceMs?: number, sleep?: (ms: number) => Promise<unknown> }} [o]
- * @returns {import("../../packages/vimma-core/src/agent-providers.mjs").Fetch}
  */
-export function scriptedFetch(script, { paceMs = 0, sleep = delay } = {}) {
+export function scriptedFetch(
+  script: Script,
+  { paceMs = 0, sleep = delay }: { paceMs?: number; sleep?: (ms: number) => Promise<unknown> } = {},
+): Fetch {
   let turn = 0;
   return async (url, init) => {
     if (url !== `${SCRIPTED_PROVIDER.endpoint}/chat/completions`)
@@ -79,8 +83,8 @@ export function scriptedFetch(script, { paceMs = 0, sleep = delay } = {}) {
 /** How often the script lists a page that is still loading before it gives up. */
 const MAX_RETRIES = 20;
 
-/** The text of the newest tool result in an OpenAI-compatible request. @param {any[]} messages */
-function lastToolText(messages) {
+/** The text of the newest tool result in an OpenAI-compatible request. */
+function lastToolText(messages: any[]) {
   for (let i = messages.length - 1; i >= 0; i--)
     if (messages[i].role === "tool") return String(messages[i].content ?? "");
   return "";
@@ -89,28 +93,22 @@ function lastToolText(messages) {
 /**
  * The tool results of the last turn, in the order of its calls: the tool messages after the
  * newest assistant message, each with the request's messages up to it, for findLabel.
- * @param {any[]} messages
- * @returns {Array<{ text: string, upTo: any[] }>}
  */
-export function lastTurnResults(messages) {
-  /** @type {Array<{ text: string, upTo: any[] }>} */
-  const out = [];
+export function lastTurnResults(messages: any[]): Array<{ text: string; upTo: any[] }> {
+  const out: Array<{ text: string; upTo: any[] }> = [];
   for (let i = messages.length - 1; i >= 0 && messages[i].role === "tool"; i--)
     out.unshift({ text: String(messages[i].content ?? ""), upTo: messages.slice(0, i + 1) });
   return out;
 }
 
-/**
- * @typedef {RegExp | ((el: Record<string, any>) => boolean)} ButtonMatch  a button's text, or a
- *   test of the whole element line
- */
+/** a button's text, or a test of the whole element line */
+export type ButtonMatch = RegExp | ((el: Record<string, any>) => boolean);
 
 /**
  * The first button that matches, from an element list: one JSON object a line. With `labels`,
  * only one of those.
- * @param {string} text @param {ButtonMatch} match @param {Set<string>} [labels]
  */
-function buttonIn(text, match, labels) {
+function buttonIn(text: string, match: ButtonMatch, labels?: Set<string>) {
   for (const line of text.split("\n")) {
     if (!line.startsWith("{")) continue;
     try {
@@ -132,9 +130,8 @@ const REPEATED = /^\(\d+ elements? as in your last list of this site: ([a-z, ]+)
 /**
  * The label of the first button that matches in the newest list: written in it, or left out as
  * in an earlier list of the site, whose line the newest of the earlier results gives.
- * @param {string} text @param {ButtonMatch} match @param {any[]} [messages]
  */
-export function findLabel(text, match, messages = []) {
+export function findLabel(text: string, match: ButtonMatch, messages: any[] = []) {
   const found = buttonIn(text, match);
   const repeated = REPEATED.exec(text);
   if (found || !repeated) return found;
@@ -147,8 +144,7 @@ export function findLabel(text, match, messages = []) {
   return null;
 }
 
-/** @param {string} s */
-const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
  * The script for one list, then the checkout's pay button, which the harness answers no.
@@ -162,11 +158,18 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * path with independent steps in one turn (agent-speed S6): every search opened in one turn and
  * every basket button clicked in the next; the checkout, which depends on the basket, then goes
  * as on the search path.
- * @param {{ base: string, list: import("./score.mjs").ShoppingList,
- *   path?: "search" | "product" | "parallel", catalog?: import("./shop.mjs").Catalog }} o
- * @returns {Script}
  */
-export function shopper({ base, list, path = "search", catalog }) {
+export function shopper({
+  base,
+  list,
+  path = "search",
+  catalog,
+}: {
+  base: string;
+  list: ShoppingList;
+  path?: "search" | "product" | "parallel";
+  catalog?: Catalog;
+}): Script {
   const search = path !== "product";
   const byId = search ? new Map((catalog ?? loadCatalog()).products.map((p) => [p.id, p])) : null;
   const pages = [
@@ -195,22 +198,21 @@ export function shopper({ base, list, path = "search", catalog }) {
     { url: `${base}checkout`, button: /place order/i, name: '"Place order"', times: 1 },
   ];
   let at = 0;
-  /** @type {"open" | "opened" | "listed" | "clicking"} */
-  let sub = "open";
+  let sub: "open" | "opened" | "listed" | "clicking" = "open";
   let tab = "";
   let label = "";
   let clicks = 0;
   let retries = 0;
-  /** @type {(name: string, args: Record<string, any>) => ScriptTurn} */
-  const call = (name, args) => ({ calls: [{ name, args }] });
+  const call: (name: string, args: Record<string, any>) => ScriptTurn = (name, args) => ({
+    calls: [{ name, args }],
+  });
 
   // The parallel path's items: each one's tab and the label of its basket button once known.
   const items = pages.slice(0, -1).map((page) => ({ page, tab: "", label: "" }));
-  /** @type {"open" | "opened" | "listing" | "done"} */
-  let batch = path === "parallel" && items.length ? "open" : "done";
+  let batch: "open" | "opened" | "listing" | "done" =
+    path === "parallel" && items.length ? "open" : "done";
 
-  /** @type {Script} */
-  const parallel = ({ messages }) => {
+  const parallel: Script = ({ messages }) => {
     if (batch === "open") {
       batch = "opened";
       return {
@@ -254,8 +256,7 @@ export function shopper({ base, list, path = "search", catalog }) {
     };
   };
 
-  /** @type {Script} */
-  const next = ({ messages, tools }) => {
+  const next: Script = ({ messages, tools }) => {
     if (batch !== "done") return parallel({ messages, tools });
     const page = pages[at];
     if (!page)

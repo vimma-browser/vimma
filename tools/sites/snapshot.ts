@@ -1,29 +1,26 @@
 // The snapshot layer of the site suite (docs/specs/site-compat.md, "Snapshot layer"): a page's
 // rendered DOM, recorded once with its scripts, handlers, embedded content and network
 // references removed, and replayed offline on every pull request (`npm run sites -- --offline`).
-// The recorder (probes.mjs, contentSnapshot) runs in the page; this module is pure: the check that a snapshot
+// The recorder (probes.ts, contentSnapshot) runs in the page; this module is pure: the check that a snapshot
 // holds nothing that runs or loads (verifySnapshot), the manifest (snapshots.json), and the gate
 // that fails a run when a check that passed on the recording does not pass now
 // (docs/security.md, SC5).
-import { md } from "./report.mjs";
-import { CHECKS } from "./results.mjs";
-
-/** @typedef {import("./results.mjs").Run} Run */
-/** @typedef {import("./site-list.mjs").Site} Site */
+import { md } from "./report.ts";
+import { CHECKS } from "./results.ts";
+import type { Run } from "./results.ts";
+import type { Site } from "./site-list.ts";
 
 /**
  * Pages whose licence allows a copy in this public repository, and that licence (the spec's
  * "Licences decide what may be committed"). Every other site is replayed only by hand-written
  * fixtures that reproduce its structure.
  */
-export const SNAPSHOT_LICENCES = Object.freeze(
-  /** @type {Record<string, string>} */ ({
-    wikipedia: "CC BY-SA 4.0",
-    mdn: "CC BY-SA 2.5",
-    "python-docs": "PSF-2.0",
-    "rust-std": "MIT OR Apache-2.0",
-  }),
-);
+export const SNAPSHOT_LICENCES = Object.freeze({
+  wikipedia: "CC BY-SA 4.0",
+  mdn: "CC BY-SA 2.5",
+  "python-docs": "PSF-2.0",
+  "rust-std": "MIT OR Apache-2.0",
+} as Record<string, string>);
 
 /**
  * Every snapshot's first element in <head>. Nothing may run or load, whatever the sanitiser
@@ -40,13 +37,13 @@ export const FOLLOW_TARGET = "followed.html";
 /** The checks a snapshot replays: all but `shortcuts`, which needs the site's own scripts. */
 export const GATED_CHECKS = Object.freeze(CHECKS.filter((id) => id !== "shortcuts"));
 
-/** @param {string} id @returns {string | null} the licence a snapshot of `id` is committed under */
-export function recordable(id) {
+/** @returns the licence a snapshot of `id` is committed under */
+export function recordable(id: string): string | null {
   return Object.hasOwn(SNAPSHOT_LICENCES, id) ? (SNAPSHOT_LICENCES[id] ?? null) : null;
 }
 
-/** The recorder's serialised document as the file to commit. @param {string} html */
-export function finishSnapshot(html) {
+/** The recorder's serialised document as the file to commit. */
+export function finishSnapshot(html: string) {
   return `<!doctype html>\n${html}\n`;
 }
 
@@ -103,33 +100,25 @@ const CSS_LOADS = /url\s*\(|@import|image-set\s*\(|\bsrc\s*\(/i;
 /**
  * CSS as the engine reads it for what CSS_LOADS looks for: comments removed and escapes
  * decoded (`u\72l(` is `url(`).
- * @param {string} css
  */
-export function cssText(css) {
+export function cssText(css: string) {
   return css
     .replace(/\/\*[^]*?(\*\/|$)/g, "")
     .replace(/\\([0-9a-fA-F]{1,6})\s?|\\([^\n0-9a-fA-F])/g, (_, hex, ch) =>
       hex ? String.fromCodePoint(Math.min(Number.parseInt(hex, 16), 0x10ffff) || 0xfffd) : ch,
     );
 }
-/** @param {string} css */
-const loads = (css) => CSS_LOADS.test(cssText(css));
+const loads = (css: string) => CSS_LOADS.test(cssText(css));
 
-/**
- * @typedef {{ name: string, attributes: Array<[string, string]> }} Tag
- */
+export type Tag = { name: string; attributes: Array<[string, string]> };
 
 /**
  * The start tags of `html` in order (with the text of raw-text elements), read as the HTML
  * tokenizer does: comments and text skipped, quoted attribute values may hold `>`.
- * @param {string} html
- * @returns {{ tags: Tag[], styles: string[] }}
  */
-function tokenize(html) {
-  /** @type {Tag[]} */
-  const tags = [];
-  /** @type {string[]} */
-  const styles = [];
+function tokenize(html: string): { tags: Tag[]; styles: string[] } {
+  const tags: Tag[] = [];
+  const styles: string[] = [];
   let i = 0;
   const n = html.length;
   while (i < n) {
@@ -164,8 +153,7 @@ function tokenize(html) {
     }
     const name = nameMatch[0].toLowerCase();
     i += 1 + nameMatch[0].length;
-    /** @type {Array<[string, string]>} */
-    const attributes = [];
+    const attributes: Array<[string, string]> = [];
     for (;;) {
       while (i < n && /[\s/]/.test(html[i] ?? "")) i++;
       if (i >= n || html[i] === ">") {
@@ -210,13 +198,10 @@ function tokenize(html) {
 /**
  * What in `html` could run, load or navigate away; empty when it is a clean snapshot. A file
  * that fails is not committed (the snapshot test runs this on every one).
- * @param {string} html
- * @returns {string[]}
  */
-export function verifySnapshot(html) {
-  /** @type {string[]} */
-  const problems = [];
-  const add = (/** @type {string} */ p) => {
+export function verifySnapshot(html: string): string[] {
+  const problems: string[] = [];
+  const add = (p: string) => {
     if (!problems.includes(p)) problems.push(p);
   };
   if (!html.startsWith("<!doctype html>\n")) add("does not start with <!doctype html>");
@@ -225,8 +210,7 @@ export function verifySnapshot(html) {
   // <html>, <head>, the policy: anything before them would put the <meta> in the body (a <head>
   // after <body> is ignored), where Firefox applies no policy.
   const first = head === 1 && tags[0]?.name === "html" ? tags[2] : undefined;
-  const attr = (/** @type {Tag | undefined} */ t, /** @type {string} */ name) =>
-    t?.attributes.find(([a]) => a === name)?.[1];
+  const attr = (t: Tag | undefined, name: string) => t?.attributes.find(([a]) => a === name)?.[1];
   const cspFirst =
     first?.name === "meta" &&
     attr(first, "http-equiv")?.toLowerCase() === "content-security-policy" &&
@@ -256,29 +240,35 @@ export function verifySnapshot(html) {
 // ---------------------------------------------------------------------------------------------
 // The manifest, tests/e2e/fixtures/sites/snapshots.json
 
-/**
- * @typedef {object} SnapshotEntry
- * @property {string} id        a sites.json id whose licence allows a snapshot
- * @property {string} licence   SNAPSHOT_LICENCES[id]
- * @property {string} recorded  YYYY-MM-DD
- * @property {Record<string, "pass" | "skip">} expect  each gated check's result on the recording
- */
+export interface SnapshotEntry {
+  /** a sites.json id whose licence allows a snapshot */
+  id: string;
+  /** SNAPSHOT_LICENCES[id] */
+  licence: string;
+  /** YYYY-MM-DD */
+  recorded: string;
+  /** each gated check's result on the recording */
+  expect: Record<string, "pass" | "skip">;
+}
 
 const ENTRY_FIELDS = new Set(["id", "licence", "recorded", "expect"]);
 
 /**
- * @param {unknown} manifest snapshots.json
- * @param {Array<{ id: string }>} sites sites.json
- * @param {string[]} files the .html files next to it
- * @returns {string[]} problems, empty when valid
+ * @param manifest snapshots.json
+ * @param sites sites.json
+ * @param files the .html files next to it
+ * @returns problems, empty when valid
  */
-export function validateManifest(manifest, sites, files) {
+export function validateManifest(
+  manifest: unknown,
+  sites: Array<{ id: string }>,
+  files: string[],
+): string[] {
   if (!Array.isArray(manifest)) return ["snapshots.json must be an array"];
-  /** @type {string[]} */
-  const problems = [];
+  const problems: string[] = [];
   const seen = new Set();
   for (const raw of manifest) {
-    const e = /** @type {Record<string, unknown>} */ (raw ?? {});
+    const e = (raw ?? {}) as Record<string, unknown>;
     const id = String(e.id);
     if (seen.has(id)) {
       problems.push(`${id}: duplicate`);
@@ -295,14 +285,15 @@ export function validateManifest(manifest, sites, files) {
       problems.push(`${id}: recorded must be a date (YYYY-MM-DD)`);
     for (const key of Object.keys(e))
       if (!ENTRY_FIELDS.has(key)) problems.push(`${id}: unknown field ${key}`);
-    const expect = /** @type {Record<string, unknown>} */ (
-      e.expect && typeof e.expect === "object" ? e.expect : {}
-    );
+    const expect = (e.expect && typeof e.expect === "object" ? e.expect : {}) as Record<
+      string,
+      unknown
+    >;
     for (const check of GATED_CHECKS)
       if (expect[check] !== "pass" && expect[check] !== "skip")
         problems.push(`${id}: expect.${check} must be pass or skip`);
     for (const key of Object.keys(expect))
-      if (!GATED_CHECKS.includes(/** @type {any} */ (key)))
+      if (!GATED_CHECKS.includes(key as any))
         problems.push(`${id}: expect.${key} is not a gated check`);
     if (!files.includes(`${id}.html`)) problems.push(`${id}: no ${id}.html`);
   }
@@ -315,12 +306,8 @@ export function validateManifest(manifest, sites, files) {
 /**
  * The sites an offline run visits: each snapshot under the page server's `base`, with the
  * `find` word and `search` selector of its sites.json entry.
- * @param {SnapshotEntry[]} manifest
- * @param {Site[]} sites
- * @param {string} base
- * @returns {Site[]}
  */
-export function offlineSites(manifest, sites, base) {
+export function offlineSites(manifest: SnapshotEntry[], sites: Site[], base: string): Site[] {
   return manifest.map((entry) => {
     const site = sites.find((s) => s.id === entry.id);
     if (!site) throw new Error(`${entry.id}: not in sites.json`);
@@ -337,27 +324,33 @@ export function offlineSites(manifest, sites, base) {
 // ---------------------------------------------------------------------------------------------
 // The gate
 
-/**
- * @typedef {{ site: string, check: string, expected: string, actual: string,
- *   reason: string | null }} Regression
- * @typedef {{ snapshots: number, regressions: Regression[],
- *   improved: Array<{ site: string, check: string }>, missing: string[], exit: 0 | 1 }} Gate
- */
+export type Regression = {
+  site: string;
+  check: string;
+  expected: string;
+  actual: string;
+  reason: string | null;
+};
+export type Gate = {
+  snapshots: number;
+  regressions: Regression[];
+  improved: Array<{ site: string; check: string }>;
+  missing: string[];
+  exit: 0 | 1;
+};
 
 /**
  * An offline run against the manifest: a check that passed on the recording must pass, and one
  * that was skipped must not fail. A snapshot that did not run, or a harness error, fails too.
- * @param {Pick<Run, "sites" | "harnessError">} run
- * @param {SnapshotEntry[]} manifest the entries the run was meant to visit
- * @returns {Gate}
+ * @param manifest the entries the run was meant to visit
  */
-export function snapshotGate(run, manifest) {
-  /** @type {Regression[]} */
-  const regressions = [];
-  /** @type {Array<{ site: string, check: string }>} */
-  const improved = [];
-  /** @type {string[]} */
-  const missing = [];
+export function snapshotGate(
+  run: Pick<Run, "sites" | "harnessError">,
+  manifest: SnapshotEntry[],
+): Gate {
+  const regressions: Regression[] = [];
+  const improved: Array<{ site: string; check: string }> = [];
+  const missing: string[] = [];
   for (const entry of manifest) {
     const result = run.sites.find((s) => s.id === entry.id);
     if (!result) {
@@ -383,10 +376,9 @@ export function snapshotGate(run, manifest) {
   return { snapshots: manifest.length, regressions, improved, missing, exit: failed ? 1 : 0 };
 }
 
-/** The gate's verdict as Markdown, for report.md and the job summary. @param {Gate} gate */
-export function renderGate(gate) {
-  const plural = (/** @type {number} */ k, /** @type {string} */ w) =>
-    `${k} ${w}${k === 1 ? "" : "s"}`;
+/** The gate's verdict as Markdown, for report.md and the job summary. */
+export function renderGate(gate: Gate) {
+  const plural = (k: number, w: string) => `${k} ${w}${k === 1 ? "" : "s"}`;
   const lines = ["## Snapshot gate", ""];
   if (gate.exit === 0) {
     lines.push(

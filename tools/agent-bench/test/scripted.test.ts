@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { callModel } from "../../../packages/vimma-core/src/agent-providers.mjs";
-import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.mjs";
+import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
+import type { ScriptRequest } from "../scripted.ts";
+import type { Catalog } from "../shop.ts";
 
 const tools = [{ name: "vimma_open", description: "", inputSchema: { type: "object" } }];
 
 /** One model turn through vimma-core's own adapter, as the loop makes it. */
-const turn = (/** @type {any} */ fetch, /** @type {any[]} */ messages) =>
+const turn = (fetch: any, messages: any[]) =>
   callModel(SCRIPTED_PROVIDER, { fetch, key: "", system: "sys", tools, messages });
 
 describe("scriptedFetch", () => {
@@ -34,8 +36,7 @@ describe("scriptedFetch", () => {
   });
 
   it("hands the script the request's messages", async () => {
-    /** @type {any[]} */
-    let seen = [];
+    let seen: any[] = [];
     const fetch = scriptedFetch((req) => {
       seen = req.messages;
       return { text: "ok" };
@@ -53,7 +54,7 @@ describe("scriptedFetch", () => {
 });
 
 /** A tool message as the OpenAI-compatible adapter sends it. */
-const toolMsg = (/** @type {string} */ text) => ({
+const toolMsg = (text: string) => ({
   role: "tool",
   tool_call_id: "c",
   content: text,
@@ -87,10 +88,9 @@ describe("shopper", () => {
 
   it("opens each product, adds it as many times as asked, then tries to pay", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     const step = () => {
-      const r = next({ messages });
+      const r = next({ messages } as ScriptRequest);
       messages.push({ role: "assistant", content: r.text ?? "" });
       return r;
     };
@@ -126,48 +126,43 @@ describe("shopper", () => {
 
   it("lists a page again while it is still on its first blank document", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
-    next({ messages });
+    const messages: any[] = [{ role: "user", content: "task" }];
+    next({ messages } as ScriptRequest);
     messages.push(toolMsg("Opened x in tab 3 of"));
-    next({ messages });
+    next({ messages } as ScriptRequest);
     messages.push(
       toolMsg("Error: Vimma could not do it: elements are listed only on http and https pages."),
     );
-    expect(next({ messages }).calls).toEqual([{ name: "vimma_elements", args: { tab: "3" } }]);
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
+      { name: "vimma_elements", args: { tab: "3" } },
+    ]);
     messages.push(toolMsg(ELEMENTS));
-    expect(next({ messages }).calls).toEqual([
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
       { name: "vimma_activate", args: { tab: "3", label: "d" } },
     ]);
   });
 
   it("stops with a reply when a page has no button it needs", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "product" });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
-    next({ messages });
+    const messages: any[] = [{ role: "user", content: "task" }];
+    next({ messages } as ScriptRequest);
     messages.push(toolMsg("Opened x in tab 3 of"));
-    next({ messages });
+    next({ messages } as ScriptRequest);
     messages.push(toolMsg('{"label":"a","kind":"link","text":"Home"}'));
-    const r = next({ messages });
+    const r = next({ messages } as ScriptRequest);
     expect(r.calls ?? []).toEqual([]);
     expect(r.text).toMatch(/no "Add to basket"/);
   });
 
   it("opens each item's search by URL with elements and clicks the listing's basket button", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     const step = () => {
-      const r = next({ messages });
+      const r = next({ messages } as ScriptRequest);
       messages.push({ role: "assistant", content: r.text ?? "" });
       return r;
     };
-    const opened = (
-      /** @type {string} */ url,
-      /** @type {number} */ tab,
-      /** @type {string} */ els,
-    ) =>
+    const opened = (url: string, tab: number, els: string) =>
       toolMsg(
         `The page ${url} (untrusted)\nOpened ${url} in tab ${tab} of Vimma's agent workspace, in the background.\n${els}`,
       );
@@ -197,16 +192,15 @@ describe("shopper", () => {
   it("finds a button a compact list left out in the earlier list that gave it", () => {
     const next = shopper({
       base: "http://127.0.0.1:1/",
-      list: { ...list, items: [list.items[0]] },
+      list: { ...list, items: [list.items[0]!] },
     });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     messages.push(
       toolMsg(
         `Opened x in tab 9 of Vimma's agent workspace\n<untrusted-web-content>\n${LISTING}\n</untrusted-web-content>`,
       ),
     );
-    next({ messages });
+    next({ messages } as ScriptRequest);
     messages.push(
       toolMsg(
         "Opened http://127.0.0.1:1/search?q=milk in tab 12 of Vimma's agent workspace, in the " +
@@ -214,24 +208,25 @@ describe("shopper", () => {
           "(3 elements as in your last list of this site: a, d, f)",
       ),
     );
-    expect(next({ messages }).calls).toEqual([
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
       { name: "vimma_activate", args: { tab: "12", label: "f" } },
     ]);
   });
 
   it("lists a search page again when its open could not list it", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
-    next({ messages });
+    const messages: any[] = [{ role: "user", content: "task" }];
+    next({ messages } as ScriptRequest);
     messages.push(
       toolMsg(
         "Opened x in tab 3 of Vimma's agent workspace, in the background.\nNo elements: the page is still loading.",
       ),
     );
-    expect(next({ messages }).calls).toEqual([{ name: "vimma_elements", args: { tab: "3" } }]);
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
+      { name: "vimma_elements", args: { tab: "3" } },
+    ]);
     messages.push(toolMsg(LISTING));
-    expect(next({ messages }).calls).toEqual([
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
       { name: "vimma_activate", args: { tab: "3", label: "f" } },
     ]);
   });
@@ -251,23 +246,20 @@ describe("shopper, parallel path", () => {
       { id: "milk-pirkka", name: "Milk", brand: "Pirkka", size: "1 l" },
       { id: "oat-flakes", name: "Oat flakes", brand: "Myllyn Paras", size: "500 g" },
     ],
-  };
+  } as Catalog;
   const OATS = [
     '{"label":"a","kind":"link","text":"Basket (0)"}',
     '{"label":"g","kind":"button","text":"Add Oat flakes (Myllyn Paras, 500 g) to basket"}',
   ].join("\n");
-  /** The tool messages of one turn, in the order of its calls. @param {string[]} texts */
-  const results = (texts) => texts.map((t, i) => ({ ...toolMsg(t), tool_call_id: `c${i}` }));
-  const opened = (
-    /** @type {string} */ url,
-    /** @type {number} */ tab,
-    /** @type {string} */ els,
-  ) => `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.\n${els}`;
+  /** The tool messages of one turn, in the order of its calls. */
+  const results = (texts: string[]) =>
+    texts.map((t, i) => ({ ...toolMsg(t), tool_call_id: `c${i}` }));
+  const opened = (url: string, tab: number, els: string) =>
+    `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.\n${els}`;
 
   it("opens every search in one turn, then clicks every basket button in the next", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     const step = () => {
       const r = next({ messages, tools: [] });
       messages.push({ role: "assistant", content: r.text ?? "" });
@@ -310,8 +302,7 @@ describe("shopper, parallel path", () => {
 
   it("lists again, in one turn, only the pages whose open could not list them", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     next({ messages, tools: [] });
     messages.push(
       ...results([
@@ -333,12 +324,11 @@ describe("shopper, parallel path", () => {
   it("finds a button a compact list left out in an earlier list of the same turn", () => {
     const next = shopper({
       base: "http://127.0.0.1:1/",
-      list: { ...list, items: [list.items[1], list.items[0]] },
+      list: { ...list, items: [list.items[1]!, list.items[0]!] },
       path: "parallel",
       catalog,
     });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     next({ messages, tools: [] });
     messages.push(
       ...results([
@@ -355,8 +345,7 @@ describe("shopper, parallel path", () => {
 
   it("stops with a reply when an open failed", () => {
     const next = shopper({ base: "http://127.0.0.1:1/", list, path: "parallel", catalog });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
+    const messages: any[] = [{ role: "user", content: "task" }];
     next({ messages, tools: [] });
     messages.push(...results(["Error: too many vimma_open calls", opened("y", 4, OATS)]));
     const r = next({ messages, tools: [] });
@@ -367,8 +356,7 @@ describe("shopper, parallel path", () => {
 
 describe("scriptedFetch pacing", () => {
   it("waits paceMs before each answer, as a model's turn takes time", async () => {
-    /** @type {number[]} */
-    const waits = [];
+    const waits: number[] = [];
     const fetch = scriptedFetch(() => ({ text: "ok" }), {
       paceMs: 1300,
       sleep: async (ms) => {
@@ -381,8 +369,7 @@ describe("scriptedFetch pacing", () => {
   });
 
   it("does not wait unless asked", async () => {
-    /** @type {number[]} */
-    const waits = [];
+    const waits: number[] = [];
     const fetch = scriptedFetch(() => ({ text: "ok" }), {
       sleep: async (ms) => {
         waits.push(ms);

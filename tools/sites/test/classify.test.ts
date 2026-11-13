@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { CONSENT_SELECTORS, classifyPage, isRejectLabel } from "../classify.mjs";
+import { CONSENT_SELECTORS, classifyPage, isRejectLabel } from "../classify.ts";
+import type { PageInfo } from "../classify.ts";
 
-/** @param {Partial<import("../classify.mjs").PageInfo>} over */
-const page = (over) => ({
+const page = (over: Partial<PageInfo>) => ({
   url: "https://example.com/",
   title: "Example",
   text: "",

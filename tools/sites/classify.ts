@@ -1,25 +1,31 @@
 // Is the page a bot check or a consent wall rather than the site? (docs/specs/site-compat.md,
-// "Bot checks, consent walls and IP reputation"). Pure: the probe in checks.mjs collects a
+// "Bot checks, consent walls and IP reputation"). Pure: the probe in checks.ts collects a
 // PageInfo in the tab; this decides. A bot check or a consent wall the run could not get past is
 // reported as such, never as a Vimma failure.
 
-/**
- * @typedef {object} PageInfo
- * @property {string} url
- * @property {string} title
- * @property {string} text      document.body.innerText, up to 30 000 characters; bot checks only
- *   look at the first 4000
- * @property {string[]} frames  iframe src URLs
- * @property {string[]} consent selectors of visible consent-manager containers (CONSENT_SELECTORS)
- */
-/** @typedef {{ kind: "bot-check" | "consent" | null, reason: string }} Classification */
+export interface PageInfo {
+  url: string;
+  title: string;
+  /** document.body.innerText, up to 30 000 characters; bot checks only look at the first 4000 */
+  text: string;
+  /** iframe src URLs */
+  frames: string[];
+  /** selectors of visible consent-manager containers (CONSENT_SELECTORS) */
+  consent: string[];
+}
+export type Classification = { kind: "bot-check" | "consent" | null; reason: string };
 
 /**
  * Bot checks, first match wins. Title and text patterns are the interstitials' own wording, so an
  * article about CAPTCHAs does not match.
- * @type {ReadonlyArray<{ reason: string, url?: RegExp, title?: RegExp, text?: RegExp, frame?: RegExp }>}
  */
-const BOT_CHECKS = [
+const BOT_CHECKS: ReadonlyArray<{
+  reason: string;
+  url?: RegExp;
+  title?: RegExp;
+  text?: RegExp;
+  frame?: RegExp;
+}> = [
   {
     reason: "Cloudflare challenge",
     title: /^(just a moment\.\.\.|attention required! \| cloudflare)$/i,
@@ -74,11 +80,7 @@ export const CONSENT_SELECTORS = Object.freeze([
   "ytd-consent-bump-v2-lightbox tp-yt-paper-dialog",
 ]);
 
-/**
- * @param {PageInfo} page
- * @returns {Classification}
- */
-export function classifyPage(page) {
+export function classifyPage(page: PageInfo): Classification {
   let host = "";
   try {
     host = new URL(page.url).hostname;
@@ -117,11 +119,11 @@ const REJECT = [
   /^tout refuser$/,
 ];
 
-/** REJECT as regexp sources, for the in-page click (probes.mjs contentClickReject). */
+/** REJECT as regexp sources, for the in-page click (probes.ts contentClickReject). */
 export const REJECT_SOURCES = Object.freeze(REJECT.map((r) => r.source));
 
-/** @param {string} label a button's text */
-export function isRejectLabel(label) {
+/** @param label a button's text */
+export function isRejectLabel(label: string) {
   const text = label.trim().toLowerCase().replace(/\s+/g, " ");
   return REJECT.some((r) => r.test(text));
 }

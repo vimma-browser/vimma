@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { checkFile, markdownLinks, testNames } from "../check-doc-links.mjs";
+import { checkFile, markdownLinks, testNames } from "../check-doc-links.ts";
 
 describe("testNames", () => {
   test("mochitest tasks, sync and async", () => {
@@ -69,8 +69,7 @@ describe("markdownLinks", () => {
 });
 
 describe("checkFile", () => {
-  /** @type {string} */
-  let dir;
+  let dir: string;
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "vimma-doc-links-"));
     mkdirSync(join(dir, "docs"));
@@ -80,8 +79,7 @@ describe("checkFile", () => {
   });
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
-  /** @param {string} md */
-  const check = (md) => {
+  const check = (md: string) => {
     writeFileSync(join(dir, "docs", "s.md"), md);
     return checkFile(join(dir, "docs", "s.md"));
   };

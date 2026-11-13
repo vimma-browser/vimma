@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startShop } from "../../agent-bench/shop.mjs";
+import { startShop } from "../../agent-bench/shop.ts";
 import {
   DECLINED_TEXT,
   PROMO_CATALOG,

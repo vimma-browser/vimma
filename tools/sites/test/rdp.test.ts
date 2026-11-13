@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Rdp, encodePacket, longStringOrValue, parsePackets } from "../rdp.mjs";
+import { Rdp, encodePacket, longStringOrValue, parsePackets } from "../rdp.ts";
 
 describe("packet framing", () => {
   it("encodes the byte length, not the character length", () => {
@@ -37,26 +38,21 @@ describe("longStringOrValue", () => {
   });
 });
 
-/** @type {Array<() => void>} */
-const cleanups = [];
+const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const c of cleanups.splice(0)) c();
 });
 
-/**
- * A fake DevTools server on a Unix socket: greets, then answers with `handler`.
- * @param {(packet: any, send: (p: object) => void) => void} handler
- */
-async function fakeServer(handler) {
+/** A fake DevTools server on a Unix socket: greets, then answers with `handler`. */
+async function fakeServer(handler: (packet: any, send: (p: object) => void) => void) {
   const dir = mkdtempSync(join(tmpdir(), "rdp-test-"));
   const path = join(dir, "s.sock");
-  /** @type {import("node:net").Socket[]} */
-  const sockets = [];
+  const sockets: Socket[] = [];
   const server = createServer((socket) => {
     sockets.push(socket);
-    const send = (/** @type {object} */ p) => socket.write(encodePacket(p));
+    const send = (p: object) => socket.write(encodePacket(p));
     send({ from: "root", applicationType: "browser", traits: {} });
-    let buf = Buffer.alloc(0);
+    let buf: Buffer = Buffer.alloc(0);
     socket.on("data", (d) => {
       buf = Buffer.concat([buf, d]);
       const { packets, rest } = parsePackets(buf);
@@ -76,14 +72,13 @@ async function fakeServer(handler) {
 describe("Rdp", () => {
   it("matches replies to requests per actor, in order, and ignores events", async () => {
     // An actor answers its own requests in order (RDP); different actors interleave.
-    /** @type {Map<string, Promise<void>>} */
-    const chains = new Map();
+    const chains: Map<string, Promise<void>> = new Map();
     const { path } = await fakeServer((p, send) => {
       const delay = p.type === "slow" ? 30 : 0;
       const prev = chains.get(p.to) ?? Promise.resolve();
       const next = prev.then(
         () =>
-          new Promise((resolve) =>
+          new Promise<void>((resolve) =>
             setTimeout(() => {
               send({ from: p.to, type: "tabListChanged" });
               send({ from: p.to, v: p.type });
@@ -94,9 +89,8 @@ describe("Rdp", () => {
       chains.set(p.to, next);
     });
     const rdp = await Rdp.connect(path);
-    /** @type {string[]} */
-    const order = [];
-    const track = (/** @type {Promise<any>} */ p) => p.then((r) => (order.push(r.v), r));
+    const order: string[] = [];
+    const track = (p: Promise<any>) => p.then((r) => (order.push(r.v), r));
     const [a, b, c] = await Promise.all([
       track(rdp.request("actorA", "slow")),
       track(rdp.request("actorB", "fast")),

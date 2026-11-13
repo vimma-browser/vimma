@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { loadLists, taskText } from "../lists.mjs";
-import { loadCatalog } from "../shop.mjs";
+import { loadLists, taskText } from "../lists.ts";
+import { loadCatalog } from "../shop.ts";
 
 const lists = loadLists();
 const ids = new Set(loadCatalog().products.map((p) => p.id));
@@ -43,7 +43,7 @@ describe("the shopping lists", () => {
 
 describe("taskText", () => {
   it("names the shop, every item, and the checkout the user confirms", () => {
-    const text = taskText(lists[1], "http://127.0.0.1:5000/");
+    const text = taskText(lists[1]!, "http://127.0.0.1:5000/");
     expect(text).toContain("http://127.0.0.1:5000/");
     expect(text).toContain("- lactose-free milk, 1 litre, the cheapest lactose-free one");
     expect(text).toContain("- rye bread, not sliced");

@@ -1,5 +1,5 @@
 // Vimma's brandings.ftl is generated from upstream's (spec firefox-surfaces-trim, "Product names"):
-// tools/branding/brandings.mjs renames the features Vimma ships as its own and keeps Mozilla's
+// tools/branding/brandings.ts renames the features Vimma ships as its own and keeps Mozilla's
 // products. The generated file must match what the generator makes from the engine's upstream
 // copy, and every upstream term that says Firefox or Mozilla must be decided by the mapping, so a
 // Firefox bump surfaces a new name instead of shipping it. The upstream copy needs engine/: the
@@ -7,7 +7,7 @@
 // there); the plain CI job has no engine/ and skips those checks.
 import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { GENERATED, KEEP, RENAME, generate, readUpstream, undecidedTerms } from "../brandings.mjs";
+import { GENERATED, KEEP, RENAME, generate, readUpstream, undecidedTerms } from "../brandings.ts";
 
 const FIXTURE = `# License header.
 
@@ -89,11 +89,11 @@ describe("the generated file", () => {
   }
 
   it.skipIf(upstream === null)("decides every Firefox or Mozilla term upstream has", () => {
-    expect(undecidedTerms(/** @type {string} */ (upstream))).toEqual([]);
+    expect(undecidedTerms(upstream as string)).toEqual([]);
   });
 
   it.skipIf(upstream === null)("is current (run npm run gen-brandings after a bump)", () => {
     expect(existsSync(GENERATED)).toBe(true);
-    expect(readFileSync(GENERATED, "utf8")).toBe(generate(/** @type {string} */ (upstream)));
+    expect(readFileSync(GENERATED, "utf8")).toBe(generate(upstream as string));
   });
 });

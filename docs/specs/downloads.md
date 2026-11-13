@@ -279,9 +279,9 @@ action (Delivery). No config key is added.
   `m`, `o`, `q`, `s`, `t` or `y`, among others.
 - `vimma_keys` runs only the action ids on `AGENT_KEY_ACTIONS`
   (`packages/vimma-core/src/agent-keys.mjs:24`), a fixed allow list.
-- `tools/security/test/chrome-source.test.mjs` (lines 65-71) holds rule C2: Vimma's chrome code
-  contains no `Subprocess`, `nsIProcess`, `.launch()` or `.reveal()` outside the ClamAV scan and
-  the AppImage restart.
+- `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`, ADR-025)
+  (lines 65-71) holds rule C2: Vimma's chrome code contains no `Subprocess`, `nsIProcess`,
+  `.launch()` or `.reveal()` outside the ClamAV scan and the AppImage restart.
 - Zen Browser's components were not available locally, so its downloads UI was not checked.
 
 ## Design
@@ -569,7 +569,7 @@ Written first and seen to fail.
 - `agent-keys.test.mjs`: `downloads.picker is not an agent key action`.
 - `cmdline.test.mjs`: `:downloads runs downloads.picker`.
 - `help.test.mjs` snapshot: the new row.
-- `tools/security/test/chrome-source.test.mjs`:
+- `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`, ADR-025):
   `opens and reveals downloads only through Firefox's Download, from download-ops`.
 
 **mochitest, `tests/browser/browser_vimma_downloads.js`** (a slow `.sjs` serves the files; the

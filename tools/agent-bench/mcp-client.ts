@@ -6,19 +6,23 @@
 // gate connection with its own grant, as each conversation will be (B5).
 
 import { spawn } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { createInterface } from "node:readline";
 
 const PROTOCOL = "2025-11-25";
 
 export class McpClient {
-  /** @param {{ bin: string, profile: string }} o */
-  constructor({ bin, profile }) {
+  declare child: ChildProcessWithoutNullStreams;
+  declare nextId: number;
+  declare waiting: Map<number, (m: any) => void>;
+  declare stderr: string;
+  declare exitCode: number | null;
+
+  constructor({ bin, profile }: { bin: string; profile: string }) {
     this.child = spawn(bin, ["--profile", profile, "mcp"], { stdio: ["pipe", "pipe", "pipe"] });
     this.nextId = 0;
-    /** @type {Map<number, (m: any) => void>} */
     this.waiting = new Map();
     this.stderr = "";
-    /** @type {number | null} */
     this.exitCode = null;
     this.child.stdin.on("error", () => {});
     this.child.stderr.setEncoding("utf8");
@@ -44,16 +48,15 @@ export class McpClient {
     });
   }
 
-  /** @param {string} method @param {any} [params] @returns {Promise<any>} the response */
-  request(method, params) {
+  /** @returns the response */
+  request(method: string, params?: any): Promise<any> {
     const id = ++this.nextId;
     const reply = new Promise((resolve) => this.waiting.set(id, resolve));
     this.write({ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) });
     return reply;
   }
 
-  /** @param {any} message */
-  write(message) {
+  write(message: any) {
     this.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
@@ -71,10 +74,12 @@ export class McpClient {
   /**
    * One tool call as the loop's runner: MCP's CallToolResult, a protocol error as an error
    * result. A stop withdraws a call still waiting for the user (MCP's cancellation).
-   * @param {string} name @param {Record<string, any>} args @param {{ signal?: AbortSignal }} [o]
-   * @returns {Promise<{ content: any[], isError: boolean }>}
    */
-  async callTool(name, args, { signal } = {}) {
+  async callTool(
+    name: string,
+    args: Record<string, any>,
+    { signal }: { signal?: AbortSignal } = {},
+  ): Promise<{ content: any[]; isError: boolean }> {
     const id = this.nextId + 1;
     const onAbort = () =>
       this.write({

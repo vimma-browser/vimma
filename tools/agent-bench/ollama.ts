@@ -8,13 +8,12 @@
 // so the bench makes a model that sets it, the way Ollama's documentation says to: a new name
 // with `num_ctx` set, sharing the original's weights (nothing is downloaded).
 
-import { httpFetch } from "./http-fetch.mjs";
+import { httpFetch } from "./http-fetch.ts";
 
-/** @param {string} endpoint an OpenAI-compatible base such as http://127.0.0.1:11434/v1 */
-export const ollamaRoot = (endpoint) => endpoint.replace(/\/v1\/?$/, "");
+/** @param endpoint an OpenAI-compatible base such as http://127.0.0.1:11434/v1 */
+export const ollamaRoot = (endpoint: string) => endpoint.replace(/\/v1\/?$/, "");
 
-/** @param {string} root @param {string} path @param {any} [body] */
-async function call(root, path, body) {
+async function call(root: string, path: string, body?: any) {
   const res = await httpFetch(`${root}${path}`, {
     method: body ? "POST" : "GET",
     headers: { "content-type": "application/json" },
@@ -26,15 +25,12 @@ async function call(root, path, body) {
 }
 
 /** The name of the model with `numCtx` set: `qwen2.5:7b` → `qwen2.5:7b-ctx32768`. */
-export function ctxModelName(/** @type {string} */ model, /** @type {number} */ numCtx) {
+export function ctxModelName(model: string, numCtx: number) {
   return `${model.includes(":") ? model : `${model}:latest`}-ctx${numCtx}`;
 }
 
-/**
- * Makes (or keeps) the model with the context length set; its name.
- * @param {string} endpoint @param {string} model @param {number} numCtx
- */
-export async function withContext(endpoint, model, numCtx) {
+/** Makes (or keeps) the model with the context length set; its name. */
+export async function withContext(endpoint: string, model: string, numCtx: number) {
   const name = ctxModelName(model, numCtx);
   const out = await call(ollamaRoot(endpoint), "/api/create", {
     model: name,
@@ -47,11 +43,8 @@ export async function withContext(endpoint, model, numCtx) {
   return name;
 }
 
-/**
- * The server's version and the model's details, for the results.
- * @param {string} endpoint @param {string} model
- */
-export async function describe(endpoint, model) {
+/** The server's version and the model's details, for the results. */
+export async function describe(endpoint: string, model: string) {
   const root = ollamaRoot(endpoint);
   const version = JSON.parse(await call(root, "/api/version")).version;
   const show = JSON.parse(await call(root, "/api/show", { model }));
@@ -69,13 +62,10 @@ export async function describe(endpoint, model) {
   };
 }
 
-/**
- * Where the model ran: Ollama's loaded models with how much of each is in GPU memory.
- * @param {string} endpoint
- */
-export async function loaded(endpoint) {
+/** Where the model ran: Ollama's loaded models with how much of each is in GPU memory. */
+export async function loaded(endpoint: string) {
   const ps = JSON.parse(await call(ollamaRoot(endpoint), "/api/ps"));
-  return (ps.models ?? []).map((/** @type {any} */ m) => ({
+  return (ps.models ?? []).map((m: any) => ({
     name: m.name,
     size: m.size,
     sizeVram: m.size_vram,

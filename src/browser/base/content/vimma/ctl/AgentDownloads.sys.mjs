@@ -53,7 +53,7 @@ import { AgentGate } from "./AgentGate.sys.mjs";
 
 /** @import { Refusal, Danger } from "../core/agent-downloads.mjs" */
 
-// Untyped (Lazy<…> would name each module again): tools/security/test/chrome-source.test.mjs
+// Untyped (Lazy<…> would name each module again): tools/security/test/chrome-source.test.ts
 // pins every mention of the process module in this file.
 const lazy = /** @type {any} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {

@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildRequest } from "../../../packages/vimma-core/src/agent-providers.mjs";
-import { formatBreakdown, requestParts, timedFetch } from "../breakdown.mjs";
+import { formatBreakdown, requestParts, timedFetch } from "../breakdown.ts";
+import type { ChatMessage, ToolDef } from "../../../packages/vimma-core/src/agent-providers.mjs";
 
-/** @type {import("../../../packages/vimma-core/src/agent-providers.mjs").ToolDef[]} */
-const TOOLS = [
+const TOOLS: ToolDef[] = [
   { name: "vimma_open", description: "Opens a page.", inputSchema: { type: "object" } },
   { name: "vimma_elements", description: "Lists elements.", inputSchema: { type: "object" } },
 ];
@@ -12,8 +12,7 @@ const TASK = "Buy milk at http://127.0.0.1:1/.";
 const OLD = '{"label":"a","kind":"link","text":"Milk"}';
 const NEW = '{"label":"b","kind":"button","text":"Add to basket"}';
 
-/** @type {import("../../../packages/vimma-core/src/agent-providers.mjs").ChatMessage[]} */
-const MESSAGES = [
+const MESSAGES: ChatMessage[] = [
   { role: "user", text: TASK },
   { role: "assistant", text: "", toolCalls: [{ id: "c1", name: "vimma_elements", args: {} }] },
   {
@@ -31,15 +30,14 @@ const MESSAGES = [
   },
 ];
 
-/** @param {"openai" | "anthropic"} kind */
-const body = (kind) =>
+const body = (kind: "openai" | "anthropic") =>
   buildRequest(
     { kind, endpoint: "http://127.0.0.1:9/v1", model: "m" },
     { key: "", system: SYSTEM, tools: TOOLS, messages: MESSAGES },
   ).body;
 
 describe("requestParts", () => {
-  for (const kind of /** @type {const} */ (["openai", "anthropic"])) {
+  for (const kind of ["openai", "anthropic"] as const) {
     it(`splits a ${kind} request into what each part costs`, () => {
       const b = body(kind);
       const p = requestParts(b);
@@ -73,8 +71,7 @@ describe("requestParts", () => {
 describe("timedFetch", () => {
   it("times each request and hands on its parts, and the reply unchanged", async () => {
     let now = 1000;
-    /** @type {any[]} */
-    const turns = [];
+    const turns: any[] = [];
     const inner = async () => {
       now += 250;
       return { ok: true, status: 200, text: async () => "reply" };
@@ -118,7 +115,7 @@ describe("formatBreakdown", () => {
           { name: "vimma_elements", ms: 500 },
         ],
       },
-    ]);
+    ] as any[]);
     const lines = out.split("\n");
     expect(lines[0]).toMatch(
       /^\| List \| Run \| Steps \| Model turns \| Model time \| Tool time \|/,

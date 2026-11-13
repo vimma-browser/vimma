@@ -1,19 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentTools, AGENT_INSTRUCTIONS } from "../../../packages/vimma-core/src/agent-tools.mjs";
-import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.mjs";
+import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "../run.ts";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent.mjs";
-import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.mjs";
-import { loadLists } from "../lists.mjs";
-import { loadCatalog, startShop } from "../shop.mjs";
+import { RATE_PACE_MS, SCRIPTED_PROVIDER, scriptedFetch, shopper } from "../scripted.ts";
+import { loadLists } from "../lists.ts";
+import { loadCatalog, startShop } from "../shop.ts";
+import type { RunTool } from "../../../packages/vimma-core/src/agent-loop.mjs";
 
-/** @type {Awaited<ReturnType<typeof startShop>>} */
-let shop;
+let shop: Awaited<ReturnType<typeof startShop>>;
 beforeAll(async () => {
   shop = await startShop();
 });
 afterAll(() => shop.close());
 
-const text = (/** @type {string} */ t) => ({ content: [{ type: "text", text: t }] });
+const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
+/** A runner called without the loop's options, as these tests call it. */
+type Call = (name: string, args: Record<string, any>) => ReturnType<RunTool>;
 
 /**
  * A stand-in for Vimma behind vimma-ctl mcp, enough for the shopper: pages are opened by URL,
@@ -25,17 +27,17 @@ const text = (/** @type {string} */ t) => ({ content: [{ type: "text", text: t }
  * With `clickRate`, a click is held to it too, as Vimma's agent-activate checks it before a
  * click; the other runs leave it out, because their clock moves only by the scripted pace and
  * never by the time Vimma's tools take.
- * @param {{ clock?: () => number, clickRate?: boolean }} [o]
  */
-function fakeVimma({ clock = () => 0, clickRate = false } = {}) {
+function fakeVimma({
+  clock = () => 0,
+  clickRate = false,
+}: { clock?: () => number; clickRate?: boolean } = {}): RunTool {
   const catalog = loadCatalog();
-  /** @type {Map<string, string>} */
-  const tabs = new Map();
-  /** @type {number[]} */
-  const opens = [];
+  const tabs: Map<string, string> = new Map();
+  const opens: number[] = [];
   let next = 1;
-  /** The page's buttons: [label, text, product id]. @param {string} url */
-  const buttons = (url) => {
+  /** The page's buttons: [label, text, product id]. */
+  const buttons = (url: string) => {
     if (url.includes("/checkout")) return [["s", "Place order and pay", ""]];
     if (url.includes("/product/")) return [["d", "Add to basket", url.split("/product/")[1]]];
     const q = (new URL(url).searchParams.get("q") ?? "").toLowerCase();
@@ -43,16 +45,14 @@ function fakeVimma({ clock = () => 0, clickRate = false } = {}) {
       .filter((p) => p.name.toLowerCase().replace(/,/g, "").includes(q))
       .map((p, i) => [`b${i}`, `Add ${p.name} (${p.brand}, ${p.size}) to basket`, p.id]);
   };
-  /** @param {string} url */
-  const list = (url) =>
+  const list = (url: string) =>
     buttons(url)
       .map(([label, t]) => JSON.stringify({ label, kind: "button", text: t }))
       .join("\n");
-  /** @type {import("../../../packages/vimma-core/src/agent-loop.mjs").RunTool} */
   return async (name, args) => {
     if (name === "vimma_open") {
       const now = clock();
-      while (opens.length && opens[0] <= now - OPEN_RATE.ms) opens.shift();
+      while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
       if (opens.length >= OPEN_RATE.max)
         return {
           isError: true,
@@ -70,9 +70,9 @@ function fakeVimma({ clock = () => 0, clickRate = false } = {}) {
       // A click may load a page, so Vimma checks the open rate before it (agent-activate); a
       // click that loads nothing takes no open. Worded as vimma-ctl words a used-up rate.
       const now = clock();
-      while (opens.length && opens[0] <= now - OPEN_RATE.ms) opens.shift();
+      while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
       if (clickRate && opens.length >= OPEN_RATE.max) {
-        const s = Math.max(1, Math.ceil((opens[0] + OPEN_RATE.ms - now) / 1000));
+        const s = Math.max(1, Math.ceil((opens[0]! + OPEN_RATE.ms - now) / 1000));
         return {
           isError: true,
           ...text(
@@ -96,7 +96,7 @@ describe("runOne", () => {
   const lists = loadLists();
 
   it("runs the loop with the scripted provider and scores the shop's basket", async () => {
-    const list = lists[3]; // L04: two packs of butter
+    const list = lists[3]!; // L04: two packs of butter
     const run = await runOne({
       list,
       shop,
@@ -129,7 +129,7 @@ describe("runOne", () => {
   });
 
   it("takes the old product-page path when asked, for comparison", async () => {
-    const list = lists[3];
+    const list = lists[3]!;
     const run = await runOne({
       list,
       shop,
@@ -148,9 +148,8 @@ describe("runOne", () => {
   });
 
   it("a paced scripted run is not refused by the rates", async () => {
-    const list = lists[9]; // L10: ten searches and the checkout, eleven opens
-    /** @param {number} paceMs */
-    const runAt = async (paceMs) => {
+    const list = lists[9]!; // L10: ten searches and the checkout, eleven opens
+    const runAt = async (paceMs: number) => {
       let now = 0;
       return runOne({
         list,
@@ -182,7 +181,7 @@ describe("runOne", () => {
   // agent-speed S6: each item's search opened in one turn and each basket button clicked in the
   // next; the checkout's open and its pay button take a turn each, and the closing reply one.
   it("takes the parallel path in five model turns, the steps unchanged", async () => {
-    const list = lists[3]; // L04
+    const list = lists[3]!; // L04
     const run = await runOne({
       list,
       shop,
@@ -209,11 +208,10 @@ describe("runOne", () => {
   // so the next turn's first click is refused until a minute after the first load. The bench
   // waits that out once and runs the call again, as the built-in agent's runner does.
   it("a parallel ten-item run waits out the open rate once and completes", async () => {
-    const list = lists[9]; // L10: ten searches and the checkout, eleven opens
+    const list = lists[9]!; // L10: ten searches and the checkout, eleven opens
     let now = 0;
-    /** @type {number[]} */
-    const waits = [];
-    const sleep = async (/** @type {number} */ ms) => {
+    const waits: number[] = [];
+    const sleep = async (ms: number) => {
       now += ms;
     };
     const run = await runOne({
@@ -246,7 +244,7 @@ describe("runOne", () => {
   });
 
   it("records each model turn's time, tokens and request parts, and each call's time", async () => {
-    const list = lists[0];
+    const list = lists[0]!;
     const run = await runOne({
       list,
       shop,
@@ -267,16 +265,15 @@ describe("runOne", () => {
       expect(t.output).toBeGreaterThan(0);
       expect(t.parts.tools).toBeGreaterThan(0);
     }
-    expect(run.turns.reduce((n, t) => n + t.input + t.output, 0)).toBe(run.input + run.output);
+    expect(run.turns.reduce((n, t) => n + t.input! + t.output!, 0)).toBe(run.input + run.output);
     // The second turn's request holds the first call's result as its newest part.
-    expect(run.turns[1].parts.latest).toBeGreaterThan(0);
+    expect(run.turns[1]!.parts.latest).toBeGreaterThan(0);
     expect(run.calls.every((c) => typeof c.ms === "number" && c.ms >= 0)).toBe(true);
   });
 
   it("leaves older results out of its requests as the built-in agent does, or not at all", async () => {
-    const list = lists[9];
-    /** @param {number} keepResults */
-    const runWith = (keepResults) =>
+    const list = lists[9]!;
+    const runWith = (keepResults: number) =>
       runOne({
         list,
         shop,
@@ -298,7 +295,7 @@ describe("runOne", () => {
   });
 
   it("stops a run at its step budget and says so", async () => {
-    const list = lists[9];
+    const list = lists[9]!;
     const run = await runOne({
       list,
       shop,
@@ -317,7 +314,7 @@ describe("runOne", () => {
   });
 
   it("stops a run at its time limit", async () => {
-    const list = lists[0];
+    const list = lists[0]!;
     const run = await runOne({
       list,
       shop,
@@ -336,17 +333,14 @@ describe("runOne", () => {
 });
 
 describe("waitOutRate", () => {
-  const rateText = (/** @type {number} */ s) =>
+  const rateText = (s: number) =>
     `Vimma's rate limit for this agent: too many loads from this agent in the last minute ` +
     `(at most 10). No question is waiting for the user. The next call is allowed in ${s} s.`;
 
   it("waits the time a rate refusal names, once, and runs the call again", async () => {
-    /** @type {any[]} */
-    const results = [{ isError: true, ...text(rateText(12)) }, text("Clicked d")];
-    /** @type {any[]} */
-    const calls = [];
-    /** @type {number[]} */
-    const waits = [];
+    const results: any[] = [{ isError: true, ...text(rateText(12)) }, text("Clicked d")];
+    const calls: any[] = [];
+    const waits: number[] = [];
     const run = waitOutRate(
       async (name, args) => {
         calls.push([name, args]);
@@ -354,7 +348,9 @@ describe("waitOutRate", () => {
       },
       { sleep: async (ms) => void waits.push(ms) },
     );
-    expect(await run("vimma_activate", { tab: "1", label: "d" })).toEqual(text("Clicked d"));
+    expect(await (run as Call)("vimma_activate", { tab: "1", label: "d" })).toEqual(
+      text("Clicked d"),
+    );
     expect(waits).toEqual([12_000]);
     expect(calls).toEqual([
       ["vimma_activate", { tab: "1", label: "d" }],
@@ -364,16 +360,21 @@ describe("waitOutRate", () => {
 
   it("hands the model a second rate refusal, and any other result, as it came", async () => {
     const refusal = { isError: true, ...text(rateText(5)) };
-    /** @type {number[]} */
-    const waits = [];
-    const sleep = async (/** @type {number} */ ms) => void waits.push(ms);
-    expect(await waitOutRate(async () => refusal, { sleep })("vimma_open", {})).toEqual(refusal);
+    const waits: number[] = [];
+    const sleep = async (ms: number) => void waits.push(ms);
+    expect(await (waitOutRate(async () => refusal, { sleep }) as Call)("vimma_open", {})).toEqual(
+      refusal,
+    );
     expect(waits).toEqual([5000]);
     const denied = { isError: true, ...text("The user denied this request in Vimma.") };
-    expect(await waitOutRate(async () => denied, { sleep })("vimma_open", {})).toEqual(denied);
+    expect(await (waitOutRate(async () => denied, { sleep }) as Call)("vimma_open", {})).toEqual(
+      denied,
+    );
     // Page text that reads like a refusal is not one: only an error result is waited out.
     const page = text(rateText(30));
-    expect(await waitOutRate(async () => page, { sleep })("vimma_open", {})).toEqual(page);
+    expect(await (waitOutRate(async () => page, { sleep }) as Call)("vimma_open", {})).toEqual(
+      page,
+    );
     expect(waits).toEqual([5000]);
   });
 });
@@ -381,16 +382,14 @@ describe("waitOutRate", () => {
 describe("answerer", () => {
   it("presses its key while a call has waited longer than a question takes to arm", async () => {
     let now = 0;
-    /** @type {string[]} */
-    const pressed = [];
+    const pressed: string[] = [];
     const a = answerer({
       sendKeys: async (k) => void pressed.push(k),
       afterMs: 1500,
       everyMs: 1000,
       clock: () => now,
     });
-    /** @type {(v: any) => void} */
-    let finish = () => {};
+    let finish: (v: any) => void = () => {};
     const run = a.wrap(() => new Promise((r) => (finish = r)));
     const call = run("vimma_activate", {}, { signal: new AbortController().signal });
     await a.tick();
@@ -414,10 +413,8 @@ describe("answerer", () => {
 
 describe("grantSession", () => {
   it("answers the first call's question with a, until the call returns", async () => {
-    /** @type {string[]} */
-    const pressed = [];
-    /** @type {(v: any) => void} */
-    let finish = () => {};
+    const pressed: string[] = [];
+    let finish: (v: any) => void = () => {};
     const done = grantSession({
       call: () => new Promise((r) => (finish = r)),
       sendKeys: async (k) => {

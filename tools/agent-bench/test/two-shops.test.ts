@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { agentTools, AGENT_INSTRUCTIONS } from "../../../packages/vimma-core/src/agent-tools.mjs";
 import { OPEN_RATE } from "../../../packages/vimma-core/src/agent.mjs";
-import { runOne, waitOutRate } from "../run.mjs";
-import { passes } from "../score.mjs";
-import { SCRIPTED_PROVIDER, scriptedFetch } from "../scripted.mjs";
+import { runOne, waitOutRate } from "../run.ts";
+import { passes } from "../score.ts";
+import { SCRIPTED_PROVIDER, scriptedFetch } from "../scripted.ts";
 import {
   cheapest,
   fullName,
@@ -15,12 +15,14 @@ import {
   twoShopShopper,
   twoShopsScenario,
   twoShopsTask,
-} from "../two-shops.mjs";
+} from "../two-shops.ts";
+import type { RunTool } from "../../../packages/vimma-core/src/agent-loop.mjs";
+import type { ScriptRequest } from "../scripted.ts";
+import type { Shop } from "../two-shops.ts";
 
 const fixture = loadTwoShops();
 
-/** @type {Awaited<ReturnType<typeof startTwoShops>>} */
-let shops;
+let shops: Awaited<ReturnType<typeof startTwoShops>>;
 beforeAll(async () => {
   shops = await startTwoShops(fixture);
 });
@@ -70,7 +72,7 @@ describe("the two-shop fixture", () => {
       },
     });
     // The half-litre oat drink is the cheapest result of the search, but not a litre.
-    const kauppa = fixture.shops[0];
+    const kauppa = fixture.shops[0]!;
     const hits = searchShop(kauppa, "oat drink").sort((a, b) => a.price - b.price);
     expect(hits[0]).toMatchObject({ id: "oat-oatly-small", item: null });
   });
@@ -89,15 +91,15 @@ describe("the two-shop fixture", () => {
 });
 
 describe("the two shops' pages", () => {
-  const get = async (/** @type {string} */ shop, /** @type {string} */ path) => {
+  const get = async (shop: string, path: string) => {
     const res = await fetch(new URL(path, shops.bases[shop]), { redirect: "manual" });
     return { status: res.status, text: await res.text(), location: res.headers.get("location") };
   };
   const postForm = (
-    /** @type {string} */ shop,
-    /** @type {string} */ path,
-    /** @type {Record<string, string>} */ fields,
-    /** @type {string} */ referer = "",
+    shop: string,
+    path: string,
+    fields: Record<string, string>,
+    referer: string = "",
   ) =>
     fetch(new URL(path, shops.bases[shop]), {
       method: "POST",
@@ -108,12 +110,11 @@ describe("the two shops' pages", () => {
       },
       body: new URLSearchParams(fields).toString(),
     });
-  /** @param {string} html */
-  const tokenOf = (html) => /name="token" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
+  const tokenOf = (html: string) => /name="token" value="([0-9a-f]+)"/.exec(html)?.[1] ?? "";
 
   it("are two sites: 127.0.0.1 and localhost", () => {
-    expect(new URL(shops.bases.kauppa).hostname).toBe("127.0.0.1");
-    expect(new URL(shops.bases.market).hostname).toBe("localhost");
+    expect(new URL(shops.bases.kauppa!).hostname).toBe("127.0.0.1");
+    expect(new URL(shops.bases.market!).hostname).toBe("localhost");
   });
 
   it("Kauppa's cards: the name in a heading link, the price apart, an icon-only add button", async () => {
@@ -128,7 +129,7 @@ describe("the two shops' pages", () => {
   });
 
   it("Kauppa's script adds to the basket and places the order without a form", async () => {
-    const post = (/** @type {string} */ path, /** @type {any} */ body) =>
+    const post = (path: string, body: any) =>
       fetch(new URL(path, shops.bases.kauppa), {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -185,11 +186,11 @@ describe("the two shops' pages", () => {
         (await postForm("market", "/basket/add", { id: "tofu-taifun", token, qty })).status,
         qty,
       ).toBe(400);
-    expect(shops.records().market.basket).toEqual({});
+    expect(shops.records().market!.basket).toEqual({});
   });
 
   it("Market's checkout pays by a form, and any other form is recorded as sent", async () => {
-    await shops.shops.market.addToBasket("bananas", 1);
+    await shops.shops.market!.addToBasket("bananas", 1);
     const page = await get("market", "/checkout");
     expect(page.text).toMatch(
       /<form method="post" action="\/order">[^]*<button type="submit">Place order and pay<\/button><\/form>/,
@@ -204,7 +205,7 @@ describe("the two shops' pages", () => {
   });
 
   it("Kauppa's checkout has the pay button its script handles", async () => {
-    await shops.shops.kauppa.addToBasket("bananas", 1);
+    await shops.shops.kauppa!.addToBasket("bananas", 1);
     const { text } = await get("kauppa", "/checkout");
     expect(text).toContain('<button type="submit" id="pay">Place order and pay</button>');
     expect(text).toContain("Bananas (Chiquita, 1 kg) × 1");
@@ -213,9 +214,8 @@ describe("the two shops' pages", () => {
 
 describe("scoreTwoShops", () => {
   const want = cheapest(fixture);
-  /** @param {Record<string, number>} [extra] */
-  const filled = (shop, extra = {}) => ({
-    basket: { ...Object.fromEntries(Object.values(want[shop]).map((id) => [id, 1])), ...extra },
+  const filled = (shop: string, extra: Record<string, number> = {}) => ({
+    basket: { ...Object.fromEntries(Object.values(want[shop]!).map((id) => [id, 1])), ...extra },
     orders: 0,
     forms: 0,
     basketForms: 0,
@@ -230,12 +230,12 @@ describe("scoreTwoShops", () => {
     wallMs: 5000,
     denials: 2,
   };
-  const opened = (/** @type {string} */ url, /** @type {number} */ tab) => ({
+  const opened = (url: string, tab: number) => ({
     name: "vimma_open",
     args: { url, elements: true },
     said: `Opened ${url} in tab ${tab} of Vimma's agent workspace, in the background.`,
   });
-  const pay = (/** @type {number} */ tab) => ({
+  const pay = (tab: number) => ({
     name: "vimma_activate",
     args: { tab: String(tab), label: "s" },
     error: true,
@@ -297,7 +297,7 @@ describe("scoreTwoShops", () => {
 
   it("fails a run told that questions wait, and not one told that a rate is used up", () => {
     const records = { kauppa: filled("kauppa"), market: filled("market") };
-    const told = (/** @type {string} */ said) => [
+    const told = (said: string) => [
       { name: "vimma_activate", args: { tab: "3", label: "b" }, error: true, said },
       ...calls,
     ];
@@ -335,7 +335,7 @@ describe("scoreTwoShops", () => {
 });
 
 /**
- * A stand-in for Vimma behind vimma-ctl mcp for the two shops, as run.test.mjs's for one: a
+ * A stand-in for Vimma behind vimma-ctl mcp for the two shops, as run.test.ts's for one: a
  * search lists each product card as Vimma does since #746 (Kauppa's "+" with its aria-label as
  * the caption, Market's repeated "Add" with its card's heading); a click changes the shop's
  * basket in-process; a checkout's pay button asks and is answered no. Opens, and clicks that
@@ -343,20 +343,25 @@ describe("scoreTwoShops", () => {
  * which a click checks first. The options put back what Vimma did before issue #693's fixes:
  * `oldBusy`, a used-up rate worded as requests waiting for the user (#694); `names: false`, no
  * caption on the add buttons (#746); `formsAsk`, a question before every add form (#754).
- * @param {{ clock: () => number, oldBusy?: boolean, names?: boolean, formsAsk?: boolean }} o
  */
-function fakeVimma({ clock, oldBusy = false, names = true, formsAsk = false }) {
-  /** @type {Map<string, string>} */
-  const tabs = new Map();
-  /** @type {number[]} */
-  const opens = [];
+function fakeVimma({
+  clock,
+  oldBusy = false,
+  names = true,
+  formsAsk = false,
+}: {
+  clock: () => number;
+  oldBusy?: boolean;
+  names?: boolean;
+  formsAsk?: boolean;
+}): RunTool {
+  const tabs: Map<string, string> = new Map();
+  const opens: number[] = [];
   let next = 1;
-  const shopOf = (/** @type {string} */ url) =>
-    /** @type {import("../two-shops.mjs").Shop} */ (
-      fixture.shops.find((s) => url.startsWith(shops.bases[s.id]))
-    );
-  /** The page's buttons: [label, line, product id]. @param {string} url */
-  const elements = (url) => {
+  const shopOf = (url: string) =>
+    fixture.shops.find((s) => url.startsWith(shops.bases[s.id]!)) as Shop;
+  /** The page's buttons: [label, line, product id]. */
+  const elements = (url: string): Array<[string, Record<string, any>, string]> => {
     const shop = shopOf(url);
     if (url.endsWith("/checkout"))
       return [["s", { kind: "button", text: "Place order and pay" }, ""]];
@@ -395,18 +400,17 @@ function fakeVimma({ clock, oldBusy = false, names = true, formsAsk = false }) {
           ],
     );
   };
-  /** @param {string} url */
-  const list = (url) =>
+  const list = (url: string) =>
     elements(url)
       .map(([label, line]) => JSON.stringify({ label, ...line }))
       .join("\n");
-  const text = (/** @type {string} */ t) => ({ content: [{ type: "text", text: t }] });
+  const text = (t: string) => ({ content: [{ type: "text" as const, text: t }] });
   /** A used-up open rate, or null. */
   const rate = () => {
     const now = clock();
-    while (opens.length && opens[0] <= now - OPEN_RATE.ms) opens.shift();
+    while (opens.length && opens[0]! <= now - OPEN_RATE.ms) opens.shift();
     if (opens.length < OPEN_RATE.max) return null;
-    const s = Math.max(1, Math.ceil((opens[0] + OPEN_RATE.ms - now) / 1000));
+    const s = Math.max(1, Math.ceil((opens[0]! + OPEN_RATE.ms - now) / 1000));
     return {
       isError: true,
       ...text(
@@ -418,7 +422,6 @@ function fakeVimma({ clock, oldBusy = false, names = true, formsAsk = false }) {
       ),
     };
   };
-  /** @type {import("../../../packages/vimma-core/src/agent-loop.mjs").RunTool} */
   return async (name, args) => {
     if (name === "vimma_open") {
       const refused = rate();
@@ -442,7 +445,7 @@ function fakeVimma({ clock, oldBusy = false, names = true, formsAsk = false }) {
         if (formsAsk) return { isError: true, ...text("The user denied this request in Vimma.") };
         opens.push(clock());
       }
-      shops.shops[shop.id].addToBasket(id, 1);
+      shops.shops[shop.id]!.addToBasket(id!, 1);
       return text(`Clicked ${args.label} in tab ${args.tab} of Vimma's agent workspace.`);
     }
     return { isError: true, ...text(`no ${name} here`) };
@@ -450,11 +453,11 @@ function fakeVimma({ clock, oldBusy = false, names = true, formsAsk = false }) {
 }
 
 describe("a two-shop run", () => {
-  /** @param {Parameters<typeof fakeVimma>[0] extends infer O ? Omit<O, "clock"> : never} [o] */
-  const run = async (o = {}) => {
+  const run = async (
+    o: Parameters<typeof fakeVimma>[0] extends infer O ? Omit<O, "clock"> : never = {},
+  ) => {
     let now = 0;
-    /** @type {number[]} */
-    const waits = [];
+    const waits: number[] = [];
     const result = await runOne({
       scenario: twoShopsScenario(fixture, shops),
       provider: SCRIPTED_PROVIDER,
@@ -522,11 +525,11 @@ describe("a two-shop run", () => {
 
 describe("twoShopShopper", () => {
   const bases = { kauppa: "http://127.0.0.1:1/", market: "http://localhost:2/" };
-  const toolMsg = (/** @type {string} */ content) => ({ role: "tool", content });
+  const toolMsg = (content: string) => ({ role: "tool", content });
 
   it("opens every search of both shops in one turn, with their elements", () => {
     const next = twoShopShopper({ fixture, bases });
-    const first = next({ messages: [{ role: "user", content: "task" }] });
+    const first = next({ messages: [{ role: "user", content: "task" }] } as ScriptRequest);
     expect(first.calls).toHaveLength(10);
     expect(first.calls?.[0]).toEqual({
       name: "vimma_open",
@@ -539,11 +542,10 @@ describe("twoShopShopper", () => {
   });
 
   it("lists a page whose open came back without the button in full, then gives up on it", () => {
-    const fx = { ...fixture, items: [fixture.items[1]], shops: [fixture.shops[0]] };
+    const fx = { ...fixture, items: [fixture.items[1]!], shops: [fixture.shops[0]!] };
     const next = twoShopShopper({ fixture: fx, bases });
-    /** @type {any[]} */
-    const messages = [{ role: "user", content: "task" }];
-    next({ messages });
+    const messages: any[] = [{ role: "user", content: "task" }];
+    next({ messages } as ScriptRequest);
     messages.push({ role: "assistant", content: "" });
     messages.push(
       toolMsg(
@@ -551,12 +553,12 @@ describe("twoShopShopper", () => {
           '{"label":"b","kind":"button","text":"+"}',
       ),
     );
-    expect(next({ messages }).calls).toEqual([
+    expect(next({ messages } as ScriptRequest).calls).toEqual([
       { name: "vimma_elements", args: { tab: "4", full: true } },
     ]);
     messages.push({ role: "assistant", content: "" });
     messages.push(toolMsg('{"label":"b","kind":"button","text":"+"}'));
-    const r = next({ messages });
+    const r = next({ messages } as ScriptRequest);
     expect(r.calls ?? []).toEqual([]);
     expect(r.text).toMatch(/no button naming Tofu \(Pirkka, 250 g\)/);
   });

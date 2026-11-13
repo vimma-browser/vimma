@@ -13,24 +13,23 @@ import {
   parseState,
   renderDiff,
   renderIssue,
-} from "../diff.mjs";
+} from "../diff.ts";
+import type { Run } from "../results.ts";
 
 // docs/specs/site-compat.md, decision 12. The fixtures are results.json files of three nightly
 // runs of sites.yml (2026-10-19 to 2026-10-21), with each check's details, the mode steps and the
 // screenshot list dropped: the comparison reads none of them.
-/** @param {string} day @returns {import("../results.mjs").Run} */
-const night = (day) =>
+const night = (day: string): Run =>
   JSON.parse(readFileSync(new URL(`fixtures/nightly-${day}.json`, import.meta.url), "utf8"));
 
-/**
- * A copy of `run` with `check` of site `id` set to `status` (the site's status follows).
- * @param {import("../results.mjs").Run} run
- * @param {string} id
- * @param {string} check
- * @param {"pass" | "fail" | "skip"} status
- * @param {string} [reason]
- */
-function withCheck(run, id, check, status, reason) {
+/** A copy of `run` with `check` of site `id` set to `status` (the site's status follows). */
+function withCheck(
+  run: Run,
+  id: string,
+  check: string,
+  status: "pass" | "fail" | "skip",
+  reason?: string,
+) {
   const copy = structuredClone(run);
   const site = copy.sites.find((s) => s.id === id);
   if (!site) throw new Error(`no site ${id}`);
@@ -41,7 +40,7 @@ function withCheck(run, id, check, status, reason) {
 }
 
 /** A copy of `run` with site `id` blocked by a bot check, its checks after load skipped. */
-function blocked(/** @type {import("../results.mjs").Run} */ run, /** @type {string} */ id) {
+function blocked(run: Run, id: string) {
   const copy = structuredClone(run);
   const site = copy.sites.find((s) => s.id === id);
   if (!site) throw new Error(`no site ${id}`);
@@ -53,7 +52,7 @@ function blocked(/** @type {import("../results.mjs").Run} */ run, /** @type {str
   return copy;
 }
 
-const key = (/** @type {{ site: string, check: string }} */ r) => `${r.site}/${r.check}`;
+const key = (r: { site: string; check: string }) => `${r.site}/${r.check}`;
 
 describe("compareRuns", () => {
   it("finds no regression between two recorded nights whose failures are the same", () => {
@@ -286,7 +285,7 @@ describe("parseRun and parseState", () => {
   it("rejects a run of the wrong shape, unknown statuses and check ids, and odd site ids", () => {
     expect(parseRun(null).run).toBeNull();
     expect(parseRun({ sites: "no" }).run).toBeNull();
-    const bad = (/** @type {(r: any) => void} */ edit) => {
+    const bad = (edit: (r: any) => void) => {
       const r = structuredClone(night("2026-10-21"));
       edit(r);
       return parseRun(r);
@@ -434,7 +433,7 @@ describe("renderIssue and renderDiff", () => {
   const runUrl = "https://github.com/vimma-browser/vimma/actions/runs/1";
 
   /** Text outside code spans: what GitHub would parse for mentions and references. */
-  const outsideCode = (/** @type {string} */ md) => md.replace(/(`+)[^`]*?\1/g, "");
+  const outsideCode = (md: string) => md.replace(/(`+)[^`]*?\1/g, "");
 
   it("lists the new regression with its reason and title, and links the run", () => {
     const body = renderIssue(diff, { action: "create", runUrl });
@@ -462,7 +461,7 @@ describe("renderIssue and renderDiff", () => {
     const many = structuredClone(cur);
     for (let i = 0; i < 200; i++) {
       many.sites.push({
-        ...structuredClone(night("2026-10-21").sites[0]),
+        ...structuredClone(night("2026-10-21").sites[0]!),
         id: `extra-${i}`,
         name: `Extra ${i}`,
       });

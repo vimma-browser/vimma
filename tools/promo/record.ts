@@ -50,8 +50,8 @@ import { parseArgs } from "node:util";
 import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
 import { startPageServer } from "../e2e/pages.mjs";
-import { startShop } from "../agent-bench/shop.mjs";
-import type { ScriptTurn } from "../agent-bench/scripted.mjs";
+import { startShop } from "../agent-bench/shop.ts";
+import type { ScriptTurn } from "../agent-bench/scripted.ts";
 import {
   MODEL,
   PROMO_CATALOG,

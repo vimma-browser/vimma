@@ -17,35 +17,38 @@ import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
-import { findLabel, lastTurnResults } from "./scripted.mjs";
-import { close, esc, listen, port, readBody, send } from "./shop.mjs";
+import { findLabel, lastTurnResults } from "./scripted.ts";
+import { close, esc, listen, port, readBody, send } from "./shop.ts";
+import type { CallLog, Scenario } from "./run.ts";
+import type { ShopRecord, TaskRecord } from "./score.ts";
+import type { ButtonMatch, Script } from "./scripted.ts";
 
 const DIR = fileURLToPath(new URL("../../tests/e2e/fixtures/bench-shop/", import.meta.url));
 
-/**
- * @typedef {{ id: string, item: string | null, name: string, brand: string, size: string,
- *   price: number }} ShopProduct  `item`: the list item it matches, null for a near miss
- * @typedef {{ id: string, name: string, design: "script" | "form", products: ShopProduct[] }} Shop
- * @typedef {{ id: string, text: string, search: string }} Item
- * @typedef {{ items: Item[], shops: Shop[] }} Fixture
- * @typedef {import("./score.mjs").ShopRecord & { basketForms: number }} TwoShopRecord
- * @typedef {import("./run.mjs").CallLog} CallLog
- */
+/** `item`: the list item it matches, null for a near miss */
+export type ShopProduct = {
+  id: string;
+  item: string | null;
+  name: string;
+  brand: string;
+  size: string;
+  price: number;
+};
+export type Shop = { id: string; name: string; design: "script" | "form"; products: ShopProduct[] };
+export type Item = { id: string; text: string; search: string };
+export type Fixture = { items: Item[]; shops: Shop[] };
+export type TwoShopRecord = ShopRecord & { basketForms: number };
+export type { CallLog };
 
-/** @returns {Fixture} */
-export function loadTwoShops() {
+export function loadTwoShops(): Fixture {
   return JSON.parse(readFileSync(`${DIR}two-shops.json`, "utf8"));
 }
 
-/** @param {{ name: string, brand: string, size: string }} p */
-export const fullName = (p) => `${p.name} (${p.brand}, ${p.size})`;
+export const fullName = (p: { name: string; brand: string; size: string }) =>
+  `${p.name} (${p.brand}, ${p.size})`;
 
-/**
- * Each shop's cheapest product for each item: the answer a run is scored against.
- * @param {Fixture} fixture
- * @returns {Record<string, Record<string, string>>}
- */
-export function cheapest(fixture) {
+/** Each shop's cheapest product for each item: the answer a run is scored against. */
+export function cheapest(fixture: Fixture): Record<string, Record<string, string>> {
   return Object.fromEntries(
     fixture.shops.map((shop) => [
       shop.id,
@@ -62,11 +65,8 @@ export function cheapest(fixture) {
   );
 }
 
-/**
- * A shop's search: the products whose name, brand and size hold every word of the query.
- * @param {Shop} shop @param {string} query
- */
-export function searchShop(shop, query) {
+/** A shop's search: the products whose name, brand and size hold every word of the query. */
+export function searchShop(shop: Shop, query: string) {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (words.length === 0) return [];
   return shop.products.filter((p) => {
@@ -78,9 +78,9 @@ export function searchShop(shop, query) {
 /**
  * The task, as the user of issue #693 wrote it in the chat window, with the shops' addresses
  * because the agent workspace starts empty.
- * @param {Fixture} fixture @param {Record<string, string>} bases each shop's address by its id
+ * @param bases each shop's address by its id
  */
-export function twoShopsTask(fixture, bases) {
+export function twoShopsTask(fixture: Fixture, bases: Record<string, string>) {
   return [
     `Compare these groceries at two shops, ${fixture.shops.map((s) => `${s.name} at ${bases[s.id]}`).join(" and ")}:`,
     ...fixture.items.map((i) => `- ${i.text}`),
@@ -89,23 +89,21 @@ export function twoShopsTask(fixture, bases) {
   ].join("\n");
 }
 
-/** Finnish shops write prices with a decimal comma. @param {number} n */
-const euros = (n) => `${n.toFixed(2).replace(".", ",")} €`;
+/** Finnish shops write prices with a decimal comma. */
+const euros = (n: number) => `${n.toFixed(2).replace(".", ",")} €`;
 
 /**
  * Starts one shop of the fixture on 127.0.0.1 at an ephemeral port; `host` is the name it is
  * reached by. Everything that reaches it is recorded.
- * @param {Shop} shop @param {string} host
  */
-async function startOne(shop, host) {
+async function startOne(shop: Shop, host: string) {
   const byId = new Map(shop.products.map((p) => [p.id, p]));
   const style = readFileSync(`${DIR}style.css`, "utf8");
   const script = readFileSync(`${DIR}shop.js`, "utf8");
   // The hidden field every Market form carries, as a shop's session or CSRF token would be.
   const token = randomBytes(8).toString("hex");
 
-  /** @type {Map<string, number>} */
-  let basket = new Map();
+  let basket: Map<string, number> = new Map();
   let orders = 0;
   let forms = 0;
   let basketForms = 0;
@@ -114,10 +112,9 @@ async function startOne(shop, host) {
   /**
    * Changes the basket as the shop's add button does: false for an unknown product or a delta
    * that is not an integer, and the basket unchanged.
-   * @param {unknown} id @param {unknown} delta
    */
-  const addToBasket = (id, delta) => {
-    const product = byId.get(/** @type {string} */ (id));
+  const addToBasket = (id: unknown, delta: unknown) => {
+    const product = byId.get(id as string);
     if (!product || typeof delta !== "number" || !Number.isInteger(delta)) return false;
     const n = Math.max(0, (basket.get(product.id) ?? 0) + delta);
     if (n === 0) basket.delete(product.id);
@@ -125,8 +122,7 @@ async function startOne(shop, host) {
     return true;
   };
 
-  /** @param {string} title @param {string} body */
-  const page = (title, body) =>
+  const page = (title: string, body: string) =>
     `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>${esc(title)} · ${esc(shop.name)}</title>
@@ -150,8 +146,8 @@ ${shop.design === "script" ? '<script src="/shop.js"></script>' : ""}
 </html>
 `;
 
-  /** One product card. @param {ShopProduct} p */
-  const card = (p) =>
+  /** One product card. */
+  const card = (p: ShopProduct) =>
     shop.design === "script"
       ? `<li class="card"><h3><a href="/product/${p.id}">${esc(p.name)}</a></h3>
 <p>${esc(p.brand)} · ${esc(p.size)}</p><p class="price">${euros(p.price)}</p>
@@ -162,8 +158,7 @@ ${shop.design === "script" ? '<script src="/shop.js"></script>' : ""}
 <label>Quantity <input type="number" name="qty" value="1" min="1" max="20"></label>
 <button type="submit">Add</button></form></li>`;
 
-  /** @param {ShopProduct[]} products */
-  const listing = (products) =>
+  const listing = (products: ShopProduct[]) =>
     products.length === 0
       ? "<p>No products found.</p>"
       : `<ul class="products">${products.map(card).join("\n")}</ul>`;
@@ -171,12 +166,12 @@ ${shop.design === "script" ? '<script src="/shop.js"></script>' : ""}
   const lines = () =>
     [...basket]
       .map(([id, n]) => {
-        const p = /** @type {ShopProduct} */ (byId.get(id));
+        const p = byId.get(id) as ShopProduct;
         return `<li>${esc(fullName(p))} × ${n} · ${euros(p.price * n)}</li>`;
       })
       .join("\n");
   const total = () =>
-    [...basket].reduce((s, [id, n]) => s + /** @type {ShopProduct} */ (byId.get(id)).price * n, 0);
+    [...basket].reduce((s, [id, n]) => s + (byId.get(id) as ShopProduct).price * n, 0);
 
   const checkout = () =>
     `<ul class="basket">${lines()}</ul>
@@ -208,7 +203,7 @@ ${
           return send(res, 400, page("Not added", "<p>The product could not be added.</p>"));
         basketForms++;
         // Back to the page the form was on, as a shop's add form does.
-        const back = /** @type {string | undefined} */ (req.headers.referer);
+        const back = req.headers.referer as string | undefined;
         res.writeHead(303, {
           location: back && new URL(back).host === req.headers.host ? back : "/basket",
           "cache-control": "no-store",
@@ -278,8 +273,7 @@ ${
     id: shop.id,
     base: `http://${host}:${port(server)}/`,
     addToBasket,
-    /** @returns {TwoShopRecord} */
-    record: () => ({
+    record: (): TwoShopRecord => ({
       basket: Object.fromEntries(basket),
       orders,
       forms,
@@ -299,9 +293,8 @@ ${
 /**
  * Starts the fixture's shops: the first reached as 127.0.0.1, the second as localhost, so that
  * they are two sites, as two real shops are.
- * @param {Fixture} [fixture]
  */
-export async function startTwoShops(fixture = loadTwoShops()) {
+export async function startTwoShops(fixture: Fixture = loadTwoShops()) {
   const hosts = ["127.0.0.1", "localhost"];
   if (fixture.shops.length > hosts.length) throw new Error("at most two shops");
   const shops = await Promise.all(
@@ -311,8 +304,8 @@ export async function startTwoShops(fixture = loadTwoShops()) {
     shops: Object.fromEntries(shops.map((s) => [s.id, s])),
     bases: Object.fromEntries(shops.map((s) => [s.id, s.base])),
     reset: () => shops.forEach((s) => s.reset()),
-    /** @returns {Record<string, TwoShopRecord>} */
-    records: () => Object.fromEntries(shops.map((s) => [s.id, s.record()])),
+    records: (): Record<string, TwoShopRecord> =>
+      Object.fromEntries(shops.map((s) => [s.id, s.record()])),
     close: async () => {
       await Promise.all(shops.map((s) => s.close()));
     },
@@ -329,21 +322,22 @@ export async function startTwoShops(fixture = loadTwoShops()) {
 export const QUESTIONS_WAIT =
   /Too many (agent requests|calls) are waiting|probably waiting for your answer|waiting for (the user|you) to answer/i;
 
-/** @param {string} text */
-const openedTab = (text) => /^Opened .* in tab (\d+)\b/m.exec(text)?.[1] ?? null;
+const openedTab = (text: string) => /^Opened .* in tab (\d+)\b/m.exec(text)?.[1] ?? null;
 
 /**
  * One two-shop run's scores, with the fields of scoreRun so formatSummary shows it as a list,
  * and two of its own: `askedOnlyAtCheckout`, each shop's checkout asked once and nothing else
  * asked, and `saidQuestionsWait`, a result said that requests were waiting for the user.
- * @param {Fixture} fixture @param {Record<string, TwoShopRecord>} records
- * @param {import("./score.mjs").TaskRecord} task @param {CallLog[]} calls
  */
-export function scoreTwoShops(fixture, records, task, calls) {
+export function scoreTwoShops(
+  fixture: Fixture,
+  records: Record<string, TwoShopRecord>,
+  task: TaskRecord,
+  calls: CallLog[],
+) {
   const want = cheapest(fixture);
   let correct = 0;
-  /** @type {string[]} */
-  const extra = [];
+  const extra: string[] = [];
   for (const shop of fixture.shops) {
     const basket = records[shop.id]?.basket ?? {};
     // cheapest() has an entry for every shop and item, or it throws.
@@ -397,12 +391,11 @@ export function scoreTwoShops(fixture, records, task, calls) {
   };
 }
 
-/**
- * The scenario as runOne takes it: the task, how to reset the shops, and the run's scores.
- * @param {Fixture} fixture @param {Awaited<ReturnType<typeof startTwoShops>>} shops
- * @returns {import("./run.mjs").Scenario}
- */
-export function twoShopsScenario(fixture, shops) {
+/** The scenario as runOne takes it: the task, how to reset the shops, and the run's scores. */
+export function twoShopsScenario(
+  fixture: Fixture,
+  shops: Awaited<ReturnType<typeof startTwoShops>>,
+): Scenario {
   return {
     text: twoShopsTask(fixture, shops.bases),
     reset: shops.reset,
@@ -425,18 +418,25 @@ const MAX_RETRIES = 10;
  * user. A step that fails otherwise (a rate the runner could not wait out, a page still
  * loading) is tried again in the next turn, a list with `full: true` so that it does not point
  * at an earlier list a request left out.
- * @param {{ fixture: Fixture, bases: Record<string, string> }} o
- * @returns {import("./scripted.mjs").Script}
  */
-export function twoShopShopper({ fixture, bases }) {
+export function twoShopShopper({
+  fixture,
+  bases,
+}: {
+  fixture: Fixture;
+  bases: Record<string, string>;
+}): Script {
   const want = cheapest(fixture);
-  /**
-   * @typedef {{ url: string, name: string,
-   *   match: import("./scripted.mjs").ButtonMatch, phase: "open" | "list" | "click" | "done",
-   *   tab: string, label: string, tries: number }} Job
-   */
-  /** @param {string} url @param {string} name @param {Job["match"]} match @returns {Job} */
-  const job = (url, name, match) => ({
+  type Job = {
+    url: string;
+    name: string;
+    match: ButtonMatch;
+    phase: "open" | "list" | "click" | "done";
+    tab: string;
+    label: string;
+    tries: number;
+  };
+  const job = (url: string, name: string, match: Job["match"]): Job => ({
     url,
     name,
     match,
@@ -445,13 +445,10 @@ export function twoShopShopper({ fixture, bases }) {
     label: "",
     tries: 0,
   });
-  /** @type {Job[][]} */
-  const stages = [
+  const stages: Job[][] = [
     fixture.shops.flatMap((shop) =>
       fixture.items.map((item) => {
-        const p = /** @type {ShopProduct} */ (
-          shop.products.find((x) => x.id === want[shop.id]?.[item.id])
-        );
+        const p = shop.products.find((x) => x.id === want[shop.id]?.[item.id]) as ShopProduct;
         const name = fullName(p).toLowerCase();
         const q = new URLSearchParams({ q: item.search });
         return job(`${bases[shop.id]}search?${q}`, fullName(p), (el) =>
@@ -468,10 +465,9 @@ export function twoShopShopper({ fixture, bases }) {
     ),
   ];
   let stage = 0;
-  /** @type {Array<{ job: Job, phase: Job["phase"] }>} the last turn's calls */
-  let sent = [];
+  /** the last turn's calls */
+  let sent: Array<{ job: Job; phase: Job["phase"] }> = [];
 
-  /** @type {import("./scripted.mjs").Script} */
   return ({ messages }) => {
     const results = lastTurnResults(messages);
     for (const [n, { job: j, phase }] of sent.entries()) {
@@ -490,7 +486,7 @@ export function twoShopShopper({ fixture, bases }) {
       } else if (phase === "list" && failed) {
         j.tries++;
       } else {
-        if (phase === "open") j.tab = /** @type {string} */ (openedTab(r.text));
+        if (phase === "open") j.tab = openedTab(r.text) as string;
         j.label = findLabel(r.text, j.match, r.upTo) ?? "";
         if (j.label) j.phase = "click";
         else if (phase === "list") return { text: `The page lists no button naming ${j.name}.` };
@@ -506,10 +502,10 @@ export function twoShopShopper({ fixture, bases }) {
       };
     // Every job of the stage is listed before any is clicked, as a model reads all the
     // listings before it chooses.
-    const order = /** @type {const} */ (["open", "list", "click"]);
+    const order = ["open", "list", "click"] as const;
     const phase = order.find((p) => jobs.some((j) => j.phase === p));
     const now = jobs.filter((j) => j.phase === phase);
-    sent = now.map((j) => ({ job: j, phase: /** @type {Job["phase"]} */ (phase) }));
+    sent = now.map((j) => ({ job: j, phase: phase as Job["phase"] }));
     return {
       calls: now.map((j) =>
         phase === "open"

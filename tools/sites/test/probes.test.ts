@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { contentFocusField, jsonLiteral, probe } from "../probes.mjs";
+import { contentFocusField, jsonLiteral, probe } from "../probes.ts";
 
 // probe() builds source text for the browser to evaluate, with the argument embedded as a
 // literal. The literal must decode to the same value and carry no character that could end the
@@ -17,7 +17,7 @@ describe("probe source", () => {
   });
 
   it("uses that literal in the probe source", () => {
-    const src = probe((/** @type {unknown} */ a) => a, nasty);
+    const src = probe((a: unknown) => a, nasty);
     expect(src).toContain(jsonLiteral(nasty));
     expect(src).not.toContain("</script>");
   });
@@ -25,23 +25,22 @@ describe("probe source", () => {
 
 // contentFocusField runs in the page; these stand in for the few DOM calls it makes.
 describe("contentFocusField", () => {
-  /**
-   * A fake element that takes the focus unless `refuses`.
-   * @param {string} tag @param {Record<string, string>} attrs @param {boolean} [refuses]
-   */
-  const field = (tag, attrs, refuses = false) => ({
+  /** A fake element that takes the focus unless `refuses`. */
+  const field = (tag: string, attrs: Record<string, string>, refuses: boolean = false) => ({
     tagName: tag.toUpperCase(),
     id: attrs.id ?? "",
-    getAttribute: (/** @type {string} */ n) => attrs[n] ?? null,
+    getAttribute: (n: string) => attrs[n] ?? null,
     getBoundingClientRect: () => ({ width: 100, height: 20 }),
     focus() {
       if (!refuses) doc.activeElement = this;
     },
   });
-  /** @type {{ activeElement: unknown, querySelectorAll: (s: string) => unknown[] }} */
-  const doc = { activeElement: null, querySelectorAll: () => [] };
-  /** @param {unknown[][]} lists what each selector list the probe asks for matches, in turn */
-  const page = (...lists) => {
+  const doc: { activeElement: unknown; querySelectorAll: (s: string) => unknown[] } = {
+    activeElement: null,
+    querySelectorAll: () => [],
+  };
+  /** @param lists what each selector list the probe asks for matches, in turn */
+  const page = (...lists: unknown[][]) => {
     let call = 0;
     doc.activeElement = null;
     doc.querySelectorAll = () => lists[call++] ?? [];

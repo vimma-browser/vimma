@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { CHECKS } from "../results.mjs";
-import { renderHtml, renderMarkdown, summaryLine } from "../report.mjs";
+import { CHECKS } from "../results.ts";
+import { renderHtml, renderMarkdown, summaryLine } from "../report.ts";
 
-/** @param {string} id @param {string} status @param {string} [reason] */
-const c = (id, status, reason) => ({ id, status, ...(reason ? { reason } : {}) });
+const c = (id: string, status: string, reason?: string) => ({
+  id,
+  status,
+  ...(reason ? { reason } : {}),
+});
 const allPass = () => CHECKS.map((id) => c(id, id === "shortcuts" ? "info" : "pass"));
 
-/** @returns {any} */
-function run() {
+function run(): any {
   return {
     startedAt: "2026-10-12T10:00:00.000Z",
     finishedAt: "2026-10-12T10:20:00.000Z",

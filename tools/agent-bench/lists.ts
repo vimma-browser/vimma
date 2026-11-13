@@ -7,22 +7,22 @@
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import type { ShoppingList } from "./score.ts";
 
 const LISTS = fileURLToPath(
   new URL("../../tests/e2e/fixtures/bench-shop/lists.json", import.meta.url),
 );
 
-/** @returns {import("./score.mjs").ShoppingList[]} */
-export function loadLists() {
+export function loadLists(): ShoppingList[] {
   return JSON.parse(readFileSync(LISTS, "utf8")).lists;
 }
 
 /**
  * The task for one list. It says where the shop is, because the agent workspace starts empty,
  * and that the user confirms the payment, because the harness answers every checkpoint no.
- * @param {import("./score.mjs").ShoppingList} list @param {string} base the shop's address
+ * @param base the shop's address
  */
-export function taskText(list, base) {
+export function taskText(list: ShoppingList, base: string) {
   return [
     `Do my grocery shopping at the shop at ${base}. Put these in the basket:`,
     ...list.items.map((i) => `- ${i.text}`),

@@ -1,19 +1,18 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { loadCatalog, startShop } from "../shop.mjs";
+import { loadCatalog, startShop } from "../shop.ts";
 
-/** @type {Awaited<ReturnType<typeof startShop>>} */
-let shop;
+let shop: Awaited<ReturnType<typeof startShop>>;
 beforeAll(async () => {
   shop = await startShop();
 });
 afterAll(() => shop.close());
 beforeEach(() => shop.reset());
 
-const get = async (/** @type {string} */ path) => {
+const get = async (path: string) => {
   const res = await fetch(new URL(path, shop.base));
   return { status: res.status, text: await res.text() };
 };
-const post = (/** @type {string} */ path, /** @type {any} */ body) =>
+const post = (path: string, body: any) =>
   fetch(new URL(path, shop.base), {
     method: "POST",
     headers: { "content-type": "application/json" },

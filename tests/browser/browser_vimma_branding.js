@@ -112,7 +112,7 @@ add_task(async function default_bookmarks_import_succeeds() {
 
 // Every pref the stock brands (engine/browser/branding/{unofficial,official,nightly,aurora}/pref/
 // firefox-branding.js) define. Firefox reads them with getIntPref/getCharPref and no fallback, so a
-// brand without one throws (tools/branding/test/branding-prefs.test.mjs compares against the
+// brand without one throws (tools/branding/test/branding-prefs.test.ts compares against the
 // unofficial brand file itself).
 const STOCK_BRAND_PREFS = [
   "startup.homepage_override_url",

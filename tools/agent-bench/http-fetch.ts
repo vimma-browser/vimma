@@ -10,9 +10,12 @@
 
 import http from "node:http";
 import https from "node:https";
+import type { Fetch } from "../../packages/vimma-core/src/agent-providers.mjs";
 
-/** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Fetch} */
-export function httpFetch(url, init) {
+export function httpFetch(
+  url: Parameters<Fetch>[0],
+  init: Parameters<Fetch>[1],
+): ReturnType<Fetch> {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const mod = u.protocol === "https:" ? https : http;

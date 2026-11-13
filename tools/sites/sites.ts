@@ -22,7 +22,7 @@
  *
  * --offline replays the recorded pages in tests/e2e/fixtures/sites/ (snapshots.json) from a page
  * server on 127.0.0.1, with every other host unreachable, and runs every check but shortcuts.
- * It exits 1 when a check that passed on the recording does not pass now (snapshot.mjs): e2e.yml
+ * It exits 1 when a check that passed on the recording does not pass now (snapshot.ts): e2e.yml
  * runs it on every pull request. Its default --out is site-compat-offline/. --record loads live
  * pages (only sites whose licence allows a committed copy) and checks each snapshot before it
  * writes it; review it before copying it into the fixtures.
@@ -48,14 +48,18 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, unpackTarball } from "../e2e/launcher.mjs";
+import type { Build } from "../e2e/launcher.mjs";
 import { startPageServer } from "../e2e/pages.mjs";
 import { encodePng } from "../e2e/png.mjs";
 import { capture } from "../e2e/screenshot.mjs";
-import { recordSnapshot, runSite } from "./checks.mjs";
-import { Rdp } from "./rdp.mjs";
-import { renderHtml, renderMarkdown } from "./report.mjs";
-import { completeChecks, exitCode, mergeRetry, retryTargets, siteStatus } from "./results.mjs";
-import { filterSites, validateSites } from "./site-list.mjs";
+import { recordSnapshot, runSite } from "./checks.ts";
+import type { Context } from "./checks.ts";
+import { Rdp } from "./rdp.ts";
+import { renderHtml, renderMarkdown } from "./report.ts";
+import { completeChecks, exitCode, mergeRetry, retryTargets, siteStatus } from "./results.ts";
+import type { Run, SiteResult } from "./results.ts";
+import { filterSites, validateSites } from "./site-list.ts";
+import type { Site } from "./site-list.ts";
 import {
   finishSnapshot,
   offlineSites,
@@ -64,7 +68,8 @@ import {
   snapshotGate,
   validateManifest,
   verifySnapshot,
-} from "./snapshot.mjs";
+} from "./snapshot.ts";
+import type { SnapshotEntry } from "./snapshot.ts";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -75,7 +80,7 @@ export const DEVTOOLS_PREFS = Object.freeze({
   "devtools.debugger.prompt-connection": false,
 });
 
-/** The recorded pages the offline run replays (snapshot.mjs). */
+/** The recorded pages the offline run replays (snapshot.ts). */
 export const SNAPSHOT_DIR = join(REPO, "tests/e2e/fixtures/sites");
 
 /**
@@ -99,7 +104,7 @@ export const OFFLINE_PREFS = Object.freeze({
   "media.peerconnection.enabled": false,
 });
 
-const OPTIONS = /** @type {const} */ ({
+const OPTIONS = {
   filter: { type: "string" },
   build: { type: "string" },
   artifact: { type: "boolean", default: false },
@@ -107,30 +112,22 @@ const OPTIONS = /** @type {const} */ ({
   "vimma-ctl": { type: "string" },
   out: { type: "string" },
   sites: { type: "string", default: join(REPO, "tools/sites/sites.json") },
-  pref: { type: "string", multiple: true, default: /** @type {string[]} */ ([]) },
+  pref: { type: "string", multiple: true, default: [] as string[] },
   "site-timeout": { type: "string", default: "180" },
   keep: { type: "boolean", default: false },
   "retry-blocked": { type: "boolean", default: false },
   offline: { type: "boolean", default: false },
   record: { type: "string" },
   help: { type: "boolean", short: "h", default: false },
-});
+} as const;
 
-/**
- * @param {string} message
- * @returns {never}
- */
-function usage(message) {
-  process.stderr.write(`sites: ${message}\nSee the comment at the top of tools/sites/sites.mjs.\n`);
+function usage(message: string): never {
+  process.stderr.write(`sites: ${message}\nSee the comment at the top of tools/sites/sites.ts.\n`);
   process.exit(2);
 }
 
-/**
- * `name=value` → a pref; true/false and integers as such.
- * @param {string} text
- * @returns {[string, boolean | number | string]}
- */
-export function parsePref(text) {
+/** `name=value` → a pref; true/false and integers as such. */
+export function parsePref(text: string): [string, boolean | number | string] {
   const i = text.indexOf("=");
   if (i <= 0) throw new Error(`--pref wants name=value, got "${text}"`);
   const name = text.slice(0, i);
@@ -140,13 +137,12 @@ export function parsePref(text) {
   return [name, raw];
 }
 
-/** @param {string} path */
-async function connectRdp(path, timeoutMs = 15_000) {
+async function connectRdp(path: string, timeoutMs = 15_000) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     if (existsSync(path)) {
       try {
-        return /** @type {Rdp} */ (await Rdp.connect(path, { timeoutMs: 5000 }));
+        return (await Rdp.connect(path, { timeoutMs: 5000 })) as Rdp;
       } catch (e) {
         if (Date.now() >= deadline) throw e;
       }
@@ -173,7 +169,7 @@ async function main() {
   try {
     ({ values } = parseArgs({ options: OPTIONS, allowPositionals: false }));
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
   if (values.help) {
     const src = readFileSync(fileURLToPath(import.meta.url), "utf8");
@@ -191,39 +187,35 @@ async function main() {
     return usage("pass at most one of --build, --artifact, --tarball");
   const siteTimeoutMs = Number(values["site-timeout"]) * 1000;
   if (!(siteTimeoutMs > 0)) return usage("--site-timeout is seconds > 0");
-  /** @type {Record<string, boolean | number | string>} */
-  const extraPrefs = {};
+  const extraPrefs: Record<string, boolean | number | string> = {};
   try {
     for (const p of values.pref) {
       const [k, v] = parsePref(p);
       extraPrefs[k] = v;
     }
   } catch (e) {
-    return usage(/** @type {Error} */ (e).message);
+    return usage((e as Error).message);
   }
-  /** @type {import("./site-list.mjs").Site[]} the shape validateSites checks next */
-  const list = JSON.parse(readFileSync(values.sites, "utf8"));
+  /** the shape validateSites checks next */
+  const list: Site[] = JSON.parse(readFileSync(values.sites, "utf8"));
   const problems = validateSites(list);
   if (problems.length) return usage(`${values.sites}:\n  ${problems.join("\n  ")}`);
   const offline = values.offline;
   if (offline && (values.record || values["retry-blocked"]))
     return usage("--offline runs no live site: no --record or --retry-blocked with it");
   if (values.record && values["retry-blocked"]) return usage("--record takes no --retry-blocked");
-  /** @type {Array<{ id: string, url: string, site: import("./site-list.mjs").Site }>} */
-  const recordings = [];
+  const recordings: Array<{ id: string; url: string; site: Site }> = [];
   for (const item of (values.record ?? "").split(",").filter((x) => x.trim())) {
     const [id = "", from] = item.trim().split(/=(.*)/s);
     const site = list.find((s) => s.id === id);
     if (!site) return usage(`--record ${id}: not in ${values.sites}`);
     if (!recordable(id))
-      return usage(`--record ${id}: its licence does not allow a committed copy (snapshot.mjs)`);
+      return usage(`--record ${id}: its licence does not allow a committed copy (snapshot.ts)`);
     recordings.push({ id, url: from || site.url, site });
   }
   if (values.record !== undefined && !recordings.length) return usage("--record wants site ids");
-  /** @type {import("./snapshot.mjs").SnapshotEntry[]} */
-  let manifest = [];
-  /** @type {Awaited<ReturnType<typeof startPageServer>> | null} */
-  let server = null;
+  let manifest: SnapshotEntry[] = [];
+  let server: Awaited<ReturnType<typeof startPageServer>> | null = null;
   let sites = filterSites(list, values.filter);
   if (offline) {
     manifest = JSON.parse(readFileSync(join(SNAPSHOT_DIR, "snapshots.json"), "utf8"));
@@ -247,24 +239,22 @@ async function main() {
   rmSync(out, { recursive: true, force: true });
   mkdirSync(join(out, "screenshots"), { recursive: true });
 
-  /** @type {Array<() => Promise<void>>} */
-  const cleanups = [];
-  if (server) cleanups.push(/** @type {NonNullable<typeof server>} */ (server).close);
+  const cleanups: Array<() => Promise<void>> = [];
+  if (server) cleanups.push((server as NonNullable<typeof server>).close);
   const cleanupAll = async () => {
     for (const c of cleanups.splice(0).reverse()) await c().catch(() => {});
   };
-  for (const [sig, code] of /** @type {const} */ ([
+  for (const [sig, code] of [
     ["SIGINT", 130],
     ["SIGTERM", 143],
-  ])) {
+  ] as const) {
     process.once(sig, () => {
       process.stderr.write(`\nsites: ${sig}, cleaning up\n`);
       cleanupAll().finally(() => process.exit(code));
     });
   }
 
-  /** @type {import("./results.mjs").Run} */
-  const run = {
+  const run: Run = {
     startedAt: new Date().toISOString(),
     finishedAt: "",
     network: process.env.GITHUB_ACTIONS ? "github-hosted" : "local",
@@ -276,8 +266,7 @@ async function main() {
     harnessError: null,
   };
   try {
-    /** @type {import("../e2e/launcher.mjs").Build} */
-    let build;
+    let build: Build;
     if (values.tarball) {
       const dir = mkdtempSync(join(tmpdir(), "vimma-sites-build-"));
       cleanups.push(async () => rmSync(dir, { recursive: true, force: true }));
@@ -292,20 +281,16 @@ async function main() {
     /**
      * One visit: a fresh profile and browser (decision 3). Screenshots are named after `prefix`.
      * `body` runs the checks by default; --record takes a snapshot instead.
-     * @param {import("./site-list.mjs").Site} site
-     * @param {string} prefix
-     * @param {(ctx: import("./checks.mjs").Context, result: import("./results.mjs").SiteResult)
-     *   => Promise<unknown>} [body]
      */
     const visit = async (
-      site,
-      prefix,
-      body = (ctx, result) => runSite(site, ctx, result, { offline }),
+      site: Site,
+      prefix: string,
+      body: (ctx: Context, result: SiteResult) => Promise<unknown> = (ctx, result) =>
+        runSite(site, ctx, result, { offline }),
     ) => {
       console.log(`\n${prefix}: ${site.url}`);
       const started = Date.now();
-      /** @type {import("./results.mjs").SiteResult} */
-      const result = {
+      const result: SiteResult = {
         id: site.id,
         name: site.name,
         url: site.url,
@@ -319,10 +304,8 @@ async function main() {
       const sockDir = mkdtempSync(join(tmpdir(), "vsc-"));
       const sock = join(sockDir, "rdp.sock");
       const abort = new AbortController();
-      /** @type {Rdp | null} */
-      let rdp = null;
-      /** @type {(() => Promise<void>) | null} */
-      let teardown = null;
+      let rdp: Rdp | null = null;
+      let teardown: (() => Promise<void>) | null = null;
       let shots = 0;
       const timer = setTimeout(() => abort.abort(), siteTimeoutMs);
       try {
@@ -344,7 +327,7 @@ async function main() {
         rdp = await connectRdp(sock);
         const parent = await rdp.parentConsole();
         const display = session.display;
-        const screenshot = async (/** @type {string} */ label) => {
+        const screenshot = async (label: string) => {
           if (!display) return null;
           const file = `${prefix}-${++shots}-${label}.png`;
           writeFileSync(join(out, "screenshots", file), encodePng(await capture(display.fbFile)));
@@ -362,13 +345,13 @@ async function main() {
         const failed = session.loadFailure();
         if (failed) result.error = `the browser logged "${failed}"`;
       } catch (e) {
-        result.error = /** @type {Error} */ (e).message;
+        result.error = (e as Error).message;
         console.log(`    error: ${result.error}`);
       } finally {
         clearTimeout(timer);
         rdp?.close();
         if (teardown) {
-          const t = /** @type {() => Promise<void>} */ (teardown);
+          const t = teardown as () => Promise<void>;
           const i = cleanups.indexOf(t);
           if (i >= 0) cleanups.splice(i, 1);
           await t().catch(() => {});
@@ -421,7 +404,7 @@ async function main() {
       }
     }
   } catch (e) {
-    run.harnessError = /** @type {Error} */ (e).message;
+    run.harnessError = (e as Error).message;
     process.stderr.write(`sites: ${run.harnessError}\n`);
   } finally {
     await cleanupAll();

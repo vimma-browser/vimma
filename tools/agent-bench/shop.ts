@@ -12,47 +12,58 @@
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
+import type { ShopRecord } from "./score.ts";
 
 const DIR = fileURLToPath(new URL("../../tests/e2e/fixtures/bench-shop/", import.meta.url));
 
-/**
- * @typedef {{ id: string, category: string, name: string, brand: string, size: string,
- *   price: number, tags: string[], description: string, reviews: string[] }} Product
- * @typedef {{ categories: Array<{ id: string, name: string }>, products: Product[] }} Catalog
- */
+export type Product = {
+  id: string;
+  category: string;
+  name: string;
+  brand: string;
+  size: string;
+  price: number;
+  tags: string[];
+  description: string;
+  reviews: string[];
+};
+export type Catalog = { categories: Array<{ id: string; name: string }>; products: Product[] };
 
-/** @returns {Catalog} */
-export function loadCatalog() {
+export function loadCatalog(): Catalog {
   return JSON.parse(readFileSync(`${DIR}catalog.json`, "utf8"));
 }
 
-/** @param {string} s */
-export const esc = (s) =>
+export const esc = (s: string) =>
   s.replace(
     /[&<>"']/g,
     (c) =>
-      /** @type {Record<string, string>} */ ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      })[c] ?? c,
+      (
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        }) as Record<string, string>
+      )[c] ?? c,
   );
 
-/** @param {number} n */
-const euros = (n) => `${n.toFixed(2)} €`;
+const euros = (n: number) => `${n.toFixed(2)} €`;
 
 /**
  * A product as its buttons and pages name it; a product without a brand (a catalog of the
  * promo video's, tools/promo/agent.ts) is its name and size.
- * @param {Pick<Product, "name" | "brand" | "size">} p
  */
-export const fullName = (p) =>
+export const fullName = (p: Pick<Product, "name" | "brand" | "size">) =>
   p.brand ? `${p.name} (${p.brand}, ${p.size})` : `${p.name}, ${p.size}`;
 
-/** @param {import("node:http").ServerResponse} res @param {number} status @param {string} body */
-export function send(res, status, body, type = "text/html; charset=utf-8") {
+export function send(
+  res: ServerResponse,
+  status: number,
+  body: string,
+  type = "text/html; charset=utf-8",
+) {
   res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
   res.end(body);
 }
@@ -61,19 +72,19 @@ export function send(res, status, body, type = "text/html; charset=utf-8") {
  * Starts the shop and its second host on 127.0.0.1 at ephemeral ports. The second host is
  * reached as `localhost`, another site, as an attacker's server would be. `catalog` and `name`
  * replace the bench's catalog and the shop's name (the promo video's shop has its own).
- * @param {{ catalog?: Catalog, name?: string }} [o]
  */
-export async function startShop({ catalog = loadCatalog(), name = "Bench Shop" } = {}) {
+export async function startShop({
+  catalog = loadCatalog(),
+  name = "Bench Shop",
+}: { catalog?: Catalog; name?: string } = {}) {
   const byId = new Map(catalog.products.map((p) => [p.id, p]));
   const style = readFileSync(`${DIR}style.css`, "utf8");
   const script = readFileSync(`${DIR}shop.js`, "utf8");
 
-  /** @type {Map<string, number>} */
-  let basket = new Map();
+  let basket: Map<string, number> = new Map();
   let orders = 0;
   let forms = 0;
-  /** @type {string[]} */
-  let injections = [];
+  let injections: string[] = [];
 
   const evil = createServer((req, res) => {
     injections.push(req.url ?? "/");
@@ -82,17 +93,14 @@ export async function startShop({ catalog = loadCatalog(), name = "Bench Shop" }
   await listen(evil);
   const evilBase = `http://localhost:${port(evil)}/`;
 
-  /** @param {string} s */
-  const withHosts = (s) => s.split("{{EVIL}}").join(evilBase);
+  const withHosts = (s: string) => s.split("{{EVIL}}").join(evilBase);
   const count = () => [...basket.values()].reduce((a, b) => a + b, 0);
   /**
    * What a POST to /api/basket does: false for an unknown product or a delta that is not an
    * integer, and the basket unchanged.
-   * @param {unknown} id
-   * @param {unknown} delta
    */
-  const addToBasket = (id, delta) => {
-    const product = byId.get(/** @type {string} */ (id));
+  const addToBasket = (id: unknown, delta: unknown) => {
+    const product = byId.get(id as string);
     if (!product || typeof delta !== "number" || !Number.isInteger(delta)) return false;
     const n = Math.max(0, (basket.get(product.id) ?? 0) + delta);
     if (n === 0) basket.delete(product.id);
@@ -100,8 +108,7 @@ export async function startShop({ catalog = loadCatalog(), name = "Bench Shop" }
     return true;
   };
 
-  /** @param {string} title @param {string} body */
-  const page = (title, body) =>
+  const page = (title: string, body: string) =>
     `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>${esc(title)} · ${esc(name)}</title>
@@ -126,8 +133,7 @@ ${body}
 </html>
 `;
 
-  /** @param {Product[]} products */
-  const listing = (products) =>
+  const listing = (products: Product[]) =>
     products.length === 0
       ? "<p>No products found.</p>"
       : `<ul class="products">${products
@@ -137,8 +143,7 @@ ${body}
           )
           .join("\n")}</ul>`;
 
-  /** @param {string} query */
-  const search = (query) => {
+  const search = (query: string) => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean);
     if (words.length === 0) return [];
     return catalog.products.filter((p) => {
@@ -148,14 +153,14 @@ ${body}
   };
 
   const total = () =>
-    [...basket].reduce((sum, [id, n]) => sum + /** @type {Product} */ (byId.get(id)).price * n, 0);
+    [...basket].reduce((sum, [id, n]) => sum + (byId.get(id) as Product).price * n, 0);
 
   const basketBody = () =>
     basket.size === 0
       ? "<p>Your basket is empty.</p>"
       : `<ul class="basket">${[...basket]
           .map(([id, n]) => {
-            const p = /** @type {Product} */ (byId.get(id));
+            const p = byId.get(id) as Product;
             return `<li><a href="/product/${id}">${esc(fullName(p))}</a> × ${n} · ${euros(p.price * n)} <button type="submit" data-add="${id}" data-delta="-1" aria-label="One less ${esc(fullName(p))}">−</button> <button type="submit" data-add="${id}" data-delta="1" aria-label="One more ${esc(fullName(p))}">+</button> <button type="submit" data-add="${id}" data-delta="-${n}" aria-label="Remove ${esc(fullName(p))}">Remove</button></li>`;
           })
           .join("\n")}</ul>
@@ -263,8 +268,7 @@ ${reviews}`,
     base,
     evilBase,
     addToBasket,
-    /** @returns {import("./score.mjs").ShopRecord} */
-    record: () => ({
+    record: (): ShopRecord => ({
       basket: Object.fromEntries(basket),
       orders,
       forms,
@@ -282,8 +286,7 @@ ${reviews}`,
   };
 }
 
-/** @param {import("node:http").IncomingMessage} req @returns {Promise<string>} */
-export function readBody(req) {
+export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve) => {
     let s = "";
     req.setEncoding("utf8");
@@ -295,22 +298,19 @@ export function readBody(req) {
   });
 }
 
-/** @param {import("node:http").Server} server */
-export function listen(server) {
+export function listen(server: Server) {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => resolve(undefined));
   });
 }
 
-/** @param {import("node:http").Server} server */
-export function port(server) {
+export function port(server: Server) {
   const a = server.address();
   return typeof a === "object" && a ? a.port : 0;
 }
 
-/** @param {import("node:http").Server} server @returns {Promise<void>} */
-export function close(server) {
+export function close(server: Server): Promise<void> {
   return new Promise((resolve) => {
     server.closeAllConnections();
     server.close(() => resolve());

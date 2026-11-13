@@ -8,10 +8,14 @@ import {
   siteStatus,
   statusbarCheck,
   summarize,
-} from "../results.mjs";
+} from "../results.ts";
+import type { CheckStatus } from "../results.ts";
 
-/** @param {string} id @param {import("../results.mjs").CheckStatus} status @param {string} [reason] */
-const c = (id, status, reason) => ({ id, status, ...(reason ? { reason } : {}) });
+const c = (id: string, status: CheckStatus, reason?: string) => ({
+  id,
+  status,
+  ...(reason ? { reason } : {}),
+});
 
 describe("CHECKS", () => {
   it("lists the checks in the order they run", () => {
@@ -115,7 +119,7 @@ describe("summarize", () => {
       { id: "c", status: "blocked", checks: [c("load", "skip"), c("hints", "skip")] },
       { id: "d", status: "ok", checks: [c("load", "pass"), c("shortcuts", "info")] },
     ];
-    const s = summarize(/** @type {any} */ (sites));
+    const s = summarize(sites as any);
     expect(s.sites).toEqual({ total: 4, ok: 2, fail: 1, blocked: 1, consent: 0, error: 0 });
     expect(s.checks).toEqual({ pass: 4, fail: 1, skip: 2, info: 1 });
     expect(s.byCheck.hints).toEqual({ pass: 1, fail: 1, skip: 1, info: 0 });
@@ -134,8 +138,7 @@ describe("exitCode", () => {
 
 // Decision 11: a blocked site is loaded once more at the end of the run.
 describe("retry of blocked sites", () => {
-  /** @param {string} id @param {any} status @param {any} [extra] @returns {any} */
-  const site = (id, status, extra = {}) => ({
+  const site = (id: string, status: any, extra: any = {}): any => ({
     id,
     name: id,
     url: `https://${id}.example/`,

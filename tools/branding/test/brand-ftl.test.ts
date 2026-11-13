@@ -13,12 +13,12 @@ const OFFICIAL = `${root}engine/browser/branding/official/locales/en-US/brand.ft
 
 /**
  * Term ids and their single-line values.
- *
- * @param {string} text Fluent source
- * @returns {Map<string, string>}
+ * @param text Fluent source
  */
-function terms(text) {
-  return new Map([...text.matchAll(/^(-[a-z][\w-]*) = (.*)$/gm)].map((m) => [m[1], m[2]]));
+function terms(text: string): Map<string, string> {
+  return new Map(
+    [...text.matchAll(/^(-[a-z][\w-]*) = (.*)$/gm)].map((m) => [m[1], m[2]] as [string, string]),
+  );
 }
 
 describe("Vimma brand.ftl", () => {

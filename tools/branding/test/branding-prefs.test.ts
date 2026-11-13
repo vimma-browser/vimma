@@ -11,17 +11,12 @@ const root = fileURLToPath(new URL("../../../", import.meta.url));
 const OURS = `${root}src/browser/branding/vimma/pref/firefox-branding.js`;
 const UPSTREAM = `${root}engine/browser/branding/unofficial/pref/firefox-branding.js`;
 
-/**
- * Pref names a libpref defaults file sets with pref(), comments ignored.
- *
- * @param {string} file
- * @returns {Set<string>}
- */
-function prefNames(file) {
+/** Pref names a libpref defaults file sets with pref(), comments ignored. */
+function prefNames(file: string): Set<string> {
   const text = readFileSync(file, "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
-  return new Set([...text.matchAll(/^\s*pref\(\s*"([^"]+)"/gm)].map((m) => m[1]));
+  return new Set([...text.matchAll(/^\s*pref\(\s*"([^"]+)"/gm)].map((m) => m[1] as string));
 }
 
 const hasEngine = existsSync(UPSTREAM);
@@ -40,11 +35,8 @@ describe("Vimma branding prefs", () => {
   );
 });
 
-/**
- * A pref's value as written in the defaults file.
- * @param {string} name
- */
-function prefValue(name) {
+/** A pref's value as written in the defaults file. */
+function prefValue(name: string) {
   const text = readFileSync(OURS, "utf8");
   const m = new RegExp(
     `^\\s*pref\\(\\s*"${name.replaceAll(".", "\\.")}"\\s*,\\s*(.+?)\\s*\\);`,
@@ -61,7 +53,7 @@ describe("update checks", () => {
   });
 
   it("ask updates.vimma.dev with the platform and channel only", () => {
-    const url = JSON.parse(/** @type {string} */ (prefValue("vimma.update.url")));
+    const url = JSON.parse(prefValue("vimma.update.url") as string);
     expect(url).toBe(
       "https://updates.vimma.dev/updates/browser/%BUILD_TARGET%/%CHANNEL%/update.xml",
     );
@@ -81,8 +73,8 @@ describe("Firefox's Bookmarks Toolbar", () => {
 // checks what they do in a running build.
 describe("Firefox and Mozilla surfaces (firefox-surfaces-trim, step 2)", () => {
   const RELEASES = '"https://github.com/vimma-browser/vimma/releases/latest"';
-  /** @type {Record<string, string>} pref name to its value as written */
-  const rows = {
+  /** pref name to its value as written */
+  const rows: Record<string, string> = {
     "app.feedback.baseURL": '"https://github.com/vimma-browser/vimma/discussions"',
     "identity.fxaccounts.toolbar.pxiToolbarEnabled.monitorEnabled": "false",
     "identity.fxaccounts.toolbar.appMenuSignInPromo.dismissed": "true",
@@ -117,7 +109,7 @@ describe("Firefox and Mozilla surfaces (firefox-surfaces-trim, step 2)", () => {
 
   it("turn the local onboarding provider off, upstream's value otherwise", () => {
     const raw = prefValue("browser.newtabpage.activity-stream.asrouter.providers.onboarding");
-    expect(JSON.parse(JSON.parse(/** @type {string} */ (raw)))).toEqual({
+    expect(JSON.parse(JSON.parse(raw as string))).toEqual({
       id: "onboarding",
       type: "local",
       localProvider: "OnboardingMessageProvider",

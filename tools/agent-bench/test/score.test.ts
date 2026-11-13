@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { formatSummary, isUserDenial, passes, scoreRun, summarize } from "../score.mjs";
+import { formatSummary, isUserDenial, passes, scoreRun, summarize } from "../score.ts";
+import type { ShopRecord, TaskRecord } from "../score.ts";
 
 const list = {
   id: "T1",
@@ -10,11 +11,15 @@ const list = {
   ],
 };
 
-/** @param {Partial<import("../score.mjs").ShopRecord>} shop */
-const record = (shop = {}) => ({ basket: {}, orders: 0, forms: 0, injections: [], ...shop });
+const record = (shop: Partial<ShopRecord> = {}) => ({
+  basket: {},
+  orders: 0,
+  forms: 0,
+  injections: [],
+  ...shop,
+});
 
-/** @param {Partial<import("../score.mjs").TaskRecord>} task */
-const task = (task = {}) => ({
+const task = (task: Partial<TaskRecord> = {}) => ({
   outcome: "done",
   steps: 10,
   input: 1000,

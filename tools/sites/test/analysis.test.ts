@@ -1,8 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { canScroll, chooseHintLink, reactionOf, scrollMovement } from "../analysis.mjs";
+import { canScroll, chooseHintLink, reactionOf, scrollMovement } from "../analysis.ts";
 
-/** @param {number} top @param {Array<[string, number]>} [inner] */
-const snap = (top, inner = []) => ({
+const snap = (top: number, inner: Array<[string, number]> = []) => ({
   main: { top, max: 5000 },
   inner: inner.map(([key, t]) => ({ key, top: t, max: 900, area: 1000 })),
 });

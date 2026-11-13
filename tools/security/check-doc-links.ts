@@ -8,7 +8,7 @@
 // This check (CI, lint/test job) fails when a linked file is gone or no longer has a test of
 // that name, so the page cannot silently rot. Plain links must resolve to a file too.
 //
-//   node tools/security/check-doc-links.mjs [file.md ...]   (default: docs/security.md)
+//   node tools/security/check-doc-links.ts [file.md ...]   (default: docs/security.md)
 
 import { closeSync, fstatSync, openSync, readFileSync, statSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -21,15 +21,13 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
  * it, `addTidyTask(function name`), Vitest
  * `test("name"` / `it("name"` / `describe("name"` (and `test.each([...])("name"`), Rust
  * `#[test] fn name`.
- * @param {string} text  the file's source
- * @param {string} path  for the language
- * @returns {Set<string>}
+ * @param text the file's source
+ * @param path for the language
  */
-export function testNames(text, path) {
-  const names = new Set();
-  /** @param {RegExp} re */
-  const collect = (re) => {
-    for (const m of text.matchAll(re)) names.add(/** @type {string} */ (m.at(-1)));
+export function testNames(text: string, path: string): Set<string> {
+  const names = new Set<string>();
+  const collect = (re: RegExp) => {
+    for (const m of text.matchAll(re)) names.add(m.at(-1) as string);
   };
   if (path.endsWith(".rs")) {
     collect(/#\[test\]\s*(?:#\[[^\]]*\]\s*)*(?:pub\s+)?(?:async\s+)?fn\s+(\w+)/g);
@@ -44,12 +42,8 @@ export function testNames(text, path) {
   return names;
 }
 
-/**
- * Markdown links outside fenced code: `[text](target)`, with their line.
- * @param {string} md
- * @returns {{ text: string, target: string, line: number }[]}
- */
-export function markdownLinks(md) {
+/** Markdown links outside fenced code: `[text](target)`, with their line. */
+export function markdownLinks(md: string): { text: string; target: string; line: number }[] {
   const links = [];
   let fenced = false;
   for (const [i, line] of md.split("\n").entries()) {
@@ -69,15 +63,13 @@ export function markdownLinks(md) {
  * (CodeQL js/redos). Code spans are skipped wherever they are, so a `]` or `[` inside one
  * (`` [`a[0]`](x.js) ``) is text; a backtick with no partner is plain text. A `[` outside a code
  * span starts the link over, as in Markdown. The target has no whitespace or `)`.
- * @param {string} line
- * @returns {{ text: string, target: string }[]}
  */
-function linksInLine(line) {
+function linksInLine(line: string): { text: string; target: string }[] {
   const links = [];
   // The first `)` or whitespace at or after a position, found once for the whole line: each
   // `](` would otherwise rescan the same characters.
   let stop = -1;
-  const targetEnd = (/** @type {number} */ from) => {
+  const targetEnd = (from: number) => {
     if (stop < from) {
       stop = from;
       while (stop < line.length && line[stop] !== ")" && !/\s/.test(String(line[stop]))) stop++;
@@ -106,17 +98,13 @@ function linksInLine(line) {
   return links;
 }
 
-/**
- * The text of `path`: undefined when nothing is there, null when it is not a regular file.
- * @param {string} path
- * @returns {string | null | undefined}
- */
-function readIfFile(path) {
+/** The text of `path`: undefined when nothing is there, null when it is not a regular file. */
+function readIfFile(path: string): string | null | undefined {
   let fd;
   try {
     fd = openSync(path, "r");
   } catch (e) {
-    if (/** @type {NodeJS.ErrnoException} */ (e).code === "ENOENT") return undefined;
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw e;
   }
   try {
@@ -129,14 +117,13 @@ function readIfFile(path) {
 /**
  * Problems with the links of `mdPath`, as "file:line: message"; and how many test links
  * were checked.
- * @param {string} mdPath  absolute
- * @returns {{ problems: string[], tests: number }}
+ * @param mdPath absolute
  */
-export function checkFile(mdPath) {
+export function checkFile(mdPath: string): { problems: string[]; tests: number } {
   const md = readFileSync(mdPath, "utf8");
   const problems = [];
   let tests = 0;
-  const where = (/** @type {number} */ line) => `${relative(ROOT, mdPath)}:${line}`;
+  const where = (line: number) => `${relative(ROOT, mdPath)}:${line}`;
   for (const { text, target, line } of markdownLinks(md)) {
     if (/^[a-z][a-z0-9+.-]*:/i.test(target) || target.startsWith("#")) continue; // URL, anchor
     const file = resolve(dirname(mdPath), target.replace(/#.*$/, ""));
@@ -158,7 +145,7 @@ export function checkFile(mdPath) {
       problems.push(`${where(line)}: ${target} is not a file, so it has no test ${text}`);
       continue;
     }
-    const name = /** @type {string} */ (code[1]);
+    const name = code[1] as string;
     if (!testNames(source, file).has(name)) {
       problems.push(`${where(line)}: ${target} has no test named "${name}"`);
     }

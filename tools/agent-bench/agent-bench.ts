@@ -27,7 +27,7 @@
  * latest tool results a request carries whole (by default the built-in agent's: 20 for a provider
  * on this machine, the scripted one included, and 6 for a hosted one; 0 sends every result whole,
  * as before docs/specs/agent-speed.md S5).
- * --two-shops runs the two-shop scenario of issue #693 (two-shops.mjs): five items compared
+ * --two-shops runs the two-shop scenario of issue #693 (two-shops.ts): five items compared
  * across two shops on 127.0.0.1 and localhost and both baskets filled, which --check also fails
  * when anything but a checkout asked or a result said that questions were waiting. Alone it runs
  * only that scenario; with --lists, after the lists. Its scripted floor ignores --floor.
@@ -52,17 +52,21 @@ import { findVimmaCtl } from "../e2e/driver.mjs";
 import { findBuild, launch, quitBrowser } from "../e2e/launcher.mjs";
 import { encodePng } from "../e2e/png.mjs";
 import { capture } from "../e2e/screenshot.mjs";
-import { formatBreakdown } from "./breakdown.mjs";
-import { httpFetch } from "./http-fetch.mjs";
-import { loadLists } from "./lists.mjs";
-import { McpClient } from "./mcp-client.mjs";
-import * as ollama from "./ollama.mjs";
-import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "./run.mjs";
-import { formatSummary, passes } from "./score.mjs";
-import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "./scripted.mjs";
-import { OFFLINE_PREFS } from "../sites/sites.mjs";
-import { startShop } from "./shop.mjs";
-import { loadTwoShops, startTwoShops, twoShopShopper, twoShopsScenario } from "./two-shops.mjs";
+import { formatBreakdown } from "./breakdown.ts";
+import { httpFetch } from "./http-fetch.ts";
+import { loadLists } from "./lists.ts";
+import { McpClient } from "./mcp-client.ts";
+import * as ollama from "./ollama.ts";
+import { answerer, grantSession, parseArgs, runOne, waitOutRate } from "./run.ts";
+import { formatSummary, passes } from "./score.ts";
+import { SCRIPTED_PROVIDER, scriptedFetch, shopper } from "./scripted.ts";
+import { OFFLINE_PREFS } from "../sites/sites.ts";
+import { startShop } from "./shop.ts";
+import { loadTwoShops, startTwoShops, twoShopShopper, twoShopsScenario } from "./two-shops.ts";
+import type { Provider } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Scenario } from "./run.ts";
+import type { ShoppingList } from "./score.ts";
+import type { Script } from "./scripted.ts";
 
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 
@@ -85,8 +89,7 @@ const PREFS = {
   "browser.search.suggest.enabled": false,
 };
 
-/** @param {string} s */
-const log = (s) => process.stderr.write(`agent-bench: ${s}\n`);
+const log = (s: string) => process.stderr.write(`agent-bench: ${s}\n`);
 
 function hardware() {
   const cpu = cpus()[0]?.model.trim() ?? "unknown CPU";
@@ -101,8 +104,7 @@ function commit() {
   }
 }
 
-/** @param {any[]} items */
-const textOf = (items) =>
+const textOf = (items: any[]) =>
   items
     .filter((c) => c.type === "text")
     .map((c) => c.text)
@@ -126,19 +128,17 @@ async function main() {
       ? []
       : all;
 
-  /** @type {import("../../packages/vimma-core/src/agent-providers.mjs").Provider} */
-  let provider = SCRIPTED_PROVIDER;
+  let provider: Provider = SCRIPTED_PROVIDER;
   let key = "";
-  /** @type {Record<string, any>} */
-  const meta = {
+  const meta: Record<string, any> = {
     provider: o.provider,
     hardware: hardware(),
     commit: commit(),
   };
   if (o.provider === "scripted") Object.assign(meta, { floor: o.floor, paceMs: o.paceMs });
   if (o.provider !== "scripted") {
-    let model = /** @type {string} */ (o.model);
-    const endpoint = /** @type {string} */ (o.endpoint);
+    let model = o.model as string;
+    const endpoint = o.endpoint as string;
     const isOllama = o.provider === "openai" && /:11434(\/|$)/.test(endpoint);
     if (o.numCtx) {
       if (!isOllama) throw new Error("--num-ctx sets an Ollama model's context length only");
@@ -146,7 +146,7 @@ async function main() {
       log(`model with num_ctx ${o.numCtx}: ${model}`);
     }
     provider = {
-      kind: /** @type {"openai" | "anthropic"} */ (o.provider),
+      kind: o.provider as "openai" | "anthropic",
       endpoint,
       model,
       vision: o.vision,
@@ -165,14 +165,12 @@ async function main() {
 
   const shop = await startShop();
   const twoShops = o.twoShops ? await startTwoShops(TWO_SHOPS) : null;
-  /**
-   * The runs to make, each a list or the two-shop scenario, with its scripted floor.
-   * @type {Array<{ id: string,
-   *   start: () => { list: import("./score.mjs").ShoppingList, shop: typeof shop } |
-   *     { scenario: import("./run.mjs").Scenario },
-   *   floor: () => import("./scripted.mjs").Script }>}
-   */
-  const cases = lists.map((list) => ({
+  /** The runs to make, each a list or the two-shop scenario, with its scripted floor. */
+  const cases: Array<{
+    id: string;
+    start: () => { list: ShoppingList; shop: typeof shop } | { scenario: Scenario };
+    floor: () => Script;
+  }> = lists.map((list) => ({
     id: list.id,
     start: () => ({ list, shop }),
     floor: () => shopper({ base: shop.base, list, path: o.floor }),
@@ -189,14 +187,13 @@ async function main() {
   const session = await launch({ build, xvfb: true, prefs: PREFS, keep: o.keep, log });
   const sessions = new ControlSessions({ profile: session.profile, bin: ctlBin });
   let shotCount = 0;
-  const shot = async (/** @type {string} */ name) => {
+  const shot = async (name: string) => {
     if (!o.shots || !session.display) return;
     mkdirSync(o.shots, { recursive: true });
     const file = join(o.shots, `${String(++shotCount).padStart(3, "0")}-${name}.png`);
     writeFileSync(file, encodePng(await capture(session.display.fbFile)));
   };
-  /** @type {any[]} */
-  const runs = [];
+  const runs: any[] = [];
   try {
     // Held before MCP is on, so keys sent through it never ask (vimma-mcp decision 29 C).
     await sessions.hold();
@@ -206,7 +203,7 @@ async function main() {
     await sessions.held.open(shop.base);
     for (let i = 0; ; i++) {
       const state = await sessions.held.state();
-      const tab = state.tabs?.find((/** @type {any} */ t) => t.selected);
+      const tab = state.tabs?.find((t: any) => t.selected);
       if (
         state.workspace === "main" &&
         tab?.url === shop.base &&
@@ -224,7 +221,7 @@ async function main() {
     await sessions.held.sendKeys("y");
     await sleep(1500);
     await shot("mcp-on");
-    const sendKeys = async (/** @type {string} */ k) => {
+    const sendKeys = async (k: string) => {
       await shot(`question-${k}`);
       await sessions.held.sendKeys(k);
     };
@@ -270,11 +267,11 @@ async function main() {
       }
     }
     if (o.provider === "openai" && /:11434(\/|$)/.test(String(o.endpoint)))
-      meta.loaded = await ollama.loaded(/** @type {string} */ (o.endpoint)).catch(() => null);
+      meta.loaded = await ollama.loaded(o.endpoint as string).catch(() => null);
   } finally {
     const ctl = {
       state: () => sessions.held.state(),
-      sendKeys: (/** @type {string} */ k) => sessions.held.sendKeys(k),
+      sendKeys: (k: string) => sessions.held.sendKeys(k),
     };
     await quitBrowser({ ctl, child: session.child }).catch(() => false);
     sessions.close();

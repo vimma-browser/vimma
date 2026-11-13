@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { CHECKS } from "../results.mjs";
+import { CHECKS } from "../results.ts";
 import {
   FOLLOW_TARGET,
   GATED_CHECKS,
@@ -13,7 +13,8 @@ import {
   snapshotGate,
   validateManifest,
   verifySnapshot,
-} from "../snapshot.mjs";
+} from "../snapshot.ts";
+import type { SnapshotEntry } from "../snapshot.ts";
 
 // The snapshot layer (docs/specs/site-compat.md, "Snapshot layer"): recorded pages replayed
 // offline on every pull request. A snapshot is third-party page content served to a real browser
@@ -24,8 +25,8 @@ const SITES = JSON.parse(readFileSync(new URL("../sites.json", import.meta.url),
 const MANIFEST = JSON.parse(readFileSync(new URL("snapshots.json", DIR), "utf8"));
 
 const CSP_META = `<meta http-equiv="Content-Security-Policy" content="${SNAPSHOT_CSP}">`;
-/** A minimal snapshot as the recorder writes it, with `body` inside. @param {string} body */
-const page = (body, head = "") =>
+/** A minimal snapshot as the recorder writes it, with `body` inside. */
+const page = (body: string, head = "") =>
   finishSnapshot(
     `<html lang="en"><head>${CSP_META}<meta charset="utf-8"><title>t</title>${head}</head>` +
       `<body>${body}</body></html>`,
@@ -217,7 +218,7 @@ describe("the committed snapshots", () => {
   it("are attributed in the README next to them", () => {
     const readme = readFileSync(new URL("README.md", DIR), "utf8");
     for (const entry of MANIFEST) {
-      const site = SITES.find((/** @type {any} */ s) => s.id === entry.id);
+      const site = SITES.find((s: any) => s.id === entry.id);
       expect(readme).toContain(site.url);
       expect(readme).toContain(entry.licence);
     }
@@ -282,14 +283,14 @@ describe("recordable", () => {
 
   it("covers only sites on the list", () => {
     for (const id of Object.keys(SNAPSHOT_LICENCES))
-      expect(SITES.map((/** @type {any} */ s) => s.id)).toContain(id);
+      expect(SITES.map((s: any) => s.id)).toContain(id);
   });
 });
 
 describe("offlineSites", () => {
   it("takes each snapshot's checks from sites.json and its URL from the page server", () => {
     const [site] = offlineSites(
-      [{ id: "mdn", licence: SNAPSHOT_LICENCES.mdn, recorded: "2026-10-21", expect: {} }],
+      [{ id: "mdn", licence: SNAPSHOT_LICENCES.mdn!, recorded: "2026-10-21", expect: {} }],
       SITES,
       "http://127.0.0.1:4000/",
     );
@@ -303,8 +304,7 @@ describe("offlineSites", () => {
 });
 
 describe("snapshotGate", () => {
-  /** @param {Record<string, string>} statuses @returns {any} */
-  const result = (statuses, extra = {}) => ({
+  const result = (statuses: Record<string, string>, extra = {}): any => ({
     id: "wikipedia",
     name: "Wikipedia (snapshot)",
     status: "ok",
@@ -320,9 +320,8 @@ describe("snapshotGate", () => {
     licence: "CC BY-SA 4.0",
     recorded: "2026-10-21",
     expect: { ...Object.fromEntries(GATED_CHECKS.map((id) => [id, "pass"])), insert: "skip" },
-  };
-  /** @param {any[]} sites */
-  const run = (sites, harnessError = null) => ({ sites, harnessError });
+  } as SnapshotEntry;
+  const run = (sites: any[], harnessError: string | null = null) => ({ sites, harnessError });
 
   it("passes when every check that passed on the recording passes", () => {
     const gate = snapshotGate(run([result({ insert: "skip" })]), [entry]);

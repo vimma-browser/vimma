@@ -9,36 +9,56 @@
 import { parseArgs as parseNodeArgs } from "node:util";
 import { Budget } from "../../packages/vimma-core/src/agent-budget.mjs";
 import { startTask } from "../../packages/vimma-core/src/agent-loop.mjs";
-import { taskText } from "./lists.mjs";
-import { isUserDenial, scoreRun } from "./score.mjs";
-import { timedFetch } from "./breakdown.mjs";
+import { taskText } from "./lists.ts";
+import { isUserDenial, scoreRun } from "./score.ts";
+import { timedFetch } from "./breakdown.ts";
+import type { Limits } from "../../packages/vimma-core/src/agent-budget.mjs";
+import type { RunTool } from "../../packages/vimma-core/src/agent-loop.mjs";
+import type { Fetch, Provider, ToolDef } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Turn } from "./breakdown.ts";
+import type { RunScore, ShopRecord, ShoppingList, TaskRecord } from "./score.ts";
 
-/**
- * @typedef {import("../../packages/vimma-core/src/agent-loop.mjs").RunTool} RunTool
- * @typedef {{ name: string, args?: any, error?: boolean, denied?: boolean, refused?: string,
- *   said?: string, ms?: number }} CallLog
- * @typedef {{ text: string, reset(): void,
- *   score(task: import("./score.mjs").TaskRecord, calls: CallLog[]): Record<string, any> &
- *   import("./score.mjs").RunScore }} Scenario  a task other than a list, such as two-shops.mjs's
- */
+export type { RunTool };
+export type CallLog = {
+  name: string;
+  args?: any;
+  error?: boolean;
+  denied?: boolean;
+  refused?: string;
+  said?: string;
+  ms?: number;
+};
+/** a task other than a list, such as two-shops.ts's */
+export type Scenario = {
+  text: string;
+  reset(): void;
+  score(task: TaskRecord, calls: CallLog[]): Record<string, any> & RunScore;
+};
 
 /**
  * Runs one list, or a scenario, through vimma-core's loop and scores what reached the shop.
- * @param {({ list: import("./score.mjs").ShoppingList,
- *   shop: { base: string, reset(): void, record(): import("./score.mjs").ShopRecord } } |
- *   { scenario: Scenario }) & {
- *   provider: import("../../packages/vimma-core/src/agent-providers.mjs").Provider,
- *   fetch: import("../../packages/vimma-core/src/agent-providers.mjs").Fetch, key: string,
- *   system: string, tools: import("../../packages/vimma-core/src/agent-providers.mjs").ToolDef[],
- *   runTool: RunTool, limits: Partial<import("../../packages/vimma-core/src/agent-budget.mjs").Limits>,
- *   timeoutMs: number, settleMs?: number, keepResults?: number | null }} o
- *   `settleMs`: time for the requests a page's script sends after the last click to arrive;
- *   `keepResults`: the loop's, as `[agent] keep_results` (0 sends every result whole; null or
- *   left out, the provider's default)
+ * @param o `settleMs`: time for the requests a page's script sends after the last click to
+ *   arrive; `keepResults`: the loop's, as `[agent] keep_results` (0 sends every result whole;
+ *   null or left out, the provider's default)
  */
-export async function runOne(o) {
-  /** @type {Scenario} */
-  const scenario =
+export async function runOne(
+  o: (
+    | { list: ShoppingList; shop: { base: string; reset(): void; record(): ShopRecord } }
+    | { scenario: Scenario }
+  ) & {
+    provider: Provider;
+    fetch: Fetch;
+    key: string;
+    system: string;
+    tools: ToolDef[];
+    runTool: RunTool;
+    limits: Partial<Limits>;
+    timeoutMs: number;
+    settleMs?: number;
+    keepResults?: number | null;
+  },
+) {
+  const scenario: Scenario =
     "scenario" in o
       ? o.scenario
       : {
@@ -48,10 +68,8 @@ export async function runOne(o) {
         };
   scenario.reset();
   const budget = new Budget(o.limits);
-  /** @type {CallLog[]} */
-  const calls = [];
-  /** @type {import("./breakdown.mjs").Turn[]} */
-  const turns = [];
+  const calls: CallLog[] = [];
+  const turns: Turn[] = [];
   let denials = 0;
   let callStart = 0;
   const started = Date.now();
@@ -125,14 +143,15 @@ const RATE_LIMITED =
  * The runner a rate refusal is waited out by once, the call then run again, as the built-in
  * agent's runner does (agent-speed S7, AgentChat.sys.mjs): the bench measures that agent, whose
  * model cannot wait, and a model told to wait ends its task. A second refusal goes to the model.
- * @param {RunTool} runTool
- * @param {{ sleep?: (ms: number) => Promise<unknown> }} [o]
- * @returns {RunTool}
  */
 export function waitOutRate(
-  runTool,
-  { sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {},
-) {
+  runTool: RunTool,
+  {
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+  }: {
+    sleep?: (ms: number) => Promise<unknown>;
+  } = {},
+): RunTool {
   return async (name, args, opts) => {
     const first = await runTool(name, args, opts);
     const text = first?.isError && first.content?.length === 1 ? first.content[0] : null;
@@ -148,8 +167,6 @@ export function waitOutRate(
  * Presses `key` while a tool call has waited longer than a question takes to arm, again every
  * `everyMs`, until the call returns. A key with no question waiting lands on the main
  * workspace's blank page, where `n` does nothing.
- * @param {{ sendKeys: (keys: string) => Promise<void>, key?: string, afterMs?: number,
- *   everyMs?: number, clock?: () => number }} o
  */
 export function answerer({
   sendKeys,
@@ -157,21 +174,27 @@ export function answerer({
   afterMs = 1500,
   everyMs = 1000,
   clock = Date.now,
+}: {
+  sendKeys: (keys: string) => Promise<void>;
+  key?: string;
+  afterMs?: number;
+  everyMs?: number;
+  clock?: () => number;
 }) {
-  /** @type {Set<{ at: number }>} */
-  const inflight = new Set();
+  const inflight: Set<{ at: number }> = new Set();
   let last = -Infinity;
   return {
-    /** @param {RunTool} run @returns {RunTool} */
-    wrap: (run) => async (name, args, opts) => {
-      const t = { at: clock() };
-      inflight.add(t);
-      try {
-        return await run(name, args, opts);
-      } finally {
-        inflight.delete(t);
-      }
-    },
+    wrap:
+      (run: RunTool): RunTool =>
+      async (name, args, opts) => {
+        const t = { at: clock() };
+        inflight.add(t);
+        try {
+          return await run(name, args, opts);
+        } finally {
+          inflight.delete(t);
+        }
+      },
     async tick() {
       if (inflight.size === 0) return;
       const now = clock();
@@ -187,9 +210,6 @@ export function answerer({
  * The run's grant: the connection's first call asks, and `a` allows it until the connection
  * ends (mcp-session-grants), as sending a task with `Enter` will (B18). Keys count only once the
  * question is armed, so `a` is pressed after each wait until the call returns.
- * @param {{ call: () => Promise<{ isError?: boolean, content?: any[] }>,
- *   sendKeys: (keys: string) => Promise<void>, sleep?: (ms: number) => Promise<void>,
- *   tries?: number, waitMs?: number }} o
  */
 export async function grantSession({
   call,
@@ -197,9 +217,14 @@ export async function grantSession({
   sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
   tries = 10,
   waitMs = 1200,
+}: {
+  call: () => Promise<{ isError?: boolean; content?: any[] }>;
+  sendKeys: (keys: string) => Promise<void>;
+  sleep?: (ms: number) => Promise<void>;
+  tries?: number;
+  waitMs?: number;
 }) {
-  /** @type {{ r?: any, e?: unknown } | null} */
-  let settled = null;
+  let settled: { r?: any; e?: unknown } | null = null;
   call().then(
     (r) => (settled = { r }),
     (e) => (settled = { e }),
@@ -210,27 +235,24 @@ export async function grantSession({
     await sendKeys("a");
   }
   await sleep(0);
-  const s = /** @type {{ r?: any, e?: unknown } | null} */ (settled);
+  const s = settled as { r?: any; e?: unknown } | null;
   if (!s) throw new Error("no grant: the first call's question was not answered");
   if (s.e) throw s.e;
   if (s.r?.isError) {
-    const text = (s.r.content ?? []).map((/** @type {any} */ c) => c.text ?? "").join(" ");
+    const text = (s.r.content ?? []).map((c: any) => c.text ?? "").join(" ");
     throw new Error(`no grant: ${text}`);
   }
   return s.r;
 }
 
 const PROVIDERS = ["scripted", "openai", "anthropic"];
-const ENDPOINTS = /** @type {Record<string, string>} */ ({
+const ENDPOINTS = {
   openai: "http://127.0.0.1:11434/v1",
   anthropic: "https://api.anthropic.com",
-});
+} as Record<string, string>;
 
-/**
- * `npm run agent-bench -- …`'s options.
- * @param {string[]} argv
- */
-export function parseArgs(argv) {
+/** `npm run agent-bench -- …`'s options. */
+export function parseArgs(argv: string[]) {
   const { values } = parseNodeArgs({
     args: argv,
     options: {
@@ -259,12 +281,12 @@ export function parseArgs(argv) {
       help: { type: "boolean", default: false },
     },
   });
-  const provider = /** @type {string} */ (values.provider);
+  const provider = values.provider as string;
   if (!PROVIDERS.includes(provider))
     throw new Error(`--provider must be one of ${PROVIDERS.join(", ")}, not ${provider}`);
   if (provider !== "scripted" && !values.model)
     throw new Error(`--provider ${provider} needs --model`);
-  const floor = /** @type {string} */ (values.floor);
+  const floor = values.floor as string;
   if (floor !== "search" && floor !== "product" && floor !== "parallel")
     throw new Error(`--floor must be search, product or parallel, not ${floor}`);
   const paceMs = Number(values["pace-ms"]);
@@ -273,8 +295,7 @@ export function parseArgs(argv) {
   const keepResults = values["keep-results"] === undefined ? null : Number(values["keep-results"]);
   if (keepResults !== null && (!Number.isInteger(keepResults) || keepResults < 0))
     throw new Error("--keep-results must be a whole number, 0 or more");
-  /** @param {string | undefined} v @param {string} name */
-  const int = (v, name) => {
+  const int = (v: string | undefined, name: string) => {
     if (v === undefined) return undefined;
     const n = Number(v);
     if (!Number.isInteger(n) || n < 1) throw new Error(`${name} must be a whole number above 0`);
@@ -288,10 +309,10 @@ export function parseArgs(argv) {
     vision: values.vision ?? false,
     numCtx: int(values["num-ctx"], "--num-ctx") ?? null,
     lists: values.lists ? values.lists.split(",").map((s) => s.trim()) : null,
-    runs: /** @type {number} */ (int(values.runs, "--runs")),
+    runs: int(values.runs, "--runs") as number,
     maxSteps: int(values["max-steps"], "--max-steps") ?? null,
     maxTokens: int(values["max-tokens"], "--max-tokens") ?? null,
-    timeoutMinutes: /** @type {number} */ (int(values["timeout-minutes"], "--timeout-minutes")),
+    timeoutMinutes: int(values["timeout-minutes"], "--timeout-minutes") as number,
     build: values.build ?? null,
     artifact: values.artifact ?? false,
     vimmaCtl: values["vimma-ctl"] ?? null,
@@ -299,7 +320,7 @@ export function parseArgs(argv) {
     check: values.check ?? false,
     keep: values.keep ?? false,
     shots: values.shots ?? null,
-    floor: /** @type {"search" | "product" | "parallel"} */ (floor),
+    floor: floor as "search" | "product" | "parallel",
     paceMs,
     keepResults,
     twoShops: values["two-shops"] ?? false,

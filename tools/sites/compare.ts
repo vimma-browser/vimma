@@ -4,7 +4,7 @@
  * decision 12). sites.yml runs it after `npm run sites`, with the previous run's artifact
  * downloaded into a directory.
  *
- *   node tools/sites/compare.mjs --cur site-compat-output/results.json --out site-compat-output
+ *   node tools/sites/compare.ts --cur site-compat-output/results.json --out site-compat-output
  *     [--prev baseline/]        the previous run's artifact (results.json, diff.json)
  *     [--scheduled]             a scheduled run: may open, update or close the issue
  *     [--open-issue N]          the open site-compat issue, if any (empty: none)
@@ -28,20 +28,16 @@ import {
   parseState,
   renderDiff,
   renderIssue,
-} from "./diff.mjs";
+} from "./diff.ts";
+import type { Run } from "./results.ts";
 
-/** @param {string} message */
-function note(message) {
+function note(message: string) {
   console.log(
     process.env.GITHUB_ACTIONS ? `::warning::compare: ${message}` : `compare: ${message}`,
   );
 }
 
-/**
- * @param {string} file
- * @returns {{ value?: unknown, problem?: string }}
- */
-function readJson(file) {
+function readJson(file: string): { value?: unknown; problem?: string } {
   if (!existsSync(file)) return { problem: `${file} does not exist` };
   try {
     return { value: JSON.parse(readFileSync(file, "utf8")) };
@@ -50,20 +46,16 @@ function readJson(file) {
   }
 }
 
-/** @typedef {ReturnType<typeof parseState>} State */
+export type State = ReturnType<typeof parseState>;
 
 /**
  * The previous run's results.json and diff.json. Either can be missing or damaged on its own:
  * the tracked list survives a lost results.json, and the chain counts as broken unless both read.
- * @param {string | undefined} dir
- * @returns {{ prev: import("./results.mjs").Run | null, state: State }}
  */
-function readBaseline(dir) {
-  /** @type {State} */
-  const none = { tracked: [], known: {}, complete: false, problems: [] };
+function readBaseline(dir: string | undefined): { prev: Run | null; state: State } {
+  const none: State = { tracked: [], known: {}, complete: false, problems: [] };
   if (!dir) return { prev: null, state: none };
-  /** @type {import("./results.mjs").Run | null} */
-  let prev = null;
+  let prev: Run | null = null;
   const results = readJson(join(dir, "results.json"));
   if (results.problem) note(`no baseline: ${results.problem}`);
   else {
@@ -93,7 +85,7 @@ function main() {
       },
     }));
   } catch (e) {
-    process.stderr.write(`compare: ${/** @type {Error} */ (e).message}\n`);
+    process.stderr.write(`compare: ${(e as Error).message}\n`);
     return 2;
   }
   const openText = values["open-issue"].trim();

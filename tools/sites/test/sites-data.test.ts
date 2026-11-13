@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { filterSites, validateSites } from "../site-list.mjs";
+import { filterSites, validateSites } from "../site-list.ts";
 
 const SITES = JSON.parse(readFileSync(new URL("../sites.json", import.meta.url), "utf8"));
 
@@ -16,7 +16,7 @@ describe("tools/sites/sites.json", () => {
   });
 
   it("has the sites the suite covers", () => {
-    const hosts = new Set(SITES.map((/** @type {any} */ s) => new URL(s.url).hostname));
+    const hosts = new Set(SITES.map((s: any) => new URL(s.url).hostname));
     for (const host of [
       "github.com",
       "stackoverflow.com",
@@ -42,17 +42,17 @@ describe("tools/sites/sites.json", () => {
     ]) {
       expect(hosts.has(host), host).toBe(true);
     }
-    const github = SITES.filter((/** @type {any} */ s) => s.id.startsWith("github-"));
-    expect(github.map((/** @type {any} */ s) => s.id).sort()).toEqual([
+    const github = SITES.filter((s: any) => s.id.startsWith("github-"));
+    expect(github.map((s: any) => s.id).sort()).toEqual([
       "github-file",
       "github-issues",
       "github-pr",
       "github-repo",
     ]);
     // Decision 14: a comments page as well as the front page.
-    expect(
-      SITES.some((/** @type {any} */ s) => s.url.startsWith("https://news.ycombinator.com/item?")),
-    ).toBe(true);
+    expect(SITES.some((s: any) => s.url.startsWith("https://news.ycombinator.com/item?"))).toBe(
+      true,
+    );
     expect(SITES).toHaveLength(25);
   });
 });

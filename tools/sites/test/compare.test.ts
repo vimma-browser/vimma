@@ -7,21 +7,29 @@ import { fileURLToPath } from "node:url";
 
 // The CLI that sites.yml runs after the suite (docs/specs/site-compat.md, decision 12), on the
 // recorded nightly results.json files in fixtures/.
-const CLI = fileURLToPath(new URL("../compare.mjs", import.meta.url));
-const fixture = (/** @type {string} */ day) =>
+const CLI = fileURLToPath(new URL("../compare.ts", import.meta.url));
+const fixture = (day: string) =>
   fileURLToPath(new URL(`fixtures/nightly-${day}.json`, import.meta.url));
 
-/** @type {string[]} */
-const dirs = [];
+const dirs: string[] = [];
 afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
 /**
  * Runs the CLI; returns its outputs (GITHUB_OUTPUT lines) and the files it wrote.
- * @param {{ cur: string, prev?: string | null, prevState?: unknown, args?: string[] }} o
  */
-function compare({ cur, prev = null, prevState, args = [] }) {
+function compare({
+  cur,
+  prev = null,
+  prevState,
+  args = [],
+}: {
+  cur: string;
+  prev?: string | null;
+  prevState?: unknown;
+  args?: string[];
+}) {
   const dir = mkdtempSync(join(tmpdir(), "vimma-compare-"));
   dirs.push(dir);
   const out = join(dir, "out");
@@ -45,9 +53,9 @@ function compare({ cur, prev = null, prevState, args = [] }) {
     readFileSync(ghOutput, "utf8")
       .split("\n")
       .filter(Boolean)
-      .map((l) => /** @type {[string, string]} */ (l.split("=", 2))),
+      .map((l) => l.split("=", 2) as [string, string]),
   );
-  const read = (/** @type {string} */ f) =>
+  const read = (f: string) =>
     existsSync(join(out, f)) ? readFileSync(join(out, f), "utf8") : null;
   return {
     stdout,
@@ -62,9 +70,9 @@ function compare({ cur, prev = null, prevState, args = [] }) {
 /** A copy of the 21st with GitHub PR's hints check failing, written to a temp file. */
 function regressedNight() {
   const run = JSON.parse(readFileSync(fixture("2026-10-21"), "utf8"));
-  const site = run.sites.find((/** @type {any} */ s) => s.id === "github-pr");
+  const site = run.sites.find((s: any) => s.id === "github-pr");
   site.status = "fail";
-  site.checks = site.checks.map((/** @type {any} */ c) =>
+  site.checks = site.checks.map((c: any) =>
     c.id === "hints" ? { id: "hints", status: "fail", reason: "no labels @octocat" } : c,
   );
   const dir = mkdtempSync(join(tmpdir(), "vimma-compare-"));
@@ -162,7 +170,7 @@ describe("tools/sites/compare.mjs", () => {
   it("compares a filtered run by hand without error", () => {
     const run = JSON.parse(readFileSync(fixture("2026-10-21"), "utf8"));
     run.filter = "github";
-    run.sites = run.sites.filter((/** @type {any} */ s) => s.id.startsWith("github-"));
+    run.sites = run.sites.filter((s: any) => s.id.startsWith("github-"));
     const dir = mkdtempSync(join(tmpdir(), "vimma-compare-"));
     dirs.push(dir);
     const file = join(dir, "results.json");
