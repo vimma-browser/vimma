@@ -11,6 +11,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
 import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.mjs";
@@ -205,6 +206,7 @@ describe("macos-dmg.sh", () => {
       const tools = stubs(dir);
       mkdirSync(join(dir, "out"));
       const { VIMMA_CTL } = macCtl(dir);
+      /** @type {Record<string, string>} */
       const env = licenses ? { VIMMA_CTL, VIMMA_CTL_LICENSES: licenses } : { VIMMA_CTL };
       const { status, stderr } = sign(dir, tools, env);
       expect(status, String(licenses)).not.toBe(0);
@@ -405,11 +407,13 @@ describe("macos.yml", () => {
   // files from their sources and fails if they drift. Xcode is pinned, as its actool writes the
   // catalog.
   it("regenerates the icon files on a Mac with a pinned Xcode and fails on drift", () => {
-    const icons = all.get("icons") ?? {};
+    const icons = defined(all.get("icons"), "the icons job");
     expect(icons["runs-on"]).toBe("macos-26");
-    expect(icons.env?.DEVELOPER_DIR).toMatch(
-      /^\/Applications\/Xcode_26\.\d+(\.\d+)?\.app\/Contents\/Developer$/,
-    );
+    expect(icons.env).toMatchObject({
+      DEVELOPER_DIR: expect.stringMatching(
+        /^\/Applications\/Xcode_26\.\d+(\.\d+)?\.app\/Contents\/Developer$/,
+      ),
+    });
     expect(icons["timeout-minutes"]).toBeLessThanOrEqual(15);
     const run = steps(icons)
       .map((s) => s.run ?? "")
@@ -757,7 +761,7 @@ describe("macos-icons.mjs catalogSummary", () => {
       catalogSummary(catalog("A", "AA", "N")),
     );
     const resized = catalog("A", "AA", "M");
-    resized[1].PixelWidth = 32;
+    defined(resized[1]).PixelWidth = 32;
     expect(catalogSummary(resized)).not.toBe(catalogSummary(catalog("A", "AA", "M")));
   });
 });
