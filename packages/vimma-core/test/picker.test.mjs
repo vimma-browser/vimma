@@ -592,41 +592,47 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     expect(openPicker(list, {}).mode).toBe("browse");
   });
 
-  test("500 open and 25 closed items: each key well under 8 ms; units are built once", () => {
-    const words = ["jira", "docs", "mail", "calendar", "bank", "news", "radio", "wiki", "git"];
-    const big = Array.from({ length: 525 }, (_, n) => ({
-      .../** @type {PickerItem} */ (tabs[0]),
-      tabId: `b${n}`,
-      title: `${words[n % words.length]} ${n} – ${words[(n * 7) % words.length]} board`,
-      display: `${words[n % words.length]} ${n} – ${words[(n * 7) % words.length]} board`,
-      url: `https://${words[(n * 3) % words.length]}.example.com/item/${n}`,
-      workspaceName: `ws${n % 5}`,
-      ...(n >= 500 ? { closed: /** @type {const} */ (true), markers: "closed" } : {}),
-    }));
-    const start = press(openPicker(big, {}), ["/"]).state;
-    const keys = [..."abc", "space", ..."def", "ctrl+w", ..."jira", "ctrl+u", ..."docs"];
-    keys.push("space", ..."wiki", "backspace", "backspace");
-    /** One pass over `keys`: each key's time in ms. */
-    const pass = () => {
-      let s = start;
-      return keys.map((key) => {
-        const t0 = performance.now();
-        s = pickerKey(s, key).state;
-        return performance.now() - t0;
-      });
-    };
-    // Warm-up passes let the JIT optimise the matcher, as it is after the first few keys in a
-    // browser; each key's time is then its fastest of five passes, so a GC pause or a busy
-    // neighbour in one pass is not counted as its cost.
-    for (let i = 0; i < 3; i++) pass();
-    const before = unitsBuilt();
-    const runs = Array.from({ length: 5 }, pass);
-    const times = keys.map((_, k) => Math.min(...runs.map((r) => /** @type {number} */ (r[k]))));
-    expect(times.length).toBeGreaterThanOrEqual(20);
-    expect(Math.max(...times)).toBeLessThan(8);
-    // Every text was segmented in the warm-up: the measured passes build no units at all.
-    expect(unitsBuilt() - before).toBe(0);
-  });
+  // Tagged `timing`: the budget is for the real matcher, and the mutation run (stryker.config.mjs)
+  // leaves it out, since Stryker's instrumented copy runs several times slower.
+  test(
+    "500 open and 25 closed items: each key well under 8 ms; units are built once",
+    { tags: ["timing"] },
+    () => {
+      const words = ["jira", "docs", "mail", "calendar", "bank", "news", "radio", "wiki", "git"];
+      const big = Array.from({ length: 525 }, (_, n) => ({
+        .../** @type {PickerItem} */ (tabs[0]),
+        tabId: `b${n}`,
+        title: `${words[n % words.length]} ${n} – ${words[(n * 7) % words.length]} board`,
+        display: `${words[n % words.length]} ${n} – ${words[(n * 7) % words.length]} board`,
+        url: `https://${words[(n * 3) % words.length]}.example.com/item/${n}`,
+        workspaceName: `ws${n % 5}`,
+        ...(n >= 500 ? { closed: /** @type {const} */ (true), markers: "closed" } : {}),
+      }));
+      const start = press(openPicker(big, {}), ["/"]).state;
+      const keys = [..."abc", "space", ..."def", "ctrl+w", ..."jira", "ctrl+u", ..."docs"];
+      keys.push("space", ..."wiki", "backspace", "backspace");
+      /** One pass over `keys`: each key's time in ms. */
+      const pass = () => {
+        let s = start;
+        return keys.map((key) => {
+          const t0 = performance.now();
+          s = pickerKey(s, key).state;
+          return performance.now() - t0;
+        });
+      };
+      // Warm-up passes let the JIT optimise the matcher, as it is after the first few keys in a
+      // browser; each key's time is then its fastest of five passes, so a GC pause or a busy
+      // neighbour in one pass is not counted as its cost.
+      for (let i = 0; i < 3; i++) pass();
+      const before = unitsBuilt();
+      const runs = Array.from({ length: 5 }, pass);
+      const times = keys.map((_, k) => Math.min(...runs.map((r) => /** @type {number} */ (r[k]))));
+      expect(times.length).toBeGreaterThanOrEqual(20);
+      expect(Math.max(...times)).toBeLessThan(8);
+      // Every text was segmented in the warm-up: the measured passes build no units at all.
+      expect(unitsBuilt() - before).toBe(0);
+    },
+  );
 });
 
 describe("downloads picker (docs/specs/downloads.md)", () => {
