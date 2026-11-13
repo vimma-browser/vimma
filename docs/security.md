@@ -546,8 +546,8 @@ text that pages, add-ons and bookmarks choose.
   keeps one privilegedabout process alive, so this needs that process to crash or the keep-alive
   pref set to 0.
   [`typed_firefox_pages_open_the_start_page`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
-  [`firefox_flags_stay_until_a_privilegedabout_process_ends`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
-  [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_surfaces_trim.js)
+  [`firefox_flags_stay_until_a_privilegedabout_process_ends`](../tests/browser/browser_vimma_firefox_page_process.js),
+  [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_page_process.js)
 
 ## 7. Omarchy hook and the `vimma-open` launcher
 

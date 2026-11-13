@@ -455,8 +455,8 @@ To change it back:
 - **New tabs:** set `vimma.startpage.newtab` to `false` in `about:config` (applies at once) for
   Firefox's new tab page. Set back to `true`, new tabs open the start page at once; if
   Firefox's page was opened meanwhile, a typed `about:home`, `about:newtab` or `about:welcome`
-  keeps showing it until Vimma restarts, since switching a page Firefox has open would crash it. Settings' "New tabs" menu does not change
-  Vimma's start page. An extension that sets its own new tab page takes precedence.
+  keeps showing it until Vimma restarts, since switching a page Firefox has open would crash it.
+  Settings' "New tabs" menu does not change Vimma's start page. An extension that sets its own new tab page takes precedence.
 
 ### Moving over from Firefox or Chrome
 
