@@ -7,13 +7,50 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { transformSync } from "amaro";
 import { ESLint } from "eslint";
+import * as espree from "espree";
 import vitestConfig from "../../vitest.config.mjs";
 
 // ADR-025: tools/ may be TypeScript that Node runs as it is, by erasing the types. These pin what
 // that needs from Node, Vitest and eslint; tools/test/typecheck.test.mjs pins tsc's side.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("fixtures/ts-run/main.ts", import.meta.url));
+
+/**
+ * The modules a .ts file loads when Node runs it: its import and export declarations and its
+ * import() calls with a string, read from the program Node runs (types stripped as Node strips
+ * them), so a module path in a string or a comment is not one. A type-only import is erased.
+ * @param {string} code
+ * @returns {string[]}
+ */
+function importSpecifiers(code) {
+  const program = espree.parse(transformSync(code, { mode: "strip-only" }).code, {
+    ecmaVersion: "latest",
+    sourceType: "module",
+  });
+  /** @type {string[]} */
+  const found = [];
+  /** @param {unknown} node */
+  const visit = (node) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) return node.forEach(visit);
+    const n = /** @type {{ type?: string, source?: { type: string, value: unknown } }} */ (node);
+    const source = n.source;
+    if (
+      (n.type === "ImportDeclaration" ||
+        n.type === "ExportNamedDeclaration" ||
+        n.type === "ExportAllDeclaration" ||
+        n.type === "ImportExpression") &&
+      source?.type === "Literal" &&
+      typeof source.value === "string"
+    )
+      found.push(source.value);
+    for (const value of Object.values(node)) if (value && typeof value === "object") visit(value);
+  };
+  visit(program);
+  return found;
+}
 
 describe("TypeScript under tools/ (ADR-025)", () => {
   it("Node runs a .ts file with no flag, and writes nothing to stderr", () => {
@@ -90,15 +127,27 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       .split("\0")
       .filter((p) => p && !p.endsWith(".d.ts"));
     expect(files.length).toBeGreaterThan(0);
-    const missing = files.flatMap((file) => {
-      const text = readFileSync(join(ROOT, file), "utf8");
-      const specs = [...text.matchAll(/\b(?:from|import)\s*\(?\s*["'](\.{1,2}\/[^"']+)["']/g)];
-      return specs
-        .map((m) => m[1] ?? "")
+    const missing = files.flatMap((file) =>
+      importSpecifiers(readFileSync(join(ROOT, file), "utf8"))
+        .filter((spec) => /^\.{1,2}\//.test(spec))
         .filter((spec) => !existsSync(join(ROOT, dirname(file), spec)))
-        .map((spec) => `${file}: ${spec}`);
-    });
+        .map((spec) => `${file}: ${spec}`),
+    );
     expect(missing).toEqual([]);
+  });
+
+  it("reads the imports from the program, not from strings or comments", () => {
+    const code = [
+      'import type { T } from "./types.ts";',
+      'import { a } from "./a.ts";',
+      'export { b } from "./b.ts";',
+      'const c = await import("./c.ts");',
+      '// from "./comment.mjs"',
+      "const text = 'import { d } from \"./string.mjs\";';",
+      "export const x: T = [a, c, text];",
+      "",
+    ].join("\n");
+    expect(importSpecifiers(code)).toEqual(["./a.ts", "./b.ts", "./c.ts"]);
   });
 
   it("keeps TypeScript in tools/: Firefox and vimma-core load their files unbuilt", () => {
