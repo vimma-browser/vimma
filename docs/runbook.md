@@ -320,11 +320,21 @@ npm run e2e -- --xvfb --update-baselines --filter <scenario>   # refused when CI
 
 look at the new PNG, and commit it with a changelog line saying which baseline changed and why
 (CONTRIBUTING.md: never edit a baseline without one). A missing baseline fails; nothing creates one
-silently. Fonts differ between machines: if CI's diff exceeds 0.5 % on a baseline made locally,
-take CI's actual image from the `e2e-output` artifact of the failed run (kept 7 days) instead.
-A missing baseline also leaves `<name>.actual.png` there, so a new scenario's first baseline
-comes from CI the same way: `gh run download <run-id> -n e2e-output`. Baselines are plain git blobs, not LFS
-(the spec's "LFS: not now" says when to revisit).
+silently. On Linux the scenarios render with the fonts vendored in `tests/e2e/fonts/` (DejaVu,
+and Liberation Sans for Helvetica), drawn as on CI's ubuntu-24.04: the browser gets that
+folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the profile's HOME, so a local
+run compares with CI's baselines with no font package installed (issue #944). Measured on an
+Arch machine, a local run still differs from a baseline by about 0.1 to 0.4 %: the fixture
+server's random port (about 0.08 % between two runs on one machine), the system's FreeType
+version that rasterises the glyphs (about 0.1 to 0.15 % against CI), and the rest baselines older
+than later product changes (rounded corners, the workspace pill's circle), which is why CI itself
+sits at 0.17 to 0.36 %; issue #953 tracks re-recording them from CI with a fixed port. Two
+baselines, `m0-agent-cli-question` and `m0-agent-cli-stopped`, predate the grant line's current
+wording (#754) and exceed the limit locally. A baseline comes from CI: if CI's diff exceeds 0.5 %
+on a baseline made locally, take CI's actual image from the `e2e-output` artifact of the failed
+run (kept 7 days) instead. A missing baseline also leaves `<name>.actual.png` there, so a new
+scenario's first baseline comes from CI the same way: `gh run download <run-id> -n e2e-output`.
+Baselines are plain git blobs, not LFS (the spec's "LFS: not now" says when to revisit).
 
 **Troubleshooting Xvfb.**
 

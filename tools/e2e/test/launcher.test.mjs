@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -18,6 +19,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  E2E_FONTCONFIG,
+  E2E_FONTS,
   PROFILE_PREFS,
   browserArgs,
   browserEnv,
@@ -28,6 +31,7 @@ import {
   findBuild,
   launch,
   quitBrowser,
+  scenarioFontconfig,
   startSessionBus,
   stderrTimeline,
   userJs,
@@ -35,7 +39,7 @@ import {
   waitForSessionSaved,
   xvfbArgs,
 } from "../launcher.mjs";
-import { devPrefs } from "../../start.mjs";
+import { READ_PATH_PREF, devPrefs } from "../../start.mjs";
 import { startFakeServer } from "./fake-server.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
@@ -228,6 +232,32 @@ describe("profile", () => {
     const [[name, value]] = devPrefs(REPO_ROOT);
     expect(js).toContain(`user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
   });
+
+  // Issue #944: the content sandbox reads fonts only from the system's font folders, so a page
+  // drew every glyph as a hex box with the vendored fonts until their folder was allowed too.
+  it("lets content processes read the pinned fonts' folder as well, when asked", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const js = readFileSync(
+      join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
+      "utf8",
+    );
+    // On macOS the repo's src/ goes in another pref (devPrefs), so the list holds the fonts alone.
+    const [[name, src]] = devPrefs(REPO_ROOT);
+    const list = name === READ_PATH_PREF ? `${src},${fonts}` : fonts;
+    expect(js).toContain(`user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(list)});`);
+  });
+
+  it("keeps the pinned fonts' folder readable when a scenario sets its own read paths", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const dir = createProfile(
+      tempDir(),
+      { [READ_PATH_PREF]: "/scenario/" },
+      { readPaths: [fonts] },
+    );
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      `user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(`/scenario/,${fonts}`)});`,
+    );
+  });
 });
 
 describe("browser command line and environment", () => {
@@ -309,6 +339,8 @@ describe("browser command line and environment", () => {
     MOZ_ENABLE_WAYLAND: "1",
     MOZ_USE_XINPUT2: "1",
     DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus",
+    FONTCONFIG_FILE: "/home/dev/.config/fontconfig/fonts.conf",
+    FONTCONFIG_PATH: "/home/dev/.config/fontconfig",
     RANDOM_THING: "x",
   };
 
@@ -347,6 +379,30 @@ describe("browser command line and environment", () => {
     });
   });
 
+  // Issue #944: the desktop's fonts (JetBrainsMono Nerd Font as monospace on one) made 16 of 25
+  // screenshots differ from CI's DejaVu. The browser reads the harness's fontconfig file instead.
+  it("points fontconfig at the harness's file and never at the desktop's", () => {
+    const env = browserEnv(desktop, {
+      display: ":99",
+      home: "/h",
+      tmp: "/t",
+      fontconfig: "/r/tests/e2e/fonts/fonts.conf",
+    });
+    expect(env.FONTCONFIG_FILE).toBe("/r/tests/e2e/fonts/fonts.conf");
+    expect(env.FONTCONFIG_PATH).toBeUndefined();
+    expect(browserEnv(desktop, { display: ":99" }).FONTCONFIG_FILE).toBeUndefined();
+  });
+
+  it("names the vendored fontconfig file in the checkout", () => {
+    expect(E2E_FONTCONFIG).toBe(join(REPO_ROOT, "tests", "e2e", "fonts", "fonts.conf"));
+    expect(existsSync(E2E_FONTCONFIG)).toBe(true);
+  });
+
+  it("pins a scenario's fonts on Linux, not on macOS (Core Text, no screenshots)", () => {
+    expect(scenarioFontconfig("linux")).toBe(E2E_FONTCONFIG);
+    expect(scenarioFontconfig("darwin")).toBeNull();
+  });
+
   it("passes debugging switches through, and the build's own variables", () => {
     const env = browserEnv(
       { PATH: "/b", MOZ_HEADLESS: "1", MOZ_LOG: "x:5", GDK_SCALE: "2" },
@@ -361,6 +417,14 @@ describe("browser command line and environment", () => {
     expect(env.MOZ_HEADLESS).toBe("1");
     for (const k of ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "GDK_BACKEND"])
       expect(env[k]).toBeUndefined();
+  });
+
+  // Issue #944: with an empty profile the URL bar names the engine only if the search service
+  // finished starting before a later update; a window whose bar is empty defers it until the
+  // user types (UrlbarInputBase's #deferUpdatePlaceholder). The name a used profile keeps in this
+  // pref (SearchUIUtils.updatePlaceholderNamePreference) is shown from the start instead.
+  it("names the default engine in the URL bar from the start, whatever the search service's timing", () => {
+    expect(Object.fromEntries(PROFILE_PREFS)["browser.urlbar.placeholderName"]).toBe("Google");
   });
 
   it("pins one device pixel per CSS pixel and a light theme in the profile", () => {
@@ -535,6 +599,29 @@ describe("launch and teardown (fake browser)", () => {
     expect(seen.env.MOZ_ENABLE_WAYLAND).toBeUndefined();
     expect(seen.home).toBe(join(session.profile, ".e2e-home"));
     expect(seen.tmp).toBe(join(session.profile, ".e2e-tmp"));
+  });
+
+  it("gives the browser the fontconfig file it is asked to, and leaves the system's otherwise", async () => {
+    const base = { ...process.env, FONTCONFIG_FILE: "/mine.conf" };
+    const session = await start({}, { baseEnv: base, fontconfig: E2E_FONTCONFIG });
+    cleanups.push(() => session.teardown());
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.FONTCONFIG_FILE).toBe(E2E_FONTCONFIG);
+    // Arch's GTK ships /usr/share/gtk-3.0/settings.ini with "Adwaita Sans 11"; Ubuntu's has
+    // none, so GTK's own "Sans 10" applies there. The profile's HOME gives every machine CI's.
+    const gtk = readFileSync(
+      join(session.profile, ".e2e-home", ".config", "gtk-3.0", "settings.ini"),
+      "utf8",
+    );
+    expect(gtk).toMatch(/^gtk-font-name = Sans 10$/m);
+    expect(readFileSync(join(session.profile, "user.js"), "utf8")).toContain(
+      `${realpathSync(E2E_FONTS)}/`,
+    );
+    const plain = await start({}, { baseEnv: base });
+    cleanups.push(() => plain.teardown());
+    const seenPlain = JSON.parse(readFileSync(join(plain.profile, "fake-browser.json"), "utf8"));
+    expect(seenPlain.env.FONTCONFIG_FILE).toBeUndefined();
+    expect(existsSync(join(plain.profile, ".e2e-home", ".config"))).toBe(false);
   });
 
   // docs/specs/builtin-agent-cli.md, "e2e": setup finds the scenario's CLI on PATH; the file and

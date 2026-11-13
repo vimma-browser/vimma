@@ -1,10 +1,11 @@
 // The CLI's guard: baselines change only in a reviewed commit, never from a CI run.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { E2E_FONTCONFIG } from "../launcher.mjs";
 
 const CLI = fileURLToPath(new URL("../e2e.mjs", import.meta.url));
 // macOS has no /bin/false or /bin/true, only /usr/bin's.
@@ -126,5 +127,65 @@ describe("npm run e2e -- --headless", () => {
     expect(r.status, r.stdout + r.stderr).toBe(0);
     expect(r.stdout).toMatch(/screenshot m0-headless-shot: skipped/);
     expect(existsSync(shots) || existsSync(out)).toBe(false);
+  }, 70_000);
+});
+
+// Issue #944: the scenarios' browser renders with the vendored fonts on Linux, so a local run
+// compares with CI's baselines; the CLI is what hands launch() that fontconfig file.
+describe("npm run e2e: the scenarios' fonts", () => {
+  it("starts the browser with the vendored fontconfig file on Linux, none on macOS", () => {
+    const dir = tempDir("e2e-fonts-");
+    const scenarios = join(dir, "scenarios");
+    mkdirSync(scenarios);
+    writeFileSync(
+      join(scenarios, "m0-fonts.json"),
+      JSON.stringify({
+        name: "m0-fonts",
+        description: "x",
+        timeoutSeconds: 20,
+        steps: [{ "wait-for-state": { mode: "normal" } }],
+      }),
+    );
+    const ctl = join(dir, "vimma-ctl");
+    writeFileSync(
+      ctl,
+      [
+        "#!/bin/sh",
+        'case "$5" in',
+        '  state) echo \'{"mode":"normal"}\' ;;',
+        '  send-keys) f="$2/vimma-control.json"',
+        '    pid=$(sed -n \'s/.*"pid":\\([0-9]*\\).*/\\1/p\' "$f"); rm -f "$f"; kill "$pid" ;;',
+        "esac",
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+    const fakeBrowser = fileURLToPath(new URL("./fixtures/fake-browser.mjs", import.meta.url));
+    // --keep leaves the profile (with the fake browser's record of its env) in TMPDIR, and the
+    // run folder in XDG_RUNTIME_DIR: both inside this test's temp dir, removed with it.
+    const tmp = join(dir, "tmp");
+    const run = join(dir, "run");
+    mkdirSync(tmp);
+    mkdirSync(run, { mode: 0o700 });
+    const r = spawnSync(
+      process.execPath,
+      [
+        CLI,
+        ...["--scenarios", scenarios, "--baselines", join(dir, "shots"), "--out", join(dir, "o")],
+        ...["--headless", "--keep"],
+        ...["--build", fakeBrowser, "--vimma-ctl", ctl, "--discovery-timeout", "10"],
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, CI: "true", TMPDIR: tmp, XDG_RUNTIME_DIR: run },
+        timeout: 60_000,
+      },
+    );
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    const [profile] = readdirSync(tmp).filter((f) => f.startsWith("vimma-e2e-profile-"));
+    const seen = JSON.parse(readFileSync(join(tmp, profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.FONTCONFIG_FILE).toBe(
+      process.platform === "darwin" ? undefined : E2E_FONTCONFIG,
+    );
   }, 70_000);
 });
