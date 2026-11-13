@@ -8,8 +8,6 @@ tools/artifact-build/test/artifact-build.test.mjs
 tools/ci/test/docs-only.test.mjs
 tools/ci/test/tree-covered.test.mjs
 tools/ci/tree-covered.mjs
-tools/deps/release-path.mjs
-tools/deps/test/release-path.test.mjs
 tools/e2e/control-client.mjs
 tools/e2e/driver.mjs
 tools/e2e/e2e.mjs

@@ -182,9 +182,9 @@ describe("build supply chain: Dependabot", () => {
     );
     const run = steps.map((s) => String(s.run ?? "")).join("\n");
     expect(run).toMatch(/git show "\$HEAD_SHA:package-lock\.json"/);
-    expect(run).toMatch(/node tools\/deps\/release-path\.mjs --diff package-lock\.json /);
+    expect(run).toMatch(/node tools\/deps\/release-path\.ts --diff package-lock\.json /);
     expect(run).not.toMatch(/\bnpm (?:ci|install|i)\b|\bnpx\b|git (?:checkout|switch)/);
-    // Only names and versions release-path.mjs checked reach npm diff, which runs no scripts;
+    // Only names and versions release-path.ts checked reach npm diff, which runs no scripts;
     // an unchecked entry is printed with anything but [\w@./+-] replaced, so no newline in a
     // lockfile field can forge a line of the loop's input.
     expect(run).toMatch(/npm diff --ignore-scripts --diff="\$name@\$old" --diff="\$name@\$new"/);

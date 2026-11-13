@@ -2680,7 +2680,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`a release builds in a fresh objdir with an empty compiler cache`](../tools/test/full-build-workflows.test.mjs)
 - B3. Surfer **must** be pinned to one exact version, locked by its integrity hash, and a
   Dependabot change to any package on the release path (Surfer, `ajv` and every package they
-  depend on, computed from `package-lock.json` by `tools/deps/release-path.mjs`) **never** merges
+  depend on, computed from `package-lock.json` by `tools/deps/release-path.ts`) **never** merges
   without a person, security updates and grouped updates included. The `classify` job decides
   from the lockfile diff, running the base commit's code on the head commit's lockfile read as
   data, with a read-only token and no secrets, and shows the published diff (`npm diff`) in its
@@ -2693,12 +2693,12 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`the release-path group comes before the minor and patch group`](../tools/test/build-supply-chain.test.mjs),
   [`dependabot-automerge classifies on base-branch code with a read-only token`](../tools/test/build-supply-chain.test.mjs),
   [`a release-path change is never auto-merged, security updates included`](../tools/test/build-supply-chain.test.mjs),
-  [`the release path is Surfer, ajv and everything they depend on`](../tools/deps/test/release-path.test.mjs),
-  [`the roots cover every package the release build job imports`](../tools/deps/test/release-path.test.mjs),
-  [`a changed release-path package needs review, security updates included`](../tools/deps/test/release-path.test.mjs),
-  [`a change only outside the release path may auto-merge`](../tools/deps/test/release-path.test.mjs),
-  [`a transitive release-path package bumped in a grouped update needs review`](../tools/deps/test/release-path.test.mjs),
-  [`only registry names and exact versions are handed to npm diff`](../tools/deps/test/release-path.test.mjs)
+  [`the release path is Surfer, ajv and everything they depend on`](../tools/deps/test/release-path.test.ts),
+  [`the roots cover every package the release build job imports`](../tools/deps/test/release-path.test.ts),
+  [`a changed release-path package needs review, security updates included`](../tools/deps/test/release-path.test.ts),
+  [`a change only outside the release path may auto-merge`](../tools/deps/test/release-path.test.ts),
+  [`a transitive release-path package bumped in a grouped update needs review`](../tools/deps/test/release-path.test.ts),
+  [`only registry names and exact versions are handed to npm diff`](../tools/deps/test/release-path.test.ts)
 - B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from
   `node_modules`, never a package `npx` fetches, and **never** lets Surfer fetch an add-on.
   [`.npmrc turns install scripts off for every install`](../tools/test/build-supply-chain.test.mjs),
