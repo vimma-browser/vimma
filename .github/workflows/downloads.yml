@@ -41,6 +41,8 @@ jobs:
           persist-credentials: false
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
         with:
           node-version-file: .nvmrc
           package-manager-cache: false # no cache, even when package.json names npm

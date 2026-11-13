@@ -237,14 +237,8 @@ describe("workflow wiring", () => {
   /** @param {string} block */
   function expectClassifyStep(block) {
     const step = steps(block).find((s) => s.text.includes("id: classify"));
-    // Only on a pull request, and only once the base's .nvmrc was found (the step before it).
-    expect(step?.cond).toBe("steps.base-node.outputs.found == 'true'");
-    const baseNode = steps(block).find((s) => s.text.includes("id: base-node"));
-    expect(baseNode?.cond).toBe("github.event_name == 'pull_request'");
-    // ADR-025: the base's copy under either name, .ts first, so the pull request that renames
-    // the classifier is still classified by the base's .mjs (tests below run the step).
-    expect(step?.text).toContain("for ext in ts mjs; do");
-    expect(step?.text).toContain('git show "$BASE:tools/ci/docs-only.$ext"');
+    expect(step?.cond).toBe("github.event_name == 'pull_request'");
+    expect(step?.text).toContain('git show "$BASE:tools/ci/docs-only.mjs"');
     expect(step?.text).toContain("BASE: ${{ github.event.pull_request.base.sha }}");
     expect(step?.text).toContain("HEAD: ${{ github.event.pull_request.head.sha }}");
     expect(step?.text).not.toMatch(/node tools\/ci\/docs-only\.mjs/);
@@ -390,10 +384,9 @@ describe("workflow wiring", () => {
   });
 });
 
-// ADR-025: the classify step reads the base's classifier as docs-only.ts or docs-only.mjs, .ts
-// first, and runs the copy under the name it read, so that the pull request renaming it is still
-// classified by the base's copy and the one after runs the .ts. These run the step's own shell
-// text, as each job has it, in a repository whose base holds one name, both or neither.
+// The classify step runs the base's docs-only.mjs, on the runner's own Node with nothing of the
+// pull request run before it (ADR-025, decision 7: it stays .mjs). These run the step's own shell
+// text, as each job has it, in a repository whose base has the classifier or not.
 describe("the classify step, run as the workflows have it", () => {
   const CLASSIFIER = readFileSync(SCRIPT, "utf8");
   /** Exits 3 and claims docs-only: a copy that must never be the one that runs. */
@@ -484,34 +477,21 @@ describe("the classify step, run as the workflows have it", () => {
   describe.each(JOBS)("%s %s", (file, jobId) => {
     const script = classifyScript(file, jobId);
 
-    it("runs the base's docs-only.ts, copied as .ts, once the base has the .ts name", () => {
-      const res = runStep(script, { "docs-only.ts": CLASSIFIER });
-      expect(res.status).toBe(0);
-      expect(res.written).toBe("docs-only=true\n");
-      expect(res.copies).toEqual(["docs-only.ts"]);
-    });
-
-    it("runs the base's docs-only.mjs while the base has only the .mjs name", () => {
+    it("runs the base's docs-only.mjs", () => {
       const res = runStep(script, { "docs-only.mjs": CLASSIFIER });
       expect(res.status).toBe(0);
       expect(res.written).toBe("docs-only=true\n");
       expect(res.copies).toEqual(["docs-only.mjs"]);
     });
 
-    it("prefers the .ts name when the base has both", () => {
-      const res = runStep(script, { "docs-only.ts": CLASSIFIER, "docs-only.mjs": DECOY });
-      expect(res.status).toBe(0);
-      expect(res.written).toBe("docs-only=true\n");
-    });
-
-    it("runs everything when the base has neither: no output, no skipped step", () => {
+    it("runs everything when the base has no classifier: no output, no skipped step", () => {
       const res = runStep(script, { "other.mjs": "" });
       expect(res.status).toBe(0);
       expect(res.stdout).toContain("No classifier on the base: running everything");
       expect(res.written).toBe("");
     });
 
-    it("never runs the pull request's own copy, under either name", () => {
+    it("never runs the pull request's own copy, under any name", () => {
       const head = {
         "tools/ci/docs-only.ts": DECOY,
         "tools/ci/docs-only.mjs": DECOY,
@@ -525,7 +505,7 @@ describe("the classify step, run as the workflows have it", () => {
     });
 
     it("fails the step, rather than skipping checks, when the base's copy cannot run", () => {
-      const res = runStep(script, { "docs-only.ts": "process.exit(2);\n" });
+      const res = runStep(script, { "docs-only.mjs": "process.exit(2);\n" });
       expect(res.status).not.toBe(0);
       expect(res.written).toBe("");
     });
@@ -534,8 +514,8 @@ describe("the classify step, run as the workflows have it", () => {
   // The classifier, like most tools here, runs its main() only when process.argv[1] is the real
   // path of the module (fileURLToPath(import.meta.url), which Node resolves). Started through a
   // symlinked directory it does nothing and exits 0: no output, so every check runs. The runners'
-  // RUNNER_TEMP is a real path; this pins the fail-safe result, and the tools/ci rename gives
-  // docs-only the symlink handling key-guard.mjs has.
+  // RUNNER_TEMP is a real path; this pins the fail-safe result. Giving docs-only the symlink
+  // handling key-guard.mjs has would make it judge here too.
   it("through a symlinked RUNNER_TEMP the classifier does nothing, so everything runs", () => {
     const real = realpathSync(tempDir("vimma-classify-real-"));
     const link = join(realpathSync(tempDir("vimma-classify-link-")), "temp");
@@ -550,26 +530,8 @@ describe("the classify step, run as the workflows have it", () => {
     expect(res.written).toBe("");
   });
 
-  describe.each(JOBS)("%s %s: the base's .nvmrc", (file, jobId) => {
-    const script = classifyScript(file, jobId, "base-node");
-
-    it("writes the base's .nvmrc for setup-node, whatever the pull request's says", () => {
-      const res = runStep(script, { ".nvmrc": "22.23.3\n" }, { ".nvmrc": "18.0.0\n" });
-      expect(res.status).toBe(0);
-      expect(res.written).toBe("found=true\n");
-      expect(readFileSync(join(res.temp, "base.nvmrc"), "utf8")).toBe("22.23.3\n");
-    });
-
-    it("finds nothing on a base without .nvmrc, so the classifier skips and everything runs", () => {
-      const res = runStep(script, { "docs-only.mjs": CLASSIFIER }, { ".nvmrc": "22.23.3\n" });
-      expect(res.status).toBe(0);
-      expect(res.written).toBe("");
-      expect(res.stdout).toContain("No .nvmrc on the base: running everything");
-    });
-  });
-
-  // ci.yml and e2e.yml read the .ts name first: a branch that held both would run the .ts and
-  // leave the .mjs unseen, so the rename deletes the .mjs in the same change (ADR-025).
+  // A tools/ci tool under two names leaves a reader unsure which one a workflow runs; the guards
+  // stay .mjs (ADR-025, decision 7), and tree-covered moves by renaming, never by copying.
   it("this branch holds each tools/ci tool under one name only", () => {
     const tracked = git(ROOT, "ls-files", "tools/ci").split("\n").filter(Boolean);
     for (const f of tracked.filter((t) => t.endsWith(".ts")))

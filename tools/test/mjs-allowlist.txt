@@ -1,13 +1,11 @@
 # The .mjs files under tools/ that have not moved to .ts yet (ADR-025, #946). Nothing is added
 # here: new Node code under tools/ is .ts. Each pull request that moves an area takes its files off,
-# and tools/test/mjs-ratchet.test.ts fails until it does. tools/claude-plugin stays .mjs and is
-# not listed.
+# and tools/test/mjs-ratchet.test.ts fails until it does. tools/claude-plugin and the base-branch
+# guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs (ADR-025,
+# decision 7) and are not listed.
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs
-tools/ci/docs-only.mjs
-tools/ci/key-guard.mjs
 tools/ci/test/docs-only.test.mjs
-tools/ci/test/key-guard.test.mjs
 tools/ci/test/tree-covered.test.mjs
 tools/ci/tree-covered.mjs
 tools/deps/release-path.mjs

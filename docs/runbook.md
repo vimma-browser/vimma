@@ -659,14 +659,12 @@ minutes and logs show every push. Check `git log origin/main` if anything looks 
 A pull request whose every changed file is prose Markdown skips the work Markdown cannot affect.
 `tools/ci/docs-only.mjs` decides from `git diff --name-only --no-renames base...head` (never the
 title or body); ci.yml and e2e.yml run it as the base branch has it, so a pull
-request cannot change the classifier that judges it. They read the base's `docs-only.ts` first
-and `docs-only.mjs` second, and run the copy under the name it had (ADR-025): the pull request
-that renames the classifier is still judged by the base's `.mjs`. The Node it runs on is the
-base's too: a step writes `git show "$BASE:.nvmrc"` to `$RUNNER_TEMP/base.nvmrc` for
-`actions/setup-node`, with `package-manager-cache: false`, so nothing of the pull request is read
-before the answer. A base with neither name, or without `.nvmrc`, runs everything; a copy that
-fails fails the step. Started through a symlinked path the classifier does nothing and exits 0,
-which also runs everything; the runners' `$RUNNER_TEMP` is a real path.
+request cannot change the classifier that judges it. It runs on the runner image's own Node, and
+only the checkout comes before it: no step runs anything in the pull request's checkout first,
+not even `actions/setup-node`, whose version checks start the package managers there, and those
+read their configuration from the checkout (docs/security.md, B17). That is why it stays `.mjs`
+(ADR-025, decision 7). Started through a symlinked path the classifier does nothing and exits 0,
+which runs everything; the runners' `$RUNNER_TEMP` is a real path.
 
 **Docs-only** means all of these hold:
 
@@ -1131,8 +1129,8 @@ If the step does fail without a slowing change, that is a flake: quarantine it (
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
-pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the docs-only
-classifier steps use the base branch's `.nvmrc`), and so do the nightly build jobs and most
+pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the base-branch
+guards run on the runner's own Node, docs/security.md B17), and so do the nightly build jobs and most
 release jobs. Five release.yml jobs (`ctl`, `package`, `mar`, `macos-ctl`, `macos-smoke`) and
 macos.yml's `smoke` set up `node-version: 22`, the newest 22.x the runner has; the package job
 checks out a release tag, and tags from before `.nvmrc` lack it. `tools/test/runner-node.test.ts`

@@ -18,7 +18,6 @@ const WORKFLOWS = fileURLToPath(new URL("../../.github/workflows/", import.meta.
 
 const RUNNER_NODE = [
   "dependabot-automerge.yml classify",
-  "key-guard.yml key-guard",
   "upstream-beta.yml detect",
   "upstream-beta.yml render",
   "upstream-merge.yml merge",
@@ -51,22 +50,29 @@ const PRINTS_ONLY = ["fuzz.yml report"];
 // .npmrc before the guard, restore ~/.npm and save a cache in the post step. Each says
 // package-manager-cache: false, so that a field added to package.json later changes nothing here.
 const NO_AUTO_CACHE = [
-  "ci.yml check",
   "ci.yml covered",
-  "ci.yml vimma-ctl-macos",
   "downloads.yml collect",
-  "e2e.yml changes",
   "mutation.yml report",
   "pkgbuild.yml covered",
   "semgrep.yml covered",
   "spec-status.yml check",
 ];
 
-// The jobs that run the base branch's docs-only classifier: they set up the base's .nvmrc, written
-// by an earlier step from `git show "$BASE:.nvmrc"`, so the pull request does not choose the Node
-// that judges it.
-const BASE_NODE = ["ci.yml check", "ci.yml vimma-ctl-macos", "e2e.yml changes"];
-const BASE_NVMRC = "${{ runner.temp }}/base.nvmrc";
+// Jobs that run a guard from the base branch (`git show "$BASE:tools/…"`): the docs-only
+// classifier and the Mozilla release key guard. They run it on the runner image's own Node on
+// purpose, and stay on it: nothing of the pull request may run in its checkout before the guard,
+// and actions/setup-node does (it prints `npm --version` and `yarn --version` there, and a
+// package manager reads its configuration from the current directory). So these guards stay
+// .mjs (ADR-025, decision 7). Not a list that shrinks.
+const BASE_GUARDS = [
+  "ci.yml check",
+  "ci.yml vimma-ctl-macos",
+  "e2e.yml changes",
+  "key-guard.yml key-guard",
+];
+
+/** A step that runs a tool from the base branch's tree. */
+const runsBaseGuard = (s: Step) => /git show "\$BASE:tools\//.test(s.run ?? "");
 
 type Step = { uses?: string; run?: string; if?: string; with?: Record<string, unknown> };
 type Job = { steps?: Step[] };
@@ -94,9 +100,7 @@ function runsNode(step: Step): boolean {
 }
 
 const isAnySetupNode = (s: Step) => (s.uses ?? "").startsWith("actions/setup-node@");
-const isSetupNode = (s: Step) =>
-  isAnySetupNode(s) &&
-  (s.with?.["node-version-file"] === ".nvmrc" || s.with?.["node-version-file"] === BASE_NVMRC);
+const isSetupNode = (s: Step) => isAnySetupNode(s) && s.with?.["node-version-file"] === ".nvmrc";
 
 /** The jobs whose first Node step comes before any setup-node step. */
 function onRunnerNode(): string[] {
@@ -139,7 +143,7 @@ function kept(file: string, { paths, cone }: { paths: string[]; cone: boolean })
 
 describe("the Node a workflow job runs its tools on", () => {
   it("every job sets up Node before it runs node, npm or npx, but the listed ones", () => {
-    expect(onRunnerNode()).toEqual(RUNNER_NODE);
+    expect(onRunnerNode()).toEqual([...RUNNER_NODE, ...BASE_GUARDS].sort());
   });
 
   it("every setup-node step takes .nvmrc's version, but in the listed jobs", () => {
@@ -165,7 +169,7 @@ describe("the Node a workflow job runs its tools on", () => {
       if (RUNNER_NODE.includes(name) || PRINTS_ONLY.includes(name)) continue;
       const steps = job.steps ?? [];
       steps.forEach((step, i) => {
-        if (!runsNode(step)) return;
+        if (!runsNode(step) || runsBaseGuard(step)) return;
         const covered = steps
           .slice(0, i)
           .some((s) => isAnySetupNode(s) && (s.if === undefined || s.if === step.if));
@@ -190,21 +194,34 @@ describe("the Node a workflow job runs its tools on", () => {
       expect(setup, name).toBeLessThan(first);
       expect(steps[setup]?.with?.cache, name).toBeUndefined();
       expect(steps[setup]?.with?.["package-manager-cache"], name).toBe(false);
+      // Yarn 1 on the runner, which setup-node asks for its version, honours this.
+      expect((steps[setup] as { env?: Record<string, string> }).env?.YARN_IGNORE_PATH, name).toBe(
+        "1",
+      );
     }
   });
 
-  it("the docs-only classifier runs on the base's .nvmrc, not the pull request's", () => {
+  // A guard from the base judges the pull request, so nothing the pull request supplies may run
+  // before it: no action but the checkout (setup-node runs npm and yarn in the checkout, which
+  // read its .npmrc and .yarnrc), and no node, npm, npx or yarn of the job's own.
+  it("nothing runs in the pull request's checkout before a guard from the base", () => {
+    const found: string[] = [];
     for (const { name, job } of workflowJobs()) {
-      if (!BASE_NODE.includes(name)) continue;
       const steps = job.steps ?? [];
-      const classify = steps.findIndex((s) => (s as { id?: string }).id === "classify");
-      const write = steps.findIndex((s) => (s.run ?? "").includes('git show "$BASE:.nvmrc"'));
-      const setup = steps.findIndex(
-        (s) => isAnySetupNode(s) && s.with?.["node-version-file"] === BASE_NVMRC,
-      );
-      expect([name, write >= 0, write < setup, setup < classify]).toEqual([name, true, true, true]);
-      expect(steps[write]?.run, name).toContain('> "$RUNNER_TEMP/base.nvmrc"');
+      const guard = steps.findIndex(runsBaseGuard);
+      if (guard < 0) continue;
+      found.push(name);
+      steps.slice(0, guard).forEach((s, i) => {
+        const what = s.uses ?? s.run ?? "";
+        const ok = s.uses
+          ? s.uses.startsWith("actions/checkout@")
+          : !/(?:^|[\s;&|(`])(?:node|npm|npx|yarn)(?:\s|$)/m.test(s.run ?? "");
+        expect(`${name} step ${i} before the guard: ${what.split("\n")[0]}: ${ok}`).toMatch(
+          /: true$/,
+        );
+      });
     }
+    expect(found.sort()).toEqual(BASE_GUARDS);
   });
 
   // A sparse checkout without .nvmrc fails setup-node; one without the tool it runs fails the

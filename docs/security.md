@@ -3182,6 +3182,18 @@ environment and its secrets (B14). No Linux job needs them, so a macOS failure h
   [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.mjs),
   [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.mjs),
   [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.mjs)
+- B17. A guard that a workflow runs from the base branch (`git show "$BASE:tools/…"`: the
+  docs-only classifier in ci.yml and e2e.yml, the release key guard in key-guard.yml) judges the
+  pull request whose checkout it runs in, so **nothing** of that checkout may run before it: no
+  action but `actions/checkout`, and no `node`, `npm`, `npx` or `yarn` step. Setting up a tool
+  counts: `actions/setup-node` prints the versions of `npm` and `yarn` in the checkout, and a
+  package manager reads its configuration, which can name a program to start, from the current
+  directory, so a pull request could run its own code before the guard and change what the guard
+  answers. These guards therefore run on the runner image's own Node and stay `.mjs` (ADR-025,
+  decision 7). The `actions/setup-node` steps that run before other tools, on trusted refs only,
+  set `YARN_IGNORE_PATH`, which Yarn 1 honours, and `package-manager-cache: false`.
+  [`nothing runs in the pull request's checkout before a guard from the base`](../tools/test/runner-node.test.ts),
+  [`a setup-node before a guard or a token-holding tool never caches by itself`](../tools/test/runner-node.test.ts)
 
 ## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
 
