@@ -33,7 +33,7 @@ import { McpHost } from "./mcp-ops.mjs";
 
 /** @import { Question, GateEvent } from "../ctl/AgentGate.sys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AgentChat" | "PrivateBrowsingUtils" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   // Lazily: AgentChat runs its tools through agent-commands, which imports this module.
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
@@ -76,14 +76,14 @@ const HELD_MS = 6000;
  * @property {() => void} [focusChat]  focus the chat window (its question waits there)
  */
 
-/** @type {Map<Window, AgentWindow>} */
+/** @type {Map<BrowserWindow, AgentWindow>} */
 const windows = new Map();
-/** When each window last had a key. @type {WeakMap<Window, number>} */
+/** When each window last had a key. @type {WeakMap<BrowserWindow, number>} */
 const lastKey = new WeakMap();
 /**
  * The question on screen: which, where, the digits typed, and whether in a chat window's slot
  * rather than on the question line.
- * @type {{ id: number, win: Window, count: string, question: Question, slot: boolean } | null}
+ * @type {{ id: number, win: BrowserWindow, count: string, question: Question, slot: boolean } | null}
  */
 let current = null;
 /** Questions a window not in front was told about already (decision 15: once each). */
@@ -100,7 +100,7 @@ let listening = false;
 /** The window that asks: the most recent normal (non-private) browser window. */
 function askingWindow() {
   let best = null;
-  for (const win of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+  for (const win of Services.wm.getEnumerator("navigator:browser")) {
     if (!windows.has(win) || lazy.PrivateBrowsingUtils.isWindowPrivate(win)) continue;
     best = win;
   }
@@ -109,10 +109,10 @@ function askingWindow() {
   return best;
 }
 
-/** @param {Window} win */
-const isFocused = (win) => /** @type {any} */ (Services.focus).activeWindow === win;
+/** @param {BrowserWindow} win */
+const isFocused = (win) => Services.focus.activeWindow === win;
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 const isFullscreen = (win) => win.document.documentElement.hasAttribute("inDOMFullscreen");
 
 const grantMinutes = () => McpHost.config?.grantMinutes ?? 0;
@@ -120,14 +120,14 @@ const armMs = () => Services.prefs.getIntPref(ARMING_PREF, 1000);
 
 /** Window events after which the line must arm again (security.md M4). */
 const REARM_EVENTS = ["activate", "deactivate", "focus", "blur"];
-/** @type {WeakMap<Window, (e: Event) => void>} */
+/** @type {WeakMap<BrowserWindow, (e: Event) => void>} */
 const rearmers = new WeakMap();
 
 /**
  * The window came to the front or left it, or its page was hidden or shown: a just-focused
  * window counts as one being typed in (no opening by itself for 1.5 s), and an open line arms
  * again, so a key meant for another window never answers it.
- * @param {Window} win @param {Event} e
+ * @param {BrowserWindow} win @param {Event} e
  */
 function onWindowChange(win, e) {
   // focus and blur bubble from every element: only the window's own count.
@@ -138,7 +138,7 @@ function onWindowChange(win, e) {
 
 /**
  * Where a question shows: the line, or the chat window's slot.
- * @param {{ win: Window, slot: boolean }} where
+ * @param {{ win: BrowserWindow, slot: boolean }} where
  */
 function promptOf({ win, slot }) {
   const w = windows.get(win);
@@ -149,7 +149,7 @@ function promptOf({ win, slot }) {
  * The window whose chat shows the conversation that asks: its questions go to that window's
  * slot, not the line (docs/specs/builtin-agent.md Behaviour 27), one place at a time.
  * @param {import("../core/agent.mjs").ConnId} conn
- * @returns {Window | null}
+ * @returns {BrowserWindow | null}
  */
 function slotWindow(conn) {
   for (const [win, w] of windows) {
@@ -160,7 +160,7 @@ function slotWindow(conn) {
   return null;
 }
 
-/** @param {Window} win @param {Question} q @param {boolean} [slot] */
+/** @param {BrowserWindow} win @param {Question} q @param {boolean} [slot] */
 function open(win, q, slot = false) {
   const w = windows.get(win);
   const prompt = slot ? w?.slot : w?.prompt;
@@ -263,11 +263,11 @@ function showHeld() {
 /**
  * Decision 15: the urgency hint, and a desktop notification with who and what, never a URL or
  * title, and no buttons (an approval outside Vimma's view and its arming delay).
- * @param {Window} win @param {Question} q
+ * @param {BrowserWindow} win @param {Question} q
  */
 function attention(win, q) {
   try {
-    /** @type {any} */ (win).getAttention();
+    win.getAttention();
   } catch (e) {
     console.error("vimma agent: getAttention", e);
   }
@@ -328,7 +328,7 @@ function onGate(event) {
 export const AgentUi = {
   /**
    * A browser window's prompt and what the host knows about it (VimmaHost.init).
-   * @param {Window} win @param {AgentWindow} w
+   * @param {BrowserWindow} win @param {AgentWindow} w
    */
   register(win, w) {
     windows.set(win, w);
@@ -342,7 +342,7 @@ export const AgentUi = {
     }
   },
 
-  /** @param {Window} win  closing (VimmaHost.uninit) */
+  /** @param {BrowserWindow} win  closing (VimmaHost.uninit) */
   unregister(win) {
     const rearm = rearmers.get(win);
     if (rearm) {
@@ -363,7 +363,7 @@ export const AgentUi = {
    * Every keydown in `win`, before any binding: the open question's keys (consumed), or a
    * timestamp for the "no key for 1,500 ms" rule. Chords with ctrl, alt or meta go on to the
    * bindings. A held key never counts; nothing counts before the line is armed.
-   * @param {Window} win @param {KeyboardEvent} e
+   * @param {BrowserWindow} win @param {KeyboardEvent} e
    * @returns {boolean} whether the key was the question's
    */
   onKey(win, e) {
@@ -419,7 +419,7 @@ export const AgentUi = {
   /**
    * Focus moved in `win`: into a field, the line goes back to waiting (decision 14), so what
    * is typed there is never an answer.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   onFocusChange(win) {
     if (current?.win !== win || current.slot) return;
@@ -433,7 +433,7 @@ export const AgentUi = {
    * `ctrl+b shift+a` (`mcp.answer`): the waiting question opens here, whatever the guards say;
    * with none, every grant ends at once (docs/specs/mcp-grants.md G4: ending is the safe
    * direction, so it takes no second key).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   answer(win) {
     const w = windows.get(win);
@@ -485,7 +485,7 @@ export const AgentUi = {
 
   /**
    * Focus came into `win`'s chat window: a question in its slot arms again (security.md M43).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   rearmSlot(win) {
     if (current?.win === win && current.slot) windows.get(win)?.slot?.rearm(armMs());
@@ -499,7 +499,7 @@ export const AgentUi = {
   /**
    * The window that asks and shows the notices: where the user answers (mcp-drive D6 names
    * another window that a show switched).
-   * @returns {Window | null}
+   * @returns {BrowserWindow | null}
    */
   askingWindow() {
     return askingWindow();

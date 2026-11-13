@@ -51,15 +51,6 @@ const WINDOW_EVENTS = [
 const SIZES = ["minimal", "prompt", "full"];
 
 /**
- * @typedef {Window & {
- *   gURLBar: HTMLElement & { focused: boolean, view: { isOpen: boolean } },
- *   gBrowser: { selectedBrowser: HTMLElement },
- *   PopupNotifications?: { panel: Element & { state: string } },
- *   UpdatePopupNotificationsVisibility?: () => void,
- * }} BrowserWindow
- */
-
-/**
  * @typedef {object} ToolbarHost  what the toolbar needs from VimmaHost
  * @property {(text: string) => void} say  the notice
  * @property {(text: string) => void} log  about:vimma's key log
@@ -72,7 +63,7 @@ const instances = new WeakMap();
 const styled = new WeakSet();
 
 export class Toolbar {
-  /** @param {Window} win */
+  /** @param {BrowserWindow} win */
   static get(win) {
     return instances.get(win) ?? null;
   }
@@ -88,11 +79,11 @@ export class Toolbar {
   }
 
   /**
-   * @param {Window} win  a browser window, from its first script (before the body exists)
+   * @param {BrowserWindow} win  a browser window, from its first script (before the body exists)
    * @param {ToolbarHost} host
    */
   constructor(win, host) {
-    this.win = /** @type {BrowserWindow} */ (win);
+    this.win = /** @type {EarlyBrowserWindow} */ (win);
     this.host = host;
     /** @type {Map<unknown, Size>} why the bar is revealed, and how much each reason asks for */
     this.reasons = new Map();
@@ -170,7 +161,8 @@ export class Toolbar {
     const hidden = Toolbar.hidden;
     const doc = this.win.document;
     if (hidden && this.focusInBar()) {
-      this.win.gBrowser.selectedBrowser.focus();
+      // Focus in the bar: the window is up, with its gBrowser.
+      /** @type {BrowserWindow} */ (this.win).gBrowser.selectedBrowser.focus();
       this.reasons.delete("urlbar");
       this.reasons.delete("focus");
     }
@@ -391,7 +383,7 @@ export class Toolbar {
 
   /** @private @returns {Element | null} */
   focusedElement() {
-    return /** @type {any} */ (this.win.document).commandDispatcher?.focusedElement ?? null;
+    return this.win.document.commandDispatcher?.focusedElement ?? null;
   }
 
   /** @private @param {any} node */

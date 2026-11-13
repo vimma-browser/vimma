@@ -37,7 +37,7 @@ export { isBrowserWindow } from "./native-swap.mjs";
 /** @import { Client, Command, Dialect, Pair, PairEvent, ShowOp } from "../core/hyprswap.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"setTimeout" | "VimmaHost">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   VimmaHost: "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
@@ -74,22 +74,22 @@ let skipped = null;
 /** Tests: a fake Hyprland, so the headless and Wayland checks do not apply. */
 let forced = false;
 
-/** @type {WeakMap<Window, string>} */
+/** @type {WeakMap<BrowserWindow, string>} */
 const addresses = new WeakMap();
-/** @type {WeakMap<Window, Promise<string | null>>} */
+/** @type {WeakMap<BrowserWindow, Promise<string | null>>} */
 let resolving = new WeakMap();
-/** The switches that wait on the naming in `resolving`. @type {WeakMap<Window, Set<number>>} */
+/** The switches that wait on the naming in `resolving`. @type {WeakMap<BrowserWindow, Set<number>>} */
 let waiters = new WeakMap();
 /** Bumped by a reset: a naming begun before it ends without an address. */
 let naming = 0;
-/** @type {Map<string, WeakRef<Window>>} */
+/** @type {Map<string, WeakRef<BrowserWindow>>} */
 const byAddress = new Map();
 /** Pending nonce titles and who waits for them. @type {Map<string, (a: string | null) => void>} */
 const nonces = new Map();
 /** The last known record of each of our windows, for a window already gone (decision 7). */
 /** @type {Map<string, Client>} */
 const records = new Map();
-/** @type {Set<Window>} every browser window seen, to resolve once swap applies */
+/** @type {Set<BrowserWindow>} every browser window seen, to resolve once swap applies */
 const windows = new Set();
 /** @type {{ close: () => void } | null} */
 let events = null;
@@ -126,7 +126,7 @@ let switches = 0;
  * Private windows a switch opened that no switch has swapped in yet: a dropped switch, or one
  * whose naming gave up, leaves its window here, so the next switch to it still swaps it in
  * rather than only focusing it.
- * @type {WeakSet<Window>}
+ * @type {WeakSet<BrowserWindow>}
  */
 let unswapped = new WeakSet();
 
@@ -138,11 +138,11 @@ const NOT_NAMED = "private: Hyprland did not name the Vimma window; showing it a
  * it closed first. The window OpenBrowserWindow returns still shows the initial about:blank,
  * without browser-init.js's delayedStartupPromise, and a title set on that document never
  * reaches the window manager.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Promise<boolean>}
  */
 export function startedUp(win) {
-  const w = /** @type {any} */ (win);
+  const w = win;
   if (w.closed) return Promise.resolve(false);
   if (w.gBrowserInit?.delayedStartupFinished) return Promise.resolve(true);
   const READY = "browser-delayed-startup-finished";
@@ -164,7 +164,7 @@ export function startedUp(win) {
 function gate() {
   if (!forced) {
     if (Services.env.get("MOZ_HEADLESS")) return "headless";
-    if (!(/** @type {any} */ (Services.appinfo).isWayland)) return "not on Wayland";
+    if (!Services.appinfo.isWayland) return "not on Wayland";
   }
   return HyprIpc.sockets ? null : "not on Hyprland";
 }
@@ -288,7 +288,7 @@ function onLine(line) {
 /**
  * The window's Hyprland address, learnt once: it carries a random title until Hyprland's event
  * names it, then its own title again (decision 5).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {number} [by]  the switch that waits on it (0: none). Only a give-up that the latest
  *   switch waits on shortens later waits.
  * @returns {Promise<string | null>}
@@ -318,7 +318,7 @@ function addressOf(win, by = 0) {
     const doc = win.document;
     doc.title = nonce;
     const deadline = Date.now() + NAME_MS;
-    const keep = new /** @type {any} */ (win).MutationObserver(() => {
+    const keep = new win.MutationObserver(() => {
       // A reset began another naming of this window while this one still waits on a request:
       // two observers holding two nonces would retitle each other forever.
       if (at !== naming) {
@@ -364,7 +364,7 @@ function addressOf(win, by = 0) {
     nonces.delete(nonce);
     if (at !== naming) address = null;
     keep.disconnect();
-    if (!win.closed) /** @type {any} */ (win).gBrowser?.updateTitlebar();
+    if (!win.closed) win.gBrowser?.updateTitlebar();
     if (address && !win.closed) {
       addresses.set(win, address);
       byAddress.set(address, new WeakRef(win));
@@ -500,7 +500,7 @@ async function showInPlace(op, { cached = false }) {
  * @returns {Promise<boolean>} whether every swap was done
  */
 function step(event, options = {}) {
-  if (/** @type {any} */ (Services).startup.shuttingDown) return Promise.resolve(false);
+  if (Services.startup.shuttingDown) return Promise.resolve(false);
   const { state, ops } = pairStep(pair, event);
   if (pair && !state && (event.type === "moved" || event.type === "failed")) forget();
   else pair = state;
@@ -526,7 +526,7 @@ function step(event, options = {}) {
   return chain;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function onActivated(win) {
   const a = addresses.get(win);
   if (!a || running || Date.now() < settleUntil || parkedWindow(pair) !== a) return;
@@ -536,7 +536,7 @@ function onActivated(win) {
 /**
  * A new tab in the parked normal window (a link from another app, decided question 2) brings
  * it back. Never the parked private window's: that would show private content in the slot.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function onTabOpen(win) {
   const a = addresses.get(win);
@@ -544,7 +544,7 @@ function onTabOpen(win) {
   step({ type: "activated", window: a });
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function onUnload(win) {
   windows.delete(win);
   const a = addresses.get(win);
@@ -552,7 +552,7 @@ function onUnload(win) {
   step({ type: "closing", window: a }, { cached: true });
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function track(win) {
   if (!configured || placement !== "swap" || failed || win.closed) return;
   addressOf(win).then((a) => {
@@ -564,7 +564,7 @@ const HyprSwap = {
   /**
    * Once per browser window (vimma.js): its address is learnt while swap placement applies,
    * and its close, activation and new tabs are watched (decision 7).
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   init(win) {
     if (windows.has(win)) return;
@@ -597,8 +597,8 @@ const HyprSwap = {
   /**
    * Going to private (private-ops enterPrivate): shows `priv` in `from`'s slot. False when the
    * swap does not apply, and the caller focuses `priv` as before.
-   * @param {Window} from  a normal window
-   * @param {Window} priv  the most recent private window
+   * @param {BrowserWindow} from  a normal window
+   * @param {BrowserWindow} priv  the most recent private window
    * @param {boolean} fresh  just opened by this switch
    * @returns {boolean}
    */
@@ -636,7 +636,7 @@ const HyprSwap = {
    * Going back to normal window `win` (private-ops showNormal): the parked window comes back in
    * the private one's slot, then `win` is focused if it is another one. False when nothing is
    * parked, and the caller focuses `win` as before.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @returns {boolean}
    */
   show(win) {
@@ -732,11 +732,11 @@ const HyprSwap = {
  * inherited: every public member (init, configure, enter, show, beforeClose, status) is routed
  * here, and a new one must be too, or it would reach macOS through the prototype.
  * browser_vimma_private_swap_native.js fails on a public member that is not routed.
- * @type {typeof HyprSwap & { openFeatures(from: Window): string | null }}
+ * @type {typeof HyprSwap & { openFeatures(from: BrowserWindow): string | null }}
  */
 export const PrivateSwap = Object.create(HyprSwap, {
   init: {
-    value(/** @type {Window} */ win) {
+    value(/** @type {BrowserWindow} */ win) {
       NativeSwap.init(win);
       HyprSwap.init(win);
     },
@@ -749,15 +749,19 @@ export const PrivateSwap = Object.create(HyprSwap, {
   },
   // Where a new private window opens to take a window's place; null: as before.
   openFeatures: {
-    value: (/** @type {Window} */ from) =>
+    value: (/** @type {BrowserWindow} */ from) =>
       NativeSwap.selected ? NativeSwap.openFeatures(from) : null,
   },
   enter: {
-    value: (/** @type {Window} */ from, /** @type {Window} */ priv, /** @type {boolean} */ fresh) =>
-      (NativeSwap.selected ? NativeSwap : HyprSwap).enter(from, priv, fresh),
+    value: (
+      /** @type {BrowserWindow} */ from,
+      /** @type {BrowserWindow} */ priv,
+      /** @type {boolean} */ fresh,
+    ) => (NativeSwap.selected ? NativeSwap : HyprSwap).enter(from, priv, fresh),
   },
   show: {
-    value: (/** @type {Window} */ win) => (NativeSwap.selected ? NativeSwap : HyprSwap).show(win),
+    value: (/** @type {BrowserWindow} */ win) =>
+      (NativeSwap.selected ? NativeSwap : HyprSwap).show(win),
   },
   beforeClose: {
     value: () => (NativeSwap.selected ? NativeSwap : HyprSwap).beforeClose(),

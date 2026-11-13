@@ -12,7 +12,7 @@ import { moveTabQuestion } from "../core/workspacedefs.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"AgentChat">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 });
@@ -31,7 +31,7 @@ const tabTitle = (tab) =>
  * `P`, `:agent give` (Behaviour 17): the browser window's selected tab becomes conversation
  * `id`'s. A tab of another workspace moves to the agent workspace after a y, reopened there with
  * its cookies and without its history; the agent never reads it where it is (B16).
- * @param {Window} win @param {number} id
+ * @param {BrowserWindow} win @param {number} id
  * @param {(question: string, yes: () => void) => void} ask
  * @param {(text: string) => void} say
  */
@@ -42,7 +42,7 @@ export function giveSelectedTab(win, id, ask, say) {
     say("agent: there is no agent workspace (containers off?)");
     return;
   }
-  const gBrowser = /** @type {any} */ (win).gBrowser;
+  const gBrowser = win.gBrowser;
   const tab = gBrowser.selectedTab;
   const title = tabTitle(tab);
   if (tab.userContextId === /** @type {any} */ (agent).userContextId && !ww.isForeign(tab)) {

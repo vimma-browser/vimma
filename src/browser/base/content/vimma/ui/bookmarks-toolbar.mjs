@@ -13,7 +13,7 @@ import { MIGRATION_NOTICE, needsMigration, visibilityFor } from "../core/bookmar
 
 /** @import { BookmarksToolbarSetting } from "../core/bookmarks-toolbar.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"CustomizableUI">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   CustomizableUI: "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
 });

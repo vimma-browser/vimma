@@ -14,12 +14,12 @@ import { bindingTable, filterBindings, keyLegend } from "../core/help.mjs";
 export const HELP_OVERLAY_ID = "vimma-help";
 const STYLESHEET = "chrome://browser/skin/vimma/help-overlay.css";
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-/** @type {WeakSet<Window>} windows our stylesheet is loaded into */
+/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into */
 const styled = new WeakSet();
 
 export class HelpOverlay {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {Keymap} keymap  the keymap the dispatcher uses, so help cannot drift from behaviour
    * @param {ReadonlySet<string>} [runnable]  action ids the host runs (VimmaHost's RUNNABLE);
    *   the others are dimmed, under a legend (core's isRunnable).

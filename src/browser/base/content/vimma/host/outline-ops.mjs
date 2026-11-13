@@ -64,7 +64,7 @@ const outlineHidden = new WeakMap();
  */
 export function showOutlineBeside(s, host) {
   if (Services.prefs.getBoolPref(PDF_OUTLINE_PREF, false)) return;
-  const browser = /** @type {any} */ (s.win).gBrowser?.selectedBrowser;
+  const browser = s.win.gBrowser?.selectedBrowser;
   const key = browser && PdfOps.documentKey(browser);
   if (!key || s.outline.isOpen || outlineHidden.get(browser) === key) return;
   if (host.surfaceOpen(s) || s.agentChat.isOpen) return;

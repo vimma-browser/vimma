@@ -16,7 +16,7 @@ import { isPrivateBrowsing, isPrivateWorkspace } from "./private-ops.mjs";
 /** @import { PickerItem } from "../core/picker.mjs" */
 /** @import { ClosedTab, ClosedWindow } from "../core/tabsearch.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"BrowserWindowTracker" | "SessionStore">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
@@ -28,11 +28,11 @@ const isBrowserWindow = (w) => !w.closed && w.toolbar?.visible !== false && !!w.
 /**
  * The windows tab search lists, this one first, then the rest most recent first. Live grep's
  * wider scopes take the same windows (host/grep.mjs).
- * @param {Window} win
- * @returns {Window[]}
+ * @param {BrowserWindow} win
+ * @returns {BrowserWindow[]}
  */
 export function windowsFrom(win) {
-  const others = /** @type {Window[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
+  const others = /** @type {BrowserWindow[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
     (w) => w !== win && isBrowserWindow(w),
   );
   return [win, ...others];
@@ -91,14 +91,14 @@ function closedWindows() {
 
 /**
  * Everything tab search lists for `win`, and the window each open tab's row belongs to.
- * @param {Window} win
- * @returns {{ items: PickerItem[], windowOf: Map<string, Window> }}
+ * @param {BrowserWindow} win
+ * @returns {{ items: PickerItem[], windowOf: Map<string, BrowserWindow> }}
  */
 export function tabSearchList(win) {
   const inPrivate = isPrivateWorkspace(win);
   const agentId = WorkspaceStore.agent?.id ?? null;
   const windows = windowsFrom(win).filter((w) => isPrivateWorkspace(w) === inPrivate);
-  /** @type {Map<string, Window>} */
+  /** @type {Map<string, BrowserWindow>} */
   const windowOf = new Map();
   const listed = windows.map((w) => {
     const items = gotoItems(w, { agentId, ...(inPrivate ? { name: PRIVATE_NAME } : {}) });
@@ -117,8 +117,8 @@ export function tabSearchList(win) {
 /**
  * Enter on an open tab's row: that window to the front, if it is another, and the tab selected
  * there; its workspace becomes current as for any selection (WindowWorkspaces' TabSelect).
- * @param {Window} win  the window searching
- * @param {Window | undefined} target  the row's window
+ * @param {BrowserWindow} win  the window searching
+ * @param {BrowserWindow | undefined} target  the row's window
  * @param {string} tabId
  */
 export function goToTab(win, target, tabId) {
@@ -133,7 +133,7 @@ export function goToTab(win, target, tabId) {
  * Enter on a recently closed row: the tab reopens in this window (its container, so its
  * workspace, comes with its saved state) and is selected; a closed window reopens. Live grep's
  * closed rows reopen the same way (host/grep.mjs).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} id  `closed:<closedId>` or `closedwin:<closedId>`
  * @returns {any} the reopened tab or window; undefined when the entry is gone (restored or
  *   forgotten since it was listed)

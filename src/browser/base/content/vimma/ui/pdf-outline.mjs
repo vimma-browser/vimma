@@ -41,7 +41,7 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 export class OutlinePanel {
   /**
-   * @param {Window} win  a browser window
+   * @param {BrowserWindow} win  a browser window
    * @param {OutlinePanelHost} host
    */
   constructor(win, host) {
@@ -67,7 +67,7 @@ export class OutlinePanel {
     this.beside = false;
     // The outline belongs to one document: it closes when its tab stops being the selected one.
     this.onTabSelect = () => {
-      const selected = /** @type {any} */ (this.win).gBrowser?.selectedBrowser;
+      const selected = this.win.gBrowser?.selectedBrowser;
       if (selected !== this.browser) this.close();
     };
     // And when its tab loads another document (V11); a jump inside the PDF stays.
@@ -118,7 +118,7 @@ export class OutlinePanel {
     this.endFilter();
     this.render();
     box.hidden = false;
-    const gBrowser = /** @type {any} */ (this.win).gBrowser;
+    const gBrowser = this.win.gBrowser;
     if (!this.listening) {
       gBrowser?.tabContainer.addEventListener("TabSelect", this.onTabSelect);
       gBrowser?.addTabsProgressListener(this.progress);
@@ -173,7 +173,7 @@ export class OutlinePanel {
     this.focused = false;
     this.beside = false;
     if (this.listening) {
-      const gBrowser = /** @type {any} */ (this.win).gBrowser;
+      const gBrowser = this.win.gBrowser;
       gBrowser?.tabContainer.removeEventListener("TabSelect", this.onTabSelect);
       gBrowser?.removeTabsProgressListener(this.progress);
       this.listening = false;

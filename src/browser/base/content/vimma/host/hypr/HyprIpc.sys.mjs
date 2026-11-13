@@ -9,7 +9,7 @@
 
 import { hyprSockets, isAllowedRequest } from "../../core/hyprswap.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -145,7 +145,7 @@ export const HyprIpc = {
       const chunks = [];
       let size = 0;
       let done = false;
-      /** @type {unknown} */
+      /** @type {number | null} */
       let timer = null;
       /** @param {Error | null} error */
       const finish = (error) => {

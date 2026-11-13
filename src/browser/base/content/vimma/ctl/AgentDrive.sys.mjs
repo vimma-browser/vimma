@@ -32,7 +32,7 @@ import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { AgentStep } from "../core/agent-keys.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });

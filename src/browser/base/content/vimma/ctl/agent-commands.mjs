@@ -51,7 +51,11 @@ import { AgentShot } from "./AgentShot.sys.mjs";
 /** @import { ConnId } from "../core/agent.mjs" */
 import { allowanceKey, isConsequential, mayAllowHere } from "../core/agent-checkpoint.mjs";
 
-const lazy = /** @type {any} */ ({});
+/**
+ * @typedef {"AppConstants" | "BrowserWindowTracker" | "clearTimeout" | "PrivateBrowsingUtils"
+ *   | "SessionStore" | "setTimeout"} LazyName
+ */
+const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.sys.mjs",
@@ -221,7 +225,7 @@ function agentWorkspace() {
 function normalWindows() {
   /** @type {Win[]} */
   const out = [];
-  for (const win of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+  for (const win of Services.wm.getEnumerator("navigator:browser")) {
     if (win.closed || !win.gBrowser || lazy.PrivateBrowsingUtils.isWindowPrivate(win)) continue;
     out.push(win);
   }
@@ -324,7 +328,7 @@ function agentUri(url) {
 
 /** A principal for loads an agent asks for: no authority, in the agent's container. */
 function agentPrincipal(/** @type {number} */ userContextId) {
-  return /** @type {any} */ (Services.scriptSecurityManager).createNullPrincipal({ userContextId });
+  return Services.scriptSecurityManager.createNullPrincipal({ userContextId });
 }
 
 /**
@@ -368,7 +372,7 @@ async function ask(conn, command, what, state, rid, until, always = false, cover
 function siteOfTab(tab) {
   const uri = tab.linkedBrowser.currentURI;
   try {
-    return /** @type {any} */ (Services.eTLD).getBaseDomain(uri);
+    return Services.eTLD.getBaseDomain(uri);
   } catch {
     try {
       return String(uri?.asciiHost ?? "");
@@ -824,7 +828,7 @@ const COMMANDS = {
       // metadata is a nicety; the text stands without it
     }
     const title = wf(tab.label ?? "");
-    const background = !(tab.selected && /** @type {any} */ (Services.focus).activeWindow === win);
+    const background = !(tab.selected && Services.focus.activeWindow === win);
     // Last, once everything is collected (security.md M8): the page may have navigated or the
     // tab moved while it was read, and then nothing of it is sent.
     stillAsAsked(agent, id, what.url, conn);
@@ -1364,7 +1368,7 @@ const COMMANDS = {
     if (element.submit) {
       let host = "";
       try {
-        host = /** @type {any} */ (Services.io.newURI(element.submit.action)).host;
+        host = Services.io.newURI(element.submit.action).host;
       } catch {
         // no host to show in bold
       }
@@ -1585,7 +1589,7 @@ const COMMANDS = {
     if (submitting) {
       let host = "";
       try {
-        host = /** @type {any} */ (Services.io.newURI(submitting.submit.action)).host;
+        host = Services.io.newURI(submitting.submit.action).host;
       } catch {
         // no host to show in bold
       }

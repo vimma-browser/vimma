@@ -14,7 +14,7 @@ import {
   parseControlCommand,
 } from "../core/agent-prompt.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",

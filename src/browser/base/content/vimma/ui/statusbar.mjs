@@ -21,7 +21,7 @@ import { HIDDEN_ATTR as TOOLBAR_HIDDEN_ATTR } from "./toolbar.mjs";
 /** @import { FindStatus } from "../core/find.mjs" */
 /** @import { Announced, Segment, StatusInput } from "../core/statusbar.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"BrowserUIUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   BrowserUIUtils: "resource:///modules/BrowserUIUtils.sys.mjs",
 });
@@ -49,19 +49,6 @@ const BLOCKER_EVENTS = ["DOMUpdateBlockedPopups", "DOMUpdateBlockedRedirect"];
 /** @type {WeakSet<Window>} windows our sheets are loaded into (loading one twice throws) */
 const styled = new WeakSet();
 
-/**
- * The slice of tabbrowser this module reads (browser/components/tabbrowser/content/tabbrowser.js).
- * @typedef {Element & { label: string, linkedBrowser: BrowserElement }} Tab
- * @typedef {Element & { contentTitle: string, currentURI: { spec: string } }} BrowserElement
- * @typedef {{
- *   selectedTab: Tab,
- *   visibleTabs: Tab[],
- *   addProgressListener(l: object): void,
- *   removeProgressListener(l: object): void,
- * }} Tabbrowser
- * @typedef {Window & { gBrowser: Tabbrowser, ResizeObserver: typeof ResizeObserver }} BrowserWindow
- */
-
 /** @import { ConfigError } from "../core/config.mjs" */
 
 /**
@@ -84,11 +71,11 @@ const styled = new WeakSet();
 
 export class StatusBar {
   /**
-   * @param {Window} win  a browser window, possibly before its body exists
+   * @param {BrowserWindow} win  a browser window, possibly before its body exists
    * @param {StatusBarHost} host
    */
   constructor(win, host) {
-    this.win = /** @type {BrowserWindow} */ (win);
+    this.win = /** @type {EarlyBrowserWindow} */ (win);
     this.host = host;
     /** @type {HTMLElement | null} */
     this.bar = null;
@@ -182,7 +169,8 @@ export class StatusBar {
 
   /** @private */
   build() {
-    const win = this.win;
+    // At DOMContentLoaded or later (init), once browser-main.js has created gBrowser.
+    const win = /** @type {BrowserWindow} */ (this.win);
     const doc = win.document;
     const anchor = doc.getElementById("browser");
     if (this.bar || !anchor) return;
@@ -253,7 +241,7 @@ export class StatusBar {
     // bar's sharing icons (gPermissionPanel.updateSharingIndicator), for the selected tab.
     const permissionBox = doc.getElementById("identity-permission-box");
     if (permissionBox) {
-      this.identity = new /** @type {any} */ (win).MutationObserver(() => this.schedule());
+      this.identity = new win.MutationObserver(() => this.schedule());
       /** @type {MutationObserver} */ (this.identity).observe(permissionBox, {
         attributes: true,
         subtree: true,
@@ -268,7 +256,8 @@ export class StatusBar {
   input() {
     const status = this.host.status();
     const { mode, pending, find = null, pane = null, workspace = null } = status;
-    const gBrowser = this.win.gBrowser;
+    // Only once the bar is built (render), so gBrowser exists.
+    const gBrowser = /** @type {BrowserWindow} */ (this.win).gBrowser;
     const tab = gBrowser.selectedTab;
     const visible = gBrowser.visibleTabs;
     const browser = tab.linkedBrowser;
@@ -280,7 +269,7 @@ export class StatusBar {
         index: visible.indexOf(tab) + 1,
         count: visible.length,
         title: browser.contentTitle || tab.label || null,
-        ...barUrl(this.win, browser),
+        ...barUrl(/** @type {BrowserWindow} */ (this.win), browser),
         label: this.host.labelFor?.(tab) ?? null,
       },
       loading: tab.hasAttribute("busy"),
@@ -410,14 +399,14 @@ function originOf(uri) {
  * shows no address only when Firefox's address bar would show none
  * (BrowserUIUtils.checkEmptyPageOrigin): an about:blank a page opened or wrote into reads
  * `about:blank from <the page that controls it>` (docs/security.md C3).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {any} browser
  * @returns {{ url: string | null, origin: UrlOrigin | null }}
  */
 function barUrl(win, browser) {
   const uri = browser.currentURI;
   if (!uri) return { url: null, origin: null };
-  const initial = /** @type {any} */ (win).isInitialPage?.(uri) ?? uri.spec === "about:blank";
+  const initial = win.isInitialPage?.(uri) ?? uri.spec === "about:blank";
   if (initial || uri.spec === "about:blank") {
     /** @type {boolean} */
     let empty;
@@ -502,7 +491,7 @@ function securityOf(browser) {
 /**
  * The URL as the user may see it: no credentials (createExposableURI), IDN decoded; none for
  * an empty tab.
- * @param {BrowserElement} browser
+ * @param {MozBrowser} browser
  * @returns {string | null}
  */
 function displaySpec(browser) {

@@ -17,7 +17,7 @@ import { startedUp } from "./private-swap.mjs";
 /** @import { Pair, PairEvent, ShowOp } from "../core/privatepair.mjs" */
 /** @import { PrivatePlacement } from "../core/config.mjs" */
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"PictureInPicture" | "VimmaHost">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   VimmaHost: "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
   PictureInPicture: "moz-src:///toolkit/components/pictureinpicture/PictureInPicture.sys.mjs",
@@ -35,17 +35,17 @@ let failed = false;
 /** Tests: the backend selected off macOS, or headless. */
 let forced = false;
 /** Tests: each visibility write, since the getter always returns true (Research). */
-/** @type {{ win: Window, visible: boolean }[] | null} */
+/** @type {{ win: BrowserWindow, visible: boolean }[] | null} */
 let spy = null;
 /** Tests: whether a window is fully occluded, since headless never is. */
-let occludedOf = (/** @type {Window} */ win) => /** @type {any} */ (win).isFullyOccluded;
+let occludedOf = (/** @type {BrowserWindow} */ win) => win.isFullyOccluded;
 /** @type {Set<string>} each console line once a session */
 const logged = new Set();
 
 /** Each window's identifier: opaque to core, a counter here (decision 3). */
-/** @type {WeakMap<Window, string>} */
+/** @type {WeakMap<BrowserWindow, string>} */
 const ids = new WeakMap();
-/** @type {Map<string, WeakRef<Window>>} */
+/** @type {Map<string, WeakRef<BrowserWindow>>} */
 const byId = new Map();
 let counter = 0;
 /** The windows Vimma hid: Firefox cannot read a window's visibility back (Research). */
@@ -54,7 +54,7 @@ const hidden = new WeakSet();
 /** The slot's last frame, for a slot window that can no longer report it (closing). */
 /** @type {Frame | null} */
 let slot = null;
-/** @type {Set<Window>} every browser window seen */
+/** @type {Set<BrowserWindow>} every browser window seen */
 const windows = new Set();
 /** @type {Pair} */
 let pair = null;
@@ -65,14 +65,13 @@ let switches = 0;
 /** Bumped by every swap: only the latest one's frame check may update the slot. */
 let swaps = 0;
 /** Whether Vimma is quitting: SessionStore hides every window then, and no swap may run. */
-let quitting = () => /** @type {any} */ (Services).startup.shuttingDown;
+let quitting = () => Services.startup.shuttingDown;
 
 /**
  * A browser window, not a pop-up: pop-ups never swap or hide (private-swap decision 6).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
-export const isBrowserWindow = (win) =>
-  !win.closed && /** @type {any} */ (win).toolbar?.visible !== false;
+export const isBrowserWindow = (win) => !win.closed && win.toolbar?.visible !== false;
 
 /** @param {string} text */
 function logOnce(text) {
@@ -92,7 +91,7 @@ function wanted() {
   return selected() && configured && placement === "swap" && !failed;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function idOf(win) {
   let id = ids.get(win);
   if (!id) {
@@ -103,13 +102,13 @@ function idOf(win) {
   return id;
 }
 
-/** @param {string} id @returns {Window | null} */
+/** @param {string} id @returns {BrowserWindow | null} */
 function windowOf(id) {
   const win = byId.get(id)?.deref();
   return win && !win.closed ? win : null;
 }
 
-/** @type {Map<Window, () => void>} the windows a swap keeps active, and how each lets go */
+/** @type {Map<BrowserWindow, () => void>} the windows a swap keeps active, and how each lets go */
 const held = new Map();
 
 /**
@@ -120,10 +119,10 @@ const held = new Map();
  * reports it visible only some frames after it is ordered in, so until then it showed the
  * contents of the size it was hidden at. Active, it lays out at its new size before it is shown
  * and paints as soon as it is on screen.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function holdActive(win) {
-  const bc = /** @type {any} */ (win).browsingContext;
+  const bc = win.browsingContext;
   // Picture-in-Picture forces its window active too: a force already set is never undone here.
   if (held.has(win) || bc.forceAppWindowActive) return;
   bc.forceAppWindowActive = true;
@@ -145,7 +144,7 @@ function holdActive(win) {
   });
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function letGo(win) {
   const release = held.get(win);
   held.delete(win);
@@ -155,11 +154,11 @@ function letGo(win) {
 /**
  * Shows or hides `win`'s native window, as Firefox's SessionStore and Tabbrowser do
  * (nsIBaseWindow.visibility, Research).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {boolean} visible
  */
 function setVisible(win, visible) {
-  const base = /** @type {any} */ (win).docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
+  const base = win.docShell.treeOwner.QueryInterface(Ci.nsIBaseWindow);
   base.visibility = visible;
   if (visible) {
     hidden.delete(win);
@@ -172,10 +171,10 @@ function setVisible(win, visible) {
   spy?.push({ win, visible });
 }
 
-/** @param {Window} win @param {boolean} on */
+/** @param {BrowserWindow} win @param {boolean} on */
 function suppress(win, on) {
   try {
-    /** @type {any} */ (win).windowUtils.suppressAnimation(on);
+    win.windowUtils.suppressAnimation(on);
   } catch {
     // A window that is going away: nothing to animate.
   }
@@ -192,11 +191,11 @@ const SIZEMODES = /** @type {const} */ ({
  * `win`'s frame for core: position in desktop pixels, size in CSS pixels (decision 2), and a
  * zoomed window's restored frame from the attributes AppWindow persists on its root element.
  * Those hold the inner size, so the window's outer-to-inner difference is added back.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Frame}
  */
 function frameOf(win) {
-  const w = /** @type {any} */ (win);
+  const w = win;
   const sizemode = w.fullScreen
     ? "fullscreen"
     : (SIZEMODES[/** @type {1 | 2 | 3 | 4} */ (w.windowState)] ?? "normal");
@@ -307,8 +306,8 @@ function showInPlace(op) {
     if (hidden.has(x)) setVisible(x, true);
     const intoPrivate = pair?.private === op.show;
     forget();
-    if (intoPrivate && !(/** @type {any} */ (x).fullScreen)) {
-      /** @type {any} */ (x).fullScreen = true;
+    if (intoPrivate && !x.fullScreen) {
+      x.fullScreen = true;
     }
     x.focus();
     return false;
@@ -319,12 +318,12 @@ function showInPlace(op) {
   try {
     for (const w of others) suppress(w, true);
     holdActive(x);
-    if (plan.restoreFirst) /** @type {any} */ (x).restore();
+    if (plan.restoreFirst) x.restore();
     x.moveTo(plan.frame.x, plan.frame.y);
     x.resizeTo(plan.frame.width, plan.frame.height);
-    if (plan.zoom) /** @type {any} */ (x).maximize();
+    if (plan.zoom) x.maximize();
     // Laid out at the new size before it is shown: its first paint on screen needs no reflow.
-    /** @type {any} */ (x).windowUtils.flushLayoutWithoutThrottledAnimations();
+    x.windowUtils.flushLayoutWithoutThrottledAnimations();
     // X first, at Y's frame, so nothing behind them shows through.
     setVisible(x, true);
     if (y && !y.closed) setVisible(y, false);
@@ -335,7 +334,7 @@ function showInPlace(op) {
   slot = /** @type {Frame} */ (place);
   // Not the active app (a link, vimma-ctl from a terminal): focus() brings Vimma forward
   // (decision 5). Shown, the window is already key otherwise.
-  if (/** @type {any} */ (Services.focus).activeWindow !== x) x.focus();
+  if (Services.focus.activeWindow !== x) x.focus();
   checkFrame(op, plan, mine);
   return true;
 }
@@ -377,7 +376,7 @@ function step(event) {
   return true;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 function onActivated(win) {
   // The Window menu, the Dock menu or cmd+` brought the hidden window forward (decision 6).
   if (running || !hidden.has(win) || parkedWindow(pair) !== ids.get(win)) return;
@@ -387,7 +386,7 @@ function onActivated(win) {
 /**
  * A new tab in the hidden normal window (a link from another app) brings it back, before
  * Firefox's own focus() (Research). Never the hidden private window's.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function onTabOpen(win) {
   if (running || pair?.parked !== "normal" || pair.normal !== ids.get(win)) return;
@@ -398,7 +397,7 @@ function onTabOpen(win) {
  * A window closes, by any path: its docshell unloads before its native window is destroyed
  * (AppWindow::Destroy), so the hidden window is shown in its place first (decision 6). Off GTK
  * Destroy orders the closing window out before that, so the desktop may show for a frame.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function onUnload(win) {
   windows.delete(win);
@@ -430,7 +429,7 @@ export const NativeSwap = {
 
   /**
    * Once per browser window: its close, activation and new tabs are watched.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    */
   init(win) {
     if (windows.has(win)) return;
@@ -457,7 +456,7 @@ export const NativeSwap = {
       // covers the private window, which is one key away. Minimizing the private window
       // instead was rejected, because it animates into the Dock and what AppKit does with a
       // hidden window that is minimized is unverified.
-      const front = /** @type {any} */ (Services.focus).activeWindow;
+      const front = Services.focus.activeWindow;
       const shown = [...byId.values()].some((r) => {
         const w = r.deref();
         return w && !w.closed && hidden.has(w);
@@ -470,7 +469,7 @@ export const NativeSwap = {
   /**
    * The features a new private window opens with to take `from`'s place: its frame (the
    * restored one when zoomed) and no animation. Null when the swap does not apply.
-   * @param {Window} from
+   * @param {BrowserWindow} from
    * @returns {string | null}
    */
   openFeatures(from) {
@@ -489,8 +488,8 @@ export const NativeSwap = {
   /**
    * Going to private: shows `priv` in `from`'s place. False when the swap does not apply, and
    * the caller focuses `priv` as before.
-   * @param {Window} from  a normal window
-   * @param {Window} priv  the most recent private window
+   * @param {BrowserWindow} from  a normal window
+   * @param {BrowserWindow} priv  the most recent private window
    * @param {boolean} fresh  just opened by this switch
    * @returns {boolean}
    */
@@ -527,7 +526,7 @@ export const NativeSwap = {
   /**
    * Going back to normal window `win`: the hidden window comes back in the private one's place,
    * then `win` is focused if it is another one. False when nothing is hidden.
-   * @param {Window} win
+   * @param {BrowserWindow} win
    * @returns {boolean}
    */
   show(win) {
@@ -567,26 +566,26 @@ export const NativeSwap = {
   },
 
   /** Tests: `win`'s identifier, and whether Vimma hid it. */
-  _windowForTests(/** @type {Window} */ win) {
+  _windowForTests(/** @type {BrowserWindow} */ win) {
     return { id: ids.get(win) ?? null, hidden: hidden.has(win) };
   },
 
   /**
    * Tests only: forget the pair and every hidden window (showing them), select this backend
    * (`force`) or not, and record visibility writes in `log`.
-   * @param {{ force?: boolean, log?: { win: Window, visible: boolean }[] | null,
+   * @param {{ force?: boolean, log?: { win: BrowserWindow, visible: boolean }[] | null,
    *   configured?: boolean, shuttingDown?: () => boolean,
-   *   occluded?: (win: Window) => boolean }} [options]
+   *   occluded?: (win: BrowserWindow) => boolean }} [options]
    */
   _resetForTests({
     force = false,
     log = null,
     configured: read = true,
     shuttingDown,
-    occluded = (win) => /** @type {any} */ (win).isFullyOccluded,
+    occluded = (win) => win.isFullyOccluded,
   } = {}) {
     occludedOf = occluded;
-    quitting = shuttingDown ?? (() => /** @type {any} */ (Services).startup.shuttingDown);
+    quitting = shuttingDown ?? (() => Services.startup.shuttingDown);
     revealAll();
     forced = force;
     spy = log;

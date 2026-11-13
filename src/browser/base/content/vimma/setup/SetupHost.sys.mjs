@@ -19,8 +19,8 @@ import {
   curatedOffline,
 } from "../core/setup.mjs";
 
-/** @type {any} */
-const lazy = {};
+const lazy =
+  /** @type {Lazy<"AddonManager" | "clearTimeout" | "SearchService" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
@@ -290,10 +290,8 @@ export const SetupHost = {
    * @param {any} page  the setup page's window
    */
   browserFor(page) {
-    for (const win of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
-      const found = /** @type {any} */ (win).gBrowser?.browsers.find(
-        (/** @type {any} */ b) => b.contentWindow === page,
-      );
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      const found = win.gBrowser?.browsers.find((/** @type {any} */ b) => b.contentWindow === page);
       if (found) return found;
     }
     return null;
@@ -303,8 +301,8 @@ export const SetupHost = {
   close(browser) {
     // Through the window list, as browserFor: the browser's ownerGlobal seen from here has no
     // gBrowser.
-    for (const win of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
-      const gBrowser = /** @type {any} */ (win).gBrowser;
+    for (const win of Services.wm.getEnumerator("navigator:browser")) {
+      const gBrowser = win.gBrowser;
       const tab = gBrowser?.getTabForBrowser(browser);
       if (tab) {
         gBrowser.removeTab(tab);

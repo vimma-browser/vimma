@@ -24,7 +24,7 @@
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {Lazy<"Integration" | "nsContentDispatchChooser">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   Integration: "resource://gre/modules/Integration.sys.mjs",
   nsContentDispatchChooser: "resource://gre/modules/ContentDispatchChooser.sys.mjs",
@@ -184,7 +184,7 @@ function dropOpenerPolicy(channel) {
  */
 function denyFor(uri, originAttributes, browserId) {
   if (!uri?.schemeIs("https") && !uri?.schemeIs("http")) return;
-  const services = /** @type {any} */ (Services);
+  const services = Services;
   const principal = services.scriptSecurityManager.createContentPrincipal(uri, originAttributes);
   for (const type of AGENT_DENIED_PERMISSIONS) {
     services.perms.addFromPrincipalForBrowser(
@@ -217,7 +217,7 @@ function onWindowGlobal(wgp) {
 
 /** Every agent tab open now: sandboxed, and its origin denied (the agent workspace changed). */
 function sweep() {
-  for (const win of /** @type {any} */ (Services.wm).getEnumerator("navigator:browser")) {
+  for (const win of Services.wm.getEnumerator("navigator:browser")) {
     for (const tab of win.gBrowser?.tabs ?? []) {
       if (!isAgentContainer(tab.userContextId)) continue;
       const browser = tab.linkedBrowser;

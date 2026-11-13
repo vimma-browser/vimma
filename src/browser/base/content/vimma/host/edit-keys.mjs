@@ -25,7 +25,7 @@ function deepActiveElement(doc) {
 
 /**
  * The editable chrome element with focus, or null (a page, a button, the panel box).
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @returns {Element | null}
  */
 export function focusedChromeField(win) {
@@ -45,7 +45,7 @@ export function focusedChromeField(win) {
 /**
  * Runs an editor command on the focused chrome field, as its own key binding would; for
  * INSERT_ENTER, presses Enter there.
- * @param {Window} win
+ * @param {BrowserWindow} win
  * @param {string} command  cmd_deleteWordBackward and the like, or INSERT_ENTER
  * @returns {boolean} whether a controller took it, or the Enter was queued
  */
@@ -55,7 +55,7 @@ export function runChromeEdit(win, command) {
     pressKeyLater(win, "Enter", () => focusedChromeField(win) === field);
     return true;
   }
-  const dispatcher = /** @type {any} */ (win.document).commandDispatcher;
+  const dispatcher = win.document.commandDispatcher;
   const controller = dispatcher?.getControllerForCommand(command);
   if (!controller?.isCommandEnabled(command)) return false;
   controller.doCommand(command);
