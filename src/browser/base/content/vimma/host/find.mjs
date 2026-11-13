@@ -21,7 +21,7 @@ const ACCEPT_WAIT_MS = 1000;
 
 /**
  * @typedef {MozFinder} Finder
- * @typedef {MozBrowser} Browser
+ * @typedef {MozTabBrowser} Browser
  * @typedef {MozFindbar} FindBar
  * @typedef {Tabbrowser} TabBrowser
  */

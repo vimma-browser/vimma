@@ -550,7 +550,7 @@ function attachPage(doc, sheet, parsed) {
 function attachSidebarPage(doc) {
   attachPage(doc, SIDEBAR_PAGE_SHEET, (parsed) => {
     colourTrees(parsed);
-    if (!(/** @type {any} */ (parsed).nodePrincipal?.isSystemPrincipal)) return;
+    if (!parsed.nodePrincipal?.isSystemPrincipal) return;
     const win = /** @type {any} */ (parsed.defaultView);
     win?.windowUtils.loadSheetUsingURIString(SIDEBAR_PROMO_SHEET, win.windowUtils.AGENT_SHEET);
   });

@@ -57,9 +57,9 @@ const SIZES = ["minimal", "prompt", "full"];
  * @property {() => void} changed  the status bar may say something else now
  */
 
-/** @type {WeakMap<BrowserWindow, Toolbar>} */
+/** @type {WeakMap<Window, Toolbar>} */
 const instances = new WeakMap();
-/** @type {WeakSet<BrowserWindow>} windows our stylesheet is loaded into (loading it twice throws) */
+/** @type {WeakSet<Window>} windows our stylesheet is loaded into (loading it twice throws) */
 const styled = new WeakSet();
 
 export class Toolbar {
@@ -83,7 +83,7 @@ export class Toolbar {
    * @param {ToolbarHost} host
    */
   constructor(win, host) {
-    this.win = /** @type {BrowserWindow} */ (win);
+    this.win = /** @type {EarlyBrowserWindow} */ (win);
     this.host = host;
     /** @type {Map<unknown, Size>} why the bar is revealed, and how much each reason asks for */
     this.reasons = new Map();
@@ -161,7 +161,8 @@ export class Toolbar {
     const hidden = Toolbar.hidden;
     const doc = this.win.document;
     if (hidden && this.focusInBar()) {
-      this.win.gBrowser.selectedBrowser.focus();
+      // Focus in the bar: the window is up, with its gBrowser.
+      /** @type {BrowserWindow} */ (this.win).gBrowser.selectedBrowser.focus();
       this.reasons.delete("urlbar");
       this.reasons.delete("focus");
     }

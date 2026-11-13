@@ -46,7 +46,7 @@ const TAB_EVENTS = [
 // transition stand in, and the blocker's own updates cover Firefox removing it.
 const NOTIFICATION_EVENTS = ["AlertActive", "click", "transitionend"];
 const BLOCKER_EVENTS = ["DOMUpdateBlockedPopups", "DOMUpdateBlockedRedirect"];
-/** @type {WeakSet<BrowserWindow>} windows our sheets are loaded into (loading one twice throws) */
+/** @type {WeakSet<Window>} windows our sheets are loaded into (loading one twice throws) */
 const styled = new WeakSet();
 
 /** @import { ConfigError } from "../core/config.mjs" */
@@ -75,7 +75,7 @@ export class StatusBar {
    * @param {StatusBarHost} host
    */
   constructor(win, host) {
-    this.win = /** @type {BrowserWindow} */ (win);
+    this.win = /** @type {EarlyBrowserWindow} */ (win);
     this.host = host;
     /** @type {HTMLElement | null} */
     this.bar = null;
@@ -169,7 +169,8 @@ export class StatusBar {
 
   /** @private */
   build() {
-    const win = this.win;
+    // At DOMContentLoaded or later (init), once browser-main.js has created gBrowser.
+    const win = /** @type {BrowserWindow} */ (this.win);
     const doc = win.document;
     const anchor = doc.getElementById("browser");
     if (this.bar || !anchor) return;
@@ -255,7 +256,8 @@ export class StatusBar {
   input() {
     const status = this.host.status();
     const { mode, pending, find = null, pane = null, workspace = null } = status;
-    const gBrowser = this.win.gBrowser;
+    // Only once the bar is built (render), so gBrowser exists.
+    const gBrowser = /** @type {BrowserWindow} */ (this.win).gBrowser;
     const tab = gBrowser.selectedTab;
     const visible = gBrowser.visibleTabs;
     const browser = tab.linkedBrowser;
@@ -267,7 +269,7 @@ export class StatusBar {
         index: visible.indexOf(tab) + 1,
         count: visible.length,
         title: browser.contentTitle || tab.label || null,
-        ...barUrl(this.win, browser),
+        ...barUrl(/** @type {BrowserWindow} */ (this.win), browser),
         label: this.host.labelFor?.(tab) ?? null,
       },
       loading: tab.hasAttribute("busy"),

@@ -114,7 +114,7 @@ export class DialogKeys {
    * A new window: one of ours when it is a dialog window opened over this browser window. Its
    * load listener is added during openWindow, before HelperAppDlg adds its own (initDialog), so
    * the line is in place before the dialog sizes itself to its content (postShowCallback).
-   * @param {BrowserWindow} w
+   * @param {Window} w  any window the window watcher reports
    */
   windowOpened(w) {
     w.addEventListener(

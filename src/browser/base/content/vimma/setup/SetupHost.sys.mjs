@@ -19,8 +19,8 @@ import {
   curatedOffline,
 } from "../core/setup.mjs";
 
-/** @type {any} */
-const lazy = {};
+const lazy =
+  /** @type {Lazy<"AddonManager" | "clearTimeout" | "SearchService" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",

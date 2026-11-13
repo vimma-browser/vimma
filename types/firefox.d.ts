@@ -429,9 +429,9 @@ interface LazyModules {
   SessionStore: {
     getTabState(tab: MozTabbrowserTab): string;
     isTabRestoring(tab: MozTabbrowserTab): boolean;
-    getCustomTabValue(tab: MozTabbrowserTab, key: string): string | undefined;
+    getCustomTabValue(tab: MozTabbrowserTab, key: string): string;
     setCustomTabValue(tab: MozTabbrowserTab, key: string, value: string): void;
-    getCustomWindowValue(win: Window, key: string): string | undefined;
+    getCustomWindowValue(win: Window, key: string): string;
     setCustomWindowValue(win: Window, key: string, value: string): void;
     getClosedTabDataForWindow(win: Window): any[];
     getClosedTabData(options?: { private?: boolean }): any[];
@@ -562,14 +562,16 @@ interface ChromeWindow extends Window {
 // engine/toolkit/content/widgets/browser-custom-element.mjs (MozBrowser): a <browser>.
 interface MozBrowser extends Element {
   readonly browsingContext: any;
-  readonly currentURI: nsIURI;
+  /** Null while the browser has no docshell or remote navigation yet. */
+  readonly currentURI: nsIURI | null;
   readonly documentURI: { readonly spec: string } | null;
   readonly contentTitle: string;
   readonly isRemoteBrowser: boolean;
   readonly webProgress: any;
   readonly browserId: number;
-  readonly documentContentType: string;
-  readonly finder: MozFinder;
+  readonly documentContentType: string | null;
+  /** Null for a non-remote browser without a docshell. */
+  readonly finder: MozFinder | null;
   // engine/caps/nsIPrincipal.idl; read through Vimma's own checks.
   readonly contentPrincipal: any;
   // engine/browser/modules/PopupAndRedirectBlocker.sys.mjs (untyped here)
@@ -579,9 +581,17 @@ interface MozBrowser extends Element {
   loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown }): void;
 }
 
+// A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
+// createLazyBrowser's getters); a live one is remote or has a docshell. Either way currentURI
+// and finder are set.
+interface MozTabBrowser extends MozBrowser {
+  readonly currentURI: nsIURI;
+  readonly finder: MozFinder;
+}
+
 // engine/browser/components/tabbrowser/content/tab.mjs (MozTabbrowserTab): a tab.
 interface MozTabbrowserTab extends Element {
-  readonly linkedBrowser: MozBrowser;
+  readonly linkedBrowser: MozTabBrowser;
   /** Null for a lazy tab, which has no browser yet (Tabbrowser.insertBrowser; tabbox.js). */
   readonly linkedPanel: string | null;
   /** The tab's position among all tabs (Tabbrowser `tabIndex` options take it). */
@@ -611,13 +621,13 @@ interface MozTabSplitViewWrapper extends Element {
 interface Tabbrowser {
   readonly tabs: MozTabbrowserTab[];
   readonly visibleTabs: MozTabbrowserTab[];
-  readonly browsers: MozBrowser[];
+  readonly browsers: MozTabBrowser[];
   selectedTab: MozTabbrowserTab;
-  readonly selectedBrowser: MozBrowser;
+  readonly selectedBrowser: MozTabBrowser;
   readonly pinnedTabCount: number;
   readonly tabContainer: Element & { selectedIndex: number };
   readonly tabbox: Element;
-  getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | null;
+  getTabForBrowser(browser: MozBrowser): MozTabbrowserTab | undefined;
   insertBrowser(tab: MozTabbrowserTab): void;
   hideTab(tab: MozTabbrowserTab, source?: string): void;
   showTab(tab: MozTabbrowserTab): void;
@@ -631,8 +641,9 @@ interface Tabbrowser {
   addTabsProgressListener(listener: object): void;
   removeTabsProgressListener(listener: object): void;
   updateTitlebar(): void;
-  getCachedFindBar(tab?: MozTabbrowserTab): MozFindbar | null;
-  getFindBar(tab?: MozTabbrowserTab): Promise<MozFindbar>;
+  getCachedFindBar(tab?: MozTabbrowserTab): MozFindbar | undefined;
+  /** Null when the window or the tab closes before the find bar is made. */
+  getFindBar(tab?: MozTabbrowserTab): Promise<MozFindbar | null>;
   readNotificationBox(browser?: MozBrowser): any;
   moveTabForward(options?: { metricsContext?: unknown }): void;
   moveTabBackward(options?: { metricsContext?: unknown }): void;
@@ -694,6 +705,17 @@ interface BrowserWindow extends ChromeWindow {
   readonly BrowserAddonUI: { manageAddon(addonId: string, source?: string): Promise<void> };
 }
 
+// A browser window from its first script, before its body exists: browser-main.js creates
+// gBrowser at DOMContentLoaded, and PopupNotifications needs the document. Code that runs this
+// early (the status bar, tab strip and toolbar) guards these members.
+type EarlyBrowserWindow = Omit<
+  BrowserWindow,
+  "gBrowser" | "PopupNotifications" | "UpdatePopupNotificationsVisibility"
+> &
+  Partial<
+    Pick<BrowserWindow, "gBrowser" | "PopupNotifications" | "UpdatePopupNotificationsVisibility">
+  >;
+
 // engine/toolkit/content/widgets/findbar.js
 interface MozFindbar extends Element {
   hidden: boolean;
@@ -707,7 +729,7 @@ interface MozFindbar extends Element {
 
 // engine/toolkit/modules/FinderParent.sys.mjs (a <browser>'s finder)
 interface MozFinder {
-  caseSensitive: boolean;
+  set caseSensitive(sensitive: boolean);
   addResultListener(listener: object): void;
   removeResultListener(listener: object): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
