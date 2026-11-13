@@ -94,17 +94,6 @@ export const EXCEPTIONS: Exception[] = [
     issue: 936,
   },
 
-  // A module lives in a folder other than the one that owns it; moving it changes a chrome://
-  // URL that mochitests import.
-  {
-    from: "workspaces/WindowWorkspaces.sys.mjs",
-    to: "host/tab-labels.mjs",
-    kind: "eager",
-    reason: "the workspace snapshot saves tab labels, which still live in host/",
-    fate: "goes",
-    issue: 936,
-  },
-
   // The host runs commands that belong to a higher folder, and no registry hands them down yet.
   {
     from: "host/VimmaHost.sys.mjs",
