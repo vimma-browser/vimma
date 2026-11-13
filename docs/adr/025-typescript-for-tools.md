@@ -33,8 +33,12 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 
 ## Decision
 
-1. Code under `tools/` may be TypeScript (`.ts`), and moves to it one area at a time
-   (issue #946). Node runs it as it is; there is no build step and no emitted JavaScript.
+1. Node code under `tools/` is TypeScript (`.ts`): a new file there is written as `.ts`, and the
+   existing `.mjs` files move to it one area at a time (issue #946). Node runs it as it is; there
+   is no build step and no emitted JavaScript. `tools/test/mjs-allowlist.txt` lists the `.mjs`
+   files still to move, and a test fails on a `.mjs` file that is not listed or a listed one that
+   is gone, so the list only shrinks. Decision 7's exception stands, and files that are not Node
+   code (shell, Python, Rust, fixtures a browser page loads) are outside the rule.
 2. Only syntax Node can erase is allowed: no `enum`, `namespace` with code, parameter properties,
    `import x = require()` or `export =`. `tools/tsconfig.json` enforces it with
    `erasableSyntaxOnly`. `verbatimModuleSyntax` makes a type-only import say `import type`, since

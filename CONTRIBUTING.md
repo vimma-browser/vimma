@@ -225,7 +225,8 @@ TypeScript that Node runs as it is ([ADR-025](docs/adr/025-typescript-for-tools.
 folder of `tools/`) per pull request. `npm run typecheck`, `npm run lint` and `npm test` treat a
 `.ts` file as they treat a `.mjs` one, and also type-check `.ts` tests. Write only syntax Node can
 erase (`tsc` rejects the rest), `import type` for a type-only import, and the real file name in a
-relative import: `./x.ts`.
+relative import: `./x.ts`. A new file under `tools/` is written as `.ts`, never `.mjs`:
+`tools/test/mjs-ratchet.test.ts` fails on a `.mjs` file missing from `tools/test/mjs-allowlist.txt`.
 
 Moving an area, in a pull request that does only this (`Part of #946`). `tools/claude-plugin`
 stays `.mjs` (ADR-025 says why).
@@ -258,8 +259,10 @@ stays `.mjs` (ADR-025 says why).
    `import("./x.mjs").T` an `import type`. Comments keep their words; logic does not change. A
    `.ts` test that imports a `.mjs` helper from a `test/` folder brings that helper into the type
    check, which skips `.mjs` tests (#947): fix what it reports, types only, or convert the helper
-   in the same pull request.
-6. **Update every caller** from step 1. An implemented spec that names a renamed file gets a
+   in the same pull request. A property a constructor assigns becomes a `declare` field
+   (`declare keys: string[];`), which Node erases, as it does the cast.
+6. **Update every caller** from step 1, and take the area's files off
+   `tools/test/mjs-allowlist.txt`. An implemented spec that names a renamed file gets a
    `(Since changed: …)` note, not a rewrite.
 7. **Prove it.** The same test names and count as in step 3 (diff the two lists); the
    typecheck, lint and test scripts green; each command-line tool printing the same output
