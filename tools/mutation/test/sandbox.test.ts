@@ -133,7 +133,11 @@ function ignoredBy(path: string, patterns: string[]): string | null {
   const relPath = rel(path);
   return (
     patterns.find((pattern) => {
-      const glob = pattern.slice(1).replace(/[.]/g, "\\.").replace(/\*/g, "[^/]*");
+      // Every regular expression character is escaped, the backslash too; then `*` is a name.
+      const glob = pattern
+        .slice(1)
+        .replace(/[\\^$.+?()[\]{}|]/g, "\\$&")
+        .replace(/\*/g, "[^/]*");
       return new RegExp(`^${glob}(/|$)`).test(relPath);
     }) ?? null
   );
