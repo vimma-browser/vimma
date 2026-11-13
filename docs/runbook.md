@@ -1117,8 +1117,10 @@ issue with the log; do not re-run to green), and look at the numbers before touc
 use `node-version-file: .nvmrc`, and so do the nightly and release build jobs. One exception:
 release.yml's package job checks out a release tag (tags from before `.nvmrc` lack it) and stays
 on major 22. A Node bump is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major
-also moves `@types/node` to it (`npm run typecheck` checks `tools/` against it). The bench
-needs nothing for it: both sides of the comparison run on the same Node.
+also moves `@types/node` to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
+goes below `engines` in `package.json` (22.18), the first Node 22 that runs the `.ts` tools without
+a flag (ADR-025). The bench needs nothing for it: both sides of the comparison run on the same
+Node.
 
 Moving the baseline, deliberately (like snapshots: never to make a red run green without saying
 why):

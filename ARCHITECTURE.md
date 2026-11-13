@@ -37,7 +37,9 @@ uses:
   ([ADR-005](docs/adr/005-pure-core-package.md)). `npm run sync-core` copies it into
   `src/browser/base/content/vimma/core/` (git-ignored), where the chrome code imports it.
 - Code is JavaScript ES modules with JSDoc types, checked by `tsc --checkJs`
-  ([ADR-004](docs/adr/004-javascript-jsdoc.md)); `tools/vimma-ctl` is Rust
+  ([ADR-004](docs/adr/004-javascript-jsdoc.md)). The Node-side tools under `tools/` are moving to
+  TypeScript that Node runs as it is, by erasing the types, with no build step
+  ([ADR-025](docs/adr/025-typescript-for-tools.md)); `tools/vimma-ctl` is Rust
   ([ADR-011](docs/adr/011-vimma-ctl-rust.md)).
 
 There are two ways to build. A **full build** compiles all of Firefox (about 40 minutes) and is

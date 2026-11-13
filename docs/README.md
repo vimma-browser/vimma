@@ -29,7 +29,7 @@ Where to read about what. Users start with the guide; contributors with
 | [001](adr/001-engine-firefox-surfer.md)             | Engine: Firefox fork built with Surfer                                          |
 | [002](adr/002-upstream-release-channel.md)          | Upstream: Firefox release channel                                               |
 | [003](adr/003-own-files-minimal-patches.md)         | Our code lives in our own files                                                 |
-| [004](adr/004-javascript-jsdoc.md)                  | Language: JavaScript ES modules with JSDoc types                                |
+| [004](adr/004-javascript-jsdoc.md)                  | Language: JavaScript ES modules with JSDoc types (amended by ADR-025)           |
 | [005](adr/005-pure-core-package.md)                 | `vimma-core` is a pure ES module package                                        |
 | [006](adr/006-vendor-zen-split-view.md)             | Split view is vendored from Zen (superseded by ADR-013)                         |
 | [007](adr/007-control-socket.md)                    | Control socket                                                                  |
@@ -50,6 +50,7 @@ Where to read about what. Users start with the guide; contributors with
 | [022](adr/022-green-bump-merges-itself.md)          | A green Firefox bump merges itself                                              |
 | [023](adr/023-in-browser-model-client.md)           | The built-in agent is a model client in the browser, through the agent commands |
 | [024](adr/024-keymap-contexts.md)                   | Keymap contexts: a key's binding can depend on the document                     |
+| [025](adr/025-typescript-for-tools.md)              | Node-side tooling under `tools/` is TypeScript that Node runs unbuilt           |
 
 ## Specs by area
 
