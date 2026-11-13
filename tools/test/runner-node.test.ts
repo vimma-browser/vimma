@@ -88,7 +88,11 @@ function runsNode(step: Step): boolean {
 }
 
 const isAnySetupNode = (s: Step) => (s.uses ?? "").startsWith("actions/setup-node@");
-const isSetupNode = (s: Step) => isAnySetupNode(s) && s.with?.["node-version-file"] === ".nvmrc";
+// With both inputs, setup-node takes `node-version` and only warns, so .nvmrc must stand alone.
+const isSetupNode = (s: Step) =>
+  isAnySetupNode(s) &&
+  s.with?.["node-version-file"] === ".nvmrc" &&
+  s.with?.["node-version"] === undefined;
 
 /** The jobs whose first Node step comes before any setup-node step. */
 function onRunnerNode(): string[] {
