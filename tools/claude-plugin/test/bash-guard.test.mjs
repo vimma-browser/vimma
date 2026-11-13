@@ -230,6 +230,21 @@ describe("gh pr merge", () => {
     expect(result?.reason).toMatch(/subject-case/);
   });
 
+  it("still blocks when commitlint cannot run on this Node, and says Node is the cause", () => {
+    // tools/ is TypeScript (ADR-025): on a Node older than package.json's engines, commitlint
+    // cannot load the config's .ts plugin, and the message itself is not at fault.
+    const dir = withMessage();
+    const output =
+      'TypeError [ERR_UNKNOWN_FILE_EXTENSION]: Unknown file extension ".ts" for /r/x.ts';
+    const result = checkBash("gh pr merge 1 --squash --subject 'ci: a (#1)' --body-file msg.txt", {
+      cwd: dir,
+      commitlint: () => ({ ok: false, output }),
+    });
+    expect(result?.reason).toMatch(/engines/);
+    expect(result?.reason).not.toMatch(/Fix the subject/);
+    expect(result?.reason).toContain(output);
+  });
+
   it("blocks merging through the REST API", () => {
     expect(
       blocked("gh api -X PUT repos/o/r/pulls/12/merge -f merge_method=squash")?.reason,
