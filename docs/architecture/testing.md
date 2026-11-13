@@ -167,8 +167,12 @@ The browser gets an allowlisted environment (`browserEnv` in `launcher.mjs`): no
 desktop's scaling, theme, locale or Wayland variables, but fixed ones (`LANG=C.UTF-8`, `TZ=UTC`,
 `GTK_THEME=Adwaita`) and `HOME` inside the profile; the profile pins the pixel ratio and a light
 theme.
-The fonts are the system's, so a baseline made on another machine can differ; the runbook says
-to take CI's image in that case (docs/runbook.md, "End-to-end tests", "Baselines").
+On Linux the browser renders with the fonts vendored in `tests/e2e/fonts/`, and the fixture
+pages are served on the fixed port 28471 (a second run on the machine stops with a message
+rather than take another port), so two runs draw the same pixels. A baseline comes from CI's
+runner: with GTK's dialog text colour also pinned in the profile, a local run compares with it at
+0.00 to 0.03 % (the system's FreeType), and CI at 0.00 %. A scenario carries on past a screenshot that differs and fails at its end, so one CI run
+supplies every image of a re-record (docs/runbook.md, "End-to-end tests", "Baselines").
 
 The same job then runs the site snapshot gate (section 8) and the agent bench with its scripted
 provider (`npm run agent-bench -- --artifact --check --lists L04 --two-shops`,

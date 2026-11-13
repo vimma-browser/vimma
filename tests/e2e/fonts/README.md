@@ -7,10 +7,10 @@ drawn with the hinting and antialiasing settings of CI's ubuntu-24.04. The basel
 distribution compares with them without installing a font package (issue #944). macOS runs the
 scenarios headless and takes no screenshots, so it does not use this folder.
 
-What a local run still differs by (about 0.1 to 0.4 %) is not the fonts: the fixture server's
-random port, the system's FreeType version (the browser does not bundle one), and baselines older
-than later product changes; the runbook's "Baselines" section has the numbers, and issue #953
-tracks re-recording the baselines from CI with a fixed port.
+With the fonts pinned, the fixture server on a fixed port and GTK's dialog text colour pinned in
+the profile (issue #953), a local run compares with CI's baselines at 0.00 to 0.03 %: what remains
+is the system's FreeType version (the browser does not bundle one), visible in the PDF page's
+text and the private window. The runbook's "Baselines" section has the numbers.
 
 ## Which fonts, and why
 

@@ -435,6 +435,15 @@ describe("browser command line and environment", () => {
     );
   });
 
+  // Issue #953: the line under the toolbar is 10 % of GTK's dialog text colour (Firefox's
+  // --card-border-color is currentColor at 10 %, and the window's colour is -moz-dialogtext), which
+  // GTK versions draw differently: one row of every screenshot with a toolbar.
+  it("pins the dialog text colour to the one CI's GTK gives, so the toolbar's line matches", () => {
+    const prefs = Object.fromEntries(PROFILE_PREFS);
+    expect(prefs["ui.-moz-dialogtext"]).toBe("#0c0c0d");
+    expect(prefs["ui.threedshadow"]).toBeUndefined();
+  });
+
   it("pins one device pixel per CSS pixel and a light theme in the profile", () => {
     const prefs = Object.fromEntries(PROFILE_PREFS);
     expect(prefs["layout.css.devPixelsPerPx"]).toBe("1.0");

@@ -311,29 +311,52 @@ manifest (`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown
 about 10 s.
 
 **Baselines.** Screenshots are compared with `tests/e2e/baselines/<name>.png`; more than 0.5 % of
-differing pixels fails, and the actual and diff images land in `e2e-output/`. To change a
-baseline:
+differing pixels fails, and the actual and diff images land in `e2e-output/`. A scenario carries on
+past a screenshot that differs or has no baseline and fails at its end, so one run writes every
+image that differs. A baseline comes from CI's runner, never from a local machine: change the
+product, then take CI's images. To re-record one or more baselines:
 
-```sh
-npm run e2e -- --xvfb --update-baselines --filter <scenario>   # refused when CI is set
-```
+1. Replace each `<name>.png` to re-record with a placeholder that cannot match (any other
+   1280×800 PNG, such as a solid colour), in a commit of its own, and push. The vitest check that
+   every screenshot has a 1280×800 baseline still passes; a deleted baseline would fail it, and
+   with it the job, before the scenarios run.
+2. The job fails on those screenshots and uploads `e2e-output` (kept 7 days):
+   `gh run download <run-id> -n e2e-output`. Each `<name>.actual.png` is CI's image.
+3. Look at every image (no error text, no half-drawn state, no leftover notice or focus ring from
+   an earlier step, the scenario's theme), and before replacing a baseline find out what changed
+   since it was taken and which change caused it: a re-record must not bless a regression.
+4. Copy the images over the placeholders and commit them with a body that names each changed
+   baseline and its cause (CONTRIBUTING.md: never change a baseline without saying why). The next
+   CI run should compare each at 0.00 %.
 
-look at the new PNG, and commit it with a changelog line saying which baseline changed and why
-(CONTRIBUTING.md: never edit a baseline without one). A missing baseline fails; nothing creates one
-silently. On Linux the scenarios render with the fonts vendored in `tests/e2e/fonts/` (DejaVu,
-and Liberation Sans for Helvetica), drawn as on CI's ubuntu-24.04: the browser gets that
-folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the profile's HOME, so a local
-run compares with CI's baselines with no font package installed (issue #944). Measured on an
-Arch machine, a local run still differs from a baseline by about 0.1 to 0.4 %: the fixture
-server's random port (about 0.08 % between two runs on one machine), the system's FreeType
-version that rasterises the glyphs (about 0.1 to 0.15 % against CI), and the rest baselines older
-than later product changes (rounded corners, the workspace pill's circle), which is why CI itself
-sits at 0.17 to 0.36 %; issue #953 tracks re-recording them from CI with a fixed port. Two
-baselines, `m0-agent-cli-question` and `m0-agent-cli-stopped`, predate the grant line's current
-wording (#754) and exceed the limit locally. A baseline comes from CI: if CI's diff exceeds 0.5 %
-on a baseline made locally, take CI's actual image from the `e2e-output` artifact of the failed
-run (kept 7 days) instead. A missing baseline also leaves `<name>.actual.png` there, so a new
-scenario's first baseline comes from CI the same way: `gh run download <run-id> -n e2e-output`.
+`npm run e2e -- --xvfb --update-baselines --filter <scenario>` (refused when `CI` is set) writes
+a local image as the baseline; use it for a throwaway scenario (`--scenarios`, `--baselines` and
+`--out` in a folder of your own), not for a committed baseline. A missing baseline fails; nothing
+creates one silently.
+
+What a local run differs by. On Linux the scenarios render with the fonts vendored in
+`tests/e2e/fonts/` (DejaVu, and Liberation Sans for Helvetica), drawn as on CI's ubuntu-24.04:
+the browser gets that folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the
+profile's HOME, so a local run compares with CI's baselines with no font package installed
+(issue #944). The fixture pages are served on the fixed port 28471 (`PAGE_PORT` in
+`tools/e2e/pages.mjs`), so the URL and status bars read the same in every run, and the profile
+pins GTK's dialog text colour (`ui.-moz-dialogtext`) to the one CI's GTK gives: Firefox draws the
+line under the toolbar in that colour at 10 %, and Arch's GTK drew it a shade lighter, one row of
+1280 pixels (0.125 %) in every screenshot with a toolbar (issue #953). Measured on an Arch machine
+against baselines taken in CI, a local run then compares at 0.00 % on 29 of 31 screenshots; the
+PDF page's text (`pdf-outline`, 0.03 %) and the private window (`m3-private-workspace`, 0.02 %)
+keep a few pixels of the system's FreeType (2.15 there, 2.13 on CI). Run to run, the downloads
+picker's end time, the agent setup list's profile path and the versions on the start page
+(`m3-private-workspace`, which therefore changes at each release or Firefox update) vary by a
+few digits.
+
+**When the port is taken.** Another e2e run on the same machine (a second lane, for example) holds
+port 28471, and the run stops at once with exit 2 and a message naming the port: it never moves
+to another port on its own, which would draw other digits into every screenshot that shows a URL.
+Wait for the other run, or pass `--port N` (or `VIMMA_E2E_PORT=N`; 0 for any free port) and
+accept a few digits of difference in those screenshots. The updater scenarios' update host keeps a
+free port, since none of them takes a screenshot.
+
 Baselines are plain git blobs, not LFS (the spec's "LFS: not now" says when to revisit).
 
 **Troubleshooting Xvfb.**
