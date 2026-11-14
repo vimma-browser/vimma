@@ -37,6 +37,8 @@ export { textWidth };
  *   (m7-a11y: no meaning by glyph alone)
  * @property {boolean} [keep]  never dropped: cut to its `min` while others give way, and past it
  *   only as the last resort
+ * @property {boolean} [dot]  the agent segment's alone: it shows the dot of a step that just ran
+ *   (`◇ agent ·`), which the control socket's `state.agent.ran` reports as drawn
  */
 
 /**
@@ -553,6 +555,7 @@ export function statusSegments(input) {
         text,
         fg: ran ? "--vimma-mode-normal-fg" : "--vimma-text-cyan",
         bg: ran ? "--vimma-mode-normal" : null,
+        dot: ran,
         side: "right",
         // Just below the workspace's: it gives way before it, after the tab and title.
         priority: 3.5,

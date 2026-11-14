@@ -193,7 +193,7 @@ add_task(async function a_signed_newer_build_is_offered_and_the_request_is_anony
   Assert.ok(result.succeeded, "the check succeeded");
   Assert.equal(result.updates.length, 1, "Firefox offers the update");
   Assert.equal(result.updates[0].displayVersion, "9.9.9");
-  const status = VimmaUpdates.status();
+  const status = /** @type {VerifiedUpdate} */ (VimmaUpdates.status());
   Assert.equal(status.outcome, "offer", status.reason ?? "");
   Assert.equal(status.key.id, key.id, "Vimma verified it with the pinned key");
   const log = await requests();
@@ -218,7 +218,7 @@ add_task(async function a_manifest_failing_the_rules_never_reaches_firefox() {
     Assert.ok(!result.succeeded, `${name}: the check fails`);
     Assert.equal(result.updates.length, 1, `${name}: only Firefox's error entry`);
     Assert.ok(!result.updates[0].displayVersion, `${name}: no update offered`);
-    const status = VimmaUpdates.status();
+    const status = /** @type {RefusedUpdate} */ (VimmaUpdates.status());
     Assert.equal(status.outcome, "refused", name);
     Assert.ok(reason.test(status.reason), `${name}: ${status.reason}`);
   }
@@ -230,7 +230,10 @@ add_task(async function a_replay_is_refused_and_a_downgrade_offers_nothing() {
   await serve(await manifest({ at: String(serial - 5) }));
   const replay = await firefoxCheck();
   Assert.ok(!replay.succeeded, "an older serial fails the check");
-  Assert.ok(VimmaUpdates.status().reason.startsWith("replay: "), VimmaUpdates.status().reason);
+  Assert.ok(
+    /** @type {RefusedUpdate} */ (VimmaUpdates.status()).reason.startsWith("replay: "),
+    /** @type {RefusedUpdate} */ (VimmaUpdates.status()).reason,
+  );
 
   // Firefox alone would offer the same Firefox version with an older build ID.
   const older = {
@@ -388,7 +391,7 @@ const fake = {
   usable: true,
   canApply: true,
   busy: false,
-  staged: "none",
+  staged: /** @type {UpdateStage} */ ("none"),
   stage() {
     return this.staged;
   },
@@ -413,7 +416,7 @@ async function freshTarball() {
   registerCleanupFunction(() => VimmaUpdates._setFirefox(null));
 }
 
-/** Firefox's updater finished a download or staged it, and says so. @param {string} stage */
+/** Firefox's updater finished a download or staged it, and says so. @param {UpdateStage} stage */
 function stageAs(stage) {
   fake.staged = stage;
   Services.obs.notifyObservers(null, stage === "staged" ? "update-staged" : "update-downloading");
@@ -449,7 +452,7 @@ add_task(async function a_staged_update_shows_on_restart() {
   stageAs("staged");
   await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "staged: on restart");
   Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {FirefoxOffer} */ (await VimmaUpdates.describe());
   Assert.deepEqual(info.firefox, { stage: "staged", canApply: true });
   Assert.equal(
     info.offer.steps.text,
@@ -512,7 +515,7 @@ add_task(async function a_tarball_vimma_cannot_write_gets_its_owners_steps() {
   await serve(await manifest());
   await VimmaUpdates.check();
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "offered");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {FirefoxOffer} */ (await VimmaUpdates.describe());
   Assert.ok(info.offer.steps.text.startsWith("Vimma cannot write "), info.offer.steps.text);
   Assert.equal(info.firefox.canApply, false);
 });

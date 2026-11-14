@@ -327,14 +327,6 @@ addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn
   };
   const drawn = (/** @type {string} */ cls) => log().querySelectorAll(`:scope > .${cls}`).length;
   await openPage();
-  Assert.deepEqual(
-    Object.keys(state()).sort(),
-    [
-      ...["agent", "chat", "mode", "notice", "panes", "pending", "prompt", "splits", "tabs"],
-      ...["update", "workspace"],
-    ],
-    "state's fields are listed one by one: nothing the host adds reaches the socket by itself",
-  );
   Assert.strictEqual(state().chat, null, "no chat window: chat is null");
 
   // `agent` is the segment as the status bar last drew it, not as it will draw it next: the

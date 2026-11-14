@@ -39,6 +39,7 @@ const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
 
 /** This file, which the tests' own registries take as the one caller that may fill them. */
 const HERE = Components.stack.filename;
+/** @type {HostServiceName[]} */
 const ALL = [
   "agentChat",
   "isAgentDownload",
@@ -214,7 +215,13 @@ add_task(function test_the_conversations_service_is_agentchat_without_tickets_or
       `never AgentChat.${name}, which neither the host nor the window uses`,
     );
   }
-  const provider = { name: "host-services-chosen", kind: "openai", endpoint: "", vision: false };
+  // No model: chosen is only read back, never sent to.
+  const provider = /** @type {AgentProviderConfig} */ ({
+    name: "host-services-chosen",
+    kind: "openai",
+    endpoint: "",
+    vision: false,
+  });
   try {
     AgentChat.choose(provider);
     Assert.equal(chat.chosen, provider, "chosen is read when asked");
@@ -295,12 +302,25 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
   await chat.restore();
   for (const call of [
     () => chat.get(1),
-    () => chat.create({ provider: { name: "p", kind: "openai", endpoint: "", vision: false } }),
+    // No model: the call refuses before it reads the provider.
+    () =>
+      chat.create({
+        provider: /** @type {AgentProviderConfig} */ ({
+          name: "p",
+          kind: "openai",
+          endpoint: "",
+          vision: false,
+        }),
+      }),
     () => chat.transcript(1),
   ]) {
     Assert.throws(call, /the built-in agent is not started/, "no conversation to read or make");
   }
-  await Assert.rejects(chat.send(1, "a task"), /the built-in agent is not started/, "none sent");
+  await Assert.rejects(
+    chat.send(1, "a task", { ask: false }),
+    /the built-in agent is not started/,
+    "none sent",
+  );
   await Assert.rejects(
     chat.prepareLocal("http://127.0.0.1:11434/v1", "m"),
     /the built-in agent is not started/,
@@ -308,7 +328,16 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
   );
   Assert.equal(chat.clear(1), "the built-in agent is not started", "nothing cleared");
   Assert.equal(
-    chat.setProvider(1, { name: "p", kind: "openai", endpoint: "", vision: false }),
+    // No model: the call refuses before it reads the provider.
+    chat.setProvider(
+      1,
+      /** @type {AgentProviderConfig} */ ({
+        name: "p",
+        kind: "openai",
+        endpoint: "",
+        vision: false,
+      }),
+    ),
     "the built-in agent is not started",
     "no model switched",
   );

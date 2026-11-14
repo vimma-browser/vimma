@@ -298,9 +298,25 @@ interface URL {
   readonly URI: unknown;
 }
 
+// Vimma's own modules by chrome:// URL, typed as their source modules. Empty here, so the
+// product's ChromeUtils.importESModule calls return `any` as before; the browser tests' program
+// (tests/tsconfig.json) fills it from the generated types/mochitest/modules.d.ts.
+interface VimmaModules {}
+
 // engine/dom/chrome-webidl/ChromeUtils.webidl
 declare const ChromeUtils: {
-  importESModule(url: string): any;
+  // A literal URL of one of VimmaModules gets that module's type; any other (Firefox's own
+  // modules, a URL held in a variable) stays `any`. Where VimmaModules is filled (the browser
+  // tests), a literal Vimma URL that is not one of them (a typo, a module jar.mn does not ship)
+  // matches neither and is an error; the product's program, with it empty, takes any URL.
+  importESModule<U extends keyof VimmaModules>(url: U): VimmaModules[U];
+  importESModule<S extends string>(
+    url: S extends `chrome://browser/content/vimma/${string}`
+      ? [keyof VimmaModules] extends [never]
+        ? S
+        : never
+      : S,
+  ): any;
   // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
   // map's must match.
   defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;

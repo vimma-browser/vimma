@@ -111,7 +111,7 @@ declare function scripted(req: any, res: any, format: "openai" | "anthropic"): v
 declare const PORT: any;
 declare const PROVIDER: {
   name: string;
-  kind: string;
+  kind: "openai";
   endpoint: string;
   model: string;
   vision: boolean;

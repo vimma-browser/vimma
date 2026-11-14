@@ -200,7 +200,10 @@ add_task(async function startup_checks_when_due_and_not_when_fresh() {
     Assert.equal((await requests()).length, expected, what);
     if (expected) {
       // A check that worked is remembered as the last good one.
-      Assert.ok(VimmaUpdates.status().okAt >= now, `${what}: the check counts as good`);
+      Assert.ok(
+        /** @type {VerifiedUpdate} */ (VimmaUpdates.status()).okAt >= now,
+        `${what}: the check counts as good`,
+      );
     }
   }
   freshSession();

@@ -126,7 +126,7 @@ add_task(async function test_a_window_not_in_front_gets_attention_and_a_notifica
   try {
     const c = await agentClient();
     const tab = gBrowser.addTab(PAGE, {
-      userContextId: WorkspaceStore.agent.userContextId,
+      userContextId: /** @type {ContainedWorkspace} */ (WorkspaceStore.agent).userContextId,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     });
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, PAGE);
