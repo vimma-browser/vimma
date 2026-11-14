@@ -867,7 +867,8 @@ export class PdfView {
    * system caller gets the unrounded CSS size (nsGlobalWindowOuter's GetInnerSize), fractional
    * at a fractional desktop scale or full zoom, and the content's scale is the desktop scale
    * times the full zoom snapped to whole app units per device pixel, which the parent does not
-   * see.
+   * see. The ratio goes too, so that the parent can tell a report from before a full-zoom
+   * change, which leaves the size in device pixels as it was (#1040).
    */
   #size() {
     const win = this.#win;
@@ -875,6 +876,7 @@ export class PdfView {
     return {
       width: Math.round(win.innerWidth * ratio),
       height: Math.round(win.innerHeight * ratio),
+      ratio,
     };
   }
 
@@ -916,8 +918,22 @@ export class PdfView {
     if (this.#timer) return;
     this.#timer = lazy.setTimeout(() => {
       this.#timer = null;
-      this.#send(this.read());
+      if (!this.#gone()) this.#send(this.read());
     }, PDF_STATE_MS);
+  }
+
+  /**
+   * Whether the viewer's window has gone, as it can between the timer's start and the actor's
+   * didDestroy (#1040): a window that is no longer current throws NS_ERROR_UNEXPECTED at its
+   * sizes (nsGlobalWindowInner, FORWARD_TO_OUTER_OR_THROW) but reads `closed` as true, and a
+   * window whose compartment was cut off throws at any access.
+   */
+  #gone() {
+    try {
+      return this.#win.closed;
+    } catch {
+      return true;
+    }
   }
 
   destroy() {

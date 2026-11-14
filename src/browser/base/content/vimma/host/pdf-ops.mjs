@@ -135,7 +135,11 @@ const sameState = (a, b) =>
  * @param {PdfState} a @param {PdfState} b
  */
 const sameView = (a, b) =>
-  a.drawn === b.drawn && a.ops === b.ops && a.width === b.width && a.height === b.height;
+  a.drawn === b.drawn &&
+  a.ops === b.ops &&
+  a.width === b.width &&
+  a.height === b.height &&
+  a.ratio === b.ratio;
 
 export const PdfOps = {
   /**
@@ -222,8 +226,8 @@ export const PdfOps = {
    * `state.pdf` (docs/specs/m0-control-protocol-and-vimma-ctl.md, "state"; #1006): null unless
    * `browser` shows the PDF viewer; else whether it has drawn every page in view as the tab
    * shows it now (core pdfDrawn): its last report says so, came after every operation sent to
-   * it, and was made at the tab's present size, so neither a key just sent nor a resize under
-   * way reads as drawn. One flag: never the page, the page count, the title or the outline.
+   * it, and was made at the tab's present size and zoom, so neither a key just sent nor a
+   * resize or full-zoom change under way reads as drawn (#1040). One flag: never the page, the page count, the title or the outline.
    * @param {MozBrowser} browser
    * @returns {{ drawn: boolean } | null}
    */
@@ -233,11 +237,15 @@ export const PdfOps = {
     const sent = sentOps.get(wg) ?? 0;
     // The tab's size in device pixels, as the viewer reports its own (pdf-view.mjs, #size):
     // device pixels are the same on both sides at any desktop scale and full zoom.
-    const ratio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
+    const chromeRatio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
     const box = browser.getBoundingClientRect();
-    const width = Math.round(box.width * ratio);
-    const height = Math.round(box.height * ratio);
-    return { drawn: pdfDrawn(this.state(browser), { sent, width, height }) };
+    const width = Math.round(box.width * chromeRatio);
+    const height = Math.round(box.height * chromeRatio);
+    // The zoom leaves that size as it was: the viewer's pixel ratio, checked against the
+    // chrome's and the zoom, tells a report from before a zoom change (core sameScale).
+    const zoom = browser.fullZoom;
+    const now = { sent, width, height, chromeRatio, zoom };
+    return { drawn: pdfDrawn(this.state(browser), now) };
   },
 
   /**

@@ -11,7 +11,7 @@ const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
 const { PdfOps } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/pdf-ops.mjs");
-const { PDFJS_CONTRACT, PDFJS_DOM } = ChromeUtils.importESModule(
+const { PDFJS_CONTRACT, PDFJS_DOM, PdfView, PDF_STATE_MS } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/pdf-view.mjs",
 );
 const { PDF_MAX_LABEL } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/pdf.mjs");
@@ -464,6 +464,66 @@ add_task(async function pdf_mode_at_a_fractional_size() {
       await TestUtils.waitForCondition(
         () => PdfOps.drawn(browser)?.drawn === true,
         "the last page is drawn",
+      );
+    });
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+// #1040: a report scheduled just before the viewer's window went away fires on a window that is
+// no longer current, whose sizes throw NS_ERROR_UNEXPECTED (FORWARD_TO_OUTER_OR_THROW).
+add_task(async function a_report_due_after_the_window_has_gone_is_dropped() {
+  const wb = Services.appShell.createWindowlessBrowser(false);
+  const win = /** @type {Window} */ (wb.document.defaultView);
+  /** @type {string[]} */
+  const errors = [];
+  const listener = {
+    /** @param {nsIConsoleMessage} msg */
+    observe(msg) {
+      const text = msg instanceof Ci.nsIScriptError ? `${msg.sourceName} ${msg.errorMessage}` : "";
+      if (text.includes("pdf-view.mjs")) errors.push(text);
+    },
+  };
+  Services.console.registerListener(listener);
+  try {
+    /** @type {object[]} */
+    const sent = [];
+    const app = { eventBus: { on() {}, off() {} } };
+    // The constructor schedules the first report.
+    const view = new PdfView(win, app, (/** @type {object} */ s) => sent.push(s));
+    wb.close();
+    await new Promise((r) => setTimeout(r, PDF_STATE_MS * 3));
+    view.destroy();
+    Assert.deepEqual(sent, [], "no report from a window that has gone");
+    Assert.deepEqual(errors, [], "and no error");
+  } finally {
+    Services.console.unregisterListener(listener);
+  }
+});
+
+// #1040: a full-zoom change leaves the tab's size in device pixels as it was, so the report from
+// before it would read as drawn until pdf.js redraws. The parent reads the new zoom at once and
+// no report can come in the same tick, so `drawn` is false right after the zoom is set.
+add_task(async function a_full_zoom_change_is_not_drawn_until_the_viewer_redraws() {
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.ui.pdf_outline.hidden", true]] });
+  try {
+    await withPdf(async (browser) => {
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      browser.fullZoom = 1.1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn at the new zoom yet");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn again once the viewer reports at the new zoom",
+      );
+      browser.fullZoom = 1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "and back at 100%");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn again at 100%",
       );
     });
   } finally {

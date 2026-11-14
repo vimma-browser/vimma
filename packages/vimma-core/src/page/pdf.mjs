@@ -28,10 +28,17 @@ const MAX_MATCHES = 10_000_000;
  * @property {number} ops       how many operations the viewer's actor had received from Vimma
  * @property {number} width     the viewer's size then, in whole device pixels, so a report
  * @property {number} height    from before a resize is not taken for one after it
+ * @property {number} ratio     the viewer's devicePixelRatio then, so a report from before a
+ *   full-zoom change is not taken for one after it (#1040); 0 when unusable
  */
 
 /** Larger than any screen, in device pixels. */
 const MAX_SIZE = 100000;
+
+/** Gecko's app units per CSS pixel (AppUnitsPerCSSPixel). */
+const APP_UNITS = 60;
+/** Gecko's app units per device pixel are a whole number from 1 up; more than this is no screen. */
+const MAX_APP_UNITS = 6000;
 
 /**
  * Control (Cc) and format (Cf) characters: bidi overrides and isolates, zero-width marks; and
@@ -84,37 +91,77 @@ export function parsePdfState(raw) {
 }
 
 /**
- * The report's drawing fields, which only `state.pdf` reads (#1006): all four in bounds, else a
- * report that is not drawn. They never cost the record itself, so a size or count the viewer
- * reports oddly cannot take away the page state PDF mode runs on.
- * @param {Record<string, unknown>} r
- * @returns {{ drawn: boolean, ops: number, width: number, height: number }}
+ * The app units per device pixel behind a devicePixelRatio, or 0 when Gecko cannot have
+ * produced it: the ratio is 60 over a whole number of app units (nsGlobalWindowInner's
+ * GetDevicePixelRatio, for a system caller), so 60 / ratio is whole, from 1 to MAX_APP_UNITS.
+ * @param {unknown} ratio
  */
-function drawing({ drawn, ops, width, height }) {
+function appUnitsOf(ratio) {
+  if (typeof ratio !== "number" || !Number.isFinite(ratio) || ratio <= 0) return 0;
+  const units = APP_UNITS / ratio;
+  const whole = Math.round(units);
+  // 60 / (60 / n) is n again in doubles for every n in range; the slack is for safety only.
+  if (Math.abs(units - whole) > 1e-6 || whole < 1 || whole > MAX_APP_UNITS) return 0;
+  return whole;
+}
+
+/**
+ * The report's drawing fields, which only `state.pdf` reads (#1006): all five in bounds, else a
+ * report that is not drawn. They never cost the record itself, so a size, count or ratio the
+ * viewer reports oddly cannot take away the page state PDF mode runs on.
+ * @param {Record<string, unknown>} r
+ * @returns {{ drawn: boolean, ops: number, width: number, height: number, ratio: number }}
+ */
+function drawing({ drawn, ops, width, height, ratio }) {
   if (
     typeof drawn !== "boolean" ||
     !intIn(ops, 0, Number.MAX_SAFE_INTEGER) ||
     !intIn(width, 0, MAX_SIZE) ||
-    !intIn(height, 0, MAX_SIZE)
+    !intIn(height, 0, MAX_SIZE) ||
+    !appUnitsOf(ratio)
   ) {
-    return { drawn: false, ops: 0, width: 0, height: 0 };
+    return { drawn: false, ops: 0, width: 0, height: 0, ratio: 0 };
   }
-  return { drawn, ops, width, height };
+  return { drawn, ops, width, height, ratio: /** @type {number} */ (ratio) };
+}
+
+/**
+ * Whether the viewer's devicePixelRatio is the one its tab has at the zoom it has now (#1040).
+ * Gecko rounds app units per device pixel to whole numbers, the chrome's at the desktop scale
+ * and text scale, the page's at those times the full zoom (nsDeviceContext::ApplyFullZoomToAPD),
+ * so the parent cannot reproduce the page's exactly: the chrome's, divided by the zoom, is within
+ * half an app unit of the page's from each rounding (the chrome's half unit scaled by the zoom).
+ * A report from before a zoom change passes only when the two zoom levels are about one app unit
+ * apart or less, which Firefox's zoom steps never are; at the same app units the layout is the
+ * same anyway.
+ * @param {number} ratio  the report's
+ * @param {number} chromeRatio  the tab's window's devicePixelRatio
+ * @param {number} zoom  the tab's full zoom
+ */
+function sameScale(ratio, chromeRatio, zoom) {
+  const page = appUnitsOf(ratio);
+  const chrome = appUnitsOf(chromeRatio);
+  if (!page || !chrome || !(zoom > 0)) return false;
+  return Math.abs(page - chrome / zoom) <= 0.5 + 0.5 / zoom;
 }
 
 /**
  * Whether the viewer has drawn every page in view as the tab shows it now (`state.pdf`, #1006):
  * its last report says so, came after every operation Vimma sent it, and was made at the size
- * the tab has now; a report from before a resize (the outline opening beside the document) says
- * nothing of the pages drawn after it. Sizes are in device pixels, the one unit both sides
- * share at any desktop scale and full zoom (the viewer's CSS pixels follow the zoom, snapped by
- * the engine); each side rounds its own, so a pixel apart is the same size.
+ * and the zoom the tab has now; a report from before a resize (the outline opening beside the
+ * document) or a full-zoom change says nothing of the pages drawn after it. Sizes are in device
+ * pixels, the one unit both sides share at any desktop scale and full zoom (the viewer's CSS
+ * pixels follow the zoom, snapped by the engine); each side rounds its own, so a pixel apart is
+ * the same size. A zoom change leaves that size as it was, so the viewer's pixel ratio tells
+ * the two reports apart (sameScale).
  * @param {PdfState | null} state  the last report
- * @param {{ sent: number, width: number, height: number }} now  the operations sent to the
- *   viewer's document, and its tab's size in whole device pixels
+ * @param {{ sent: number, width: number, height: number, chromeRatio: number, zoom: number }} now
+ *   the operations sent to the viewer's document, its tab's size in whole device pixels, the
+ *   devicePixelRatio of the tab's window and the tab's full zoom
  */
-export function pdfDrawn(state, { sent, width, height }) {
+export function pdfDrawn(state, { sent, width, height, chromeRatio, zoom }) {
   if (!state?.drawn || state.ops < sent) return false;
+  if (!sameScale(state.ratio, chromeRatio, zoom)) return false;
   return Math.abs(state.width - width) <= 1 && Math.abs(state.height - height) <= 1;
 }
 
