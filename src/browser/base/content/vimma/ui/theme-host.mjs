@@ -561,7 +561,7 @@ function attachSidebarPage(doc) {
   attachPage(doc, SIDEBAR_PAGE_SHEET, (parsed) => {
     colourTrees(parsed);
     if (!parsed.nodePrincipal?.isSystemPrincipal) return;
-    const win = /** @type {any} */ (parsed.defaultView);
+    const win = parsed.defaultView;
     win?.windowUtils.loadSheetUsingURIString(SIDEBAR_PROMO_SHEET, win.windowUtils.AGENT_SHEET);
   });
 }
@@ -576,10 +576,17 @@ function attachSidebarPage(doc) {
  */
 function isFirefoxPage(doc) {
   if (!doc.nodePrincipal?.isSystemPrincipal) return false;
-  const frame = /** @type {any} */ (doc.defaultView?.browsingContext?.embedderElement);
+  // BrowsingContext.webidl: the element the document's frame is in, null for a top window.
+  /** @type {Element | null | undefined} */
+  const frame = doc.defaultView?.browsingContext?.embedderElement;
   if (!frame) return doc.documentURI === COMMON_DIALOG && windows.size > 0;
   const owner = frame.ownerDocument;
-  if (!windows.has(owner.defaultView) && !pages.has(owner)) return false;
+  // A document without a window (defaultView null) is in no themed window.
+  if (
+    !(/** @type {ReadonlyMap<Window | null, string>} */ (windows).has(owner.defaultView)) &&
+    !pages.has(owner)
+  )
+    return false;
   if (frame.classList?.contains("dialogFrame")) return true;
   const name = /^about:([a-z-]+)/i.exec(doc.documentURI ?? "")?.[1]?.toLowerCase();
   return frame.localName === "browser" && name !== undefined && THEMED_PAGES.has(name);
@@ -610,7 +617,7 @@ function attachFirefoxPage(doc) {
  * sheets apply inside its shadow trees. Only these parent-process system-principal documents, so
  * no web page can tell Vimma by it. Whether or not a window is themed: the pictures are always
  * empty.
- * @param {Document} doc
+ * @param {Document | null | undefined} doc  none for a sidebar without a document yet
  * @param {boolean} inSidebar
  */
 function hideEmptyStatePictures(doc, inSidebar) {
@@ -674,7 +681,9 @@ export const ThemeHost = {
       observingDocuments = true;
     }
     // A panel already open (restored with the window) has missed its document's insertion.
-    const panel = /** @type {any} */ (win.document.getElementById("sidebar"))?.contentDocument;
+    // browser-box.inc.xhtml: a XUL <browser>.
+    const panel = /** @type {XULFrameElement | null} */ (win.document.getElementById("sidebar"))
+      ?.contentDocument;
     attachSidebarPage(panel);
     hideEmptyStatePictures(panel, true);
     start();

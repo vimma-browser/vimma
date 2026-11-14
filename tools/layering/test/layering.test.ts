@@ -31,7 +31,7 @@ import { EXCEPTIONS, RESTRICTED } from "../layers.ts";
 const V = "chrome://browser/content/vimma/";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const WIDEN =
-  "widening this allow-list is a change to tools/layering/layering.ts that needs a fresh security review (ADR-026)";
+  "widening this allow-list is a change to tools/layering/ that needs a fresh security review (ADR-026)";
 const REVIEW =
   "a new caller of the agent gate needs a security review (docs/security.md section 12)";
 const ONLY = {

@@ -274,6 +274,14 @@ export const LOG_SIZE = 100;
 export const FROZEN_COPY_DEPTH = 32;
 
 /**
+ * Every object `frozenCopy` made, at every level: frozen, and holding only primitives and other
+ * such objects. Module-private, so nothing else can add to it (an object someone else froze is
+ * not here, and is copied).
+ * @type {WeakSet<object>}
+ */
+const frozenCopies = new WeakSet();
+
+/**
  * A deep, frozen copy of plain data, for what the agent gate keeps from a caller and hands to a
  * reader (security.md M62): nothing either side holds can change what a question showed, what
  * an answer is checked against or a `:mcp log` row. It is for JSON-like data of a fixed shape:
@@ -282,7 +290,10 @@ export const FROZEN_COPY_DEPTH = 32;
  * properties go; any other object is copied by its keys alone, so a Date, Map, Set or URL becomes
  * `{}` and a typed array an object of indexes. An object shared within the data is copied once
  * (linear time); one met again inside itself becomes null. Data nested deeper than
- * FROZEN_COPY_DEPTH objects throws, and the gate's callers fail closed on a throw.
+ * FROZEN_COPY_DEPTH objects throws, and the gate's callers fail closed on a throw. A value this
+ * function made is passed through as it is, wherever it sits: it is frozen all the way down
+ * already, and its levels were counted when it was made, so an event built around the gate's
+ * copy of a request at the limit copies (issue #1027).
  * @template T
  * @param {T} value
  * @returns {Readonly<T>}
@@ -296,6 +307,7 @@ export function frozenCopy(value) {
   const copy = (v, depth) => {
     if (typeof v === "function") return undefined;
     if (v === null || typeof v !== "object") return v;
+    if (frozenCopies.has(v)) return v;
     if (done.has(v)) return done.get(v);
     if (open.has(v)) return null;
     if (depth > FROZEN_COPY_DEPTH) {
@@ -320,6 +332,7 @@ export function frozenCopy(value) {
     }
     open.delete(v);
     Object.freeze(out);
+    frozenCopies.add(/** @type {object} */ (out));
     done.set(v, out);
     return out;
   };

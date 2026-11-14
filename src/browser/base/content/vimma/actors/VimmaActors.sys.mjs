@@ -699,7 +699,7 @@ export const VimmaActors = {
     );
     // Marks of tabs that closed or moved to another page are dropped here.
     for (const [id, mark] of submitMarks) {
-      const other = /** @type {any} */ (BrowsingContext).getCurrentTopByBrowserId(id);
+      const other = BrowsingContext.getCurrentTopByBrowserId(id);
       if (other?.currentWindowGlobal?.innerWindowId !== mark.doc) submitMarks.delete(id);
     }
     if (!submitObserver) {

@@ -230,11 +230,11 @@ function layerAtCentre(win, vertical) {
   const doc = win.document;
   let hit = doc.elementFromPoint(x, y);
   // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = /** @type {any} */ (hit)?.openOrClosedShadowRoot; root;) {
+  for (let root = hit?.openOrClosedShadowRoot; root;) {
     const inner = root.elementFromPoint(x, y);
     if (!inner || inner === hit) break;
     hit = inner;
-    root = /** @type {any} */ (hit).openOrClosedShadowRoot;
+    root = hit.openOrClosedShadowRoot;
   }
   /** @type {Element | null} */
   let inner = null;
@@ -639,7 +639,7 @@ export class VimmaChild extends JSWindowActorChild {
   #foundEditable() {
     try {
       // Only a frame that has searched has a Finder; reading it must not create one.
-      const finder = /** @type {any} */ (this.manager.getActor("Finder"))._finder;
+      const finder = this.manager.getActor("Finder")._finder;
       return finder?._fastFind?.foundEditable ?? null;
     } catch {
       return null;
@@ -677,7 +677,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @param {HTMLInputElement} el
    */
   #showFindMatch(el) {
-    const controller = /** @type {any} */ (el).editor?.selectionController;
+    const controller = el.editor?.selectionController;
     controller?.setDisplaySelection(Ci.nsISelectionController.SELECTION_ATTENTION);
     controller?.repaintSelection(Ci.nsISelectionController.SELECTION_NORMAL);
   }

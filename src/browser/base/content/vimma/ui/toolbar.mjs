@@ -47,6 +47,11 @@ const WINDOW_EVENTS = [
 ];
 
 /** @typedef {"minimal" | "prompt" | "full"} Size */
+/**
+ * A popupshowing or popuphidden target: a popup, or, for a popup in a shadow tree, its host
+ * (the window's capture listener sees the event retargeted), which has no anchor.
+ * @typedef {Element & Partial<Pick<XULPopupElement, "anchorNode" | "triggerNode">>} PopupTarget
+ */
 /** @type {readonly Size[]} smallest first */
 const SIZES = ["minimal", "prompt", "full"];
 
@@ -224,10 +229,10 @@ export class Toolbar {
         if (this.inBar(e.target)) this.win.setTimeout(() => this.focusChanged(), 0);
         break;
       case "popupshowing":
-        this.popupShowing(/** @type {any} */ (e.target));
+        this.popupShowing(/** @type {PopupTarget | null} */ (e.target));
         break;
       case "popuphidden":
-        this.popupHidden(/** @type {any} */ (e.target));
+        this.popupHidden(/** @type {PopupTarget | null} */ (e.target));
         break;
       case "PopupNotificationsBeforeAnchor":
         this.beforeAnchor(/** @type {Element} */ (e.target));
@@ -352,13 +357,14 @@ export class Toolbar {
    * Reason d: a panel or menu anchored in the bar holds it at the size its anchor needs, until
    * it closes, as F11's toolbox does (FullScreen._setPopupOpen).
    * @private
-   * @param {any} popup
+   * @param {PopupTarget | null} popup
    */
   popupShowing(popup) {
     if (popup?.localName === "tooltip") return;
     const anchor = popup?.anchorNode ?? popup?.triggerNode;
     if (!this.inBar(anchor)) return;
-    this.hold(popup, this.sizeFor(anchor));
+    // inBar is true only for a node with `closest`, which only an element has.
+    this.hold(popup, this.sizeFor(/** @type {Element} */ (anchor)));
     for (const key of [...this.awaiting]) {
       this.awaiting.delete(key);
       this.reasons.delete(key);
@@ -366,7 +372,7 @@ export class Toolbar {
     this.update();
   }
 
-  /** @private @param {any} popup */
+  /** @private @param {PopupTarget | null} popup */
   popupHidden(popup) {
     this.release(popup);
     // A doorhanger that moves to another anchor hides and opens again: look after that.

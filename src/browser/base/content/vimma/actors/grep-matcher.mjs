@@ -27,7 +27,7 @@ export const GREP_BUDGET_MS = 1000;
  * @property {(reply: any) => void} resolve  grepText's result, null when replaced, "timeout"
  */
 
-/** @type {any} */
+/** @type {ChromeWorker | null} */
 let worker = null;
 /** @type {Map<string, object>} the model each frame's text in the worker came from */
 const texts = new Map();

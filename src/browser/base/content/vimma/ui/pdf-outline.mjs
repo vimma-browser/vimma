@@ -34,9 +34,11 @@ const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 /**
  * @typedef {object} OutlinePanelHost
- * @property {(browser: any, effect: OutlineEffect) => void} effect  a follow, for the host
- * @property {(browser: any) => void} left  the tab left the document the outline was read from
- * @property {(browser: any) => void} [hidden]  the user hid an outline shown beside the document
+ * @property {(browser: MozBrowser, effect: OutlineEffect) => void} effect  a follow, for the host
+ * @property {(browser: MozBrowser) => void} left  the tab left the document the outline was read
+ *   from
+ * @property {(browser: MozBrowser) => void} [hidden]  the user hid an outline shown beside the
+ *   document
  */
 
 export class OutlinePanel {
@@ -55,7 +57,7 @@ export class OutlinePanel {
     this.filter = null;
     /** @type {OutlineState | null} */
     this.state = null;
-    /** @type {any} the <browser> whose document the outline is */
+    /** @type {MozBrowser | null} the <browser> whose document the outline is */
     this.browser = null;
     /** @type {import("./side-panel.mjs").Opener | null} */
     this.opener = null;
@@ -72,7 +74,11 @@ export class OutlinePanel {
     };
     // And when its tab loads another document (V11); a jump inside the PDF stays.
     this.progress = {
-      /** @param {any} browser @param {any} _p @param {any} _r @param {any} _l @param {number} flags */
+      /**
+       * Tabbrowser's tabs progress listener (Tabbrowser.sys.mjs, TabProgressListener).
+       * @param {MozBrowser} browser @param {unknown} _p @param {unknown} _r @param {unknown} _l
+       * @param {number} flags
+       */
       onLocationChange: (browser, _p, _r, _l, flags) => {
         if (browser !== this.browser) return;
         if (flags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT) return;
@@ -99,7 +105,7 @@ export class OutlinePanel {
   /**
    * Shows `outline` for `browser`'s document, with the entry for `page` selected. With `focus`
    * false it is only shown beside the document (decision 19): the keys stay the document's.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {PdfOutline} outline
    * @param {number} page
    * @param {boolean} [focus]
@@ -192,7 +198,8 @@ export class OutlinePanel {
    */
   action(action) {
     if (!this.state) return;
-    const browser = this.browser;
+    // Set with the state (open) and cleared with it (close).
+    const browser = /** @type {MozBrowser} */ (this.browser);
     const { state, effect } = outlineKey(this.state, { id: action.id, page: rowsShown(this.list) });
     if (state !== this.state) {
       const leftFilter = this.state.query !== null && state.query === null;
