@@ -383,7 +383,7 @@ function boxOf(el) {
 
 /** @param {Element} el */
 function onScreen(el) {
-  const win = el.ownerGlobal;
+  const win = el.ownerDocument.defaultView;
   const b = el.getBoundingClientRect();
   return !!win && b.bottom > 0 && b.top < win.innerHeight && b.width > 0 && b.height > 0;
 }
