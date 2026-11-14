@@ -68,7 +68,7 @@ if [ "${1:-}" = "--inside" ]; then
   appstreamcli validate --no-net "/var/lib/flatpak/app/$APP/current/active/files/share/metainfo/$APP.metainfo.xml"
   if [ "$real" = 1 ]; then
     # As the .deb smoke in release.yml: the first run creates the profile, since --screenshot on
-    # a fresh profile races the bookmarks import (docs/runbook.md, Smoke check). Killing
+    # a fresh profile races the bookmarks import (docs/runbook/smoke-check.md, Smoke check). Killing
     # `flatpak run` leaves the sandboxed Vimma running, so it is stopped with flatpak kill.
     data=/root/.var/app/$APP
     mkdir -p "$data/p"

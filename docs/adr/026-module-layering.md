@@ -115,7 +115,8 @@ each without a change in behaviour:
   belongs in `host/`, which may import `actors/`: `VimmaActors.register()` takes the parent's
   URL from `vimma.js` instead of building it from its own folder, and the child stays in
   `actors/`. This also ends the `actors/` ↔ `host/` folder loop. It changes how the actor is
-  registered and `docs/security.md` section 13 names the file, so it gets a security review.
+  registered and `docs/security/13-page-modes.md` section 13 names the file, so it gets a security
+  review.
   (Since changed: done. The parent actor is `host/VimmaParent.sys.mjs`, its code unchanged but
   for three import paths. `vimma.js` passes its URL to `VimmaActors.register(parentURI)`, which
   registers the pair with the same options as before; `actors/` names no `host/` module, and
@@ -126,7 +127,7 @@ each without a change in behaviour:
   the host shows, so it moves into a folder of its own with `mcp-ops.mjs` and `control-ops.mjs`,
   in a new layer between `workspaces/`/`actors/` and `host/` (it imports `workspaces/`, so it
   cannot share their layer); `ctl/` keeps the socket and the commands. It crosses a security
-  boundary, so it is reviewed on its own against `docs/security.md`.
+  boundary, so it is reviewed on its own against `docs/security/`.
   (Since changed: done, without a new folder. The gate is `host/AgentGate.sys.mjs`, its code
   unchanged but for one import path (`../host/mcp-ops.mjs` became `./mcp-ops.mjs`). The planned
   folder was to hold the gate with `mcp-ops.mjs` and `control-ops.mjs`, and those two already
@@ -149,7 +150,7 @@ each without a change in behaviour:
   the eager folder cycle: no two folders import each other eagerly.) (Since changed, issue
   #1012: the importer rule is a set of allow-lists, each the one form the tree uses, so that
   a new form fails until it is reviewed; widening a list is a change to
-  `tools/layering/` that needs a fresh security review. `docs/security.md` section 12
+  `tools/layering/` that needs a fresh security review. `docs/security/12-agents-mcp.md` section 12
   lists what is checked, each item with its test: the load positions of the modules (fixed
   `.mjs` or `.js` URLs, no options, the gate only by its exact URL, in no worker, and only from
   a listed module), `ChromeUtils` and the loader only in their direct forms, the gate's file name
@@ -311,8 +312,8 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   gate returns, what one of its getters returns, and what a function that calls the gate does
   for its own caller, are not followed; the security review of a listed importer judges
   those. What the getters, `grants()` and listener events hand out is frozen
-  (docs/security.md M62), so handing one on lets its holder read it and change nothing of the
-  gate's; what a call returns is a new object the gate does not keep.
+  (docs/security/12-agents-mcp.md M62), so handing one on lets its holder read it and change nothing
+  of the gate's; what a call returns is a new object the gate does not keep.
 - A string, template string or regular expression literal that names the gate's file fails in
   a module the list does not hold, and anywhere in the text of a page, matched on its letters
   and digits alone after escapes and references are decoded, so that an escape, a control
@@ -377,8 +378,8 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   check refuses any entry, so an exception would mean changing `exceptionErrors` in
   `tools/layering/layer-rules.ts`, its test and decision 5.)
 - A new importer of the agent gate (`host/AgentGate.sys.mjs`) fails `npm run layering` even where
-  the layers allow it: it needs a security review against `docs/security.md` section 12, then a
-  line in `RESTRICTED` (`tools/layering/layers.ts`) and in its test.
+  the layers allow it: it needs a security review against `docs/security/12-agents-mcp.md` section
+  12, then a line in `RESTRICTED` (`tools/layering/layers.ts`) and in its test.
 - A new folder under `vimma/` needs a layer in `layers.ts`, a row in this record's table and a
   `README.md`.
 - Moving code to the folder that owns it can change a `chrome://` URL that tests import; such a

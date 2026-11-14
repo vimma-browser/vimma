@@ -128,7 +128,7 @@ The `.deb`, the `.rpm` and the Arch Linux package add Vimma to your application 
 but never make it your default browser on their own
 ([Making Vimma your default browser](#making-vimma-your-default-browser)). Next to the files are `SHA256SUMS`, a CycloneDX SBOM
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
 **Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
 install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
@@ -158,7 +158,7 @@ It installs to `/usr/lib/vimma`, with `vimma`, `vimma-open` and `vimma-ctl` in `
 The package carries no OpenPGP signature, so dnf says it skipped the OpenPGP check and zypper
 needs `--allow-unsigned-rpm`. What vouches for it is the release's `SHA256SUMS` and its cosign
 signature; check them before installing ("Verify a release" in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)):
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)):
 
 ```sh
 cosign verify-blob --bundle SHA256SUMS.sigstore.json \
@@ -313,7 +313,7 @@ makepkg -si
 The `PKGBUILD` pins the SHA-256 of the tarball it downloads, so checking the `PKGBUILD` covers
 what it installs. Every Linux file of the release is in `SHA256SUMS`, and the macOS `.dmg` and
 Homebrew cask in `SHA256SUMS-macos` ("Verify a release" in
-[runbook.md](runbook.md#release-packages-releaseyml-spec-m6-packaging)).
+[the runbook](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging)).
 
 The package marks itself as installed by a package manager (`/opt/vimma/is-packaged-app`), as
 Firefox's own distribution packages do; the `.deb`, the `.rpm` and the AppImage carry the same
@@ -2076,7 +2076,7 @@ limit at about 90 seconds a step, and a 35B mixture-of-experts model completed t
 in a run of 35 steps and 17 minutes. The bench ran no model on a GPU and no hosted model,
 so it says nothing about them. To measure your own model on the same ten lists and local shop,
 run the bench from a checkout of the repository with a Vimma build and Xvfb
-([runbook](runbook.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
+([runbook](runbook/testing.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
 endpoint and model of your server:
 
 ```sh
@@ -2744,7 +2744,7 @@ with the rest of your computer.
   full-control connection asks you first, but the safe setting is off. Turn it on only for a
   while (`:control on 15`) when you script Vimma yourself.
 - **Malware running as you** can do the same, with or without agents
-  ([security model](security.md)).
+  ([security model](security/)).
 
 #### Moving around a page
 
@@ -4605,7 +4605,7 @@ and deceptive content". In `about:config` that is `browser.safebrowsing.phishing
 `browser.safebrowsing.malware.enabled` = `false`.
 
 A Vimma you build yourself has Safe Browsing only if you build it with a Google API key
-([runbook](runbook.md)). Without one it fetches no lists, and Settings shows the protection off.
+([runbook](runbook/)). Without one it fetches no lists, and Settings shows the protection off.
 
 Whether or not you use Safe Browsing, [uBlock Origin](https://ublockorigin.com/) from
 addons.mozilla.org adds a second line of protection: in its dashboard → Filter lists, keep "uBlock filters

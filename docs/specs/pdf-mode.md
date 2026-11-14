@@ -7,7 +7,7 @@ panel's state)); `actors/pdf-view.mjs` (new: the one module that touches pdf.js)
 `actors/VimmaChild.sys.mjs`, `actors/VimmaActors.sys.mjs`, `host/VimmaHost.sys.mjs`,
 `host/find.mjs`, `host/pdf-ops.mjs` (new); `ui/pdf-outline.mjs` (new: the outline panel, styled
 in `side-panel.css` beside the bookmarks panel); `src/browser/branding/vimma/pref/firefox-branding.js`; `docs/guide.md`,
-`docs/limits.md`, `docs/security.md`; `browser/themes/shared/vimma/firefox-pdf.css` (decision 20), `config.mjs` (`[ui] pdf_outline`, decision 19) · Upstream patches: none (decision 2) · ADR:
+`docs/limits.md`, `docs/security/`; `browser/themes/shared/vimma/firefox-pdf.css` (decision 20), `config.mjs` (`[ui] pdf_outline`, decision 19) · Upstream patches: none (decision 2) · ADR:
 [ADR-024](../adr/024-keymap-contexts.md), keymap contexts (decision 4)
 
 Issue: [#487](https://github.com/vimma-browser/vimma/issues/487)
@@ -538,17 +538,17 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     documents keep marks, the one used longest ago dropped first, so a long session's marks
     stay bounded. Marks are shared by every workspace of a window kind, because a mark is a
     reading position the user set and tells no page anything; a private window's are its own. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
-    memory, as live grep keeps page text (`docs/security.md` §15). In the private workspace marks
-    live with its windows and go when it closes. zathura saves marks and its jump list per file;
-    Vimma does not, because saving them would keep a list of the PDFs read in the profile, a
-    history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF at its
-    page. Rejected: marks saved per PDF URL in the profile, for that reason. (Since changed: `'x`
-    records the history entry and scrolls to the destination itself, with
+    memory, as live grep keeps page text (`docs/security/15-live-grep.md` §15). In the private
+    workspace marks live with its windows and go when it closes. zathura saves marks and its jump
+    list per file; Vimma does not, because saving them would keep a list of the PDFs read in the
+    profile, a history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF
+    at its page. Rejected: marks saved per PDF URL in the profile, for that reason. (Since changed:
+    `'x` records the history entry and scrolls to the destination itself, with
     `pdfHistory.pushCurrentPosition`, `pdfHistory.push` and `pdfViewer.scrollPageIntoView`, as
-    `goToDestination` does, because `goToDestination` also focuses the page's text layer once it
-    has rendered, and on a busy viewer that focus came after the next key and scrolled the view
-    back to the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set,
-    which is meant for a document's links.)
+    `goToDestination` does, because `goToDestination` also focuses the page's text layer once it has
+    rendered, and on a busy viewer that focus came after the next key and scrolled the view back to
+    the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set, which is
+    meant for a document's links.)
 12. **Pages are shown as the document draws them.** Vimma does not recolour PDF pages: it adds no
     filter or style to the viewer and sets no `pdfjs.*` colour pref, and `ctrl+r` keeps its
     meaning, reload (decision 5). Reason: a document's colours are its content (figures,
@@ -681,7 +681,7 @@ without a check. A compromised viewer (Research,
 CVE-2024-4367) is treated as a hostile page that also controls every pdf.js function and event
 the adapter touches.
 
-`docs/security.md` gets a section in its format, with these rules and the tests that enforce them
+`docs/security/` gets a section in its format, with these rules and the tests that enforce them
 (each listed under Tests):
 
 > ## 20. The PDF viewer (`actors/pdf-view.mjs`, `host/pdf-ops.mjs`)
@@ -744,8 +744,8 @@ the adapter touches.
 > - V11. Marks and the parsed outline **must** stay in memory, and the outline **must** be dropped
 >   when its tab navigates or closes. `pdf_marks_and_outlines_are_not_written`
 
-(Since changed: decisions 18 to 20 change V7, V8 and V10 and add V12; `docs/security.md`
-section 20 has the rules as they stand.)
+(Since changed: decisions 18 to 20 change V7, V8 and V10 and add V12;
+`docs/security/20-pdf-viewer.md` section 20 has the rules as they stand.)
 
 Section 13's page-mode rules apply unchanged. The PR that adds the adapter and the PR that adds
 the outline panel each get a review by a fresh agent before they merge, as every content-actor
@@ -848,7 +848,7 @@ cannot carry bidi or zero-width characters`); page targets for
   not matched that a user would look for (SyncTeX, saved marks and jumps, `ctrl+b` full-page
   up, recolouring), and for PDFs from `blob:` and `data:` URLs.
 - `docs/bindings.md`, `docs/bindings.json`, `defaults.toml`: regenerated by each keymap PR.
-- `docs/security.md`: section 20 (Security and privacy).
+- `docs/security/20-pdf-viewer.md`: section 20 (Security and privacy).
 - `docs/adr/024-keymap-contexts.md`: new, with delivery PR 1.
 - `CHANGELOG.md` [Unreleased]: added by the maintainer at merge time, except the lines for the
   help snapshot and the e2e baseline, which the PRs that change them add.
@@ -872,8 +872,8 @@ since those describe what a user gets only once the pref is gone.
    action, which that PR adds.
 2. **feat(pdf): page and match count in the status bar.** The adapter with its principal check
    and contract test, `parsePdfState`, the host's context switch to `pdf`, the status bar's page
-   segment and the find count; `docs/security.md` section 20 (V1 to V6). Needs the fresh-agent
-   review. No binding changes.
+   segment and the find count; `docs/security/20-pdf-viewer.md` section 20 (V1 to V6). Needs the
+   fresh-agent review. No binding changes.
 3. **feat(keys): zathura's page, zoom and layout keys in the PDF viewer.** `J`, `K`, `gg`, `G`,
    counts, `:{n}`, `H`, `L`, `P`, `ctrl+f`, `+`, `-`, `=`, `zi`, `zI`, `zo`, `zO`, `z0`, `zz`,
    `zZ`, `{n}=`, `a`, `s`, `d`, `D`, `w`, `r`, `R`, `Y`, `F5`, presentation, history entries
@@ -881,7 +881,7 @@ since those describe what a user gets only once the pref is gone.
    paragraph above says of every user-facing doc.
 4. **feat(keys): the outline panel on `Tab` (`index` mode).** The adapter's outline read and
    follow, `parsePdfOutline`, the panel with its filter, screenshots in a built-in and an Omarchy
-   theme, and V8 in `docs/security.md` section 20. Needs the fresh-agent review.
+   theme, and V8 in `docs/security/20-pdf-viewer.md` section 20. Needs the fresh-agent review.
 5. **feat(keys): marks and link keys in the PDF viewer.** `m`, `'`, `F`, `c`.
 6. **chore(branding): turn off the PDF viewer's features notification.**
    `pdfjs.featuresNotificationImpressionLimit = 0` (decision 17). Independent of the others.

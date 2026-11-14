@@ -3,7 +3,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Is this pull request docs-only? (Issue #245, docs/runbook.md "Docs-only pull requests".)
+// Is this pull request docs-only? (Issue #245, docs/runbook/ci-docs-only-pull-requests.md
+// "Docs-only pull requests".)
 // ci.yml and e2e.yml skip their heavy steps and jobs on a docs-only pull request
 // with `if:`, not with a workflow `paths` filter: a required check whose workflow never runs
 // blocks the merge, while a job or step skipped by `if:` reports success.
@@ -31,7 +32,7 @@ export const GENERATED_MARKDOWN = Object.freeze(["docs/bindings.md"]);
 export const CODE_DIRS = Object.freeze([".github/", "packages/", "src/", "tests/", "tools/"]);
 
 /**
- * The Vitest files that read a Markdown file of the repo (docs/runbook.md, docs/security.md,
+ * The Vitest files that read a Markdown file of the repo (docs/runbook/, docs/security/,
  * docs/guide.md). A docs-only pull request runs these instead of the whole suite. The test of
  * this file fails when a test that reads Markdown is missing here.
  */
@@ -42,6 +43,7 @@ export const MARKDOWN_TESTS = Object.freeze([
   "tools/package/test/package.test.mjs",
   "tools/release/test/changelog.test.mjs",
   "tools/security/test/check-doc-links.test.ts",
+  "tools/security/test/doc-index.test.ts",
 ]);
 
 /**

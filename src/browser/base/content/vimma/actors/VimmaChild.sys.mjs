@@ -803,9 +803,9 @@ export class VimmaChild extends JSWindowActorChild {
         this.#pdf?.setTheme(msg.data?.css);
         return undefined;
       case "Vimma:PdfOp":
-        // An operation name and a number (docs/security.md section 20, V7), checked again by
-        // the adapter; only the top-level viewer has one. A report follows each, even when it
-        // changed nothing, so the parent hears that it was run (`state.pdf`).
+        // An operation name and a number (docs/security/20-pdf-viewer.md section 20, V7), checked
+        // again by the adapter; only the top-level viewer has one. A report follows each, even when
+        // it changed nothing, so the parent hears that it was run (`state.pdf`).
         this.#pdfOps++;
         this.#pdf?.run(msg.data);
         this.#pdf?.schedule();

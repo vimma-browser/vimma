@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { defined } from "./defined.ts";
 
-// docs/security.md B15: site-dispatch.yml holds the vimma-site-dispatch app's key and a release
-// event runs the tag's copy, so its token must reach vimma-site alone and nothing from the event
-// may reach the shell but through env. Text checks, like sites-workflow.test.mjs: no YAML
-// dependency.
+// docs/security/14-build-and-release-supply-chain.md B15: site-dispatch.yml holds the
+// vimma-site-dispatch app's key and a release event runs the tag's copy, so its token must reach
+// vimma-site alone and nothing from the event may reach the shell but through env. Text checks,
+// like sites-workflow.test.mjs: no YAML dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/site-dispatch.yml", import.meta.url),
   "utf8",
@@ -69,8 +69,9 @@ describe("site dispatch workflow (site-dispatch.yml)", () => {
     expect(job("dispatch")).not.toMatch(/\n {4}permissions:/);
   });
 
-  // docs/security.md B15: a release event runs the tag's copy of this file, which a writer can
-  // edit, and an edited copy could push to an auto-merging release-sync branch of vimma-site.
+  // docs/security/14-build-and-release-supply-chain.md B15: a release event runs the tag's copy of
+  // this file, which a writer can edit, and an edited copy could push to an auto-merging
+  // release-sync branch of vimma-site.
   it("the job that uses the key deploys to site-dispatch and runs only from main", () => {
     const dispatch = job("dispatch");
     expect(dispatch).toContain("secrets.SITE_DISPATCH_APP_KEY");

@@ -391,7 +391,8 @@ export class StatusBar {
 
 /**
  * The host as the bar shows it and its registrable domain, for truncation that never cuts the
- * latter (docs/security.md C3). The base domain is counted in labels from the
+ * latter (docs/security/06-chrome-ui-rendering.md C3). The base domain is counted in labels from
+ * the
  * ASCII form Services.eTLD answers in, then taken from the display form, so an IDN host keeps
  * its Unicode. An IP address, or a host without a public suffix, is its own base.
  * @param {any} uri
@@ -420,7 +421,7 @@ function originOf(uri) {
  * The tab's address for the bar, and its origin. An initial page (about:blank, the start page)
  * shows no address only when Firefox's address bar would show none
  * (BrowserUIUtils.checkEmptyPageOrigin): an about:blank a page opened or wrote into reads
- * `about:blank from <the page that controls it>` (docs/security.md C3).
+ * `about:blank from <the page that controls it>` (docs/security/06-chrome-ui-rendering.md C3).
  * @param {BrowserWindow} win
  * @param {any} browser
  * @returns {{ url: string | null, origin: UrlOrigin | null }}
@@ -461,7 +462,7 @@ function barUrl(win, browser) {
 /**
  * The origin of a URL without a host of its own: a nested one's inner URL (view-source:), else
  * the page's principal (blob:, which carries its creator's origin), so the bar can still keep
- * that origin's domain whole (docs/security.md C3).
+ * that origin's domain whole (docs/security/06-chrome-ui-rendering.md C3).
  * @param {any} browser
  * @param {any} uri
  * @returns {UrlOrigin | null}
@@ -486,7 +487,7 @@ function innerOrigin(browser, uri) {
 /**
  * The selected page's connection, from the browser's security state as Firefox's identity
  * block reads it (browser-siteIdentity.js), never from the address bar, so an unsent edit in
- * the hidden address bar changes nothing (docs/security.md C3).
+ * the hidden address bar changes nothing (docs/security/06-chrome-ui-rendering.md C3).
  * @param {any} browser
  */
 function securityOf(browser) {

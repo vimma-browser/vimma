@@ -40,7 +40,8 @@ packages, signs and publishes all of it without me, once I have enabled it.
 - `.github/workflows/release.yml`: build → package (+ smoke install) → sign → upload → AUR push,
   gated off until `RELEASE_ENABLED` is set.
 - `nightly.yml`: its `surfer package` step is replaced by `./mach package` (see Findings).
-- `docs/runbook.md` (Releases): enabling and verifying; `docs/guide.md`: "Installing" (planned).
+- `docs/runbook/ci-releases.md` (Releases): enabling and verifying; `docs/guide.md`: "Installing"
+  (planned).
 - `README.md`: the first release adds the download and latest-release badges to the badge bar
   ([README badges](#readme-badges)).
 
@@ -192,7 +193,7 @@ packages are dev tools only and never ship, so they are not listed.
 `refs/tags/vX.Y.Z` or `refs/heads/main`) and `--certificate-oidc-issuer
 https://token.actions.githubusercontent.com`; a test keeps the runbook's command equal to it.
 (Since changed: `IDENTITY_REGEXP` accepts only `refs/heads/main`, since `release.yml` runs only
-from `main`; docs/runbook.md, "Verify a release".) Only the `sign` job gets `id-token: write`; it runs
+from `main`; docs/runbook/ci-release-packages.md, "Verify a release".) Only the `sign` job gets `id-token: write`; it runs
 on a GitHub-hosted runner with no repository code except the downloaded artifacts.
 
 Each file is signed with `cosign sign-blob --yes --bundle <file>.sigstore.json <file>`.
@@ -202,7 +203,7 @@ Each file is signed with `cosign sign-blob --yes --bundle <file>.sigstore.json <
 (Since changed: `release.yml` starts only by `workflow_dispatch` on `main`, from
 `release-please.yml`'s `release-build` job for the draft release-please creates, or by hand. It
 uploads to the draft, and publishing rebuilds nothing. The `aur` job moved to `aur.yml`, which
-runs when the release is published; docs/runbook.md, "Release packages".)
+runs when the release is published; docs/runbook/ci-release-packages.md, "Release packages".)
 
 **Trigger: `release: types: [published]`**, plus `workflow_dispatch` with a `tag` input.
 

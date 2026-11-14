@@ -5,11 +5,11 @@
 
 /**
  * The self-signed certificate Firefox's updater embeds for an update key
- * (docs/specs/m6a-updater.md §6, "Key ceremony"; docs/runbook.md, "Update signing keys and the
- * update host", step 5b). The updater reads only the certificate's public key (NSS
- * CERT_NewTempCertificate, then CERT_ExtractPublicKey: modules/libmar/verify/cryptox.c), but the
- * certificate is still self-signed, so that anyone can check with openssl that it was made by
- * the key it names.
+ * (docs/specs/m6a-updater.md §6, "Key ceremony"; docs/runbook/ci-update-keys-and-update-host.md,
+ * "Update signing keys and the update host", step 5b). The updater reads only the certificate's
+ * public key (NSS CERT_NewTempCertificate, then CERT_ExtractPublicKey:
+ * modules/libmar/verify/cryptox.c), but the certificate is still self-signed, so that anyone can
+ * check with openssl that it was made by the key it names.
  *
  * The primary's private key never leaves Cloud KMS, so openssl cannot sign the certificate. This
  * tool splits the work: `request` writes the to-be-signed certificate and the SHA-384 DigestInfo

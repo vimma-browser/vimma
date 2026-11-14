@@ -483,9 +483,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 | **An agent disturbs the user's own find or hints** in the same window.                                                                                   | The agent's find uses the tab's `finder`, and its hint collection is keyed by its own browser (D11, D12). A tab the user is typing in is `in-use` (D13).                                                                                                                                                                                                                                                                                        |
 | **An agent talks the user into full control.**                                                                                                           | The tools make full control unnecessary for showing and moving around a page; the instructions tell the model not to ask for it (D21); while MCP is on, both full-control questions say it reaches every workspace and that agents can use it (D22, D23).                                                                                                                                                                                       |
 
-### docs/security.md (§12, rules added by the sub-PR that builds each)
+### docs/security/12-agents-mcp.md (§12, rules added by the sub-PR that builds each)
 
-Each rule enters `docs/security.md` with links to its tests in the sub-PR that implements it,
+Each rule enters `docs/security/` with links to its tests in the sub-PR that implements it,
 because the page links every rule to a test that exists (`tools/security/check-doc-links.mjs` (Since
 changed: `check-doc-links.ts`, ADR-025)). Until then §12 names this spec as planned.
 
@@ -578,7 +578,7 @@ Written first and seen to fail, by layer. Each names the rule it holds.
   control is not needed for agents; "Full control while agents are on" gains the new wording.
 - `README.md` feature list: agents can show a page and move around it, inside the agent
   workspace.
-- `docs/security.md` §12: M16-M23 as each sub-PR lands; S13 cross-references M22.
+- `docs/security/` §12: M16-M23 as each sub-PR lands; S13 cross-references M22.
 - `docs/bindings.md` via `npm run gen-docs` only if `:mcp log` adds an action row.
 - `CHANGELOG.md`: one Added or Changed line per sub-PR; each changed e2e baseline or help-text
   snapshot named in its line.

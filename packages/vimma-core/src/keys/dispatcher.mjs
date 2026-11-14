@@ -95,7 +95,7 @@ export function createDispatcher(keymap) {
    */
   function dispatch(m, chord, c = "page") {
     // Checked and looked up only when the mode or context changes: `mode` and `context` only ever
-    // hold checked values, and this runs on every key, which the bench gates (docs/runbook.md).
+    // hold checked values, and this runs on every key, which the bench gates (docs/runbook/).
     if (root === null || m !== mode || c !== context) {
       if (!isMode(m)) throw new Error(`unknown mode "${m}"`);
       if (!isContext(c)) throw new Error(`unknown context "${c}"`);

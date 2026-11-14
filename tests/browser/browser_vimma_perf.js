@@ -8,8 +8,8 @@
 // chrome window's MozAfterPaint; nothing in the product reports a timestamp.
 //
 // Each case logs one `VIMMA_PERF {json}` line (median, p90, max over SAMPLES presses) and
-// checks the medians against BUDGETS, set from CI runs (docs/runbook.md, "Key-to-paint
-// timings").
+// checks the medians against BUDGETS, set from CI runs (docs/runbook/ci-key-to-paint-timings.md,
+// "Key-to-paint timings").
 
 "use strict";
 

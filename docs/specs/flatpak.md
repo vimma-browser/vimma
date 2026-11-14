@@ -3,7 +3,7 @@
 Status: accepted (sub-PR 1, and sub-PR 2's install type, guide, limits and metainfo screenshots
 implemented; the rest of sub-PR 2, the Flathub submission, in [#465](https://github.com/vimma-browser/vimma/issues/465)) · Area: `tools/package/flatpak.mjs`
 (new), `tools/package/flatpak-smoke.sh` (new), `.github/workflows/flatpak.yml` (new),
-`docs/runbook.md`, `docs/security.md` · Upstream patches: none · ADR: none
+`docs/runbook/`, `docs/security/` · Upstream patches: none · ADR: none
 
 Issues: [#295](https://github.com/vimma-browser/vimma/issues/295),
 [#465](https://github.com/vimma-browser/vimma/issues/465)
@@ -174,7 +174,8 @@ image is pinned by digest and the runtimes by commit; the Fedora packages come f
 signed repositories at their current versions. The manifest's build commands are fixed strings:
 the version and SHA-256 are validated and appear only in the source's URL and hash. Nothing is
 published. In the sandbox, Vimma can read the Omarchy theme but not write it, and cannot reach
-`~/.config/omarchy/hooks`, so it never installs the Omarchy hook (docs/security.md, section 7).
+`~/.config/omarchy/hooks`, so it never installs the Omarchy hook
+(docs/security/07-omarchy-hook-and-vimma-open.md, section 7).
 The control socket listens on 127.0.0.1 as in the other packages; with `--share=network` the
 sandbox shares the host's loopback, so `vimma-ctl` on the host can reach it with
 `XDG_CONFIG_HOME=~/.var/app/dev.vimma.browser/config` (not checked end to end).
@@ -202,7 +203,7 @@ nothing to replace` (the Flatpak among them).
 
 ## Docs and changelog
 
-`docs/runbook.md`, "Flatpak": what CI builds and how to submit to Flathub. `docs/security.md`,
+`docs/runbook/ci-flatpak.md`, "Flatpak": what CI builds and how to submit to Flathub. `docs/security/14-build-and-release-supply-chain.md`,
 B12. `docs/guide.md` and `docs/limits.md` change with sub-PR 2, when users can install it.
 Changelog: `ci: build and run a Flatpak of each release (not yet on Flathub)`.
 

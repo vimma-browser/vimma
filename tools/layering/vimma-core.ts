@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// vimma-core (docs/security.md section 12): core/ is a copy the scan does not read, so its
-// sources may reach no loader by reflection and may not name a restricted module's file.
+// vimma-core (docs/security/12-agents-mcp.md section 12): core/ is a copy the scan does not read,
+// so its sources may reach no loader by reflection and may not name a restricted module's file.
 
 import { posix } from "node:path";
 import * as espree from "espree";

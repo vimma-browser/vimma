@@ -4,7 +4,8 @@ import { PR_TRIGGERS, concurrencyGroup, prConcurrencyProblem } from "./workflow-
 import { triggers } from "./workflow-runners.mjs";
 
 // Every workflow a pull request triggers cancels the pull request's superseded run, and only
-// that run (workflow-concurrency.mjs; docs/runbook.md, "Superseded pull request runs").
+// that run (workflow-concurrency.mjs; docs/runbook/ci-superseded-pull-request-runs.md, "Superseded
+// pull request runs").
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const workflows = readdirSync(dir)
   .filter((f) => /\.ya?ml$/.test(f))

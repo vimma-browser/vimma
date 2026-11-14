@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Who may reach a restricted module (docs/security.md section 12): import it, name its file or
-// hold it. Only the modules RESTRICTED in layers.ts lists, each by the one URL of the one copy.
+// Who may reach a restricted module (docs/security/12-agents-mcp.md section 12): import it, name
+// its file or hold it. Only the modules RESTRICTED in layers.ts lists, each by the one URL of the
+// one copy.
 
 import { type Edge, type HandOn, LAYERS_FILE, type Mention, type Restricted } from "./model.ts";
 
