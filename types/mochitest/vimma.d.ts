@@ -139,3 +139,9 @@ type GrepSession = import("../../src/browser/base/content/vimma/host/grep.mjs").
 /** A group of the address bar's results, as search/UrlbarRows.sys.mjs reads Firefox's. */
 type UrlbarResultGroup =
   import("../../src/browser/base/content/vimma/search/UrlbarRows.sys.mjs").ResultGroup;
+
+/**
+ * A window's state (VimmaHost.sys.mjs WindowState). VimmaHost._state(win) is undefined for a
+ * window VimmaHost has not started; a test whose window it started casts the lookup to this.
+ */
+type HostState = NonNullable<ReturnType<VimmaHostApi["_state"]>>;

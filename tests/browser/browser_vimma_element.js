@@ -59,6 +59,9 @@ const BLOCKS = {
 /** A bare key with no binding in normal mode: it reaches the page and flushes earlier events. */
 const UNBOUND = "z";
 
+/** The window's state, which VimmaHost made when it started the window. */
+const hostState = () => /** @type {HostState} */ (VimmaHost._state(window));
+
 add_task(function use_the_default_keymap() {
   VimmaHost.configure({ keymap: compileKeymap({}, { mac: Services.appinfo.OS === "Darwin" }) });
 });
@@ -115,7 +118,9 @@ function seen(browser) {
 function drawnLabels() {
   const overlay = document.getElementById("vimma-hints");
   if (!overlay) return [];
-  return [...overlay.querySelectorAll(".vimma-hint:not([hidden])")].map((el) => el.dataset.label);
+  return [...overlay.querySelectorAll(".vimma-hint:not([hidden])")].map(
+    (el) => /** @type {HTMLElement} */ (el).dataset.label,
+  );
 }
 
 /** Starts element hints and waits for the labels. */
@@ -125,7 +130,8 @@ async function startElementHints() {
     () => VimmaHost._hints(window)?.hints.length && drawnLabels().length,
     "block labels are drawn",
   );
-  return VimmaHost._hints(window);
+  // On: the wait above saw its hints.
+  return /** @type {HostHints} */ (VimmaHost._hints(window));
 }
 
 /** @param {string} label */
@@ -143,23 +149,31 @@ async function boxes(browser) {
   const ids = Object.keys(BLOCKS).filter((id) => id !== "framed");
   const top = await SpecialPowers.spawn(browser, [ids], (list) => {
     const doc = content.document;
+    // The fixture's two shadow hosts, an open and a closed root.
     const roots = [
       doc,
-      ...["open", "closed"].map((h) => doc.getElementById(h).openOrClosedShadowRoot),
+      ...["open", "closed"].map(
+        (h) =>
+          /** @type {ShadowRoot} */ (
+            /** @type {HTMLElement} */ (doc.getElementById(h)).openOrClosedShadowRoot
+          ),
+      ),
     ];
     /** @type {Record<string, any>} */
     const out = {};
     for (const id of [...list, "covered", "far", "ariahidden", "edit"]) {
-      const el = roots.map((r) => r.getElementById(id)).find(Boolean);
+      const el = /** @type {HTMLElement} */ (roots.map((r) => r.getElementById(id)).find(Boolean));
       const r = el.getBoundingClientRect();
       out[id] = { x: r.x, y: r.y, width: r.width, height: r.height };
     }
-    const f = doc.getElementById("frame").getBoundingClientRect();
+    const f = /** @type {HTMLElement} */ (doc.getElementById("frame")).getBoundingClientRect();
     out.frame = { x: f.x, y: f.y };
     return out;
   });
   const inner = await SpecialPowers.spawn(browser.browsingContext.children[0], [], () => {
-    const r = content.document.getElementById("framed").getBoundingClientRect();
+    const r = /** @type {HTMLElement} */ (
+      content.document.getElementById("framed")
+    ).getBoundingClientRect();
     return { x: r.x, y: r.y, width: r.width, height: r.height };
   });
   top.framed = { ...inner, x: top.frame.x + inner.x, y: top.frame.y + inner.y };
@@ -186,7 +200,7 @@ function hintFor(hints, b) {
 add_task(async function element_hints_label_every_visible_text_block_and_nothing_else() {
   await withPage(PAGE, async (browser) => {
     const hints = await startElementHints();
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "hint", "hint mode");
+    Assert.equal(VimmaHost._mode(hostState()), "hint", "hint mode");
     Assert.equal(hints.action, "hint.element", "element hints");
     const at = await boxes(browser);
     const ids = Object.keys(BLOCKS);
@@ -235,7 +249,9 @@ add_task(async function a_label_outlines_its_block_in_chrome_until_esc() {
     await TestUtils.waitForCondition(() => document.getElementById("vimma-element"), "outlined");
     Assert.deepEqual(drawnLabels(), [], "the labels are gone");
     Assert.equal(VimmaHost._element(window)?.kind, "paragraph", "p2 is focused");
-    const ring = document.getElementById("vimma-element").firstElementChild;
+    const ring = /** @type {Element} */ (
+      /** @type {Element} */ (document.getElementById("vimma-element")).firstElementChild
+    );
     const r = ring.getBoundingClientRect();
     const b = browser.getBoundingClientRect();
     const zoom = browser.fullZoom;
@@ -252,7 +268,7 @@ add_task(async function a_label_outlines_its_block_in_chrome_until_esc() {
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !document.getElementById("vimma-element"), "Esc");
     Assert.equal(VimmaHost._element(window), null, "focus is over");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "normal", "back in normal");
+    Assert.equal(VimmaHost._mode(hostState()), "normal", "back in normal");
     Assert.deepEqual(await seen(browser), [], "the page saw no mutation, selection or focus");
     EventUtils.synthesizeKey(UNBOUND);
     Assert.ok(await waitForPageKey(browser, [UNBOUND]), `the page received ${UNBOUND}`);
@@ -278,7 +294,9 @@ add_task(async function the_outline_sits_on_its_block_at_150_percent_zoom() {
       const at = await boxes(browser);
       type(hintFor(hints, at.q).label);
       await TestUtils.waitForCondition(() => document.getElementById("vimma-element"), "outlined");
-      const r = document.getElementById("vimma-element").firstElementChild.getBoundingClientRect();
+      const r = /** @type {Element} */ (
+        /** @type {Element} */ (document.getElementById("vimma-element")).firstElementChild
+      ).getBoundingClientRect();
       const b = browser.getBoundingClientRect();
       Assert.lessOrEqual(Math.abs(r.left + 2 - (b.left + at.q.x * 1.5)), 2, "left at 150 %");
       Assert.lessOrEqual(Math.abs(r.top + 2 - (b.top + at.q.y * 1.5)), 2, "top at 150 %");
@@ -421,12 +439,16 @@ function boxOf(browser, id) {
     const doc = content.document;
     const roots = [
       doc,
-      ...["open", "closed"].map((h) => doc.getElementById(h).openOrClosedShadowRoot),
+      ...["open", "closed"].map(
+        (h) =>
+          /** @type {ShadowRoot} */ (
+            /** @type {HTMLElement} */ (doc.getElementById(h)).openOrClosedShadowRoot
+          ),
+      ),
     ];
-    const r = roots
-      .map((root) => root.getElementById(want))
-      .find(Boolean)
-      .getBoundingClientRect();
+    const r = /** @type {HTMLElement} */ (
+      roots.map((root) => root.getElementById(want)).find(Boolean)
+    ).getBoundingClientRect();
     return { x: r.x, y: r.y, width: r.width, height: r.height };
   });
 }
@@ -489,10 +511,7 @@ function notice() {
  * @param {string} mode
  */
 function waitForMode(browser, mode) {
-  return TestUtils.waitForCondition(
-    () => VimmaHost._mode(VimmaHost._state(window)) === mode,
-    `${mode} mode`,
-  );
+  return TestUtils.waitForCondition(() => VimmaHost._mode(hostState()) === mode, `${mode} mode`);
 }
 
 /**
@@ -501,7 +520,7 @@ function waitForMode(browser, mode) {
  */
 function selectionIn(target) {
   return SpecialPowers.spawn(target, [], () => {
-    const sel = content.getSelection();
+    const sel = /** @type {Selection} */ (content.getSelection());
     const selCon = docShell
       .QueryInterface(Ci.nsIInterfaceRequestor)
       .getInterface(Ci.nsISelectionDisplay)
@@ -520,7 +539,7 @@ function selectionIn(target) {
 add_task(async function a_label_enters_element_mode_and_the_status_bar_names_the_block() {
   await withPage(PAGE, async (browser) => {
     const el = await focusBlock(browser, "p2");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "element", "ELEMENT mode");
+    Assert.equal(VimmaHost._mode(hostState()), "element", "ELEMENT mode");
     Assert.deepEqual(
       { kind: el.kind, length: el.length },
       { kind: "paragraph", length: TEXT.p2.length },
@@ -755,7 +774,7 @@ add_task(async function a_block_in_a_cross_origin_frame() {
     EventUtils.synthesizeKey("+");
     // + stops at the frame's body: it never climbs into the page around it. A second + after
     // the key's, awaited, is answered after it.
-    await VimmaHost._state(window).element.move("parent");
+    await hostState().element.move("parent");
     Assert.equal(VimmaHost._element(window)?.kind, "paragraph", "+ stays in the frame");
     await waitForRingOn(browser, "framed");
     await SimpleTest.promiseClipboardChange(TEXT.framed, () => EventUtils.synthesizeKey("y"));
@@ -784,7 +803,10 @@ add_task(async function a_block_in_a_cross_origin_frame() {
 add_task(async function navigation_a_click_in_chrome_and_a_prefix_key_leave_the_focus() {
   await withPage(PAGE, async (browser) => {
     await focusBlock(browser, "p1");
-    EventUtils.synthesizeMouseAtCenter(document.getElementById("vimma-statusbar"), {});
+    EventUtils.synthesizeMouseAtCenter(
+      /** @type {HTMLElement} */ (document.getElementById("vimma-statusbar")),
+      {},
+    );
     await TestUtils.waitForCondition(() => !VimmaHost._element(window), "a click in chrome");
     Assert.equal(ring(), null, "the outline is gone");
     await focusContent(browser);
@@ -811,9 +833,11 @@ add_task(async function navigation_a_click_in_chrome_and_a_prefix_key_leave_the_
 add_task(async function a_text_field_taking_focus_leaves_the_focus() {
   await withPage(PAGE, async (browser) => {
     await focusBlock(browser, "p1");
-    await SpecialPowers.spawn(browser, [], () => content.document.getElementById("edit").focus());
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {HTMLElement} */ (content.document.getElementById("edit")).focus(),
+    );
     await TestUtils.waitForCondition(() => !VimmaHost._element(window), "the field took focus");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "insert", "its keys are the field's");
+    Assert.equal(VimmaHost._mode(hostState()), "insert", "its keys are the field's");
     Assert.equal(ring(), null, "the outline is gone");
   });
 });
@@ -834,7 +858,7 @@ add_task(async function no_element_hints_in_the_pdf_viewer() {
     await focusContent(browser);
     // `F` shows a link's target in the PDF viewer (docs/specs/pdf-mode.md, Behaviour 11), so
     // element focus is reached here by its action, as a user's own binding would run it.
-    VimmaHost._run(VimmaHost._state(window), {
+    VimmaHost._run(hostState(), {
       kind: "action",
       action: { id: "hint.element" },
     });
@@ -843,7 +867,7 @@ add_task(async function no_element_hints_in_the_pdf_viewer() {
       "the notice points to copy mode",
     );
     Assert.equal(VimmaHost._hints(window), null, "no labels");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "normal", "still normal mode");
+    Assert.equal(VimmaHost._mode(hostState()), "normal", "still normal mode");
   } finally {
     BrowserTestUtils.removeTab(tab);
   }
@@ -878,20 +902,26 @@ add_task(async function malformed_block_messages_are_refused() {
     );
     // A report from the block's own frame for another collection is not heard.
     await SpecialPowers.spawn(browser, [gen], (g) => {
-      content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", {
-        gen: g + 1,
-      });
+      /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
+        .getActor("Vimma")
+        .sendAsyncMessage("Vimma:BlockGone", {
+          gen: g + 1,
+        });
     });
     // A report from a frame that is not the block's is not heard.
     await SpecialPowers.spawn(browser.browsingContext.children[0], [gen], (g) => {
-      content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", { gen: g });
+      /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
+        .getActor("Vimma")
+        .sendAsyncMessage("Vimma:BlockGone", { gen: g });
     });
     // Nor one from the same page in another tab, opened in the background.
     const other = BrowserTestUtils.addTab(gBrowser, PAGE);
     try {
       await BrowserTestUtils.browserLoaded(other.linkedBrowser);
       await SpecialPowers.spawn(other.linkedBrowser, [gen], (g) => {
-        content.windowGlobalChild.getActor("Vimma").sendAsyncMessage("Vimma:BlockGone", { gen: g });
+        /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
+          .getActor("Vimma")
+          .sendAsyncMessage("Vimma:BlockGone", { gen: g });
       });
       await new Promise((resolve) => setTimeout(resolve, 200));
     } finally {
@@ -911,7 +941,7 @@ add_task(async function j_on_2000_paragraphs_stays_within_budget() {
     for (let i = 0; i < 5; i++) {
       const before = VimmaHost._element(window)?.target;
       const t0 = performance.now();
-      await VimmaHost._state(window).element.move("next");
+      await hostState().element.move("next");
       times.push(performance.now() - t0);
       Assert.ok(VimmaHost._element(window)?.target === before, "the same focus, moved");
     }
@@ -929,7 +959,10 @@ add_task(async function j_on_2000_paragraphs_stays_within_budget() {
  */
 async function caretIn(browser, id, offset) {
   await SpecialPowers.spawn(browser, [id, offset], (i, o) => {
-    content.getSelection().collapse(content.document.getElementById(i).firstChild, o);
+    /** @type {Selection} */ (content.getSelection()).collapse(
+      /** @type {HTMLElement} */ (content.document.getElementById(i)).firstChild,
+      o,
+    );
   });
   EventUtils.synthesizeKey("v");
   await waitForMode(browser, "visual");
@@ -946,14 +979,18 @@ async function caretIn(browser, id, offset) {
  */
 function selectedBlock(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const sel = content.getSelection();
+    const sel = /** @type {Selection} */ (content.getSelection());
     const text = sel.toString();
     if (!sel.rangeCount) return { text, id: null };
-    let el = sel.getRangeAt(0).commonAncestorContainer;
-    if (el.nodeType !== 1) el = el.parentElement;
+    const node = sel.getRangeAt(0).commonAncestorContainer;
+    /** @type {Element | null} */
+    let el = node.nodeType === 1 ? /** @type {Element} */ (node) : node.parentElement;
     while (el && !el.id) el = el.parentElement;
-    const whole = el && el.textContent.trim().startsWith(text.split("\n")[0].trim());
-    return { text, id: whole ? el.id : null };
+    const block = el;
+    const whole =
+      block &&
+      /** @type {string} */ (block.textContent).trim().startsWith(text.split("\n")[0].trim());
+    return { text, id: whole ? block.id : null };
   });
 }
 
@@ -966,7 +1003,8 @@ function selectedBlock(browser) {
  */
 async function selectsBlock(browser, keys, id, check) {
   type(keys);
-  let last = null;
+  let last = /** @type {Awaited<ReturnType<typeof selectedBlock>> | null} */ (null);
+
   await TestUtils.waitForCondition(async () => {
     last = await selectedBlock(browser);
     return last.id === id && check(last.text);

@@ -342,6 +342,11 @@ declare function openAboutDialog(): void;
 // engine/browser/base/content/browser.js: opens a browser window; `args` is its first URL (an
 // nsISupportsString).
 declare function OpenBrowserWindow(options?: { private?: boolean; args?: unknown }): BrowserWindow;
+// engine/toolkit/content/viewZoomOverlay.js: a browser's zoom, 1 for none.
+declare var ZoomManager: { getZoomForBrowser(browser: MozBrowser): number };
+// engine/browser/components/tabbrowser/content/browser-fullZoom.js: back to the default zoom
+// (the selected browser's by default); resolves once it is applied.
+declare var FullZoom: { reset(browser?: MozBrowser): Promise<void> };
 
 // Browser-window globals and modules that a few tests reach into, mostly to find a panel or a
 // button or to reset state between tasks. Their APIs are large and Vimma's code does not call

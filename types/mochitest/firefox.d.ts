@@ -348,10 +348,62 @@ interface XPCComponentsUtils {
 // bar's members the tests use past those types/firefox.d.ts gives the product (harness.d.ts adds
 // them to the test window's gURLBar).
 interface UrlbarInputTestMembers {
+  /** The field's text; setting it sets the text as the address bar shows it (UrlbarInputBase.mjs). */
+  value: string;
+  /** The <input> the address bar edits (UrlbarInputBase.mjs). */
+  readonly inputField: HTMLInputElement;
   handleRevert(): void;
+
   readonly view: {
     /** The selected row's result: a search suggestion's payload has its text. */
     readonly selectedResult: { readonly payload: { readonly suggestion?: string } } | null;
     readonly selectedElement: Element | null;
   };
+}
+
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl; Services.prompt is its service
+// (engine/toolkit/components/prompts/src/components.conf, js_name "prompt").
+interface nsIPromptService {
+  /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
+  confirm(parent: Window | null, title: string, text: string): boolean;
+}
+interface FirefoxServices {
+  prompt: nsIPromptService;
+}
+
+// engine/toolkit/content/widgets/dialog.js (MozDialog): a chrome dialog's XUL <dialog>, whose
+// buttons are XUL buttons (engine/toolkit/content/widgets/button.js, MozButtonBase `disabled`).
+interface MozDialogElement extends Element {
+  getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
+    disabled: boolean;
+  };
+}
+
+// engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
+interface MozRadiogroupElement extends Element {
+  selectedItem: Element | null;
+}
+
+// engine/toolkit/modules/SubDialog.sys.mjs: a sub-dialog, as its "dialogopen" event's
+// `detail.dialog` gives it; the tests read two of its own fields.
+interface SubDialog {
+  /** The URL it opened, null once it closes. */
+  readonly _openedURL: string | null;
+  /** Its frame: a <browser class="dialogFrame"> in the parent process. */
+  readonly _frame: MozBrowser;
+}
+
+// engine/dom/webidl/Window.webidl (chrome-only): the window's WindowGlobalChild, which a content
+// task reaches the frame's actors through; null for a window without a global of its own.
+interface Window {
+  readonly windowGlobalChild: WindowGlobalChild | null;
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl
+interface WindowGlobalChild {
+  getActor(name: string): JSWindowActorChild;
+}
+
+// engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
+interface Document {
+  createXULElement(localName: string, options?: ElementCreationOptions | string): Element;
 }

@@ -83,9 +83,13 @@ async function pageKeysThenUnbound(browser) {
 function focusIn(target, how) {
   return SpecialPowers.spawn(target, [how], (h) => {
     const doc = content.document;
-    if (h === "open") doc.getElementById("open-host").shadowRoot.getElementById("shadow").focus();
-    else if (h === "closed") content.wrappedJSObject.closedRoot.getElementById("closed").focus();
-    else doc.getElementById(h).focus();
+    if (h === "open") {
+      const host = /** @type {HTMLElement} */ (doc.getElementById("open-host"));
+      /** @type {HTMLElement} */ (
+        /** @type {ShadowRoot} */ (host.shadowRoot).getElementById("shadow")
+      ).focus();
+    } else if (h === "closed") content.wrappedJSObject.closedRoot.getElementById("closed").focus();
+    else /** @type {HTMLElement} */ (doc.getElementById(h)).focus();
   });
 }
 
@@ -122,7 +126,7 @@ add_task(async function d_and_u_scroll_half_a_page() {
     const half = await SpecialPowers.spawn(
       browser,
       [],
-      () => content.document.scrollingElement.clientHeight / 2,
+      () => /** @type {Element} */ (content.document.scrollingElement).clientHeight / 2,
     );
     EventUtils.synthesizeKey("d");
     await waitForScroll(browser, (y) => Math.abs(y - half) <= 1, "d scrolls half a viewport");
@@ -140,7 +144,7 @@ add_task(async function ctrl_d_ctrl_u_ctrl_e_and_ctrl_y_scroll_as_in_vim() {
     const half = await SpecialPowers.spawn(
       browser,
       [],
-      () => content.document.scrollingElement.clientHeight / 2,
+      () => /** @type {Element} */ (content.document.scrollingElement).clientHeight / 2,
     );
     EventUtils.synthesizeKey("d", { ctrlKey: true });
     await waitForScroll(browser, (y) => Math.abs(y - half) <= 1, "ctrl+d scrolls half a viewport");
@@ -165,9 +169,12 @@ add_task(async function in_insert_mode_ctrl_d_and_ctrl_u_are_the_pages() {
     // The page takes its ctrl keys, as an editor would, so Firefox's own ctrl+d (bookmark) and
     // ctrl+u (view source) stay out of the test.
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("text").addEventListener("keydown", (e) => {
-        if (e.ctrlKey) e.preventDefault();
-      });
+      /** @type {HTMLElement} */ (content.document.getElementById("text")).addEventListener(
+        "keydown",
+        (e) => {
+          if (e.ctrlKey) e.preventDefault();
+        },
+      );
     });
     await focusIn(browser, "text");
     await waitForMode(browser, "insert");
@@ -177,7 +184,11 @@ add_task(async function in_insert_mode_ctrl_d_and_ctrl_u_are_the_pages() {
     Assert.ok(await waitForPageKey(browser, ["x"]), "the page received x");
     Assert.deepEqual(await pageKeys(browser), ["d", "u", "x"], "and ctrl+d, ctrl+u unprevented");
     Assert.equal(
-      await SpecialPowers.spawn(browser, [], () => content.document.getElementById("text").value),
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {HTMLInputElement} */ (content.document.getElementById("text")).value,
+      ),
       "x",
       "x is typed into the input",
     );
@@ -193,7 +204,11 @@ add_task(async function an_input_enters_insert_and_esc_leaves_it() {
     EventUtils.synthesizeKey("j");
     Assert.ok(await waitForPageKey(browser, ["j"]), "the page received j");
     Assert.equal(
-      await SpecialPowers.spawn(browser, [], () => content.document.getElementById("text").value),
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {HTMLInputElement} */ (content.document.getElementById("text")).value,
+      ),
       "j",
       "j is typed into the input",
     );
@@ -202,7 +217,11 @@ add_task(async function an_input_enters_insert_and_esc_leaves_it() {
     EventUtils.synthesizeKey("KEY_Escape");
     await waitForMode(browser, "normal");
     Assert.equal(
-      await SpecialPowers.spawn(browser, [], () => content.document.activeElement.localName),
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {Element} */ (content.document.activeElement).localName,
+      ),
       "body",
       "Esc blurs the input",
     );
@@ -242,7 +261,7 @@ add_task(async function an_input_in_a_cross_origin_iframe_enters_insert() {
         (await SpecialPowers.spawn(
           frame,
           [],
-          () => content.document.getElementById("framed").value,
+          () => /** @type {HTMLInputElement} */ (content.document.getElementById("framed")).value,
         )) === "j",
       "j is typed into the framed input",
     );
@@ -272,7 +291,11 @@ add_task(async function i_focuses_the_first_input_and_enters_insert() {
     EventUtils.synthesizeKey("i");
     await waitForMode(browser, "insert");
     Assert.equal(
-      await SpecialPowers.spawn(browser, [], () => content.document.activeElement.id),
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {Element} */ (content.document.activeElement).id,
+      ),
       "text",
       "i focuses the first text input",
     );
@@ -290,7 +313,11 @@ add_task(async function insert_mode_is_per_tab() {
       EventUtils.synthesizeKey("j");
       await waitForScroll(second, (y) => y === STEP, "j scrolls the second tab");
 
-      await BrowserTestUtils.switchTab(gBrowser, gBrowser.getTabForBrowser(first));
+      await BrowserTestUtils.switchTab(
+        gBrowser,
+        /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(first)),
+      );
+
       await focusContent(first);
       await waitForMode(first, "insert");
       EventUtils.synthesizeKey("j");
@@ -299,7 +326,7 @@ add_task(async function insert_mode_is_per_tab() {
           (await SpecialPowers.spawn(
             first,
             [],
-            () => content.document.getElementById("text").value,
+            () => /** @type {HTMLInputElement} */ (content.document.getElementById("text")).value,
           )) === "j",
         "back in the first tab, j is typed into its input",
       );
@@ -341,7 +368,10 @@ function afterRefreshTick(target) {
   return SpecialPowers.spawn(
     target,
     [],
-    () => new Promise((resolve) => content.requestAnimationFrame(() => resolve())),
+    () =>
+      /** @type {Promise<void>} */ (
+        new Promise((resolve) => content.requestAnimationFrame(() => resolve()))
+      ),
   );
 }
 
@@ -353,7 +383,7 @@ function textOf(target, selector) {
   return SpecialPowers.spawn(
     target,
     [selector],
-    (s) => content.document.querySelector(s).textContent,
+    (s) => /** @type {Element} */ (content.document.querySelector(s)).textContent,
   );
 }
 
@@ -420,7 +450,10 @@ add_task(async function a_cross_origin_design_mode_iframe_enters_insert_on_click
  */
 function sendReport(bc, data) {
   return SpecialPowers.spawn(bc, [data], async (d) => {
-    await content.windowGlobalChild.getActor("Vimma").sendQuery("Vimma:Focus", d);
+    // A page's window has its global.
+    const child = /** @type {WindowGlobalChild} */ (content.windowGlobalChild);
+
+    await child.getActor("Vimma").sendQuery("Vimma:Focus", d);
   });
 }
 
@@ -494,14 +527,14 @@ add_task(async function a_scroll_locked_page_does_not_scroll() {
         (await SpecialPowers.spawn(
           browser,
           [],
-          () => content.document.getElementById("list").scrollTop,
+          () => /** @type {HTMLElement} */ (content.document.getElementById("list")).scrollTop,
         )) === STEP,
       "j scrolls the modal's list",
     );
     Assert.equal(await pageScrollY(browser), 0, "not the locked page");
 
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("list").style.display = "none";
+      /** @type {HTMLElement} */ (content.document.getElementById("list")).style.display = "none";
     });
     EventUtils.synthesizeKey("j");
     Assert.deepEqual(await pageKeysThenUnbound(browser), [UNBOUND], "j is still ours");
@@ -592,6 +625,7 @@ add_task(async function ctrl_w_in_normal_mode_with_one_pane_passes_to_the_page()
 
 add_task(async function every_mode_change_calls_the_hook_once() {
   await withPage(async (browser) => {
+    /** @type {string[]} */
     const seen = [];
     const original = VimmaHost.onModeChange;
     VimmaHost.onModeChange = (b, mode) => b === browser && seen.push(mode);
@@ -603,7 +637,11 @@ add_task(async function every_mode_change_calls_the_hook_once() {
       // The blur's focusout report travels ahead of this reply on the same channel: let it land
       // (no change) before i.
       Assert.equal(
-        await SpecialPowers.spawn(browser, [], () => content.document.activeElement.localName),
+        await SpecialPowers.spawn(
+          browser,
+          [],
+          () => /** @type {Element} */ (content.document.activeElement).localName,
+        ),
         "body",
         "Esc blurred the input",
       );

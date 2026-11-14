@@ -43,6 +43,7 @@ const LETTERS = ["w", "u", "h", "d", "o", "i", "k", "b"];
  * The overlapping Firefox shortcuts, by chord: `<key>` id. Linux (Firefox 157) has one on each
  * of LETTERS; macOS (Firefox 158) only ctrl+u, the open-tabs sidebar.
  */
+/** @type {Record<string, string>} */
 const OVERLAP = MAC
   ? { u: "viewOpenTabsSidebarKb" }
   : {
@@ -59,7 +60,10 @@ const OVERLAP = MAC
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-firefox-keys-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
 let writes = 0;
-/** Writes config.toml and reads it at once (`:source`). */
+/**
+ * Writes config.toml and reads it at once (`:source`).
+ * @param {string} text
+ */
 async function useConfig(text) {
   writes++;
   await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
@@ -90,7 +94,9 @@ function spyKeyElement(id) {
 function spyKey(id) {
   const key = document.getElementById(id);
   Assert.ok(key, `#${id} exists`);
-  const targets = [key, document.getElementById(key.getAttribute("command") ?? "")].filter(Boolean);
+  const targets = [key, document.getElementById(key.getAttribute("command") ?? "")].filter(
+    (t) => t !== null,
+  );
   const spy = { count: 0 };
   const listener = () => spy.count++;
   for (const t of targets) t.addEventListener("command", listener, true);
@@ -100,7 +106,24 @@ function spyKey(id) {
   return spy;
 }
 
+/**
+ * An element of a browser window's chrome that the test knows is there; were it missing, the
+ * read would throw and fail the test.
+ * @param {string} id
+ * @param {Window} [win]
+ */
+const byId = (id, win = window) => /** @type {Element} */ (win.document.getElementById(id));
+
+/**
+ * The heading of the help overlay's section that holds `row`.
+ * @param {Element} row
+ */
+const sectionTitle = (row) =>
+  /** @type {Element} */ (/** @type {Element} */ (row.closest("section")).querySelector("h2"))
+    .textContent;
+
 /** A plain page, focused, with its keys recorded, in insert mode (`i`: no text field). */
+
 async function insertModePage() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
   const browser = tab.linkedBrowser;
@@ -116,7 +139,9 @@ add_task(async function setup() {
   await IOUtils.makeDirectory(dir, { createAncestors: true });
   await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
     await SpecialPowers.popPrefEnv();
     await ConfigHost.reload();
@@ -126,7 +151,7 @@ add_task(async function setup() {
 
 add_task(async function the_overlapping_and_the_bound_keys_are_disabled_the_others_not() {
   for (const id of Object.values(OVERLAP)) {
-    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
+    Assert.equal(byId(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
   // Bound means off (firefox-keys decision 2): Vimma binds these chords, in every keyset. On
   // macOS they are cmd chords, off under the default "all", and cmd+q stays (the macOS task).
@@ -140,24 +165,24 @@ add_task(async function the_overlapping_and_the_bound_keys_are_disabled_the_othe
     "key_privatebrowsing",
     "key_restoreLastClosedTabOrWindowOrSession",
   ]) {
-    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
+    Assert.equal(byId(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
   await TestUtils.waitForCondition(
     () => document.getElementById("key_toggleToolbox"),
     "the DevTools keys are hooked in",
   );
   await TestUtils.waitForCondition(
-    () => document.getElementById("key_toggleToolbox").getAttribute("disabled") === "true",
+    () => byId("key_toggleToolbox").getAttribute("disabled") === "true",
     "the DevTools' keyset is watched too: ctrl+shift+i is Vimma's devtools",
   );
   // Decision 16: these are Vimma bindings on Firefox's own keys now, so Firefox's are off.
   for (const id of ["key_find", "key_search2", "viewBookmarksToolbarKb"]) {
-    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
+    Assert.equal(byId(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
   // firefox-surfaces-trim decision 12: Vimma no longer binds ctrl+alt+x, and Firefox's chatbot
   // key on it stays off under the default "all" (fate c), so it cannot open the chatbot.
   Assert.equal(
-    document.getElementById("viewGenaiChatSidebarKb").getAttribute("disabled"),
+    byId("viewGenaiChatSidebarKb").getAttribute("disabled"),
     "true",
     "#viewGenaiChatSidebarKb is off though unbound",
   );
@@ -211,7 +236,7 @@ add_task(async function ctrl_t_ctrl_l_and_ctrl_tab_are_vimmas_with_firefoxs_mean
   EventUtils.synthesizeKey("t", { ctrlKey: true });
   const { target: fresh } = await opened;
   Assert.ok(fresh, "ctrl+t opened a tab");
-  BrowserTestUtils.removeTab(fresh);
+  BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (fresh));
   await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "back on the page");
   await focusContent(tab.linkedBrowser);
 
@@ -252,16 +277,16 @@ add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_
   // Vimma's ctrl+t binding and leave no key to open the tab.
   const newTab = MAC ? "meta+t" : "ctrl+t";
   await useConfig(`[firefox]\ndisable = "all"\nenable = ["${newTab}"]`);
-  Assert.equal(document.getElementById("focusURLBar").getAttribute("disabled"), "true");
-  Assert.equal(document.getElementById("key_find").getAttribute("disabled"), "true");
+  Assert.equal(byId("focusURLBar").getAttribute("disabled"), "true");
+  Assert.equal(byId("key_find").getAttribute("disabled"), "true");
   if (!MAC) {
     Assert.equal(
-      document.getElementById("key_quitApplication").getAttribute("disabled"),
+      byId("key_quitApplication").getAttribute("disabled"),
       "true",
       "ctrl+q is Vimma's quit now",
     );
   }
-  Assert.ok(!document.getElementById("key_newNavigatorTab").hasAttribute("disabled"), "enabled");
+  Assert.ok(!byId("key_newNavigatorTab").hasAttribute("disabled"), "enabled");
 
   const tab = await insertModePage();
   const spy = spyKeyElement("key_find");
@@ -277,7 +302,7 @@ add_task(async function disable_all_turns_off_the_unbound_ones_and_enable_keeps_
   const { target: fresh } = await opened;
   await new Promise((r) => setTimeout(r, 300));
   Assert.equal(gBrowser.tabs.length, tabs + 1, "one tab, not two");
-  BrowserTestUtils.removeTab(fresh);
+  BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (fresh));
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -288,19 +313,19 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
   }
   // ctrl+j unbound and not on the list: Firefox's again, as the list replaces "all".
   await useConfig(`[keys]\nweb_search = []\n[firefox]\ndisable = ["ctrl+u"]\nenable = []`);
-  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), "all is undone");
-  Assert.equal(document.getElementById("key_find").getAttribute("disabled"), "true", "bound");
+  Assert.ok(!byId("key_search2").hasAttribute("disabled"), "all is undone");
+  Assert.equal(byId("key_find").getAttribute("disabled"), "true", "bound");
   Assert.equal(
-    document.getElementById("key_close").getAttribute("disabled"),
+    byId("key_close").getAttribute("disabled"),
     "true",
     "ctrl+w starts Vimma's ctrl+w h: bound, so off whatever the list says",
   );
-  Assert.equal(document.getElementById("focusURLBar").getAttribute("disabled"), "true", "bound");
-  Assert.equal(document.getElementById("key_viewSource").getAttribute("disabled"), "true");
+  Assert.equal(byId("focusURLBar").getAttribute("disabled"), "true", "bound");
+  Assert.equal(byId("key_viewSource").getAttribute("disabled"), "true");
 
   await useConfig(`[firefox]\nenable = ["ctrl+w"]`);
-  Assert.ok(!document.getElementById("key_close").hasAttribute("disabled"), "ctrl+w enabled");
-  Assert.equal(document.getElementById("key_gotoHistory").getAttribute("disabled"), "true");
+  Assert.ok(!byId("key_close").hasAttribute("disabled"), "ctrl+w enabled");
+  Assert.equal(byId("key_gotoHistory").getAttribute("disabled"), "true");
   const tab = await insertModePage();
   const closing = BrowserTestUtils.waitForTabClosing(tab);
   EventUtils.synthesizeKey("w", { ctrlKey: true });
@@ -309,7 +334,7 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
 
   await IOUtils.remove(file);
   await ConfigHost.reload();
-  Assert.equal(document.getElementById("key_close").getAttribute("disabled"), "true", "default");
+  Assert.equal(byId("key_close").getAttribute("disabled"), "true", "default");
 });
 
 /**
@@ -319,7 +344,7 @@ add_task(async function enable_gives_one_back_and_a_list_replaces_the_default() 
  */
 async function enableAndListOnMacos() {
   await useConfig(`[firefox]\ndisable = ["meta+u"]\nenable = []`);
-  const off = (id) => document.getElementById(id).getAttribute("disabled") === "true";
+  const off = (/** @type {string} */ id) => byId(id).getAttribute("disabled") === "true";
   Assert.ok(off("key_viewSource"), "cmd+u is on the list");
   Assert.ok(!off("key_search2"), "all is undone: cmd+alt+f is Firefox's");
   Assert.ok(!off("key_find"), "cmd+f, unbound and not listed, is Firefox's");
@@ -342,7 +367,7 @@ async function enableAndListOnMacos() {
 }
 
 add_task(async function a_key_firefox_re_enables_is_turned_off_again() {
-  const key = document.getElementById("key_viewSource");
+  const key = byId("key_viewSource");
   key.removeAttribute("disabled");
   await TestUtils.waitForCondition(
     () => key.getAttribute("disabled") === "true",
@@ -370,20 +395,17 @@ add_task(async function enable_gives_ctrl_j_back_and_the_overlay_and_about_vimma
   // key_search2 is cmd+alt+f on macOS.
   const search2 = MAC ? "alt+meta+f" : "ctrl+j";
   await useConfig(`[firefox]\nenable = ["${search2}"]`);
-  Assert.ok(!document.getElementById("key_search2").hasAttribute("disabled"), `${search2} on`);
+  Assert.ok(!byId("key_search2").hasAttribute("disabled"), `${search2} on`);
   const data = await AboutVimma.collect(window);
   Assert.ok(
     data.firefoxKeys.on.some((k) => k.chord === search2 && k.id === "key_search2"),
     `about:vimma lists ${search2} as on`,
   );
-  const state = VimmaHost._state(window);
+  const state = /** @type {HostState} */ (VimmaHost._state(window));
   state.help.open();
   const row = document.querySelector('#vimma-help [data-action="key_search2"]');
   Assert.ok(row, "the overlay has a row for Firefox's ctrl+j");
-  Assert.equal(
-    row.closest("section").querySelector("h2").textContent,
-    "Firefox (on in config.toml)",
-  );
+  Assert.equal(sectionTitle(row), "Firefox (on in config.toml)");
   state.help.close();
 });
 
@@ -394,8 +416,8 @@ add_task(async function accel_is_cmd_and_disable_all_keeps_cmd_q_on_macos() {
     return;
   }
   await useConfig(`[firefox]\ndisable = "all"`);
-  const chord = (id) => {
-    const el = document.getElementById(id);
+  const chord = (/** @type {string} */ id) => {
+    const el = byId(id);
     const [key, keycode, modifiers] = ["key", "keycode", "modifiers"].map((a) =>
       el.getAttribute(a),
     );
@@ -403,7 +425,7 @@ add_task(async function accel_is_cmd_and_disable_all_keeps_cmd_q_on_macos() {
   };
   Assert.equal(chord("key_newNavigatorTab"), "meta+t", "accel is cmd");
   Assert.equal(chord("key_quitApplication"), "meta+q");
-  const quit = document.getElementById("key_quitApplication");
+  const quit = byId("key_quitApplication");
   Assert.ok(!quit.hasAttribute("disabled"), "all keeps cmd+q");
   const data = await AboutVimma.collect(window);
   const off = data.firefoxKeys.off.map((k) => `${k.chord} ${k.id}`);
@@ -426,7 +448,7 @@ const MENU_KEYS = {
  */
 function menuKeys(win) {
   return Object.fromEntries(
-    Object.keys(MENU_KEYS).map((id) => [id, win.document.getElementById(id).getAttribute("key")]),
+    Object.keys(MENU_KEYS).map((id) => [id, byId(id, win).getAttribute("key")]),
   );
 }
 const NO_MENU_KEYS = Object.fromEntries(Object.keys(MENU_KEYS).map((id) => [id, null]));
@@ -438,7 +460,7 @@ const NO_MENU_KEYS = Object.fromEntries(Object.keys(MENU_KEYS).map((id) => [id, 
 add_task(async function menu_items_of_a_key_that_is_off_lose_it_on_macos_only() {
   await useConfig(`[firefox]\ndisable = "all"`);
   for (const id of Object.values(MENU_KEYS)) {
-    Assert.equal(document.getElementById(id).getAttribute("disabled"), "true", `#${id} is off`);
+    Assert.equal(byId(id).getAttribute("disabled"), "true", `#${id} is off`);
   }
   if (!MAC) {
     Assert.deepEqual(menuKeys(window), MENU_KEYS, "Linux: the menu items keep their keys");
@@ -446,13 +468,16 @@ add_task(async function menu_items_of_a_key_that_is_off_lose_it_on_macos_only() 
   }
   Assert.deepEqual(menuKeys(window), NO_MENU_KEYS, "no menu item names a key that is off");
   Assert.equal(
-    document.getElementById("menu_FileQuitItem").getAttribute("key"),
+    byId("menu_FileQuitItem").getAttribute("key"),
     "key_quitApplication",
     "cmd+q is on, so Quit keeps its key",
   );
   const offKeyItems = [...document.querySelectorAll("menuitem[key]")].filter(
     // vimma-disabled: off by firefox-keys, not by Firefox (key_exitFullScreen until full screen).
-    (m) => document.getElementById(m.getAttribute("key"))?.hasAttribute("vimma-disabled"),
+    (m) =>
+      document
+        .getElementById(/** @type {string} */ (m.getAttribute("key")))
+        ?.hasAttribute("vimma-disabled"),
   );
   Assert.deepEqual(
     offKeyItems.map((m) => `${m.id} ${m.getAttribute("key")}`),
@@ -470,7 +495,7 @@ add_task(async function menu_items_of_a_key_that_is_off_lose_it_on_macos_only() 
   // A menu item added later, as DevTools adds theirs to Browser Tools.
   const late = document.createXULElement("menuitem");
   late.setAttribute("key", "key_newNavigator");
-  document.getElementById("menu_FilePopup").append(late);
+  byId("menu_FilePopup").append(late);
   await TestUtils.waitForCondition(() => !late.hasAttribute("key"), "a late item is stripped");
   late.remove();
 
@@ -483,7 +508,9 @@ add_task(async function menu_items_of_a_key_that_is_off_lose_it_on_macos_only() 
     "a new window's menu items",
   );
   // Vimma turned off (VimmaHost.uninit) gives every menu item its key back.
-  VimmaHost._state(win).firefoxKeys.destroy();
+  const winState = /** @type {HostState} */ (VimmaHost._state(win));
+  // Set: the wait above saw it.
+  /** @type {NonNullable<HostState["firefoxKeys"]>} */ (winState.firefoxKeys).destroy();
   Assert.deepEqual(menuKeys(win), MENU_KEYS, "destroy gives them all back");
   await BrowserTestUtils.closeWindow(win);
 
@@ -513,15 +540,15 @@ add_task(async function a_colon_binding_runs_firefox_by_id_and_shows_in_commands
   EventUtils.synthesizeKey("y", { ctrlKey: true, shiftKey: true });
   const { target: fresh } = await opened;
   Assert.ok(fresh, ":firefox cmd_newNavigatorTab opened a tab");
-  BrowserTestUtils.removeTab(fresh);
+  BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (fresh));
 
-  const state = VimmaHost._state(window);
+  const state = /** @type {HostState} */ (VimmaHost._state(window));
   state.help.open();
   const row = [...document.querySelectorAll("#vimma-help .vimma-help-row")].find((r) =>
     r.textContent.includes(":firefox cmd_newNavigatorTab"),
   );
   Assert.ok(row, "the overlay lists the : binding");
-  Assert.equal(row.closest("section").querySelector("h2").textContent, "Commands");
+  Assert.equal(sectionTitle(row), "Commands");
   state.help.close();
   BrowserTestUtils.removeTab(tab);
 });

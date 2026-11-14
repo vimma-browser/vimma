@@ -25,16 +25,27 @@ const nextDialog = () => TestUtils.topicObserved("common-dialog-loaded").then(([
 
 /** @param {Window} w  a commonDialog window */
 const line = (w) => w.document.querySelector(`.${LINE_CLASS}`);
-/** The line says `text` and shows: armed, and visible. */
-const lineShows = (w, text) =>
-  line(w)?.textContent === text &&
-  line(w).hasAttribute("armed") &&
-  w.getComputedStyle(line(w)).visibility === "visible";
-/** The line is there, keeping its place, but hidden while the keys wait. */
-const lineWaits = (w) =>
-  !!line(w) &&
-  !line(w).hasAttribute("armed") &&
-  w.getComputedStyle(line(w)).visibility === "hidden";
+/**
+ * The line says `text` and shows: armed, and visible.
+ * @param {Window} w
+ * @param {string} text
+ */
+const lineShows = (w, text) => {
+  const el = line(w);
+  return (
+    el?.textContent === text &&
+    el.hasAttribute("armed") &&
+    w.getComputedStyle(el).visibility === "visible"
+  );
+};
+/**
+ * The line is there, keeping its place, but hidden while the keys wait.
+ * @param {Window} w
+ */
+const lineWaits = (w) => {
+  const el = line(w);
+  return !!el && !el.hasAttribute("armed") && w.getComputedStyle(el).visibility === "hidden";
+};
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg, tries = 100) {
@@ -54,7 +65,8 @@ const press = (key, w) => EventUtils.synthesizeKey(key, {}, w);
  * Closes `tab` as the user would, asking its page first. Firefox asks in a nested event loop
  * (browser-custom-element.mjs, permitUnload), so the close runs on its own turn.
  */
-const closeTab = (tab) => setTimeout(() => gBrowser.removeTab(tab), 0);
+const closeTab = (/** @type {MozTabbrowserTab} */ tab) =>
+  setTimeout(() => gBrowser.removeTab(tab), 0);
 
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
@@ -99,7 +111,10 @@ add_task(async function leave_page_n_stays_y_leaves() {
   Assert.ok(true, "y leaves the page");
 });
 
-/** A page's confirm(), alert() or prompt() over the selected tab; resolves with its result. */
+/**
+ * A page's confirm(), alert() or prompt() over the selected tab; resolves with its result.
+ * @param {"confirm" | "alert" | "prompt"} kind
+ */
 async function pageDialog(kind) {
   const browser = gBrowser.selectedBrowser;
   const shown = nextDialog();
@@ -146,11 +161,12 @@ add_task(async function prompt_field_types() {
 
 add_task(async function window_dialog() {
   // Firefox's own questions over the window (gDialogBox), such as the caret browsing one.
-  for (const [key, expected] of [
+  for (const [key, expected] of /** @type {[string, boolean][]} */ ([
     ["n", false],
     ["y", true],
-  ]) {
+  ])) {
     const shown = nextDialog();
+    /** @type {boolean | undefined} */
     let answer;
     // Services.prompt.confirm spins a nested event loop until the dialog closes.
     setTimeout(() => (answer = Services.prompt.confirm(window, "Vimma", "Turn it on?")), 0);
@@ -170,7 +186,10 @@ const HANDLED = "https://example.org/";
 const PERMISSION_DIALOG = "chrome://mozapps/content/handling/permissionDialog.xhtml";
 const APP_CHOOSER = "chrome://mozapps/content/handling/appChooser.xhtml";
 
-/** A web handler for SCHEME, as a user who picked one has; removed when the test ends. */
+/**
+ * A web handler for SCHEME, as a user who picked one has; removed when the test ends.
+ * @param {{ alwaysAsk: boolean }} options
+ */
 function storeHandler({ alwaysAsk }) {
   const handlers = Cc["@mozilla.org/uriloader/handler-service;1"].getService(Ci.nsIHandlerService);
   const info = Cc["@mozilla.org/uriloader/external-protocol-service;1"]
@@ -187,18 +206,27 @@ function storeHandler({ alwaysAsk }) {
   registerCleanupFunction(() => handlers.remove(info));
 }
 
-/** The next SubDialog of the window that loads `url`, once SubDialog has shown it. */
+/**
+ * The next SubDialog of the window that loads `url`, once SubDialog has shown it.
+ * @param {string} url
+ */
 async function nextSubDialog(url) {
   const e = await BrowserTestUtils.waitForEvent(
-    document.documentElement,
+    /** @type {Element} */ (document.documentElement),
     "dialogopen",
     true,
+    /** @param {CustomEvent<{ dialog: SubDialog }>} ev */
     (ev) => ev.detail.dialog?._openedURL === url,
   );
-  return e.detail.dialog._frame.contentWindow;
+  // The dialog has loaded (SubDialog fires dialogopen from its frame's load), so its frame, a
+  // parent-process browser, has a window.
+  return /** @type {Window} */ (e.detail.dialog._frame.contentWindow);
 }
 
-/** The page follows a SCHEME link, as a click on one does. */
+/**
+ * The page follows a SCHEME link, as a click on one does.
+ * @param {MozTabBrowser} browser
+ */
 function followLink(browser) {
   return SpecialPowers.spawn(browser, [SCHEME], (s) => {
     const a = content.document.createElement("a");
@@ -208,8 +236,17 @@ function followLink(browser) {
   });
 }
 
-/** @param {Window} w */
-const acceptEnabled = (w) => !w.document.querySelector("dialog").getButton("accept").disabled;
+/**
+ * The dialog's OK button is enabled. Its <dialog> is a XUL one, which querySelector types as an
+ * HTML element.
+ * @param {Window} w
+ */
+const acceptEnabled = (w) => {
+  const dialog = /** @type {MozDialogElement} */ (
+    /** @type {Element} */ (w.document.querySelector("dialog"))
+  );
+  return !dialog.getButton("accept").disabled;
+};
 
 add_task(async function protocol_permission_n_cancels_y_opens() {
   storeHandler({ alwaysAsk: false });
@@ -222,7 +259,8 @@ add_task(async function protocol_permission_n_cancels_y_opens() {
   Assert.ok(lineWaits(w), "the keys line waits while the question is not armed");
   await until(() => lineShows(w, "y open link · n cancel"), "the line names the keys");
   // The "always allow" checkbox is no text field: the keys answer from it.
-  w.document.getElementById("remember").focus();
+  /** @type {HTMLInputElement} */ (w.document.getElementById("remember")).focus();
+
   press("n", w);
   await gone(w);
   await wait(100);
@@ -295,6 +333,7 @@ function mockLauncher() {
     );
     if (handlers.exists(mime)) handlers.remove(mime);
   });
+  /** @type {string[]} */
   const calls = [];
   const launcher = {
     MIMEInfo: mime,
@@ -315,7 +354,10 @@ function mockLauncher() {
   return { launcher, calls };
 }
 
-/** Shows the download question for `launcher` over this window; resolves with its window. */
+/**
+ * Shows the download question for `launcher` over this window; resolves with its window.
+ * @param {ReturnType<typeof mockLauncher>["launcher"]} launcher
+ */
 async function downloadDialog(launcher) {
   const opened = BrowserTestUtils.domWindowOpenedAndLoaded(
     null,
@@ -345,7 +387,12 @@ add_task(async function download_n_cancels_y_saves() {
   await wait(50);
   Assert.ok(!w.closed && calls.length === 0, "y before the question is armed waits");
   await until(() => lineShows(w, "y ok · n cancel") && acceptEnabled(w), "armed");
-  w.document.getElementById("mode").selectedItem = w.document.getElementById("save");
+  // A XUL <radiogroup>, which getElementById types as an HTML element.
+  const mode = /** @type {MozRadiogroupElement} */ (
+    /** @type {Element} */ (w.document.getElementById("mode"))
+  );
+  mode.selectedItem = w.document.getElementById("save");
+
   closed = BrowserTestUtils.windowClosed(w);
   press("y", w);
   await closed;

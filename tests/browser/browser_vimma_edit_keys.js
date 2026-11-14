@@ -35,14 +35,15 @@ const PAGE = ROOT + "file_vimma_insert_scroll.html";
  */
 function fill(target, id, text) {
   return SpecialPowers.spawn(target, [id, text], (i, t) => {
-    const el = content.document.getElementById(i);
+    const el = /** @type {HTMLElement} */ (content.document.getElementById(i));
     el.focus();
     if ("value" in el && el.localName !== "div") {
-      el.value = t;
-      el.setSelectionRange(t.length, t.length);
+      const field = /** @type {HTMLInputElement | HTMLTextAreaElement} */ (el);
+      field.value = t;
+      field.setSelectionRange(t.length, t.length);
     } else {
       el.textContent = t;
-      const sel = content.getSelection();
+      const sel = /** @type {Selection} */ (content.getSelection());
       sel.collapse(el.firstChild, t.length);
     }
   });
@@ -56,10 +57,10 @@ function fill(target, id, text) {
  */
 function fieldText(target, id) {
   return SpecialPowers.spawn(target, [id], (i) => {
-    const el = content.document.getElementById(i);
+    const el = /** @type {HTMLElement} */ (content.document.getElementById(i));
     return "value" in el && el.localName !== "div"
-      ? el.value
-      : el.textContent.replace(/\u00a0/g, " ");
+      ? /** @type {HTMLInputElement | HTMLTextAreaElement} */ (el).value
+      : /** @type {string} */ (el.textContent).replace(/\u00a0/g, " ");
   });
 }
 
@@ -76,7 +77,7 @@ function waitForValue(target, id, want, msg) {
 /** ctrl+z, undo, as Firefox binds it. */
 const undo = () => EventUtils.synthesizeKey("z", { accelKey: true });
 
-/** @param {(browser: XULBrowserElement) => Promise<void>} fn */
+/** @param {(browser: MozTabBrowser) => Promise<void>} fn */
 async function withPage(fn) {
   await BrowserTestUtils.withNewTab(PAGE, async (browser) => {
     await recordPageKeys(browser);
@@ -123,9 +124,12 @@ add_task(async function ctrl_w_in_a_cross_origin_frame() {
 add_task(async function a_page_that_takes_ctrl_w_keeps_it() {
   await withPage(async (browser) => {
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("text").addEventListener("keydown", (e) => {
-        if (e.ctrlKey) e.preventDefault();
-      });
+      /** @type {HTMLElement} */ (content.document.getElementById("text")).addEventListener(
+        "keydown",
+        (e) => {
+          if (e.ctrlKey) e.preventDefault();
+        },
+      );
     });
     await fill(browser, "text", "foo bar");
     await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
@@ -172,9 +176,12 @@ add_task(async function the_url_bar() {
 add_task(async function the_command_line() {
   await withPage(async () => {
     EventUtils.synthesizeKey(":");
-    const input = await TestUtils.waitForCondition(
-      () => document.getElementById("vimma-cmdline-input"),
-      "the : line opens",
+    // waitForCondition resolves with the field once it is there.
+    const input = /** @type {HTMLInputElement} */ (
+      await TestUtils.waitForCondition(
+        () => document.getElementById("vimma-cmdline-input"),
+        "the : line opens",
+      )
     );
     await TestUtils.waitForCondition(() => document.activeElement === input, "and has focus");
     EventUtils.sendString("open foo bar");
@@ -226,7 +233,7 @@ const pageLog = (browser) =>
 const waitForLog = (browser, entry, msg) =>
   TestUtils.waitForCondition(async () => (await pageLog(browser)).includes(entry), msg);
 
-/** @param {(browser: XULBrowserElement) => Promise<void>} fn */
+/** @param {(browser: MozTabBrowser) => Promise<void>} fn */
 async function withEnterPage(fn) {
   await BrowserTestUtils.withNewTab(ENTER_PAGE, async (browser) => {
     await recordPageKeys(browser);
@@ -261,8 +268,10 @@ for (const key of ["j", "m"]) {
         EventUtils.sendString("two");
         await TestUtils.waitForCondition(async () => {
           const lines = await SpecialPowers.spawn(browser, [id], (i) => {
-            const el = content.document.getElementById(i);
-            return el.localName === "textarea" ? el.value.split("\n") : el.innerText.split("\n");
+            const el = /** @type {HTMLElement} */ (content.document.getElementById(i));
+            return el.localName === "textarea"
+              ? /** @type {HTMLTextAreaElement} */ (el).value.split("\n")
+              : el.innerText.split("\n");
           });
           return lines[0] === "one" && lines.at(-1) === "two" && lines.length >= 2;
         }, `#${id}: ctrl+${key} begins a new line`);
@@ -278,14 +287,17 @@ add_task(async function a_late_reply_presses_no_enter_in_another_tab() {
   const tabB = await BrowserTestUtils.openNewForegroundTab(gBrowser, other);
   await withEnterPage(async (browser) => {
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("area").addEventListener("keydown", (e) => {
-        if (!e.ctrlKey || e.key !== "j") return;
-        const end = Date.now() + 1500;
-        while (Date.now() < end) {
-          // Holds the reply back, as a busy page does.
-        }
-        content.wrappedJSObject.log.push("busy-done");
-      });
+      /** @type {HTMLElement} */ (content.document.getElementById("area")).addEventListener(
+        "keydown",
+        (e) => {
+          if (!e.ctrlKey || e.key !== "j") return;
+          const end = Date.now() + 1500;
+          while (Date.now() < end) {
+            // Holds the reply back, as a busy page does.
+          }
+          content.wrappedJSObject.log.push("busy-done");
+        },
+      );
     });
     await fill(browser, "area", "one");
     await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
@@ -301,7 +313,7 @@ add_task(async function a_late_reply_presses_no_enter_in_another_tab() {
     // The reply goes to the parent before this answer from A's process, and a pressed Enter
     // would reach B before this answer from B.
     await pageLog(browser);
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
     const log = await pageLog(tabB.linkedBrowser);
     Assert.ok(!log.some((e) => e.startsWith("Enter")), "tab B got no Enter");
     Assert.ok(!log.includes("submit:true"), "and its form was not sent");
@@ -340,9 +352,12 @@ add_task(async function ctrl_j_in_the_url_bar_navigates() {
 add_task(async function ctrl_m_on_the_command_line_runs_the_command() {
   await withEnterPage(async (browser) => {
     EventUtils.synthesizeKey(":");
-    const input = await TestUtils.waitForCondition(
-      () => document.getElementById("vimma-cmdline-input"),
-      "the : line opens",
+    // waitForCondition resolves with the field once it is there.
+    const input = /** @type {HTMLInputElement} */ (
+      await TestUtils.waitForCondition(
+        () => document.getElementById("vimma-cmdline-input"),
+        "the : line opens",
+      )
     );
     await TestUtils.waitForCondition(() => document.activeElement === input, "and has focus");
     const url = ENTER_PAGE + "?from-cmdline";
@@ -371,7 +386,8 @@ add_task(async function insert_editing_false_keeps_ctrl_m_as_mute_in_a_field() {
   await withEnterPage(async (browser) => {
     await fill(browser, "area", "one");
     await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
-    const tab = gBrowser.getTabForBrowser(browser);
+    const tab = /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(browser));
+
     EventUtils.synthesizeKey("m", { ctrlKey: true });
     Assert.ok(await waitForPageKey(browser, ["m"]), "the page got ctrl+m");
     await TestUtils.waitForCondition(() => tab.muted, "ctrl+m mutes the tab, after the page");
