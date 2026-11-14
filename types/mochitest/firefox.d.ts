@@ -1244,11 +1244,9 @@ interface FirefoxDownload {
   unblock(): Promise<void>;
   refresh(): Promise<void>;
 }
-interface DownloadError extends Error {
-  readonly becauseBlocked: boolean;
-  readonly becauseBlockedByContentAnalysis: boolean;
-  /** A DownloadError.BLOCK_VERDICT_* string ("Malware", "Uncommon", ...), "" when none. */
-  readonly reputationCheckVerdict: string;
+// The product declares DownloadError (types/firefox.d.ts); the tests also read becauseBlocked.
+interface DownloadError {
+  readonly becauseBlocked?: boolean;
 }
 
 // engine/uriloader/exthandler/nsIHandlerService.idl (nsIHandlerInfo) and nsIMIMEInfo.idl: how
