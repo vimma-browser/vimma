@@ -8,7 +8,7 @@ it would hold the Safe Browsing key between runs (spec
 
 The build jobs of both workflows run on `ubuntu-24.04`, and a test fails if any workflow names a
 self-hosted runner or a label that is not a standard GitHub-hosted image
-(`tools/test/self-hosted-runner.test.mjs`, docs/security/14-build-and-release-supply-chain.md B5). Both install with
+(`tools/test/self-hosted-runner.test.ts`, docs/security/14-build-and-release-supply-chain.md B5). Both install with
 `npm ci --ignore-scripts` and run Surfer with `npx --no -- surfer`, so a missing
 `node_modules/.bin/surfer` fails the job instead of fetching whatever npm package is called
 `surfer`.
@@ -21,7 +21,7 @@ in the UTC morning wait longer (about 8 h). No daily run was dropped in 30 days.
 `nightly.yml`'s cron is `23 17 * * *`: 17:23 UTC plus the delay is about 00:00 to 02:00 UTC,
 02:00 to 04:00 in Helsinki in winter, and with any delay seen so far (4.5 to 10 h) the build
 still starts in the night. The delay of a cron in the afternoon was not measured: the first
-runs show it. `tools/test/nightly-workflow.test.mjs` holds the sum for that November week.
+runs show it. `tools/test/nightly-workflow.test.ts` holds the sum for that November week.
 Check the start times now and then
 (`gh run list --workflow nightly.yml --event schedule --json createdAt`); if the build starts
 outside the night, move the cron and the test's two numbers.

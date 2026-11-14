@@ -4,22 +4,20 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
+import type { Job, Step } from "./workflow-types.ts";
 
 // docs/specs/build-supply-chain.md, decisions 12, 14, 16 and 17;
 // docs/security/14-build-and-release-supply-chain.md, B3 and B4. Surfer drives the Firefox build:
 // it is pinned exactly, never merges without a person, installs without install scripts, and runs
 // only from node_modules.
 const root = new URL("../../", import.meta.url);
-/** @param {string} path */
-const read = (path) => readFileSync(new URL(path, root), "utf8");
-/** @param {string} name */
-const workflow = (name) => read(`.github/workflows/${name}`);
+const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+const workflow = (name: string) => read(`.github/workflows/${name}`);
 /**
- * @param {string} name
- * @returns {string} the build job's commands: every step's `run:`, one after another
+ * @returns the build job's commands: every step's `run:`, one after another
  */
-const buildJob = (name) => {
-  const steps = jobs(workflow(name)).get("build")?.steps;
+const buildJob = (name: string): string => {
+  const steps = (jobs(workflow(name)) as Map<string, Job>).get("build")?.steps;
   if (!Array.isArray(steps)) throw new Error(`${name}: the build job has no steps`);
   return steps
     .map((step) => (typeof step.run === "string" ? step.run : ""))
@@ -35,12 +33,11 @@ const SURFER = "@zen-browser/surfer";
 /**
  * Every package runner in a workflow that could fetch a package it does not find locally. npx
  * and npm exec are allowed only as `--no --`; pnpm dlx, yarn dlx and bunx always fetch.
- * @param {string} text a workflow, or a line of one
- * @returns {string[]} each offending call, from its runner to the end of its line
+ * @param text a workflow, or a line of one
+ * @returns each offending call, from its runner to the end of its line
  */
-function fetchingRunners(text) {
-  /** @type {string[]} */
-  const out = [];
+function fetchingRunners(text: string): string[] {
+  const out: string[] = [];
   for (const raw of text.split("\n")) {
     const line = raw.replace(/(^|\s)#.*$/, "");
     const starts = /\b(?:npx|npm\s+(?:exec|x)|pnpm\s+dlx|yarn\s+dlx|bunx)\b/g;
@@ -54,10 +51,15 @@ function fetchingRunners(text) {
 
 /**
  * Runs dependabot-automerge.yml's "Decide" step as GitHub would, with the given metadata.
- * @param {{ title: string, update: string, ecosystem?: string, deps: string, releasePath?: string }} pr
- * @returns {string} the decision it writes to GITHUB_OUTPUT
+ * @returns the decision it writes to GITHUB_OUTPUT
  */
-function decide(pr) {
+function decide(pr: {
+  title: string;
+  update: string;
+  ecosystem?: string;
+  deps: string;
+  releasePath?: string;
+}): string {
   const text = workflow("dependabot-automerge.yml");
   const step = text.slice(text.indexOf("- name: Decide"));
   const m = /\n {8}run: \|\n((?: {10}.*\n|\n)+)/.exec(step);
@@ -145,8 +147,7 @@ describe("build supply chain: npm", () => {
   it("only npx --no -- passes the command's own flags through", () => {
     // After `--no`, npm reads every later flag as its own (`--verbose`, `--force`) unless `--`
     // ends its options first.
-    /** @param {string[]} args */
-    const npx = (args) =>
+    const npx = (args: string[]) =>
       execFileSync("npx", args, {
         cwd: root,
         encoding: "utf8",
@@ -182,18 +183,17 @@ const WRITES_TREE = new RegExp(
  * the base commit alone, so the order of its first steps is what keeps setup-node's npm and yarn
  * off the pull request's .npmrc and .yarnrc, and the head commit's files may only ever be written
  * under $RUNNER_TEMP.
- * @param {string} text dependabot-automerge.yml
- * @returns {string[]} each fault found; empty when the workflow keeps the rule
+ * @param text dependabot-automerge.yml
+ * @returns each fault found; empty when the workflow keeps the rule
  */
-function classifyFaults(text) {
+function classifyFaults(text: string): string[] {
   const doc = parseWorkflow(text);
-  /** @type {string[]} */
-  const faults = [];
+  const faults: string[] = [];
   const on = doc.on;
   const events = typeof on === "string" ? [on] : Object.keys(on ?? {});
   if (events.join() !== "pull_request") faults.push(`triggers: ${events.join(", ")}`);
   for (const k of ["env", "defaults"]) if (k in doc) faults.push(`workflow ${k}`);
-  const all = jobs(text);
+  const all = jobs(text) as Map<string, Job>;
   const classify = all.get("classify") ?? {};
   const automerge = all.get("automerge") ?? {};
   for (const k of ["env", "defaults", "container", "services", "continue-on-error"])
@@ -201,9 +201,7 @@ function classifyFaults(text) {
   for (const [id, job] of Object.entries({ classify, automerge }))
     for (const c of DEPENDABOT_IF)
       if (!String(job.if ?? "").includes(c)) faults.push(`${id} if: no ${c}`);
-  const steps = /** @type {Record<string, any>[]} */ (
-    Array.isArray(classify.steps) ? classify.steps : []
-  );
+  const steps = Array.isArray(classify.steps) ? classify.steps : [];
   const [checkout, setup, ...rest] = steps;
   if (
     !/^actions\/checkout@[0-9a-f]{40}$/.test(String(checkout?.uses)) ||
@@ -229,9 +227,7 @@ function classifyFaults(text) {
   rest.forEach((s, i) => {
     for (const k of ["working-directory", "shell"]) if (k in s) faults.push(`step ${i + 2} ${k}`);
   });
-  const mergeSteps = /** @type {Record<string, any>[]} */ (
-    Array.isArray(automerge.steps) ? automerge.steps : []
-  );
+  const mergeSteps = Array.isArray(automerge.steps) ? automerge.steps : [];
   if (mergeSteps.some((s) => String(s.uses ?? "").startsWith("actions/checkout@")))
     faults.push("automerge checks out");
   return faults;
@@ -239,14 +235,14 @@ function classifyFaults(text) {
 
 describe("build supply chain: Dependabot", () => {
   it("dependabot-automerge classifies on base-branch code with a read-only token", () => {
-    const all = jobs(workflow("dependabot-automerge.yml"));
+    const all = jobs(workflow("dependabot-automerge.yml")) as Map<string, Job>;
     const classify = all.get("classify");
     expect(classify).toBeDefined();
     expect(classify?.permissions).toEqual({ contents: "read" });
     const text = JSON.stringify(classify);
     expect(text).not.toMatch(/secrets\./);
     expect(text).not.toContain("pull_request_target");
-    const steps = /** @type {Record<string, any>[]} */ (classify?.steps);
+    const steps = classify?.steps as Step[];
     const checkout = steps.find((s) => String(s.uses ?? "").startsWith("actions/checkout@"));
     expect(checkout?.with).toMatchObject({
       ref: "${{ github.event.pull_request.base.sha }}",
@@ -271,7 +267,8 @@ describe("build supply chain: Dependabot", () => {
     // The job that can write holds no checkout and acts on classify's decision.
     const automerge = all.get("automerge");
     expect(automerge?.needs).toBe("classify");
-    const automergeSteps = /** @type {Record<string, any>[]} */ (automerge?.steps);
+    const automergeSteps = automerge?.steps as Step[];
+
     expect(automergeSteps.some((s) => String(s.uses ?? "").startsWith("actions/checkout@"))).toBe(
       false,
     );
@@ -288,7 +285,7 @@ describe("build supply chain: Dependabot", () => {
   it.each([
     [
       "the head's .npmrc written before setup-node",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(
           SETUP,
           "      - run: |\n" +
@@ -300,13 +297,13 @@ describe("build supply chain: Dependabot", () => {
     ],
     [
       "the head's lockfile written into the workspace",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(HEAD_LOCK, 'git show "$HEAD_SHA:package-lock.json" > package-lock.json'),
       "head file written to package-lock.json",
     ],
     [
       "a checkout of the head",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(
           "ref: ${{ github.event.pull_request.base.sha }}",
           "ref: ${{ github.event.pull_request.head.sha }}",
@@ -315,7 +312,7 @@ describe("build supply chain: Dependabot", () => {
     ],
     [
       "setup-node with a bare major",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(
           /node-version-file: \.nvmrc\n(\s+)package-manager-cache/,
           "node-version: 22\n$1package-manager-cache",
@@ -324,13 +321,12 @@ describe("build supply chain: Dependabot", () => {
     ],
     [
       "git checkout of the head after it",
-      (/** @type {string} */ t) =>
-        t.replace(HEAD_LOCK, `${HEAD_LOCK}\n          git checkout "$HEAD_SHA" -- .`),
+      (t: string) => t.replace(HEAD_LOCK, `${HEAD_LOCK}\n          git checkout "$HEAD_SHA" -- .`),
       "writes the tree: git checkout",
     ],
     [
       "a working directory on a later step",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(
           "        id: classify\n",
           "        id: classify\n        working-directory: tools\n",
@@ -339,30 +335,28 @@ describe("build supply chain: Dependabot", () => {
     ],
     [
       "pull_request_target",
-      (/** @type {string} */ t) =>
-        t.replace("on:\n  pull_request:\n", "on:\n  pull_request_target:\n"),
+      (t: string) => t.replace("on:\n  pull_request:\n", "on:\n  pull_request_target:\n"),
       "triggers: pull_request_target",
     ],
     [
       "a workflow env",
-      (/** @type {string} */ t) =>
-        t.replace("permissions: {}\n", "permissions: {}\nenv:\n  A: b\n"),
+      (t: string) => t.replace("permissions: {}\n", "permissions: {}\nenv:\n  A: b\n"),
       "workflow env",
     ],
     [
       "a classify env",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace("    timeout-minutes: 10\n", "    timeout-minutes: 10\n    env:\n      A: b\n"),
       "classify env",
     ],
     [
       "classify without the actor check",
-      (/** @type {string} */ t) => t.replace("if: github.actor == 'dependabot[bot]' && ", "if: "),
+      (t: string) => t.replace("if: github.actor == 'dependabot[bot]' && ", "if: "),
       "classify if: no github.actor",
     ],
     [
       "a checkout in automerge",
-      (/** @type {string} */ t) =>
+      (t: string) =>
         t.replace(
           "      - name: Dependabot metadata\n",
           "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n" +
@@ -465,10 +459,8 @@ describe("build supply chain: Dependabot", () => {
 describe("the Safe Browsing key (decision 18, B6)", () => {
   it("the Safe Browsing key comes only from the build environment, in the release and nightly builds", () => {
     const dir = new URL(".github/workflows/", root);
-    /** @type {string[]} */
-    const users = [];
-    /** @type {string[]} */
-    const inBuild = [];
+    const users: string[] = [];
+    const inBuild: string[] = [];
     for (const name of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
       for (const [id, job] of jobs(workflow(name))) {
         const e = job.environment;

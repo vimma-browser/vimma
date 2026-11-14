@@ -2,25 +2,25 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 // docs/security/10-firefox-updates.md G8, docs/rebase.md "Patch-size audit": the quarterly patch
-// audit's workflow shape. Text checks, like upstream-workflow.test.mjs: no YAML dependency.
+// audit's workflow shape. Text checks, like upstream-workflow.test.ts: no YAML dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/patch-audit.yml", import.meta.url),
   "utf8",
 );
 
 /**
- * @param {string} id a job id
- * @returns {string} that job's YAML block
+ * @param id a job id
+ * @returns that job's YAML block
  */
-function job(id) {
+function job(id: string): string {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
   throw new Error(`no job ${id}`);
 }
 
-/** @param {string} block @returns {string[]} the job's `permissions:` lines, comments dropped */
-function permissions(block) {
+/** @returns the job's `permissions:` lines, comments dropped */
+function permissions(block: string): string[] {
   const m = /^ {4}permissions:\n((?: {6}[a-z-]+: [a-z]+.*\n)+)/m.exec(block);
   if (!m?.[1]) return [];
   return m[1]

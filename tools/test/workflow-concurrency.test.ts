@@ -1,31 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { PR_TRIGGERS, concurrencyGroup, prConcurrencyProblem } from "./workflow-concurrency.mjs";
+import { PR_TRIGGERS, concurrencyGroup, prConcurrencyProblem } from "./workflow-concurrency.ts";
 import { triggers } from "./workflow-runners.mjs";
 
 // Every workflow a pull request triggers cancels the pull request's superseded run, and only
-// that run (workflow-concurrency.mjs; docs/runbook/ci-superseded-pull-request-runs.md, "Superseded
+// that run (workflow-concurrency.ts; docs/runbook/ci-superseded-pull-request-runs.md, "Superseded
 // pull request runs").
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const workflows = readdirSync(dir)
   .filter((f) => /\.ya?ml$/.test(f))
   .map((name) => ({ name, text: readFileSync(new URL(name, dir), "utf8") }));
 
-/**
- * Workflows that let a superseded pull request run finish, each with its reason.
- * @type {Record<string, string>}
- */
-const KEEPS_RUNS = {
+/** Workflows that let a superseded pull request run finish, each with its reason. */
+const KEEPS_RUNS: Record<string, string> = {
   // Its jobs take seconds and turn auto-merge on or leave a comment for the head they ran on, so
   // cancelling one saves nothing; its runs keep their order instead.
   "dependabot-automerge.yml": "seconds-long runs that act on the pull request's merge state",
 };
 
 /**
- * @param {string} on the `on:` block
- * @param {string} concurrency the `concurrency:` block, or ""
+ * @param on the `on:` block
+ * @param concurrency the `concurrency:` block, or ""
  */
-const synthetic = (on, concurrency) =>
+const synthetic = (on: string, concurrency: string) =>
   `name: t\non:\n${on}\npermissions: {}\n${concurrency}jobs:\n  a:\n    runs-on: ubuntu-24.04\n` +
   "    steps:\n      - run: true\n";
 
@@ -79,7 +76,7 @@ describe("pull request concurrency: the rule", () => {
   });
 
   it("pull_request_target needs the pull request number: its github.ref is the base branch", () => {
-    const conc = (/** @type {string} */ key) =>
+    const conc = (key: string) =>
       `concurrency:\n  group: t-\${{ ${key} }}\n  cancel-in-progress: true\n`;
     expect(prConcurrencyProblem(synthetic("  pull_request_target:\n", conc("github.ref")))).toMatch(
       /pull_request_target/,
@@ -94,7 +91,7 @@ describe("pull request concurrency: the rule", () => {
   it("a workflow with other triggers cancels pull request runs only", () => {
     const on =
       "  push:\n    branches: [main]\n  pull_request:\n  schedule:\n    - cron: '1 1 * * 1'\n";
-    const conc = (/** @type {string} */ cancel) =>
+    const conc = (cancel: string) =>
       `concurrency:\n  group: t-\${{ github.ref }}\n  cancel-in-progress: ${cancel}\n`;
     expect(prConcurrencyProblem(synthetic(on, conc("true")))).toMatch(
       /also cancels its push, schedule runs/,
@@ -142,8 +139,7 @@ describe("pull request concurrency: this repository's workflows", () => {
   // A heuristic over the literal text before the first expression: it fails closed on two
   // groups that only differ after it.
   it("no two workflows share a concurrency group", () => {
-    /** @param {string} group */
-    const prefix = (group) => group.split("${{")[0];
+    const prefix = (group: string) => group.split("${{")[0];
     const prefixes = workflows
       .map((w) => concurrencyGroup(w.text))
       .filter((g) => g !== null)
