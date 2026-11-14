@@ -89,7 +89,13 @@ only the agent workspace, and every request asks you first (§12).
   `update` field is an allow-list of the update check's result (whether checks are on, the
   install type, the outcome and its time, the offered version and build ID, how far the update
   got) and **never** carries the reason of a refusal, the manifest's serial or key, a URL or an
-  advisory; reading it starts no check and no download.
+  advisory; reading it starts no check and no download. Its `notice`, `prompt`, `chat` and `agent`
+  fields say what is on screen for a moment as flags and counts only (whether a notice or the
+  prompt line shows; the agent chat window's view, how many list rows and transcript entries it
+  draws, whether a question waits in its slot and is armed; the status bar's count of waiting
+  questions and its ran dot) and **never** carry text: no notice, prompt, row label, entry,
+  question or agent name reaches the socket through them, and `chat` is `null` in a private
+  window, where the chat window never opens.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
@@ -97,7 +103,9 @@ only the agent workspace, and every request asks you first (§12).
   [`the_private_workspace_keeps_two_splits_and_state_names_no_page`](../tests/browser/browser_vimma_private_workspace.js),
   [`control_state_never_inserts_a_lazy_tab`](../tests/browser/browser_vimma_security_invariants.js),
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
-  [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js)
+  [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js),
+  [`notice, prompt, chat and agent, when present, are flags and counts only`](../packages/vimma-core/test/control.test.mjs),
+  [`test_state_reports_the_window_and_the_notice_as_drawn`](../tests/browser/browser_vimma_agent_chat.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

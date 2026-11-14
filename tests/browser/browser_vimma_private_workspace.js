@@ -534,6 +534,13 @@ add_task(async function vimma_ctl_state_withholds_private_urls_and_titles() {
   const result = VimmaControl._commands.state();
   Assert.equal(result.private, true, "private: true");
   Assert.equal(result.workspace, "private", "workspace: private");
+  Assert.strictEqual(result.chat, null, "no agent chat window, which never opens there (#981)");
+  Assert.equal(typeof result.notice, "boolean", "whether a notice shows, a flag without its text");
+  Assert.equal(typeof result.prompt, "boolean", "whether the prompt line is open, likewise");
+  Assert.ok(
+    result.agent === null || Object.keys(result.agent).sort().join() === "ran,waiting",
+    "the status bar's agent segment as a count and a flag, naming nothing",
+  );
   Assert.ok(result.tabs.length, "the tabs are listed");
   for (const tab of result.tabs) {
     Assert.strictEqual(tab.url, null, "no url");
