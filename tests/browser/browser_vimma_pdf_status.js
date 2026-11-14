@@ -83,12 +83,26 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
         `PDFViewerApplication.${path} is ${type} (got ${found[path]})`,
       );
     }
-    // The elements the adapter measures for H, L, P and ctrl+f.
-    const dom = await SpecialPowers.spawn(browser, [PDFJS_DOM], (sel) => ({
-      container: content.document.querySelector(sel.container)?.scrollHeight > 0,
-      page: !!content.document.querySelector(sel.page.replace("{n}", "1")),
-    }));
-    Assert.deepEqual(dom, { container: true, page: true }, "the viewer's container and pages");
+    // The elements the adapter measures for H, L, P and ctrl+f, and what a page that has
+    // finished drawing matches, for `state.pdf` (#1006).
+    const dom = await SpecialPowers.spawn(browser, [PDFJS_DOM], async (sel) => {
+      const page = content.document.querySelector(sel.page.replace("{n}", "1"));
+      await ContentTaskUtils.waitForCondition(
+        () => page?.matches(sel.drawn),
+        "the first page has finished drawing",
+      );
+      return {
+        container: content.document.querySelector(sel.container)?.scrollHeight > 0,
+        page: !!page,
+        drawn: !!page?.matches(sel.drawn),
+        canvas: !!page?.querySelector("canvas"),
+      };
+    });
+    Assert.deepEqual(
+      dom,
+      { container: true, page: true, drawn: true, canvas: true },
+      "the viewer's container and pages, and a drawn page with its canvas",
+    );
   });
 });
 

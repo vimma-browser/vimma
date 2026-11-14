@@ -1004,13 +1004,18 @@ function checkStateResult(result, errors) {
   // optional, as `downloads`; one flag each, never the query, a count or a row.
   if ("grep" in result) checkFlagObject(result.grep, "grep", "busy", hidden, errors);
   if ("urlbar" in result) checkFlagObject(result.urlbar, "urlbar", "settled", hidden, errors);
+  // Whether the selected tab's PDF viewer has drawn every page in view (#1006): one flag, never
+  // the page, the page count, the title or the outline.
+  if ("pdf" in result) checkFlagObject(result.pdf, "pdf", "drawn", hidden, errors);
 }
 
 /**
- * `state.grep` (`{ busy }`: live grep's search or the selected result's preview is still to
- * come) and `state.urlbar` (`{ settled }`: the address bar's suggestion list draws all it will
- * for the text last searched): null while closed, else an object with that one boolean. Null
- * in a private window, whose search and typing are part of its browsing (security.md S9).
+ * `state.grep` (`{ busy }`: live grep's search, the selected result's preview or a jump to a
+ * result is still to come), `state.urlbar` (`{ settled }`: the address bar's suggestion list
+ * draws all it will for the text last searched) and `state.pdf` (`{ drawn }`: the PDF viewer
+ * has drawn every page in view): null while closed, else an object with that one boolean. Null
+ * in a private window, whose search, typing and documents are part of its browsing
+ * (security.md S9).
  * @param {unknown} value @param {string} name @param {string} flag
  * @param {boolean} hidden  a private window's @param {string[]} errors
  */

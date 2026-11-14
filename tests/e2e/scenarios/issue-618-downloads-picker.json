@@ -42,11 +42,9 @@
     },
     {
       "wait-for-state": {
-        "mode": "help"
+        "mode": "help",
+        "downloads": null
       }
-    },
-    {
-      "sleep": 0.5
     },
     {
       "screenshot": "downloads-picker"

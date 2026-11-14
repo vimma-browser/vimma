@@ -100,9 +100,14 @@ only the agent workspace, and every request asks you first (§12).
   its `downloads` field only which `↓` segment the status bar draws, as one word of a fixed list
   (`progress`, `paused`, `done`, `failed`, `blocked`) or `null`; it **never** carries a file's
   name, size, URL or site, and is `null` in a private window. Its `grep` and `urlbar` fields
-  are one flag each (live grep's search or preview still to come; the address bar's suggestion
-  list drawn for the text last searched) and **never** carry the query, the typed text, a count
-  of matches or results, or a row; both are `null` in a private window.
+  are one flag each (live grep's search, preview or jump still to come; the address bar's
+  suggestion list drawn for the text last searched) and **never** carry the query, the typed
+  text, a count of matches or results, or a row; both are `null` in a private window. Its `pdf`
+  field is one flag, whether the selected tab's PDF viewer has drawn the pages in its view, and
+  `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
+  document's title or URL, or the outline, and is `null` in a private window. The viewer's own
+  report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
+  changes when a script's wait ends, nothing else.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
@@ -120,7 +125,11 @@ only the agent workspace, and every request asks you first (§12).
   [`grep and urlbar are one flag each, or null`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_live_grep_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_the_suggestion_list_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
-  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js)
+  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js),
+  [`test_state_reports_a_grep_jump_until_it_has_drawn`](../tests/browser/browser_vimma_state_waits.js),
+  [`pdf is one flag, or null`](../packages/vimma-core/test/control.test.mjs),
+  [`pdfDrawn`](../packages/vimma-core/test/pdf.test.mjs),
+  [`test_state_reports_the_pdf_viewer_as_drawn`](../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),
@@ -4351,7 +4360,11 @@ bindings, so it is accepted here.
 - V6. The parent **must** parse every state record with `parsePdfState`, which bounds every
   number, drops a page label over 32 characters and strips control and Unicode format characters
   (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
-  status bar **must** draw it as text.
+  status bar **must** draw it as text. The record's `drawn` flag and size are read by the
+  adapter from the viewer's DOM and window through Xrays (from the current page outward, each
+  page's `data-loaded` attribute and `loadingIcon` class; `innerWidth`, `innerHeight`), its
+  operation count is the actor's own, and they feed only the control socket's `state.pdf` flag
+  (S9).
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
 - V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded
