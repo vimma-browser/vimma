@@ -123,7 +123,11 @@ declare const BrowserTestUtils: {
     params?: TabbrowserAddOptions & Record<string, unknown>,
     beforeLoadFunc?: ((tab: MozTabbrowserTab) => void) | null,
   ): MozTabbrowserTab;
-  removeTab(tab: MozTabbrowserTab, options?: TabbrowserRemoveOptions): Promise<void>;
+  /**
+   * Starts the tab's removal and returns at once, without a promise: await waitForTabClosing
+   * (or a TabClose event) for the close itself.
+   */
+  removeTab(tab: MozTabbrowserTab, options?: TabbrowserRemoveOptions): void;
   switchTab(tabbrowser: Tabbrowser, tab: MozTabbrowserTab | (() => unknown)): Promise<void>;
   reloadTab(tab: MozTabbrowserTab, options?: { includeSubFrames?: boolean }): Promise<void>;
   waitForTabClosing(tab: MozTabbrowserTab): Promise<Event>;
@@ -272,14 +276,15 @@ declare const EventUtils: {
   /** `key` is a printable character, or `KEY_` plus a KeyboardEvent.key value. */
   synthesizeKey(key: string, event?: KeyEventOptions, win?: Window): void;
   sendString(text: string, win?: Window): void;
+  /** Whether the event's default was prevented. */
   synthesizeMouse(
     target: Element,
     offsetX: number,
     offsetY: number,
     event: MouseEventOptions,
     win?: Window,
-  ): void;
-  synthesizeMouseAtCenter(target: Element, event: MouseEventOptions, win?: Window): void;
+  ): boolean;
+  synthesizeMouseAtCenter(target: Element, event: MouseEventOptions, win?: Window): boolean;
 };
 
 // --- Content-process globals, inside SpecialPowers.spawn tasks ---
