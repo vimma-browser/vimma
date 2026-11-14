@@ -34,10 +34,10 @@ const FIREFOX_START = ["home", "newtab", "welcome"];
 // with them the parent kills the process over the next message from Firefox's page, such as a
 // blob URL registration, and every tab in it crashes (#950). Set when Firefox's page is handed
 // out; cleared only when the last privilegedabout process that ran ends while none of Firefox's
-// channels is still loading. Firefox keeps one alive
-// (dom.ipc.keepProcessesAlive.privilegedabout), so in practice it stays set until the next start.
-// Staying set too long only shows Firefox's page; clearing too early brings the kill back, so
-// nothing else clears it: getAllDOMProcesses leaves out a process that is still launching.
+// channels is still loading. Firefox keeps one alive (dom.ipc.keepProcessesAlive.privilegedabout),
+// so in practice it stays set until the next start. Staying set too long only shows Firefox's
+// page; clearing too early brings the kill back, so nothing else clears it: getAllDOMProcesses
+// leaves out a process that is still launching.
 let firefoxServed = false;
 
 // Firefox's channels handed out and not yet finished. A page's channel is pending from the moment
@@ -47,7 +47,9 @@ let firefoxServed = false;
 // (ContentParent::Init sends ipc:content-created before the launch resolves). A page whose process
 // is still launching, or not yet picked, when the last privilegedabout process ends is in neither
 // aboutIDs nor getAllDOMProcesses, so its channel keeps firefoxServed set (#984). Finished
-// channels are dropped, so a page that has reached its process holds nothing.
+// channels are dropped, so a page that has reached its process holds nothing. Firefox's wrapper
+// for the loads it holds until its newtab add-on starts (AboutNewTabRedirector's suspended
+// channels, SuspendableChannelWrapper::IsPending) counts as loading until then, opened or not.
 /** @type {Set<any>} */
 const inFlight = new Set();
 
@@ -83,11 +85,13 @@ function noteProcess(process) {
  */
 function processEnded(_subject, _topic, id) {
   const childID = Number(id);
+  // Evaluated first, whatever the rest says, so finished channels never outlive a process's end.
+  const loading = firefoxLoading();
   if (
     aboutIDs.delete(childID) &&
     aboutIDs.size === 0 &&
     !privilegedAboutRuns(childID) &&
-    !firefoxLoading()
+    !loading
   ) {
     firefoxServed = false;
   }

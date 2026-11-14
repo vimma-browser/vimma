@@ -12,7 +12,7 @@
 
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
-// Five tests, each waiting for one to three content processes to launch and end: about 15 s in
+// Six tests, each waiting for one to three content processes to launch and end: about 15 s in
 // CI, over the default 45 s per file on a loaded machine.
 requestLongerTimeout(2);
 
@@ -75,6 +75,27 @@ async function closeAndEndProcess(tab, what) {
   info(`waiting: ${what} (${childID})`);
   await ended;
   await endAboutProcesses(what);
+}
+
+/**
+ * Hands out Firefox's page for `uri` through the start page module and opens its channel, as a
+ * load does; vimma.startpage.newtab must be off. `stopped` settles at its onStopRequest.
+ * @param {any} uri
+ * @returns {{ channel: any, stopped: Promise<void> }}
+ */
+function openFirefoxChannel(uri) {
+  const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
+  const channel = NetUtil.newChannel({ uri, loadUsingSystemPrincipal: true });
+  const { promise, resolve } = Promise.withResolvers();
+  channel.asyncOpen({
+    onStartRequest() {},
+    onDataAvailable(/** @type {any} */ _r, /** @type {any} */ stream, _o, count) {
+      NetUtil.readInputStream(stream, count);
+    },
+    onStopRequest: () => resolve(),
+    QueryInterface: ChromeUtils.generateQI(["nsIStreamListener", "nsIRequestObserver"]),
+  });
+  return { channel, stopped: promise };
 }
 
 /**
@@ -199,28 +220,21 @@ add_task(async function firefox_flags_stay_while_its_page_is_on_its_way() {
   /** @type {Promise<void> | null} */
   let stopped = null;
   let suspended = false;
+  /** @type {any} */
+  let first = null;
+  /** @type {any} */
+  let second = null;
   try {
     await endAboutProcesses("no privilegedabout process to begin with");
     Assert.ok(startFlags(), "the start page's flags to begin with");
 
     // Process A, the last privilegedabout process, alive when Firefox's page is handed out.
     info("opening about:logins in process A");
-    const first = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
+    first = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
     Assert.equal(first.linkedBrowser.remoteType, "privilegedabout", "about:logins runs there");
     await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
     try {
-      const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
-      channel = NetUtil.newChannel({ uri: home, loadUsingSystemPrincipal: true });
-      const { promise, resolve } = Promise.withResolvers();
-      stopped = promise;
-      channel.asyncOpen({
-        onStartRequest() {},
-        onDataAvailable(/** @type {any} */ _r, /** @type {any} */ stream, _o, count) {
-          NetUtil.readInputStream(stream, count);
-        },
-        onStopRequest: () => resolve(),
-        QueryInterface: ChromeUtils.generateQI(["nsIStreamListener", "nsIRequestObserver"]),
-      });
+      ({ channel, stopped } = openFirefoxChannel(home));
       channel.suspend();
       suspended = true;
     } finally {
@@ -241,7 +255,7 @@ add_task(async function firefox_flags_stay_while_its_page_is_on_its_way() {
     Assert.ok(!startFlags(), "only the end of a privilegedabout process clears the latch");
 
     info("opening about:logins in process B");
-    const second = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
+    second = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
     Assert.equal(second.linkedBrowser.remoteType, "privilegedabout", "process B is there");
     await closeAndEndProcess(second, "process B ends");
     Assert.ok(startFlags(), "with no Firefox page on its way, the start page's flags come back");
@@ -251,6 +265,54 @@ add_task(async function firefox_flags_stay_while_its_page_is_on_its_way() {
       if (suspended) channel.resume();
       await stopped;
     }
+    for (const tab of [first, second]) {
+      if (tab?.isConnected) await closeAndEndProcess(tab, "a privilegedabout tab left open ends");
+    }
+    await SpecialPowers.popPrefEnv();
+  }
+});
+
+// A Firefox page that has finished loading holds nothing beyond its process: once a
+// privilegedabout process ends after it, the start page's flags come back.
+add_task(async function a_finished_firefox_page_holds_nothing_after_a_process_ends() {
+  const home = Services.io.newURI("about:home");
+  const module = Cc["@mozilla.org/network/protocol/about;1?what=home"].getService(
+    Ci.nsIAboutModule,
+  );
+  const startFlags = () => module.getURIFlags(home) === 0;
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["dom.ipc.keepProcessesAlive.privilegedabout", 0],
+      ["browser.newtab.preload", false],
+    ],
+  });
+  /** @type {any} */
+  let tab = null;
+  try {
+    await endAboutProcesses("no privilegedabout process to begin with");
+    Assert.ok(startFlags(), "the start page's flags to begin with");
+
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
+    /** @type {any} */
+    let loaded;
+    try {
+      loaded = openFirefoxChannel(home);
+    } finally {
+      await SpecialPowers.popPrefEnv();
+    }
+    info("waiting: the load of Firefox's page finishes");
+    await loaded.stopped;
+    Assert.equal(loaded.channel.status, Cr.NS_OK, "Firefox's page loaded");
+    Assert.ok(!loaded.channel.isPending(), "Firefox's page is no longer loading");
+    Assert.ok(!startFlags(), "Firefox's flags stay until a privilegedabout process ends");
+
+    info("opening about:logins");
+    tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:logins");
+    Assert.equal(tab.linkedBrowser.remoteType, "privilegedabout", "about:logins runs there");
+    await closeAndEndProcess(tab, "about:logins' process ends");
+    Assert.ok(startFlags(), "the start page's flags come back");
+  } finally {
+    if (tab?.isConnected) await closeAndEndProcess(tab, "a privilegedabout tab left open ends");
     await SpecialPowers.popPrefEnv();
   }
 });
