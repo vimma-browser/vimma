@@ -143,7 +143,9 @@ function changed(event) {
   try {
     told = event === undefined ? undefined : frozenCopy(event);
   } catch (e) {
-    // Only an announce's `what` comes from outside: the listeners hear a plain change instead.
+    // Cannot happen: every event is built from primitives and the gate's own copies (announce
+    // and notify copy what they are handed first). Kept so a throw here never leaves the gate
+    // half-updated; the listeners would hear a plain change, without the event.
     console.error("vimma agent gate:", e);
   }
   for (const listener of listeners) {
@@ -350,7 +352,8 @@ export const AgentGate = {
    * @param {{ hold?: boolean }} [options]  hold: until no question waits (spec ship-vimma-ctl)
    */
   notify(text, options) {
-    changed({ kind: "notice", text, ...options });
+    // Copied here: a value that cannot be copied throws to this caller, before anyone is told.
+    changed(frozenCopy({ kind: "notice", text, ...options }));
   },
 
   /**
@@ -370,10 +373,8 @@ export const AgentGate = {
     if (AgentGate.waiting.some((q) => q.conn === FULL_CONN)) {
       return Promise.resolve({ allow: false, reason: "busy" });
     }
-    const outcome = this.request(FULL_CONN, FULL_CONTROL, code ? { code } : {});
-    const mine = [...pending.values()].find((p) => p.conn === FULL_CONN);
-    if (mine) onCancel?.(() => cancel(mine.id));
-    return outcome;
+    // onCancel goes through request(), which withdraws the question if it throws (#1027).
+    return this.request(FULL_CONN, FULL_CONTROL, code ? { code } : {}, { onCancel });
   },
 
   /**
@@ -502,11 +503,13 @@ export const AgentGate = {
    * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
    */
   announce(conn, tool, what, until) {
+    // Copied here: a value that cannot be copied throws to this caller, before anyone is told.
+    const kept = frozenCopy(what);
     const label = labels.get(conn);
     // A grant revoked while the call ran shows no "(grant, …left)".
     const grant = queue.grants(Date.now()).find((g) => g.conn === conn);
     if (!label || !grant) return;
-    changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
+    changed({ kind: "ran", conn, tool, what: kept, label, until: Math.min(until, grant.until) });
   },
 
   /** `:mcp log`'s rows, newest first (mcp-drive D14): frozen, the log's own (M62). */

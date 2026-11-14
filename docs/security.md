@@ -1208,12 +1208,15 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   copy is of JSON-like data: a `__proto__` key stays data, never the copy's prototype, a shared
   object is copied once, and a request nested deeper than 32 levels throws before it is queued
   or logged, so its caller fails closed. A value the copy made is passed through as it is when
-  the gate copies again (an event around a question), so a request at the limit is asked,
+  the gate copies again (an event around a question), and its levels are not counted again, so
+  the depth limit bounds each copy, not a whole event: a request at the limit is asked,
   answered, run under a grant, logged and heard by every listener; an object anyone else froze
-  is still copied. Telling the listeners never throws (a listener's throw, or an event that cannot
-  be copied, is logged to the console), and a caller's `onCancel` that throws withdraws its
-  question, so a call is never logged as run behind a throw nor left waiting with its timer
-  behind a rejected promise.
+  is still copied. A label, an `announce`'s `what` and a notice are copied when they are handed
+  in, so one that cannot be copied throws to its caller before the queue or a listener sees it
+  (a label never takes a dropped session's grant). Telling the listeners never throws (a
+  listener's throw is logged to the console), and a caller's `onCancel` that throws, on a
+  request or a full-control question, withdraws its question, so a call is never logged as run
+  behind a throw nor left waiting with its timer behind a rejected promise.
   [`test_question_and_log_show_what_was_asked`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_dangerous_download_stays_one_file_after_the_caller_changes_it`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_here_answer_allows_the_button_the_question_named`](../tests/browser/browser_vimma_mcp_gate_copies.js),
@@ -1226,6 +1229,8 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_a_request_at_the_copy_limit_asks_and_is_heard`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_request_at_the_copy_limit_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_throwing_on_cancel_leaves_nothing_waiting`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_throwing_on_cancel_leaves_no_full_control_question`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_label_that_cannot_be_copied_takes_no_session_grant`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`frozenCopy passes its own copy through, so an event around a request at the limit copies`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy still copies an object someone else froze`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype`](../packages/vimma-core/test/agent-gate.test.mjs),

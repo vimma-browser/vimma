@@ -469,3 +469,55 @@ add_task(async function test_a_throwing_on_cancel_leaves_nothing_waiting() {
     AgentGate.disconnect(CONN);
   }
 });
+
+// A label that cannot be copied throws before the queue knows its connection, so it never takes
+// the grant a dropped session left behind (mcp-session-grants S3); the next connection of that
+// session still gets it.
+add_task(async function test_a_label_that_cannot_be_copied_takes_no_session_grant() {
+  const THIRD = 1018003;
+  const SESSION = "gate-copies-1027";
+  // A session's grant is parked only while MCP is on (mcp-session-grants S5).
+  AgentGate.on();
+  AgentGate.connect(CONN, { client: "agent-a" }, SESSION);
+  try {
+    const read = AgentGate.request(CONN, "vimma_read_page", { url: ASKED });
+    AgentGate.answer(/** @type {any} */ (questionOf(CONN)).id, { kind: "grant", minutes: 5 });
+    Assert.ok((await read).allow, "granted");
+    AgentGate.disconnect(CONN);
+    Assert.equal(AgentGate.grants().length, 0, "the grant is parked, not in force");
+
+    Assert.throws(
+      () => AgentGate.connect(OTHER, { client: nested(32) }, SESSION),
+      /deeper than 32 levels/,
+      "a label too deep to copy throws",
+    );
+    Assert.equal(AgentGate.grants().length, 0, "and took no grant");
+
+    AgentGate.connect(THIRD, { client: "agent-c" }, SESSION);
+    Assert.equal(labelOf(THIRD)?.client, "agent-c", "the session's next connection keeps it");
+  } finally {
+    AgentGate.revoke();
+    AgentGate.disconnect(CONN);
+    AgentGate.disconnect(OTHER);
+    AgentGate.disconnect(THIRD);
+    // Back to MCP off, as the file found it: no session parks a grant.
+    AgentGate.off();
+  }
+});
+
+// The same for a full-control question (decision 29 C): an `onCancel` that throws leaves no
+// question waiting, and the caller is denied.
+add_task(async function test_a_throwing_on_cancel_leaves_no_full_control_question() {
+  /** @type {Promise<any> | null} */
+  let outcome = null;
+  try {
+    outcome = AgentGate.askFull(null, () => {
+      throw new Error("the caller's own bug");
+    });
+  } catch (e) {
+    Assert.ok(false, `askFull does not throw: ${e}`);
+  }
+  Assert.equal(AgentGate.waiting.length, 0, "no question waits");
+  Assert.deepEqual(await outcome, { allow: false, reason: "cancelled" }, "the caller is denied");
+  for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
+});
