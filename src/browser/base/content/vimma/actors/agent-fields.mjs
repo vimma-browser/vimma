@@ -551,8 +551,10 @@ function isInteractive(el) {
  * @returns {Element | null}
  */
 function pathParent(el) {
-  const p = el.assignedSlot ?? el.parentNode;
-  if (p && p.nodeType === 11) return /** @type {ShadowRoot} */ (p).host ?? null;
+  // The chrome-only slot: the web's assignedSlot hides a closed shadow root's (Gecko's event path
+  // uses GetAssignedSlot, whatever the root's mode).
+  const p = el.openOrClosedAssignedSlot ?? el.parentNode;
+  if (p && isShadowRoot(p)) return p.host;
   return p && p.nodeType === 1 ? /** @type {Element} */ (p) : null;
 }
 

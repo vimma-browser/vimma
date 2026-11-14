@@ -1109,6 +1109,17 @@ addTidyTask(async function test_label_forwarding_follows_geckos_interactive_cont
       "<i>Assigned</i>",
       "#fallback",
     );
+    // A closed shadow root's slot is on the click's path too (Gecko's GetAssignedSlot), and the
+    // label there passes the click on to the form inside the same tree.
+    const closedHost = doc.createElement("span");
+    closedHost.attachShadow({ mode: "closed" }).innerHTML =
+      '<form action="https://example.com/collect"><button id="buy">Buy</button></form>' +
+      '<label for="buy"><slot></slot></label>';
+    closedHost.innerHTML = "<summary>Continue</summary>";
+    doc.body.append(closedHost);
+    const closedSummary = /** @type {Element} */ (closedHost.querySelector("summary"));
+    submits["summary slotted into a closed shadow root's label"] =
+      "submit" in actTargetOf(closedSummary);
     return submits;
   });
   Assert.deepEqual(
@@ -1128,6 +1139,7 @@ addTidyTask(async function test_label_forwarding_follows_geckos_interactive_cont
       "slotted span in a link": false,
       "unslotted span in a link": true,
       "slot fallback in a link": true,
+      "summary slotted into a closed shadow root's label": true,
     },
     "a label passes on a click as Gecko does (IsInInteractiveHTMLContent)",
   );
