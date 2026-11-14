@@ -274,7 +274,8 @@ add_task(async function cycling_never_enters_private_and_leaves_to_the_ends() {
   Assert.equal(all().at(-1), WorkspaceStore.agent?.id, "the agent workspace is the last one");
   const order = () => all().filter((/** @type {string} */ id) => id !== WorkspaceStore.agent?.id);
   const first = () => order()[0];
-  const last = () => order().at(-1);
+  // The test made A and B, so the order is never empty (B is asserted last just below).
+  const last = () => /** @type {string} */ (order().at(-1));
   Assert.equal(last(), B.id, "B is the last cycled workspace");
 
   await SimpleTest.promiseFocus(window);

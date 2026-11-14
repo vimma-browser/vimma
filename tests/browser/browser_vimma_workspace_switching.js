@@ -71,8 +71,8 @@ function segText(id) {
   );
 }
 
-/** The workspace segment as the bar draws it: `● <index>:<name>`. */
-function wsLabel(/** @type {WorkspaceState} */ w) {
+/** The workspace segment as the bar draws it for a workspace definition: `● <index>:<name>`. */
+function wsLabel(/** @type {WorkspaceDefinition} */ w) {
   const index =
     WorkspaceStore.definitions.workspaces.findIndex(
       (/** @type {WorkspaceDefinition} */ d) => d.id === w.id,

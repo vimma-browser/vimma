@@ -104,6 +104,11 @@ describe("npm run typecheck", () => {
       // so it cannot pass by accident, and a guard at each of the thousands of such reads would
       // say nothing more.
       noUncheckedIndexedAccess: false,
+      // The root skips the declaration files, but here they are the types/mochitest/*.d.ts
+      // that name the product's types for the tests: an error in one (a wrong import path, a
+      // member read off a nullable type) would make its type `any` and every test annotation
+      // naming it would check nothing, with no error shown.
+      skipLibCheck: false,
     });
   });
 

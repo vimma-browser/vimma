@@ -64,8 +64,8 @@ const hostChat = () =>
 /** @param {{ view?: "chat" | "models" | "list" }} [opts] */
 const openChat = (opts = {}) =>
   new Promise((resolve) => hostChat().open({ ...opts, then: () => resolve(undefined) }));
-// `[agent]` without localOnly, keepDays and keepResults, which AgentChat reads as false, null
-// and null when they are left out.
+// `[agent]` without localOnly, keepDays and keepResults, which every reader of them (AgentChat,
+// the chat window's ui/agent-chat.mjs) takes as false, null and null when they are left out.
 const SCRIPTED_ONLY = () =>
   McpHost.configureAgent(
     /** @type {AgentConfig} */ ({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] }),

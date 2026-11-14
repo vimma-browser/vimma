@@ -169,9 +169,14 @@ the wrong kind of thing, or asserts on a promise it forgot to await, fails the c
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
 type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
 one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
-values are checked against the product's own JSDoc. Not checked: a module imported from a URL
-held in a variable, Firefox's own modules (`resource://`, other `chrome://` URLs), which still
-return `any`, and what the product itself types loosely: an agent question's `what` (a `Record`
+values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
+does not have (a typo) is an error. The declarations themselves are checked too:
+`tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
+`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
+would make the type it declares `any`, and every annotation naming that type would check
+nothing, with no error shown. Not checked: a module imported from a URL held in a variable,
+Firefox's own modules (`resource://`, `moz-src://`, other `chrome://` URLs), which still return
+`any`, and what the product itself types loosely: an agent question's `what` (a `Record`
 of `any`, as the question line reads it), a child's console entries before the parent checks
 them. A test that knows more than the product's type (a window whose workspaces are built, a
 workspace with its container, a check that was refused) casts to a named type from

@@ -429,7 +429,10 @@ add_task(async function mcp_on_asks_off_does_not_and_config_wins() {
   await until(() => !Services.prefs.getBoolPref(MCP_ENABLED_PREF, true), ":mcp off, at once");
   Assert.ok(!promptOpen(), "without a question");
 
-  // Only `enabled` matters to :mcp off; the rest stays as in force (none of it when nothing is).
+  // `[mcp]` with `enabled` and `workspace` over what is in force (none of it when nothing is):
+  // :mcp off reads only `enabled`, the change's observers take a missing field as its default,
+  // and the reset below comes before any agent connects or is answered, which would read the
+  // rest (AgentGate, AgentDownloads, agent-ui).
   McpHost.configure(
     /** @type {McpConfig} */ ({ ...McpHost.config, enabled: true, workspace: "agent" }),
   );

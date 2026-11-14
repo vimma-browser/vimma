@@ -6,8 +6,9 @@
 // test casts to one only where that holds, and would fail on the value otherwise.
 
 /** A window's workspace, as WindowWorkspaces models it (core/workspaces.mjs, WorkspaceState). */
-type WorkspaceState =
-  import("../../src/browser/base/content/vimma/workspaces/WindowWorkspaces.sys.mjs").WindowWorkspacesImpl["model"]["workspaces"][number];
+type WorkspaceState = NonNullable<
+  import("../../src/browser/base/content/vimma/workspaces/WindowWorkspaces.sys.mjs").WindowWorkspacesImpl["model"]
+>["workspaces"][number];
 
 /** A workspace definition of the app (core/workspacedefs.mjs, WorkspaceDefinition). */
 type WorkspaceDefinition =
@@ -77,7 +78,9 @@ type HostServiceName = keyof Parameters<
  * they are in the browser tests; userContextId is null only with containers off. A test's helper
  * that looks up a workspace it knows exists casts the lookup to this.
  */
-type ContainedWorkspace = WorkspaceDefinition & { userContextId: number };
+type ContainedWorkspace = WorkspaceDefinition & {
+  userContextId: NonNullable<WorkspaceDefinition["userContextId"]>;
+};
 /** The user's answer to a question (AgentGate.answer). */
 type GateAnswer = Parameters<AgentGateApi["answer"]>[1];
 
@@ -96,10 +99,10 @@ type McpConfig = NonNullable<Parameters<McpHostApi["configure"]>[0]>;
 /** A check's result (VimmaUpdates.check, VimmaUpdates.status). */
 type UpdateState = Awaited<ReturnType<VimmaUpdatesApi["check"]>>;
 /** A check that was refused or failed: `reason` says why. */
-type RefusedUpdate = UpdateState & { reason: string };
+type RefusedUpdate = UpdateState & { reason: NonNullable<UpdateState["reason"]> };
 /** A check that verified an answer: when, and the key that signed it. */
 type VerifiedUpdate = UpdateState & {
-  okAt: number;
+  okAt: NonNullable<UpdateState["okAt"]>;
   key: NonNullable<UpdateState["key"]>;
 };
 /** A check that found an update. */
@@ -113,7 +116,7 @@ type AppImageOffer = UpdateDescription & {
 };
 /** An AppImage's replacement that failed: `reason` says why. */
 type AppImageRefusal = AppImageOffer & {
-  appImage: { reason: string };
+  appImage: { reason: NonNullable<AppImageOffer["appImage"]["reason"]> };
 };
 /** about:vimma with an update offered to a tarball that Firefox's updater updates. */
 type FirefoxOffer = UpdateDescription & {
