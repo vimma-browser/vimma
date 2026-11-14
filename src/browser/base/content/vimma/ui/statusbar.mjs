@@ -306,7 +306,7 @@ export class StatusBar {
       input.toolbarHidden = true;
       input.security = securityOf(browser);
       input.privateWindow = root.hasAttribute("privatebrowsingmode");
-      input.sharing = sharingCues(/** @type {any} */ (browser)._sharingState);
+      input.sharing = sharingCues(browser._sharingState);
     }
     return input;
   }

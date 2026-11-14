@@ -230,11 +230,11 @@ function layerAtCentre(win, vertical) {
   const doc = win.document;
   let hit = doc.elementFromPoint(x, y);
   // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = /** @type {any} */ (hit)?.openOrClosedShadowRoot; root;) {
+  for (let root = hit?.openOrClosedShadowRoot; root;) {
     const inner = root.elementFromPoint(x, y);
     if (!inner || inner === hit) break;
     hit = inner;
-    root = /** @type {any} */ (hit).openOrClosedShadowRoot;
+    root = hit.openOrClosedShadowRoot;
   }
   /** @type {Element | null} */
   let inner = null;
@@ -620,7 +620,7 @@ export class VimmaChild extends JSWindowActorChild {
   #foundEditable() {
     try {
       // Only a frame that has searched has a Finder; reading it must not create one.
-      const finder = /** @type {any} */ (this.manager.getActor("Finder"))._finder;
+      const finder = this.manager.getActor("Finder")._finder;
       return finder?._fastFind?.foundEditable ?? null;
     } catch {
       return null;
@@ -658,7 +658,7 @@ export class VimmaChild extends JSWindowActorChild {
    * @param {HTMLInputElement} el
    */
   #showFindMatch(el) {
-    const controller = /** @type {any} */ (el).editor?.selectionController;
+    const controller = el.editor?.selectionController;
     controller?.setDisplaySelection(Ci.nsISelectionController.SELECTION_ATTENTION);
     controller?.repaintSelection(Ci.nsISelectionController.SELECTION_NORMAL);
   }
@@ -1171,7 +1171,11 @@ export class VimmaChild extends JSWindowActorChild {
     const value = asked.value;
     if (typeof value !== "string" && typeof value !== "boolean") return "changed";
     if (!this.#fillAsAsked(el, asked)) return "changed";
-    const fill = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    const fill = {
+      gen: asked.gen,
+      id: asked.id,
+      outcome: /** @type {"pending" | "kept" | "reset" | "skipped"} */ ("pending"),
+    };
     this.#agentFill = fill;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
@@ -1218,7 +1222,11 @@ export class VimmaChild extends JSWindowActorChild {
       return "changed";
     }
     // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
-    const sent = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    const sent = {
+      gen: asked.gen,
+      id: asked.id,
+      outcome: /** @type {"pending" | "clicked" | "skipped"} */ ("pending"),
+    };
     this.#agentClick = sent;
     const until = asked.until;
     Services.tm.dispatchToMainThread(() => {
@@ -1265,7 +1273,11 @@ export class VimmaChild extends JSWindowActorChild {
     if (!el || !actTargetOf(el).alive) return "gone";
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     if (!this.#asAsked(el, asked)) return "changed";
-    const click = { gen: asked.gen, id: asked.id, outcome: /** @type {any} */ ("pending") };
+    const click = {
+      gen: asked.gen,
+      id: asked.id,
+      outcome: /** @type {"pending" | "clicked" | "skipped"} */ ("pending"),
+    };
     this.#agentClick = click;
     this.#agentWatch = null;
     const until = asked.until;

@@ -202,7 +202,7 @@ function untouched(win, tab) {
 
 /** `-vimma-from <names>`: held for the command line being handled, then dropped. */
 const handler = {
-  handle(/** @type {any} */ cmdLine) {
+  handle(/** @type {nsICommandLine} */ cmdLine) {
     /** @type {string | null} */
     let raw;
     try {

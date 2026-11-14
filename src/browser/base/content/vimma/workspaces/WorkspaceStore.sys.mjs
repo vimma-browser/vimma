@@ -104,7 +104,7 @@ export class WorkspaceStoreImpl {
   #agentCachePref;
   #watch;
   #watching = false;
-  /** @type {any} */
+  /** @type {JSONFileInstance | null} */
   #file = null;
   /** @type {Promise<void> | null} */
   #ready = null;
