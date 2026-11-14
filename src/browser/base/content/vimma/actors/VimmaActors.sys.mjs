@@ -621,7 +621,8 @@ export const VimmaActors = {
         }
         out.push(target);
       }
-      if (depth >= MAX_FRAME_DEPTH) return;
+      // The frames it names are its document's: once the frame shows another, none of them.
+      if (depth >= MAX_FRAME_DEPTH || bc.currentWindowGlobal !== wg) return;
       const children = reply.frames.map((f) => {
         // Only a frame this document embeds: a content process names no other.
         const child = bc.children.find((c) => c.id === f.id);

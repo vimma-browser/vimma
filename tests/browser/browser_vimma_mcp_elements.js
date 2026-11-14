@@ -921,3 +921,42 @@ addTidyTask(async function test_a_foreign_namespace_input_is_no_field() {
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+// A foreign-namespace element inside a `<label>` is no interactive content to Gecko
+// (Element::IsInteractiveHTMLContent is false for any element outside HTML), so a click on it is
+// passed on to the label's control: here a form's submit button, whose submission the click
+// must be inspected as, so that a grant does not run it unasked (security.md M28).
+addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_controls_submit() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const style = doc.createElement("style");
+    style.textContent =
+      "[aria-label='Show more'] { display: inline-block; width: 120px; height: 20px }";
+    doc.head.append(style);
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    const label = doc.createElement("label");
+    label.htmlFor = "buy";
+    const fake = doc.createElementNS("urn:vimma:test", "input");
+    fake.setAttribute("aria-label", "Show more");
+    label.append(fake);
+    doc.body.prepend(form, label);
+  });
+  const targets = await VimmaActors.collectHints(browser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const fake = targets.find((t) => t.info?.text === "Show more" || t.info?.caption === "Show more");
+  Assert.ok(fake, "the element in the label is listed");
+  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (fake));
+  Assert.equal(inspected?.alive, true, "it is still there");
+  const submit = inspected && "submit" in inspected ? inspected.submit : undefined;
+  Assert.equal(submit?.action, "https://example.com/collect", "a click on it submits the form");
+  Assert.equal(submit?.fields, 1, "with its one named field");
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});

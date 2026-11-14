@@ -534,7 +534,9 @@ function fieldOf(el) {
 function labelledControl(el) {
   const label = el.closest("label");
   if (!isHTML(label, "label") || !label.control || label.control === el) return null;
-  if (el !== label && INTERACTIVE.has(el.localName)) return null;
+  // Interactive content is HTML's: Gecko passes a label a click on any other element
+  // (Element::IsInteractiveHTMLContent, engine/dom/base/Element.cpp).
+  if (el !== label && isHTMLElement(el) && INTERACTIVE.has(el.localName)) return null;
   return label.control;
 }
 
