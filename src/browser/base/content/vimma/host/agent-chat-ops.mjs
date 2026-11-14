@@ -136,7 +136,11 @@ export function runAgentCommand(chat, text, say) {
       chat.clear();
       return;
     case "give":
-      chat.open({ then: () => chat.give() });
+      chat.open({
+        then: () => chat.give(),
+        // Giving asks a y/N on the prompt line, which would take focus from where the user went.
+        ifMoved: () => say("agent: not given: focus moved while the conversations were read"),
+      });
       return;
     case "forget":
       chat.forgetAll();
