@@ -20,7 +20,7 @@ sequenceDiagram
   participant Run as host/runners
   participant Act as actors/VimmaActors
   participant Child as actors/VimmaChild
-  participant Parent as actors/VimmaParent
+  participant Parent as host/VimmaParent
   Win->>Host: keydown, capture phase (_onKeyDown)
   Host->>Host: the questions and prompts first
   Host->>Host: chordFromEvent, then _mode
@@ -196,7 +196,8 @@ ops modules load without an import cycle. `j` is `scroll.down`, whose runner cal
 
 `VimmaActors.register` (called once per process from `vimma.js`, before `VimmaHost.init`) registers
 the JSWindowActor pair: `VimmaChild` in every frame (`allFrames`) of http, https, file, about and
-view-source documents and the start page, `VimmaParent` in the parent, marked
+view-source documents and the start page, `VimmaParent` in the parent (`host/VimmaParent.sys.mjs`,
+whose URL `vimma.js` passes in: `actors/` names no `host/` module), marked
 `safeForUntrustedWebProcess` because the parent trusts nothing from the child but a descriptor,
 which at worst flips that tab's mode, and checks every other reply. `VimmaActors.scroll` sends
 `Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused

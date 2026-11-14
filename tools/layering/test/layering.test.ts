@@ -96,7 +96,7 @@ describe("importsOf: every way a module reaches another", () => {
       found(
         [
           `const BASE = "${V}actors/";`,
-          "const parent = { esModuleURI: `${BASE}VimmaParent.sys.mjs` };",
+          "const child = { esModuleURI: `${BASE}VimmaChild.sys.mjs` };",
           `const worker = new ChromeWorker("${V}actors/grep-worker.mjs", { type: "module" });`,
           `const uri = \`${V}start/StartPage.sys.mjs\`;`,
         ].join("\n"),
@@ -350,7 +350,7 @@ describe("exceptionErrors", () => {
   test("the list does not grow without a change to ADR-026", () => {
     // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
     // why it cannot be avoided. Lower it whenever an exception goes.
-    const PINNED = 5;
+    const PINNED = 3;
     expect(
       EXCEPTIONS.length,
       `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,

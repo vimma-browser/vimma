@@ -2508,7 +2508,7 @@ own process, not a process group.
   [`test_stop_closes_the_connection_before_the_signal`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 
-## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
+## 13. Page modes (`host/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus
 reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
@@ -2592,7 +2592,11 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   where the actor already runs for `about:` pages and the start page. Its replies go through the
   same parent checks (K1, `parseHintReply`, `parseGrepReply`). Agents gain no reach from it: the
   agent tools open only http and https (M6), and the document's principal keeps the
-  `view-source:` scheme, so every agent check for an http or https page refuses on it.
+  `view-source:` scheme, so every agent check for an http or https page refuses on it. The
+  actor's parent side (`host/VimmaParent.sys.mjs`), where these documents' messages enter the
+  parent process, loads from the URL `vimma.js` hands `VimmaActors.register`; a normal tab
+  **must** have it, since without it every page report would be dropped in silence.
+  [`a_tabs_focus_report_reaches_the_host_through_the_parent_actor`](../tests/browser/browser_vimma_security_invariants.js),
   [`j_k_G_and_gg_scroll_the_source`](../tests/browser/browser_vimma_view_source.js),
   [`f_labels_the_link_in_the_source_and_follows_it`](../tests/browser/browser_vimma_view_source.js),
   [`the_actor_reaches_settings_and_the_pdf_viewer_but_not_data_urls`](../tests/browser/browser_vimma_insert_scroll.js)

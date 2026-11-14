@@ -238,12 +238,16 @@ function forgetMark(id) {
 }
 
 export const VimmaActors = {
-  /** Registers the actor pair once per process; vimma.js calls this before VimmaHost.init. */
-  register() {
+  /**
+   * Registers the actor pair once per process; vimma.js calls this before VimmaHost.init.
+   * @param {string} parentURI  the parent actor's module, host/VimmaParent.sys.mjs: it lives in
+   *   host/, a higher layer that this folder does not name (ADR-026), so vimma.js passes it in
+   */
+  register(parentURI) {
     if (registered) return;
     registered = true;
     ChromeUtils.registerWindowActor(NAME, {
-      parent: { esModuleURI: `${BASE}VimmaParent.sys.mjs` },
+      parent: { esModuleURI: parentURI },
       child: {
         esModuleURI: `${BASE}VimmaChild.sys.mjs`,
         events: {
