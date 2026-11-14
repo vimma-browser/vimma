@@ -12,6 +12,7 @@ import {
   parsePdfPosition,
   parsePdfState,
   pdfDocumentKey,
+  pdfDrawn,
 } from "../core/pdf.mjs";
 import { outlineUrlAllowed, parsePdfOutline } from "../core/pdfoutline.mjs";
 import { isPdfJsPrincipal } from "../actors/pdf-view.mjs";
@@ -31,6 +32,25 @@ const states = new WeakMap();
 
 /** @type {Set<(browser: any) => void>} */
 const listeners = new Set();
+
+/**
+ * How many `Vimma:PdfOp` messages each viewer document was sent (`state.pdf`, #1006), by its
+ * window global, which its actor counts the same way: a report counting fewer is from before
+ * the last one. Kept with the window global, so a document back from the back-forward cache
+ * keeps its count, as its actor does.
+ * @type {WeakMap<object, number>}
+ */
+const sentOps = new WeakMap();
+
+/**
+ * Sends the viewer's actor one operation, and counts it.
+ * @param {WindowGlobalParent} wg  the viewer's window global (viewerGlobal)
+ * @param {object} msg  a parsed operation (parsePdfOp)
+ */
+function sendOp(wg, msg) {
+  wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
+  sentOps.set(wg, (sentOps.get(wg) ?? 0) + 1);
+}
 
 /**
  * The parsed outline of a tab's document, kept in memory until the tab navigates or closes
@@ -110,6 +130,13 @@ const sameState = (a, b) =>
   a.find.total === b.find.total &&
   a.doc === b.doc;
 
+/**
+ * The fields only `state.pdf` reads (#1006): a change in them alone is kept without a redraw.
+ * @param {PdfState} a @param {PdfState} b
+ */
+const sameView = (a, b) =>
+  a.drawn === b.drawn && a.ops === b.ops && a.width === b.width && a.height === b.height;
+
 export const PdfOps = {
   /**
    * The keymap context for `browser`: `pdf` while its top document is the pdf.js viewer
@@ -153,11 +180,14 @@ export const PdfOps = {
     if (read && (read.windowId !== wg.innerWindowId || read.doc !== state?.doc)) {
       outlines.delete(browser);
     }
-    // Nothing changed: no redraw, so a flood of equal messages costs the parent little.
-    if (state && old && old.windowId === wg.innerWindowId && sameState(old.state, state)) return;
+    // Nothing shown changed: no redraw, so a flood of equal messages costs the parent little.
+    const same =
+      !!state && !!old && old.windowId === wg.innerWindowId && sameState(old.state, state);
+    if (same && old && sameView(old.state, state)) return;
     if (!state && !old) return;
     if (state) states.set(browser, { windowId: wg.innerWindowId, state });
     else states.delete(browser);
+    if (same) return;
     for (const fn of listeners) {
       try {
         fn(browser);
@@ -180,12 +210,34 @@ export const PdfOps = {
     const msg = parsePdfOp({ op, n });
     if (!wg || !msg) return false;
     try {
-      wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
+      sendOp(wg, msg);
       return true;
     } catch {
       // the document is going away
       return false;
     }
+  },
+
+  /**
+   * `state.pdf` (docs/specs/m0-control-protocol-and-vimma-ctl.md, "state"; #1006): null unless
+   * `browser` shows the PDF viewer; else whether it has drawn every page in view as the tab
+   * shows it now (core pdfDrawn): its last report says so, came after every operation sent to
+   * it, and was made at the tab's present size, so neither a key just sent nor a resize under
+   * way reads as drawn. One flag: never the page, the page count, the title or the outline.
+   * @param {MozBrowser} browser
+   * @returns {{ drawn: boolean } | null}
+   */
+  drawn(browser) {
+    const wg = viewerGlobal(browser);
+    if (!wg) return null;
+    const sent = sentOps.get(wg) ?? 0;
+    // The tab's size in device pixels, as the viewer reports its own (pdf-view.mjs, #size):
+    // device pixels are the same on both sides at any desktop scale and full zoom.
+    const ratio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
+    const box = browser.getBoundingClientRect();
+    const width = Math.round(box.width * ratio);
+    const height = Math.round(box.height * ratio);
+    return { drawn: pdfDrawn(this.state(browser), { sent, width, height }) };
   },
 
   /**
@@ -261,7 +313,7 @@ export const PdfOps = {
     all.delete(key);
     all.set(key, mine);
     try {
-      wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", msg);
+      sendOp(wg, msg);
     } catch {
       // the document is going away
     }

@@ -62,18 +62,21 @@
       "keys": "up up up"
     },
     {
-      "sleep": 1
+      "wait-for-state": {
+        "mode": "help",
+        "grep": {
+          "busy": false
+        }
+      }
     },
     {
       "keys": "enter"
     },
     {
       "wait-for-state": {
-        "mode": "normal"
+        "mode": "normal",
+        "grep": null
       }
-    },
-    {
-      "sleep": 1
     },
     {
       "screenshot": "live-grep-jump"

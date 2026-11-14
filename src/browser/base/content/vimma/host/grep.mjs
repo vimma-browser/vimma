@@ -221,6 +221,8 @@ export class GrepSession {
     this.previewTimer = undefined;
     /** @type {string | null} the selected row whose preview is asked for and not yet drawn */
     this.previewing = null;
+    /** How many jumps (Enter, `]q`, `[q`) have yet to hear from their frame. */
+    this.jumping = 0;
     /** @type {Map<string, { bc: any, wg: any }>} each searched frame, by `${tabId}:${key}` */
     this.frames = new Map();
     /** @type {Map<string, BrowserWindow>} the window of each tab in the last scope, by tab id */
@@ -325,7 +327,18 @@ export class GrepSession {
    * a reader right after the key sees it; one that empties the query leaves nothing to come.
    */
   get busy() {
-    return this.info.busy || this.previewing !== null;
+    return this.info.busy || this.previewing !== null || this.jumping > 0;
+  }
+
+  /**
+   * `state.grep`: null while the picker is closed and no jump from it is under way, else whether
+   * it has more to draw (`busy`). Enter closes the picker and then jumps: the tab is selected,
+   * then its frame selects and scrolls to the match, and that is reported as busy until the
+   * frame has answered (or failed to), so a reader waits for the page the jump draws.
+   * @returns {{ busy: boolean } | null}
+   */
+  drawn() {
+    return this.isOpen || this.jumping > 0 ? { busy: this.busy } : null;
   }
 
   /**
@@ -662,6 +675,17 @@ export class GrepSession {
    * @param {GrepRow} row
    */
   async choose(row) {
+    // Counted from before the picker closes, so no read between sees nothing to come.
+    this.jumping++;
+    try {
+      await this.chooseRow(row);
+    } finally {
+      this.jumping--;
+    }
+  }
+
+  /** @param {GrepRow} row */
+  async chooseRow(row) {
     const state = this.state;
     this.close({ keepFrames: true });
     if (row.kind === "unloaded") {
@@ -744,6 +768,16 @@ export class GrepSession {
    * @param {1 | -1} dir
    */
   async step(dir) {
+    this.jumping++;
+    try {
+      await this.stepList(dir);
+    } finally {
+      this.jumping--;
+    }
+  }
+
+  /** @param {1 | -1} dir */
+  async stepList(dir) {
     if (!this.list) {
       this.host.notice(NO_LIST_TEXT);
       return;

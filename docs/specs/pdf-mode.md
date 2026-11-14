@@ -12,6 +12,13 @@ in `side-panel.css` beside the bookmarks panel); `src/browser/branding/vimma/pre
 
 Issue: [#487](https://github.com/vimma-browser/vimma/issues/487)
 
+Since changed: the state record also says whether every page in the view has finished drawing,
+how many operations the viewer's actor had received, and the viewer's size, and the adapter
+reports after each operation, as each page starts and ends drawing, and on a resize; they feed
+only the control socket's `state.pdf` flag, which e2e scenarios wait on before a screenshot
+([#1006](https://github.com/vimma-browser/vimma/issues/1006);
+[m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md), "state").
+
 Engine paths are relative to `engine/` and were read in Firefox 158.0 (`config/milestone.txt`),
 which ships pdf.js 6.4.195 (`toolkit/components/pdfjs/content/PdfJsVersion.sys.mjs:6`). In this
 spec `viewer.mjs` is `toolkit/components/pdfjs/content/web/viewer.mjs` and `pdfjs/` is

@@ -382,6 +382,12 @@ export class VimmaChild extends JSWindowActorChild {
   /** @type {PdfView | null} the pdf.js viewer's adapter, in its top document only */
   #pdf = null;
   /**
+   * How many `Vimma:PdfOp` messages this actor has received, whether or not they reached the
+   * viewer: the state report carries it, so the parent knows which report came after an
+   * operation it sent (`state.pdf`, #1006).
+   */
+  #pdfOps = 0;
+  /**
    * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
    * picker is open, marked stale by any change to the document until the next query rebuilds it.
    * @type {{ model: ReturnType<typeof textOfDocument>, stale: boolean,
@@ -598,6 +604,7 @@ export class VimmaChild extends JSWindowActorChild {
             this,
             (state) => this.#sendPdf(state),
             (outline) => this.#sendPdf(outline, "Vimma:PdfOutline"),
+            () => this.#pdfOps,
           );
           if (this.#pdf) this.#askTheme();
         }
@@ -774,8 +781,11 @@ export class VimmaChild extends JSWindowActorChild {
         return undefined;
       case "Vimma:PdfOp":
         // An operation name and a number (docs/security.md section 20, V7), checked again by
-        // the adapter; only the top-level viewer has one.
+        // the adapter; only the top-level viewer has one. A report follows each, even when it
+        // changed nothing, so the parent hears that it was run (`state.pdf`).
+        this.#pdfOps++;
         this.#pdf?.run(msg.data);
+        this.#pdf?.schedule();
         return undefined;
       case "Vimma:PdfWhere":
         // Where the view is, for a mark (docs/specs/pdf-mode.md decision 11).

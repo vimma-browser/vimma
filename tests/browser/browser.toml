@@ -541,4 +541,4 @@ support-files = ["file_vimma_outline.pdf"]
 support-files = ["file_vimma_urlbar_suggest.sjs"]
 
 ["browser_vimma_state_waits.js"]
-support-files = ["file_vimma_grep.html"]
+support-files = ["file_vimma_grep.html", "file_vimma_outline.pdf"]

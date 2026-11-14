@@ -308,6 +308,24 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   window, because its searches and typing are part of its browsing. Added without a version
   bump; vimma-core's validator checks each flag's type, refuses any other field in either, and
   refuses either object in a private window.
+- `pdf`, and a jump in `grep` (since #1006, for the same waits). `grep` also covers a jump from
+  live grep or its list (Enter on a result, `]q`, `[q`): from the key until the result's frame
+  has selected and scrolled to the match, or failed to, it is `{ "busy": true }`, also after the
+  picker has closed, and `null` once the jump is over; a jump to another window is reported in
+  the window it started from. `pdf`: `null` unless the window's selected tab shows the PDF viewer
+  ([pdf-mode](pdf-mode.md)), else `{ "drawn": true | false }`: `true` once the viewer's last
+  report says every page in its view has finished drawing, that report came after every
+  operation Vimma sent the viewer (a page, zoom, layout or outline key; the operation's key
+  turns it `false` as the key is handled), and it was made at the size the tab has now, so a
+  resize under way (the outline opening beside the document) reads as not drawn until the
+  viewer has drawn at the new size. Scroll keys (`j`, `k` and the like, and the page turns they
+  make in presentation mode) are not operations: right after one, `drawn` can still show the
+  report from before it, until the viewer reports the pages it starts drawing. The viewer reports at most once per 100 ms (security.md
+  section 20, V5), so `true` comes up to that long after the drawing ends. One flag: never the
+  page, the page count, the document's title or URL, or the outline. It is `null` in a private
+  window, because its documents are part of its browsing. Added without a version bump;
+  vimma-core's validator checks the flag's type, refuses any other field in `pdf`, and refuses
+  the object in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`
