@@ -246,20 +246,33 @@ add_task(async function closing_keys_do_not_move() {
     // No jumps in this document's history: nothing but the outline could move the page.
     type("2J");
     await untilPage(browser, 3, "2J");
-    // Tab, Esc, ctrl+[, ctrl+c and q close without moving.
-    for (const [key, opts] of /** @type {[string, KeyEventOptions][]} */ ([
-      ["KEY_Tab", {}],
-      ["KEY_Escape", {}],
-      ["[", { ctrlKey: true }],
-      ["q", {}],
+    // Tab, Esc, ctrl+[ and q close without moving.
+    for (const [name, key, opts] of /** @type {[string, string, KeyEventOptions][]} */ ([
+      ["Tab", "KEY_Tab", {}],
+      ["Esc", "KEY_Escape", {}],
+      ["ctrl+[", "[", { ctrlKey: true }],
+      ["q", "q", {}],
     ])) {
       await openOutline();
       type("gg");
       await untilSelected("Preface", "gg");
       EventUtils.synthesizeKey(key, opts);
-      await TestUtils.waitForCondition(() => !shown(), `${key} closes the outline`);
-      Assert.equal(await page(browser), 3, `${key} does not move`);
+      await TestUtils.waitForCondition(() => !shown(), `${name} closes the outline`);
+      Assert.equal(await page(browser), 3, `${name} does not move`);
     }
+    // zathura's ctrl+c does not: index mode binds no ctrl chord Vimma leaves to Firefox, and
+    // ctrl+c stays copy (pdf-mode.md, "No new ctrl chords"). The j after it moves the selection,
+    // so ctrl+c has been handled by then.
+    await openOutline();
+    type("gg");
+    await untilSelected("Preface", "gg");
+    EventUtils.synthesizeKey("c", { ctrlKey: true });
+    type("j");
+    await untilSelected("Chapter 1", "j after ctrl+c");
+    Assert.ok(shown(), "ctrl+c leaves the outline open");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(() => !shown(), "Esc closes it");
+    Assert.equal(await page(browser), 3, "ctrl+c does not move");
   });
 });
 
