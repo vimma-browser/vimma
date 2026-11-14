@@ -11,6 +11,8 @@
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
+/* global contextOf, windowGlobalOf -- from head.js */
+
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -440,7 +442,7 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
       await closeOutline();
       // An outline the parent did not ask for is dropped (V8).
       /** @type {WindowGlobalParent} */
-      const wg = browser.browsingContext.currentWindowGlobal;
+      const wg = windowGlobalOf(contextOf(browser));
       const before = PdfOps.outline(browser);
       Assert.ok(before, "the parent has the outline it read");
       wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", { op: "outline", n: 0 });

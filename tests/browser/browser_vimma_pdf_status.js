@@ -5,6 +5,8 @@
 // Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security.md section 20: the PDF viewer's
 // adapter, the pdf context, and the page and match count in the status bar.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -273,7 +275,7 @@ add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
         });
         // The framed viewer exists and has a principal the parent recognises.
         frame = await TestUtils.waitForCondition(() =>
-          browser.browsingContext.children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
+          contextOf(browser).children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
             bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
           ),
         );

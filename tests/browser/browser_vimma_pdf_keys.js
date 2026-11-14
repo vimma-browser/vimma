@@ -8,6 +8,8 @@
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
+/* global contextOf, windowGlobalOf, historyOf -- from head.js */
+
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -341,7 +343,7 @@ add_task(async function presentation_only_on_the_users_key() {
   await withPdf(async (browser) => {
     // The adapter takes operations from the parent only; a message the viewer's own process
     // sends to the parent is not an operation, and the parent sends one only for a key.
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    const actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     actor.receiveMessage({ name: "Vimma:PdfOp", data: { op: "presentation", n: 0 } });
     // An F5 the page itself dispatches is untrusted: Vimma's keys never see it.
     await SpecialPowers.spawn(browser, [], () => {
@@ -361,7 +363,7 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
     /** @type {unknown[]} */
     const sent = [];
     /** @type {WindowGlobalParent} */
-    const wg = browser.browsingContext.currentWindowGlobal;
+    const wg = windowGlobalOf(contextOf(browser));
     const actor = wg.getActor("Vimma");
     const orig = actor.sendAsyncMessage;
     actor.sendAsyncMessage = function (name, data) {
@@ -396,7 +398,7 @@ add_task(async function the_parent_sends_only_operations_and_numbers() {
       const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
       /** @type {PdfJsViewer} */ (app.pdfViewer).pagesRotation = 0;
     });
-    const child = browser.browsingContext.currentWindowGlobal;
+    const child = windowGlobalOf(contextOf(browser));
     for (const data of [
       { op: "rotate", n: "1" },
       { op: "rotate", n: 1, x: 1 },
@@ -475,7 +477,7 @@ add_task(async function jumps_walk_back_one_at_a_time() {
     type("5G");
     await until(browser, { page: 5 }, "5G");
     // pdf.js's two history entries have reached the parent's session history.
-    const sh = browser.browsingContext.sessionHistory;
+    const sh = historyOf(browser);
     await TestUtils.waitForCondition(() => sh.count === 4 && sh.index === 3, "two jumps");
     EventUtils.synthesizeKey("o", { ctrlKey: true });
     await until(browser, { page: 2 }, "the first ctrl+o comes back to the last jump's start");

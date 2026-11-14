@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-hints.md; docs/specs/follow-link-switch.md (gF's upper-case last key)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 
 "use strict";
 
@@ -173,7 +173,7 @@ async function centres(browser, ids) {
     out.frame = { x: f.x, y: f.y };
     return out;
   });
-  const frameBC = browser.browsingContext.children[0];
+  const frameBC = contextOf(browser).children[0];
   const inner = await SpecialPowers.spawn(frameBC, [], () => {
     const framed = /** @type {HTMLElement} */ (content.document.getElementById("framed"));
     const r = framed.getBoundingClientRect();
@@ -251,7 +251,7 @@ add_task(async function a_label_follows_the_link() {
 
 add_task(async function a_label_in_a_shadow_root_and_in_a_cross_origin_frame() {
   await withPage(PAGE, async (browser) => {
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     const framed = await labelFor(browser, "framed");
     const frameLoaded = BrowserTestUtils.browserLoaded(browser, true, (u) =>
       u.endsWith("?to=framed"),
@@ -259,7 +259,7 @@ add_task(async function a_label_in_a_shadow_root_and_in_a_cross_origin_frame() {
     type(framed);
     await frameLoaded;
     Assert.ok(
-      frameBC.currentWindowGlobal.documentURI.spec.endsWith("?to=framed"),
+      !!windowGlobalOf(frameBC).documentURI?.spec.endsWith("?to=framed"),
       "the frame followed its link",
     );
     Assert.ok(
@@ -512,7 +512,7 @@ add_task(async function the_status_bar_shows_hint_mode_while_labels_are_up() {
       doc.body.append(frame);
       await loaded;
     });
-    await SpecialPowers.spawn(browser.browsingContext.children[0], [], () => {
+    await SpecialPowers.spawn(contextOf(browser).children[0], [], () => {
       content.setTimeout(() => {
         const end = Date.now() + 2000;
         while (Date.now() < end);
@@ -567,7 +567,7 @@ add_task(async function no_targets_stays_in_normal() {
 add_task(async function a_busy_frame_does_not_hold_up_the_hints() {
   await withPage(PAGE, async (browser) => {
     await SpecialPowers.pushPrefEnv({ clear: [[FRAME_TIMEOUT_PREF]] });
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     // The cross-origin frame's process spins for 3 s, after this reply.
     await SpecialPowers.spawn(frameBC, [], () => {
       content.setTimeout(() => {

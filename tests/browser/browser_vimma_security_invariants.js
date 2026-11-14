@@ -7,7 +7,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -258,7 +258,7 @@ add_task(async function a_tabs_focus_report_reaches_the_host_through_the_parent_
     await focusContent(browser);
     let actor = null;
     try {
-      actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+      actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     } catch (e) {
       Assert.ok(false, `the parent actor loads from its registered URL: ${e}`);
     }
