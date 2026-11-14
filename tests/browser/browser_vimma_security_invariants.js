@@ -25,7 +25,7 @@ const { ConfigHost } = ChromeUtils.importESModule(
 const PAGE = "https://example.org/";
 const HOSTILE_TITLE = '<img src=x onerror="document.title=1"><b>bold</b>';
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -54,7 +54,8 @@ add_task(async function control_state_is_read_only() {
     first.tabs.some((/** @type {any} */ t) => t.selected && t.url === `${PAGE}?state`),
     "sanity: it reports the window",
   );
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
 add_task(async function control_state_never_inserts_a_lazy_tab() {
@@ -80,7 +81,7 @@ add_task(async function page_titles_with_html_stay_text() {
   });
   await until(() => browser.contentTitle === HOSTILE_TITLE, "the page set its title");
 
-  const bar = document.getElementById("vimma-statusbar");
+  const bar = /** @type {HTMLElement} */ (document.getElementById("vimma-statusbar"));
   const title = () => bar.querySelector('[data-segment="title"]');
   await until(() => !!title()?.textContent.includes("<img"), "the status bar shows the title");
   Assert.equal(bar.querySelector("img, b"), null, "the status bar parsed no markup");
@@ -89,11 +90,19 @@ add_task(async function page_titles_with_html_stay_text() {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("ls");
   EventUtils.synthesizeKey("KEY_Enter");
-  const picker = () => document.getElementById("vimma-picker");
+  /** The picker, or null while there is none. */
+  const picker = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"));
   await until(() => !!picker()?.open, ":ls opens the tab picker");
-  const rowTitles = [...picker().querySelectorAll(".vimma-picker-title")].map((e) => e.textContent);
+  const rowTitles = [
+    .../** @type {HTMLDialogElement} */ (picker()).querySelectorAll(".vimma-picker-title"),
+  ].map((e) => e.textContent);
   Assert.ok(rowTitles.includes(HOSTILE_TITLE), "the picker shows the title as written");
-  Assert.equal(picker().querySelector("img, b"), null, "the picker parsed no markup");
+  Assert.equal(
+    /** @type {HTMLDialogElement} */ (picker()).querySelector("img, b"),
+    null,
+    "the picker parsed no markup",
+  );
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !picker()?.open, "closed");
   BrowserTestUtils.removeTab(tab);
@@ -108,7 +117,11 @@ add_task(async function route_add_creates_a_private_config_toml() {
   const why = await ConfigHost.addRoute({ domain: "example.org", workspace: 'x" [keys] y = "z' });
   Assert.equal(why, null, "the rule is written");
   Assert.equal((await IOUtils.stat(file)).permissions, 0o600, "a new config.toml is 0600");
-  Assert.equal((await IOUtils.stat(PathUtils.parent(file))).permissions, 0o700, "its folder 0700");
+  Assert.equal(
+    (await IOUtils.stat(/** @type {string} */ (PathUtils.parent(file)))).permissions,
+    0o700,
+    "its folder 0700",
+  );
   const text = await IOUtils.readUTF8(file);
   Assert.ok(
     text.endsWith('[[routes]]\ndomain = "example.org"\nworkspace = "x\\" [keys] y = \\"z"\n'),

@@ -51,6 +51,9 @@ npm run e2e ─► tools/e2e/e2e.mjs (CLI: flags, signals, exit code)
 | `tools/e2e/screenshot.mjs` | capture from Xvfb, compare with a baseline (0.5 %), write diff images      |
 | `tools/e2e/e2e.mjs`        | the CLI                                                                    |
 
+(Since changed: these files, the harness's tests and fixtures, and `tools/start.mjs` are `.ts`,
+ADR-025, #946.)
+
 ### Launcher
 
 - **Build**, in order: `--build <binary or dist/bin dir>`; `--artifact`

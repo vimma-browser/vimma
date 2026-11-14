@@ -286,7 +286,7 @@ setup page` allows `installTemporaryAddon` and the other install calls only in
 - **Sensitive fields.** The actors already tell whether a password, card or one-time-code field
   shows a value (`actors/agent-fields.mjs`, `plainlySensitive` at `:181`, `sensitiveValueShown`
   at `:232`), for agent screenshots (security.md M31).
-- **A throwaway instance is what the e2e harness starts.** `tools/e2e/launcher.mjs` makes a new
+- **A throwaway instance is what the e2e harness starts.** `tools/e2e/launcher.ts` makes a new
   profile in a temporary folder (`:137`), sets `vimma.control.enabled` (`:43`) and starts the
   build with `-no-remote -profile` (`:218-219`).
 - **Theme.** The palette is parsed and checked as `#rrggbb` values (`parseOmarchyColors`,
@@ -602,7 +602,7 @@ ctrl+b m ──▶ request (memory) ──▶ vimma_module_requests ──▶ us
     screen rejects its proposal, and with `:module cancel`. At most 8 wait at once.
 17. **The sandbox is a separate headless Vimma with an empty profile** (D17, Behaviour 14),
     started by `vimma-ctl` (a separate program, not chrome code: C2 holds) as the e2e harness
-    starts one (`tools/e2e/launcher.mjs:137`, `:218-219`), with `--headless`, `-no-remote`, a new
+    starts one (`tools/e2e/launcher.ts:137`, `:218-219`), with `--headless`, `-no-remote`, a new
     profile and the flag `-vimma-module-sandbox`. The module is unapproved, so it must not load
     in the user's own browser, even in the agent workspace: WebExtensions are not confined to a
     container, and a module loaded there would run in every workspace. Rejected: the agent

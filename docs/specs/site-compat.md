@@ -1,7 +1,8 @@
 # Spec: site-compat
 
 Status: implemented · Milestone: after private-swap (testing infrastructure, no
-user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option),
+user-visible change) · Area: `tools/sites/` (new), `tools/e2e/launcher.mjs` (one option;
+since changed: `launcher.ts`, ADR-025),
 `.github/workflows/sites.yml` (new), `package.json` (one script), `.github/workflows/e2e.yml`
 (one step), `tests/e2e/fixtures/sites/` (new). No upstream patch, no product code, no new
 dependency.

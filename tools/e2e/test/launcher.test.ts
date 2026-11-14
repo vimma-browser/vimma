@@ -1,0 +1,1196 @@
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { tmpdir } from "node:os";
+import { setTimeout as sleep } from "node:timers/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  E2E_FONTCONFIG,
+  E2E_FONTS,
+  PROFILE_PREFS,
+  browserArgs,
+  browserEnv,
+  createProfile,
+  crashBrowser,
+  displayMode,
+  externalWrapper,
+  findBuild,
+  launch,
+  quitBrowser,
+  scenarioFontconfig,
+  startSessionBus,
+  stderrTimeline,
+  userJs,
+  waitForDiscovery,
+  waitForSessionSaved,
+  xvfbArgs,
+} from "../launcher.ts";
+import { READ_PATH_PREF, devPrefs } from "../../start.ts";
+import { startFakeServer } from "./fake-server.ts";
+import { defined } from "../../test/defined.ts";
+import type { FakeServer } from "./fake-server.ts";
+import type { ChildProcess } from "node:child_process";
+
+const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+
+const FAKE_BROWSER = fileURLToPath(new URL("./fixtures/fake-browser.ts", import.meta.url));
+const FAKE_XVFB = fileURLToPath(new URL("./fixtures/fake-xvfb.ts", import.meta.url));
+const E2E_CLI = fileURLToPath(new URL("../e2e.ts", import.meta.url));
+
+const dirs: string[] = [];
+const cleanups: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const c of cleanups.splice(0)) await c();
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+const PATH_ENV = process.env.PATH ?? "";
+const tempDir = () => {
+  const d = mkdtempSync(join(tmpdir(), "vimma-e2e-test-"));
+  dirs.push(d);
+  return d;
+};
+
+/** @returns ps's state letters, "" once the pid is gone */
+const psState = (pid: number): string => {
+  try {
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim();
+  } catch (err) {
+    // ps exits 1 with no output for a pid that does not exist; anything else is a real error.
+    if ((err as { status?: number }).status === 1) return "";
+    throw err;
+  }
+};
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+  } catch {
+    return false;
+  }
+  // An orphan that has exited still answers signal 0 until init reaps it, which launchd on
+  // macOS may do only after the process group already looks empty.
+  const state = psState(pid);
+  return state !== "" && !state.startsWith("Z");
+};
+
+describe("alive", () => {
+  it("counts an exited process that no one has reaped yet (a zombie) as gone", async () => {
+    // The exec'd sleep never waits for the backgrounded one, so once that child dies it stays a
+    // zombie. It must die only after the exec: a shell that is still running reaps a child the
+    // moment it exits (bash does, from its SIGCHLD handler), and then there is never a zombie.
+    // A child that exited by itself (`sleep 0`) lost that race on a loaded machine.
+    const parent = spawn("sh", ["-c", "sleep 30 & echo $!; exec sleep 30"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const zombie = Number(
+      await new Promise((resolve) => parent.stdout.once("data", (d) => resolve(String(d).trim()))),
+    );
+    cleanups.push(async () => {
+      parent.kill("SIGKILL");
+      try {
+        process.kill(zombie, "SIGKILL");
+      } catch {
+        // Already gone.
+      }
+    });
+    const command = (pid: number) =>
+      execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    for (let i = 0; i < 200 && !/sleep$/.test(command(parent.pid as number)); i++) await sleep(25);
+    process.kill(zombie, "SIGKILL");
+    for (let i = 0; i < 200 && !psState(zombie).startsWith("Z"); i++) await sleep(25);
+    expect(psState(zombie)).toMatch(/^Z/);
+    expect(() => process.kill(zombie, 0)).not.toThrow();
+    expect(alive(zombie)).toBe(false);
+    expect(alive(parent.pid as number)).toBe(true);
+  });
+});
+
+describe("findBuild", () => {
+  const engine = "/repo/engine/";
+  const full = "/repo/engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma";
+  const art = "/repo/engine/obj-artifact/dist/bin/vimma";
+  const artIni = "/repo/engine/obj-artifact/dist/bin/browser/application.ini";
+  const exists = (present: string[]) => (p: string) => present.includes(p);
+
+  it("prefers an explicit --build binary, or the vimma inside a dist/bin directory", () => {
+    expect(findBuild({ build: "/x/vimma", engine, exists: exists(["/x/vimma"]) })).toEqual({
+      binary: "/x/vimma",
+      env: {},
+    });
+    expect(findBuild({ build: "/x/bin", engine, exists: exists(["/x/bin/vimma"]) })).toEqual({
+      binary: "/x/bin/vimma",
+      env: {},
+    });
+  });
+
+  it("uses the artifact objdir with XUL_APP_FILE, as tools/mochitest.mjs does", () => {
+    expect(findBuild({ artifact: true, engine, exists: exists([art, artIni]) })).toEqual({
+      binary: art,
+      env: { XUL_APP_FILE: artIni },
+    });
+  });
+
+  it("falls back to VIMMA_E2E_BUILD, then the full objdir, then the artifact objdir", () => {
+    expect(
+      findBuild({ engine, env: { VIMMA_E2E_BUILD: "/e/vimma" }, exists: exists(["/e/vimma"]) }),
+    ).toEqual({ binary: "/e/vimma", env: {} });
+    expect(findBuild({ engine, exists: exists([full, art, artIni]) }).binary).toBe(full);
+    expect(findBuild({ engine, exists: exists([art, artIni]) })).toEqual({
+      binary: art,
+      env: { XUL_APP_FILE: artIni },
+    });
+  });
+
+  it("runs the vimma inside a macOS .app bundle", () => {
+    const bin = "/Volumes/Vimma/Vimma.app/Contents/MacOS/vimma";
+    expect(findBuild({ build: "/Volumes/Vimma/Vimma.app", engine, exists: exists([bin]) })).toEqual(
+      { binary: bin, env: {} },
+    );
+  });
+
+  it("names every path it tried when there is no build", () => {
+    expect(() => findBuild({ engine, exists: exists([]) })).toThrow(
+      new RegExp(`no Vimma build found[^]*${full}[^]*${art}`),
+    );
+    expect(() => findBuild({ build: "/nope", engine, exists: exists([]) })).toThrow(/\/nope/);
+  });
+});
+
+describe("profile", () => {
+  it("turns the control socket on and first run, telemetry and updates off", () => {
+    const prefs = Object.fromEntries(PROFILE_PREFS);
+    expect(prefs["vimma.control.enabled"]).toBe(true);
+    // The first-run setup tab would add a tab every scenario counts (first-run-setup decision 1).
+    expect(prefs["vimma.setup.offered"]).toBe(true);
+    expect(prefs["browser.shell.checkDefaultBrowser"]).toBe(false);
+    expect(prefs["browser.startup.homepage_override.mstone"]).toBe("ignore");
+    expect(prefs["datareporting.policy.dataSubmissionEnabled"]).toBe(false);
+    expect(prefs["toolkit.telemetry.enabled"]).toBe(false);
+    expect(prefs["app.update.disabledForTesting"]).toBe(true);
+    expect(prefs["browser.sessionstore.resume_from_crash"]).toBe(false);
+    // ctrl+q quits without a dialog, so teardown can quit cleanly (spec m0-control-server)
+    expect(prefs["browser.warnOnQuitShortcut"]).toBe(false);
+    // no first-run config.toml, and so no "created …" notice in the first screenshot
+    expect(prefs["vimma.config.firstRunDone"]).toBe(true);
+  });
+
+  it("writes user.js lines that Firefox's pref parser reads", () => {
+    expect(
+      userJs([
+        ["a.b", true],
+        ["c", 3],
+        ["d", 'say "hi"\\'],
+      ]),
+    ).toBe('user_pref("a.b", true);\nuser_pref("c", 3);\nuser_pref("d", "say \\"hi\\"\\\\");\n');
+  });
+
+  it("lets a scenario override a pref, or drop it (null) to keep the build's default", () => {
+    const dir = createProfile(tempDir(), { "browser.startup.page": null, "x.y": 2 });
+    const js = readFileSync(join(dir, "user.js"), "utf8");
+    expect(js).not.toContain('"browser.startup.page"');
+    expect(js).toContain('user_pref("x.y", 2);');
+    expect(js).toContain('user_pref("vimma.control.enabled", true);');
+    const plain = readFileSync(join(createProfile(tempDir()), "user.js"), "utf8");
+    expect(plain).toContain('user_pref("browser.startup.page", 0);');
+  });
+
+  it("names a config.toml inside the profile, never the user's", () => {
+    const dir = createProfile(tempDir());
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      `user_pref("vimma.config.path", ${JSON.stringify(join(dir, "vimma", "config.toml"))});`,
+    );
+  });
+
+  it("creates a private temp profile holding user.js", () => {
+    const dir = createProfile(tempDir());
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      'user_pref("vimma.control.enabled", true);',
+    );
+  });
+
+  it("lets content processes read the repo's src/, as npm start's profile does", () => {
+    // A local objdir's chrome files are symlinks into src/; without this VimmaChild never loads
+    // in the default content sandbox (m0-content-actor checks it against a real build).
+    const js = readFileSync(join(createProfile(tempDir()), "user.js"), "utf8");
+    const [name, value] = defined(devPrefs(REPO_ROOT)[0]);
+    expect(js).toContain(`user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});`);
+  });
+
+  // Issue #944: the content sandbox reads fonts only from the system's font folders, so a page
+  // drew every glyph as a hex box with the vendored fonts until their folder was allowed too.
+  it("lets content processes read the pinned fonts' folder as well, when asked", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const js = readFileSync(
+      join(createProfile(tempDir(), {}, { readPaths: [fonts] }), "user.js"),
+      "utf8",
+    );
+    // On macOS the repo's src/ goes in another pref (devPrefs), so the list holds the fonts alone.
+    const [name, src] = defined(devPrefs(REPO_ROOT)[0]);
+    const list = name === READ_PATH_PREF ? `${src},${fonts}` : fonts;
+    expect(js).toContain(`user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(list)});`);
+  });
+
+  it("keeps the pinned fonts' folder readable when a scenario sets its own read paths", () => {
+    const fonts = `${realpathSync(E2E_FONTS)}/`;
+    const dir = createProfile(
+      tempDir(),
+      { [READ_PATH_PREF]: "/scenario/" },
+      { readPaths: [fonts] },
+    );
+    expect(readFileSync(join(dir, "user.js"), "utf8")).toContain(
+      `user_pref(${JSON.stringify(READ_PATH_PREF)}, ${JSON.stringify(`/scenario/,${fonts}`)});`,
+    );
+  });
+});
+
+describe("browser command line and environment", () => {
+  it("passes the profile, no-remote and a fixed window at the origin", () => {
+    expect(browserArgs("/p", { width: 1280, height: 800 })).toEqual([
+      "-no-remote",
+      "-profile",
+      "/p",
+      "-width",
+      "1280",
+      "-height",
+      "800",
+      "-left",
+      "0",
+      "-top",
+      "0",
+      "about:blank",
+    ]);
+  });
+
+  it("opens no URL on a restart, which would add a tab to the restored session", () => {
+    const args = browserArgs("/p", { width: 1280, height: 800 }, { url: null });
+    expect(args).not.toContain("about:blank");
+    expect(args.slice(0, 3)).toEqual(["-no-remote", "-profile", "/p"]);
+  });
+
+  it("puts extra switches before the URL (the site suite's --start-debugger-server)", () => {
+    const args = browserArgs(
+      "/p",
+      { width: 1280, height: 800 },
+      { extra: ["--start-debugger-server", "/p/rdp.sock"] },
+    );
+    expect(args.slice(-3)).toEqual(["--start-debugger-server", "/p/rdp.sock", "about:blank"]);
+  });
+
+  it("points the browser at our Xvfb and away from Wayland", () => {
+    const env = browserEnv(
+      { PATH: "/bin", WAYLAND_DISPLAY: "wayland-1", DISPLAY: ":0" },
+      { display: ":99", extra: { XUL_APP_FILE: "/a.ini" } },
+    );
+    expect(env).toMatchObject({
+      PATH: "/bin",
+      DISPLAY: ":99",
+      GDK_BACKEND: "x11",
+      MOZ_ENABLE_WAYLAND: "0",
+      XUL_APP_FILE: "/a.ini",
+      MOZ_CRASHREPORTER_DISABLE: "1",
+    });
+    expect(env.WAYLAND_DISPLAY).toBeUndefined();
+  });
+
+  it("keeps the caller's display when it does not start Xvfb", () => {
+    const env = browserEnv({ DISPLAY: ":0", WAYLAND_DISPLAY: "w" }, {});
+    expect(env.DISPLAY).toBe(":0");
+    expect(env.WAYLAND_DISPLAY).toBe("w");
+  });
+
+  // GDK_SCALE=2 on a developer's desktop gave a 2× crop. Local runs must render as CI.
+  const desktop = {
+    PATH: "/usr/bin",
+    HOME: "/home/dev",
+    USER: "dev",
+    LANG: "fi_FI.UTF-8",
+    LC_ALL: "fi_FI.UTF-8",
+    TZ: "Europe/Helsinki",
+    DISPLAY: ":0",
+    WAYLAND_DISPLAY: "wayland-1",
+    XDG_RUNTIME_DIR: "/run/user/1000",
+    XAUTHORITY: "/run/user/1000/xauth",
+    XDG_CONFIG_HOME: "/home/dev/.config",
+    XDG_DATA_HOME: "/home/dev/.local/share",
+    GDK_SCALE: "2",
+    GDK_DPI_SCALE: "1.5",
+    GDK_BACKEND: "wayland",
+    QT_SCALE_FACTOR: "2",
+    QT_AUTO_SCREEN_SCALE_FACTOR: "1",
+    QT_SCREEN_SCALE_FACTORS: "2",
+    GTK_THEME: "Adwaita:dark",
+    MOZ_ENABLE_WAYLAND: "1",
+    MOZ_USE_XINPUT2: "1",
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus",
+    FONTCONFIG_FILE: "/home/dev/.config/fontconfig/fonts.conf",
+    FONTCONFIG_PATH: "/home/dev/.config/fontconfig",
+    RANDOM_THING: "x",
+  };
+
+  it("under Xvfb, builds a minimal env: no scaling, theme, locale or home of the desktop", () => {
+    expect(
+      browserEnv(desktop, { display: ":99", home: "/p/.e2e-home", tmp: "/p/.e2e-tmp" }),
+    ).toEqual({
+      PATH: "/usr/bin",
+      USER: "dev",
+      HOME: "/p/.e2e-home",
+      TMPDIR: "/p/.e2e-tmp",
+      LANG: "C.UTF-8",
+      TZ: "UTC",
+      DISPLAY: ":99",
+      GDK_BACKEND: "x11",
+      MOZ_ENABLE_WAYLAND: "0",
+      GTK_THEME: "Adwaita",
+      MOZ_CRASHREPORTER_DISABLE: "1",
+    });
+  });
+
+  it("on the caller's display, keeps only what reaching that display needs", () => {
+    expect(browserEnv(desktop, { home: "/h", tmp: "/t" })).toEqual({
+      PATH: "/usr/bin",
+      USER: "dev",
+      HOME: "/h",
+      TMPDIR: "/t",
+      LANG: "C.UTF-8",
+      TZ: "UTC",
+      DISPLAY: ":0",
+      WAYLAND_DISPLAY: "wayland-1",
+      XDG_RUNTIME_DIR: "/run/user/1000",
+      XAUTHORITY: "/run/user/1000/xauth",
+      GTK_THEME: "Adwaita",
+      MOZ_CRASHREPORTER_DISABLE: "1",
+    });
+  });
+
+  // Issue #944: the desktop's fonts (JetBrainsMono Nerd Font as monospace on one) made 16 of 25
+  // screenshots differ from CI's DejaVu. The browser reads the harness's fontconfig file instead.
+  it("points fontconfig at the harness's file and never at the desktop's", () => {
+    const env = browserEnv(desktop, {
+      display: ":99",
+      home: "/h",
+      tmp: "/t",
+      fontconfig: "/r/tests/e2e/fonts/fonts.conf",
+    });
+    expect(env.FONTCONFIG_FILE).toBe("/r/tests/e2e/fonts/fonts.conf");
+    expect(env.FONTCONFIG_PATH).toBeUndefined();
+    expect(browserEnv(desktop, { display: ":99" }).FONTCONFIG_FILE).toBeUndefined();
+  });
+
+  it("names the vendored fontconfig file in the checkout", () => {
+    expect(E2E_FONTCONFIG).toBe(join(REPO_ROOT, "tests", "e2e", "fonts", "fonts.conf"));
+    expect(existsSync(E2E_FONTCONFIG)).toBe(true);
+  });
+
+  it("pins a scenario's fonts on Linux, not on macOS (Core Text, no screenshots)", () => {
+    expect(scenarioFontconfig("linux")).toBe(E2E_FONTCONFIG);
+    expect(scenarioFontconfig("darwin")).toBeNull();
+  });
+
+  it("passes debugging switches through, and the build's own variables", () => {
+    const env = browserEnv(
+      { PATH: "/b", MOZ_HEADLESS: "1", MOZ_LOG: "x:5", GDK_SCALE: "2" },
+      { display: ":9", home: "/h", tmp: "/t", extra: { XUL_APP_FILE: "/a.ini" } },
+    );
+    expect(env).toMatchObject({ MOZ_HEADLESS: "1", MOZ_LOG: "x:5", XUL_APP_FILE: "/a.ini" });
+    expect(env.GDK_SCALE).toBeUndefined();
+  });
+
+  it("headless, sets MOZ_HEADLESS and passes no display through", () => {
+    const env = browserEnv(desktop, { headless: true, home: "/h", tmp: "/t" });
+    expect(env.MOZ_HEADLESS).toBe("1");
+    for (const k of ["DISPLAY", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "XAUTHORITY", "GDK_BACKEND"])
+      expect(env[k]).toBeUndefined();
+  });
+
+  // Issue #944: with an empty profile the URL bar names the engine only if the search service
+  // finished starting before a later update; a window whose bar is empty defers it until the
+  // user types (UrlbarInputBase's #deferUpdatePlaceholder). The name a used profile keeps in this
+  // pref (SearchUIUtils.updatePlaceholderNamePreference) is shown from the start instead.
+  it("names the default engine in the URL bar from the start, whatever the search service's timing", () => {
+    expect(Object.fromEntries(PROFILE_PREFS)["browser.urlbar.placeholderName"]).toBe("Google");
+  });
+
+  // Issue #953: a private window reads its own pref (SearchUIUtils.updatePlaceholderNamePreference
+  // writes "browser.urlbar.placeholderName.private"), with the same race in a new profile.
+  it("names the default engine in a private window's URL bar from the start too", () => {
+    expect(Object.fromEntries(PROFILE_PREFS)["browser.urlbar.placeholderName.private"]).toBe(
+      "Google",
+    );
+  });
+
+  it("pins one device pixel per CSS pixel and a light theme in the profile", () => {
+    const prefs = Object.fromEntries(PROFILE_PREFS);
+    expect(prefs["layout.css.devPixelsPerPx"]).toBe("1.0");
+    expect(prefs["ui.systemUsesDarkTheme"]).toBe(0);
+  });
+
+  it("starts Xvfb at 96 dpi with no cursor", () => {
+    const args = xvfbArgs({ width: 1280, height: 800, fbdir: "/fb" });
+    expect(args).toEqual(expect.arrayContaining(["-nocursor", "-br", "-noreset"]));
+    expect(args.join(" ")).toContain("-screen 0 1280x800x24");
+    expect(args.join(" ")).toContain("-dpi 96");
+    expect(args.join(" ")).toContain("-fbdir /fb");
+    expect(args.join(" ")).toContain("-displayfd 3");
+  });
+});
+
+describe("displayMode", () => {
+  it("on Linux, Xvfb without a display or with --xvfb, else the caller's display", () => {
+    expect(displayMode({ platform: "linux", env: {} })).toBe("xvfb");
+    expect(displayMode({ platform: "linux", env: { DISPLAY: ":0" } })).toBe("display");
+    expect(displayMode({ platform: "linux", xvfb: true, env: { DISPLAY: ":0" } })).toBe("xvfb");
+    expect(displayMode({ platform: "linux", headless: true, env: {} })).toBe("headless");
+  });
+
+  it("on macOS, headless by default, even with XQuartz's DISPLAY", () => {
+    expect(displayMode({ platform: "darwin", env: {} })).toBe("headless");
+    expect(displayMode({ platform: "darwin", env: { DISPLAY: ":0" } })).toBe("headless");
+  });
+
+  it("refuses --xvfb with --headless", () => {
+    expect(() => displayMode({ platform: "linux", xvfb: true, headless: true, env: {} })).toThrow(
+      /--xvfb[^]*--headless/,
+    );
+  });
+});
+
+describe("waitForDiscovery", () => {
+  it("returns the discovery file once the server writes it", async () => {
+    const profile = tempDir();
+    let fake: FakeServer | undefined;
+    setTimeout(async () => {
+      fake = await startFakeServer(profile);
+    }, 300);
+    const discovery = await waitForDiscovery(profile, { timeoutMs: 5000 });
+    expect(discovery.port).toBe(fake?.port);
+    expect(discovery.token).toBe(fake?.token);
+    await fake?.close();
+  });
+
+  it("times out naming the pref, the file and the browser's stderr", async () => {
+    const profile = tempDir();
+    const started = Date.now();
+    await expect(
+      waitForDiscovery(profile, { timeoutMs: 400, stderrTail: () => "GLib warning: foo" }),
+    ).rejects.toThrow(/400 ms[^]*vimma\.control\.enabled[^]*vimma-control\.json[^]*GLib warning/);
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
+  it("does not accept a discovery file others can read until it is 0600", async () => {
+    const profile = tempDir();
+    const fake = await startFakeServer(profile, { discoveryMode: 0o644 });
+    cleanups.push(() => fake.close());
+    chmodSync(fake.discoveryPath, 0o644);
+    await expect(waitForDiscovery(profile, { timeoutMs: 400 })).rejects.toThrow(/mode 644/);
+    setTimeout(() => chmodSync(fake.discoveryPath, 0o600), 200);
+    await expect(waitForDiscovery(profile, { timeoutMs: 3000 })).resolves.toMatchObject({
+      port: fake.port,
+    });
+  });
+
+  it("reports an invalid discovery file instead of a bare timeout", async () => {
+    const profile = tempDir();
+    writeFileSync(join(profile, "vimma-control.json"), '{"protocol":1}', { mode: 0o600 });
+    await expect(waitForDiscovery(profile, { timeoutMs: 300 })).rejects.toThrow(/port/);
+  });
+
+  it("skips the discovery file a killed browser left behind (stalePid)", async () => {
+    const profile = tempDir();
+    const fake = await startFakeServer(profile);
+    cleanups.push(() => fake.close());
+    const { pid } = JSON.parse(readFileSync(fake.discoveryPath, "utf8"));
+    await expect(waitForDiscovery(profile, { timeoutMs: 300, stalePid: pid })).rejects.toThrow(
+      new RegExp(`left by the killed browser \\(pid ${pid}\\)`),
+    );
+    await expect(
+      waitForDiscovery(profile, { timeoutMs: 300, stalePid: pid + 1 }),
+    ).resolves.toMatchObject({ pid });
+  });
+
+  it("fails at once when the browser exits before the socket is up", async () => {
+    const profile = tempDir();
+    const started = Date.now();
+    await expect(
+      waitForDiscovery(profile, {
+        timeoutMs: 10_000,
+        exited: () => ({ code: 7, signal: null }),
+        stderrTail: () => "crashed on purpose",
+      }),
+    ).rejects.toThrow(/exited with code 7[^]*crashed on purpose/);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+});
+
+describe("launch and teardown (fake browser)", () => {
+  const start = (env: Record<string, string>, opts: object = {}) =>
+    launch({
+      build: { binary: FAKE_BROWSER, env },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 500,
+      ...opts,
+    });
+
+  it("reports a front-end module the browser failed to load (the sandbox regression)", async () => {
+    const line =
+      "JavaScript error: , line 0: Error: Failed to load " +
+      "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs";
+    const bad = await start({ FAKE_BROWSER_STDERR: line });
+    cleanups.push(() => bad.teardown());
+    await sleep(200);
+    expect(bad.loadFailure()).toBe(
+      "Failed to load chrome://browser/content/vimma/actors/VimmaChild.sys.mjs",
+    );
+    const good = await start({});
+    cleanups.push(() => good.teardown());
+    expect(good.loadFailure()).toBeNull();
+  });
+
+  it("starts the browser with the profile and waits for its control socket", async () => {
+    const session = await start({ FAKE_BROWSER_DELAY_MS: "200" });
+    cleanups.push(() => session.teardown());
+    expect(session.discovery.pid).toBeGreaterThan(0);
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.argv).toContain(session.profile);
+    expect(seen.argv).toContain("-no-remote");
+  });
+
+  // The update scenarios trust their host's CA in the profile before the browser opens it.
+  it("lets the caller change the profile before the browser first starts on it", async () => {
+    const seen: string[] = [];
+    const session = await start(
+      {},
+      {
+        onProfile: (p: string) => {
+          seen.push(p);
+          writeFileSync(join(p, "cert9.db"), "before");
+        },
+      },
+    );
+    cleanups.push(() => session.teardown());
+    expect(seen).toEqual([session.profile]);
+    const browser = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(browser.argv).toContain(session.profile);
+    expect(readFileSync(join(session.profile, "cert9.db"), "utf8")).toBe("before");
+  });
+
+  it("the spawned browser sees the scrubbed env, with HOME and TMPDIR inside the profile", async () => {
+    const session = await start(
+      {},
+      { baseEnv: { ...process.env, GDK_SCALE: "2", MOZ_ENABLE_WAYLAND: "1" } },
+    );
+    cleanups.push(() => session.teardown());
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.GDK_SCALE).toBeUndefined();
+    expect(seen.env.MOZ_ENABLE_WAYLAND).toBeUndefined();
+    expect(seen.home).toBe(join(session.profile, ".e2e-home"));
+    expect(seen.tmp).toBe(join(session.profile, ".e2e-tmp"));
+  });
+
+  it("gives the browser the fontconfig file it is asked to, and leaves the system's otherwise", async () => {
+    const base = { ...process.env, FONTCONFIG_FILE: "/mine.conf" };
+    const session = await start({}, { baseEnv: base, fontconfig: E2E_FONTCONFIG });
+    cleanups.push(() => session.teardown());
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.FONTCONFIG_FILE).toBe(E2E_FONTCONFIG);
+    // Arch's GTK ships /usr/share/gtk-3.0/settings.ini with "Adwaita Sans 11"; Ubuntu's has
+    // none, so GTK's own "Sans 10" applies there. The profile's HOME gives every machine CI's.
+    const gtk = readFileSync(
+      join(session.profile, ".e2e-home", ".config", "gtk-3.0", "settings.ini"),
+      "utf8",
+    );
+    expect(gtk).toMatch(/^gtk-font-name = Sans 10$/m);
+    expect(readFileSync(join(session.profile, "user.js"), "utf8")).toContain(
+      `${realpathSync(E2E_FONTS)}/`,
+    );
+    const plain = await start({}, { baseEnv: base });
+    cleanups.push(() => plain.teardown());
+    const seenPlain = JSON.parse(readFileSync(join(plain.profile, "fake-browser.json"), "utf8"));
+    expect(seenPlain.env.FONTCONFIG_FILE).toBeUndefined();
+    expect(existsSync(join(plain.profile, ".e2e-home", ".config"))).toBe(false);
+  });
+
+  // docs/specs/builtin-agent-cli.md, "e2e": setup finds the scenario's CLI on PATH; the file and
+  // its folder are 0700, as C4 asks of a CLI it runs.
+  // Only the system folders follow it, so a CLI the caller has installed is not listed too.
+  it("installs a scenario's programs in a 0700 folder, then the system folders, as PATH", async () => {
+    const src = join(tempDir(), "fake.py");
+    writeFileSync(src, "#!/bin/sh\n", { mode: 0o644 });
+    const node = dirname(process.execPath);
+    const session = await start(
+      {},
+      { programs: { claude: src }, programPath: [node], baseEnv: { PATH: `/home/me/bin:${node}` } },
+    );
+    cleanups.push(() => session.teardown());
+    const bin = join(session.profile, ".e2e-bin");
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.PATH).toBe(`${bin}:${node}`);
+    expect(statSync(bin).mode & 0o777).toBe(0o700);
+    expect(statSync(join(bin, "claude")).mode & 0o777).toBe(0o700);
+    expect(readFileSync(join(bin, "claude"), "utf8")).toBe("#!/bin/sh\n");
+  });
+
+  // C6 refuses a run folder with an ancestor others can write: the profile under /tmp will not
+  // do, and under Xvfb the caller's XDG_RUNTIME_DIR is not passed through.
+  it("gives a browser without the caller's XDG_RUNTIME_DIR a private 0700 one, gone on teardown", async () => {
+    const root = tempDir();
+    const session = await start({}, { runtimeRoot: root, baseEnv: { PATH: PATH_ENV } });
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    const run = seen.env.XDG_RUNTIME_DIR;
+    expect(run.startsWith(`${root}/vimma-e2e-run-`)).toBe(true);
+    expect(statSync(run).mode & 0o777).toBe(0o700);
+    await session.teardown();
+    expect(existsSync(run)).toBe(false);
+  });
+
+  it("keeps the caller's XDG_RUNTIME_DIR on the caller's display", async () => {
+    const root = tempDir();
+    const session = await start(
+      {},
+      { runtimeRoot: root, baseEnv: { PATH: PATH_ENV, DISPLAY: ":5", XDG_RUNTIME_DIR: "/run/u" } },
+    );
+    cleanups.push(() => session.teardown());
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.XDG_RUNTIME_DIR).toBe("/run/u");
+    expect(readdirSync(root)).toEqual([]);
+  });
+
+  it("headless, starts no Xvfb and the browser sees MOZ_HEADLESS=1", async () => {
+    const session = await launch({
+      build: { binary: FAKE_BROWSER, env: {} },
+      headless: true,
+      xvfbBin: "/no/such/Xvfb",
+      baseEnv: { PATH: process.env.PATH },
+      tmpRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 500,
+    });
+    cleanups.push(() => session.teardown());
+    expect(session.display).toBeNull();
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.env.MOZ_HEADLESS).toBe("1");
+    expect(seen.env.DISPLAY).toBeUndefined();
+  });
+
+  it("kills the whole process tree and removes the profile on teardown", async () => {
+    const session = await start({ FAKE_BROWSER_CHILD: "1" });
+    const grandchild = Number(readFileSync(join(session.profile, "grandchild.pid"), "utf8"));
+    const pid = session.child.pid as number;
+    expect(alive(pid) && alive(grandchild)).toBe(true);
+    await session.teardown();
+    expect(alive(pid)).toBe(false);
+    expect(alive(grandchild)).toBe(false);
+    expect(existsSync(session.profile)).toBe(false);
+  });
+
+  it("relaunches in the same profile once the browser has exited (a restart)", async () => {
+    const session = await start({ FAKE_BROWSER_DELAY_MS: "100" });
+    cleanups.push(() => session.teardown());
+    const first = session.child.pid as number;
+    await expect(session.relaunch()).rejects.toThrow(/still running/);
+    const exited = new Promise((resolve) => session.child.once("exit", resolve));
+    process.kill(first, "SIGTERM");
+    await exited;
+    rmSync(join(session.profile, "vimma-control.json"), { force: true });
+    writeFileSync(join(session.profile, "kept.txt"), "x");
+    await session.relaunch();
+    const second = session.child.pid as number;
+    expect(second).not.toBe(first);
+    expect(session.discovery.pid).toBe(second);
+    expect(existsSync(join(session.profile, "kept.txt"))).toBe(true);
+    const seen = JSON.parse(readFileSync(join(session.profile, "fake-browser.json"), "utf8"));
+    expect(seen.argv).toContain(session.profile);
+    expect(seen.argv).not.toContain("about:blank"); // like a user's restart: the session only
+    await session.teardown();
+    expect(alive(second)).toBe(false);
+    expect(existsSync(session.profile)).toBe(false);
+  });
+
+  it("crashBrowser SIGKILLs the browser alone, reaps its children, keeps its files", async () => {
+    const session = await start({ FAKE_BROWSER_CHILD: "1", FAKE_BROWSER_IGNORE_TERM: "1" });
+    cleanups.push(() => session.teardown());
+    const pid = session.child.pid as number;
+    const grandchild = Number(readFileSync(join(session.profile, "grandchild.pid"), "utf8"));
+    const killed = await crashBrowser(session.child, { reapMs: 300 });
+    expect(killed).toBe(pid);
+    expect(session.child.signalCode).toBe("SIGKILL");
+    expect(alive(pid)).toBe(false);
+    expect(alive(grandchild)).toBe(false); // a content process would follow its parent
+    // No quit observers ran: the discovery file stays, as after a real crash.
+    expect(existsSync(join(session.profile, "vimma-control.json"))).toBe(true);
+    await session.relaunch({ stalePid: pid });
+    expect(session.discovery.pid).toBe(session.child.pid);
+    expect(session.discovery.pid).not.toBe(pid);
+  });
+
+  it("escalates to SIGKILL when the browser ignores SIGTERM", async () => {
+    const session = await start({ FAKE_BROWSER_IGNORE_TERM: "1" });
+    const pid = session.child.pid as number;
+    await session.teardown();
+    expect(alive(pid)).toBe(false);
+  });
+
+  it("keeps the profile with keep", async () => {
+    const session = await start({}, { keep: true });
+    await session.teardown();
+    expect(existsSync(join(session.profile, "user.js"))).toBe(true);
+    dirs.push(session.profile);
+  });
+
+  it("cleans up when the launch fails: browser exits early", async () => {
+    const tmpRoot = tempDir();
+    await expect(
+      launch({
+        build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "exit" } },
+        xvfb: false,
+        tmpRoot,
+        discoveryTimeoutMs: 5000,
+      }),
+    ).rejects.toThrow(/exited with code 7[^]*crashed on purpose/);
+    expect(readdirSync(tmpRoot)).toEqual([]);
+  });
+
+  it("hands out teardown before waiting, so a signal mid-launch cleans up (manual check bug)", async () => {
+    const tmpRoot = tempDir();
+    const registered: Array<() => Promise<void>> = [];
+    const pids: number[] = [];
+    const launching = launch({
+      build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never" } },
+      xvfb: false,
+      tmpRoot,
+      discoveryTimeoutMs: 20_000,
+      graceMs: 300,
+      onTeardown: (t: () => Promise<void>) => registered.push(t),
+      onSpawn: (child: ChildProcess) => pids.push(child.pid as number),
+    });
+    const outcome = launching.catch((e) => e);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(registered).toHaveLength(1);
+    const started = Date.now();
+    await Promise.all([registered[0]?.(), registered[0]?.()]); // idempotent
+    expect(await outcome).toBeInstanceOf(Error);
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(alive(pids[0] as number)).toBe(false);
+    expect(readdirSync(tmpRoot)).toEqual([]);
+  });
+
+  it("cleans up when the launch fails: no control socket, process tree killed", async () => {
+    const tmpRoot = tempDir();
+    const pids: number[] = [];
+    await expect(
+      launch({
+        build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never", FAKE_BROWSER_CHILD: "1" } },
+        xvfb: false,
+        tmpRoot,
+        discoveryTimeoutMs: 500,
+        graceMs: 300,
+        onSpawn: (child: ChildProcess) => pids.push(child.pid as number),
+      }),
+    ).rejects.toThrow(/vimma\.control\.enabled/);
+    expect(readdirSync(tmpRoot)).toEqual([]);
+    expect(pids).toHaveLength(1);
+    expect(alive(pids[0] as number)).toBe(false);
+  });
+});
+
+describe("browser stderr with the time since spawn (issue #901)", () => {
+  it("on a timeout, prints every stderr line with its time since spawn", async () => {
+    const err = await launch({
+      build: {
+        binary: FAKE_BROWSER,
+        env: {
+          FAKE_BROWSER: "never",
+          FAKE_BROWSER_STDERR: "early line",
+          FAKE_BROWSER_LATE_STDERR: "late line",
+          FAKE_BROWSER_LATE_STDERR_MS: "600",
+        },
+      },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 4000,
+      graceMs: 300,
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    const message = (err as Error).message;
+    expect(message).toMatch(/no usable control socket within 4000 ms/);
+    expect(message).toMatch(/browser stderr with the time since spawn \(spawned at \d{4}-/);
+    const at = (text: string) => {
+      const m = new RegExp(`^ {2}\\+(\\d+\\.\\d{3}) s {2}${text}$`, "m").exec(message);
+      expect(m, `${text} in:\n${message}`).not.toBeNull();
+      return Number((m as RegExpExecArray)[1]);
+    };
+    const early = at("early line");
+    const late = at("late line");
+    expect(late).toBeGreaterThanOrEqual(0.6);
+    expect(early).toBeLessThan(late);
+  });
+
+  it("stamps a line split across chunks with the time its first byte came", () => {
+    let t = 1000;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 1010;
+    timeline.push("first\nsec");
+    t = 1500;
+    timeline.push("ond\nthird\n");
+    t = 2000;
+    timeline.push("unfinished");
+    t = 3000;
+    const report = timeline.format();
+    expect(report.split("\n").slice(1)).toEqual([
+      "  +0.010 s  first",
+      "  +0.010 s  second",
+      "  +0.500 s  third",
+      "  +1.000 s  unfinished",
+      "  (2.000 s since spawn, 1.000 s since the last line)",
+    ]);
+  });
+
+  it("keeps only the last lines, cut to a bounded length, and says how many it dropped", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t, maxLines: 3, maxChars: 5 });
+    for (const line of ["one", "two", "three", "four", "fivefivefive"]) {
+      t += 100;
+      timeline.push(`${line}\n`);
+    }
+    const report = timeline.format();
+    expect(report.split("\n")[0]).toMatch(/2 earlier lines dropped/);
+    expect(report.split("\n").slice(1, 4)).toEqual([
+      "  +0.300 s  three",
+      "  +0.400 s  four",
+      "  +0.500 s  fivef…",
+    ]);
+  });
+
+  it("says so when the browser wrote nothing", () => {
+    let t = 0;
+    const timeline = stderrTimeline({ now: () => t });
+    t = 30_000;
+    expect(timeline.format()).toMatch(/^browser stderr: nothing in the 30\.000 s since spawn/);
+  });
+
+  it("a launch that reaches its socket logs nothing extra", async () => {
+    const logged: string[] = [];
+    const session = await launch({
+      build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER_STDERR: "noise" } },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      runtimeRoot: tempDir(),
+      discoveryTimeoutMs: 5000,
+      graceMs: 300,
+      log: (line) => logged.push(line),
+    });
+    cleanups.push(() => session.teardown());
+    expect(logged).toEqual([]);
+  });
+});
+
+// Ctrl+C while Xvfb was still starting must leave no live Xvfb and no fbdir.
+describe("cancelling while Xvfb starts (fake Xvfb)", () => {
+  const readRecord = (record: string) =>
+    JSON.parse(readFileSync(record, "utf8")) as { pid: number; fbdir: string };
+
+  // The tests below wait for the record to exist and then read it, so it has to appear whole:
+  // a file written in place exists, empty or half written, before its JSON is all there. A
+  // second link to a file already at the record's path tells the two apart without a race: a
+  // write in place changes that file under the link, a rename puts a new one at the path.
+  it("the fake Xvfb's record is renamed into place, never written into a file at its path", async () => {
+    const dir = tempDir();
+    const fbdir = tempDir();
+    const record = join(dir, "xvfb.json");
+    const earlier = join(dir, "earlier.json");
+    writeFileSync(record, "{}");
+    linkSync(record, earlier);
+    const child = spawn(process.execPath, [FAKE_XVFB, "-displayfd", "1", "-fbdir", fbdir], {
+      env: { ...process.env, FAKE_XVFB_DELAY_MS: "60000", FAKE_XVFB_RECORD: record },
+      stdio: "ignore",
+    });
+    cleanups.push(async () => {
+      child.kill("SIGKILL");
+    });
+    // The fixture writes the record before its screen file, both synchronously.
+    const screen = join(fbdir, "Xvfb_screen0");
+    for (let i = 0; i < 250 && !existsSync(screen); i++) await sleep(20);
+    expect(existsSync(screen)).toBe(true);
+    expect(readFileSync(earlier, "utf8")).toBe("{}");
+    expect(readRecord(record)).toMatchObject({ pid: child.pid, fbdir });
+    expect(readdirSync(dir).sort()).toEqual(["earlier.json", "xvfb.json"]);
+  });
+
+  it("teardown during Xvfb startup stops Xvfb and removes its fbdir", async () => {
+    const tmpRoot = tempDir();
+    const record = join(tempDir(), "xvfb.json");
+    const registered: Array<() => Promise<void>> = [];
+    const launching = launch({
+      build: { binary: FAKE_BROWSER, env: {} },
+      xvfb: true,
+      xvfbBin: FAKE_XVFB,
+      tmpRoot,
+      graceMs: 300,
+      xvfbEnv: { ...process.env, FAKE_XVFB_DELAY_MS: "1500", FAKE_XVFB_RECORD: record },
+      onTeardown: (t: () => Promise<void>) => registered.push(t),
+    });
+    const outcome = launching.catch((e) => e);
+    for (let i = 0; i < 100 && !existsSync(record); i++) await sleep(20);
+    const { pid, fbdir } = readRecord(record);
+    expect(alive(pid) && existsSync(fbdir)).toBe(true);
+    await registered[0]?.();
+    expect(await outcome).toBeInstanceOf(Error);
+    expect(alive(pid)).toBe(false);
+    expect(existsSync(fbdir)).toBe(false);
+    expect(readdirSync(tmpRoot)).toEqual([]);
+  });
+
+  it("an abort signal cancels the launch the same way", async () => {
+    const record = join(tempDir(), "xvfb.json");
+    const controller = new AbortController();
+    const launching = launch({
+      build: { binary: FAKE_BROWSER, env: {} },
+      xvfb: true,
+      xvfbBin: FAKE_XVFB,
+      tmpRoot: tempDir(),
+      graceMs: 300,
+      xvfbEnv: { ...process.env, FAKE_XVFB_DELAY_MS: "1500", FAKE_XVFB_RECORD: record },
+      signal: controller.signal,
+    }).catch((e) => e);
+    for (let i = 0; i < 100 && !existsSync(record); i++) await sleep(20);
+    const started = Date.now();
+    controller.abort();
+    expect(await launching).toBeInstanceOf(Error);
+    expect(Date.now() - started).toBeLessThan(3000);
+    const { pid, fbdir } = readRecord(record);
+    expect(alive(pid)).toBe(false);
+    expect(existsSync(fbdir)).toBe(false);
+  });
+
+  it("an abort during the discovery wait kills the browser at once", async () => {
+    const controller = new AbortController();
+    const pids: number[] = [];
+    const launching = launch({
+      build: { binary: FAKE_BROWSER, env: { FAKE_BROWSER: "never" } },
+      xvfb: false,
+      tmpRoot: tempDir(),
+      discoveryTimeoutMs: 60_000,
+      graceMs: 300,
+      onSpawn: (c: ChildProcess) => pids.push(c.pid as number),
+      signal: controller.signal,
+    }).catch((e) => e);
+    await sleep(300);
+    const started = Date.now();
+    controller.abort();
+    expect(String(await launching)).toMatch(/abort/);
+    expect(Date.now() - started).toBeLessThan(3000);
+    expect(alive(pids[0] as number)).toBe(false);
+  });
+
+  it("SIGINT to the CLI while Xvfb starts leaves no Xvfb, fbdir or profile", async () => {
+    const tmp = tempDir();
+    const bin = tempDir();
+    symlinkSync(FAKE_XVFB, join(bin, "Xvfb"));
+    const scenarios = tempDir();
+    writeFileSync(
+      join(scenarios, "m0-x.json"),
+      JSON.stringify({ name: "m0-x", description: "x", steps: [{ keys: "esc" }] }),
+    );
+    const record = join(tempDir(), "xvfb.json");
+    const cli = spawn(
+      process.execPath,
+      [
+        E2E_CLI,
+        "--xvfb",
+        "--build",
+        FAKE_BROWSER,
+        "--vimma-ctl",
+        process.execPath,
+        "--scenarios",
+        scenarios,
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          TMPDIR: tmp,
+          FAKE_XVFB_DELAY_MS: "3000",
+          FAKE_XVFB_RECORD: record,
+        },
+        stdio: "ignore",
+      },
+    );
+    for (let i = 0; i < 200 && !existsSync(record); i++) await sleep(20);
+    const { pid, fbdir } = readRecord(record);
+    cli.kill("SIGINT");
+    const code = await new Promise((r) => cli.on("exit", (c) => r(c)));
+    expect(code).toBe(130);
+    expect(alive(pid)).toBe(false);
+    expect(existsSync(fbdir)).toBe(false);
+    expect(readdirSync(tmp)).toEqual([]);
+  });
+});
+
+describe("waitForSessionSaved (before a crash-style kill)", () => {
+  const recovery = (profile: string) => join(profile, "sessionstore-backups", "recovery.jsonlz4");
+
+  it("waits for SessionStore's recovery file to exist and go quiet", async () => {
+    const profile = tempDir();
+    const started = Date.now();
+    setTimeout(() => {
+      mkdirSync(join(profile, "sessionstore-backups"));
+      writeFileSync(recovery(profile), "1");
+    }, 150);
+    setTimeout(() => writeFileSync(recovery(profile), "2"), 350);
+    await waitForSessionSaved(profile, { quietMs: 300, timeoutMs: 5000, pollMs: 20 });
+    // the last write at ~350 ms, then 300 ms of quiet
+    expect(Date.now() - started).toBeGreaterThanOrEqual(600);
+    expect(readFileSync(recovery(profile), "utf8")).toBe("2");
+  });
+
+  it("counts the quiet from the call, not from an older write", async () => {
+    const profile = tempDir();
+    mkdirSync(join(profile, "sessionstore-backups"));
+    writeFileSync(recovery(profile), "old");
+    const started = Date.now();
+    await waitForSessionSaved(profile, { quietMs: 250, timeoutMs: 5000, pollMs: 20 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(250);
+  });
+
+  it("times out when SessionStore never writes", async () => {
+    const profile = tempDir();
+    await expect(
+      waitForSessionSaved(profile, { quietMs: 100, timeoutMs: 300, pollMs: 20 }),
+    ).rejects.toThrow(/recovery\.jsonlz4[^]*300 ms/);
+  });
+});
+
+describe("quitBrowser (ctrl+q first, so the discovery file is removed)", () => {
+  /** A child that exits when told to, like the browser after ctrl+q. */
+  const fakeChild = () => {
+    const waiters: Array<() => void> = [];
+    const child = {
+      exitCode: null as number | null,
+      signalCode: null,
+      once: (_e: string, f: () => void) => void waiters.push(f),
+      exit() {
+        child.exitCode = 0;
+        for (const f of waiters.splice(0)) f();
+      },
+    };
+    return child;
+  };
+  const fakeCtl = (
+    {
+      mode = "normal",
+      quits = true,
+      fail = false,
+    }: { mode?: string; quits?: boolean; fail?: boolean },
+    child = fakeChild(),
+  ) => {
+    const sent: string[] = [];
+    let current = mode;
+    const ctl = {
+      sent,
+      async state() {
+        if (fail) throw new Error("not running");
+        return { mode: current, pending: null };
+      },
+      async sendKeys(keys: string) {
+        sent.push(keys);
+        if (keys === "esc" && current === "help") current = "normal";
+        if (keys === "ctrl+q" && quits) setTimeout(() => child.exit(), 5);
+      },
+    };
+    return { ctl, child };
+  };
+
+  it("sends ctrl+q and reports a clean exit", async () => {
+    const { ctl, child } = fakeCtl({});
+    expect(await quitBrowser({ ctl, child, timeoutMs: 1000 })).toBe(true);
+    expect(ctl.sent).toEqual(["ctrl+q"]);
+  });
+
+  it("closes the help overlay first: ctrl+q while help is open is swallowed", async () => {
+    const { ctl, child } = fakeCtl({ mode: "help" });
+    expect(await quitBrowser({ ctl, child, timeoutMs: 1000, pollMs: 5 })).toBe(true);
+    expect(ctl.sent).toEqual(["esc", "ctrl+q"]);
+  });
+
+  it("gives up (false) when the browser does not exit, so the caller signals it", async () => {
+    const { ctl, child } = fakeCtl({ quits: false });
+    expect(await quitBrowser({ ctl, child, timeoutMs: 100 })).toBe(false);
+  });
+
+  it("gives up (false) when the socket does not answer, without throwing", async () => {
+    const { ctl, child } = fakeCtl({ fail: true });
+    expect(await quitBrowser({ ctl, child, timeoutMs: 100 })).toBe(false);
+    expect(ctl.sent).toEqual([]);
+  });
+
+  it("does nothing for a browser that already exited", async () => {
+    const { ctl, child } = fakeCtl({});
+    child.exit();
+    expect(await quitBrowser({ ctl, child, timeoutMs: 100 })).toBe(true);
+    expect(ctl.sent).toEqual([]);
+  });
+});
+
+// docs/specs/app-routes.md, "Tests": the `external` step runs vimma-open against the browser
+// under test, over a session bus of the harness's own.
+describe("external step", () => {
+  it("the wrapper runs the build on the scenario's profile, quoting both paths", () => {
+    const dir = mkdtempSync(join(tmpdir(), "e2e-wrapper-"));
+    try {
+      const fake = join(dir, "it's vimma");
+      writeFileSync(fake, '#!/bin/sh\nfor a in "$@"; do printf "%s\\n" "$a"; done\n');
+      chmodSync(fake, 0o755);
+      const wrapper = join(dir, "wrapper");
+      writeFileSync(wrapper, externalWrapper(fake, "/tmp/a profile's dir"));
+      const out = execFileSync("/bin/sh", [wrapper, "-vimma-from", "teams", "https://a/"], {
+        encoding: "utf8",
+      });
+      expect(out.split("\n")).toEqual([
+        "-profile",
+        "/tmp/a profile's dir",
+        "-vimma-from",
+        "teams",
+        "https://a/",
+        "",
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const dbus = (() => {
+    try {
+      return execFileSync("/bin/sh", ["-c", "command -v dbus-daemon"], { encoding: "utf8" });
+    } catch {
+      return "";
+    }
+  })();
+  it.skipIf(!dbus)("starts a private session bus and stops it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "e2e-bus-"));
+    try {
+      const bus = await startSessionBus(dir);
+      expect(bus.address).toMatch(/^unix:path=.*\.e2e-bus/);
+      expect(existsSync(join(dir, ".e2e-bus"))).toBe(true);
+      await bus.stop();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

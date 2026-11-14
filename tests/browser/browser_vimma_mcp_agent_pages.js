@@ -44,7 +44,7 @@ add_task(async function setup() {
   registerCleanupFunction(() => Services.perms.removeAll());
 });
 
-/** A tab in `userContextId`, loaded with `url`. */
+/** A tab in `userContextId`, loaded with `url`. @param {number} userContextId */
 async function tabIn(userContextId, url = PAGE) {
   const tab = gBrowser.addTab(url, {
     userContextId,
@@ -54,7 +54,10 @@ async function tabIn(userContextId, url = PAGE) {
   return tab;
 }
 
-/** What a page gets when it asks for each permission, without a user answering. */
+/**
+ * What a page gets when it asks for each permission, without a user answering.
+ * @param {MozBrowser} browser
+ */
 function ask(browser) {
   return SpecialPowers.spawn(browser, [], async () => {
     const settle = (/** @type {Promise<string>} */ p) =>
@@ -102,6 +105,7 @@ function ask(browser) {
 add_task(async function test_the_agent_container_asks_for_nothing() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
+  /** @type {string[]} */
   const shown = [];
   const onShown = (/** @type {Event} */ e) => shown.push(/** @type {any} */ (e.target).id);
   PopupNotifications.panel.addEventListener("popupshowing", onShown);
@@ -180,7 +184,7 @@ add_task(async function test_agent_tabs_open_no_popups() {
     try {
       w = content.open("https://example.com/", "_blank");
     } catch (e) {
-      if (e.name !== "InvalidAccessError") throw e;
+      if (/** @type {DOMException} */ (e).name !== "InvalidAccessError") throw e;
     }
     const a = content.document.createElement("a");
     a.href = "https://example.org/";
@@ -341,6 +345,7 @@ add_task(async function test_agent_pages_launch_no_app() {
   const launched = [];
   AgentPages._chooserForTests = {
     QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]),
+    /** @param {unknown} _handler @param {nsIURI} uri */
     handleURI(_handler, uri) {
       launched.push(uri.spec);
     },

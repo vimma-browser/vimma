@@ -22,7 +22,7 @@ npx surfer download
 npm run verify-source      # the tarball against Mozilla's signed SHA512SUMS (ADR-021)
 npx surfer bootstrap
 npx surfer build
-npm start                  # tools/start.mjs: the build with ~/.cache/vimma-dev-profile
+npm start                  # tools/start.ts: the build with ~/.cache/vimma-dev-profile
 ```
 
 ## Smoke check
@@ -209,7 +209,7 @@ In a local objdir the chrome files are symlinks into `engine/`, which `surfer im
 repo's `src/`, outside the Firefox tree; the content sandbox then refuses them and the console
 says `Failed to load chrome://browser/content/vimma/actors/VimmaChild.sys.mjs` (no hints, no
 insert mode). Mochitests relax the sandbox, so they never see it. The e2e harness writes the same
-pref (`devPrefs` from `tools/start.mjs`) and keeps the default sandbox, and its
+pref (`devPrefs` from `tools/start.ts`) and keeps the default sandbox, and its
 `m0-content-actor` scenario fails without it (checked: `normal` instead of `insert`). Any scenario
 also fails when the browser logs a `Failed to load chrome://browser/content/vimma/…`.
 
@@ -300,7 +300,7 @@ local URL and, after the update, N+1's build ID are what it runs with. With
 `MOZ_DISABLE_NONLOCAL_CONNECTIONS` any connection off 127.0.0.1 crashes the browser ("FATAL
 ERROR: Non-local network connections are disabled", in the failure's teardown output); the
 scenario profile turns off the ones Firefox makes on its own (`updatePrefs` in
-`tools/e2e/update-host.mjs`), and a scenario types `:update` only once a page has focus, since
+`tools/e2e/update-host.ts`), and a scenario types `:update` only once a page has focus, since
 in the address bar it is a search. The updater applies the update by `execv` in the browser's
 own process, so a `restart` step follows it with nothing extra. `serve-update` picks the
 manifest (`offer`: `n1`, `n`, `older-firefox`, `none`; `key`: `test` or `unknown`);
@@ -340,7 +340,7 @@ What a local run differs by. On Linux the scenarios render with the fonts vendor
 the browser gets that folder's `fonts.conf` as `FONTCONFIG_FILE` and GTK's "Sans 10" in the
 profile's HOME, so a local run compares with CI's baselines with no font package installed
 (issue #944). The fixture pages are served on the fixed port 28471 (`PAGE_PORT` in
-`tools/e2e/pages.mjs`), so the URL and status bars read the same in every run (issue #953).
+`tools/e2e/pages.ts`), so the URL and status bars read the same in every run (issue #953).
 Measured on an Arch machine against baselines taken in CI, what remains is mostly one row: Firefox
 draws the line under the toolbar as the window's text colour at 10 % (`--card-border-color`), and
 that colour comes from GTK, whose Arch build draws the line a shade lighter than CI's Ubuntu
@@ -1878,11 +1878,13 @@ PR per ecosystem, majors one PR each. Actions stay pinned to commit SHAs. Securi
 for security, patch and minor updates, so GitHub merges them once every required check is
 green; majors, every GitHub Actions update (workflows hold write tokens and the model API secret)
 and every change to a release-path package (Surfer, `ajv` and everything they depend on,
-`node tools/deps/release-path.mjs`), security updates included, get a comment and stay open
+`node tools/deps/release-path.ts`), security updates included, get a comment and stay open
 for review. The workflow's `classify` job decides from the lockfile diff and puts each changed
 package's `npm diff` in its summary and the `release-path-diff` artifact (30 days); the comment
 links the run. If `classify` fails, the PR is held as well: re-run the workflow, or review it
-as a release-path change. Surfer and `ajv` have their own `release-path` group, so a held
+as a release-path change. A re-run reuses the event's base commit, so a PR whose base predates
+`tools/deps/release-path.ts` (opened before #989, or reopened later) fails again: comment
+`@dependabot rebase` on it, which sends a new event on the current `main`, or review it. Surfer and `ajv` have their own `release-path` group, so a held
 update does not hold the other minor and patch updates. No repository setting is needed:
 `classify` is not a required check, because it runs only on Dependabot's PRs and the
 `automerge` job reads its result directly.

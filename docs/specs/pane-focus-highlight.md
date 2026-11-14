@@ -114,10 +114,11 @@ panes look as they do today. The border is 3 px wide, and unfocused panes are no
   hidden visually and has its docshell deactivated; the zoomed panel carries no attribute and takes
   the whole rectangle ([m4-split-panes](m4-split-panes.md), "Geometry"). The status bar does not
   name the zoomed state.
-- The e2e profile pins the built-in palette (`tools/e2e/launcher.mjs:46`,
-  `vimma.theme.source = builtin`) and a light theme, so baselines are the vimma light palette; a
-  run under the Omarchy theme (`vimma.theme.source = omarchy`, `vimma.theme.omarchyPath`) is for
-  looking at screenshots, not for baselines (`docs/runbook.md`, "Baselines").
+- The e2e profile pins the built-in palette (`tools/e2e/launcher.mjs:46`, since changed:
+  `launcher.ts`, ADR-025; `vimma.theme.source = builtin`) and a light theme, so baselines are the
+  vimma light palette; a run under the Omarchy theme (`vimma.theme.source = omarchy`,
+  `vimma.theme.omarchyPath`) is for looking at screenshots, not for baselines (`docs/runbook.md`,
+  "Baselines").
 
 ### Zen Browser (zen-browser/desktop at `185e856f`, `src/zen/split-view/zen-split-view.css`)
 

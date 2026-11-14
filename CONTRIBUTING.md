@@ -81,7 +81,7 @@ npm start -- --import   # run `npm run import` first
 npm start -- --profile DIR -- --jsconsole   # another profile; after the second -- browser flags
 ```
 
-`npm start` (`tools/start.mjs`) passes its own profile, so it never touches your Firefox profile
+`npm start` (`tools/start.ts`) passes its own profile, so it never touches your Firefox profile
 (remoting is keyed by app name and profile: a `vimma` command line never reaches Firefox), and refuses to start a second instance on the same profile. It adds
 these lines to the profile's `user.js` (other lines are kept):
 `security.sandbox.content.read_path_whitelist` set to this checkout's `src/`, and
@@ -129,7 +129,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs: browser code and packages, then tools/, then core tests
+npm run typecheck        # tsc --checkJs: browser code, tools/, core tests, then the mochitests
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
@@ -156,6 +156,14 @@ A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/te
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
 own and fails if a test leaves anything in it. A mochitest removes its temp files in
 `registerCleanupFunction`, and a Rust test drops its temp dir guard.
+
+`npm run typecheck` type-checks the mochitests as it does the rest (`tests/tsconfig.json`), so a
+new test file passes it from its first commit: give a helper's parameters JSDoc types, and where
+Firefox's type is wider than the test knows (an element `getElementById` returns, an about: page's
+document), cast it with `/** @type {...} */ (expr)` rather than adding a guard that changes what
+the test does. The files that still have errors are listed in `tools/test/mochitest-allowlist.txt`;
+fixing one takes it off. After changing a `tests/browser/head*.js` file, run
+`npm run gen-mochitest-head`.
 
 You can also test the front end without a full build. An artifact build puts our front end on
 top of Mozilla's compiled binaries for the same release, and is what PR CI uses
@@ -497,7 +505,7 @@ its Rust toolchain and the GitHub Actions current:
   tokens) get a comment and wait for a person to read the changelog, fix what breaks and merge.
 - **The release path is always reviewed.** The release build runs `@zen-browser/surfer` and
   `ajv`, and with them every package they depend on (about 220, listed by
-  `node tools/deps/release-path.mjs`). Surfer is pinned to an exact version, and no change to any
+  `node tools/deps/release-path.ts`). Surfer is pinned to an exact version, and no change to any
   release-path package auto-merges, security updates and transitive bumps in grouped updates
   included: the workflow's `classify` job compares the two lockfiles and holds the PR. Surfer and
   `ajv` come in their own `release-path` group, so a held update does not hold the others.

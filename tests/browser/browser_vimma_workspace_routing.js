@@ -23,7 +23,10 @@ const PAGE = `${ROOT}file_vimma_cookie.html`;
 const system = () => Services.scriptSecurityManager.getSystemPrincipal();
 
 /** The workspace the app starts with when nothing is configured. */
-const main = () => WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
+const main = () =>
+  WorkspaceStore.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === "main",
+  );
 
 /** @type {string[]} */
 const created = [];
@@ -38,7 +41,8 @@ registerCleanupFunction(async () => {
   WorkspaceStore.setActive(window, main().id);
   // Deleting a workspace removes its container, which clears its cookies and storage.
   for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
 const cookiesIn = (/** @type {number} */ userContextId) =>
@@ -54,8 +58,10 @@ const pageSees = (tab) =>
   ]);
 
 /** Resolves with the next tab opened in `win`. */
-const nextTab = (win = window) =>
-  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then((e) => e.target);
+const nextTab = (/** @type {BrowserWindow} */ win = window) =>
+  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then(
+    (e) => /** @type {MozTabbrowserTab} */ (e.target),
+  );
 
 add_task(async function startup_wires_the_store_and_new_tabs_land_in_main() {
   Assert.ok(main(), "the store was started at startup with its default workspace, main");
@@ -191,7 +197,7 @@ async function windowOpenedOn(open, url) {
   return win;
 }
 
-/** @param {Window} win */
+/** @param {BrowserWindow} win */
 const containersOf = (win) => win.gBrowser.tabs.map((t) => t.userContextId);
 
 add_task(async function open_link_in_new_window_keeps_the_pages_container() {
@@ -202,7 +208,10 @@ add_task(async function open_link_in_new_window_keeps_the_pages_container() {
   gBrowser.selectedTab = page;
   await BrowserTestUtils.browserLoaded(page.linkedBrowser);
 
-  const menu = document.getElementById("contentAreaContextMenu");
+  // A XUL <menupopup>, which getElementById types as an HTML element.
+  const menu = /** @type {XULPopupElement} */ (
+    /** @type {Element} */ (document.getElementById("contentAreaContextMenu"))
+  );
   const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
   await BrowserTestUtils.synthesizeMouseAtCenter(
     "#link",
@@ -213,7 +222,7 @@ add_task(async function open_link_in_new_window_keeps_the_pages_container() {
   const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
   const url = new URL("file_vimma_cookie.html?from=link", PAGE).href;
   const win = await windowOpenedOn(
-    () => menu.activateItem(document.getElementById("context-openlink")),
+    () => menu.activateItem(/** @type {Element} */ (document.getElementById("context-openlink"))),
     url,
   );
   await hidden;

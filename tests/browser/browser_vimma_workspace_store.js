@@ -18,8 +18,12 @@ let fileNo = 0;
 /** @type {string[]} */
 const files = [];
 /** @type {Set<number>} */
-const startIds = new Set(CIS.getPublicIdentities().map((i) => i.userContextId));
-const firefoxDefaults = JSON.stringify(CIS.getPublicIdentities().filter((i) => i.l10nId));
+const startIds = new Set(
+  CIS.getPublicIdentities().map((/** @type {ContextualIdentity} */ i) => i.userContextId),
+);
+const firefoxDefaults = JSON.stringify(
+  CIS.getPublicIdentities().filter((/** @type {ContextualIdentity} */ i) => i.l10nId),
+);
 
 /** A fresh definitions path in the profile, removed at the end with its backup. */
 function freshPath() {
@@ -34,7 +38,9 @@ registerCleanupFunction(async () => {
     if (!startIds.has(i.userContextId)) CIS.remove(i.userContextId);
   }
   Assert.equal(
-    JSON.stringify(CIS.getPublicIdentities().filter((i) => i.l10nId)),
+    JSON.stringify(
+      CIS.getPublicIdentities().filter((/** @type {ContextualIdentity} */ i) => i.l10nId),
+    ),
     firefoxDefaults,
     "Firefox's default containers are untouched",
   );
@@ -127,7 +133,11 @@ add_task(async function reconcile_adopts_and_never_deletes_silently() {
   const path = freshPath();
   const adopted = CIS.create("adopted", "circle", "gray");
   const reused = CIS.create("someone else's", "fence", "red");
-  const def = (/** @type {string} */ id, /** @type {string} */ name, ucid) => ({
+  const def = (
+    /** @type {string} */ id,
+    /** @type {string} */ name,
+    /** @type {number | null} */ ucid,
+  ) => ({
     id,
     name,
     userContextId: ucid,
@@ -148,9 +158,11 @@ add_task(async function reconcile_adopts_and_never_deletes_silently() {
   const store = await started(path, {
     config: [{ name: "work", color: "blue", icon: "briefcase", autofill: true }],
   });
-  const byName = Object.fromEntries(store.definitions.workspaces.map((w) => [w.name, w]));
+  const byName = Object.fromEntries(
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => [w.name, w]),
+  );
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => [w.name, w.source]),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => [w.name, w.source]),
     [
       ["work", "config"],
       ["adopted", "runtime"],
@@ -191,7 +203,7 @@ add_task(async function a_confirmed_delete_removes_the_container_and_its_cookies
 
   const cleared = TestUtils.topicObserved(
     "clear-origin-attributes-data",
-    (_s, data) => JSON.parse(data).userContextId === shop.userContextId,
+    (_s, data) => JSON.parse(/** @type {string} */ (data)).userContextId === shop.userContextId,
   );
   await store.deleteWorkspace(shop.id, { confirmed: true });
   await cleared;
@@ -200,13 +212,13 @@ add_task(async function a_confirmed_delete_removes_the_container_and_its_cookies
   Assert.equal(cookieCount(work.userContextId), 1, "work's cookie stays");
   Assert.ok(identity(work.userContextId), "and work's container");
   Assert.deepEqual(
-    store.definitions.workspaces.map((w) => w.name),
+    store.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["work"],
     "shop is no longer defined",
   );
   await store.finalize();
   Assert.deepEqual(
-    (await IOUtils.readJSON(path)).workspaces.map((w) => w.name),
+    (await IOUtils.readJSON(path)).workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["work"],
     "nor in the file",
   );
@@ -250,7 +262,9 @@ add_task(async function a_stale_answer_closes_nothing() {
     config: [{ name: "work", color: "blue", icon: "briefcase", autofill: true }],
   });
   const shop = store.addWorkspace({ name: "shop", color: "pink", icon: "cart" });
-  const work = store.definitions.workspaces.find((w) => w.name === "work");
+  const work = store.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === "work",
+  );
   setCookie(shop.userContextId);
   setCookie(work.userContextId);
   const asked = (/** @type {any} */ w) => ({
@@ -273,7 +287,8 @@ add_task(async function a_stale_answer_closes_nothing() {
   Assert.equal(askedWork.source, "config", "sanity: asked about a config workspace");
   await store.setConfig([]);
   Assert.equal(
-    store.definitions.workspaces.find((w) => w.id === work.id)?.source,
+    store.definitions.workspaces.find((/** @type {WorkspaceDefinition} */ w) => w.id === work.id)
+      ?.source,
     "runtime",
     "the reload made work a runtime workspace, whose close would delete its data",
   );

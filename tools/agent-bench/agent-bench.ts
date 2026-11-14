@@ -50,11 +50,11 @@ import {
   agentTools,
   AGENT_INSTRUCTIONS,
 } from "../../packages/vimma-core/src/agent/agent-tools.mjs";
-import { ControlSessions } from "../e2e/control-client.mjs";
-import { findVimmaCtl } from "../e2e/driver.mjs";
-import { findBuild, launch, quitBrowser } from "../e2e/launcher.mjs";
-import { encodePng } from "../e2e/png.mjs";
-import { capture } from "../e2e/screenshot.mjs";
+import { ControlSessions } from "../e2e/control-client.ts";
+import { findVimmaCtl } from "../e2e/driver.ts";
+import { findBuild, launch, quitBrowser } from "../e2e/launcher.ts";
+import { encodePng } from "../e2e/png.ts";
+import { capture } from "../e2e/screenshot.ts";
 import { formatBreakdown } from "./breakdown.ts";
 import { httpFetch } from "./http-fetch.ts";
 import { loadLists } from "./lists.ts";

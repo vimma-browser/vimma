@@ -380,7 +380,9 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     (`ipc:content-created`) ends (`ipc:content-shutdown`), even with the pref back on: the parent
     checks every principal that process sends against the module's flags of that moment, and the
     start page's would get the process killed with every tab in it
-    ([#950](https://github.com/vimma-browser/vimma/issues/950)). New tabs still follow the pref at
+    ([#950](https://github.com/vimma-browser/vimma/issues/950)). A Firefox page still loading
+    when that process ends, its own process still launching, holds it too
+    ([#984](https://github.com/vimma-browser/vimma/issues/984)). New tabs still follow the pref at
     once through `AboutNewTab.newTabURL`.)
 11. **Mozilla's own services keep their names and links.** AMO (installs, dictionaries), Safe
     Browsing (including Report Deceptive Site), `about:credits`, `about:policies` and the Mozilla

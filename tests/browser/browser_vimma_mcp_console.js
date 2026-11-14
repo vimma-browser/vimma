@@ -65,12 +65,14 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -217,8 +219,8 @@ add_task(async function test_console_returns_failed_requests_with_status() {
   });
   await until(
     () =>
-      AgentConsole._requestsForTests(tab.linkedBrowser.browserId).some((q) =>
-        q.url.includes("late=1"),
+      AgentConsole._requestsForTests(tab.linkedBrowser.browserId).some(
+        (/** @type {{ url: string }} */ q) => q.url.includes("late=1"),
       ),
     "the new failed request is logged",
   );
@@ -261,7 +263,7 @@ add_task(async function test_a_noisy_page_sends_one_replys_worth() {
   Assert.equal(top.entries.length, 100, "the top frame answers 100 entries");
   Assert.ok(top.omitted >= 300, `and counts the rest: ${top.omitted}`);
   Assert.ok(
-    top.entries.every((e) => e.message.length <= 1000),
+    top.entries.every((/** @type {{ message: string }} */ e) => e.message.length <= 1000),
     "each message cut in the child",
   );
   const c = await agentClient();

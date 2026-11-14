@@ -377,7 +377,7 @@ describe("macos.yml", () => {
     expect(e2e["timeout-minutes"]).toBeLessThanOrEqual(10);
     const run = e2e.run ?? "";
     expect(run).toContain("for scenario in m0-happy-path m0-content-actor; do");
-    expect(run).toContain('node tools/e2e/e2e.mjs --headless --build "$APP"');
+    expect(run).toContain('node tools/e2e/e2e.ts --headless --build "$APP"');
     expect(run).toContain("--vimma-ctl tools/vimma-ctl/target/release/vimma-ctl");
     expect(run).toContain('--filter "$scenario"');
     expect(index(smoke, "Build vimma-ctl")).toBeLessThan(index(smoke, "The e2e smoke scenarios"));

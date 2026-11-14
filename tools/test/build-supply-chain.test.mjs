@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { jobs } from "./workflow-runners.mjs";
+import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 
 // docs/specs/build-supply-chain.md, decisions 12, 14, 16 and 17; docs/security.md, B3 and B4.
 // Surfer drives the Firefox build: it is pinned exactly, never merges without a person, installs
@@ -161,6 +161,80 @@ describe("build supply chain: npm", () => {
   });
 });
 
+const BASE_SHA = "${{ github.event.pull_request.base.sha }}";
+const DEPENDABOT_IF = [
+  "github.actor == 'dependabot[bot]'",
+  "github.event.pull_request.user.login == 'dependabot[bot]'",
+];
+// Commands that would put the head commit's files in the workspace, where a later node or npm
+// reads its configuration and modules from.
+const WRITES_TREE = new RegExp(
+  `\\bgit (?:${[
+    ...["checkout", "switch", "restore", "reset", "worktree", "archive", "read-tree"],
+    ...["checkout-index", "stash", "merge", "cherry-pick", "apply"],
+  ].join("|")})\\b`,
+);
+
+/**
+ * What would let the pull request's files reach classify's workspace before, or while, its tools
+ * run (docs/security.md, B3): classify sets up .nvmrc's Node on the base commit alone, so the order
+ * of its first steps is what keeps setup-node's npm and yarn off the pull request's .npmrc and
+ * .yarnrc, and the head commit's files may only ever be written under $RUNNER_TEMP.
+ * @param {string} text dependabot-automerge.yml
+ * @returns {string[]} each fault found; empty when the workflow keeps the rule
+ */
+function classifyFaults(text) {
+  const doc = parseWorkflow(text);
+  /** @type {string[]} */
+  const faults = [];
+  const on = doc.on;
+  const events = typeof on === "string" ? [on] : Object.keys(on ?? {});
+  if (events.join() !== "pull_request") faults.push(`triggers: ${events.join(", ")}`);
+  for (const k of ["env", "defaults"]) if (k in doc) faults.push(`workflow ${k}`);
+  const all = jobs(text);
+  const classify = all.get("classify") ?? {};
+  const automerge = all.get("automerge") ?? {};
+  for (const k of ["env", "defaults", "container", "services", "continue-on-error"])
+    if (k in classify) faults.push(`classify ${k}`);
+  for (const [id, job] of Object.entries({ classify, automerge }))
+    for (const c of DEPENDABOT_IF)
+      if (!String(job.if ?? "").includes(c)) faults.push(`${id} if: no ${c}`);
+  const steps = /** @type {Record<string, any>[]} */ (
+    Array.isArray(classify.steps) ? classify.steps : []
+  );
+  const [checkout, setup, ...rest] = steps;
+  if (
+    !/^actions\/checkout@[0-9a-f]{40}$/.test(String(checkout?.uses)) ||
+    JSON.stringify(Object.keys(checkout ?? {}).sort()) !== JSON.stringify(["uses", "with"]) ||
+    JSON.stringify(checkout?.with) !==
+      JSON.stringify({ ref: BASE_SHA, "persist-credentials": false })
+  )
+    faults.push("step 0: not the base commit's checkout alone");
+  if (
+    !/^actions\/setup-node@[0-9a-f]{40}$/.test(String(setup?.uses)) ||
+    setup?.with?.["node-version-file"] !== ".nvmrc" ||
+    setup?.with?.["node-version"] !== undefined ||
+    setup?.with?.["package-manager-cache"] !== false ||
+    setup?.with?.cache !== undefined
+  )
+    faults.push("step 1: not setup-node with .nvmrc and no cache");
+  if (/head\.|HEAD_SHA/.test(JSON.stringify([checkout, setup])))
+    faults.push("the head commit is named before setup-node");
+  const run = rest.map((s) => String(s.run ?? "")).join("\n");
+  for (const m of run.matchAll(/git show "\$HEAD_SHA:[^"]*"\s*>\s*(\S+)/g))
+    if (!m[1]?.startsWith('"$RUNNER_TEMP/')) faults.push(`head file written to ${m[1]}`);
+  if (WRITES_TREE.test(run)) faults.push(`writes the tree: ${WRITES_TREE.exec(run)?.[0]}`);
+  rest.forEach((s, i) => {
+    for (const k of ["working-directory", "shell"]) if (k in s) faults.push(`step ${i + 2} ${k}`);
+  });
+  const mergeSteps = /** @type {Record<string, any>[]} */ (
+    Array.isArray(automerge.steps) ? automerge.steps : []
+  );
+  if (mergeSteps.some((s) => String(s.uses ?? "").startsWith("actions/checkout@")))
+    faults.push("automerge checks out");
+  return faults;
+}
+
 describe("build supply chain: Dependabot", () => {
   it("dependabot-automerge classifies on base-branch code with a read-only token", () => {
     const all = jobs(workflow("dependabot-automerge.yml"));
@@ -182,9 +256,9 @@ describe("build supply chain: Dependabot", () => {
     );
     const run = steps.map((s) => String(s.run ?? "")).join("\n");
     expect(run).toMatch(/git show "\$HEAD_SHA:package-lock\.json"/);
-    expect(run).toMatch(/node tools\/deps\/release-path\.mjs --diff package-lock\.json /);
+    expect(run).toMatch(/node tools\/deps\/release-path\.ts --diff package-lock\.json /);
     expect(run).not.toMatch(/\bnpm (?:ci|install|i)\b|\bnpx\b|git (?:checkout|switch)/);
-    // Only names and versions release-path.mjs checked reach npm diff, which runs no scripts;
+    // Only names and versions release-path.ts checked reach npm diff, which runs no scripts;
     // an unchecked entry is printed with anything but [\w@./+-] replaced, so no newline in a
     // lockfile field can forge a line of the loop's input.
     expect(run).toMatch(/npm diff --ignore-scripts --diff="\$name@\$old" --diff="\$name@\$new"/);
@@ -201,6 +275,104 @@ describe("build supply chain: Dependabot", () => {
     );
     const decideStep = automergeSteps.find((s) => s.name === "Decide");
     expect(decideStep?.env?.RELEASE_PATH).toBe("${{ needs.classify.outputs.decision }}");
+  });
+
+  it("classify sets up Node on the base commit alone, before any of the head commit", () => {
+    expect(classifyFaults(workflow("dependabot-automerge.yml"))).toEqual([]);
+  });
+
+  const SETUP = "      - uses: actions/setup-node@";
+  const HEAD_LOCK = 'git show "$HEAD_SHA:package-lock.json" > "$RUNNER_TEMP/head-lock.json"';
+  it.each([
+    [
+      "the head's .npmrc written before setup-node",
+      (/** @type {string} */ t) =>
+        t.replace(
+          SETUP,
+          "      - run: |\n" +
+            '          git fetch origin "$HEAD_SHA"\n' +
+            '          git show "$HEAD_SHA:.npmrc" > .npmrc\n' +
+            SETUP,
+        ),
+      "step 1: not setup-node",
+    ],
+    [
+      "the head's lockfile written into the workspace",
+      (/** @type {string} */ t) =>
+        t.replace(HEAD_LOCK, 'git show "$HEAD_SHA:package-lock.json" > package-lock.json'),
+      "head file written to package-lock.json",
+    ],
+    [
+      "a checkout of the head",
+      (/** @type {string} */ t) =>
+        t.replace(
+          "ref: ${{ github.event.pull_request.base.sha }}",
+          "ref: ${{ github.event.pull_request.head.sha }}",
+        ),
+      "step 0",
+    ],
+    [
+      "setup-node with a bare major",
+      (/** @type {string} */ t) =>
+        t.replace(
+          /node-version-file: \.nvmrc\n(\s+)package-manager-cache/,
+          "node-version: 22\n$1package-manager-cache",
+        ),
+      "step 1",
+    ],
+    [
+      "git checkout of the head after it",
+      (/** @type {string} */ t) =>
+        t.replace(HEAD_LOCK, `${HEAD_LOCK}\n          git checkout "$HEAD_SHA" -- .`),
+      "writes the tree: git checkout",
+    ],
+    [
+      "a working directory on a later step",
+      (/** @type {string} */ t) =>
+        t.replace(
+          "        id: classify\n",
+          "        id: classify\n        working-directory: tools\n",
+        ),
+      "step 2 working-directory",
+    ],
+    [
+      "pull_request_target",
+      (/** @type {string} */ t) =>
+        t.replace("on:\n  pull_request:\n", "on:\n  pull_request_target:\n"),
+      "triggers: pull_request_target",
+    ],
+    [
+      "a workflow env",
+      (/** @type {string} */ t) =>
+        t.replace("permissions: {}\n", "permissions: {}\nenv:\n  A: b\n"),
+      "workflow env",
+    ],
+    [
+      "a classify env",
+      (/** @type {string} */ t) =>
+        t.replace("    timeout-minutes: 10\n", "    timeout-minutes: 10\n    env:\n      A: b\n"),
+      "classify env",
+    ],
+    [
+      "classify without the actor check",
+      (/** @type {string} */ t) => t.replace("if: github.actor == 'dependabot[bot]' && ", "if: "),
+      "classify if: no github.actor",
+    ],
+    [
+      "a checkout in automerge",
+      (/** @type {string} */ t) =>
+        t.replace(
+          "      - name: Dependabot metadata\n",
+          "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n" +
+            "      - name: Dependabot metadata\n",
+        ),
+      "automerge checks out",
+    ],
+  ])("classify's order check catches %s", (_, mutate, fault) => {
+    const text = workflow("dependabot-automerge.yml");
+    const mutated = mutate(text);
+    expect(mutated).not.toBe(text);
+    expect(classifyFaults(mutated).join("; ")).toContain(fault);
   });
 
   it("a release-path change is never auto-merged, security updates included", () => {

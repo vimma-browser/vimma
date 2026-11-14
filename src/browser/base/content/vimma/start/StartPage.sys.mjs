@@ -33,11 +33,31 @@ const FIREFOX_START = ["home", "newtab", "welcome"];
 // ValidatePrincipalCouldPotentiallyBeLoadedBy). The start page's flags say "parent process", so
 // with them the parent kills the process over the next message from Firefox's page, such as a
 // blob URL registration, and every tab in it crashes (#950). Set when Firefox's page is handed
-// out; cleared only when the last privilegedabout process that ran ends. Firefox keeps one alive
-// (dom.ipc.keepProcessesAlive.privilegedabout), so in practice it stays set until the next start.
-// Staying set too long only shows Firefox's page; clearing too early brings the kill back, so
-// nothing else clears it: getAllDOMProcesses leaves out a process that is still launching.
+// out; cleared only when the last privilegedabout process that ran ends while none of Firefox's
+// channels is still loading. Firefox keeps one alive (dom.ipc.keepProcessesAlive.privilegedabout),
+// so in practice it stays set until the next start. Staying set too long only shows Firefox's
+// page; clearing too early brings the kill back, so nothing else clears it: getAllDOMProcesses
+// leaves out a process that is still launching.
 let firefoxServed = false;
+
+// Firefox's channels handed out and not yet finished. A page's channel is pending from the moment
+// it is handed out until its content process is alive and noted below: the parent opens a
+// document channel as it creates it (DocumentLoadListener::Open), suspends it while it picks and
+// launches the process (OnStartRequest), and lets it finish only once that process is alive
+// (ContentParent::Init sends ipc:content-created before the launch resolves). A page whose process
+// is still launching, or not yet picked, when the last privilegedabout process ends is in neither
+// aboutIDs nor getAllDOMProcesses, so its channel keeps firefoxServed set (#984). Finished
+// channels are dropped, so a page that has reached its process holds nothing. Firefox's wrapper
+// for the loads it holds until its newtab add-on starts (AboutNewTabRedirector's suspended
+// channels, SuspendableChannelWrapper::IsPending) counts as loading until then, opened or not.
+/** @type {Set<any>} */
+const inFlight = new Set();
+
+/** Whether a Firefox channel handed out is still loading; drops the ones that finished. */
+function firefoxLoading() {
+  for (const channel of inFlight) if (!channel.isPending()) inFlight.delete(channel);
+  return inFlight.size > 0;
+}
 
 // The childIDs of the privilegedabout processes seen starting (ipc:content-created, sent once a
 // process is alive, with its remote type already set) and not yet ended.
@@ -65,7 +85,14 @@ function noteProcess(process) {
  */
 function processEnded(_subject, _topic, id) {
   const childID = Number(id);
-  if (aboutIDs.delete(childID) && aboutIDs.size === 0 && !privilegedAboutRuns(childID)) {
+  // Evaluated first, whatever the rest says, so finished channels never outlive a process's end.
+  const loading = firefoxLoading();
+  if (
+    aboutIDs.delete(childID) &&
+    aboutIDs.size === 0 &&
+    !privilegedAboutRuns(childID) &&
+    !loading
+  ) {
     firefoxServed = false;
   }
 }
@@ -109,7 +136,10 @@ function standIn(page) {
     newChannel(uri, loadInfo) {
       if (!redirecting()) {
         firefoxServed = true;
-        return firefox.newChannel(uri, loadInfo);
+        firefoxLoading(); // drops finished channels, so the set holds only loads in flight
+        const channel = firefox.newChannel(uri, loadInfo);
+        inFlight.add(channel);
+        return channel;
       }
       const start = startURI();
       loadInfo.resultPrincipalURI = start;

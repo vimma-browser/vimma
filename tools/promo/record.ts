@@ -46,9 +46,9 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { Ctl, findVimmaCtl } from "../e2e/driver.mjs";
-import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.mjs";
-import { startPageServer } from "../e2e/pages.mjs";
+import { Ctl, findVimmaCtl } from "../e2e/driver.ts";
+import { findBuild, launch, quitBrowser, startXvfb } from "../e2e/launcher.ts";
+import { startPageServer } from "../e2e/pages.ts";
 import { startShop } from "../agent-bench/shop.ts";
 import type { ScriptTurn } from "../agent-bench/scripted.ts";
 import {
@@ -59,7 +59,7 @@ import {
   startModelServer,
   textKeys,
 } from "./agent.ts";
-import { READ_PATH_PREF, devPrefs } from "../start.mjs";
+import { READ_PATH_PREF, devPrefs } from "../start.ts";
 import { flatCore } from "../sync-core.mjs";
 import {
   HOSTS,
@@ -184,7 +184,7 @@ async function promoLook(
 }
 
 /**
- * A local build's chrome files lead into its checkout's src/ (tools/start.mjs), which the
+ * A local build's chrome files lead into its checkout's src/ (tools/start.ts), which the
  * content sandbox must be allowed to read. The harness allows this checkout's; a build from
  * another checkout (--build ../vimma/engine/...) needs that one's too, or the content actors
  * (hints, scrolling) fail to load.

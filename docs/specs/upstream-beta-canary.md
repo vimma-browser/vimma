@@ -6,8 +6,9 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
 `tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs`,
 `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
-`tools/e2e/e2e.mjs`, `docs/rebase.md`, `docs/security.md`, `docs/runbook.md` · Upstream patches:
-none · ADR: amends [ADR-002](../adr/002-upstream-release-channel.md) and
+`tools/e2e/e2e.mjs` (Since changed: `e2e.ts`, ADR-025), `docs/rebase.md`, `docs/security.md`,
+`docs/runbook.md` · Upstream patches: none · ADR: amends
+[ADR-002](../adr/002-upstream-release-channel.md) and
 [ADR-010](../adr/010-pr-artifact-builds.md) (one paragraph each); no new ADR
 
 Issue: [#218](https://github.com/vimma-browser/vimma/issues/218)

@@ -146,6 +146,21 @@ docs/runbook.md, "Parallel browser lanes"), then
 same file with `--repeat=N` on two busy CPUs (docs/runbook.md, "Mochitests that send keys to a
 page").
 
+**Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
+browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
+(`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
+`firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
+names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files).
+`tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
+file may still have type errors, every other file, a new one included, may not, and a listed
+file that has none must come off the list. `Assert.equal` and its kin take an expected value of
+the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
+the wrong kind of thing, or asserts on a promise it forgot to await, fails the check. That holds
+only where the actual value has a type: `ChromeUtils.importESModule` returns `any` here, so what
+a test reads from one of Vimma's modules, and the JSDoc types a test gives such values, are not
+checked against the module yet; typing `importESModule` for each `chrome://` URL of Vimma's is
+the next step.
+
 ## 7. End-to-end scenarios and screenshots
 
 **What it proves.** That a real build, started as a user starts it with a fresh profile, does
@@ -154,16 +169,16 @@ it photographs match their baselines.
 
 **Where.** In the same `e2e.yml` job: first the harness's own tests (`npx vitest run
 tools/e2e/`, with a real Xvfb and vimma-ctl), and after the mochitests the scenarios,
-`npm run e2e -- --artifact`. `tools/e2e/e2e.mjs` runs each JSON scenario in
+`npm run e2e -- --artifact`. `tools/e2e/e2e.ts` runs each JSON scenario in
 `tests/e2e/scenarios/` in its own temporary profile and browser under its own Xvfb, sends keys
 and reads state with vimma-ctl, and can restart the browser on the same profile, or kill it as a
-crash would. A screenshot is compared with `tests/e2e/baselines/<name>.png` (`screenshot.mjs`): a
+crash would. A screenshot is compared with `tests/e2e/baselines/<name>.png` (`screenshot.ts`): a
 pixel differs when a channel is more than 2 off, and more than 0.5 % of differing pixels fails.
 A scenario marked pending is reported as a notice and passes nothing; the suite has a 5-minute
 budget; `--update-baselines` is refused when `CI` is set, so a baseline changes only in a
 reviewed commit that says why.
 
-The browser gets an allowlisted environment (`browserEnv` in `launcher.mjs`): none of the
+The browser gets an allowlisted environment (`browserEnv` in `launcher.ts`): none of the
 desktop's scaling, theme, locale or Wayland variables, but fixed ones (`LANG=C.UTF-8`, `TZ=UTC`,
 `GTK_THEME=Adwaita`) and `HOME` inside the profile; the profile pins the pixel ratio and a light
 theme.

@@ -35,7 +35,7 @@ const { TabStateFlusher } = ChromeUtils.importESModule(
 
 const PAGE = "https://example.com/";
 
-/** @type {Window[]} */
+/** @type {BrowserWindow[]} */
 const windows = [];
 /** @type {string[]} */
 const created = [];
@@ -52,7 +52,10 @@ function workspace(name) {
   return w;
 }
 
-/** Restores `winState` into `win`, overwriting its tabs, and waits for SessionStore to finish. */
+/**
+ * Restores `winState` into `win`, overwriting its tabs, and waits for SessionStore to finish.
+ * @param {BrowserWindow} win @param {object} winState
+ */
 async function restoreInto(win, winState) {
   const restored = BrowserTestUtils.waitForEvent(win, "SSWindowRestored");
   SessionStore.setWindowState(win, JSON.stringify({ windows: [winState] }), true);
@@ -60,7 +63,7 @@ async function restoreInto(win, winState) {
   await TestUtils.waitForTick();
 }
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
@@ -91,13 +94,13 @@ async function openWindow() {
 
 /**
  * What is out of step between the window's model and its live tabs; [] when nothing is.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 function outOfStep(win) {
   const ww = WindowWorkspaces.get(win);
   const model = ww.model;
   const problems = [];
-  const inModel = new Set(model.workspaces.flatMap((w) => w.tabs));
+  const inModel = new Set(model.workspaces.flatMap((/** @type {WorkspaceState} */ w) => w.tabs));
   for (const tab of win.gBrowser.tabs) {
     if (tab.pinned || tab.closing || !tab.isConnected) continue;
     const id = ww.idOf(tab);
@@ -109,7 +112,9 @@ function outOfStep(win) {
   }
   const selected = win.gBrowser.selectedTab;
   if (!selected.pinned) {
-    const listed = pickerWorkspaces(win).workspaces.flatMap((w) => w.tabs);
+    const listed = pickerWorkspaces(win).workspaces.flatMap(
+      (/** @type {{ tabs: string[] }} */ w) => w.tabs,
+    );
     const key = selected.linkedPanel || ww.idOf(selected);
     if (!listed.includes(key)) problems.push("tab search does not list the selected tab");
   }
@@ -119,7 +124,7 @@ function outOfStep(win) {
 /**
  * Opens tabs the way the maintainer's report did: `t` (foreground), `gF` (background) and a
  * link opened in the background.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 async function useWindow(win) {
   await BrowserTestUtils.openNewForegroundTab(win.gBrowser, `${PAGE}?t`);
@@ -138,7 +143,7 @@ async function useWindow(win) {
  * macOS, where the app keeps running, is the next window the user opens. The harness's own window
  * stops counting as a browser window meanwhile, as SessionStore's own tests of this path do
  * (browser_354894_perwindowpb.js).
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 async function closeAsLastWindow(win) {
   await TabStateFlusher.flushWindow(win);
@@ -149,7 +154,7 @@ async function closeAsLastWindow(win) {
 
 /**
  * Opens tabs in the reopened window and checks that its model follows them.
- * @param {Window} win
+ * @param {BrowserWindow} win
  */
 async function usedInStep(win) {
   await useWindow(win);
@@ -160,8 +165,8 @@ async function usedInStep(win) {
 
 /**
  * Closes a window prepared by `prepare` as the last one, opens another, then runs `then` on it.
- * @param {(first: Window) => Promise<void>} prepare
- * @param {(win: Window) => Promise<void>} [then]
+ * @param {(first: BrowserWindow) => Promise<void>} prepare
+ * @param {(win: BrowserWindow) => Promise<void>} [then]
  */
 async function lastWindowCase(prepare, then = usedInStep) {
   await SpecialPowers.pushPrefEnv({
@@ -171,10 +176,11 @@ async function lastWindowCase(prepare, then = usedInStep) {
       ["browser.sessionstore.persist_closed_tabs_between_sessions", true],
     ],
   });
-  const type = document.documentElement.getAttribute("windowtype");
+  // A browser window's root always has its windowtype, navigator:browser.
+  const type = /** @type {string} */ (document.documentElement.getAttribute("windowtype"));
   document.documentElement.setAttribute("windowtype", "navigator:testrunner");
   const brackets = watchBrackets();
-  /** @type {Window | null} */
+  /** @type {BrowserWindow | null} */
   let win = null;
   try {
     const first = await openWindow();
@@ -199,7 +205,7 @@ async function lastWindowCase(prepare, then = usedInStep) {
   }
 }
 
-/** A window with a closed tab and an open one. @param {Window} first */
+/** A window with a closed tab and an open one. @param {BrowserWindow} first */
 async function withAClosedTab(first) {
   const gone = await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?closed`);
   BrowserTestUtils.removeTab(gone);
@@ -224,7 +230,9 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
   const a2 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-a2`);
   w0.gBrowser.selectedTab = a1;
   await until(
-    () => ww0.model.workspaces.find((w) => w.id === A.id).activeTab === ww0.idOf(a1),
+    () =>
+      ww0.model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === A.id).activeTab ===
+      ww0.idOf(a1),
     "A's selected tab is its first page",
   );
   ww0.switchTo({ id: B.id });
@@ -234,8 +242,10 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
   const uuids = new Map([a1, a2, b1].map((t) => [t, uuid(t)]));
   await TabStateFlusher.flushWindow(w0);
   await TestUtils.waitForTick();
-  const winState = JSON.parse(SessionStore.getBrowserState()).windows.find((w) =>
-    w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?dr-b1`)),
+  /** @typedef {{ tabs: { entries: { url: string }[] }[] }} SavedWindow SessionStore's JSON */
+  const winState = JSON.parse(SessionStore.getBrowserState()).windows.find(
+    (/** @type {SavedWindow} */ w) =>
+      w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?dr-b1`)),
   );
   await BrowserTestUtils.closeWindow(w0);
 
@@ -272,7 +282,8 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
     Assert.ok(!/\n {2}restore pending/.test(report), "and no restore pending");
 
     const model = ww.model;
-    const ws = (/** @type {string} */ id) => model.workspaces.find((w) => w.id === id);
+    const ws = (/** @type {string} */ id) =>
+      model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id);
     Assert.deepEqual(
       ws(A.id).tabs.slice(-2),
       [uuids.get(a1), uuids.get(a2)],
