@@ -616,6 +616,37 @@ add_task(async function shift_v_selects_the_block_line_wise() {
   });
 });
 
+add_task(async function v_on_a_partly_visible_block_does_not_scroll_the_page() {
+  await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
+  await withPage(PAGE, async (browser) => {
+    await focusBlock(browser, "q");
+    await waitForRingOn(browser, "q");
+    // Half of the quote scrolled above the top: on screen, so v leaves the page where it is.
+    const scrolled = await SpecialPowers.spawn(browser, [], () => {
+      const r = /** @type {Element} */ (
+        content.document.getElementById("q")
+      ).getBoundingClientRect();
+      content.scrollBy(0, Math.round(r.top + r.height / 2));
+      const now = /** @type {Element} */ (
+        content.document.getElementById("q")
+      ).getBoundingClientRect();
+      return { y: content.scrollY, top: now.top, bottom: now.bottom };
+    });
+    Assert.ok(scrolled.top < 0 && scrolled.bottom > 0, "the quote is partly on screen");
+    EventUtils.synthesizeKey("v");
+    await waitForMode(browser, "visual");
+    await TestUtils.waitForCondition(
+      async () => (await selectionIn(browser)).text === "A quote with text of its own.",
+      "the quote is selected",
+    );
+    Assert.equal(
+      await SpecialPowers.spawn(browser, [], () => content.scrollY),
+      scrolled.y,
+      "the page did not scroll",
+    );
+  });
+});
+
 add_task(async function y_copies_the_block_without_selecting_it() {
   await withPage(PAGE, async (browser) => {
     const before = await selectionIn(browser);
