@@ -321,7 +321,8 @@ export class GrepSession {
   /**
    * Whether the open picker has more to draw for what was typed: a search whose rows are still
    * to come, or the selected result's preview (`state.grep`, docs/specs/m0-control-protocol-and-
-   * vimma-ctl.md; #1006). It is set as a key is handled, so a reader right after the key sees it.
+   * vimma-ctl.md; #1006). A key that leaves a query to search sets it as the key is handled, so
+   * a reader right after the key sees it; one that empties the query leaves nothing to come.
    */
   get busy() {
     return this.info.busy || this.previewing !== null;

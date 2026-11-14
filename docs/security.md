@@ -116,10 +116,11 @@ only the agent workspace, and every request asks you first (§12).
   [`test_state_names_each_top_level_field`](../tests/browser/browser_vimma_control.js),
   [`agent.armed is a flag, and downloads a word from a closed list or null`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_the_line_armed_as_drawn`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
-  [`test_state_reports_the_segment_as_drawn`](../tests/browser/browser_vimma_downloads.js)
+  [`test_state_reports_the_segment_as_drawn`](../tests/browser/browser_vimma_downloads.js),
   [`grep and urlbar are one flag each, or null`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_live_grep_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
-  [`test_state_reports_the_suggestion_list_as_drawn`](../tests/browser/browser_vimma_state_waits.js)
+  [`test_state_reports_the_suggestion_list_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
+  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

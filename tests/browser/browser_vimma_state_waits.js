@@ -18,6 +18,15 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
+const { VimmaHost } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
+);
+const { UrlbarTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/UrlbarTestUtils.sys.mjs",
+);
+const { ProvidersManager } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/urlbar/UrlbarProvidersManager.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "");
 const PAGE = `https://example.com${DIR}file_vimma_grep.html`;
@@ -171,5 +180,52 @@ add_task(async function test_state_reports_the_suggestion_list_as_drawn() {
   Assert.strictEqual(hidden.urlbar, null, "a private window's suggestions stay out of state");
   await BrowserTestUtils.closeWindow(priv);
   await SimpleTest.promiseFocus(window);
+  await SpecialPowers.popPrefEnv();
+});
+
+// A query that has drawn its first results but not finished is not settled, also when the
+// watcher starts listening in the middle of it: a window whose address bar took focus before
+// Vimma's window init hears no focus before the first `state` read.
+add_task(async function test_a_query_under_way_is_not_settled_even_heard_late() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.urlbar.suggest.searches", false],
+      ["browser.urlbar.suggest.history", false],
+      ["browser.urlbar.suggest.bookmark", false],
+      ["browser.urlbar.suggest.openpage", false],
+      ["browser.urlbar.suggest.topsites", false],
+    ],
+  });
+  // A provider that holds every query open until released, after the heuristic row is drawn.
+  const held = Promise.withResolvers();
+  const provider = new UrlbarTestUtils.TestProvider({ delayResultsPromise: held.promise });
+  const manager = ProvidersManager.getInstanceForSap("urlbar");
+  manager.registerProvider(provider);
+
+  /** @type {any} UrlbarInput: the harness's type names only what other tests use */
+  const bar = gURLBar;
+  bar.focus();
+  bar.select();
+  type("about:blank");
+  await until(
+    () => bar.view.isOpen && bar.view.queryContext?.searchString === "about:blank",
+    "the heuristic row of the full address is drawn",
+  );
+  Assert.deepEqual(state().urlbar, { settled: false }, "heard from the start: still under way");
+
+  // Listening only from now on, as on a window that heard no focus.
+  const queries = /** @type {any} */ (VimmaHost._state(window)).urlbarQueries;
+  queries.destroy();
+  Assert.deepEqual(state().urlbar, { settled: false }, "heard late: still under way");
+  await TestUtils.waitForTick();
+  Assert.deepEqual(state().urlbar, { settled: false }, "and still after a tick");
+
+  held.resolve(undefined);
+  await until(() => state().urlbar?.settled === true, "settled once the query has finished");
+
+  manager.unregisterProvider(provider);
+  bar.view.close();
+  bar.handleRevert();
+  gBrowser.selectedBrowser.focus();
   await SpecialPowers.popPrefEnv();
 });

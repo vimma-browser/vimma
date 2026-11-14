@@ -2255,48 +2255,56 @@ VimmaUpdates.addListener(() => {
  * Firefox starts a query on each key typed in the field and draws each one's results as they
  * come; this follows the query under way through the controller's own notifications, which
  * reach the list first (it listens from the field's start), so the flag turns once the list
- * has drawn the end of the query. It finds the field by its id when first read, never through
- * `gURLBar`: that getter, read before the field exists, leaves the window without one.
+ * has drawn the end of the query. It finds the field by its id, never through `gURLBar`: that
+ * getter, read before the field exists, leaves the window without one. It starts listening at
+ * window init when the field is there, else at the first focus or `state` read; one that starts
+ * late counts the field's last query as under way until that query's promise settles, since the
+ * notification of its start was missed.
  */
 class UrlbarQueries {
   /** @param {BrowserWindow} win */
   constructor(win) {
     this.win = win;
-    /** @type {any} the address bar (UrlbarInput), once found */
+    /** @type {UrlbarInput | null} the address bar, once found */
     this.bar = null;
-    /** @type {any} the controller listened to: the field makes a new one when it starts again */
+    /** @type {UrlbarInput["controller"] | null} the controller listened to (one per field) */
     this.controller = null;
-    /** @type {unknown} the id of the query under way, until it finishes or is cancelled */
+    /** @type {unknown} the id of the query under way (LATE: one begun before listening) */
     this.running = null;
+    /** @type {UrlbarQueryListener} */
     this.listener = {
-      /** @param {{ id: unknown }} context */
       onQueryStarted: (context) => {
         this.running = context.id;
       },
-      /** @param {{ id: unknown }} context */
-      onQueryFinished: (context) => this.ended(context),
-      /** @param {{ id: unknown }} context */
-      onQueryCancelled: (context) => this.ended(context),
+      onQueryFinished: (context) => this.ended(context.id),
+      onQueryCancelled: (context) => this.ended(context.id),
     };
-    // A query starts from a focused field: listening from the first focus misses none.
+    // A query starts from a focused field: listening from the first focus misses none, unless
+    // the field had focus before this window's init (handled in attach).
     this.onFocus = () => this.attach();
     win.addEventListener("focusin", this.onFocus, true);
+    this.attach();
   }
 
-  /** Listens to the field's current controller. */
+  /** Listens to the field's controller, once it exists. */
   attach() {
-    this.bar ??= this.win.document.getElementById("urlbar");
+    if (this.controller) return;
+    this.bar ??= /** @type {UrlbarInput | null} */ (this.win.document.getElementById("urlbar"));
     const controller = this.bar?.controller;
-    if (!controller || controller === this.controller) return;
-    this.controller?.removeListener(this.listener);
+    if (!this.bar || !controller) return;
     controller.addListener(this.listener);
     this.controller = controller;
-    this.running = null;
+    this.win.removeEventListener("focusin", this.onFocus, true);
+    // A query begun before now announced its start unheard: it is under way until the field's
+    // last query promise settles (at once when none ran), or until a newer query starts.
+    this.running = LATE;
+    const done = () => this.ended(LATE);
+    this.bar.lastQueryContextPromise.then(done, done);
   }
 
-  /** @param {{ id: unknown }} context */
-  ended(context) {
-    if (context.id === this.running) this.running = null;
+  /** @param {unknown} id */
+  ended(id) {
+    if (id === this.running) this.running = null;
   }
 
   /**
@@ -2308,9 +2316,9 @@ class UrlbarQueries {
    */
   drawn() {
     this.attach();
-    const view = this.bar?.view;
-    if (!view?.isOpen) return null;
-    const searched = view.queryContext?.searchString === this.bar.lastSearchString;
+    const bar = this.bar;
+    if (!bar?.view.isOpen) return null;
+    const searched = bar.view.queryContext?.searchString === bar.lastSearchString;
     return { settled: this.running === null && searched };
   }
 
@@ -2320,3 +2328,6 @@ class UrlbarQueries {
     this.controller = null;
   }
 }
+
+/** UrlbarQueries' mark for a query that began before it listened. */
+const LATE = Symbol("late");
