@@ -205,6 +205,7 @@ add_setup(async () => {
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("codex"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);
+    Services.prefs.clearUserPref(MCP_ENABLED_PREF);
     Services.env.set("FAKE_CLI_REPORT", "");
     Services.env.set("FAKE_CODEX_SERVERS", "");
     await IOUtils.remove(fake.dir, { recursive: true, ignoreAbsent: true });

@@ -2,16 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { errorsByFile, ratchetErrors, readAllowlist } from "../mochitest-typecheck.ts";
 
 // tools/mochitest-typecheck.ts runs tests/tsconfig.json's program (npm run typecheck) and holds
 // it to tools/test/mochitest-allowlist.txt: the files there may still have type errors, every
 // other file may not, and a listed file that has none must come off the list (issue #959).
-const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const LIST = new URL("mochitest-allowlist.txt", import.meta.url);
 
 describe("the mochitest type-check ratchet (#959)", () => {
@@ -103,21 +100,9 @@ describe("the mochitest type-check ratchet (#959)", () => {
     ]);
   });
 
-  // Whether each listed file still has errors takes a full tsc run, which npm run typecheck
-  // makes; this checks the list's shape.
-  it("lists tracked JavaScript test files, sorted, each once", () => {
-    const tracked = execFileSync("git", ["ls-files", "-z", "--", "tests"], {
-      cwd: ROOT,
-      encoding: "utf8",
-    })
-      .split("\0")
-      .filter(Boolean);
-    const listed = readAllowlist(readFileSync(LIST, "utf8"));
-    expect(listed.length).toBeGreaterThan(0);
-    for (const p of listed) {
-      expect(tracked).toContain(p);
-      expect(p).toMatch(/^tests\/.*\.js$/);
-    }
-    expect(listed).toEqual([...new Set(listed)].sort());
+  // Every file under tests/ type-checks now: the list is empty, and nothing is ever added to it
+  // (a new test file is checked from its first commit).
+  it("is empty: every JavaScript file under tests/ type-checks", () => {
+    expect(readAllowlist(readFileSync(LIST, "utf8"))).toEqual([]);
   });
 });

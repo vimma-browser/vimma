@@ -36,6 +36,16 @@ const FETCHED_TABLES = ["googpub-phish-proto", "goog-malware-proto", "goog-unwan
 
 const defaults = Services.prefs.getDefaultBranch("");
 
+/**
+ * A value the test's own lookup or wait found. It changes nothing at run time: a read through a
+ * missing one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
 /** @param {string} name */
 function defaultBool(name) {
   return Services.prefs.prefHasDefaultValue(name) ? defaults.getBoolPref(name) : undefined;
@@ -126,10 +136,13 @@ add_task(async function test_keyless_build_is_honestly_off() {
   }
 
   await BrowserTestUtils.withNewTab("about:preferences#privacy", async (browser) => {
-    const doc = browser.contentDocument;
-    const box = await TestUtils.waitForCondition(
-      () => doc.getElementById("enableSafeBrowsing"),
-      "the Safe Browsing checkbox is rendered",
+    // Settings runs in the parent process, so the tab's document is here.
+    const doc = found(browser.contentDocument);
+    const box = /** @type {MozCheckboxElement} */ (
+      await TestUtils.waitForCondition(
+        () => doc.getElementById("enableSafeBrowsing"),
+        "the Safe Browsing checkbox is rendered",
+      )
     );
     await box.updateComplete;
     Assert.strictEqual(box.checked, false, "Settings shows Safe Browsing off");

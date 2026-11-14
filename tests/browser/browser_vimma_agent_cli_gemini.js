@@ -251,6 +251,7 @@ add_setup(async () => {
     McpHost.configureAgent(savedConfig);
     Services.prefs.clearUserPref(pathPref("gemini"));
     Services.prefs.clearUserPref(VIMMA_CTL_PREF);
+    Services.prefs.clearUserPref(MCP_ENABLED_PREF);
     Services.env.set("FAKE_CLI_REPORT", "");
     Services.env.set("GEMINI_CLI_HOME", "");
     Services.env.set("FAKE_GEMINI_SERVERS", "");

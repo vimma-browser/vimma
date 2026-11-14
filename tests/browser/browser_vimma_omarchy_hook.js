@@ -28,8 +28,11 @@ function rgb(/** @type {string} */ hex) {
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
-const barBackground = () =>
-  getComputedStyle(document.getElementById("vimma-statusbar")).backgroundColor;
+function barBackground() {
+  const bar = document.getElementById("vimma-statusbar");
+  if (!bar) throw new Error("the window has no status bar");
+  return getComputedStyle(bar).backgroundColor;
+}
 
 /**
  * What nsCommandLine::Run does with a command line from another process (it is not scriptable):
@@ -44,7 +47,8 @@ function runHandlers(cmdLine) {
     try {
       Cc[value].getService(Ci.nsICommandLineHandler).handle(cmdLine);
     } catch (e) {
-      if (e.result === Cr.NS_ERROR_ABORT) throw e;
+      // An XPCOM exception has its nsresult; anything else thrown has none.
+      if (/** @type {{ result?: number }} */ (e).result === Cr.NS_ERROR_ABORT) throw e;
     }
   }
 }
@@ -79,10 +83,9 @@ add_task(async function test_remote_reload_theme() {
     if (topic === "domwindowopened") opened++;
   };
   Services.ww.registerNotification(onWindow);
-  const cmdLine = Cu.createCommandLine(
-    ["-vimma-reload-theme"],
-    null,
-    Ci.nsICommandLine.STATE_REMOTE_AUTO,
+  // An nsISupports in the IDL; the command line's class info gives it nsICommandLine.
+  const cmdLine = /** @type {nsICommandLine} */ (
+    Cu.createCommandLine(["-vimma-reload-theme"], null, Ci.nsICommandLine.STATE_REMOTE_AUTO)
   );
   runHandlers(cmdLine);
 

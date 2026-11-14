@@ -630,6 +630,10 @@ interface nsICategoryManager {
 
 // engine/toolkit/components/commandlines/nsICommandLine.idl
 interface nsICommandLine extends nsISupports {
+  /** The arguments not handled yet. */
+  readonly length: number;
+  /** A handler set it: the browser's own handler opens nothing for the line. */
+  preventDefault: boolean;
   /** The flag's index among the arguments, -1 when it is not there. */
   findFlag(flag: string, caseSensitive: boolean): number;
 }
@@ -770,6 +774,8 @@ interface nsIOutputStream extends nsISupports {
 // value); Services.urlFormatter is its service (the folder's components.conf, js_name).
 interface nsIURLFormatter {
   formatURLPref(pref: string): string;
+  /** The same for a URL given as a string. */
+  formatURL(format: string): string;
 }
 interface FirefoxServices {
   urlFormatter: nsIURLFormatter;
@@ -1146,3 +1152,115 @@ interface FetchEvent extends ExtendableEvent {
   readonly request: Request;
   respondWith(response: Response | Promise<Response>): void;
 }
+
+// engine/toolkit/content/widgets/moz-checkbox/moz-checkbox.mjs (MozCheckbox, a Lit element, as
+// Settings' checkboxes are): `updateComplete` is Lit's ReactiveElement promise, resolved once
+// the pending render is done.
+interface MozCheckboxElement extends HTMLElement {
+  checked: boolean;
+  readonly updateComplete: Promise<boolean>;
+}
+
+// engine/netwerk/base/nsIURI.idl: the path with its query and fragment.
+interface nsIURI {
+  readonly pathQueryRef: string;
+}
+
+// engine/dom/interfaces/base/nsIDOMProcessParent.idl: a content process, as a window global's
+// `domProcess` gives it (types/firefox.d.ts declares only its remote type there).
+interface DOMProcessParent {
+  readonly remoteType: string | null;
+  readonly childID: number;
+}
+
+// engine/dom/chrome-webidl/MessageManager.webidl (MessageBroadcaster): Services.ppmm, the parent
+// process's message manager. releaseCachedProcesses ends the content processes kept alive after
+// their last tab (dom.ipc.keepProcessesAlive.*).
+interface FirefoxServices {
+  readonly ppmm: { releaseCachedProcesses(): void };
+}
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs: the remote type of the process the
+// browser's page runs in (its context's currentRemoteType, "" for a page in the parent; undefined
+// without a context), and its back button's command.
+interface MozBrowser {
+  readonly remoteType: string | undefined;
+  goBack(requireUserInteraction?: boolean): void;
+}
+
+// engine/netwerk/base/nsIRequest.idl: a load in progress; `status` is a failure code once it
+// failed (NS_OK until then).
+interface nsIRequest {
+  readonly status: number;
+  isPending(): boolean;
+  suspend(): void;
+  resume(): void;
+  cancel(status: number): void;
+}
+
+// engine/toolkit/components/downloads/Downloads.sys.mjs, DownloadList.sys.mjs and
+// DownloadCore.sys.mjs: the downloads module as the tests use it. A test file types its import
+// of the module with DownloadsApi (ChromeUtils.importESModule gives Firefox's modules as `any`).
+// The list kinds are strings ("{Downloads.PUBLIC}").
+interface DownloadsApi {
+  readonly PUBLIC: string;
+  readonly PRIVATE: string;
+  readonly ALL: string;
+  getList(kind: string): Promise<FirefoxDownloadList>;
+  /** `properties` as Download's serializable form: `source` and `target` are a URL or path
+   * string, or an object with one. */
+  createDownload(properties: object): Promise<FirefoxDownload>;
+}
+interface FirefoxDownloadList {
+  getAll(): Promise<FirefoxDownload[]>;
+  add(download: FirefoxDownload): Promise<void>;
+  remove(download: FirefoxDownload): Promise<void>;
+  /** Calls onDownloadAdded at once for every download already in the list. */
+  addView(view: DownloadListView): void;
+  removeView(view: DownloadListView): void;
+}
+interface DownloadListView {
+  onDownloadAdded?(download: FirefoxDownload): void;
+  onDownloadChanged?(download: FirefoxDownload): void;
+  onDownloadRemoved?(download: FirefoxDownload): void;
+}
+// The members the tests read beyond the product's (types/firefox.d.ts). `error` is a
+// DownloadError once the download failed.
+interface FirefoxDownload {
+  readonly succeeded: boolean;
+  readonly canceled: boolean;
+  readonly hasProgress: boolean;
+  readonly error: DownloadError | null;
+  /** A `.part` file holds bytes kept after a pause (tryToKeepPartialData). */
+  readonly hasPartialData: boolean;
+  /** Blocked by a verdict, with its bytes kept for the user to unblock. */
+  readonly hasBlockedData: boolean;
+  /** Its file was deleted through Firefox's "Delete" (DownloadsCommon). */
+  readonly deleted: boolean;
+  /** Resolves once it succeeded; rejects with its DownloadError when it fails. */
+  start(): Promise<void>;
+  cancel(): Promise<void>;
+  /** Lets a download blocked with its data kept finish; resolves once it succeeded. */
+  unblock(): Promise<void>;
+  refresh(): Promise<void>;
+}
+// The product declares DownloadError (types/firefox.d.ts); the tests also read becauseBlocked.
+interface DownloadError {
+  readonly becauseBlocked?: boolean;
+}
+
+// engine/uriloader/exthandler/nsIHandlerService.idl (nsIHandlerInfo) and nsIMIMEInfo.idl: how
+// Firefox handles a type; `preferredAction` is one of nsIHandlerInfo's action constants.
+interface nsIHandlerInfo {
+  preferredAction: number;
+  alwaysAskBeforeHandling: boolean;
+}
+interface nsIMIMEInfo extends nsIHandlerInfo {}
+
+// engine/toolkit/modules/FileUtils.sys.mjs, a global of the browser window (browser.js's lazy
+// getters): `File` makes an nsIFile for an absolute path.
+declare var FileUtils: { File: new (path: string) => nsIFile };
+
+// engine/toolkit/content/contentAreaUtils.js, loaded in the browser window: Save Page As for the
+// page in `browser`.
+declare function saveBrowser(browser: MozBrowser, skipPrompt?: boolean): void;
