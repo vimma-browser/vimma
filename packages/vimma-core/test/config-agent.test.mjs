@@ -1,7 +1,7 @@
 // docs/specs/builtin-agent.md Behaviour 8-9, 32, 34, B8, B10, B11, B17: `[agent]`, a schema-2
 // table with the providers by endpoint and model only.
 import { describe, expect, test } from "vitest";
-import { AGENT_DEFAULTS, parseConfig, reloadConfig } from "../src/config.mjs";
+import { AGENT_DEFAULTS, parseConfig, reloadConfig } from "../src/config/config.mjs";
 
 /** @param {...string} lines */
 const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
@@ -10,7 +10,7 @@ const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
 function ok(text) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config.mjs").ResolvedConfig} */ (r.config);
+  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
 }
 
 /** @param {string} text */

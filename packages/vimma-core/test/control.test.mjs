@@ -15,7 +15,7 @@ import {
   UPDATE_STAGES,
   CHAT_VIEWS,
   controlUpdateState,
-} from "../src/control.mjs";
+} from "../src/control/control.mjs";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v1/", import.meta.url));
 const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
@@ -34,7 +34,7 @@ const req = (command, args = {}, id = 1) => ({ type: "request", id, command, arg
 const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
 /**
  * @param {unknown} message
- * @param {import("../src/control.mjs").ValidateOptions} [options]
+ * @param {import("../src/control/control.mjs").ValidateOptions} [options]
  */
 const errorsOf = (message, options) => validateMessage(message, options).errors;
 

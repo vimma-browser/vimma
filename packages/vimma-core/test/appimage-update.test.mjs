@@ -9,13 +9,13 @@ import {
   downloadProblem,
   ownAppImage,
   stagedSteps,
-} from "../src/appimage-update.mjs";
-import { RELEASES_URL } from "../src/updates.mjs";
+} from "../src/updates/appimage-update.mjs";
+import { RELEASES_URL } from "../src/updates/updates.mjs";
 
 const H = (/** @type {string} */ c) => c.repeat(128);
 const URL = `${RELEASES_URL}/download/v0.3.1/vimma-0.3.1-x86_64.AppImage`;
 
-/** @param {Partial<import("../src/updates.mjs").Offer>} [o] */
+/** @param {Partial<import("../src/updates/updates.mjs").Offer>} [o] */
 const offer = (o = {}) => ({
   appVersion: "158.0.1",
   buildId: "20261028031500",

@@ -7,7 +7,7 @@
 // and the results it has not seen yet), so that a change meant to make the agent faster or
 // cheaper (docs/specs/agent-speed.md) is measured against the part it targets.
 
-import type { Fetch } from "../../packages/vimma-core/src/agent-providers.mjs";
+import type { Fetch } from "../../packages/vimma-core/src/agent/agent-providers.mjs";
 
 /**
  * Characters of a request body. `latest`: tool results after the model's last turn, which a

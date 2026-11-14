@@ -3,8 +3,8 @@
 // any input, and stay fast on the long runs that made the expression slow.
 import { describe, expect, test } from "vitest";
 import fc from "fast-check";
-import { deleteWordBackward, trimBlanks, trimTrailing } from "../../src/strings.mjs";
-import { redactReport } from "../../src/report.mjs";
+import { deleteWordBackward, trimBlanks, trimTrailing } from "../../src/text/strings.mjs";
+import { redactReport } from "../../src/ui/report.mjs";
 import { FUZZ_TIMEOUT, fuzz, nastyString, within } from "./harness.mjs";
 
 /** Strings rich in the characters the old expressions backtracked on. */

@@ -14,7 +14,7 @@ import {
   base64Encode,
   spkiKeyId,
   verifyManifest,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { buildManifest, buildNightlyManifest, serialAt } from "../manifest.mjs";
 import { addSignaturePlaceholder, insertSignature, readMar, verifyMar } from "../mar.mjs";
 

@@ -1,9 +1,9 @@
 import { test, expect } from "vitest";
 import fc from "fast-check";
-import { parseKey, formatKey, parseBinding, formatBinding, NAMED_KEYS } from "../src/keys.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { MODES } from "../src/modes.mjs";
-import { createDispatcher } from "../src/dispatcher.mjs";
+import { parseKey, formatKey, parseBinding, formatBinding, NAMED_KEYS } from "../src/keys/keys.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { MODES } from "../src/keys/modes.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
 
 const printable = fc.constantFrom(
   ..."abcdefghijklmnopqrstuvwxyz0123456789[]\\;',./`=?!@#$%^&*()_{}|:\"<>~-+",

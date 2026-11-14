@@ -25,8 +25,8 @@ import {
   fillFits,
   ranNotice,
   shownNotice,
-} from "../src/agent-prompt.mjs";
-import { textWidth } from "../src/textwidth.mjs";
+} from "../src/agent/agent-prompt.mjs";
+import { textWidth } from "../src/text/textwidth.mjs";
 
 const MIN = 60_000;
 const label = { client: "example-agent", via: "example" };
@@ -1045,7 +1045,7 @@ describe("vimma_show's question and notice (mcp-drive D2-D6)", () => {
 
 describe(":mcp log of a show that failed after the yes (mcp-drive D14)", () => {
   test("it reads as failed, not as allowed", () => {
-    /** @type {import("../src/agent.mjs").LogEntry} */
+    /** @type {import("../src/agent/agent.mjs").LogEntry} */
     const e = {
       at: 0,
       client: "claude-code",

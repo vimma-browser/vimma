@@ -55,7 +55,6 @@ tests/browser/browser_vimma_live_grep.js
 tests/browser/browser_vimma_live_grep_windows.js
 tests/browser/browser_vimma_logo_theme.js
 tests/browser/browser_vimma_mcp_downloads.js
-tests/browser/browser_vimma_mozilla_services.js
 tests/browser/browser_vimma_multiple_splits.js
 tests/browser/browser_vimma_nav_keys.js
 tests/browser/browser_vimma_normal_extras.js

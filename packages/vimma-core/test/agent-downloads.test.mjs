@@ -30,7 +30,7 @@ import {
   zipEntryNames,
   zipLocate,
   zipVerdict,
-} from "../src/agent-downloads.mjs";
+} from "../src/agent/agent-downloads.mjs";
 
 const enc = new TextEncoder();
 

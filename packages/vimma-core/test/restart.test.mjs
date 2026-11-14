@@ -12,10 +12,10 @@ import {
   restartConfirmation,
   restartKeepsTabs,
   restartPlan,
-} from "../src/restart.mjs";
-import { parseCommandLine } from "../src/cmdline.mjs";
-import { getAction } from "../src/actions.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
+} from "../src/updates/restart.mjs";
+import { parseCommandLine } from "../src/keys/cmdline.mjs";
+import { getAction } from "../src/keys/actions.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 
 const APPIMAGE = "/home/u/Applications/vimma-0.1.0-x86_64.AppImage";
 

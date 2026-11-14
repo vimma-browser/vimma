@@ -10,9 +10,9 @@ import {
   CHALLENGE_CONTEXT,
   tokensEqual,
   validateMessage,
-} from "../../../packages/vimma-core/src/control.mjs";
+} from "../../../packages/vimma-core/src/control/control.mjs";
 import type { Socket } from "node:net";
-import type { ValidateOptions } from "../../../packages/vimma-core/src/control.mjs";
+import type { ValidateOptions } from "../../../packages/vimma-core/src/control/control.mjs";
 
 export type FakeTab = { id: string; url: string; title: string; selected: boolean };
 export type FakeOptions = {

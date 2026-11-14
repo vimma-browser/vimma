@@ -37,7 +37,7 @@ import {
   judgeManifest,
   parseManifest,
   verifyManifest,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import { addSignaturePlaceholder, readMar, verifyMar } from "../../update/mar.mjs";
 
 const dirs: string[] = [];

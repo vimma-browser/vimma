@@ -8,7 +8,7 @@
  * .github/workflows/update-publish.yml. Its `prepare` job builds the unsigned body here, its
  * `sign` job signs it with Cloud KMS (no repository code runs there), and its `publish` job
  * checks the signed file here, with the verifier the browser runs
- * (packages/vimma-core/src/updates.mjs) and the keys the browser pins, before it is pushed.
+ * (packages/vimma-core/src/updates/updates.mjs) and the keys the browser pins, before it is pushed.
  *
  *   manifest.mjs commits --tag vX.Y.Z --repo owner/name  > commits.json
  *       the subjects and pull-request labels since the previous published release (git, gh)
@@ -48,8 +48,8 @@ import {
   signedBytes,
   splitManifest,
   verifyManifest,
-} from "../../packages/vimma-core/src/updates.mjs";
-import { UPDATE_KEYS } from "../../packages/vimma-core/src/update-keys.mjs";
+} from "../../packages/vimma-core/src/updates/updates.mjs";
+import { UPDATE_KEYS } from "../../packages/vimma-core/src/updates/update-keys.mjs";
 
 /** The release channel (`app.update.channel` in channel-prefs.js). */
 export const CHANNEL = "vimma";
@@ -100,7 +100,7 @@ const SERIAL = /^\d{14}$/;
 const ADVISORY = /^MFSA \d{4}-\d{1,4}$/;
 const SHA512_HEX = /^[0-9a-f]{128}$/;
 
-/** @typedef {import("../../packages/vimma-core/src/updates.mjs").Assets} Assets */
+/** @typedef {import("../../packages/vimma-core/src/updates/updates.mjs").Assets} Assets */
 /** @typedef {keyof typeof ASSET_ELEMENTS} AssetKind */
 /**
  * @typedef {object} Release
@@ -560,7 +560,7 @@ export function prepareRelease({ tag, dir, commits, published, now, os = "linux"
  * a release, its version, its details page and every file's size and SHA-512; with no tag, an
  * offer of nothing.
  * @param {string} text  the signed manifest
- * @param {{ keys: readonly import("../../packages/vimma-core/src/updates.mjs").PinnedKey[],
+ * @param {{ keys: readonly import("../../packages/vimma-core/src/updates/updates.mjs").PinnedKey[],
  *   tag: string | null, dir: string | null, published: string | readonly (string | null)[] | null,
  *   now: Date, os?: Os }} options
  */
@@ -759,7 +759,7 @@ export function prepareNightly({ buildId, version, dir, published, now }) {
  * and not ahead of the clock, the build and version asked for, and exactly the MAR and tarball
  * on the `nightly` release, each matching the file downloaded again.
  * @param {string} text  the signed manifest
- * @param {{ keys: readonly import("../../packages/vimma-core/src/updates.mjs").PinnedKey[],
+ * @param {{ keys: readonly import("../../packages/vimma-core/src/updates/updates.mjs").PinnedKey[],
  *   buildId: string, version: string, dir: string,
  *   published: string | readonly (string | null)[] | null, now: Date }} options
  */

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "vitest";
 import { readFileSync } from "node:fs";
-import { mergeWithDefaults } from "../src/config.mjs";
-import { MODES } from "../src/modes.mjs";
-import { WORKSPACE_COLOR_TOKENS, statusAnnouncement, statusSegments } from "../src/statusbar.mjs";
+import { mergeWithDefaults } from "../src/config/config.mjs";
+import { MODES } from "../src/keys/modes.mjs";
+import {
+  WORKSPACE_COLOR_TOKENS,
+  statusAnnouncement,
+  statusSegments,
+} from "../src/ui/statusbar.mjs";
 import {
   BADGES,
   FOCUS_SURFACE_TOKENS,
@@ -12,15 +16,15 @@ import {
   TEXT_TOKENS,
   contrastRatio,
   resolveTheme,
-} from "../src/theme.mjs";
+} from "../src/config/theme.mjs";
 
 // Spec docs/specs/m7-a11y.md: what the status bar speaks, and WCAG AA contrast of every text
 // token Vimma's chrome draws, on every surface it draws it on, in both variants of the built-in
 // vimma palette, the built-in Tokyo Night and a light theme; and WCAG non-text contrast (3:1) of
 // the focus colour (focus rings, the focused pane's outline) on every surface it touches.
 
-/** @import { Announced } from "../src/statusbar.mjs" */
-/** @import { Mode } from "../src/modes.mjs" */
+/** @import { Announced } from "../src/ui/statusbar.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
 
 /** @param {string} name */
 const fixture = (name) =>

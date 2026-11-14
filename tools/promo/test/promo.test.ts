@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { parseConfig } from "../../../packages/vimma-core/src/config.mjs";
+import { parseConfig } from "../../../packages/vimma-core/src/config/config.mjs";
 import {
   HOSTS,
   KeyTrack,
@@ -14,6 +14,7 @@ import {
   supportsThemeName,
 } from "../promo.ts";
 import { ROSE_PINE } from "../shots.ts";
+import { flatCore } from "../../sync-core.mjs";
 
 describe("parseGeometry", () => {
   it("reads WIDTHxHEIGHT", () => {
@@ -179,13 +180,18 @@ describe("servedModule", () => {
   });
   it("serves hints.mjs and every module it reaches, each import naming a served .js", () => {
     // record.ts (serveCore) serves vimma-core's hints.mjs to probe.js with what it imports.
-    // vimma-core stays .mjs (ADR-025) while tools/ moves to .ts, so the rewrite reads `./x.mjs`.
+    // vimma-core stays .mjs (ADR-025) while tools/ moves to .ts, so the rewrite reads `./x.mjs`;
+    // the modules come from sync-core's flat copy, where each imports the others that way.
+    const core = flatCore(
+      fileURLToPath(new URL("../../../packages/vimma-core/src", import.meta.url)),
+    );
     const served = new Map();
     const queue = ["hints"];
     for (let name = queue.shift(); name !== undefined; name = queue.shift()) {
       if (served.has(name)) continue;
-      const src = new URL(`../../../packages/vimma-core/src/${name}.mjs`, import.meta.url);
-      const { text, imports } = servedModule(readFileSync(src, "utf8"));
+      const source = core.get(`${name}.mjs`);
+      if (source === undefined) throw new Error(`no core module ${name}.mjs`);
+      const { text, imports } = servedModule(source);
       served.set(name, text);
       queue.push(...imports);
     }

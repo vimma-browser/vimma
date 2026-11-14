@@ -358,7 +358,7 @@ Vimma follows a spec-first, test-first loop:
 - **Versioned formats.** A change to the config schema, the control protocol or a state file
   raises its version and adds valid and invalid fixtures for the new version in
   `tests/contract/`; a config schema change also adds a migration step (`MIGRATIONS` in
-  `packages/vimma-core/src/config.mjs`), so older files keep loading.
+  `packages/vimma-core/src/config/config.mjs`), so older files keep loading.
 - **Commits.** Use Conventional Commits with a body: the subject is the changelog line; the body
   explains why.
   `npx commitlint --from origin/main` checks this, and CI rejects `feat`, `fix` and `revert`

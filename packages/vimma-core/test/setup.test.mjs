@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { CURATED, amoEntries, initialSetup, planSetup, setupKey } from "../src/setup.mjs";
+import { CURATED, amoEntries, initialSetup, planSetup, setupKey } from "../src/system/setup.mjs";
 
 /** An AMO search result as the v5 API returns it. */
 const amo = (over = {}) => ({
@@ -24,7 +24,7 @@ const fresh = () =>
     engine: "Google",
   });
 
-/** @import { SetupState } from "../src/setup.mjs" */
+/** @import { SetupState } from "../src/system/setup.mjs" */
 
 /**
  * Feeds keys, returning the last result.

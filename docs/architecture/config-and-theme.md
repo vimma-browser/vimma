@@ -74,8 +74,8 @@ in security.md §8.
 
 ## 2. Parsing and checking in vimma-core
 
-`reloadConfig(active, text)` in `packages/vimma-core/src/config.mjs` calls `parseConfig`, which
-does no I/O. A TOML or schema error ends it at once; validation and the keymap report their
+`reloadConfig(active, text)` in `packages/vimma-core/src/config/config.mjs` calls `parseConfig`,
+which does no I/O. A TOML or schema error ends it at once; validation and the keymap report their
 problems together:
 
 1. **TOML.** `parseToml` (`toml.mjs`) runs the vendored smol-toml
@@ -165,12 +165,12 @@ or `vimma.theme.omarchyPath` is set by hand. `check` then:
    `IOUtils.stat` follows symlinks, so a swap of the `current/theme` link to another theme
    changes it even when the two files have the same time and size.
 2. An unchanged signature stops here; otherwise the file is read.
-3. `themeStylesheet` (`packages/vimma-core/src/theme.mjs`) builds the sheet. `resolveTheme` reads
-   the file with `parseOmarchyColors` (hex colours only, missing keys derived as Omarchy derives
-   them), lays `[theme.colors]` over it, maps the palette to the `--vimma-*` tokens, and warns
-   about text below 4.5:1 contrast. `tokensToCss` accepts only values `resolveTheme` can make (a
-   `#rrggbb` colour, a colour-scheme word, a checked font list) and throws on anything else, so a
-   theme file cannot inject CSS.
+3. `themeStylesheet` (`packages/vimma-core/src/config/theme.mjs`) builds the sheet. `resolveTheme`
+   reads the file with `parseOmarchyColors` (hex colours only, missing keys derived as Omarchy
+   derives them), lays `[theme.colors]` over it, maps the palette to the `--vimma-*` tokens, and
+   warns about text below 4.5:1 contrast. `tokensToCss` accepts only values `resolveTheme` can make
+   (a `#rrggbb` colour, a colour-scheme word, a checked font list) and throws on anything else, so
+   a theme file cannot inject CSS.
 4. A file with errors is rejected: the theme shown stays, and the error is kept for
    `about:vimma`. Otherwise `apply` loads the new sheet in every window, then removes the old one
    (so no frame is drawn without tokens), does the same for Firefox's own themed pages, and

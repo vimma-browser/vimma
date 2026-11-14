@@ -119,6 +119,8 @@ interface mozIJSSubScriptLoader {
 
 interface FirefoxServices {
   cookies: nsICookieManager;
+  // engine/intl/locale/mozILocaleService.idl
+  locale: { appLocaleAsBCP47: string };
   scriptloader: mozIJSSubScriptLoader;
 }
 

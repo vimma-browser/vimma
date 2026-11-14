@@ -146,6 +146,14 @@ docs/runbook.md, "Parallel browser lanes"), then
 same file with `--repeat=N` on two busy CPUs (docs/runbook.md, "Mochitests that send keys to a
 page").
 
+**Time limit.** The harness stops a file after 45 s, and the rest of the suite with it. A file
+that runs about 15 s on a quiet runner can pass that on a loaded machine, so heavy pages get
+files of their own: each `about:preferences` tab builds its pane on the parent's main thread,
+which takes seconds under load, so the Settings tests are in
+`browser_vimma_firefox_settings_trim.js` and `browser_vimma_firefox_settings_hidden.js`, and a
+test opens each pane once (#992). `requestLongerTimeout(N)` is the last resort, with its reason
+in a comment; both files take `2` for their Settings tabs.
+
 **Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
 browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
 (`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,

@@ -1,7 +1,7 @@
 // docs/specs/multiple-splits.md: several splits per workspace, one shown at a time.
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { closePane, createRow, hideView, leaves, paneOfTab, split } from "../src/panes.mjs";
+import { closePane, createRow, hideView, leaves, paneOfTab, split } from "../src/panes/panes.mjs";
 import {
   MAX_SPLITS_DEFAULT,
   NO_SPLITS_TO_PICK,
@@ -22,9 +22,9 @@ import {
   splitsFromPanes,
   stepSplit,
   updateSplit,
-} from "../src/splits.mjs";
+} from "../src/panes/splits.mjs";
 
-/** @import { Splits } from "../src/splits.mjs" */
+/** @import { Splits } from "../src/panes/splits.mjs" */
 
 /** @param {Splits} s */
 const numbers = (s) => s.splits.map((x) => x.number);

@@ -3,7 +3,7 @@
 // changes in one place. These tests fail when the generated module drifts from its sources.
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
-import { AGENT_INSTRUCTIONS, AGENT_TOOL_LIST, agentTools } from "../src/agent-tools.mjs";
+import { AGENT_INSTRUCTIONS, AGENT_TOOL_LIST, agentTools } from "../src/agent/agent-tools.mjs";
 import { rustStringConst } from "../../../tools/gen-agent-tools.ts";
 
 const root = new URL("../../../", import.meta.url);

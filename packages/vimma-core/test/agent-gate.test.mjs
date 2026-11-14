@@ -32,8 +32,8 @@ import {
   parseMcpCommand,
   untrustedHeader,
   wrapUntrusted,
-} from "../src/agent.mjs";
-import { logCells, logRow } from "../src/agent-prompt.mjs";
+} from "../src/agent/agent.mjs";
+import { logCells, logRow } from "../src/agent/agent-prompt.mjs";
 
 const MIN = 60_000;
 const READ = "vimma_read_page";
@@ -42,7 +42,7 @@ const OPEN = "vimma_open";
 /**
  * The request `ask` queued; throws when it ran or was denied instead, so a test never answers a
  * request that does not exist.
- * @param {import("../src/agent.mjs").Admission | undefined} admission
+ * @param {import("../src/agent/agent.mjs").Admission | undefined} admission
  */
 function waiting(admission) {
   if (admission?.kind !== "wait") throw new Error(`not queued: ${JSON.stringify(admission)}`);
@@ -725,7 +725,7 @@ describe(":mcp log (mcp-drive D14)", () => {
     expect(plain(logRow({ ...open, outcome: "yes" }))).toBe(
       "17:05:09 claude-code vimma_open https://a.example/x · allowed",
     );
-    /** @type {[import("../src/agent.mjs").LogOutcome, string][]} */
+    /** @type {[import("../src/agent/agent.mjs").LogOutcome, string][]} */
     const outcomes = [
       ["user", "denied"],
       ["timeout", "no answer (denied)"],

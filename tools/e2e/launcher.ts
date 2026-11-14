@@ -22,7 +22,7 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { validateMessage } from "../../packages/vimma-core/src/control.mjs";
+import { validateMessage } from "../../packages/vimma-core/src/control/control.mjs";
 import { CONFIG_PATH_PREF, READ_PATH_PREF, devPrefs } from "../start.ts";
 import type { ChildProcess } from "node:child_process";
 import type { Readable } from "node:stream";

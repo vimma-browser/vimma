@@ -35,7 +35,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.mjs";
-import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates.mjs";
+import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates/updates.mjs";
 import { addCtlComponent } from "./sbom.mjs";
 
 /** SemVer with an optional pre-release, as version-files.mjs accepts (plan §7). */

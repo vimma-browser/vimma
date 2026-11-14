@@ -15,7 +15,7 @@ import {
   pdfZoomPercent,
   pdfZoomStep,
   stripInvisible,
-} from "../src/pdf.mjs";
+} from "../src/page/pdf.mjs";
 
 // docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
 // `doc` counts the documents pdf.js has opened in this viewer (V11).

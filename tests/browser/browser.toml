@@ -76,6 +76,10 @@ support-files = ["file_vimma_copy_motions.html"]
 
 ["browser_vimma_firefox_surfaces_trim.js"]
 
+["browser_vimma_firefox_settings_trim.js"]
+
+["browser_vimma_firefox_settings_hidden.js"]
+
 ["browser_vimma_firefox_page_process.js"]
 
 ["browser_vimma_settings_managed.js"]

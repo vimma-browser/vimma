@@ -44,6 +44,28 @@ declare function waitForPageKey(
  * @returns {string}
  */
 declare function bindUnbuiltPrefixKey(): string;
+/**
+ * The support base as Vimma ships it, formatted: the harness profile points app.support.baseURL
+ * at a dummy server (testing/profiles/unittest-required/user.js), so its user value is cleared.
+ */
+declare function useShippedSupportBase(): Promise<string>;
+/**
+ * Open a Settings pane and wait for each of `selectors` to be in it. `check` gets the first
+ * one's element.
+ *
+ * Settings runs in the parent process and builds a pane on its main thread when the pane opens:
+ * on a loaded machine that takes General several seconds each time (#992). So a test opens each
+ * pane once and checks everything it needs there. Used by the browser_vimma_firefox_settings_*
+ * files.
+ * @param {string} pane the hash, such as "home"
+ * @param {string | string[]} selectors
+ * @param {(doc: Document, el: HTMLElement) => Promise<void> | void} check
+ */
+declare function openSettingsPane(
+  pane: string,
+  selectors: string | string[],
+  check: (doc: Document, el: HTMLElement) => Promise<void> | void,
+): Promise<void>;
 
 // tests/browser/head_vimma_agent_model.js
 

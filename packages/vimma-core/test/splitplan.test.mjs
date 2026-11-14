@@ -1,6 +1,6 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { planSplit, PlanError } from "../src/splitplan.mjs";
+import { planSplit, PlanError } from "../src/panes/splitplan.mjs";
 import {
   closePane,
   createPanes,
@@ -10,10 +10,10 @@ import {
   split,
   swap,
   toggleZoom,
-} from "../src/panes.mjs";
+} from "../src/panes/panes.mjs";
 
-/** @import { Panes } from "../src/panes.mjs" */
-/** @import { SplitGroupState, SplitPlan } from "../src/splitplan.mjs" */
+/** @import { Panes } from "../src/panes/panes.mjs" */
+/** @import { SplitGroupState, SplitPlan } from "../src/panes/splitplan.mjs" */
 
 /**
  * @param {Partial<SplitGroupState>} [s]

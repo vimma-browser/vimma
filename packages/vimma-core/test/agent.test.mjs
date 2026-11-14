@@ -8,11 +8,11 @@ import {
   mcpStatus,
   parseMcpCommand,
   planMcpSwitch,
-} from "../src/agent.mjs";
-import { workspaceItems } from "../src/picker.mjs";
-import { parseCommandLine as parseCommand } from "../src/cmdline.mjs";
-import { ACTIONS, getAction } from "../src/actions.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
+} from "../src/agent/agent.mjs";
+import { workspaceItems } from "../src/ui/picker.mjs";
+import { parseCommandLine as parseCommand } from "../src/keys/cmdline.mjs";
+import { ACTIONS, getAction } from "../src/keys/actions.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
 
 describe(":mcp words", () => {
   test("nothing is the status; on, off and forget in any case; anything else is refused", () => {
