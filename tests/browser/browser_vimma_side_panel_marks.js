@@ -11,7 +11,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf, historyOf -- from head.js */
 
 const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
@@ -155,8 +155,8 @@ function identity(tabs) {
     return {
       browser: b,
       outerWindowID: b.outerWindowID,
-      innerWindowId: b.browsingContext.currentWindowGlobal.innerWindowId,
-      history: b.browsingContext.sessionHistory.count,
+      innerWindowId: windowGlobalOf(contextOf(b)).innerWindowId,
+      history: historyOf(b).count,
     };
   });
 }

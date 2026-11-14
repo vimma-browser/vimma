@@ -9,6 +9,8 @@
 // Checked in the built-in palette dark and light and in an Omarchy theme that gives only its base
 // colours; with high contrast Firefox's own colours stay.
 
+/* global contextOf, windowGlobalOf -- from head.js */
+
 "use strict";
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
@@ -178,8 +180,8 @@ async function assertTabOverview(label, { tab, doc }) {
   const { width, height } = browser.getBoundingClientRect();
   nearly(
     await pixel(
-      // The page's own global; a read through a missing one throws.
-      /** @type {WindowGlobalParent} */ (browser.browsingContext.currentWindowGlobal),
+      // The page's own global; the test fails here without one.
+      windowGlobalOf(contextOf(browser)),
       width - 4,
       height - 4,
     ),

@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
@@ -201,7 +201,7 @@ function identity(tabs) {
   return tabs.map((t) => ({
     browser: t.linkedBrowser,
     outerWindowID: t.linkedBrowser.outerWindowID,
-    innerWindowId: t.linkedBrowser.browsingContext.currentWindowGlobal.innerWindowId,
+    innerWindowId: windowGlobalOf(contextOf(t.linkedBrowser)).innerWindowId,
   }));
 }
 

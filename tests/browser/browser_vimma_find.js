@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-find.md
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf -- from head.js */
 
 "use strict";
 
@@ -214,7 +214,7 @@ async function dumpFindState(browser, events, msg) {
  * @param {string} marker
  */
 function frameWith(browser, marker) {
-  return browser.browsingContext.children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
+  return contextOf(browser).children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
     bc.currentWindowGlobal?.documentURI?.spec.includes(marker),
   );
 }
@@ -434,7 +434,9 @@ add_task(async function matches_in_same_and_cross_origin_frames() {
 
     type("/kiwi");
     EventUtils.synthesizeKey("KEY_Enter");
-    await waitForSelection(frameWith(browser, "?kiwi"), "text:kiwi", "the same-origin frame");
+    const same = frameWith(browser, "?kiwi");
+    Assert.ok(same, "the same-origin frame is there");
+    await waitForSelection(same, "text:kiwi", "the same-origin frame");
     await TestUtils.waitForCondition(() => findStatus()?.total === 1, "kiwi: 1 match");
   });
 });

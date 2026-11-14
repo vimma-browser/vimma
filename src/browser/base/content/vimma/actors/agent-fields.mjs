@@ -21,7 +21,7 @@
 
 import { IDENTITY_FIELDS, isStatedTotal } from "../core/agent-checkpoint.mjs";
 import { isSensitiveAutocomplete, isSubmitControl } from "../core/agent-element.mjs";
-import { linkText } from "./hint-collect.mjs";
+import { isHTML, isHTMLElement, linkText } from "./hint-collect.mjs";
 
 /**
  * @typedef {"AutofillFormFactory" | "FormAutofillHeuristics" | "FormAutofillUtils"} LazyName
@@ -71,7 +71,6 @@ const oneLine = (s) => s.replace(/\s+/g, " ").trim();
  * @param {Element} el
  */
 function kindOf(el) {
-  const html = /** @type {any} */ (el);
   switch (el.localName) {
     case "a":
       return el.hasAttribute("href") ? "link" : roleKind(el);
@@ -83,11 +82,12 @@ function kindOf(el) {
     case "textarea":
       return "field";
     case "input":
-      if (BUTTON_TYPES.has(html.type)) return "button";
-      if (html.type === "checkbox" || html.type === "radio") return html.type;
+      if (!isHTML(el, "input")) break;
+      if (BUTTON_TYPES.has(el.type)) return "button";
+      if (el.type === "checkbox" || el.type === "radio") return el.type;
       return "field";
   }
-  if (html.isContentEditable) return "field";
+  if (isHTMLElement(el) && el.isContentEditable) return "field";
   return roleKind(el);
 }
 
@@ -112,11 +112,10 @@ const isControl = (el, kind) =>
  * @param {Element} el @param {string} kind
  */
 function textOf(el, kind) {
-  const html = /** @type {any} */ (el);
-  if (el.localName === "input" && BUTTON_TYPES.has(html.type)) {
-    return oneLine(html.value || el.getAttribute("alt") || el.getAttribute("aria-label") || "");
+  if (isHTML(el, "input") && BUTTON_TYPES.has(el.type)) {
+    return oneLine(el.value || el.getAttribute("alt") || el.getAttribute("aria-label") || "");
   }
-  if (isControl(el, kind) || (kind === "field" && html.isContentEditable)) {
+  if (isControl(el, kind) || (kind === "field" && isHTMLElement(el) && el.isContentEditable)) {
     // A rich text editor's text is what the user wrote: never read as its name.
     return oneLine(el.getAttribute("aria-label") || el.getAttribute("title") || "");
   }
@@ -128,10 +127,52 @@ function textOf(el, kind) {
  * @param {Element} el
  */
 function captionOf(el) {
-  const html = /** @type {any} */ (el);
-  const labels = html.labels ? [...html.labels] : [];
-  const text = oneLine(labels.map((l) => l.innerText ?? l.textContent ?? "").join(" "));
+  const labels = labelableOf(el)?.labels ?? [];
+  const text = oneLine([...labels].map((l) => l.innerText ?? l.textContent ?? "").join(" "));
   return text || oneLine(el.getAttribute("placeholder") ?? "");
+}
+
+/**
+ * `el` as one of the elements a `<label>` can label (HTML's labelable elements), else null.
+ * @param {Element} el
+ */
+function labelableOf(el) {
+  return isHTML(el, "input") ||
+    isHTML(el, "select") ||
+    isHTML(el, "textarea") ||
+    isHTML(el, "button") ||
+    isHTML(el, "meter") ||
+    isHTML(el, "output") ||
+    isHTML(el, "progress")
+    ? el
+    : null;
+}
+
+/**
+ * `el` as a form field (an HTML input, select or text area), else null.
+ * @param {Element | null | undefined} el
+ */
+function fieldElementOf(el) {
+  return isHTML(el, "input") || isHTML(el, "select") || isHTML(el, "textarea") ? el : null;
+}
+
+/**
+ * The field name of `el`'s autocomplete attribute as Firefox parses it, undefined for an element
+ * that is no form field. Throws as getAutocompleteInfo does.
+ * @param {Element} el
+ */
+function autocompleteOf(el) {
+  return fieldElementOf(el)?.getAutocompleteInfo()?.fieldName;
+}
+
+/**
+ * The form `el` belongs to, for any element that has one (a form control, a label, a legend);
+ * null for any other.
+ * @param {Element} el
+ */
+export function formOf(el) {
+  const form = "form" in el ? el.form : null;
+  return isHTML(form, "form") ? form : null;
 }
 
 /** Selector of the headings a product card names its product in. */
@@ -149,6 +190,11 @@ const LABELLEDBY_NODES = 2048;
  */
 const NOT_NAME = "script, style, noscript, template, textarea, select, [contenteditable]";
 
+/** @param {Node | undefined} n @returns {n is Text} */
+const isText = (n) => n?.nodeType === 3; /* Node.TEXT_NODE */
+/** @param {Node | undefined} n @returns {n is Element} */
+const isElement = (n) => n?.nodeType === 1; /* Node.ELEMENT_NODE */
+
 /**
  * The text of `node` as part of an accessible name: its text nodes, hidden ones included, but
  * none inside NOT_NAME, gathered until `max` characters or LABELLEDBY_NODES nodes.
@@ -161,14 +207,22 @@ function labelTextOf(node, max) {
   /** @type {Node[]} iterative: a page may nest deeper than the stack allows */
   const stack = [...node.childNodes].reverse();
   while (stack.length && out.length < max && seen++ < LABELLEDBY_NODES) {
-    const n = /** @type {any} */ (stack.pop());
-    if (n.nodeType === n.TEXT_NODE) out += n.data;
-    else if (n.nodeType === n.ELEMENT_NODE && !n.matches(NOT_NAME)) {
+    const n = stack.pop();
+    if (isText(n)) out += n.data;
+    else if (isElement(n) && !n.matches(NOT_NAME)) {
       for (let c = n.lastChild; c; c = c.previousSibling) stack.push(c);
     }
   }
   return cap(out, max);
 }
+
+/**
+ * @param {Node} root
+ * @returns {root is Document | DocumentFragment}
+ */
+const hasIds = (root) =>
+  root.nodeType === 9 /* Node.DOCUMENT_NODE */ ||
+  root.nodeType === 11; /* Node.DOCUMENT_FRAGMENT_NODE */
 
 /**
  * A target's accessible label: the text of the elements its `aria-labelledby` names (hidden ones
@@ -182,13 +236,14 @@ function ariaLabelOf(el) {
   const ids = (el.getAttribute("aria-labelledby")?.trim().split(/\s+/) ?? [])
     .filter(Boolean)
     .slice(0, LABELLEDBY_IDS);
-  const root = /** @type {any} */ (el.getRootNode());
+  const root = el.getRootNode();
   /** @type {string[]} */
   const named = [];
   let length = 0;
   for (const id of ids) {
     if (length >= TEXT) break;
-    const n = root.getElementById ? root.getElementById(id) : null;
+    // A document or a shadow root; the root of a detached subtree has no ids to look up.
+    const n = hasIds(root) ? root.getElementById(id) : null;
     if (!n || n === el) continue;
     const t = labelTextOf(n, TEXT - length);
     named.push(t);
@@ -215,8 +270,8 @@ function cardHeadingOf(el, seen) {
     }
     if (lone === false) return "";
     if (lone) {
-      const h = /** @type {any} */ (lone);
-      return oneLine(cap(h.innerText ?? h.textContent, TEXT));
+      // innerText is HTML's: an SVG or MathML heading has only its text content.
+      return oneLine(cap(isHTMLElement(lone) ? lone.innerText : lone.textContent, TEXT));
     }
   }
   return "";
@@ -255,7 +310,7 @@ function cardFields(fields) {
   /** @type {Set<Element>} roots of the groups already read */
   const done = new Set();
   for (const field of fields) {
-    /** @type {any} */
+    /** @type {FormLike | null} */
     let formLike = null;
     try {
       formLike = lazy.AutofillFormFactory.createFromField(field);
@@ -267,11 +322,12 @@ function cardFields(fields) {
       let card = false;
       for (const d of details) {
         const names = /** @type {unknown[]} */ ([]).concat(d?.fieldName ?? []);
+        const el = d.element;
         if (names.some((n) => lazy.FormAutofillUtils.isCreditCardField(n))) {
-          out.add(d.element);
+          if (el) out.add(el);
           card = true;
-        } else if (!names.length) {
-          undecided.push(d.element);
+        } else if (!names.length && el) {
+          undecided.push(el);
         }
       }
       // In a card form, a field the synchronous heuristics could not name may be a card field.
@@ -291,8 +347,7 @@ function cardFields(fields) {
  * @param {Element} el
  */
 export function plainlySensitive(el) {
-  const html = /** @type {any} */ (el);
-  if (html.hasBeenTypePassword === true || html.type === "password") return true;
+  if (isHTML(el, "input") && (el.hasBeenTypePassword || el.type === "password")) return true;
   // Drawn as dots without type=password (PIN and card code widgets): the page treats it as secret.
   try {
     const masked = el.ownerDocument?.defaultView
@@ -303,7 +358,7 @@ export function plainlySensitive(el) {
     // no style: not masked
   }
   try {
-    return isSensitiveAutocomplete(html.getAutocompleteInfo?.()?.fieldName);
+    return isSensitiveAutocomplete(autocompleteOf(el));
   } catch {
     return false;
   }
@@ -315,18 +370,17 @@ export function plainlySensitive(el) {
  * @param {Element} el
  */
 function showsValue(el) {
-  const html = /** @type {any} */ (el);
-  if (el.localName === "textarea") return html.value !== "";
-  if (el.localName === "input") {
-    if (NO_VALUE.has(html.type) || html.type === "hidden") return false;
+  if (isHTML(el, "textarea")) return el.value !== "";
+  if (isHTML(el, "input")) {
+    if (NO_VALUE.has(el.type) || el.type === "hidden") return false;
     // A number field shows text it cannot parse with an empty value, and form autofill's
     // preview shows text before it is a value.
-    return html.value !== "" || html.validity?.badInput === true || !!html.previewValue;
+    return el.value !== "" || el.validity.badInput || !!el.previewValue;
   }
-  if (el.localName === "select") {
-    const chosen = html.selectedOptions?.[0];
+  if (isHTML(el, "select")) {
+    const chosen = el.selectedOptions[0];
     if (!chosen || chosen.value === "") return false;
-    const options = [...html.options];
+    const options = [...el.options];
     return chosen !== (options.find((o) => o.defaultSelected) ?? options[0]);
   }
   return false;
@@ -383,27 +437,29 @@ export function describeAgentElements(els) {
   /** @type {AgentForm[]} */
   const forms = [];
   const elements = els.map((el) => {
-    const html = /** @type {any} */ (el);
     const kind = kindOf(el);
     /** @type {AgentElementInfo} */
     const info = { kind, text: cap(textOf(el, kind), TEXT) };
-    const control = ["input", "select", "textarea", "button"].includes(el.localName);
-    if (el.localName === "input" || el.localName === "button") info.type = cap(html.type, 32);
+    const field = fieldElementOf(el);
+    const control = field ?? (isHTML(el, "button") ? el : null);
+    if (isHTML(el, "input") || isHTML(el, "button")) info.type = cap(el.type, 32);
     else if (el.localName === "textarea") info.type = "textarea";
-    else if (kind === "field" && html.isContentEditable) info.type = "contenteditable";
-    if (control && typeof html.name === "string" && html.name) info.name = cap(html.name, TEXT);
+    else if (kind === "field" && isHTMLElement(el) && el.isContentEditable) {
+      info.type = "contenteditable";
+    }
+    if (control?.name) info.name = cap(control.name, TEXT);
     if (["input", "select", "textarea"].includes(el.localName)) {
       let auto = "";
       try {
-        auto = String(html.getAutocompleteInfo?.()?.fieldName ?? "");
+        auto = String(autocompleteOf(el) ?? "");
       } catch {
         // an element without autocomplete info: none
       }
       if (auto) info.autocomplete = cap(auto, 64);
       const caption = captionOf(el);
       if (caption) info.caption = cap(caption, TEXT);
-      if (html.required === true) info.required = true;
-      if (html.readOnly === true) info.readonly = true;
+      if (field?.required) info.required = true;
+      if (field && !isHTML(field, "select") && field.readOnly) info.readonly = true;
     } else {
       // A button, link or other target: its accessible label when the text does not say it.
       const caption =
@@ -411,8 +467,8 @@ export function describeAgentElements(els) {
       if (caption && caption !== info.text) info.caption = cap(caption, TEXT);
     }
     if (el.matches(":disabled")) info.disabled = true;
-    if (el.localName === "input" && (html.type === "checkbox" || html.type === "radio")) {
-      info.checked = html.checked === true;
+    if (isHTML(el, "input") && (el.type === "checkbox" || el.type === "radio")) {
+      info.checked = el.checked;
     } else if (kind === "checkbox" || kind === "radio") {
       info.checked = el.getAttribute("aria-checked") === "true";
     }
@@ -421,18 +477,18 @@ export function describeAgentElements(els) {
       (plainlySensitive(el) || cards.has(el));
     if (sensitive) info.sensitive = true;
     if (!sensitive) {
-      if (el.localName === "textarea" || (el.localName === "input" && !NO_VALUE.has(html.type))) {
-        info.value = cap(html.value, VALUE);
+      if (isHTML(el, "textarea") || (isHTML(el, "input") && !NO_VALUE.has(el.type))) {
+        info.value = cap(el.value, VALUE);
       }
     }
-    if (el.localName === "select") {
-      info.options = [...html.options].slice(0, OPTIONS).map((/** @type {any} */ o) => ({
+    if (isHTML(el, "select")) {
+      info.options = [...el.options].slice(0, OPTIONS).map((o) => ({
         value: cap(o.value, TEXT),
         text: cap(oneLine(o.text), TEXT),
       }));
-      if (!sensitive && html.selectedIndex >= 0) info.selected = cap(html.value, TEXT);
+      if (!sensitive && el.selectedIndex >= 0) info.selected = cap(el.value, TEXT);
     }
-    const form = control ? html.form : null;
+    const form = control?.form;
     if (form) {
       let n = formIndex.get(form);
       if (n === undefined && forms.length < FORMS) {
@@ -458,15 +514,14 @@ const INTERACTIVE = new Set(["a", "button", "input", "select", "textarea", "labe
  */
 function fieldOf(el) {
   if (!el) return null;
-  const html = /** @type {any} */ (el);
-  if (el.localName === "input") {
-    if (html.type === "file") return "file";
-    if (NO_VALUE.has(html.type) || html.type === "hidden") return null;
+  if (isHTML(el, "input")) {
+    if (el.type === "file") return "file";
+    if (NO_VALUE.has(el.type) || el.type === "hidden") return null;
     return "text";
   }
   if (el.localName === "textarea") return "text";
   if (el.localName === "select") return "select";
-  if (html.isContentEditable) return "editable";
+  if (isHTMLElement(el) && el.isContentEditable) return "editable";
   return null;
 }
 
@@ -477,27 +532,45 @@ function fieldOf(el) {
  * @returns {Element | null}
  */
 function labelledControl(el) {
-  const label = /** @type {any} */ (el.closest("label"));
-  if (!label?.control || label.control === el) return null;
-  if (el !== label && INTERACTIVE.has(el.localName)) return null;
+  const label = el.closest("label");
+  if (!isHTML(label, "label") || !label.control || label.control === el) return null;
+  // Interactive content is HTML's: Gecko passes a label a click on any other element
+  // (Element::IsInteractiveHTMLContent, engine/dom/base/Element.cpp).
+  if (el !== label && isHTMLElement(el) && INTERACTIVE.has(el.localName)) return null;
   return label.control;
+}
+
+/**
+ * One of a form's listed elements (`form.elements`) as the HTML control it is; null for a
+ * form-associated custom element, whose name and value its page script holds: an Xray shows
+ * neither.
+ * @param {Element} el
+ */
+function listedControl(el) {
+  return (
+    fieldElementOf(el) ??
+    (isHTML(el, "button") || isHTML(el, "fieldset") || isHTML(el, "output") || isHTML(el, "object")
+      ? el
+      : null)
+  );
 }
 
 /**
  * How many fields a submission by `submitter` sends (F15): the form's enabled, named controls,
  * checkboxes and radios only when checked, and of the buttons only the submitter.
- * @param {any} form @param {any} submitter
+ * @param {HTMLFormElement} form @param {Submitter | null} submitter
  */
 function fieldCount(form, submitter) {
   let n = 0;
-  for (const el of form.elements) {
-    if (!el.name || el.matches(":disabled") || el.closest("datalist")) continue;
+  for (const listed of form.elements) {
+    const el = listedControl(listed);
+    if (!el?.name || el.matches(":disabled") || el.closest("datalist")) continue;
     if (el.localName === "fieldset" || el.localName === "output" || el.localName === "object") {
       continue;
     }
     if (el.localName === "button" || BUTTON_TYPES.has(el.type)) {
       if (el === submitter) n++;
-    } else if (el.type === "checkbox" || el.type === "radio") {
+    } else if (isHTML(el, "input") && (el.type === "checkbox" || el.type === "radio")) {
       if (el.checked) n++;
     } else {
       n++;
@@ -510,7 +583,7 @@ function fieldCount(form, submitter) {
  * Where a submission by `submitter` (or by the form's own script, without one) goes: the
  * button's `formmethod` and `formaction` when it has them, else the form's (F15). A button's
  * `formAction` is the document's URL when it has no attribute, so the attribute decides.
- * @param {any} form @param {any} [submitter]
+ * @param {HTMLFormElement} form @param {Submitter | null} [submitter]
  * @returns {{ method: string, action: string }}
  */
 export function destinationOf(form, submitter) {
@@ -523,21 +596,25 @@ export function destinationOf(form, submitter) {
  * The submit control a click on `el` presses, and its form: `el` itself, the button it is
  * inside, or its label's control (F15).
  * @param {Element} el
- * @returns {{ submitter: any, form: any, method: string, action: string } | null}
+ * @returns {{ submitter: Submitter, form: HTMLFormElement, method: string, action: string }
+ *   | null}
  */
 export function submitOf(el) {
   const candidates = [el, el.closest("button"), labelledControl(el)];
   for (const c of candidates) {
-    if (!c) continue;
-    const html = /** @type {any} */ (c);
-    if (!html?.form) continue;
-    const { method, action } = destinationOf(html.form, html);
-    const control = { localName: c.localName, type: html.type, inForm: true, method };
+    // Only a button or an input submits (core isSubmitControl).
+    const submitter = isHTML(c, "button") || isHTML(c, "input") ? c : null;
+    const form = submitter?.form;
+    if (!submitter || !form) continue;
+    const { method, action } = destinationOf(form, submitter);
+    const control = { localName: submitter.localName, type: submitter.type, inForm: true, method };
     if (!isSubmitControl(control)) continue;
-    return { submitter: html, form: html.form, method, action };
+    return { submitter, form, method, action };
   }
   return null;
 }
+
+/** @typedef {HTMLButtonElement | HTMLInputElement} Submitter */
 
 const XLINK = "http://www.w3.org/1999/xlink";
 
@@ -553,9 +630,8 @@ function linkHrefOf(el) {
     node;
     node = node.parentElement?.closest("a, area") ?? null
   ) {
-    const html = /** @type {any} */ (node);
-    if (typeof html.href === "string") {
-      if (node.hasAttribute("href")) return html.href;
+    if (isHTML(node, "a") || isHTML(node, "area")) {
+      if (node.hasAttribute("href")) return node.href;
       continue;
     }
     const raw = node.getAttribute("href") ?? node.getAttributeNS(XLINK, "href");
@@ -570,19 +646,25 @@ function linkHrefOf(el) {
 }
 
 /**
+ * What actTargetOf answers; the parent checks it again (core parseActTarget).
+ * @typedef {{ alive: boolean, kind?: string, text?: string, type?: string, disabled?: true,
+ *   field?: string, href?: string,
+ *   submit?: { method: string, action: string, fields: number } }} ActTargetRaw
+ */
+
+/**
  * The element now, as a click on it would find it (F4, F9, F10, F15), for core's
  * `parseActTarget`: its kind and text, whether it is disabled, a field the click would reach,
  * the link it would follow, and the form it would submit.
  * @param {Element | null | undefined} el
- * @returns {Record<string, unknown>}
+ * @returns {ActTargetRaw}
  */
 export function actTargetOf(el) {
   if (!el?.isConnected) return { alive: false };
-  const html = /** @type {any} */ (el);
   const kind = kindOf(el);
-  /** @type {Record<string, unknown>} */
+  /** @type {ActTargetRaw} */
   const out = { alive: true, kind, text: cap(textOf(el, kind), TEXT) };
-  if (el.localName === "input" || el.localName === "button") out.type = cap(html.type, 32);
+  if (isHTML(el, "input") || isHTML(el, "button")) out.type = cap(el.type, 32);
   if (el.matches(":disabled")) out.disabled = true;
   const field = fieldOf(el) ?? fieldOf(labelledControl(el));
   if (field) out.field = field;
@@ -612,11 +694,10 @@ export function actTargetOf(el) {
  */
 export function secretOf(el) {
   if (!["input", "select", "textarea"].includes(el.localName)) return null;
-  const html = /** @type {any} */ (el);
   if (plainlySensitive(el)) {
     let name = "";
     try {
-      name = String(html.getAutocompleteInfo?.()?.fieldName ?? "");
+      name = String(autocompleteOf(el) ?? "");
     } catch {
       // no autocomplete info: a password field by its type or its dots
     }
@@ -632,44 +713,36 @@ export function secretOf(el) {
  */
 function fillFieldOf(el) {
   if (!el) return "none";
-  const html = /** @type {any} */ (el);
-  switch (el.localName) {
-    case "input":
-      if (html.type === "file") return "file";
-      if (html.type === "hidden") return "hidden";
-      if (html.type === "checkbox" || html.type === "radio") return html.type;
-      return BUTTON_TYPES.has(html.type) ? "none" : "text";
-    case "textarea":
-      return "textarea";
-    case "select":
-      return "select";
+  if (isHTML(el, "input")) {
+    if (el.type === "file") return "file";
+    if (el.type === "hidden") return "hidden";
+    if (el.type === "checkbox" || el.type === "radio") return el.type;
+    return BUTTON_TYPES.has(el.type) ? "none" : "text";
   }
-  return html.isContentEditable ? "editable" : "none";
+  if (isHTML(el, "textarea")) return "textarea";
+  if (isHTML(el, "select")) return "select";
+  return isHTMLElement(el) && el.isContentEditable ? "editable" : "none";
 }
 
 /**
  * The option of a select that a fill's value names: by its value, else by its exact text.
  * Disabled options are never chosen, as the user cannot choose them.
- * @param {any} select @param {string} value
+ * @param {HTMLSelectElement} select @param {string} value
  */
 function optionOf(select, value) {
   // `:disabled` counts a disabled group too, which the user cannot choose from either.
-  const options = [...select.options].filter((/** @type {any} */ o) => !o.matches(":disabled"));
-  return (
-    options.find((/** @type {any} */ o) => o.value === value) ??
-    options.find((/** @type {any} */ o) => o.text === value) ??
-    null
-  );
+  const options = [...select.options].filter((o) => !o.matches(":disabled"));
+  return options.find((o) => o.value === value) ?? options.find((o) => o.text === value) ?? null;
 }
 
 /**
  * Whether a text input takes `value` as it is (F13): a date, number or color input empties a
  * value that does not parse, an email or URL input trims it. A detached input of the same type
  * in the same document tells, without touching the page's field or running page code.
- * @param {any} input @param {string} value
+ * @param {HTMLInputElement} input @param {string} value
  */
 function inputTakes(input, value) {
-  const probe = /** @type {any} */ (input.ownerDocument.createElement("input"));
+  const probe = input.ownerDocument.createElement("input");
   probe.type = input.type;
   // A range clamps to its bounds and step, an email field with `multiple` takes a list.
   for (const name of ["min", "max", "step", "multiple"]) {
@@ -684,16 +757,22 @@ function inputTakes(input, value) {
  * The form's default submission (F15): where its first submit button, or the form itself when
  * it has none, sends it, and how many fields it sends; null when it only closes a dialog or its
  * default button is disabled, which no implicit submission passes.
- * @param {any} form
- * @returns {{ submitter: any, method: string, action: string, fields: number } | null}
+ * @param {HTMLFormElement} form
+ * @returns {{ submitter: Submitter | null, method: string, action: string, fields: number }
+ *   | null}
  */
 export function defaultSubmitOf(form) {
-  const submitter =
-    [...form.elements].find(
-      (/** @type {any} */ e) =>
-        (e.localName === "button" && e.type === "submit") ||
-        (e.localName === "input" && (e.type === "submit" || e.type === "image")),
-    ) ?? null;
+  /** @type {Submitter | null} */
+  let submitter = null;
+  for (const e of form.elements) {
+    if (
+      (isHTML(e, "button") && e.type === "submit") ||
+      (isHTML(e, "input") && (e.type === "submit" || e.type === "image"))
+    ) {
+      submitter = e;
+      break;
+    }
+  }
   if (submitter?.matches(":disabled")) return null;
   const { method, action } = destinationOf(form, submitter);
   if (method === "dialog") return null;
@@ -701,43 +780,51 @@ export function defaultSubmitOf(form) {
 }
 
 /**
+ * What fillTargetOf answers; the parent checks it again (core parseFillTarget).
+ * @typedef {{ alive: boolean, kind?: string, field?: string, type?: string, name?: string,
+ *   caption?: string, autocomplete?: string, secret?: "password" | "code" | "card",
+ *   readonly?: true, disabled?: true, checked?: boolean, accepts?: boolean,
+ *   submit?: { method: string, action: string, fields: number } }} FillTargetRaw
+ */
+
+/**
  * A field now, as a fill with `value` would find it (F4, F6, F12, F13), for core's
  * `parseFillTarget`: its kind, how it is set, why it is sensitive, its state, whether it takes
  * the value, and its form's default submission.
  * @param {Element | null | undefined} el @param {unknown} value
- * @returns {Record<string, unknown>}
+ * @returns {FillTargetRaw}
  */
 export function fillTargetOf(el, value) {
   if (!el?.isConnected) return { alive: false };
-  const html = /** @type {any} */ (el);
   const kind = kindOf(el);
   const field = fillFieldOf(el);
-  /** @type {Record<string, unknown>} */
+  const control = fieldElementOf(el);
+  /** @type {FillTargetRaw} */
   const out = { alive: true, kind, field };
-  if (el.localName === "input") out.type = cap(html.type, 32);
+  if (isHTML(el, "input")) out.type = cap(el.type, 32);
   else if (el.localName === "textarea") out.type = "textarea";
   if (["input", "select", "textarea"].includes(el.localName)) {
-    if (typeof html.name === "string" && html.name) out.name = cap(html.name, TEXT);
+    if (control?.name) out.name = cap(control.name, TEXT);
     const caption = cap(textOf(el, kind) || captionOf(el), TEXT);
     if (caption) out.caption = caption;
     try {
-      const auto = String(html.getAutocompleteInfo?.()?.fieldName ?? "");
+      const auto = String(autocompleteOf(el) ?? "");
       if (auto) out.autocomplete = cap(auto, 64);
     } catch {
       // no autocomplete info
     }
     const secret = secretOf(el);
     if (secret) out.secret = secret;
-    if (html.readOnly === true) out.readonly = true;
+    if (control && !isHTML(control, "select") && control.readOnly) out.readonly = true;
   }
   if (el.matches(":disabled")) out.disabled = true;
-  if (field === "checkbox" || field === "radio") out.checked = html.checked === true;
+  if (isHTML(el, "input") && (field === "checkbox" || field === "radio")) out.checked = el.checked;
   if (typeof value === "string") {
-    if (field === "text") out.accepts = inputTakes(html, value);
-    else if (field === "select") out.accepts = !!optionOf(html, value);
+    if (field === "text" && isHTML(el, "input")) out.accepts = inputTakes(el, value);
+    else if (field === "select" && isHTML(el, "select")) out.accepts = !!optionOf(el, value);
     else if (field === "textarea") out.accepts = true;
   }
-  const form = ["input", "select", "textarea"].includes(el.localName) ? html.form : null;
+  const form = control?.form;
   const submit = form ? defaultSubmitOf(form) : null;
   if (submit) {
     out.submit = { method: submit.method, action: submit.action, fields: submit.fields };
@@ -755,30 +842,31 @@ export function fillTargetOf(el, value) {
  * @returns {boolean} whether the field holds the value afterwards (the page may put it back)
  */
 export function fillField(el, value) {
-  const html = /** @type {any} */ (el);
-  const field = fillFieldOf(el);
   if (secretOf(el)) return false;
+  // fillFieldOf's kinds: a text input or a text area, a select, a checkbox or radio input.
+  const field = fillFieldOf(el);
   if (field === "text" || field === "textarea") {
-    if (typeof value !== "string") return false;
-    html.setUserInput(value);
-    return html.value === value;
+    const text = isHTML(el, "input") || isHTML(el, "textarea") ? el : null;
+    if (!text || typeof value !== "string") return false;
+    text.setUserInput(value);
+    return text.value === value;
   }
-  if (field === "select") {
+  if (field === "select" && isHTML(el, "select")) {
     if (typeof value !== "string") return false;
-    const option = optionOf(html, value);
+    const option = optionOf(el, value);
     if (!option) return false;
     // A multiple select gets that option alone, as the question showed it, not one more.
-    const others = [...html.options].filter((/** @type {any} */ o) => o !== option && o.selected);
+    const others = [...el.options].filter((o) => o !== option && o.selected);
     const changed = !option.selected || others.length > 0;
     for (const o of others) o.selected = false;
     option.selected = true;
-    html.userFinishedInteracting(changed);
-    return option.selected === true && html.selectedOptions.length === 1;
+    el.userFinishedInteracting(changed);
+    return option.selected && el.selectedOptions.length === 1;
   }
-  if (field === "checkbox" || field === "radio") {
+  if ((field === "checkbox" || field === "radio") && isHTML(el, "input")) {
     if (typeof value !== "boolean") return false;
-    if (html.checked !== value) html.click();
-    return html.checked === value;
+    if (el.checked !== value) el.click();
+    return el.checked === value;
   }
   return false;
 }
@@ -889,19 +977,15 @@ function controlsIn(doc, root) {
  */
 export function cardFieldShown(doc) {
   const shown = controlsIn(doc, doc).filter((el) => {
-    const html = /** @type {any} */ (el);
-    if (el.localName === "input" && (NO_VALUE.has(html.type) || html.type === "hidden")) {
-      return false;
-    }
-    if (!(html.checkVisibility?.({ visibilityProperty: true }) ?? true)) return false;
+    if (isHTML(el, "input") && (NO_VALUE.has(el.type) || el.type === "hidden")) return false;
+    if (!el.checkVisibility({ visibilityProperty: true })) return false;
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0;
   });
   if (!shown.length) return false;
   const named = shown.some((el) => {
     try {
-      const name = /** @type {any} */ (el).getAutocompleteInfo?.()?.fieldName;
-      return String(name ?? "").startsWith("cc-");
+      return String(autocompleteOf(el) ?? "").startsWith("cc-");
     } catch {
       return false;
     }
@@ -929,11 +1013,13 @@ export function totalBefore(doc, el) {
   });
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node === el) break;
-    const html = /** @type {any} */ (node);
-    if (html.childElementCount > TOTAL_CHILDREN_MAX) continue;
+    // SHOW_ELEMENT: every node is an element.
+    const element = /** @type {Element} */ (node);
+    if (element.childElementCount > TOTAL_CHILDREN_MAX) continue;
     const raw = node.textContent ?? "";
     if (raw.length > TOTAL_TEXT_MAX || !/\d/.test(raw)) continue;
-    const text = oneLine(typeof html.innerText === "string" ? html.innerText : raw);
+    // innerText is HTML's: an SVG or MathML element has only its text content.
+    const text = oneLine(isHTMLElement(element) ? element.innerText : raw);
     if (text && isStatedTotal(text)) found = text;
   }
   return found === undefined ? undefined : cap(found, TEXT);
@@ -947,8 +1033,10 @@ export function totalBefore(doc, el) {
  * @returns {Element | null}
  */
 function pressedBy(el, by) {
-  const html = /** @type {any} */ (el);
-  if (by === "form") return html.form ? (defaultSubmitOf(html.form)?.submitter ?? null) : null;
+  if (by === "form") {
+    const form = formOf(el);
+    return form ? (defaultSubmitOf(form)?.submitter ?? null) : null;
+  }
   return submitOf(el)?.submitter ?? el;
 }
 
@@ -964,14 +1052,13 @@ export function payInfoOf(el, by) {
   /** @type {string[]} */
   const texts = [];
   if (control) {
-    const html = /** @type {any} */ (control);
     const words = [
       textOf(control, kindOf(control)),
       // The accessible label, aria-labelledby first: the name the element list shows the model.
       ariaLabelOf(control),
       control.getAttribute("aria-label"),
       control.getAttribute("title"),
-      control.localName === "input" || control.localName === "button" ? html.value : "",
+      isHTML(control, "input") || isHTML(control, "button") ? control.value : "",
     ];
     for (const w of words) {
       const t = cap(oneLine(String(w ?? "")), TEXT);
@@ -981,6 +1068,8 @@ export function payInfoOf(el, by) {
   const total = totalBefore(/** @type {Document} */ (el.ownerDocument), control ?? el);
   return { texts: texts.slice(0, 4), ...(total ? { total } : {}) };
 }
+
+/** @typedef {HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement} SentControl */
 
 /** Fields a form's question gets at most; the rest are counted (core CHECKPOINT_CAPS). */
 const SENT_MAX = 64;
@@ -996,29 +1085,32 @@ const TEXT_TYPES = new Set(["text", "url", "email", "tel"]);
  * the autocomplete name the page gives, by `type=email` or `type=tel`, or by the name form
  * autofill's address heuristics infer. A failure of the heuristics marks every field, so that a
  * doubt asks.
- * @param {any} form
+ * @param {HTMLFormElement} form
  * @returns {Set<Element>}
  */
 function identityFields(form) {
   /** @type {Set<Element>} */
   const out = new Set();
-  const fields = [...form.elements].filter(
-    (/** @type {any} */ c) => c.localName === "input" || c.localName === "select",
-  );
+  /** @type {(HTMLInputElement | HTMLSelectElement)[]} */
+  const fields = [];
+  for (const c of form.elements) if (isHTML(c, "input") || isHTML(c, "select")) fields.push(c);
   for (const c of fields) {
     if (c.type === "email" || c.type === "tel") out.add(c);
     try {
-      if (IDENTITY_FIELDS.includes(String(c.getAutocompleteInfo?.()?.fieldName ?? ""))) out.add(c);
+      if (IDENTITY_FIELDS.includes(String(c.getAutocompleteInfo()?.fieldName ?? ""))) out.add(c);
     } catch {
       out.add(c);
     }
   }
-  if (!fields.length) return out;
+  const first = fields[0];
+  if (!first) return out;
   try {
-    const formLike = lazy.AutofillFormFactory.createFromField(fields[0]);
+    const formLike = lazy.AutofillFormFactory.createFromField(first);
     for (const d of lazy.FormAutofillHeuristics.getFormInfo(formLike, false) ?? []) {
       const names = /** @type {unknown[]} */ ([]).concat(d?.fieldName ?? []);
-      if (names.some((n) => lazy.FormAutofillUtils.isAddressField(n))) out.add(d.element);
+      if (d.element && names.some((n) => lazy.FormAutofillUtils.isAddressField(n))) {
+        out.add(d.element);
+      }
     }
   } catch (e) {
     console.error("vimma agent-checkpoint: form autofill heuristics", e);
@@ -1041,8 +1133,7 @@ function identityFields(form) {
  */
 export function sentFieldsOf(el, by, skip) {
   if (!el?.isConnected) return null;
-  const html = /** @type {any} */ (el);
-  const form = by === "form" ? html.form : submitOf(el)?.form;
+  const form = by === "form" ? formOf(el) : submitOf(el)?.form;
   const submit = form ? (by === "form" ? defaultSubmitOf(form) : submitOf(el)) : null;
   if (!form || !submit) return null;
   /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
@@ -1054,7 +1145,7 @@ export function sentFieldsOf(el, by, skip) {
   /**
    * One field sent; `f.value` is the whole value, cut here.
    * @param {{ name: string, value?: string, secret?: true, file?: true }} f
-   * @param {any} [c] the field, for its marks
+   * @param {SentControl} [c] the field, for its marks
    */
   const add = (f, c) => {
     if (fields.length >= SENT_MAX) return more++;
@@ -1072,17 +1163,19 @@ export function sentFieldsOf(el, by, skip) {
     }
     return fields.push(out);
   };
-  for (const c of form.elements) {
-    if (!c.name || c.matches(":disabled") || c.closest("datalist") || skip.has(c)) continue;
-    if (["fieldset", "output", "object"].includes(c.localName)) continue;
+  for (const listed of form.elements) {
+    const c = listedControl(listed);
+    if (!c?.name || c.matches(":disabled") || c.closest("datalist") || skip.has(c)) continue;
+    if (isHTML(c, "fieldset") || isHTML(c, "output") || isHTML(c, "object")) continue;
     const name = cap(c.name, TEXT);
-    const box = c.type === "checkbox" || c.type === "radio";
+    const input = isHTML(c, "input") ? c : null;
+    const box = input?.type === "checkbox" || input?.type === "radio";
     if (c.localName === "button" || BUTTON_TYPES.has(c.type)) {
       // Of the buttons only the one pressed is sent; an image button's click point means nothing.
       if (c === submit.submitter && c.type !== "image") add({ name, value: c.value });
     } else if (c.type === "hidden") {
       hidden++;
-    } else if (box && !c.checked) {
+    } else if (box && !input?.checked) {
       // an unchecked box sends nothing
     } else if (secretOf(c)) {
       add({ name, secret: true });
@@ -1090,7 +1183,7 @@ export function sentFieldsOf(el, by, skip) {
       add({ name, value: c.value }, c);
     } else if (c.type === "file") {
       add({ name, file: true });
-    } else if (c.localName === "select") {
+    } else if (isHTML(c, "select")) {
       for (const o of c.selectedOptions) add({ name, value: o.value }, c);
     } else {
       add({ name, value: c.value }, c);

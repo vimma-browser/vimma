@@ -66,6 +66,32 @@ declare function openSettingsPane(
   selectors: string | string[],
   check: (doc: Document, el: HTMLElement) => Promise<void> | void,
 ): Promise<void>;
+/**
+ * The browsing context of `browser`. A loaded tab's browser has one; a browser without a frame
+ * loader (a lazy tab's) has none, and the test fails here, as a read through it would.
+ * @param {MozBrowser} browser
+ * @returns {CanonicalBrowsingContext}
+ */
+declare function contextOf(browser: MozBrowser): CanonicalBrowsingContext;
+/**
+ * The document (window global) `bc` shows now; the test fails here when it shows none.
+ * @param {CanonicalBrowsingContext | null | undefined} bc
+ * @returns {WindowGlobalParent}
+ */
+declare function windowGlobalOf(
+  bc: CanonicalBrowsingContext | null | undefined,
+): WindowGlobalParent;
+/**
+ * The back/forward list of `browser`'s tab; the test fails here when its context keeps none.
+ * @param {MozBrowser} browser
+ */
+declare function historyOf(browser: MozBrowser): {
+  readonly count: number;
+  readonly index: number;
+  getEntryAtIndex(index: number): {
+    readonly URI: nsIURI;
+  };
+};
 
 // tests/browser/head_vimma_agent_model.js
 

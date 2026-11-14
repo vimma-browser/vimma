@@ -9,7 +9,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 /* global VimmaHost, PaneViews, leaves, PAGE -- from head_vimma_grep.js */
 /* global OTHER_SITE, OTHER_WS, def, ww, isOpen, rows -- from head_vimma_grep.js */
@@ -261,7 +261,7 @@ add_task(async function a_cross_site_frame_and_shadow_roots_are_searched() {
   EventUtils.synthesizeKey("KEY_ArrowUp");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !isOpen(), "jumped");
-  const frame = tab.linkedBrowser.browsingContext.children[0];
+  const frame = contextOf(tab.linkedBrowser).children[0];
   const inFrame = await SpecialPowers.spawn(frame, [], async () => {
     await ContentTaskUtils.waitForCondition(
       () => /** @type {Selection} */ (content.getSelection()).toString() === "needle in",
@@ -835,8 +835,8 @@ add_task(async function frames_past_the_cap_are_not_searched() {
   const tab = await openFixture({ title: "Many frames", t: "top", frames: 150 });
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children.length === 150 &&
-      tab.linkedBrowser.browsingContext.children.every(
+      contextOf(tab.linkedBrowser).children.length === 150 &&
+      contextOf(tab.linkedBrowser).children.every(
         (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
       ),
     "150 frames",
@@ -858,17 +858,17 @@ add_task(async function a_jump_never_reaches_a_document_the_frame_navigated_to()
   await resultsSettle(2);
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !isOpen(), "jumped to the top frame's match");
-  const frame = tab.linkedBrowser.browsingContext.children[0];
+  const frame = contextOf(tab.linkedBrowser).children[0];
   const before = frame.currentWindowGlobal;
   const next = `${OTHER_SITE}?t=${encodeURIComponent("needle in frame")}&v=2`;
   await SpecialPowers.spawn(tab.linkedBrowser, [next], (url) => {
     /** @type {HTMLIFrameElement} */ (content.document.querySelector("iframe")).src = url;
   });
   await until(
-    () => frame.currentWindowGlobal && frame.currentWindowGlobal !== before,
+    () => !!frame.currentWindowGlobal && frame.currentWindowGlobal !== before,
     "the frame navigated",
   );
-  await until(() => !frame.currentWindowGlobal.isInitialDocument, "and loaded");
+  await until(() => !windowGlobalOf(frame).isInitialDocument, "and loaded");
   await focusContent(tab.linkedBrowser);
   type("]q");
   await until(() => noticeText() === "match no longer on the page", "the jump is refused");
@@ -899,10 +899,14 @@ add_task(async function an_over_long_query_says_so_and_is_not_sent() {
   EventUtils.synthesizeKey("KEY_Escape");
 });
 
+/** A grep reply's `count`, undefined for a reply without one. @param {unknown} reply */
+const countOf = (reply) =>
+  reply && typeof reply === "object" && "count" in reply ? reply.count : undefined;
+
 /** The Vimma actor of `tab`'s top frame, after it dropped any earlier search. */
 /** @param {MozTabbrowserTab} tab */
 async function freshActor(tab) {
-  const actor = tab.linkedBrowser.browsingContext.currentWindowGlobal.getActor("Vimma");
+  const actor = windowGlobalOf(contextOf(tab.linkedBrowser)).getActor("Vimma");
   await actor.sendQuery("Vimma:GrepEnd", {});
   return actor;
 }
@@ -933,7 +937,7 @@ add_task(async function a_frame_drops_an_older_query() {
   const tab = await openFixture({ title: "Older", t: "needle here" });
   const actor = await freshActor(tab);
   const newer = await actor.sendQuery("Vimma:Grep", { query: "needle", gen: 10 });
-  Assert.equal(newer?.count, 1, "generation 10 is answered");
+  Assert.equal(countOf(newer), 1, "generation 10 is answered");
   const older = await actor.sendQuery("Vimma:Grep", { query: "needle", gen: 5 });
   Assert.equal(older, null, "generation 5, older than one it has seen, is dropped");
   await actor.sendQuery("Vimma:GrepEnd", {});
@@ -943,10 +947,10 @@ add_task(async function grep_end_resets_the_frames_generation() {
   await reset();
   const tab = await openFixture({ title: "Reset", t: "needle here" });
   const actor = await freshActor(tab);
-  Assert.equal((await actor.sendQuery("Vimma:Grep", { query: "needle", gen: 10 }))?.count, 1);
+  Assert.equal(countOf(await actor.sendQuery("Vimma:Grep", { query: "needle", gen: 10 })), 1);
   await actor.sendQuery("Vimma:GrepEnd", {});
   const next = await actor.sendQuery("Vimma:Grep", { query: "needle", gen: 1 });
-  Assert.equal(next?.count, 1, "after GrepEnd a new session's first generation is answered");
+  Assert.equal(countOf(next), 1, "after GrepEnd a new session's first generation is answered");
   await actor.sendQuery("Vimma:GrepEnd", {});
 });
 
@@ -955,8 +959,8 @@ add_task(async function one_worker_a_process_and_none_for_a_blank_frame() {
   const tab = await openFixture({ title: "Workers", t: "top", frames: 3, blank: 1 });
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children.length === 4 &&
-      tab.linkedBrowser.browsingContext.children.every(
+      contextOf(tab.linkedBrowser).children.length === 4 &&
+      contextOf(tab.linkedBrowser).children.every(
         (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
       ),
     "4 frames",

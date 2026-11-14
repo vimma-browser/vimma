@@ -11,6 +11,8 @@
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 const ROOT = getRootDirectory(gTestPath).replace(
@@ -252,7 +254,7 @@ add_task(async function the_theme_reaches_only_the_viewer() {
     content.document.body.append(el);
   });
   const frame = await TestUtils.waitForCondition(() =>
-    tab.linkedBrowser.browsingContext.children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
+    contextOf(tab.linkedBrowser).children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
       bc.currentWindowGlobal?.documentPrincipal?.originNoSuffix?.startsWith("resource://pdf"),
     ),
   );

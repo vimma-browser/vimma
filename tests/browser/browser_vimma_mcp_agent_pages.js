@@ -9,6 +9,8 @@
 // MediaManager read it); every agent tab's browsing context has SANDBOXED_AUXILIARY_NAVIGATION.
 // A tab of another workspace still asks and still opens pop-ups.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 /* global PopupNotifications -- the browser window's (browser.js) */
@@ -172,7 +174,7 @@ add_task(async function test_agent_tabs_open_no_popups() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
   Assert.ok(
-    tab.linkedBrowser.browsingContext.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
+    contextOf(tab.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
     "the agent tab's browsing context is sandboxed against new windows",
   );
   const before = gBrowser.tabs.length;
@@ -203,14 +205,14 @@ add_task(async function test_agent_tabs_open_no_popups() {
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, other);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   Assert.ok(
-    tab.linkedBrowser.browsingContext.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
+    contextOf(tab.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
     "after a cross-site navigation too",
   );
   BrowserTestUtils.removeTab(tab);
 
   const mine = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   Assert.ok(
-    !(mine.linkedBrowser.browsingContext.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION),
+    !(contextOf(mine.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION),
     "a main tab is not sandboxed",
   );
   const newTab = BrowserTestUtils.waitForNewTab(gBrowser, "https://example.com/");
@@ -310,7 +312,7 @@ add_task(async function test_a_page_from_a_service_worker_is_denied_too() {
 add_task(async function test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed() {
   const agent = /** @type {any} */ (WorkspaceStore.agent);
   const tab = await tabIn(agent.userContextId);
-  const bc = tab.linkedBrowser.browsingContext;
+  const bc = contextOf(tab.linkedBrowser);
   bc.sandboxFlags &= ~SANDBOXED_AUXILIARY_NAVIGATION;
   BrowserTestUtils.reloadTab(tab);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
@@ -327,7 +329,7 @@ add_task(async function test_a_sweep_reloads_agent_tabs_that_loaded_unsandboxed(
   Services.obs.notifyObservers(null, "vimma-mcp-changed");
   await reloaded;
   Assert.ok(
-    tab.linkedBrowser.browsingContext.sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
+    contextOf(tab.linkedBrowser).sandboxFlags & SANDBOXED_AUXILIARY_NAVIGATION,
     "the sweep set the flag",
   );
   Assert.ok(!(await opens()), "and reloaded the page, which now opens none");

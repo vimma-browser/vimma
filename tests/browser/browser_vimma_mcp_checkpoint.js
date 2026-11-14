@@ -9,6 +9,8 @@
 // that submits no form; the question names the button, the site and the total the page states
 // (C7). Basket buttons with no such words run unasked.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 /* global Client, tidyTask -- from head_vimma_control.js */
@@ -217,7 +219,7 @@ addTidyTask(async function test_card_fields_in_a_cross_site_frame_make_a_pay_ste
   // The payment provider's frame of another site has loaded its card field.
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.host ===
+      contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.host ===
       "example.org",
     "the provider's frame loaded",
   );
@@ -240,11 +242,11 @@ addTidyTask(async function test_card_fields_in_a_cross_site_frame_make_a_pay_ste
 addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_frames_site() {
   await mcp(true);
   const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
-  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  const frame = () => contextOf(tab.linkedBrowser).children[0];
   await until(
     () =>
       frame()?.currentWindowGlobal?.documentURI?.host === "example.org" &&
-      frame().currentWindowGlobal.documentURI.spec.endsWith("hosted_pay.html"),
+      !!frame()?.currentWindowGlobal?.documentURI?.spec.endsWith("hosted_pay.html"),
     "the provider's frame loaded",
   );
   const c = await agentClient();
@@ -288,7 +290,7 @@ addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_fra
 addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_the_frames_site() {
   await mcp(true);
   const tab = await openAgentTab(`${CHECKOUT}?frame=hosted_pay`);
-  const frame = () => tab.linkedBrowser.browsingContext.children[0];
+  const frame = () => contextOf(tab.linkedBrowser).children[0];
   await until(
     () => frame()?.currentWindowGlobal?.documentURI?.spec.endsWith("hosted_pay.html"),
     "the provider's frame loaded",
@@ -373,7 +375,7 @@ addTidyTask(async function test_a_key_that_acts_where_it_may_pay_asks() {
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, CHECKOUT);
   await until(
     () =>
-      tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.host ===
+      contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.host ===
       "example.org",
     "the provider's frame loaded",
   );
