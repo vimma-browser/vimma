@@ -214,7 +214,7 @@ async function dumpFindState(browser, events, msg) {
  * @param {string} marker
  */
 function frameWith(browser, marker) {
-  return browser.browsingContext.children.find((/** @type {BrowsingContext} */ bc) =>
+  return browser.browsingContext.children.find((/** @type {CanonicalBrowsingContext} */ bc) =>
     bc.currentWindowGlobal?.documentURI?.spec.includes(marker),
   );
 }
