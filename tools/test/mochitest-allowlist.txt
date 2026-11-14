@@ -2,7 +2,6 @@
 # (issue #959). Nothing is added here: a new test file is type-checked from its first commit.
 # Each pull request that fixes a file's errors takes it off, and tools/mochitest-typecheck.ts
 # (npm run typecheck) fails until it does.
-tests/browser/browser_vimma_a11y.js
 tests/browser/browser_vimma_about.js
 tests/browser/browser_vimma_addons.js
 tests/browser/browser_vimma_agent_chat.js
@@ -28,13 +27,11 @@ tests/browser/browser_vimma_downloads.js
 tests/browser/browser_vimma_firefox_coverage.js
 tests/browser/browser_vimma_firefox_page_process.js
 tests/browser/browser_vimma_firefox_surfaces_theme.js
-tests/browser/browser_vimma_firefox_surfaces_trim.js
 tests/browser/browser_vimma_firefox_wizard_theme.js
 tests/browser/browser_vimma_firefoxview_theme.js
 tests/browser/browser_vimma_focus_accent.js
 tests/browser/browser_vimma_focus_rings.js
 tests/browser/browser_vimma_focus_urlbar.js
-tests/browser/browser_vimma_help_overlay.js
 tests/browser/browser_vimma_hints.js
 tests/browser/browser_vimma_hints_wizard.js
 tests/browser/browser_vimma_licence.js
@@ -62,7 +59,6 @@ tests/browser/browser_vimma_start_page.js
 tests/browser/browser_vimma_system_addons.js
 tests/browser/browser_vimma_theme.js
 tests/browser/browser_vimma_theme_appearance.js
-tests/browser/browser_vimma_toolbar.js
 tests/browser/browser_vimma_toolbar_theme.js
 tests/browser/browser_vimma_vendor_strings.js
 tests/browser/browser_vimma_version_line.js

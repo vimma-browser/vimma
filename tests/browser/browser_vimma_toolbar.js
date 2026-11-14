@@ -57,30 +57,85 @@ const VISIBLE = { visibilityProperty: true };
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-toolbar-${Date.now()}`);
 const configFile = PathUtils.join(dir, "config.toml");
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
 
-/** ctrl+b, then `key`, in `win`. */
+/**
+ * What the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * ctrl+b, then `key`, in `win`.
+ * @param {string} key
+ * @param {Window} [win]
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, win = window, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, mods, win);
 }
 
+/**
+ * @param {string} id
+ * @param {Window} [win]
+ */
 const $ = (id, win = window) => win.document.getElementById(id);
+/**
+ * An element every browser window has (#nav-bar, #urlbar-container, the status bar); a read
+ * through a missing one throws, as it did before.
+ * @param {string} id
+ */
+const known = (id) => found($(id));
+/** @param {Element | null | undefined} el */
 const shows = (el) => !!el?.checkVisibility(VISIBLE);
+/** @param {Window} [win] */
 const root = (win = window) => win.document.documentElement;
+/** @param {Window} [win] */
 const barCollapsed = (win = window) => !shows($("nav-bar", win));
+/** @param {Window} [win] */
 const minimal = (win = window) => root(win).hasAttribute(MINIMAL);
-/** The URL field with the site's identity and the prompts' icons, still no buttons. */
+/**
+ * The URL field with the site's identity and the prompts' icons, still no buttons.
+ * @param {Window} [win]
+ */
 const promptSize = (win = window) => minimal(win) && root(win).hasAttribute(PROMPT);
+/** @param {Window} [win] */
 const revealedFull = (win = window) =>
   root(win).hasAttribute(REVEALED) && !root(win).hasAttribute(MINIMAL);
+/** @param {Window} [win] */
 const noticeText = (win = window) => $("vimma-notice-live", win)?.textContent ?? "";
-const toolbarOf = (win = window) => VimmaHost._state(win).toolbar;
+/**
+ * The window's Toolbar, which VimmaHost makes for each browser window; a read through a missing
+ * state or toolbar throws, as it did before.
+ * @param {BrowserWindow} [win]
+ */
+const toolbarOf = (win = window) => found(found(VimmaHost._state(win)).toolbar);
+/**
+ * @param {string} id
+ * @param {Window} [win]
+ */
 const segText = (id, win = window) =>
   $("vimma-statusbar", win)?.querySelector(`[data-segment="${id}"]`)?.textContent ?? null;
+/** The notification panel (PopupNotifications.panel, a <panel>), for its anchor. */
+const promptPanel = () => /** @type {XULPopupElement} */ (PopupNotifications.panel);
+/** The prompt the notification panel shows; a read through a missing one throws, as before. */
+const promptEl = () =>
+  /** @type {MozPopupNotification} */ (PopupNotifications.panel.firstElementChild);
+/**
+ * A prompt's keys line (toolbar.mjs adds it), null before the first.
+ * @param {Element} n
+ */
+const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
+/** @param {number} ms */
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /** Hidden in every window, from the pref. */
 async function hide() {
@@ -122,7 +177,10 @@ const NOT_IN_MINIMAL = [
   "page-action-buttons",
 ];
 
-/** The minimal bar is up: only the URL field, no button and no identity chrome around it. */
+/**
+ * The minimal bar is up: only the URL field, no button and no identity chrome around it.
+ * @param {string} what
+ */
 function assertMinimal(what) {
   Assert.ok(gURLBar.focused, `${what}: the URL bar has focus`);
   Assert.ok(shows(gURLBar.inputField), `${what}: the URL field is visible`);
@@ -134,7 +192,7 @@ function assertMinimal(what) {
   for (const sel of [".searchmode-switcher", ".urlbar-go-button"]) {
     Assert.ok(!shows(gURLBar.querySelector(sel)), `${what}: ${sel} does not show`);
   }
-  for (const el of $("nav-bar").querySelectorAll(".titlebar-buttonbox-container")) {
+  for (const el of known("nav-bar").querySelectorAll(".titlebar-buttonbox-container")) {
     Assert.ok(!shows(el), `${what}: the window controls do not show`);
   }
 }
@@ -158,7 +216,9 @@ add_task(async function setup() {
     Services.prefs.clearUserPref(PREF);
     const view = PaneViews.get(window);
     while (view?.panes) view.close();
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await PlacesUtils.history.clear();
     await PlacesUtils.bookmarks.eraseEverything();
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
@@ -187,11 +247,12 @@ add_task(async function ctrl_b_u_hides_the_toolbar_in_every_window() {
   }
   await until(() => noticeText() === "toolbar hidden", "the polite region says toolbar hidden");
   Assert.ok(
-    $("notifications-toolbar").checkVisibility(VISIBLE),
+    known("notifications-toolbar").checkVisibility(VISIBLE),
     "#notifications-toolbar is not hidden",
   );
+  /** @type {nsIAccessibilityService} */
   const acc = Cc["@mozilla.org/accessibilityService;1"].getService(Ci.nsIAccessibilityService);
-  Assert.equal(
+  Assert.strictEqual(
     acc.getAccessibleFor(gURLBar.inputField),
     null,
     "the hidden URL bar has no accessible",
@@ -210,7 +271,7 @@ add_task(async function ctrl_b_u_hides_the_toolbar_in_every_window() {
 // 2: every way to the URL bar shows the minimal bar, over the page, without moving the field.
 add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
   const tab = await openPage();
-  const container = $("urlbar-container").getBoundingClientRect();
+  const container = known("urlbar-container").getBoundingClientRect();
   await hide();
   const browser = tab.linkedBrowser;
   const height = browser.getBoundingClientRect().height;
@@ -240,8 +301,8 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
     press();
     await until(() => gURLBar.focused, `${what} focuses the URL bar`);
     assertMinimal(what);
-    const now = $("urlbar-container").getBoundingClientRect();
-    for (const k of ["x", "y", "width", "height"]) {
+    const now = known("urlbar-container").getBoundingClientRect();
+    for (const k of /** @type {const} */ (["x", "y", "width", "height"])) {
       Assert.equal(now[k], container[k], `${what}: the URL field's ${k} is as with the toolbar`);
     }
     Assert.equal(
@@ -258,10 +319,12 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
   ]);
   Assert.deepEqual(after, [inner, 0], "the page saw no resize");
 
-  for (const [what, keys] of [
+  /** @type {Array<[string, () => void]>} */
+  const newTabKeys = [
     ["t", () => EventUtils.synthesizeKey("t")],
     ["ctrl+b c", () => prefix("c")],
-  ]) {
+  ];
+  for (const [what, keys] of newTabKeys) {
     await focusContent(browser);
     const opened = BrowserTestUtils.waitForNewTab(gBrowser);
     keys();
@@ -276,7 +339,7 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
   prefix("v");
   await until(() => !!PaneViews.get(window)?.panes && gURLBar.focused, "ctrl+b v: a pane");
   assertMinimal("ctrl+b v");
-  PaneViews.get(window).close();
+  found(PaneViews.get(window)).close();
   await until(() => !PaneViews.get(window)?.panes, "the split is closed");
 
   // Typing, and Firefox's suggestions below the field, where they open with the toolbar shown.
@@ -305,7 +368,7 @@ add_task(async function focusing_the_url_bar_shows_the_minimal_bar() {
       () => gURLBar.view.isOpen && gURLBar.querySelectorAll(".urlbarView-row").length > 1,
       "the bookmark is a suggestion",
     );
-    const view = gURLBar.querySelector(".urlbarView");
+    const view = found(gURLBar.querySelector(".urlbarView"));
     Assert.ok(view.matches(":popover-open"), "the view is an open popover");
     return view.getBoundingClientRect().top;
   };
@@ -388,7 +451,7 @@ add_task(async function a_permission_prompt_hangs_from_its_icon() {
   for (const id of ["back-button", "unified-extensions-button", "PanelUI-button"]) {
     Assert.ok(!shows($(id)), `no #${id}`);
   }
-  const anchor = PopupNotifications.panel.anchorNode;
+  const anchor = promptPanel().anchorNode;
   Assert.equal(anchor?.id, "geo-notification-icon", "the prompt anchors to its own icon");
   Assert.ok(shows(anchor), "which is visible");
   // The site's identity: Firefox's lock (the trust icon) or its identity icon, whichever this
@@ -402,7 +465,7 @@ add_task(async function a_permission_prompt_hangs_from_its_icon() {
   Assert.ok(!notification.dismissed && !removed, "the reveal dismissed nothing");
 
   const hidden = BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popuphidden");
-  PopupNotifications.panel.firstElementChild.secondaryButton.click();
+  promptEl().secondaryButton.click();
   await hidden;
   await until(() => barCollapsed(), "after Block the bar hides");
   gBrowser.removeTab(tab);
@@ -422,7 +485,6 @@ add_task(async function permission_prompts_answer_y_and_n() {
   const principal = () => browser.contentPrincipal;
   const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
   const forget = () => SitePermissions.removeFromPrincipal(principal(), "geo", browser);
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   /** Asks for the location; resolves with the prompt once it shows. */
   const ask = async () => {
     const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
@@ -433,9 +495,8 @@ add_task(async function permission_prompts_answer_y_and_n() {
       );
     });
     await shown;
-    return /** @type {any} */ (panel.firstElementChild);
+    return promptEl();
   };
-  const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
   const closed = () => BrowserTestUtils.waitForEvent(panel, "popuphidden");
 
   let n = await ask();
@@ -444,7 +505,10 @@ add_task(async function permission_prompts_answer_y_and_n() {
   await wait(DELAY / 4);
   Assert.equal(panel.state, "open", "y before the prompt is armed answers nothing");
   await until(() => shows(hintOf(n)), "the keys hint shows once armed");
-  Assert.ok(hintOf(n).textContent.startsWith("y allow · n block"), hintOf(n).textContent);
+  Assert.ok(
+    found(hintOf(n)).textContent.startsWith("y allow · n block"),
+    found(hintOf(n)).textContent,
+  );
   EventUtils.synthesizeKey("j");
   Assert.ok(!shows(hintOf(n)), "a key typed on through the prompt disarms it again");
   EventUtils.synthesizeKey("y");
@@ -474,13 +538,18 @@ add_task(async function permission_prompts_answer_y_and_n() {
   const typed = await SpecialPowers.spawn(
     browser,
     [],
-    () => content.document.getElementById("vimma-prompt-field").value,
+    // The field this test added above.
+    () =>
+      /** @type {HTMLInputElement} */ (content.document.getElementById("vimma-prompt-field")).value,
   );
   Assert.equal(typed, "yn", "they went into the field");
   Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
 
   // Tab from the page: focus on the prompt's first button, with a visible ring; Enter there.
-  await SpecialPowers.spawn(browser, [], () => content.document.activeElement.blur());
+  await SpecialPowers.spawn(browser, [], () =>
+    // The field above has focus; with nothing focused this throws, as before.
+    /** @type {HTMLElement} */ (content.document.activeElement).blur(),
+  );
   await focusContent(browser);
   await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
   EventUtils.synthesizeKey("KEY_Tab");
@@ -489,10 +558,19 @@ add_task(async function permission_prompts_answer_y_and_n() {
     while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
     return el;
   };
-  await until(() => n.contains(focused()?.getRootNode().host ?? focused()), "Tab: in the prompt");
-  const inner = focused();
-  Assert.equal(
-    inner.getRootNode().host,
+  /**
+   * The shadow host of the tree `el` is in: undefined for no element, and for one in no shadow
+   * tree (its root is the document, which has no `host`).
+   * @param {Element | null} el
+   */
+  const hostOf = (el) => /** @type {Partial<ShadowRoot> | undefined} */ (el?.getRootNode())?.host;
+  await until(() => n.contains(hostOf(focused()) ?? focused()), "Tab: in the prompt");
+  // With nothing focused, the reads of `inner` below throw, as before.
+  const inner = found(focused());
+  // An element outside a shadow tree has no host, and a prompt without the button has none.
+  Assert.ok(n.secondaryButton, "the prompt has a secondary button");
+  Assert.strictEqual(
+    /** @type {Partial<ShadowRoot>} */ (inner.getRootNode()).host,
     n.secondaryButton,
     "on its first button, the secondary one (Block)",
   );
@@ -536,7 +614,6 @@ add_task(async function prompt_keys_leave_live_grep_and_find_their_keys() {
   const panel = PopupNotifications.panel;
   const principal = () => browser.contentPrincipal;
   const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
   await SpecialPowers.spawn(browser, [], () => {
     content.navigator.geolocation.getCurrentPosition(
@@ -545,10 +622,11 @@ add_task(async function prompt_keys_leave_live_grep_and_find_their_keys() {
     );
   });
   await shown;
-  const n = /** @type {any} */ (panel.firstElementChild);
+  const n = promptEl();
   await until(() => shows(n.querySelector(".vimma-prompt-keys")), "the prompt is armed");
 
-  const grep = () => $("vimma-grep");
+  // live-grep.mjs makes a <dialog>.
+  const grep = () => /** @type {HTMLDialogElement | null} */ ($("vimma-grep"));
   prefix("f");
   EventUtils.synthesizeKey("g");
   await until(() => !!grep()?.open, "ctrl+b f g opens live grep");
@@ -558,7 +636,7 @@ add_task(async function prompt_keys_leave_live_grep_and_find_their_keys() {
   Assert.equal(panel.state, "open", "y and n typed into live grep answer nothing");
   Assert.equal(geo(), SitePermissions.UNKNOWN, "nothing decided");
   Assert.equal(
-    grep().querySelector(".vimma-grep-query")?.textContent,
+    found(grep()).querySelector(".vimma-grep-query")?.textContent,
     "yn",
     "they went into the grep query",
   );
@@ -603,7 +681,6 @@ add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys(
   const panel = PopupNotifications.panel;
   const principal = () => browser.contentPrincipal;
   const geo = () => SitePermissions.getForPrincipal(principal(), "geo", browser).state;
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const mode = () => VimmaHost.status(window).mode;
   // Links and text blocks at the top of the page, for the labels and the caret.
   await SpecialPowers.spawn(browser, [], () => {
@@ -631,14 +708,18 @@ add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys(
       );
     });
     await shown;
-    const n = /** @type {any} */ (panel.firstElementChild);
+    const n = promptEl();
     await until(() => shows(n.querySelector(".vimma-prompt-keys")), "the prompt is armed");
     return n;
   };
-  /** In `what`, an armed prompt: y leaves it undecided, its keys line says Esc first. */
+  /**
+   * In `what`, an armed prompt: y leaves it undecided, its keys line says Esc first.
+   * @param {MozPopupNotification} n
+   * @param {string} what
+   */
   const yKept = async (n, what) => {
     Assert.ok(
-      n.querySelector(".vimma-prompt-keys").textContent.startsWith("Esc, then y allow"),
+      found(hintOf(n)).textContent.startsWith("Esc, then y allow"),
       `${what}: the keys line says to leave the mode first`,
     );
     EventUtils.synthesizeKey("y");
@@ -646,11 +727,15 @@ add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys(
     Assert.equal(panel.state, "open", `${what}: y answers nothing`);
     Assert.equal(geo(), SitePermissions.UNKNOWN, `${what}: nothing decided`);
   };
-  /** Back in normal mode, y answers the prompt as usual. */
+  /**
+   * Back in normal mode, y answers the prompt as usual.
+   * @param {MozPopupNotification} n
+   * @param {string} what
+   */
   const yAnswers = async (n, what) => {
     await until(() => mode() === "normal", `${what}: back in normal mode`);
     await until(() => shows(n.querySelector(".vimma-prompt-keys")), "armed again");
-    Assert.ok(n.querySelector(".vimma-prompt-keys").textContent.startsWith("y allow"));
+    Assert.ok(found(hintOf(n)).textContent.startsWith("y allow"));
     const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
     EventUtils.synthesizeKey("y");
     await hidden;
@@ -681,7 +766,10 @@ add_task(async function prompt_keys_leave_hint_copy_and_element_mode_their_keys(
   // Element mode: y is the yank too.
   EventUtils.synthesizeKey("F");
   await until(() => VimmaHost._hints(window)?.hints.length, "F labels the blocks");
-  for (const c of VimmaHost._hints(window).hints[0].label) EventUtils.synthesizeKey(c);
+  // The wait above saw a label; without one this read throws, as before.
+  for (const c of found(found(VimmaHost._hints(window)).hints[0]).label) {
+    EventUtils.synthesizeKey(c);
+  }
   await until(() => mode() === "element", "a label focuses its block");
   n = await ask();
   await yKept(n, "element mode");
@@ -714,9 +802,13 @@ add_task(async function prompt_keys_arm_on_firefoxs_own_delay() {
       );
     });
     await shown;
-    return /** @type {any} */ (panel.firstElementChild);
+    return promptEl();
   };
-  /** Resolves with the time the keys line shows, taken as it shows. */
+  /**
+   * Resolves with the time the keys line shows, taken as it shows.
+   * @param {MozPopupNotification} n
+   * @returns {Promise<number>}
+   */
   const hintShows = (n) =>
     new Promise((resolve) => {
       const observer = new MutationObserver(() => {
@@ -728,7 +820,9 @@ add_task(async function prompt_keys_arm_on_firefoxs_own_delay() {
       observer.observe(n, { attributes: true, childList: true, subtree: true });
     });
   const frames = () =>
-    new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    /** @type {Promise<void>} */ (
+      new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    );
 
   // Showing the line must not restart Firefox's delay (a resize of the panel does).
   let n = await ask();
@@ -774,8 +868,6 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   const tab = await openPage();
   const browser = tab.linkedBrowser;
   const panel = PopupNotifications.panel;
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
   /** Shows the prompt; resolves with it and the answer to come. */
   const ask = async () => {
     const strings = ExtensionsUI._buildStrings({
@@ -785,7 +877,7 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
     const shown = BrowserTestUtils.waitForEvent(panel, "popupshown");
     const answer = ExtensionsUI.showPermissionsPrompt(browser, strings, null);
     await shown;
-    const n = /** @type {any} */ (panel.firstElementChild);
+    const n = promptEl();
     Assert.equal(n.id, "addon-webext-permissions-notification", "the add-on install prompt");
     return { n, answer };
   };
@@ -798,7 +890,10 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   Assert.equal(panel.state, "open", "y before the prompt is armed answers nothing");
   Assert.ok(!settled, "and installs nothing");
   await until(() => shows(hintOf(n)), "the keys hint shows once armed");
-  Assert.ok(hintOf(n).textContent.startsWith("y add · n cancel"), hintOf(n).textContent);
+  Assert.ok(
+    found(hintOf(n)).textContent.startsWith("y add · n cancel"),
+    found(hintOf(n)).textContent,
+  );
   EventUtils.synthesizeKey("n");
   Assert.equal(await answer, false, "n cancels the install");
 
@@ -829,7 +924,7 @@ add_task(async function the_addon_install_prompt_answers_y_and_n() {
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 2);
   Assert.ok(!settled, "a y typed while the labels show installs nothing");
-  Assert.equal(VimmaHost._hints(window), null, "and the labels are gone");
+  Assert.strictEqual(VimmaHost._hints(window), null, "and the labels are gone");
   await until(() => shows(hintOf(n)), "armed again");
   EventUtils.synthesizeKey("y");
   Assert.equal(await answer, true, "then y adds it");
@@ -862,8 +957,6 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   const widget = `${ID.replace(/[^a-z0-9_-]/g, "_")}-browser-action`;
   const area = () => CustomizableUI.getPlacementOfWidget(widget)?.area;
   const tab = await openPage();
-  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const hintOf = (n) => n.querySelector(".vimma-prompt-keys");
   /** Shows the notice; resolves with it and its end (OK pressed). */
   const notice = async (opens = true) => {
     const before = AppMenuNotifications.activeNotification;
@@ -876,7 +969,9 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
         "Firefox puts the new notice in the open panel",
       );
     }
-    const n = /** @type {any} */ ($("appMenu-addon-installed-notification"));
+    const n = /** @type {MozAddonInstalledNotification} */ (
+      /** @type {Element | null} */ ($("appMenu-addon-installed-notification"))
+    );
     await until(() => shows(n.pinExtensionEl), "the notice offers to pin the add-on");
     return { n, done };
   };
@@ -884,6 +979,12 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   let { n, done } = await notice();
   let ended = false;
   done.then(() => (ended = true));
+  // An add-on without a widget has no area, and an area constant Firefox dropped is undefined:
+  // both constants are checked once, for every comparison with area() below.
+  Assert.ok(
+    CustomizableUI.AREA_ADDONS && CustomizableUI.AREA_NAVBAR,
+    "Firefox names the extensions menu and the navigation bar as areas",
+  );
   Assert.equal(area(), CustomizableUI.AREA_ADDONS, "the add-on starts in the extensions menu");
   Assert.ok(!shows(hintOf(n)), "not armed yet");
   EventUtils.synthesizeKey("p");
@@ -893,7 +994,7 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   Assert.ok(PanelUI.isNotificationPanelOpen && !ended, "and y closes nothing");
   await until(() => shows(hintOf(n)), "the keys hint shows once armed");
   Assert.equal(
-    hintOf(n).textContent,
+    found(hintOf(n)).textContent,
     "y ok · p pin extension to toolbar · Tab buttons",
     "the hint names OK and the checkbox",
   );
@@ -951,20 +1052,28 @@ add_task(async function the_addon_installed_notice_answers_p_and_y() {
   });
   await until(() => VimmaHost.status(window).mode === "insert", "insert mode");
   await until(() => shows(hintOf(n)), "armed");
-  Assert.ok(hintOf(n).textContent.startsWith("Esc, then y ok"), hintOf(n).textContent);
+  Assert.ok(
+    found(hintOf(n)).textContent.startsWith("Esc, then y ok"),
+    found(hintOf(n)).textContent,
+  );
   EventUtils.synthesizeKey("p");
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 2);
   Assert.ok(!ended, "y typed in the field closes nothing");
   Assert.equal(area(), CustomizableUI.AREA_NAVBAR, "p typed in the field leaves the pin alone");
   Assert.equal(
-    await SpecialPowers.spawn(tab.linkedBrowser, [], () => content.document.activeElement.value),
+    await SpecialPowers.spawn(
+      tab.linkedBrowser,
+      [],
+      // The field this test focused above.
+      () => /** @type {HTMLInputElement} */ (content.document.activeElement).value,
+    ),
     "py",
     "the field has both letters",
   );
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => VimmaHost.status(window).mode === "normal", "Esc leaves the field");
-  await until(() => shows(hintOf(n)) && hintOf(n).textContent.startsWith("y ok"), "armed");
+  await until(() => shows(hintOf(n)) && found(hintOf(n)).textContent.startsWith("y ok"), "armed");
   EventUtils.synthesizeKey("y");
   await done;
 
@@ -1008,16 +1117,15 @@ add_task(async function the_identity_panel_shows_the_site_identity() {
   Assert.ok(promptSize(), "a prompt shows the prompt bar");
   const button = [$("trust-icon-container"), $("identity-icon-box")].find(shows);
   Assert.ok(button, "the site's identity button shows in it");
-  const shown = BrowserTestUtils.waitForEvent(
-    document,
-    "popupshown",
-    false,
-    (e) => e.target.anchorNode?.closest?.("#urlbar") && e.target !== PopupNotifications.panel,
-  );
+  const shown = BrowserTestUtils.waitForEvent(document, "popupshown", false, (e) => {
+    // Only a popup fires popupshown.
+    const opened = /** @type {XULPopupElement} */ (e.target);
+    return !!opened.anchorNode?.closest?.("#urlbar") && opened !== PopupNotifications.panel;
+  });
   // A click with the mouse: the press closes the prompt before the click lands, and the bar
   // must stay under the pointer meanwhile (reason h).
   EventUtils.synthesizeMouseAtCenter(button, {});
-  const popup = (await shown).target;
+  const popup = /** @type {XULPopupElement} */ ((await shown).target);
   Assert.ok(button.contains(popup.anchorNode) || popup.anchorNode === button, "anchored to it");
   Assert.ok(promptSize(), "the prompt bar shows while the panel is open, not in full");
   Assert.ok(!shows($("back-button")), "no buttons");
@@ -1030,7 +1138,7 @@ add_task(async function the_identity_panel_shows_the_site_identity() {
   await until(() => PopupNotifications.panel.state === "open", "the prompt is back");
   Assert.ok(promptSize(), "with the prompt bar");
   const hidden = BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popuphidden");
-  PopupNotifications.panel.firstElementChild.secondaryButton.click();
+  promptEl().secondaryButton.click();
   await hidden;
   await until(() => barCollapsed(), "answered: the bar hides");
   SitePermissions.removeFromPrincipal(tab.linkedBrowser.contentPrincipal, "geo", tab.linkedBrowser);
@@ -1059,13 +1167,23 @@ add_task(async function an_add_on_popup_shows_the_full_toolbar() {
   const tab = await openPage();
   await hide();
 
-  /** Opens the popup with `open`, checks its anchor and the full bar, closes it with Esc. */
+  /**
+   * Opens the popup with `open`, checks its anchor and the full bar, closes it with Esc.
+   * @param {string} what
+   * @param {() => unknown} open
+   * @param {string} anchorId
+   */
   async function check(what, open, anchorId) {
     await focusContent(tab.linkedBrowser);
     await open();
     await ext.awaitMessage("popup-ready");
-    const panel = document.getElementById("customizationui-widget-panel");
-    await until(() => panel?.state === "open", `${what}: the popup is open`);
+    // Firefox's <panel> for a widget's popup, made when the first one opens.
+    const made = /** @type {XULPopupElement | null} */ (
+      /** @type {Element | null} */ (document.getElementById("customizationui-widget-panel"))
+    );
+    await until(() => made?.state === "open", `${what}: the popup is open`);
+    // The wait saw it open.
+    const panel = found(made);
     Assert.ok(revealedFull(), `${what}: the full toolbar shows`);
     Assert.ok(shows($("back-button")), `${what}: with its buttons`);
     const anchor = panel.anchorNode?.closest(`#${anchorId}`) ?? panel.anchorNode;
@@ -1081,13 +1199,18 @@ add_task(async function an_add_on_popup_shows_the_full_toolbar() {
   const ID = "toolbar-popup@vimma.test";
   const pick = async () => {
     prefix("e");
-    await until(() => $("vimma-addon-picker")?.open, "the add-on picker");
-    const picker = $("vimma-addon-picker");
+    // picker.mjs makes a <dialog>.
+    const pickerEl = () => /** @type {HTMLDialogElement | null} */ ($("vimma-addon-picker"));
+    await until(() => pickerEl()?.open, "the add-on picker");
+    const picker = found(pickerEl());
     EventUtils.synthesizeKey("/");
     EventUtils.sendString("toolbar popup");
     EventUtils.synthesizeKey("KEY_Escape");
     await until(
-      () => picker.querySelector("[role=option][aria-selected=true]")?.dataset.id === ID,
+      () =>
+        /** @type {HTMLElement | null} */ (
+          picker.querySelector("[role=option][aria-selected=true]")
+        )?.dataset.id === ID,
       "the add-on is selected",
     );
     EventUtils.synthesizeKey("KEY_Enter");
@@ -1173,7 +1296,7 @@ add_task(async function exclusions() {
   await full;
   await until(() => root().hasAttribute("inFullscreen"), "F11 fullscreen");
   Assert.ok(
-    $("nav-bar").checkVisibility(VISIBLE),
+    known("nav-bar").checkVisibility(VISIBLE),
     "in F11 fullscreen Firefox's own toolbox owns the bar",
   );
   const back = BrowserTestUtils.waitForEvent(window, "fullscreen");
@@ -1193,7 +1316,7 @@ add_task(async function the_status_bar_says_not_secure_and_private() {
   Assert.equal(tab.linkedBrowser.currentURI.scheme, "http", "the page stayed on http:");
   await until(
     () => segText("security") === "not secure",
-    `an http: page is not secure (identity box: ${$("identity-box").className}; bar: ${$("vimma-statusbar").textContent}; root hidden: ${root().hasAttribute(HIDDEN)})`,
+    `an http: page is not secure (identity box: ${known("identity-box").className}; bar: ${known("vimma-statusbar").textContent}; root hidden: ${root().hasAttribute(HIDDEN)})`,
   );
   await until(() => segText("url")?.startsWith("http://"), "and its URL keeps http://");
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, PLAIN);
@@ -1237,7 +1360,7 @@ add_task(async function the_status_bar_keeps_the_registrable_domain() {
     "https://sub1.test1.example.com/browser/browser/base/zen-components/tests/browser/file_vimma_plain.html?a-very-long-query-that-pushes-the-host-out";
   const tab = await openPage(deep);
   await hide();
-  const bar = $("vimma-statusbar");
+  const bar = known("vimma-statusbar");
   try {
     for (const width of ["40ch", "60ch", "90ch"]) {
       bar.style.width = width;
@@ -1245,7 +1368,8 @@ add_task(async function the_status_bar_keeps_the_registrable_domain() {
       // toolbar): read before that, the text is still the last one drawn.
       for (let i = 0; i < 3; i++) await new Promise((r) => requestAnimationFrame(r));
       await until(() => !!hostShown(segText("url")), `${width}: the host shows`);
-      const host = hostShown(segText("url"));
+      // The wait above saw a host; without one the next read throws, as before.
+      const host = found(hostShown(segText("url")));
       Assert.ok(
         host === "example.com" || host.endsWith(".example.com"),
         `${width}: it ends with the base domain (${segText("url")})`,
@@ -1311,15 +1435,16 @@ add_task(async function a_blob_page_shows_its_origin() {
   const blob = await opened;
   gBrowser.selectedTab = blob;
   await until(() => gBrowser.currentURI.spec.startsWith("blob:"), "the blob: page is selected");
-  const bar = $("vimma-statusbar");
+  const bar = known("vimma-statusbar");
   try {
     for (const width of ["40ch", "50ch", "80ch", "120ch"]) {
       bar.style.width = width;
-      await until(() => segText("url")?.length > 0, `${width}: an address shows`);
+      await until(() => (segText("url")?.length ?? 0) > 0, `${width}: an address shows`);
       await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
       const url = segText("url");
       Assert.ok(
-        /(^|[/.…])example\.com(…|\/|$)/.test(url),
+        // test(null) reads the string "null"; an empty string fails the same way.
+        /(^|[/.…])example\.com(…|\/|$)/.test(url ?? ""),
         `${width}: the origin's domain ends the host (${url})`,
       );
     }
@@ -1469,14 +1594,14 @@ add_task(async function a_failed_reveal_for_a_prompt_shows_the_toolbar() {
     await shown;
     Assert.ok(!Services.prefs.getBoolPref(PREF), "the toolbar is back");
     Assert.equal(
-      PopupNotifications.panel.anchorNode?.id,
+      promptPanel().anchorNode?.id,
       "geo-notification-icon",
       "the prompt hangs from its icon, never unanchored",
     );
-    Assert.ok(shows(PopupNotifications.panel.anchorNode), "which is visible");
+    Assert.ok(shows(promptPanel().anchorNode), "which is visible");
     await until(() => noticeText().startsWith("toolbar shown:"), "the notice says why");
     const hidden = BrowserTestUtils.waitForEvent(PopupNotifications.panel, "popuphidden");
-    PopupNotifications.panel.firstElementChild.secondaryButton.click();
+    promptEl().secondaryButton.click();
     await hidden;
   } finally {
     t.reveal = reveal;
@@ -1494,7 +1619,7 @@ add_task(async function config_sets_the_toolbar() {
     ],
   });
   let n = 0;
-  const write = (text) =>
+  const write = (/** @type {string} */ text) =>
     IOUtils.writeUTF8(configFile, `schema = 2\n${text}\n${"#".repeat(++n)}\n`);
 
   await show();
@@ -1527,7 +1652,7 @@ add_task(async function config_sets_the_toolbar() {
 add_task(async function the_top_edge_reveals_nothing() {
   const tab = await openPage();
   await hide();
-  Assert.equal($("vimma-toolbar-edge"), null, "no hover strip at the top edge");
+  Assert.strictEqual($("vimma-toolbar-edge"), null, "no hover strip at the top edge");
   EventUtils.synthesizeMouse(document.documentElement, 20, 0, { type: "mousemove" });
   EventUtils.synthesizeMouse(document.documentElement, 20, 1, { type: "mousemove" });
   await new Promise((r) => setTimeout(r, 400));
@@ -1562,7 +1687,7 @@ add_task(async function revealing_keeps_the_overflow_menu() {
   const width = window.outerWidth;
   window.resizeTo(560, window.outerHeight);
   await until(() => window.outerWidth === 560, "the window is 560 px wide");
-  await until(() => $("nav-bar").hasAttribute("overflowing"), "the nav bar overflows");
+  await until(() => known("nav-bar").hasAttribute("overflowing"), "the nav bar overflows");
   const overflowed = () =>
     [...document.querySelectorAll("[overflowedItem]")]
       .map((c) => c.id)
@@ -1574,7 +1699,15 @@ add_task(async function revealing_keeps_the_overflow_menu() {
   const afterResize = async () => {
     window.dispatchEvent(new Event("resize"));
     await window.promiseDocumentFlushed(() => {});
-    await until(() => !$("nav-bar").overflowable.isHandlingOverflow(), "the overflow check ends");
+    await until(
+      () =>
+        !(
+          /** @type {OverflowableToolbarElement} */ (
+            /** @type {Element} */ ($("nav-bar"))
+          ).overflowable.isHandlingOverflow()
+        ),
+      "the overflow check ends",
+    );
     return overflowed();
   };
   const before = await afterResize();
@@ -1604,7 +1737,9 @@ add_task(async function mixed_sizes() {
   await hide();
   EventUtils.synthesizeKey("I", { shiftKey: true });
   await until(() => gURLBar.focused && minimal(), "minimal");
-  const panel = $("downloadsPanel") ?? null;
+  const panel = /** @type {XULPopupElement | null} */ (
+    /** @type {Element | null} */ ($("downloadsPanel") ?? null)
+  );
   const t = toolbarOf();
   t.hold("downloads-test", "full");
   await until(() => revealedFull(), "a full reason as well: full");
@@ -1620,7 +1755,7 @@ add_task(async function mixed_sizes() {
 
 // 17: the account panel has no "Get Vimma for Android or iOS" row, shown or hidden.
 add_task(async function the_account_panel_has_no_mobile_promo() {
-  const node = (id) => PanelMultiView.getViewNode(document, id);
+  const node = (/** @type {string} */ id) => PanelMultiView.getViewNode(document, id);
   for (const hidden of [false, true]) {
     Services.prefs.setBoolPref(PREF, hidden);
     const what = hidden ? "toolbar hidden" : "toolbar shown";

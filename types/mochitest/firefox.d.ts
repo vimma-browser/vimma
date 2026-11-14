@@ -239,9 +239,19 @@ interface MozBrowser {
   readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
 }
 
+// engine/toolkit/modules/PopupNotifications.sys.mjs (Notification): a browser's notification.
+// `dismissed` is true once its panel closed without an answer; `timeShown` is the time
+// (ChromeUtils.now()) its buttons' security delay counts from, which an activation or a move of
+// the panel sets anew; remove() takes it off its browser.
+interface PopupNotification {
+  readonly id: string;
+  dismissed: boolean;
+  timeShown: number;
+  remove(): void;
+}
 // engine/toolkit/modules/PopupNotifications.sys.mjs: a notification, or null when there is none.
 interface PopupNotificationsApi {
-  getNotification(id: string, browser?: MozBrowser): { readonly id: string } | null;
+  getNotification(id: string, browser?: MozBrowser): PopupNotification | null;
 }
 
 // engine/dom/webidl/HTMLInputElement.webidl and HTMLTextAreaElement.webidl (chrome-only): set the
@@ -367,7 +377,10 @@ interface UrlbarInputTestMembers {
   handleRevert(): void;
   readonly view: {
     /** The selected row's result: a search suggestion's payload has its text. */
-    readonly selectedResult: { readonly payload: { readonly suggestion?: string } } | null;
+    readonly selectedResult: {
+      /** A URL result's payload has its `url` (UrlbarUtils.sys.mjs, RESULT_PAYLOAD_SCHEMA). */
+      readonly payload: { readonly suggestion?: string; readonly url?: string };
+    } | null;
     readonly selectedElement: Element | null;
   };
 }
@@ -680,4 +693,75 @@ interface nsIAsyncInputStream extends nsIInputStream {
 interface nsIOutputStream extends nsISupports {
   write(buf: string, count: number): number;
   close(): void;
+}
+
+// engine/toolkit/components/urlformatter/nsIURLFormatter.idl: a URL pref's value with its
+// %VERSION%, %OS%, %LOCALE% and other variables filled in ("about:blank" for a pref without a
+// value); Services.urlFormatter is its service (the folder's components.conf, js_name).
+interface nsIURLFormatter {
+  formatURLPref(pref: string): string;
+}
+interface FirefoxServices {
+  urlFormatter: nsIURLFormatter;
+}
+
+// engine/dom/chrome-webidl/XULPopupElement.webidl: opens the popup at a screen position, as a
+// context menu when `isContextMenu` is true.
+interface XULPopupElement {
+  openPopupAtScreen(
+    x?: number,
+    y?: number,
+    isContextMenu?: boolean,
+    triggerEvent?: Event | null,
+  ): void;
+}
+
+// engine/xpcom/ds/nsIPersistentProperties2.idl: a string property, which throws for a key it
+// does not have.
+interface nsIPersistentProperties {
+  getStringProperty(key: string): string;
+}
+// engine/accessible/interfaces/nsIAccessible.idl: an element as assistive technology sees it.
+// `role` is an nsIAccessibleRole constant; getState fills `value` of its two out parameters with
+// nsIAccessibleStates bits; `attributes` are its object attributes (`live`, `level`, `xml-roles`).
+interface nsIAccessible extends nsISupports {
+  readonly name: string;
+  readonly description: string;
+  readonly role: number;
+  readonly attributes: nsIPersistentProperties;
+  getState(state: { value?: number }, extraState: { value?: number }): void;
+}
+// engine/accessible/interfaces/nsIAccessibilityService.idl: the accessible of a DOM node, null
+// for a node that has none (one that is not rendered, or is hidden from the accessible tree).
+interface nsIAccessibilityService {
+  getAccessibleFor(node: Node): nsIAccessible | null;
+}
+
+// engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
+// notification panel. Its connectedCallback finds its two buttons, and PopupNotifications sets
+// `notification` when it shows one in it (PopupNotifications.sys.mjs, _refreshPanel).
+interface MozPopupNotification extends XULElement {
+  readonly button: XULElement;
+  readonly secondaryButton: XULElement;
+  readonly notification: PopupNotification;
+}
+// engine/browser/base/content/browser-addons.js (MozAddonInstalledNotification): the app menu's
+// "<name> was added" notice. `pinExtensionEl` is its "Pin extension to toolbar" <checkbox>
+// (engine/browser/components/customizableui/content/panelUI.inc.xhtml; `checked` is
+// engine/toolkit/content/widgets/checkbox.js).
+interface MozAddonInstalledNotification extends MozPopupNotification {
+  readonly pinExtensionEl: XULElement & { checked: boolean };
+}
+
+// engine/dom/webidl/Window.webidl (chrome-only): runs `callback` once no style or layout flush
+// is pending, and resolves with what it returns.
+interface Window {
+  promiseDocumentFlushed<T>(callback: () => T): Promise<T>;
+}
+
+// engine/browser/components/customizableui/CustomizableUI.sys.mjs: a customizable toolbar that
+// overflows has its OverflowableToolbar as `overflowable` (registerToolbarNode sets it);
+// isHandlingOverflow() is true while it moves items to or from the overflow menu.
+interface OverflowableToolbarElement extends XULElement {
+  readonly overflowable: { isHandlingOverflow(): boolean };
 }

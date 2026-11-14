@@ -355,6 +355,12 @@ declare function onViewToolbarCommand(aEvent: Event): void;
 declare var gTabsPanel: BrowserWindow["gTabsPanel"];
 // engine/browser/base/content/browser.js (a lazy getter on the window: CustomizeMode.sys.mjs).
 declare var gCustomizeMode: BrowserWindow["gCustomizeMode"];
+// engine/browser/base/content/browser-sync.js (`var gSync`): FXA_ENABLED is a lazy getter of the
+// pref identity.fxaccounts.enabled; updateCTAPanel shows or hides the account panel's promotions.
+declare var gSync: { readonly FXA_ENABLED: boolean; updateCTAPanel(anchor?: Element): void };
+// engine/browser/base/content/utilityOverlay.js: the support base URL (app.support.baseURL,
+// formatted) with the topic appended.
+declare function getHelpLinkURL(aHelpTopic: string): string;
 // engine/browser/base/content/browser.js: opens a browser window; `args` is its first URL (an
 // nsISupportsString).
 declare function OpenBrowserWindow(options?: { private?: boolean; args?: unknown }): BrowserWindow;

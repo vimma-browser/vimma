@@ -150,17 +150,30 @@ add_task(async function history_sidebar_has_no_import_promo() {
   Assert.ok(Services.policies.isAllowed("profileImport"), "importing is allowed");
   await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
   await SidebarController.show("viewHistorySidebar");
-  /** @type {any} */
-  let history;
-  await TestUtils.waitForCondition(() => {
-    history = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
-    return history?.controller && !history.controller.isHistoryPending;
-  }, "the History sidebar loads");
+  /**
+   * The History sidebar's <sidebar-history>, a Lit element
+   * (engine/browser/components/sidebar/sidebar-history.mjs), with the members of its
+   * HistoryController that the test uses
+   * (engine/browser/components/firefoxview/HistoryController.sys.mjs).
+   * @typedef {HTMLElement & {
+   *   controller: { profileAge: number, readonly shouldShowImportBanner: boolean, readonly isHistoryPending: boolean },
+   *   updateComplete: Promise<unknown>,
+   * }} SidebarHistory
+   */
+  // The wait resolves with the loaded element.
+  const history = /** @type {SidebarHistory} */ (
+    await TestUtils.waitForCondition(() => {
+      /** @type {SidebarHistory | null | undefined} */
+      const h = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
+      return h?.controller && !h.controller.isHistoryPending && h;
+    }, "the History sidebar loads")
+  );
   history.controller.profileAge = 0;
   await history.updateComplete;
   Assert.ok(!history.controller.shouldShowImportBanner, "a new profile gets no import promo");
   Assert.ok(
-    !history.shadowRoot.querySelector(".import-history-promo"),
+    // A Lit element renders into its shadow root; without one this read throws, as before.
+    !(/** @type {ShadowRoot} */ (history.shadowRoot).querySelector(".import-history-promo")),
     "the History sidebar shows no import promo",
   );
   SidebarController.hide();
@@ -169,11 +182,26 @@ add_task(async function history_sidebar_has_no_import_promo() {
 });
 
 /**
+ * A <menupopup> or <panel> of browser.xhtml. A missing one throws where the test first uses it
+ * (BrowserTestUtils.waitForPopupEvent adds a listener to it), as it did before.
+ * @param {string} id
+ */
+const popupById = (id) =>
+  /** @type {XULPopupElement} */ (/** @type {Element} */ (document.getElementById(id)));
+
+/**
+ * A XUL element of browser.xhtml the test reads; a missing one throws on that read, as before.
+ * @param {string} id
+ */
+const xulById = (id) =>
+  /** @type {XULElement} */ (/** @type {Element} */ (document.getElementById(id)));
+
+/**
  * Open the content context menu on the page's link and report which items show.
  * @returns {Promise<{askChat: boolean, previewLink: boolean}>}
  */
 async function linkContextMenuItems() {
-  const menu = document.getElementById("contentAreaContextMenu");
+  const menu = popupById("contentAreaContextMenu");
   const html = `<a id="link" href="https://example.com/">a link</a>`;
   return BrowserTestUtils.withNewTab(
     `data:text/html,${encodeURIComponent(html)}`,
@@ -186,8 +214,8 @@ async function linkContextMenuItems() {
       );
       await shown;
       const items = {
-        askChat: !document.getElementById("context-ask-chat").hidden,
-        previewLink: !document.getElementById("context-previewlink").hidden,
+        askChat: !xulById("context-ask-chat").hidden,
+        previewLink: !xulById("context-previewlink").hidden,
       };
       const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
       menu.hidePopup();
@@ -280,8 +308,8 @@ const shown = (id) => {
 
 /**
  * Open a context menu and report, while it is open, which of `ids` show. `open` starts it.
- * @param {Element} menu
- * @param {() => Promise<void> | void} open
+ * @param {XULPopupElement} menu
+ * @param {() => unknown} open
  * @param {string[]} ids
  * @returns {Promise<string[]>} the ids that show
  */
@@ -289,9 +317,13 @@ async function shownWhileOpen(menu, open, ids) {
   const popupShown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
   await open();
   await popupShown;
+  // An item Firefox no longer has does not show either: each is in the open menu first.
+  for (const id of ids) {
+    Assert.ok(document.getElementById(id), `${id} is an item Firefox has`);
+  }
   const visible = ids.filter(shown);
   const popupHidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
-  /** @type {any} */ (menu).hidePopup();
+  menu.hidePopup();
   await popupHidden;
   return visible;
 }
@@ -304,7 +336,7 @@ add_task(async function context_menus_have_no_send_to_device() {
     await SpecialPowers.spawn(browser, [html], (h) => {
       content.document.body.innerHTML = h;
     });
-    const menu = document.getElementById("contentAreaContextMenu");
+    const menu = popupById("contentAreaContextMenu");
     const click = (/** @type {string} */ selector) => () =>
       BrowserTestUtils.synthesizeMouseAtCenter(
         selector,
@@ -324,12 +356,11 @@ add_task(async function context_menus_have_no_send_to_device() {
     ]);
     Assert.deepEqual(onLink, [], "the link menu has no Send Link to Device");
 
-    const tabMenu = document.getElementById("tabContextMenu");
-    const onTab = await shownWhileOpen(
-      tabMenu,
-      () => /** @type {any} */ (tabMenu).openPopupAtScreen(100, 100, true),
-      ["context_sendTabToDevice", "context_sendTabToDeviceSeparator"],
-    );
+    const tabMenu = popupById("tabContextMenu");
+    const onTab = await shownWhileOpen(tabMenu, () => tabMenu.openPopupAtScreen(100, 100, true), [
+      "context_sendTabToDevice",
+      "context_sendTabToDeviceSeparator",
+    ]);
     Assert.deepEqual(onTab, [], "the tab menu has no Send Tab to Device");
   });
 });
@@ -345,12 +376,11 @@ add_task(async function tools_menu_has_no_firefox_view() {
     Assert.ok(true, "macOS's native menu bar is out of reach of Vimma's CSS");
     return;
   }
-  const popup = document.getElementById("menu_ToolsPopup");
-  const visible = await shownWhileOpen(
-    popup,
-    () => /** @type {any} */ (popup).openPopupAtScreen(100, 100, false),
-    ["menu_openFirefoxView", "menu_pageInfo"],
-  );
+  const popup = popupById("menu_ToolsPopup");
+  const visible = await shownWhileOpen(popup, () => popup.openPopupAtScreen(100, 100, false), [
+    "menu_openFirefoxView",
+    "menu_pageInfo",
+  ]);
   Assert.deepEqual(visible, ["menu_pageInfo"], "Tools keeps its items but Tab Overview");
 });
 
@@ -363,19 +393,18 @@ add_task(async function menubar_help_has_no_mozilla_items() {
     return;
   }
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {
-    const popup = document.getElementById("menu_HelpPopup");
-    const visible = await shownWhileOpen(
-      popup,
-      () => /** @type {any} */ (popup).openPopupAtScreen(100, 100, false),
-      [...HIDDEN_HELP, ...KEPT_HELP],
-    );
+    const popup = popupById("menu_HelpPopup");
+    const visible = await shownWhileOpen(popup, () => popup.openPopupAtScreen(100, 100, false), [
+      ...HIDDEN_HELP,
+      ...KEPT_HELP,
+    ]);
     Assert.deepEqual(visible, KEPT_HELP, "Help keeps Get Help and Share Ideas, not the rest");
   });
 });
 
 add_task(async function app_menu_help_has_no_mozilla_items() {
   await BrowserTestUtils.withNewTab("https://example.com/", async () => {
-    const appMenu = document.getElementById("appMenu-popup");
+    const appMenu = popupById("appMenu-popup");
     const panelShown = BrowserTestUtils.waitForPopupEvent(appMenu, "shown");
     PanelUI.show();
     await panelShown;
@@ -383,9 +412,13 @@ add_task(async function app_menu_help_has_no_mozilla_items() {
     const viewShown = BrowserTestUtils.waitForEvent(helpView, "ViewShown");
     PanelMultiView.getViewNode(document, "appMenu-help-button2").click();
     await viewShown;
-    const visible = [...HIDDEN_HELP, ...KEPT_HELP, "-nova-switch-device-promo"]
-      .map((id) => (id.startsWith("-") ? `appMenu${id}` : `appMenu_${id}`))
-      .filter(shown);
+    const ids = [...HIDDEN_HELP, ...KEPT_HELP, "-nova-switch-device-promo"].map((id) =>
+      id.startsWith("-") ? `appMenu${id}` : `appMenu_${id}`,
+    );
+    // The view copies only the Help menu's items that are not `hidden` (panelUI.js,
+    // _onHelpViewShow), so an id here may have no element: menubar_help_has_no_mozilla_items
+    // checks that Firefox still has each item.
+    const visible = ids.filter(shown);
     Assert.deepEqual(
       visible,
       KEPT_HELP.map((id) => `appMenu_${id}`),
@@ -423,7 +456,10 @@ add_task(async function customize_palette_has_no_send_tab_or_firefox_view() {
 function colourVar(el, name) {
   const win = /** @type {Window} */ (el.ownerDocument.defaultView);
   const probe = el.ownerDocument.createElementNS("http://www.w3.org/1999/xhtml", "div");
-  probe.style.color = win.getComputedStyle(el).getPropertyValue(name).trim();
+  const value = win.getComputedStyle(el).getPropertyValue(name).trim();
+  // Without the property the probe inherits its colour, which `el` may have inherited too.
+  Assert.ok(value, `${name} is set`);
+  probe.style.color = value;
   el.ownerDocument.documentElement.append(probe);
   const out = win.getComputedStyle(probe).color;
   probe.remove();
@@ -431,10 +467,13 @@ function colourVar(el, name) {
 }
 
 add_task(async function about_dialog_keeps_the_licence_and_drops_mozilla_links() {
-  const win = window.openDialog(
-    "chrome://browser/content/aboutDialog.xhtml",
-    "",
-    "chrome,centerscreen,dependent",
+  // A window that did not open throws on the next line, as before.
+  const win = /** @type {Window} */ (
+    window.openDialog(
+      "chrome://browser/content/aboutDialog.xhtml",
+      "",
+      "chrome,centerscreen,dependent",
+    )
   );
   await BrowserTestUtils.waitForEvent(win, "load");
   const doc = win.document;
@@ -466,14 +505,14 @@ add_task(async function account_panel_sign_in_box_follows_the_theme() {
   // The box lives in the panel's template until the panel first opens (PanelMultiView).
   const fxaView = PanelMultiView.getViewNode(document, "PanelUI-fxa");
   const shownView = BrowserTestUtils.waitForEvent(fxaView, "ViewShown");
-  /** @type {HTMLElement} */ (document.getElementById("fxa-toolbar-menu-button")).click();
+  xulById("fxa-toolbar-menu-button").click();
   await shownView;
   const box = PanelMultiView.getViewNode(document, "PanelUI-fxa-menu-sign-in-promo");
   const style = getComputedStyle(box);
   Assert.equal(style.backgroundColor, colourVar(box, "--vimma-bg"), "theme's surface");
   Assert.equal(style.color, colourVar(box, "--vimma-fg"), "theme's text, not the promo's");
   const hidden = BrowserTestUtils.waitForEvent(document, "popuphidden", true);
-  /** @type {any} */ (fxaView.closest("panel")).hidePopup();
+  /** @type {XULPopupElement} */ (fxaView.closest("panel")).hidePopup();
   await hidden;
 });
 
@@ -491,7 +530,7 @@ async function typeInNewTab(url, expected) {
   const browser = tab.linkedBrowser;
   let loads = 0;
   const counter = {
-    /** @type {(b: any, progress: any, request: any, flags: number) => void} */
+    /** @type {(b: MozBrowser, progress: nsIWebProgress | null, request: unknown, flags: number) => void} */
     onStateChange(b, progress, _request, flags) {
       const start = Ci.nsIWebProgressListener.STATE_START;
       const doc = Ci.nsIWebProgressListener.STATE_IS_DOCUMENT;
