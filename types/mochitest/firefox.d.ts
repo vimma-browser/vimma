@@ -1246,15 +1246,12 @@ interface DownloadListView {
   onDownloadChanged?(download: FirefoxDownload): void;
   onDownloadRemoved?(download: FirefoxDownload): void;
 }
-// The members the tests read. `error` is a DownloadError once the download failed.
+// The members the tests read beyond the product's (types/firefox.d.ts). `error` is a
+// DownloadError once the download failed.
 interface FirefoxDownload {
-  readonly source: { readonly url: string };
-  readonly target: { readonly path: string; readonly partFilePath: string | null };
-  readonly stopped: boolean;
   readonly succeeded: boolean;
   readonly canceled: boolean;
   readonly hasProgress: boolean;
-  readonly currentBytes: number;
   readonly error: DownloadError | null;
   /** A `.part` file holds bytes kept after a pause (tryToKeepPartialData). */
   readonly hasPartialData: boolean;
@@ -1262,15 +1259,12 @@ interface FirefoxDownload {
   readonly hasBlockedData: boolean;
   /** Its file was deleted through Firefox's "Delete" (DownloadsCommon). */
   readonly deleted: boolean;
-  launchWhenSucceeded: boolean;
   /** Resolves once it succeeded; rejects with its DownloadError when it fails. */
   start(): Promise<void>;
   cancel(): Promise<void>;
   /** Lets a download blocked with its data kept finish; resolves once it succeeded. */
   unblock(): Promise<void>;
   refresh(): Promise<void>;
-  finalize(removePartialData?: boolean): Promise<void>;
-  whenSucceeded(): Promise<void>;
 }
 interface DownloadError extends Error {
   readonly becauseBlocked: boolean;
@@ -1286,12 +1280,6 @@ interface nsIHandlerInfo {
   alwaysAskBeforeHandling: boolean;
 }
 interface nsIMIMEInfo extends nsIHandlerInfo {}
-
-// engine/dom/chrome-webidl/BrowsingContext.webidl (CanonicalBrowsingContext): the folder a
-// top-level context's downloads go to, "" for Firefox's own; the setter throws on another.
-interface CanonicalBrowsingContext {
-  downloadFolderOverride: string;
-}
 
 // engine/toolkit/modules/FileUtils.sys.mjs, a global of the browser window (browser.js's lazy
 // getters): `File` makes an nsIFile for an absolute path.
