@@ -57,15 +57,16 @@ const rows = () =>
   );
 const emptyRow = () => logPicker()?.querySelector(".vimma-picker-empty")?.textContent ?? null;
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
 }
 
-/** `:line` Enter, from the selected page in normal mode. */
+/** `:line` Enter, from the selected page in normal mode. @param {string} line */
 async function runCommand(line) {
   const browser = gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
@@ -75,6 +76,7 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
+/** Answers the waiting question. @param {string} kind @param {object} [extra] */
 async function answer(kind, extra = {}) {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
   AgentGate.answer(AgentGate.waiting[0].id, { kind, ...extra });

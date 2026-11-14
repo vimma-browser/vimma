@@ -146,6 +146,17 @@ docs/runbook.md, "Parallel browser lanes"), then
 same file with `--repeat=N` on two busy CPUs (docs/runbook.md, "Mochitests that send keys to a
 page").
 
+**Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
+browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
+(`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
+`firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
+names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files).
+`tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
+file may still have type errors, every other file, a new one included, may not, and a listed
+file that has none must come off the list. `Assert.equal` and its kin take an expected value of
+the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
+the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
+
 ## 7. End-to-end scenarios and screenshots
 
 **What it proves.** That a real build, started as a user starts it with a fresh profile, does

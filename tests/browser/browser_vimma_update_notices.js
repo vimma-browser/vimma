@@ -46,16 +46,19 @@ const HOUR = 3_600_000;
 const ARM_MS = 600;
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-update-notices-${Date.now()}`);
+/** @typedef {{ pair: CryptoKeyPair, spki: string, id: string }} TestKey A signing key. */
+/** @type {TestKey} */
 let key;
 let serial = Number(
   new Date(Date.now() + 6 * 3600 * 1000).toISOString().replace(/\D/g, "").slice(0, 14),
 );
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** Lets timers run for `ms`: what a "nothing happens" check waits for. */
+/** Lets timers run for `ms`: what a "nothing happens" check waits for. @param {number} ms */
 function pause(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -91,6 +94,7 @@ async function manifest({ version = "9.9.9", urgent = false } = {}) {
   return body + signatureComment([{ key: key.id, sig: base64Encode(sig) }]);
 }
 
+/** @param {string} text */
 async function serve(text) {
   const r = await fetch(`${HOST}?set`, { method: "POST", body: text });
   Assert.equal(r.status, 200, "the test host took the manifest");
@@ -100,7 +104,11 @@ async function requests() {
   return (await fetch(`${HOST}?log`)).json();
 }
 
-/** The saved result of an earlier session, as VimmaUpdates writes it. */
+/**
+ * The saved result of an earlier session, as VimmaUpdates writes it.
+ * @param {{ okAt?: number | null, checkedAt?: number | null, outcome?: string,
+ *   offer?: object | null }} [o]
+ */
 function saved({ okAt = null, checkedAt = okAt, outcome = "current", offer = null } = {}) {
   return JSON.stringify({
     checkedAt,
@@ -114,10 +122,13 @@ function saved({ okAt = null, checkedAt = okAt, outcome = "current", offer = nul
   });
 }
 
-const notice = () => document.getElementById("vimma-notice");
+/** The notice; a use before it exists throws, which fails the test. */
+const notice = () => /** @type {HTMLElement} */ (document.getElementById("vimma-notice"));
 const noticeShown = () => !!notice()?.matches(":popover-open");
-const line = (win = window) => win.document.getElementById("vimma-update-prompt");
-const lineShown = (win = window) => !!line(win) && !line(win).hidden;
+/** The update question in `win`; a use before it exists throws, which fails the test. */
+const line = (/** @type {BrowserWindow} */ win = window) =>
+  /** @type {HTMLElement} */ (win.document.getElementById("vimma-update-prompt"));
+const lineShown = (/** @type {BrowserWindow} */ win = window) => !!line(win) && !line(win).hidden;
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
 
@@ -156,6 +167,7 @@ add_task(async function startup_checks_when_due_and_not_when_fresh() {
   // Hide the message this offer brings: this task is about the requests.
   Services.prefs.setStringPref(ANNOUNCED, "9.9.8");
   const now = Date.now();
+  /** @type {[string, string | null, number][]} */
   const cases = [
     ["checked an hour ago", saved({ okAt: now - HOUR }), 0],
     ["never checked", null, 1],
@@ -242,8 +254,12 @@ add_task(async function a_security_update_asks_once_per_session() {
     Assert.equal(line().getAttribute("role"), "alertdialog");
     Assert.ok(!noticeShown(), "the question replaces the message, which said the same");
     // Drawn as the command line is: just above the status bar, over the page's foot.
-    const panel = line().querySelector(".vimma-cmdline-panel").getBoundingClientRect();
-    const bar = document.getElementById("vimma-statusbar").getBoundingClientRect();
+    const panel = /** @type {Element} */ (
+      line().querySelector(".vimma-cmdline-panel")
+    ).getBoundingClientRect();
+    const bar = /** @type {HTMLElement} */ (
+      document.getElementById("vimma-statusbar")
+    ).getBoundingClientRect();
     Assert.greater(panel.height, 0, "the line has a height");
     Assert.lessOrEqual(Math.abs(panel.bottom - bar.top), 1, "it sits on the status bar");
     Assert.equal(document.activeElement, browser, "the question takes no focus");
@@ -283,7 +299,9 @@ add_task(async function y_shows_the_update_steps_and_esc_dismisses() {
     const steps = tab.linkedBrowser;
     await until(() => steps.contentDocument?.documentElement?.dataset.ready === "true", "drawn");
     Assert.ok(
-      steps.contentDocument.getElementById("updates").textContent.includes("Vimma 9.9.9"),
+      /** @type {Element} */ (
+        /** @type {Document} */ (steps.contentDocument).getElementById("updates")
+      ).textContent.includes("Vimma 9.9.9"),
       "the update steps",
     );
     BrowserTestUtils.removeTab(tab);
@@ -326,7 +344,9 @@ add_task(async function a_flatpak_is_told_to_run_flatpak_update() {
     const tab = await opened;
     const steps = tab.linkedBrowser;
     await until(() => steps.contentDocument?.documentElement?.dataset.ready === "true", "drawn");
-    const text = steps.contentDocument.getElementById("updates").textContent;
+    const text = /** @type {Element} */ (
+      /** @type {Document} */ (steps.contentDocument).getElementById("updates")
+    ).textContent;
     Assert.ok(text.includes("flatpak update dev.vimma.browser"), "the steps name the command");
     Assert.ok(!text.includes("curl "), "and no download");
     BrowserTestUtils.removeTab(tab);
@@ -352,20 +372,31 @@ add_task(async function the_question_waits_while_the_user_types() {
     // The keys reach the page's process after sendString returns, and the last one can still be
     // on its way there (issue #605): wait until three characters arrived, then compare them.
     const value = () =>
-      SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").value);
+      SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {HTMLInputElement} */ (content.document.querySelector("input")).value,
+      );
     await until(async () => (await value()).length >= 3, "three keys reached the page");
     Assert.equal(await value(), "abc", "the keys went to the field");
-    await SpecialPowers.spawn(browser, [], () => content.document.activeElement.blur());
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {HTMLElement} */ (content.document.activeElement).blur(),
+    );
     await until(() => VimmaHostMode() === "normal", "normal mode");
     await until(lineShown, "asked once the user left insert mode");
     // Focus going into a field closes it again: what is typed there is the field's.
-    await SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").focus());
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {HTMLInputElement} */ (content.document.querySelector("input")).focus(),
+    );
     await until(() => !lineShown(), "back to waiting in insert mode");
   });
   freshSession();
 });
 
-/** An urgent offer in a fresh session, the question shown in this window; resolves at its show. */
+/**
+ * An urgent offer in a fresh session, the question shown in this window; resolves at its show.
+ * @param {MozBrowser} browser
+ */
 async function askNow(browser) {
   freshSession();
   Services.prefs.setStringPref(ANNOUNCED, "9.9.9");

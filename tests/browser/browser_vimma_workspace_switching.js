@@ -38,20 +38,24 @@ function workspace(name) {
 
 /** A workspace definition (id, name, userContextId) by name. */
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
+  WorkspaceStore.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  );
 const main = () => def("main");
 const ww = () => WindowWorkspaces.get(window);
 
 registerCleanupFunction(async () => {
-  if (document.getElementById(PICKER_ID)?.open) EventUtils.synthesizeKey("KEY_Escape");
+  if (/** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID))?.open)
+    EventUtils.synthesizeKey("KEY_Escape");
   ww().switchTo({ id: main().id });
   for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
   for (const t of gBrowser.tabs.filter((t) => t.pinned)) gBrowser.unpinTab(t);
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
   Assert.ok(!gBrowser.tabs[0].hidden, "the window's last tab is visible again");
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -65,26 +69,32 @@ function segText(id) {
 }
 
 /** The workspace segment as the bar draws it: `● <index>:<name>`. */
-function wsLabel(/** @type {{ id: string, name: string }} */ w) {
-  const index = WorkspaceStore.definitions.workspaces.findIndex((d) => d.id === w.id) + 1;
+function wsLabel(/** @type {WorkspaceState} */ w) {
+  const index =
+    WorkspaceStore.definitions.workspaces.findIndex(
+      (/** @type {WorkspaceDefinition} */ d) => d.id === w.id,
+    ) + 1;
   return `● ${index}:${w.name}`;
 }
 
 /** The active workspace's id in this window's model. */
 const active = () => ww().model.active;
 
-/** The window model's workspace of `tab`, by id. */
+/** The window model's workspace of `tab`, by id. @param {MozTabbrowserTab} tab */
 function workspaceOf(tab) {
-  return ww().model.workspaces.find((w) => w.tabs.includes(ww().idOf(tab)))?.id ?? null;
+  return (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.tabs.includes(ww().idOf(tab)))
+      ?.id ?? null
+  );
 }
 
-/** ctrl+b, then `key`. */
+/** ctrl+b, then `key`. @param {string} key @param {KeyEventOptions} [mods] */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
-/** `:line` Enter, from the selected page in normal mode. */
+/** `:line` Enter, from the selected page in normal mode. @param {string} line */
 async function runCommand(line) {
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -109,7 +119,10 @@ function openPage(url = PAGE) {
   return BrowserTestUtils.openNewForegroundTab(gBrowser, url);
 }
 
-/** Pressing prefix+`key` (`)` next / `(` previous) and waiting for the window to show `to`. */
+/**
+ * Pressing prefix+`key` (`)` next / `(` previous) and waiting for the window to show `to`.
+ * @param {string} key @param {{ id: string, name: string }} to
+ */
 async function press(key, to) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, { shiftKey: true });
@@ -120,11 +133,11 @@ async function press(key, to) {
  * Two workspaces A and B made with the store API, the window switched to A (empty, so a start
  * tab opens in it) with two more pages; the window ends on A's second tab.
  */
-async function setup(a, b) {
+async function setup(/** @type {string} */ a, /** @type {string} */ b) {
   const A = workspace(a);
   const B = workspace(b);
   Assert.ok(
-    ww().model.workspaces.some((w) => w.id === B.id),
+    ww().model.workspaces.some((/** @type {WorkspaceState} */ w) => w.id === B.id),
     "the window's model has the new workspaces",
   );
   await press(")", A);
@@ -169,7 +182,7 @@ add_task(async function prefix_parens_show_one_workspace_and_restore_its_tab() {
 
   for (const t of [...aTabs, b0]) BrowserTestUtils.removeTab(t);
   Assert.deepEqual(
-    ww().model.workspaces.flatMap((w) => w.tabs),
+    ww().model.workspaces.flatMap((/** @type {WorkspaceState} */ w) => w.tabs),
     [ww().idOf(first)],
     "closed tabs leave the model",
   );
@@ -271,8 +284,13 @@ add_task(async function a_split_hides_as_a_whole_and_comes_back_laid_out() {
   Assert.equal(gBrowser.selectedTab, right, "on its focused pane");
   Assert.equal(leaves(view.panes).length, 2, "with A's two panes");
   await until(() => {
-    const l = document.getElementById(left.linkedPanel).getBoundingClientRect();
-    const r = document.getElementById(right.linkedPanel).getBoundingClientRect();
+    // Both tabs are loaded, so each has its panel.
+    const l = /** @type {Element} */ (
+      document.getElementById(/** @type {string} */ (left.linkedPanel))
+    ).getBoundingClientRect();
+    const r = /** @type {Element} */ (
+      document.getElementById(/** @type {string} */ (right.linkedPanel))
+    ).getBoundingClientRect();
     return l.width > 100 && r.width > 100 && Math.abs(r.left - l.right) <= 3 && l.top === r.top;
   }, "laid out side by side");
 
@@ -299,7 +317,7 @@ add_task(async function a_tab_pinned_outside_vimma_is_unpinned_with_a_notice() {
     "a notice says it was unpinned",
   );
   Assert.stringContains(
-    document.getElementById(NOTICE_ID).textContent,
+    /** @type {HTMLElement} */ (document.getElementById(NOTICE_ID)).textContent,
     "every workspace",
     "and why",
   );
@@ -325,15 +343,16 @@ add_task(async function the_goto_picker_lists_every_workspace_and_switches() {
   Assert.equal(active(), A.id, "and A stays");
 
   prefix("g");
-  const picker = document.getElementById(PICKER_ID);
+  const picker = /** @type {HTMLDialogElement} */ (document.getElementById(PICKER_ID));
   await until(() => picker?.open, "the picker opens");
   // Recently closed tabs are listed too, after them (docs/specs/tab-search.md).
   const rows = [...picker.querySelectorAll("[role=option]")].filter(
-    (r) => !r.dataset.id.startsWith("closed"),
+    (r) =>
+      !(/** @type {string} */ (/** @type {HTMLElement} */ (r).dataset.id).startsWith("closed")),
   );
   Assert.equal(
     rows.length,
-    ww().model.workspaces.flatMap((w) => w.tabs).length,
+    ww().model.workspaces.flatMap((/** @type {WorkspaceState} */ w) => w.tabs).length,
     "it lists the tabs of every workspace",
   );
   // It opens typing (docs/specs/tab-search.md, decision 2).
@@ -381,13 +400,16 @@ add_task(async function colon_workspace_switches_by_name_or_number() {
   const b0 = await startTab();
   Assert.deepEqual(gBrowser.visibleTabs, [b0], "showing B");
 
-  const index = WorkspaceStore.definitions.workspaces.findIndex((d) => d.id === A.id) + 1;
+  const index =
+    WorkspaceStore.definitions.workspaces.findIndex(
+      (/** @type {WorkspaceDefinition} */ d) => d.id === A.id,
+    ) + 1;
   await runCommand(`workspace ${index}`);
   await until(() => active() === A.id, `:workspace ${index} switches to A by number`);
   const a0 = await startTab();
 
   await runCommand("workspace no-such-ws");
-  const notice = document.getElementById(NOTICE_ID);
+  const notice = /** @type {HTMLElement} */ (document.getElementById(NOTICE_ID));
   await until(() => notice?.matches(":popover-open"), "an unknown name shows a notice");
   Assert.equal(notice.textContent, 'no workspace "no-such-ws"', "saying so");
   Assert.equal(active(), A.id, "and nothing switches");

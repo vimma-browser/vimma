@@ -62,27 +62,32 @@ registerCleanupFunction(async () => {
 });
 
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
-const agentTabs = (win = window) =>
+const agentTabs = (/** @type {BrowserWindow} */ win = window) =>
   win.gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = (win = window) => WindowWorkspaces.get(win);
-const activeName = (win = window) =>
-  ww(win).model.workspaces.find((w) => w.id === ww(win).model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
-const noticeText = (win = window) => win.document.getElementById(NOTICE_ID)?.textContent ?? "";
-const line = () => document.getElementById("vimma-agent-prompt");
+const ww = (/** @type {BrowserWindow} */ win = window) => WindowWorkspaces.get(win);
+const activeName = (/** @type {BrowserWindow} */ win = window) =>
+  ww(win).model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww(win).model.active)
+    ?.name;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+const noticeText = (/** @type {BrowserWindow} */ win = window) =>
+  win.document.getElementById(NOTICE_ID)?.textContent ?? "";
+/** The line; a use before it exists throws, which fails the test. */
+const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
 const lineOpen = () => !!line() && !line().hidden;
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
 }
 
 /** A tab in the agent workspace of `win`, loaded, hidden while the window shows `main`. */
-async function openAgentTab(win = window, url = PAGE) {
+async function openAgentTab(/** @type {BrowserWindow} */ win = window, url = PAGE) {
   const tab = win.gBrowser.addTab(url, {
     userContextId: agent().userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -210,7 +215,7 @@ add_task(async function test_show_always_asks_even_under_a_grant() {
   Assert.equal(r.error?.reason, "user", "x is a plain no");
   Assert.equal(activeName(), "main", "and nothing was shown");
   Assert.deepEqual(
-    AgentGate.grants().map((g) => g.until),
+    AgentGate.grants().map((/** @type {GateGrant} */ g) => g.until),
     [granted.until],
     "and the grant is the one given before, unchanged",
   );
@@ -252,7 +257,7 @@ add_task(async function test_show_waits_while_the_user_types() {
 
   // Out of the field: the line opens on ctrl+b shift+a, and its keys are its own.
   await SpecialPowers.spawn(gBrowser.selectedBrowser, [], () => {
-    content.document.activeElement.blur();
+    /** @type {HTMLElement} */ (content.document.activeElement).blur();
   });
   await calmPage();
   EventUtils.synthesizeKey("b", { ctrlKey: true });

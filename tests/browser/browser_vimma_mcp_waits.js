@@ -55,9 +55,10 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /** @param {boolean} on */
@@ -241,7 +242,9 @@ addTidyTask(async function test_reading_a_loading_page_waits_for_domcontentloade
   const c = await agentClient();
   const opened = await call(c, "agent-open", { url: SLOW });
   Assert.ok(opened.r.ok, "vimma_open ran");
-  const tab = agentTabs().find((t) => idOf(t) === opened.r.result.tab);
+  const tab = /** @type {MozTabbrowserTab} */ (
+    agentTabs().find((t) => idOf(t) === opened.r.result.tab)
+  );
   await until(() => tab.linkedBrowser.currentURI.spec === SLOW, "the slow page is in the tab");
   const start = Date.now();
   const { r, at } = await call(c, "agent-read", { tab: opened.r.result.tab });
@@ -257,7 +260,9 @@ addTidyTask(async function test_a_followed_link_by_keys_is_ready_at_domcontentlo
   const c = await agentClient();
   const list = await call(c, "agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.r.ok, "f lists the links");
-  const line = list.r.result.links.split("\n").find((l) => l.includes('"Slow page"'));
+  const line = list.r.result.links
+    .split("\n")
+    .find((/** @type {string} */ l) => l.includes('"Slow page"'));
   const label = line?.split(" ")[0];
   Assert.ok(label, "the slow page's link is listed");
   const start = Date.now();

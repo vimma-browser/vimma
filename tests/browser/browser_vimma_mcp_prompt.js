@@ -49,19 +49,24 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
+/** The line; a use before it exists throws, which fails the test. */
+const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
 const lineOpen = () => !!line() && !line().hidden;
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
   document.querySelector('#vimma-statusbar [data-segment="agent"]')?.textContent ?? null;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
-const renamePrompt = () => document.getElementById("vimma-rename");
+/** The rename prompt; a use before it exists throws, which fails the test. */
+/** @typedef {NonNullable<Document["commandDispatcher"]>} CommandDispatcher */
+const renamePrompt = () => /** @type {HTMLElement} */ (document.getElementById("vimma-rename"));
 
 async function setSwitches({ control = false, mcp = false }) {
   Services.prefs.setBoolPref(CONTROL, control);
@@ -99,7 +104,10 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   await setSwitches({ mcp: true });
   Services.prefs.setIntPref(ARMING, 1000);
   await calmPage();
-  const focused = document.commandDispatcher.focusedElement ?? document.activeElement;
+  // A browser window's document is a chrome document, which has a command dispatcher.
+  const focused =
+    /** @type {CommandDispatcher} */ (document.commandDispatcher).focusedElement ??
+    document.activeElement;
   const c = await agentClient();
   const id = c.request("agent-tabs");
   await until(lineOpen, "the question opens by itself");
@@ -110,15 +118,20 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
   );
   Assert.equal(line().getAttribute("role"), "alertdialog", "an alertdialog");
   // Drawn at the window's foot over the page, like the command line: seen, and no reflow.
-  const panel = line().querySelector(".vimma-cmdline-panel").getBoundingClientRect();
-  const bar = document.getElementById("vimma-statusbar").getBoundingClientRect();
+  const panel = /** @type {Element} */ (
+    line().querySelector(".vimma-cmdline-panel")
+  ).getBoundingClientRect();
+  const bar = /** @type {HTMLElement} */ (
+    document.getElementById("vimma-statusbar")
+  ).getBoundingClientRect();
   Assert.greater(panel.height, 0, "the line is drawn");
   Assert.ok(Math.abs(panel.bottom - bar.top) < 1, "just above the status bar");
   Assert.equal(line().getBoundingClientRect().height, 0, "a zero-height row");
   Assert.equal(line().getAttribute("aria-label"), lineText(), "named by its question");
   Assert.ok(!hintShown(), "the hint waits for the arming delay");
   Assert.equal(
-    document.commandDispatcher.focusedElement ?? document.activeElement,
+    /** @type {CommandDispatcher} */ (document.commandDispatcher).focusedElement ??
+      document.activeElement,
     focused,
     "the line takes no focus",
   );
@@ -129,7 +142,7 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
 
   await until(hintShown, "armed after the delay");
   Assert.equal(
-    line().querySelector(".vimma-agent-prompt-hint").textContent,
+    /** @type {Element} */ (line().querySelector(".vimma-agent-prompt-hint")).textContent,
     "y once · a until it quits · n deny · x mute",
     "the hint names the keys; the grant's notice says what still asks",
   );
@@ -267,7 +280,7 @@ add_task(async function test_typing_in_a_field_waits_for_ctrl_b_shift_a() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, FORM);
   await focusContent(tab.linkedBrowser);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("f").focus(),
+    /** @type {HTMLInputElement} */ (content.document.getElementById("f")).focus(),
   );
   const c = await agentClient();
   const id = c.request("agent-tabs");
@@ -279,7 +292,7 @@ add_task(async function test_typing_in_a_field_waits_for_ctrl_b_shift_a() {
   Assert.ok(!lineOpen(), "the question does not open while focus is in a field");
   Assert.equal(segment(), "◇ agent 1?", "it waits in the status bar");
   const { value, focused } = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
-    value: content.document.getElementById("f").value,
+    value: /** @type {HTMLInputElement} */ (content.document.getElementById("f")).value,
     focused: content.document.activeElement?.id,
   }));
   Assert.equal(value, "hello", "every character reached the field");
@@ -291,7 +304,7 @@ add_task(async function test_typing_in_a_field_waits_for_ctrl_b_shift_a() {
   EventUtils.synthesizeKey("y");
   Assert.ok((await c.response(id)).ok, "answered after ctrl+b shift+a");
   const after = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
-    value: content.document.getElementById("f").value,
+    value: /** @type {HTMLInputElement} */ (content.document.getElementById("f")).value,
     focused: content.document.activeElement?.id,
   }));
   Assert.deepEqual(after, { value: "hello", focused: "f" }, "the y never reached the field");

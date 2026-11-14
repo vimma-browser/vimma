@@ -45,10 +45,13 @@ async function partFiles() {
     .filter((n) => n.startsWith(".vimma-update-"));
 }
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
 
+/** @typedef {{ pair: CryptoKeyPair, spki: string, id: string }} TestKey A signing key. */
+/** @type {TestKey} */
 let key;
 let serial = Number(
   new Date(Date.now() + 6 * 3600 * 1000).toISOString().replace(/\D/g, "").slice(0, 14),
@@ -79,7 +82,7 @@ async function manifest({ file = NEW, size, url = `${FILES}?file`, urgency = "no
   return body + signatureComment([{ key: key.id, sig: base64Encode(sig) }]);
 }
 
-/** The manifest and the AppImage the hosts serve next. */
+/** The manifest and the AppImage the hosts serve next. @param {string} manifestText */
 async function serve(manifestText, file = NEW) {
   await fetch(`${HOST}?set`, { method: "POST", body: manifestText });
   await fetch(`${FILES}?set`, { method: "POST", body: file });
@@ -109,8 +112,11 @@ async function checkAndReplace() {
   return r;
 }
 
+/** The status bar's update segment, or null when it shows none. */
 function segment() {
-  return document.querySelector('#vimma-statusbar [data-segment="update"]');
+  return /** @type {HTMLElement | null} */ (
+    document.querySelector('#vimma-statusbar [data-segment="update"]')
+  );
 }
 
 add_task(async function setup() {
@@ -167,7 +173,7 @@ add_task(async function a_newer_appimage_replaces_the_file() {
   Assert.deepEqual(await partFiles(), [], "no part file is left behind");
   Assert.equal(VimmaUpdates.status().stage, "staged");
   await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "the status bar says so");
-  Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)");
   const log = await downloads();
   Assert.deepEqual(
     log.map((l) => l.query),
@@ -195,7 +201,8 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
   };
   Restart._reset();
   Restart._setStartup(startup, () => {});
-  const line = () => document.getElementById("vimma-update-prompt");
+  /** The update question; a use before it exists throws, which fails the test. */
+  const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-update-prompt"));
   const lineShown = () => !!line() && !line().hidden;
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
@@ -207,7 +214,7 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
         () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
         "a security update in the error colour, naming :restart",
       );
-      Assert.equal(segment().style.color, "var(--vimma-text-error)");
+      Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-text-error)");
       UpdateUi._sync();
       await until(
         () => Services.prefs.getStringPref("vimma.update.announced", "") === "9.9.9",
@@ -215,7 +222,7 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
       );
       // Announced once the file is replaced, never earlier with a command to run.
       Assert.equal(
-        document.getElementById("vimma-notice").textContent,
+        /** @type {HTMLElement} */ (document.getElementById("vimma-notice")).textContent,
         "Vimma 9.9.9 fixes security issues · restart Vimma to use it",
       );
       // The question is the restart, not the update command: the AppImage has none left to run.
@@ -242,7 +249,9 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
       await until(() => restarts === 1, "y restarts");
       Assert.ok(!lineShown(), "answered");
       await until(
-        () => document.getElementById("vimma-notice").textContent === "restart cancelled",
+        () =>
+          /** @type {HTMLElement} */ (document.getElementById("vimma-notice")).textContent ===
+          "restart cancelled",
         "the fake refused the quit, and Vimma says so",
       );
     });
@@ -270,7 +279,8 @@ add_task(async function the_restart_question_says_what_a_restart_loses() {
     },
     () => {},
   );
-  const line = () => document.getElementById("vimma-update-prompt");
+  /** The update question; a use before it exists throws, which fails the test. */
+  const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-update-prompt"));
   const lineShown = () => !!line() && !line().hidden;
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
@@ -355,7 +365,10 @@ add_task(async function update_command_says_restart_once_replaced() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "rendered",
     );
-    const row = browser.contentDocument.getElementById("update-appimage");
+    // about:vimma loads in the parent process, so its browser has the document.
+    const row = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("update-appimage")
+    );
     Assert.equal(row.textContent, "replaced: restart Vimma to run the new version");
   });
 });

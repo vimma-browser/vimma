@@ -49,12 +49,15 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
+/** The line; a use before it exists throws, which fails the test. */
+const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
 const lineOpen = () => !!line() && !line().hidden;
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
@@ -141,7 +144,8 @@ add_task(async function test_other_ui_opened_over_the_line_gets_the_keys() {
   await armed();
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("g");
-  const picker = () => document.getElementById("vimma-picker");
+  const picker = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"));
   await until(() => picker()?.open, "ctrl+b g opens the goto picker over the line");
   EventUtils.synthesizeKey("y");
   await new Promise((r) => setTimeout(r, 200));

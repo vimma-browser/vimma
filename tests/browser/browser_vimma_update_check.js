@@ -30,6 +30,7 @@ const CHANNEL = UpdateUtils.UpdateChannel;
 
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-update-${Date.now()}`);
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -45,7 +46,10 @@ async function makeKey() {
   return { pair, spki: base64Encode(der), id: await spkiKeyId(crypto.subtle, der) };
 }
 
+/** @typedef {{ pair: CryptoKeyPair, spki: string, id: string }} TestKey A signing key. */
+/** @type {TestKey} */
 let key;
+/** @type {TestKey} */
 let stranger;
 /**
  * Serials are UTC times and may be at most a day ahead of the clock (decision 33); six hours
@@ -56,8 +60,10 @@ let serial = Number(
 );
 
 /**
- * A signed manifest. Each call has a newer serial unless one is given.
- * @param {object} [o]
+ * A signed manifest. Each call has a newer serial unless one is given; `update: null` leaves
+ * out the <update>.
+ * @param {{ update?: Record<string, string> | null, children?: string, channel?: string,
+ *   signer?: TestKey, sign?: boolean, at?: string }} [o]
  */
 async function manifest({
   update = {},
@@ -98,16 +104,22 @@ async function serve(text) {
   Assert.equal(r.status, 200, "the test host took the manifest");
 }
 
-/** @returns {Promise<{ query: string, cookie: boolean, referer: boolean }[]>} */
+/**
+ * @returns {Promise<{ query: string, cookie: boolean, referer: boolean,
+ *   headers: Record<string, string> }[]>}
+ */
 async function requests() {
   return (await fetch(`${HOST}?log`)).json();
 }
 
+/** The status bar's update segment, or null when it shows none. */
 function segment() {
-  return document.querySelector('#vimma-statusbar [data-segment="update"]');
+  return /** @type {HTMLElement | null} */ (
+    document.querySelector('#vimma-statusbar [data-segment="update"]')
+  );
 }
 
-/** `:`, the line, Enter. */
+/** `:`, the line, Enter. @param {string} line */
 function runCommand(line) {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString(line);
@@ -160,7 +172,7 @@ add_task(async function newer_build_is_offered_and_the_request_is_anonymous() {
   Assert.equal(r.outcome, "offer", r.reason ?? "");
   Assert.equal(r.offer.displayVersion, "9.9.9");
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "the status bar says so");
-  Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)");
   const log = await requests();
   Assert.equal(log.length, 1, "one request");
   Assert.deepEqual(
@@ -203,10 +215,11 @@ add_task(async function security_release_is_red_and_says_what_to_type() {
   );
   Assert.equal((await VimmaUpdates.check()).outcome, "offer");
   await until(() => segment()?.textContent === "⇡ 9.9.9 security: :update", "urgent text");
-  Assert.equal(segment().style.color, "var(--vimma-text-error)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-text-error)");
 });
 
 add_task(async function refusals_show_after_three_in_a_row() {
+  /** @type {[string, RegExp][]} */
   const cases = [
     [await manifest({ sign: false }), /^unsigned/],
     [await manifest({ signer: stranger }), /^signature: not signed by a pinned key/],
@@ -220,7 +233,7 @@ add_task(async function refusals_show_after_three_in_a_row() {
   }
   Assert.equal(VimmaUpdates.status().offer, null, "a refusal drops the offer");
   await until(() => segment()?.textContent === "updates: check failed", "three refusals shown");
-  Assert.equal(segment().style.color, "var(--vimma-text-yellow)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-text-yellow)");
 });
 
 add_task(async function replay_is_refused_and_downgrade_offers_nothing() {
@@ -293,12 +306,13 @@ add_task(async function a_host_that_does_not_answer_is_quiet() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "rendered",
     );
-    const doc = browser.contentDocument;
+    // about:vimma loads in the parent process, so its browser has the document.
+    const doc = /** @type {Document} */ (browser.contentDocument);
     Assert.equal(
-      doc.getElementById("update-result").textContent,
+      /** @type {Element} */ (doc.getElementById("update-result")).textContent,
       "no manifest from the update host",
     );
-    const text = doc.getElementById("updates").textContent;
+    const text = /** @type {Element} */ (doc.getElementById("updates")).textContent;
     Assert.ok(text.includes("no update manifest is published for this channel (404)"), text);
     Assert.equal(doc.querySelector("#updates .error"), null, "nothing shown as an error");
   });
@@ -334,7 +348,7 @@ add_task(async function checks_off_show_updates_off_briefly_once_per_session() {
   Assert.equal((await VimmaUpdates.check()).outcome, "off", "the install type is known");
 
   await until(() => segment()?.textContent === "updates: off", "updates: off shows");
-  Assert.equal(segment().style.color, "var(--vimma-fg-dim)", "dim");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)", "dim");
   const shownAt = Date.now();
   await TestUtils.waitForCondition(() => !segment(), "then hides by itself", 100, 150);
   Assert.greaterOrEqual(Date.now() - shownAt, 2000, "it stayed a few seconds");
@@ -380,7 +394,9 @@ add_task(async function update_command_opens_the_steps() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "rendered",
     );
-    const text = browser.contentDocument.getElementById("updates").textContent;
+    const text = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("updates")
+    ).textContent;
     Assert.ok(text.includes("Vimma 9.9.9 · Firefox 999.0"), "the version line");
     Assert.ok(text.includes("tarball"), "the install type");
     Assert.ok(
@@ -421,7 +437,9 @@ add_task(async function macos_installs_get_their_own_steps() {
         () => browser.contentDocument?.documentElement?.dataset.ready === "true",
         "rendered",
       );
-      const text = browser.contentDocument.getElementById("updates").textContent;
+      const text = /** @type {Element} */ (
+        /** @type {Document} */ (browser.contentDocument).getElementById("updates")
+      ).textContent;
       Assert.ok(text.includes("Vimma 9.9.9 · Firefox 999.0"), `${type}: the version line`);
       Assert.ok(text.includes(label), `${type}: the install type`);
       Assert.ok(text.includes(expected), `${type}: its steps`);
@@ -448,7 +466,9 @@ add_task(async function flatpak_gets_flatpak_update() {
       () => browser.contentDocument?.documentElement?.dataset.ready === "true",
       "rendered",
     );
-    const text = browser.contentDocument.getElementById("updates").textContent;
+    const text = /** @type {Element} */ (
+      /** @type {Document} */ (browser.contentDocument).getElementById("updates")
+    ).textContent;
     Assert.ok(text.includes("Vimma 9.9.9 · Firefox 999.0"), "the version line");
     Assert.ok(text.includes("Flatpak (Flathub)"), "the install type");
     Assert.ok(text.includes("flatpak update dev.vimma.browser"), "its command");

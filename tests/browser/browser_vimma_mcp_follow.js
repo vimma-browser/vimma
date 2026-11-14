@@ -74,13 +74,16 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -365,7 +368,7 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   // In one tab, an agent's collection never takes the user's targets from the page's child.
   const users = await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow");
   await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow", { agent: true });
-  const same = users.find((t) => t.href === `${PAGE}?same`);
+  const same = users.find((/** @type {{ href: string }} */ t) => t.href === `${PAGE}?same`);
   VimmaActors.activateHint(same);
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
   Assert.ok(true, "the user's target still follows after an agent's collection there");
@@ -539,7 +542,7 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
     () => noticeText().startsWith('claude-code followed a link to test1.example.com in "'),
     "its notice names the host it loaded (D14)",
   );
-  const row = AgentGate.log.find((e) => e.outcome === "followed");
+  const row = AgentGate.log.find((/** @type {GateLogRow} */ e) => e.outcome === "followed");
   Assert.equal(row?.detail, `f${LABEL.sub} → ${SUB}`, ":mcp log names the URL it loaded (M23)");
   Assert.equal(row?.tool, "vimma_keys", "as a vimma_keys row");
   // Under the grant, a follow to another site runs unasked too: the grant covers vimma_open
@@ -550,7 +553,9 @@ add_task(async function test_cross_site_follow_asks_as_vimma_open() {
   r = await keys(c, tab, `f${LABEL.other}`, null);
   Assert.equal(r.result.url, OTHER, "a cross-site follow runs under the grant");
   Assert.ok(
-    AgentGate.log.some((e) => e.outcome === "followed" && e.detail.endsWith(OTHER)),
+    AgentGate.log.some(
+      (/** @type {GateLogRow} */ e) => e.outcome === "followed" && e.detail.endsWith(OTHER),
+    ),
     "and the log names the other site",
   );
 

@@ -52,19 +52,23 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
+/** The line; a use before it exists throws, which fails the test. */
+const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
 const lineOpen = () => !!line() && !line().hidden;
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
   document.querySelector('#vimma-statusbar [data-segment="agent"]')?.textContent ?? null;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
-const renamePrompt = () => document.getElementById("vimma-rename");
+/** The rename prompt; a use before it exists throws, which fails the test. */
+const renamePrompt = () => /** @type {HTMLElement} */ (document.getElementById("vimma-rename"));
 
 async function setSwitches({ control = false, mcp = false }) {
   Services.prefs.setBoolPref(CONTROL, control);
@@ -104,6 +108,7 @@ add_task(async function test_a_window_not_in_front_gets_attention_and_a_notifica
   const alerts = [];
   const cid = MockRegistrar.register("@mozilla.org/alerts-service;1", {
     QueryInterface: ChromeUtils.generateQI(["nsIAlertsService"]),
+    /** @param {{ title: string, text: string, actions?: unknown[] }} alert */
     showAlert(alert) {
       alerts.push(`${alert.title}\n${alert.text}\n${alert.actions?.length ?? 0}`);
     },
@@ -181,7 +186,7 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
   );
   Assert.equal(line().querySelector("b")?.textContent, "7F3K", "the code in bold");
   Assert.equal(
-    line().querySelector(".vimma-agent-prompt-hint").textContent,
+    /** @type {Element} */ (line().querySelector(".vimma-agent-prompt-hint")).textContent,
     "y if the code is the one vimma-ctl printed · n deny",
     "with no grant",
   );
