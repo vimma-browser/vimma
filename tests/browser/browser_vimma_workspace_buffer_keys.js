@@ -33,10 +33,28 @@ const NO_PREVIOUS = "no previous workspace in this window";
 
 const def = (/** @type {string} */ name) =>
   WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const main = () => def("main");
-const ww = (win = window) => WindowWorkspaces.get(win);
-const active = (win = window) => ww(win).model.active;
-const alternate = (win = window) => ww(win).model.alternate;
+/** The main workspace, which is always there. */
+const main = () => /** @type {WorkspaceDefinition} */ (def("main"));
+/**
+ * A window's workspaces, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} [win]
+ */
+const ww = (win = window) => /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win));
+/**
+ * A window's workspaces once their model is built.
+ * @param {BrowserWindow} [win]
+ */
+const live = (win = window) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+/** @param {BrowserWindow} [win] */
+const active = (win = window) => live(win).model.active;
+/** @param {BrowserWindow} [win] */
+const alternate = (win = window) => live(win).model.alternate;
+/**
+ * The workspace picker, a <dialog> (ui/picker.mjs), or null when it was never opened.
+ * @param {Window} [win]
+ */
+const picker = (win = window) =>
+  /** @type {HTMLDialogElement | null} */ (win.document.getElementById(PICKER_ID));
 
 /** @type {Window[]} */
 const windows = [];
@@ -44,14 +62,16 @@ const windows = [];
 registerCleanupFunction(async () => {
   for (const w of windows) if (!w.closed) await BrowserTestUtils.closeWindow(w);
   if (document.getElementById(PROMPT_ID)?.hidden === false) EventUtils.synthesizeKey("KEY_Escape");
-  if (document.getElementById(PICKER_ID)?.open) EventUtils.synthesizeKey("KEY_Escape");
+  if (picker()?.open) EventUtils.synthesizeKey("KEY_Escape");
   ww().switchTo({ id: main().id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
     (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 /** @param {() => boolean} cond @param {string} msg */
@@ -64,15 +84,17 @@ function workspace(name) {
   return WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
 }
 
+/** @param {Window} [win] */
 const noticeText = (win = window) => win.document.getElementById(NOTICE_ID)?.textContent ?? "";
 const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
-const pickerOpen = () => !!document.getElementById(PICKER_ID)?.open;
+const pickerOpen = () => !!picker()?.open;
 const modeText = () =>
   document.querySelector('#vimma-statusbar [data-segment="mode"]')?.textContent ?? null;
 
 /**
  * Focuses `win`'s selected page, once it has loaded, so keys reach Vimma in normal mode
  * (head.js's focusContent checks this window's focus only).
+ * @param {BrowserWindow} [win]
  */
 async function focusPage(win = window) {
   const tab = win.gBrowser.selectedTab;
@@ -93,7 +115,10 @@ async function focusPage(win = window) {
   );
 }
 
-/** `:line` Enter, from the selected page in normal mode. */
+/**
+ * `:line` Enter, from the selected page in normal mode.
+ * @param {string} line
+ */
 async function runCommand(line) {
   await focusPage();
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -101,7 +126,11 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** Shows workspace `w` (by API), waiting for the window to be in it. */
+/**
+ * Shows workspace `w` (by API), waiting for the window to be in it.
+ * @param {{ id: string, name: string }} w
+ * @param {BrowserWindow} [win]
+ */
 async function show(w, win = window) {
   Assert.equal(ww(win).switchTo({ id: w.id }), null, `switched to ${w.name}`);
   await until(() => active(win) === w.id, `the window shows ${w.name}`);
@@ -110,6 +139,8 @@ async function show(w, win = window) {
 /**
  * Workspaces A and B besides main, the window in main, then A, then B: B is shown and A is the
  * previous workspace.
+ * @param {string} a
+ * @param {string} b
  */
 async function aThenB(a, b) {
   const A = workspace(a);
@@ -232,7 +263,10 @@ add_task(async function short_commands_work_like_vims_buffer_commands() {
   await until(() => !pickerOpen(), "Esc closes it");
 
   await runCommand("wa cmd-c");
-  await until(() => def("cmd-c") && active() === def("cmd-c").id, ":wa name is :wsnew");
+  await until(() => {
+    const made = def("cmd-c");
+    return !!made && active() === made.id;
+  }, ":wa name is :wsnew");
 
   await runCommand("wd cmd-b");
   await until(promptOpen, ":wd name asks, as :wsdelete does");
@@ -247,7 +281,8 @@ add_task(async function tab_completes_workspace_names_after_ws_and_wd() {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("ws tab-al");
   EventUtils.synthesizeKey("KEY_Tab");
-  const input = document.getElementById(INPUT_ID);
+  // The command line's <input>, which `:` has shown.
+  const input = /** @type {HTMLInputElement} */ (document.getElementById(INPUT_ID));
   await until(() => input.value === "ws tab-alpha", "Tab completes the workspace's name");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => active() === A.id, "and Enter switches to it");
@@ -281,6 +316,12 @@ add_task(async function the_previous_workspace_survives_a_restore() {
   await TestUtils.waitForTick();
   const saved = () => JSON.parse(SessionStore.getCustomWindowValue(w1, WINDOW_KEY) || "{}");
   await until(() => saved().alternate === M.id, "the window value saves it");
+  /**
+   * SessionStore's state, as much of it as this test reads.
+   * It mirrors engine/browser/components/sessionstore: SessionStore.sys.mjs (a window's winData),
+   * TabState.sys.mjs (a tab) and SessionHistory.sys.mjs (its entries).
+   * @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }}
+   */
   const state = JSON.parse(SessionStore.getBrowserState());
   const winState = state.windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?prev-b`)),
@@ -300,7 +341,9 @@ add_task(async function the_previous_workspace_survives_a_restore() {
     w2.gBrowser.tabContainer,
     "SSTabRestored",
     false,
-    (e) => e.target.linkedBrowser.currentURI.spec === `${PAGE}?prev-b`,
+    // SSTabRestored's target is the restored tab.
+    (/** @type {Event} */ e) =>
+      /** @type {MozTabbrowserTab} */ (e.target).linkedBrowser.currentURI.spec === `${PAGE}?prev-b`,
   );
   SessionStore.setWindowState(w2, JSON.stringify({ windows: [winState] }), true);
   await restored;

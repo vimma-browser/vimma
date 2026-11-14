@@ -76,16 +76,17 @@ interface FirefoxServices {
     getEnumerator(type: "navigator:browser"): Iterable<BrowserWindow>;
     getEnumerator(type: string | null): Iterable<Window>;
   };
-  // engine/xpcom/ds/nsICategoryManager.idl
-  catMan: {
-    addCategoryEntry(
-      category: string,
-      entry: string,
-      value: string,
-      persist: boolean,
-      replace: boolean,
-    ): string;
-  };
+  catMan: nsICategoryManager;
+}
+// engine/xpcom/components/nsICategoryManager.idl
+interface nsICategoryManager {
+  addCategoryEntry(
+    category: string,
+    entry: string,
+    value: string,
+    persist: boolean,
+    replace: boolean,
+  ): string;
 }
 declare const Services: FirefoxServices;
 

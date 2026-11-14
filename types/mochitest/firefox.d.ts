@@ -418,8 +418,9 @@ interface Document {
 }
 
 // engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
-// command on doCommand.
-interface XULElement extends Element {
+// command on doCommand. Like an HTML element, it has its inline style (XULElement includes
+// ElementCSSInlineStyle).
+interface XULElement extends Element, ElementCSSInlineStyle {
   hidden: boolean;
   doCommand(): void;
 }
@@ -434,3 +435,144 @@ interface AsyncTabSwitcher {
 // engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
 // (MozXULElement).
 interface MozTabSplitViewWrapper extends XULElement {}
+
+// engine/xpcom/base/nsIConsoleMessage.idl: what a console listener gets (its `message` is the
+// text with its file and line).
+interface nsIConsoleMessage {
+  readonly message: string;
+}
+// engine/dom/bindings/nsIScriptError.idl: a script error or warning (`flags` has warningFlag for
+// a warning).
+interface nsIScriptError extends nsIConsoleMessage {
+  readonly errorMessage: string;
+  readonly sourceName: string;
+  readonly lineNumber: number;
+  readonly flags: number;
+}
+
+// engine/toolkit/content/widgets/notificationbox.js: a button of a notification, as
+// appendNotification's doc comment lists it and setButtons reads it.
+interface NotificationButton {
+  label?: string;
+  accessKey?: string;
+  "l10n-id"?: string;
+  /** Run with the notification, this button's info, its <button> and the event; false closes. */
+  callback?: (
+    notification: Element,
+    button: NotificationButton,
+    element: Element,
+    event: Event,
+  ) => unknown;
+  link?: string;
+  supportPage?: string;
+  /** The id of a popup to open, anchored to the button, instead of a callback. */
+  popup?: string;
+  telemetry?: string;
+  is?: string;
+  primary?: boolean;
+}
+// engine/toolkit/content/widgets/notificationbox.js (MozElements.NotificationBox): a browser's
+// notification box.
+interface MozNotificationBox {
+  /** The priorities are on its prototype (PRIORITY_SYSTEM 0 to PRIORITY_CRITICAL_HIGH 9). */
+  readonly PRIORITY_INFO_LOW: number;
+  /** Its <vbox class="notificationbox-stack">, which its `stack` getter makes on first use. */
+  readonly _stack: Element | undefined;
+  /** Resolves with the <notification-message> it shows. */
+  appendNotification(
+    type: string,
+    notification: { label: string; priority: number },
+    buttons?: NotificationButton[],
+    disableClickJackingDelay?: boolean,
+    dismissable?: boolean,
+  ): Promise<Element>;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
+interface Tabbrowser {
+  /** Whether the tab's find bar is made (getCachedFindBar then returns it); never makes one. */
+  isFindBarInitialized(tab?: MozTabbrowserTab): boolean;
+  /** A browser's notification box (the selected browser's without one), made on first use. */
+  getNotificationBox(browser?: MozBrowser): MozNotificationBox;
+  /**
+   * A browser's .browserContainer (the selected browser's without one): its grandparent. Never
+   * null: it reads `parentNode.parentNode`, which throws for a browser with no parent. Its one
+   * caller (split_contract) passes a split tab's browser, which is in its panel.
+   */
+  getBrowserContainer(browser?: MozBrowser): Element;
+  /** The browsers of the active split view's tabs; empty without one. */
+  readonly splitViewBrowsers: MozBrowser[];
+}
+
+// engine/browser/components/tabbrowser/content/tabsplitview.mjs
+interface MozTabSplitViewWrapper {
+  /** Its tabs' panels that are in the document (`#tabs`, which keeps a closed tab's panel id). */
+  readonly panels: XULElement[];
+  /** Whether every tab of it is visible. */
+  readonly visible: boolean;
+  addTabs(
+    tabs: MozTabbrowserTab[],
+    options?: { isSessionRestore?: boolean; indexOfReplacedTab?: number },
+  ): void;
+}
+
+// engine/xpcom/threads/nsITimer.idl
+interface nsITimer {
+  /** Its delay in ms; setting it on a pending timer reschedules it. */
+  delay: number;
+}
+// engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs
+interface AsyncTabSwitcher {
+  /** The TAB_SWITCH_TIMEOUT timer of the tab it loads, null while it loads none. */
+  readonly loadTimer: nsITimer | null;
+}
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs: whether a remote browser's page
+// paints (its remote tab's renderLayers) and has painted layers to show (hasLayers); a browser in
+// the parent process reads docShellIsActive for both.
+interface MozBrowser {
+  renderLayers: boolean;
+  readonly hasLayers: boolean;
+}
+
+// engine/xpcom/components/nsICategoryManager.idl: a category's entries, as an nsISimpleEnumerator
+// (iterable in JS, engine/xpcom/ds/nsISimpleEnumerator.idl) of nsICategoryEntry.
+interface nsICategoryEntry {
+  readonly entry: string;
+  readonly value: string;
+}
+interface nsICategoryManager {
+  enumerateCategory(category: string): Iterable<nsICategoryEntry>;
+}
+
+// engine/toolkit/components/commandlines/nsICommandLine.idl
+interface nsICommandLine extends nsISupports {
+  /** The flag's index among the arguments, -1 when it is not there. */
+  findFlag(flag: string, caseSensitive: boolean): number;
+}
+// engine/js/xpconnect/idl/xpccomponents.idl: a command line as another process hands one over;
+// `state` is an nsICommandLine STATE_* constant.
+interface XPCComponentsUtils {
+  createCommandLine(args: string[], workingDir: nsIFile | null, state: number): nsISupports;
+}
+
+// engine/dom/webidl/Window.webidl (chrome-only): opens a window, passing `extraArguments` to it
+// as its arguments.
+interface Window {
+  openDialog(
+    url?: string,
+    name?: string,
+    options?: string,
+    ...extraArguments: unknown[]
+  ): Window | null;
+}
+
+// engine/browser/base/content/utilityOverlay.js (URILoadingHelper.openLinkIn): opens a URL as a
+// link does, with the opener's principal and container.
+interface BrowserWindow {
+  openLinkIn(
+    url: string,
+    where: string,
+    params: { inBackground?: boolean; triggeringPrincipal?: nsIPrincipal; userContextId?: number },
+  ): void;
+}
