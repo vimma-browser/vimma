@@ -310,7 +310,11 @@ interface AutoCompletePopupElement extends XULPopupElement {
 interface BrowsingContext {
   readonly id: number;
   readonly children: BrowsingContext[];
-  /** engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one. */
+}
+// The same webidl's CanonicalBrowsingContext: a browsing context as the parent process sees it,
+// the only side that has its document's global (WindowGlobalActors.webidl), once it has one.
+interface CanonicalBrowsingContext extends BrowsingContext {
+  readonly children: CanonicalBrowsingContext[];
   readonly currentWindowGlobal: {
     readonly documentURI: { readonly spec: string } | null;
     readonly isInitialDocument: boolean;

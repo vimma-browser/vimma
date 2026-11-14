@@ -295,8 +295,11 @@ declare const content: Window &
     /** The page's own objects, past the Xray wrapper: untyped by nature. */
     readonly wrappedJSObject: any;
   };
-/** The frame's nsIDocShell, a global of the task's scope: typed as a window's own `docShell`. */
-declare const docShell: Window["docShell"];
+/**
+ * The frame's nsIDocShell, a global of the task's scope. The tests only QueryInterface it through
+ * the untyped Ci (to its nsISelectionController), so it is an nsISupports here.
+ */
+declare const docShell: nsISupports;
 declare const ContentTaskUtils: {
   waitForCondition<T>(
     condition: () => T | Promise<T>,

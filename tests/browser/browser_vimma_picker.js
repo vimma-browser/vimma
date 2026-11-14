@@ -113,7 +113,7 @@ add_task(async function prefix_g_lists_every_tab_with_number_label_and_host() {
     "example.org",
     "and host",
   );
-  Assert.equal(selected(), rows()[visible.indexOf(tabs[0])], "the current tab is selected");
+  Assert.strictEqual(selected(), rows()[visible.indexOf(tabs[0])], "the current tab is selected");
   EventUtils.synthesizeKey("KEY_Escape");
   Assert.ok(!isOpen(), "Esc closes it");
   closeTabs(tabs);
@@ -158,7 +158,7 @@ add_task(async function finnish_letters_rank_exact_first_and_enter_selects() {
     "Kä",
     "the match is highlighted",
   );
-  Assert.equal(selected(), rows()[0], "the best match is selected");
+  Assert.strictEqual(selected(), rows()[0], "the best match is selected");
 
   EventUtils.synthesizeKey("KEY_Backspace");
   EventUtils.synthesizeKey("KEY_Backspace");
@@ -172,7 +172,7 @@ add_task(async function finnish_letters_rank_exact_first_and_enter_selects() {
   );
   Assert.ok(!list.includes("Asetukset"), "a non-match is filtered out");
 
-  Assert.equal(selected(), rows()[0], "on the best match, Kalenteri");
+  Assert.strictEqual(selected(), rows()[0], "on the best match, Kalenteri");
   EventUtils.synthesizeKey("n", { ctrlKey: true });
   Assert.equal(rowTitle(selected()), "Käyttäjät", "ctrl+n moves to Käyttäjät");
   EventUtils.synthesizeKey("KEY_Enter");

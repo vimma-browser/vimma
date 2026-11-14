@@ -44,7 +44,7 @@ add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles
     ["alpha needle", "bravo needle", "bravo second needle", "charlie needle"],
     "the workspace's matches, in tab order, best first",
   );
-  Assert.equal(selectedRow(), rows()[0], "the best result is selected");
+  Assert.strictEqual(selectedRow(), rows()[0], "the best result is selected");
   Assert.ok(
     /** @type {Element} */ (selectedRow()).classList.contains("vimma-grep-selected"),
     "and marked",
@@ -837,7 +837,7 @@ add_task(async function frames_past_the_cap_are_not_searched() {
     () =>
       tab.linkedBrowser.browsingContext.children.length === 150 &&
       tab.linkedBrowser.browsingContext.children.every(
-        (/** @type {BrowsingContext} */ c) => c.currentWindowGlobal,
+        (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
       ),
     "150 frames",
   );
@@ -957,7 +957,7 @@ add_task(async function one_worker_a_process_and_none_for_a_blank_frame() {
     () =>
       tab.linkedBrowser.browsingContext.children.length === 4 &&
       tab.linkedBrowser.browsingContext.children.every(
-        (/** @type {BrowsingContext} */ c) => c.currentWindowGlobal,
+        (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
       ),
     "4 frames",
   );

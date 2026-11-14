@@ -183,8 +183,10 @@ add_task(async function the_current_workspace_comes_first_under_headings() {
   const otherRow = rowFor(other.linkedPanel);
   Assert.ok(otherRow, "the other workspace's tab is listed");
   Assert.stringContains(metaOf(otherRow), "tsother", "its row names its workspace");
+  const hereRow = rowFor(here.linkedPanel);
+  Assert.ok(hereRow, "this workspace's tab is listed");
   Assert.less(
-    options().indexOf(/** @type {PickerRow} */ (rowFor(here.linkedPanel))),
+    options().indexOf(hereRow),
     options().indexOf(otherRow),
     "this workspace's tab is listed before the other's",
   );
