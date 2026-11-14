@@ -133,7 +133,14 @@ each without a change in behaviour:
   live in `host/`; the gate imports only `core/` and `mcp-ops.mjs`, so `host/` already is that
   folder. `ctl/` and `agent/`, above it, import the gate downwards, and `mcp-ops.mjs` still loads
   it lazily, since the gate imports `mcp-ops.mjs` eagerly. Every caller reaches the same module
-  as before under its new URL; what each can call is unchanged. The list is empty, and with it
+  as before under its new URL; what each can call is unchanged, and so is who may call it: in
+  `host/`, every module of the host and every folder above it could import the gate by the
+  layers alone, so `RESTRICTED` in `tools/layering/layers.ts` lists its seven importers of today
+  (`host/VimmaHost.sys.mjs`, `host/agent-ui.mjs`, `host/mcp-ops.mjs`,
+  `ctl/VimmaControl.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/AgentDownloads.sys.mjs`,
+  `agent/AgentChat.sys.mjs`), and `npm run layering` fails on any other, eager or lazy, and on a
+  listed one that stops importing it. A new caller of the gate is a security review, then a line
+  there; it is a rule on importers, not a layering exception. The list is empty, and with it
   the eager folder cycle: no two folders import each other eagerly.)
 - **Two modules live in the wrong folder.** `host/VimmaHost.sys.mjs` records each key in
   `about/key-log.mjs` for `about:vimma`; the log moves to `host/`, which writes it.
@@ -250,6 +257,9 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   record that says why the import cannot be avoided. (Since changed: the list is empty and the
   check refuses any entry, so an exception would mean changing `exceptionErrors` in
   `tools/layering/layering.ts`, its test and decision 5.)
+- A new importer of the agent gate (`host/AgentGate.sys.mjs`) fails `npm run layering` even where
+  the layers allow it: it needs a security review against `docs/security.md` section 12, then a
+  line in `RESTRICTED` (`tools/layering/layers.ts`) and in its test.
 - A new folder under `vimma/` needs a layer in `layers.ts`, a row in this record's table and a
   `README.md`.
 - Moving code to the folder that owns it can change a `chrome://` URL that tests import; such a

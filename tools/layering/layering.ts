@@ -8,7 +8,8 @@
 // layer (layers.ts); a module may import its own folder and any folder of a lower layer, never
 // one of its own layer or a higher one, eagerly or lazily, with no exception: layers.ts lists
 // none, and an entry there fails the check (ADR-026, decision 5). No two modules may import each
-// other eagerly, at any distance.
+// other eagerly, at any distance. A restricted module (the agent gate) may be imported only by
+// the modules layers.ts lists for it, whatever their layer, so a new caller is a reviewed change.
 //
 // eslint's no-restricted-imports cannot do this: it sees `import` declarations only, and most of
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
@@ -39,7 +40,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as espree from "espree";
-import { EXCEPTIONS, LAYERS } from "./layers.ts";
+import { EXCEPTIONS, LAYERS, RESTRICTED } from "./layers.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const VIMMA = "src/browser/base/content/vimma/";
@@ -72,6 +73,17 @@ export interface Exception {
   fate: "stays" | "goes";
   /** the issue that tracks its removal, for one that goes */
   issue?: number;
+}
+
+/**
+ * A module only the listed modules may import, whatever their layer: the layers say which
+ * folders may reach it, this says which modules do.
+ */
+export interface Restricted {
+  /** the modules that import it today, relative to vimma/ */
+  importers: string[];
+  /** what adding an importer takes, for the error */
+  review: string;
 }
 
 /** What one file imports, and what in it could not be read. */
@@ -383,6 +395,32 @@ export function exceptionErrors(exceptions: Exception[]): string[] {
   );
 }
 
+/**
+ * Imports of a restricted module by a module its list does not hold, eager or lazy, and listed
+ * importers that no longer import it, so that the list stays exactly the callers reviewed.
+ */
+export function restrictedErrors(edges: Edge[], restricted: Record<string, Restricted>): string[] {
+  const errors: string[] = [];
+  for (const [module, { importers, review }] of Object.entries(restricted)) {
+    const allowed = new Set(importers);
+    const seen = new Set<string>();
+    for (const e of edges) {
+      if (e.to !== module) continue;
+      seen.add(e.from);
+      if (!allowed.has(e.from))
+        errors.push(
+          `${e.from}:${e.line}: imports ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import: ${review}, then a line there`,
+        );
+    }
+    for (const from of importers)
+      if (!seen.has(from))
+        errors.push(
+          `stale importer: ${from} no longer imports ${module}; remove it from RESTRICTED in ${LAYERS_FILE}`,
+        );
+  }
+  return errors;
+}
+
 /** The folder a path relative to vimma/ belongs to. */
 export function folderOf(path: string): string {
   const slash = path.indexOf("/");
@@ -561,6 +599,7 @@ function main(): void {
     ...danglingEdges(edges, new Set(trackedFiles(ROOT)), jarModules(jar)),
     ...exceptionErrors(EXCEPTIONS),
     ...layerErrors(edges, LAYERS, EXCEPTIONS),
+    ...restrictedErrors(edges, RESTRICTED),
     ...eagerCycles(edges),
     ...missingReadmes(ROOT).map(
       (d) => `vimma/${d}/ has no README.md: say what it owns and what it may import (${ADR})`,
@@ -573,7 +612,9 @@ function main(): void {
     );
     process.exit(1);
   }
-  console.log(`Layering: ${edges.length} imports follow ${ADR}, no exception, no eager cycle.`);
+  console.log(
+    `Layering: ${edges.length} imports follow ${ADR}, no exception, no eager cycle, restricted modules imported only by their listed callers.`,
+  );
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

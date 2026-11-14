@@ -15,9 +15,10 @@ import {
   jarModules,
   layerErrors,
   missingReadmes,
+  restrictedErrors,
   scanModule,
 } from "../layering.ts";
-import { EXCEPTIONS } from "../layers.ts";
+import { EXCEPTIONS, RESTRICTED } from "../layers.ts";
 
 const V = "chrome://browser/content/vimma/";
 
@@ -561,5 +562,67 @@ describe("missingReadmes", () => {
     execFileSync("git", ["init", "-q"], { cwd: root });
     execFileSync("git", ["add", "."], { cwd: root });
     expect(missingReadmes(root)).toEqual(["about", "host"]);
+  });
+});
+
+describe("restrictedErrors", () => {
+  const gate = "host/AgentGate.sys.mjs";
+  const only = {
+    [gate]: {
+      importers: ["host/VimmaHost.sys.mjs", "ctl/VimmaControl.sys.mjs"],
+      review:
+        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    },
+  };
+
+  test("a module may import a restricted one only when it is listed, eagerly or lazily", () => {
+    expect(
+      restrictedErrors(
+        [
+          edge("host/VimmaHost.sys.mjs", gate),
+          edge("ctl/VimmaControl.sys.mjs", gate, "lazy"),
+          edge("host/VimmaHost.sys.mjs", "host/mcp-ops.mjs"),
+        ],
+        only,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a new importer of the agent gate fails, in host/ or a lower folder alike", () => {
+    expect(
+      restrictedErrors(
+        [
+          edge("host/VimmaHost.sys.mjs", gate),
+          edge("ctl/VimmaControl.sys.mjs", gate),
+          edge("host/VimmaParent.sys.mjs", gate, "eager", 7),
+          edge("config/ConfigHost.sys.mjs", gate, "lazy", 12),
+        ],
+        only,
+      ),
+    ).toEqual([
+      "host/VimmaParent.sys.mjs:7: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+      "config/ConfigHost.sys.mjs:12: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+    ]);
+  });
+
+  test("a listed importer that no longer imports it fails, so the list stays exact", () => {
+    expect(restrictedErrors([edge("host/VimmaHost.sys.mjs", gate)], only)).toEqual([
+      "stale importer: ctl/VimmaControl.sys.mjs no longer imports host/AgentGate.sys.mjs; remove it from RESTRICTED in tools/layering/layers.ts",
+    ]);
+  });
+
+  test("the gate's importers are exactly today's seven", () => {
+    // Adding one is a security decision, not a list edit: review the new caller against
+    // docs/security.md section 12 first, then add it here and in layers.ts.
+    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs"]);
+    expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
+      "agent/AgentChat.sys.mjs",
+      "ctl/AgentDownloads.sys.mjs",
+      "ctl/VimmaControl.sys.mjs",
+      "ctl/agent-commands.mjs",
+      "host/VimmaHost.sys.mjs",
+      "host/agent-ui.mjs",
+      "host/mcp-ops.mjs",
+    ]);
   });
 });

@@ -54,13 +54,14 @@ file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Com
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/system-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/system-light.svg">
-  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and AgentGate in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent goes through the same gate, the gate drives the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
+  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and agent commands (ctl/) in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent runs the same commands, the commands ask the agent gate (host/AgentGate), the gate lets them drive the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
 </picture>
 
 The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
 dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows
-reach `ctl/`: those from outside past the control socket's token, the built-in agent's in
-process through the agent gate. In words:
+cross a boundary in the parent: into `ctl/` past the control socket's token (the built-in
+agent's commands come from inside the process), and from `ctl/` past the agent gate,
+`host/AgentGate.sys.mjs`. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is

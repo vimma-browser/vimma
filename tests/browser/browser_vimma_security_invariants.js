@@ -318,6 +318,12 @@ add_task(async function an_agents_question_reaches_the_user_and_the_answer_reach
     "chrome://browser/content/vimma/host/mcp-ops.mjs",
   );
   const ARMING = "security.dialog_enable_delay";
+  // Cleared even when an assertion fails, so no later task inherits [mcp] or the arming delay.
+  registerCleanupFunction(async () => {
+    Services.prefs.clearUserPref(ARMING);
+    Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+    await VimmaControl.settled();
+  });
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
   Services.prefs.setIntPref(ARMING, 100);
   await VimmaControl.settled();
@@ -350,7 +356,4 @@ add_task(async function an_agents_question_reaches_the_user_and_the_answer_reach
   Assert.equal(AgentGate.waiting.length, 0, "nothing is left waiting");
   await until(() => !lineOpen(), "the line closes");
   c.close();
-  Services.prefs.clearUserPref(ARMING);
-  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
-  await VimmaControl.settled();
 });

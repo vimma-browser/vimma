@@ -126,7 +126,8 @@ app: "Vimma (one application)" {
     grid-columns: 1
     grid-gap: 40
     chrome: "vimma.js, host/, ui/,\nworkspaces/, split/,\nconfig/ … with core/" { class: module }
-    ctl: "ctl/: control server\nand AgentGate" { class: gate }
+    gate: "host/AgentGate:\nthe agent gate" { class: gate }
+    ctl: "ctl/: control server\nand agent commands" { class: gate }
     agent: "agent/: built-in agent" { class: module }
   }
 }
@@ -142,7 +143,7 @@ east: {
     release: "Release pipeline\n(GitHub Actions)" { class: outside }
     models: "Model providers\n(Anthropic, OpenAI-\ncompatible; HTTP\nonly when local)" { class: outside }
   }
-  legend: "Blue arrow: to ctl/, past the\nsocket's token or the agent gate\nYellow box: sandboxed, beside\nuntrusted pages\nDashed box: a trust boundary" {
+  legend: "Blue arrow: past the socket's\ntoken (ctl/) or the agent gate\n(host/AgentGate)\nYellow box: sandboxed, beside\nuntrusted pages\nDashed box: a trust boundary" {
     shape: text
     style: { font-color: ${muted}; font-size: 20 }
   }
@@ -153,8 +154,9 @@ west.local.clis -> west.local.mcp: "stdio" { class: flow }
 west.local.mcp -> app.parent.ctl { class: gated }
 west.local.scripts -> app.parent.ctl { class: gated }
 app.parent.agent -> west.local.clis { class: flow }
-app.parent.agent -> app.parent.ctl: "same gate" { class: gated }
-app.parent.ctl -> app.parent.chrome { class: flow }
+app.parent.agent -> app.parent.ctl: "same commands" { class: gated }
+app.parent.ctl -> app.parent.gate { class: gated }
+app.parent.gate -> app.parent.chrome { class: flow }
 app.parent.chrome <-> app.content.child: "actor messages" { class: flow }
 app.parent.agent -> east.net.models { class: flow }
 app.parent.chrome -> east.net.updates { class: flow }

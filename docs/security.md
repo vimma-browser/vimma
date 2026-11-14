@@ -995,6 +995,11 @@ Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open an
 one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](specs/vimma-mcp.md), [ADR-019](adr/019-agents-over-mcp.md).
 
+Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
+`tools/layering/layers.ts`); `npm run layering` fails on any other, so a new caller, such as the
+parent actor, is reviewed against this section first.
+[`a new importer of the agent gate fails, in host/ or a lower folder alike`](../tools/layering/test/layering.test.ts)
+
 **Reach:** any local process that can read the token file, an agent's own shell included,
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
 a shell can run `vimma-ctl` itself, or speak the protocol directly.
