@@ -30,14 +30,40 @@ const NOTICE_ID = "vimma-notice";
 const WIDTH = 1280;
 const HEIGHT = 800;
 
-const view = () => PaneViews.get(window);
-const panel = () => document.getElementById(PANEL_ID);
-const isOpen = () => !!panel() && !panel().hidden && BrowserTestUtils.isVisible(panel());
-const list = () => panel().querySelector("[role=listbox]");
-const rows = () => [...(panel()?.querySelectorAll("[role=option]") ?? [])];
+/** The window's split view, which VimmaHost made when it started the window. */
+const view = () => /** @type {PaneView} */ (PaneViews.get(window));
+/**
+ * The window's split tree, read while the test has a split. With none, every read of it below
+ * (leaves, `.layout`, `.hidden`) throws, as before.
+ */
+const panes = () => /** @type {Panes} */ (view().panes);
+const panel = () => /** @type {HTMLElement | null} */ (document.getElementById(PANEL_ID));
+/** The side panel, which a test reads while it is open. */
+const shownPanel = () => /** @type {HTMLElement} */ (panel());
+const isOpen = () => !!panel() && !shownPanel().hidden && BrowserTestUtils.isVisible(shownPanel());
+/** The panel's list, which the open panel has; with none, reading it throws, as before. */
+const list = () => /** @type {Element} */ (shownPanel().querySelector("[role=listbox]"));
+/** The panel's rows (side-panel.mjs makes each an <li>). */
+const rows = () => [
+  .../** @type {NodeListOf<HTMLElement> | never[]} */ (
+    panel()?.querySelectorAll("[role=option]") ?? []
+  ),
+];
+/** @param {Element} row */
 const titleOf = (row) => row.querySelector(".vimma-panel-title")?.textContent ?? "";
-const selected = () => panel().querySelector("[role=option][aria-selected=true]");
-const count = () => panel().querySelector(".vimma-panel-count");
+/**
+ * The listed row titled `name`; reading a missing one throws, as before.
+ * @param {string} name
+ */
+const listedRow = (name) => /** @type {HTMLElement} */ (rows().find((r) => titleOf(r) === name));
+/**
+ * The highlighted row, which the open panel has. With none, titleOf and getAttribute throw and
+ * indexOf gives -1, as before.
+ */
+const selected = () =>
+  /** @type {HTMLElement} */ (shownPanel().querySelector("[role=option][aria-selected=true]"));
+/** The panel header's count, which the open panel has. */
+const count = () => /** @type {Element} */ (shownPanel().querySelector(".vimma-panel-count"));
 const markedTitles = () =>
   rows()
     .filter((r) => r.getAttribute("aria-checked") === "true")
@@ -48,6 +74,10 @@ function notice() {
   return n && n.matches(":popover-open") ? n.textContent : null;
 }
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
@@ -56,27 +86,45 @@ function nextFrame() {
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
-/** @type {Map<string, Element>} */
+/** @type {Map<string, SplitTab>} */
 const byName = new Map();
+/**
+ * The tab a test named: page() names each tab it opens.
+ * @param {string} name
+ */
+const tab = (name) => /** @type {SplitTab} */ (byName.get(name));
+/** @param {MozTabbrowserTab} tab */
 const nameOf = (tab) => [...byName].find(([, t]) => t === tab)?.[0] ?? tab.label;
-const tabOf = (panelId) => gBrowser.tabs.find((t) => t.linkedPanel === panelId);
+/**
+ * The tab of a pane's panel. With none, nameOf reads `label` off undefined and throws, as before.
+ * @param {string} panelId
+ */
+const tabOf = (panelId) =>
+  /** @type {MozTabbrowserTab} */ (gBrowser.tabs.find((t) => t.linkedPanel === panelId));
 
 /** The shown tree with each leaf named by its tab: `x[a,y[b,c]]`; one pane: "". */
 function shape() {
   const p = view().panes;
+  /** @type {(n: Panes["root"]) => string} */
   const walk = (n) =>
     n.type === "leaf" ? nameOf(tabOf(n.tab)) : `${n.axis}[${n.children.map(walk).join(",")}]`;
   return p ? walk(p.root) : "";
 }
 
 function focusedName() {
-  const p = view().panes;
-  return nameOf(tabOf(Panes.leaves(p).find((l) => l.pane === p.focus).tab));
+  const p = panes();
+  // The focused pane is a leaf of the tree; a missing one throws on `.tab`, as before.
+  const focused = /** @type {PaneLeaf} */ (Panes.leaves(p).find((l) => l.pane === p.focus));
+  return nameOf(tabOf(focused.tab));
 }
 
-/** A page titled `name` with a tall body, a text field, history of two, and a JS marker. */
+/**
+ * A page titled `name` with a tall body, a text field, history of two, and a JS marker.
+ * @param {string} name
+ */
 async function page(name) {
-  const tab = BrowserTestUtils.addTab(gBrowser, `${PAGE}?${name}`);
+  // A loaded tab has its panel.
+  const tab = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, `${PAGE}?${name}`));
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, `${PAGE}?${name}2`);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?${name}2`);
@@ -97,7 +145,10 @@ async function page(name) {
   return tab;
 }
 
-/** What a reload or a recreated page would change. */
+/**
+ * What a reload or a recreated page would change.
+ * @param {SplitTab[]} tabs
+ */
 function identity(tabs) {
   return tabs.map((t) => {
     const b = t.linkedBrowser;
@@ -110,7 +161,12 @@ function identity(tabs) {
   });
 }
 
-/** No page reloaded: same browser and document, history, marker, scroll and typed text. */
+/**
+ * No page reloaded: same browser and document, history, marker, scroll and typed text.
+ * @param {SplitTab[]} tabs
+ * @param {ReturnType<typeof identity>} before
+ * @param {string} what
+ */
 async function assertNotReloaded(tabs, before, what) {
   const now = identity(tabs);
   for (const [i, tab] of tabs.entries()) {
@@ -121,7 +177,8 @@ async function assertNotReloaded(tabs, before, what) {
     Assert.equal(now[i].history, before[i].history, `${what}: ${n}'s history length`);
     const state = await SpecialPowers.spawn(tab.linkedBrowser, [], () => ({
       marker: content.wrappedJSObject.vimmaMarker,
-      field: content.document.getElementById("field")?.value,
+      field: /** @type {HTMLInputElement | null} */ (content.document.getElementById("field"))
+        ?.value,
       scrolled: content.scrollY,
     }));
     Assert.equal(state.marker, n, `${what}: ${n}'s page state survives`);
@@ -130,7 +187,10 @@ async function assertNotReloaded(tabs, before, what) {
   }
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ */
 function prefix(key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, {});
@@ -144,7 +204,10 @@ async function openPanel() {
   await until(isOpen, "ctrl+b b opens the side panel");
 }
 
-/** j / k until the highlight is on the row titled `name`. */
+/**
+ * j / k until the highlight is on the row titled `name`.
+ * @param {string} name
+ */
 async function goTo(name) {
   const at = rows().findIndex((r) => titleOf(r) === name);
   Assert.greaterOrEqual(at, 0, `${name} is listed`);
@@ -154,7 +217,10 @@ async function goTo(name) {
   await until(() => titleOf(selected()) === name, `the highlight is on ${name}`);
 }
 
-/** Marks each named row with space. */
+/**
+ * Marks each named row with space.
+ * @param {...string} names
+ */
 async function mark(...names) {
   for (const n of names) {
     await goTo(n);
@@ -182,8 +248,9 @@ async function enter() {
   await until(() => !isOpen(), "Enter closes the panel");
 }
 
-/** @type {Element[]} */
+/** @type {SplitTab[]} */
 const opened = [];
+/** @type {[number, number]} */
 const startSize = [window.outerWidth, window.outerHeight];
 
 async function reset() {
@@ -205,14 +272,14 @@ registerCleanupFunction(async () => {
 });
 
 add_task(async function setup_five_pages() {
-  await WindowWorkspaces.get(window).ready;
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(window)).ready;
   if (window.outerWidth !== WIDTH || window.outerHeight !== HEIGHT) {
     const resized = BrowserTestUtils.waitForEvent(window, "resize");
     window.resizeTo(WIDTH, HEIGHT);
     await resized;
   }
   for (const n of ["a", "b", "c", "d", "e"]) opened.push(await page(n));
-  await BrowserTestUtils.switchTab(gBrowser, byName.get("a"));
+  await BrowserTestUtils.switchTab(gBrowser, tab("a"));
 });
 
 add_task(async function space_marks_in_place_with_a_marker_not_only_colour() {
@@ -235,10 +302,15 @@ add_task(async function space_marks_in_place_with_a_marker_not_only_colour() {
   EventUtils.synthesizeKey("k", {});
   await until(() => titleOf(selected()) === "a", "and k again to a, above the mark");
   Assert.deepEqual(markedTitles(), ["b"], "moving changes no mark");
-  const b = rows().find((r) => titleOf(r) === "b");
+  const b = listedRow("b");
   const gutter = b.querySelector(".vimma-panel-mark");
   Assert.equal(gutter?.textContent, "●", "a ● in the gutter, readable without colour");
-  Assert.equal(gutter.getAttribute("aria-hidden"), "true", "the glyph itself is not read");
+  // Without a gutter the check above failed, and this one throws, as before.
+  Assert.equal(
+    /** @type {Element} */ (gutter).getAttribute("aria-hidden"),
+    "true",
+    "the glyph itself is not read",
+  );
   Assert.ok(b.classList.contains("vimma-panel-marked"), "the row carries the marked class");
   Assert.notEqual(
     getComputedStyle(b).borderInlineStartStyle,
@@ -246,9 +318,7 @@ add_task(async function space_marks_in_place_with_a_marker_not_only_colour() {
     "and a bar on its leading edge",
   );
   Assert.equal(
-    rows()
-      .find((r) => titleOf(r) === "c")
-      .querySelector(".vimma-panel-mark")?.textContent ?? "",
+    listedRow("c").querySelector(".vimma-panel-mark")?.textContent ?? "",
     "",
     "an unmarked row has an empty gutter",
   );
@@ -292,7 +362,7 @@ add_task(async function v_marks_a_range_and_esc_unwinds_range_marks_then_panel()
 });
 
 add_task(async function enter_with_two_marks_shows_them_side_by_side_without_reloading() {
-  const tabs = ["b", "d"].map((n) => byName.get(n));
+  const tabs = ["b", "d"].map(tab);
   const before = identity(tabs);
   await openPanel();
   await mark("b", "d");
@@ -300,9 +370,9 @@ add_task(async function enter_with_two_marks_shows_them_side_by_side_without_rel
   await enter();
   await until(() => shape() === "x[b,d]", "b and d side by side, in tab order");
   Assert.equal(focusedName(), "d", "the highlighted marked row has focus");
-  Assert.equal(gBrowser.selectedTab, byName.get("d"), "its tab is selected");
+  Assert.equal(gBrowser.selectedTab, tab("d"), "its tab is selected");
   await until(
-    () => document.activeElement === byName.get("d").linkedBrowser,
+    () => document.activeElement === tab("d").linkedBrowser,
     "and its page has keyboard focus",
   );
   await assertNotReloaded(tabs, before, "two together");
@@ -310,7 +380,7 @@ add_task(async function enter_with_two_marks_shows_them_side_by_side_without_rel
 });
 
 add_task(async function three_marks_replace_the_split_and_the_unmarked_tab_stays_open() {
-  const tabs = ["a", "c", "e"].map((n) => byName.get(n));
+  const tabs = ["a", "c", "e"].map(tab);
   const before = identity(tabs);
   await openPanel();
   await unmarkPanes();
@@ -320,7 +390,7 @@ add_task(async function three_marks_replace_the_split_and_the_unmarked_tab_stays
   await until(() => shape() === "x[a,y[c,e]]", "a dwindle of a, c and e");
   Assert.equal(focusedName(), "a", "the highlight was unmarked: the first marked has focus");
   for (const n of ["b", "d"]) {
-    const t = byName.get(n);
+    const t = tab(n);
     Assert.ok(t.isConnected && !t.closing, `${n}, in the old split, is still open`);
     Assert.ok(!t.splitview, `${n} left the split`);
   }
@@ -328,7 +398,7 @@ add_task(async function three_marks_replace_the_split_and_the_unmarked_tab_stays
 });
 
 add_task(async function four_marks_make_the_dwindle_spiral() {
-  const tabs = ["a", "b", "c", "d"].map((n) => byName.get(n));
+  const tabs = ["a", "b", "c", "d"].map(tab);
   const before = identity(tabs);
   await openPanel();
   await unmarkPanes();
@@ -341,7 +411,7 @@ add_task(async function four_marks_make_the_dwindle_spiral() {
   const want = `x[${p},y[${q},x[${r},${s}]]]`;
   await until(() => shape() === want, `a dwindle spiral of four, in row order: ${want}`);
   await assertNotReloaded(tabs, before, "four together");
-  Assert.equal(view().panes.layout, undefined, "no preset is stored by the dwindle default");
+  Assert.equal(panes().layout, undefined, "no preset is stored by the dwindle default");
 });
 
 add_task(async function five_marks_past_the_max_are_refused_and_nothing_changes() {
@@ -362,10 +432,10 @@ add_task(async function five_marks_past_the_max_are_refused_and_nothing_changes(
 });
 
 add_task(async function a_stored_preset_arranges_them_and_enter_on_another_row_shows_it_alone() {
-  if (gBrowser.selectedTab !== byName.get("a")) {
-    await BrowserTestUtils.switchTab(gBrowser, byName.get("a"));
+  if (gBrowser.selectedTab !== tab("a")) {
+    await BrowserTestUtils.switchTab(gBrowser, tab("a"));
   }
-  Assert.ok(view().split("vertical", { tab: byName.get("b") }).ok, "a | b");
+  Assert.ok(view().split("vertical", { tab: tab("b") }).ok, "a | b");
   Assert.ok(view().arrange("main-horizontal").ok, "main-horizontal stored");
   await openPanel();
   await unmarkPanes();
@@ -373,15 +443,15 @@ add_task(async function a_stored_preset_arranges_them_and_enter_on_another_row_s
   await goTo("d");
   await enter();
   await until(() => shape() === "y[d,x[c,e]]", "main-horizontal, the focused d as main");
-  Assert.equal(view().panes.layout, "main-horizontal", "the preset stays stored");
+  Assert.equal(panes().layout, "main-horizontal", "the preset stays stored");
 
   // With the split's marks unchanged, Enter goes to the row (side-panel-unsplit decision 12): a
   // tab outside the split shows alone, the split kept as a hidden view (decision 21).
   await openPanel();
   await goTo("b");
   await enter();
-  await until(() => gBrowser.selectedTab === byName.get("b"), "Enter goes to that tab");
-  Assert.equal(view().panes.hidden, true, "shown alone, the split hidden");
+  await until(() => gBrowser.selectedTab === tab("b"), "Enter goes to that tab");
+  Assert.equal(panes().hidden, true, "shown alone, the split hidden");
   Assert.equal(shape(), "y[d,x[c,e]]", "the split itself is unchanged");
   await reset();
 });

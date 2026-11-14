@@ -139,6 +139,8 @@ type HostHint = HostHints["hints"][number];
 type Panes = NonNullable<PaneView["panes"]>;
 /** A split of that tree, with its children and their ratios (core/panes.mjs Split). */
 type PaneSplit = Extract<Panes["root"], { type: "split" }>;
+/** A pane of that tree, with its tab's panel id (core/panes.mjs Leaf). */
+type PaneLeaf = Extract<Panes["root"], { type: "leaf" }>;
 
 /** A window's live grep (host/grep.mjs); VimmaHost._grep(win) is undefined before VimmaHost starts the window. */
 type GrepSession = import("../../src/browser/base/content/vimma/host/grep.mjs").GrepSession;
