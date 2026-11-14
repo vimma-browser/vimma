@@ -998,6 +998,8 @@ function checkStateResult(result, errors) {
   }
   if ("chat" in result) checkChat(result.chat, hidden, errors);
   if ("agent" in result) checkAgentSegment(result.agent, errors);
+  // The status bar's `↓` segment (#1006): optional, as `agent`; a word, never a file's name.
+  if ("downloads" in result) checkDownloads(result.downloads, hidden, errors);
 }
 
 /**
@@ -1029,9 +1031,32 @@ function checkAgentSegment(agent, errors) {
     errors.push("result.agent must be an object or null");
     return;
   }
-  noExtraFields(agent, ["waiting", "ran"], errors, "result.agent.");
+  noExtraFields(agent, ["waiting", "ran", "armed"], errors, "result.agent.");
   if (!isCount(agent.waiting)) errors.push("result.agent.waiting must be a non-negative integer");
   if (typeof agent.ran !== "boolean") errors.push("result.agent.ran must be a boolean");
+  if (typeof agent.armed !== "boolean") errors.push("result.agent.armed must be a boolean");
+}
+
+/**
+ * `state.downloads`: which `↓` segment the status bar draws (docs/specs/downloads.md, decision
+ * 9): downloads in `progress` (`↓ 42%`, `↓ 3`), all `paused`, or the last end, `done`, `failed`
+ * or `blocked`. The words of core downloadSegment's `kind`.
+ */
+export const DOWNLOAD_SEGMENTS = Object.freeze(["progress", "paused", "done", "failed", "blocked"]);
+
+/**
+ * `state.downloads`: a word from DOWNLOAD_SEGMENTS, or null while no segment is drawn; never
+ * the segment's text, a file's name or its site (security.md S9). Null in a private window,
+ * whose downloads are part of its browsing, as its URLs and titles are.
+ * @param {unknown} downloads @param {boolean} hidden  a private window's @param {string[]} errors
+ */
+function checkDownloads(downloads, hidden, errors) {
+  if (downloads === null) return;
+  if (typeof downloads !== "string" || !DOWNLOAD_SEGMENTS.includes(downloads)) {
+    errors.push(`result.downloads must be null or one of ${DOWNLOAD_SEGMENTS.join(", ")}`);
+  } else if (hidden) {
+    errors.push("result.downloads must be null in a private window");
+  }
 }
 
 /** `state.chat.view`: the agent chat window's transcript, model picker, conversations or key. */
