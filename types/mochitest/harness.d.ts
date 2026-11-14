@@ -344,6 +344,9 @@ declare var maximize: ChromeWindow["maximize"];
 declare var restore: ChromeWindow["restore"];
 declare var browserDOMWindow: BrowserWindow["browserDOMWindow"];
 declare var BrowserCommands: BrowserWindow["BrowserCommands"];
+// engine/dom/webidl/KeyEvent.webidl: the DOM_VK_* key codes (KeyEventMixin's constants), on a
+// global of every window. A name that is not one of them reads undefined.
+declare const KeyEvent: { readonly [name: `DOM_VK_${string}`]: number | undefined };
 // engine/browser/base/content/utilityOverlay.js
 declare function openAboutDialog(): void;
 // engine/browser/base/content/browser-places.js: `star` is the URL bar's star button, an <image>

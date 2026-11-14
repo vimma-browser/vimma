@@ -46,7 +46,7 @@ const KEYSET_ROWS = FIREFOX_SHORTCUTS.filter((r) => r.source === "main" || r.sou
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-firefox-coverage-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
 let writes = 0;
-/** Writes config.toml and reads it at once. */
+/** Writes config.toml and reads it at once. @param {string} text */
 async function useConfig(text) {
   writes++;
   await IOUtils.writeUTF8(file, `schema = 2\n${text}\n${"#".repeat(writes)}\n`);
@@ -72,7 +72,10 @@ function windowKeys() {
   }));
 }
 
-/** The inventory row for a `<key>`: by its id, or by its chord for Firefox's unnamed keys. */
+/**
+ * The inventory row for a `<key>`: by its id, or by its chord for Firefox's unnamed keys.
+ * @param {ReturnType<typeof windowKeys>[number]} key
+ */
 function rowOf({ el, chord }) {
   return KEYSET_ROWS.find((r) => (el.id ? r.id === el.id : !r.id && r.chord === chord));
 }
@@ -84,6 +87,7 @@ function rowOf({ el, chord }) {
  */
 function keyEventOf(text) {
   const c = parseKey(text);
+  /** @type {Record<string, string>} */
   const NAMED = {
     esc: "KEY_Escape",
     tab: "KEY_Tab",
@@ -114,7 +118,9 @@ add_task(async function setup() {
     ],
   });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
     await SpecialPowers.popPrefEnv();
     await ConfigHost.reload();
@@ -160,9 +166,12 @@ add_task(async function a_b_c_keys_are_disabled_a_b_chords_bound_c_chords_unboun
     if (!row || row.fate === "d") continue;
     Assert.equal(k.el.getAttribute("disabled"), "true", `${row.id || row.chord} is disabled`);
   }
-  const { keymap } = VimmaHost._state(window);
-  const bound = (chord) =>
-    ["normal", "insert"].some((m) => keymap.trie(m).children.get(chord)?.action);
+  // VimmaHost made this window's state when it started the window.
+  const { keymap } = /** @type {HostState} */ (VimmaHost._state(window));
+  const bound = (/** @type {string} */ chord) =>
+    /** @type {const} */ (["normal", "insert"]).some(
+      (m) => keymap.trie(m).children.get(chord)?.action,
+    );
   for (const row of FIREFOX_SHORTCUTS) {
     if (row.action && !row.unbound) {
       Assert.equal(
@@ -202,6 +211,9 @@ add_task(async function firefoxs_out_of_keyset_shortcuts_are_all_inventory_rows(
   const chords = new Set(FIREFOX_SHORTCUTS.map((r) => r.chord));
   let swept = 0;
   for (const [name, vk] of Object.entries(NAMED)) {
+    // A name Firefox has no key code for would sweep sixteen events without a key.
+    const keyCode = KeyEvent[`DOM_VK_${vk}`];
+    Assert.equal(typeof keyCode, "number", `DOM_VK_${vk} is a key code`);
     for (let bits = 0; bits < 16; bits++) {
       const mods = {
         ctrl: !!(bits & 1),
@@ -210,7 +222,7 @@ add_task(async function firefoxs_out_of_keyset_shortcuts_are_all_inventory_rows(
         meta: !!(bits & 8),
       };
       const event = new KeyboardEvent("keydown", {
-        keyCode: KeyEvent[`DOM_VK_${vk}`],
+        keyCode,
         ctrlKey: mods.ctrl,
         shiftKey: mods.shift,
         altKey: mods.alt,
@@ -307,7 +319,7 @@ add_task(async function out_of_keyset_keys_unbound_change_nothing() {
     Assert.deepEqual(order(), before, `${chord} moves and closes no tab`);
     Assert.ok(!Services.prefs.getBoolPref("accessibility.browsewithcaret"), `${chord}: no caret`);
     Assert.ok(
-      !gBrowser.isFindBarInitialized(tab) || gBrowser.getCachedFindBar(tab).hidden,
+      !gBrowser.isFindBarInitialized(tab) || gBrowser.getCachedFindBar(tab)?.hidden === true,
       `${chord} opens no find bar`,
     );
   }
@@ -339,6 +351,13 @@ add_task(async function the_menu_bars_access_keys_stay() {
  */
 const KNOWN_GAPS = {};
 
+/**
+ * The action an inventory row names. The cast changes nothing at run time: the read of a
+ * missing action's id throws, as it did before.
+ * @param {string} name
+ */
+const action = (name) => /** @type {NonNullable<ReturnType<typeof getAction>>} */ (getAction(name));
+
 add_task(async function real_key_events_for_each_firefox_chord_run_vimmas_action() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
   const browser = tab.linkedBrowser;
@@ -364,11 +383,11 @@ add_task(async function real_key_events_for_each_firefox_chord_run_vimmas_action
         const sentinel = keyEventOf("ctrl+shift+c");
         EventUtils.synthesizeKey(sentinel.key, sentinel.mods);
         await TestUtils.waitForCondition(
-          () => ran.slice(count).includes(getAction("devtools_inspector").id),
+          () => ran.slice(count).includes(action("devtools_inspector").id),
           "the sentinel ctrl+shift+c runs",
         );
         todo(
-          ran.slice(count).includes(getAction(row.action).id),
+          ran.slice(count).includes(action(row.action).id),
           `${row.chord} runs ${row.action} (${KNOWN_GAPS[row.chord]})`,
         );
         continue;
@@ -377,7 +396,7 @@ add_task(async function real_key_events_for_each_firefox_chord_run_vimmas_action
         () => ran.length > count,
         `${row.chord} (${key}) runs an action`,
       );
-      Assert.equal(ran.at(-1), getAction(row.action).id, `${row.chord} runs ${row.action}`);
+      Assert.equal(ran.at(-1), action(row.action).id, `${row.chord} runs ${row.action}`);
     }
   } finally {
     VimmaHost._run = run;
