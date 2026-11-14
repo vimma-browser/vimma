@@ -108,7 +108,7 @@ export const isNode = (v: unknown): v is AstNode =>
   typeof v === "object" && v !== null && typeof (v as { type?: unknown }).type === "string";
 /** What every allow-list error ends with: the lists are the tree's forms, widened on review. */
 export const WIDEN =
-  "widening this allow-list is a change to tools/layering/layering.ts that needs a fresh security review (ADR-026)";
+  "widening this allow-list is a change to tools/layering/ that needs a fresh security review (ADR-026)";
 
 /** The value of a string literal, or of a template literal without `${}`; else null. */
 export function fixedString(node: AstNode): string | null {
