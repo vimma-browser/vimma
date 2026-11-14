@@ -170,9 +170,9 @@ One JSON file per scenario in `tests/e2e/scenarios/`, file name = `name`:
   the same length and match element by element. `null` matches only `null`.
   (Since changed: a screenshot waits for the state of what it photographs, never a fixed time
   after a step: under load a `sleep` lets a notice or a half-filled list into the image (#981).
-  `state` reports the transient screen for this (`notice`, `prompt`, `chat`, `agent`; protocol
-  spec, "state"), and the harness's tests keep the list of screenshots that still follow a
-  `sleep`, which may only shrink.)
+  `state` reports the transient screen for this (`notice`, `prompt`, `chat`, `agent`,
+  `downloads`; protocol spec, "state"), and the harness's tests keep the list of screenshots that
+  still follow a `sleep`, which may only shrink.)
 - **Pending**: a non-empty `pending` string. The runner reports it as `PENDING (reason)`, never as
   passed, and does not launch the browser for it; `--run-pending` runs it anyway (to watch it
   fail while writing the server).
