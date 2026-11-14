@@ -2,7 +2,8 @@
 # runner (decision 5), ad hoc signed with rcodesign and packed as a .dmg, then smoked on a hosted
 # Mac (decision 8). Its own workflow, never a step of nightly.yml or release.yml, so a macOS-only
 # breakage cannot hold back a Linux build (decision 13). Keyless: Safe Browsing is off by default in
-# what it builds (decision 14). Measured time and disk: docs/runbook.md, "macOS build".
+# what it builds (decision 14). Measured time and disk: docs/runbook/ci-macos-build.md, "macOS
+# build".
 name: macos
 
 on:
@@ -35,8 +36,8 @@ jobs:
   build:
     if: github.event_name != 'schedule' || github.repository == 'vimma-browser/vimma'
     runs-on: ubuntu-24.04
-    # About 1.5 times the measured job, 133 min (docs/runbook.md, "macOS build"), well under
-    # GitHub's 6 hours, so a hung build fails here with its own log.
+    # About 1.5 times the measured job, 133 min (docs/runbook/ci-macos-build.md, "macOS build"),
+    # well under GitHub's 6 hours, so a hung build fails here with its own log.
     timeout-minutes: 200
     permissions:
       contents: read

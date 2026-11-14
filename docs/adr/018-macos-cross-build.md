@@ -54,9 +54,11 @@ tools for such a build.
 
 - No Mac is needed to build or to sign, and no new kind of runner is added; the Linux and macOS
   builds share one set of supply-chain rules and tests (`tools/test/full-build-workflows.test.mjs`).
-  The Developer ID adds one credential set, confined to one short job (docs/security.md, B14).
+  The Developer ID adds one credential set, confined to one short job
+  (docs/security/14-build-and-release-supply-chain.md, B14).
 - A cold cross build takes about 2 hours 15 minutes on a 4-CPU runner (133 minutes measured,
-  `docs/runbook.md`, "macOS build"). If it grows past 4 hours, it moves to a larger hosted Linux runner together with the
+  `docs/runbook/ci-macos-build.md`, "macOS build"). If it grows past 4 hours, it moves to a larger
+  hosted Linux runner together with the
   Linux release (build-supply-chain, decision 6).
 - An ad hoc app proves nothing about who built it. Gatekeeper refuses it at first start until the
   user allows it under System Settings → Privacy & Security → Open Anyway. A Developer ID release

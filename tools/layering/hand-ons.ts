@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Hand-ons (docs/security.md section 12): where a module that holds a restricted module, the
-// agent gate, lets it out of its own hands, so that a new caller is always a reviewed change.
+// Hand-ons (docs/security/12-agents.md section 12): where a module that holds a restricted module,
+// the agent gate, lets it out of its own hands, so that a new caller is always a reviewed change.
 
 import { analyze, type Reference } from "eslint-scope";
 import * as espree from "espree";

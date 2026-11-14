@@ -6,7 +6,7 @@ the ticket hello);
 `src/browser/base/content/vimma/` (new `agent/AgentCli.sys.mjs`: the process runner;
 `agent/AgentChat.sys.mjs`, `ui/agent-chat.mjs` for setup and the header; `ctl/VimmaControl.sys.mjs`
 and `ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mcp_serve.rs`,
-`src/discovery.rs`: connecting with a ticket); `docs/guide.md`, `docs/security.md`,
+`src/discovery.rs`: connecting with a ticket); `docs/guide.md`, `docs/security/`,
 `docs/limits.md` · Upstream patches: none · ADR: an amendment to
 [ADR-023](../adr/023-in-browser-model-client.md) (C1). No new dependency.
 
@@ -18,7 +18,7 @@ conversation grant), [vimma-mcp](vimma-mcp.md) (the agent workspace, the gate, t
 socket's agent role), [mcp-session-grants](mcp-session-grants.md) (a connection's grant and its
 session id) and [mcp-checkpoints](mcp-checkpoints.md). Decisions of those specs are written
 "builtin-agent B18", "vimma-mcp 7" and so on; this spec's own are "C1", "C2", and so on. Rules
-of `docs/security.md` are written by their numbers there (S1, C2, F3, M35). Engine paths are
+of `docs/security/` are written by their numbers there (S1, C2, F3, M35). Engine paths are
 relative to `engine/` (Firefox 158.0.1, `config/milestone.txt`). Vimma paths are under
 `src/browser/base/content/vimma/` unless they start with `packages/`, `tools/` or `docs/`; they
 were read at commit `43c2e348`.
@@ -222,12 +222,15 @@ own configuration allows; Vimma does not confine them, and the window states whi
 
 - `ctl/AgentDownloads.sys.mjs:674`: the only `Subprocess.call` in Vimma, which starts the
   system's ClamAV scanner with a fixed path, fixed argument builders, `stderr: "pipe"` and a
-  time limit after which the process is killed (`proc.kill()`). `docs/security.md` C2 allows
+  time limit after which the process is killed (`proc.kill()`).
+  `docs/security/06-chrome-ui-rendering.md` C2 allows
   chrome code to start a process only for that scanner and an AppImage's restart; this feature
   is a third exception.
-- `docs/security.md` F3: the config is never executed, "no value is evaluated as code or run as
+- `docs/security/08-config-toml.md` F3: the config is never executed, "no value is evaluated as code
+  or run as
   a command". A program path in `config.toml` would break it (C4).
-- `docs/security.md` S1, S12: the control socket listens only while `vimma.control.enabled` or
+- `docs/security/01-control-socket.md` S1, S12: the control socket listens only while
+  `vimma.control.enabled` or
   `vimma.mcp.enabled` is on, and the agent role runs only with MCP on. M35: the built-in agent
   acts through `runAgentCommand` on one connection per conversation (`builtin:<n>`) and works
   with MCP off.
@@ -821,7 +824,7 @@ transcript, as text.
   CLI is asked to keep no session (C5); its own logs and telemetry are its matter, and the
   guide links to each CLI's documentation.
 
-### `docs/security.md` changes, with the implementation
+### `docs/security/` changes, with the implementation
 
 - C2 gains a third exception, with its tests: an agent CLI from the path setup confirmed,
   checked at each run (absolute, regular, executable, owned by the user or root, not writable by
@@ -955,7 +958,7 @@ server the `vimma_chat` table names with only the variables its `env_vars` names
   them, how added instructions and stopping work per CLI, budgets, and that the cost shown is
   the CLI's estimate and no limit; "Connecting an agent's
   tool" links to it as the way to use a CLI without `:mcp on`.
-- `docs/security.md`: the changes above, with their tests.
+- `docs/security/`: the changes above, with their tests.
 - `docs/limits.md`, "Agents (MCP)": a CLI's own tools are outside the gate; a CLI's cost is
   its own estimate and `max_cost` does not apply to it; a shell command a CLI started may
   outlive a stop; Vimma cannot see where a CLI sends page text; supported CLIs and

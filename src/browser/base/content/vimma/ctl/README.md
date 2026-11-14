@@ -14,7 +14,8 @@ called by `vimma.js`; `runAgentCommand`, which the built-in agent calls too;
 2 folders, and `host/` (the gate among them). Not `config/` (same layer) or above, with no
 exception.
 
-**Security:** this folder is a trust boundary. Read [docs/security.md](../../../../../../docs/security.md)
+**Security:** this folder is a trust boundary. Read
+[docs/security/](../../../../../../docs/security/README.md)
 sections 1 and 12 before changing it; a change gets a separate security review, as does one to
 the gate in `host/`.
 

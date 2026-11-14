@@ -1,6 +1,7 @@
 # The Firefox Beta canary (spec upstream-beta-canary; ADR-002 as amended). It tests Vimma's main
 # against each Firefox Beta build, so that breakage a Firefox release brings is found while it is
-# still a Beta, about two weeks before the release and its security deadline (docs/security.md G2).
+# still a Beta, about two weeks before the release and its security deadline
+# (docs/security/10-firefox-updates.md G2).
 #
 #   detect        every 6 h, < 1 min. The current Beta (product-details); tested on main in the
 #                 last 7 days (an artifact upstream-beta-<version>)? The previous result.
@@ -110,7 +111,7 @@ jobs:
           persist-credentials: false
 
       # Shared with upstream.yml. Exits 1 on a SHA-512 mismatch: the job fails, nothing is
-      # tested or reported from that tarball (B3, docs/security.md G10).
+      # tested or reported from that tarball (B3, docs/security/10-firefox-updates.md G10).
       - name: Check the Beta's source (SHA-512, patches, audit, artifact preflight)
         id: check
         env:

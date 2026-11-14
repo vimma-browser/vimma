@@ -5,9 +5,9 @@
 // docs/specs/downloads.md: the status bar's `↓` segment for downloads in progress and the last
 // end, announced once (Behaviour 12 and 13, decision 9); the `ctrl+b d` picker, its rows, live
 // updates and keys (Behaviour 1-11, 15; decisions 3-5, 8, 12, 13, 19); blocked downloads, allowed
-// or removed only through Firefox's own dialog (Behaviour 10, decision 7, docs/security.md D3);
-// and Firefox's downloads panel, which stays shut for an ordinary download and still opens for a
-// blocked one (Behaviour 14, decision 10). An
+// or removed only through Firefox's own dialog (Behaviour 10, decision 7,
+// docs/security/21-downloads-picker.md D3); and Firefox's downloads panel, which stays shut for an
+// ordinary download and still opens for a blocked one (Behaviour 14, decision 10). An
 // Integration.downloads override records what would reach the OS (launchFile,
 // confirmLaunchExecutable, showContainingDirectory) instead of reaching it.
 
@@ -909,7 +909,7 @@ add_task(async function test_u_opens_the_referring_page() {
   await clean();
 
   // A download from another workspace's container opens its page in that container, whatever
-  // workspace is on screen (docs/security.md D4).
+  // workspace is on screen (docs/security/21-downloads-picker.md D4).
   const work = WorkspaceStore.addWorkspace({ name: "dlfrom", color: "blue", icon: "briefcase" });
   try {
     await finished("from-work.bin", {
@@ -989,7 +989,7 @@ add_task(async function test_a_private_window_lists_only_private_downloads() {
 
 add_task(async function test_the_picker_never_opens_an_agent_download() {
   const tab = await pageTab();
-  // A path in the agent's folders makes it an agent download (docs/security.md M11).
+  // A path in the agent's folders makes it an agent download (docs/security/12-agents.md M11).
   const dir = PathUtils.join(PathUtils.profileDir, "vimma-agent-refused");
   await IOUtils.makeDirectory(dir, { ignoreExisting: true });
   const from = `${DIR}file_vimma_plain.html?agent`;

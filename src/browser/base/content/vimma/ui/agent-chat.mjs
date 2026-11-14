@@ -151,7 +151,7 @@ const DROPPED = "its conversation was deleted, and the message with it";
 /**
  * The provider API keys, as far as the window asks for and shows them (agent/AgentKeys.sys.mjs):
  * a stored key's last four characters, a typed key stored, a key deleted. Never the key itself
- * (docs/security.md M46).
+ * (docs/security/12-agents-built-in-agent.md M46).
  * @typedef {object} ChatKeys
  * @property {(provider: string, endpoint: string) => Promise<string | null>} hint
  * @property {(provider: string, key: string, endpoint: string) => Promise<void>} set

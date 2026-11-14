@@ -158,7 +158,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc # exact Node pin (docs/runbook.md, "Bench baseline")
+          node-version-file: .nvmrc # exact Node pin (docs/runbook/ci-bench-baseline.md, "Bench baseline")
           cache: npm
 
       - name: npm ci
@@ -382,7 +382,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc # exact Node pin (docs/runbook.md, "Bench baseline")
+          node-version-file: .nvmrc # exact Node pin (docs/runbook/ci-bench-baseline.md, "Bench baseline")
           cache: npm
 
       - name: npm ci
@@ -425,8 +425,9 @@ jobs:
       # hidden tab's) at the background QoS class. A real Mac runs such threads on its efficiency
       # cores; the hosted runner is a virtual machine without them, where they starved, and the
       # tests that load and read hidden tabs timed out on every run (15 failures against 1 with
-      # the pref off, docs/runbook.md "macOS mochitests"). Agent commands raise their own tab
-      # (agent-commands.mjs, raisePriority), which browser_vimma_mcp_agent.js checks either way.
+      # the pref off, docs/runbook/ci-macos-mochitests.md "macOS mochitests"). Agent commands raise
+      # their own tab (agent-commands.mjs, raisePriority), which browser_vimma_mcp_agent.js checks
+      # either way.
       - name: Mochitests (npm run mochitest -- --artifact tests/browser/)
         run: |
           npm run mochitest -- --artifact "--log-tbpl=$RUNNER_TEMP/mochitest.tbpl.log" \

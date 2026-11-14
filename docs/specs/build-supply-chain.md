@@ -8,7 +8,7 @@ Status: implemented · Area: `package.json`, `package-lock.json`, `.npmrc` (new)
 `tools/upstream/firefox-source.sh` (new), `tools/upstream/verify-source.sh` (new),
 `tools/upstream/mozilla-release-key.asc` (new),
 `tools/upstream/mozilla-key-check.py` (new), `tools/deps/release-path.ts` (new),
-`docs/security.md`, `docs/runbook.md`, `docs/rebase.md`, `docs/review-checklist.md`,
+`docs/security/`, `docs/runbook/`, `docs/rebase.md`, `docs/review-checklist.md`,
 `CONTRIBUTING.md` · Upstream patches:
 none · ADR: ADR-021 (new, "Mozilla's release key is the trust anchor for the Firefox source");
 [ADR-001](../adr/001-engine-firefox-surfer.md) gains one paragraph on how Surfer is pinned
@@ -164,7 +164,7 @@ absent, and then downloads every add-on in `surfer.json` from addons.mozilla.org
 API (`commands/download/addon.js:30,41`), again with no hash check. Vimma's `surfer.json` has
 `"addons": {}`. Unpacking runs `tar --strip-components=1 -xf`; without `CI_SKIP_INIT` Surfer then
 makes `engine/` a git repository and commits the whole tree (`firefox.js:30-32`), which accounts
-for most of the 12.5 minutes `docs/runbook.md` records for `surfer download`; with
+for most of the 12.5 minutes `docs/runbook/` records for `surfer download`; with
 `CI_SKIP_INIT=1` the e2e job's download and unpack took 56 s on a standard hosted runner (R9).
 
 **R4. npm behaviour (npm 10.9.4, Node 22.21.0).** From npm's documentation for v10:
@@ -245,7 +245,7 @@ diff of the published package is small and is exactly the code that runs.
   Ubuntu runner has it.
 
 **R8. Time cost of verifying and re-extracting.** Measured on the reference machine in
-`docs/runbook.md` (16 threads, NVMe) with the cached 157.0.1 tarball (811,383,348 bytes):
+`docs/runbook/` (16 threads, NVMe) with the cached 157.0.1 tarball (811,383,348 bytes):
 `sha512sum` 1.2 s (the hash matched line 821 of `SHA512SUMS`), `gpgv` under 0.1 s,
 `tar --strip-components=1 -xf` into an empty directory 17.5 s (4.7 GB), deleting that tree 5.1 s.
 
@@ -489,7 +489,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
      an always-available machine. The self-hosted target is removed from both workflows rather
      than kept switched off, because keeping it would leave `clean: false` and the cached-engine
      shortcut (Problem 2) in place for a machine nobody runs. A self-hosted machine, if one is
-     ever wanted, comes with its own spec and its own `docs/security.md` rules; the guard in
+     ever wanted, comes with its own spec and its own `docs/security/` rules; the guard in
      decision 7 stays in force either way.
 
    The change is inert until `NIGHTLY_ENABLED` or `RELEASE_ENABLED` is set.
@@ -530,7 +530,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
    rest of decision 5. The test covers the workflow files
    on `main`; a fork's pull request runs its own head's workflow files, which is why the
    current fork approval setting (`all_external_contributors`, R7) matters: no outside fork's
-   workflow runs before a person approves that run. `docs/security.md` records that setting as
+   workflow runs before a person approves that run. `docs/security/` records that setting as
    **⚠ setting** with the `gh api` command that shows it, because no test can read an admin
    setting with the workflow token.
 
@@ -572,7 +572,8 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
     digests in Taskcluster's chain-of-trust files, over HTTPS. This spec adds no check of its own
     to that path: the toolchains come from the same organisation whose release key it trusts, and
     a stronger check would mean verifying Taskcluster's chain-of-trust signatures, which `mach`
-    does not do and which would be a project of its own. `docs/security.md` §11 names the
+    does not do and which would be a project of its own.
+    `docs/security/11-out-of-scope-and-trust-boundaries.md` §11 names the
     toolchains as trusted.
 
 ### npm packages
@@ -657,7 +658,7 @@ download --force` gave `--force` to npm, and `npx --no commitlint --from A --to 
     integrity, decisions 12–17), actions (commit SHAs). What the build produces is checked by
     hosted jobs (smoke tests, package checks) and then signed. A cosign signature therefore
     attests "built by `release.yml` at this tag on a GitHub-hosted runner from these verified
-    inputs", and `docs/security.md` says exactly that. Making the binaries independently
+    inputs", and `docs/security/` says exactly that. Making the binaries independently
     reproducible is out of scope.
 
 ### Mozilla key rotation
@@ -667,7 +668,7 @@ download --force` gave `--force` to npm, and `npx --no commitlint --from A --to 
     `detect` job (which runs every 4 hours), downloads
     `nightly/latest-mozilla-central/KEY` (the location Mozilla names, R1), compares it with the
     pinned key and reports: a new subkey or a new revocation (an issue, labelled `security`,
-    "Mozilla's release key changed", with the fingerprints and the steps from `docs/runbook.md`),
+    "Mozilla's release key changed", with the fingerprints and the steps from `docs/runbook/`),
     a different primary key (the same issue, saying the pinned fingerprint and ADR-021 must be
     reviewed, never updated by the check), or the pinned signing subkey expiring within 60 days.
     It never edits the keyring. Reason: Mozilla rotates the signing subkey every two years and, as
@@ -712,7 +713,7 @@ download --force` gave `--force` to npm, and `npx --no commitlint --from A --to 
     separate decisions, and the variable stops publishing at once. Unset, the nightly is as this
     decision says. Set, one job, `publish`, holds `contents: write`; it checks out and runs no
     repository code, so the write token still never reaches npm, Surfer, `mach` or the
-    mochitests. docs/security.md B8.)
+    mochitests. docs/security/14-build-and-release-supply-chain.md B8.)
 
 ## Security and privacy
 
@@ -742,7 +743,8 @@ New surface:
   `tools/upstream/mozilla-release-key.asc` or the fingerprint constant must cite Mozilla's
   announcement and keep every revocation.
 
-New section for `docs/security.md`, **§14. Build and release supply chain** (`release.yml`,
+New section for `docs/security/14-build-and-release-supply-chain.md`, **§14. Build and release
+supply chain** (`release.yml`,
 `nightly.yml`), with **Reach:** Mozilla's archive and Taskcluster, the npm registry, this
 repository, and GitHub's hosted runners. Each rule links its tests (Tests, below):
 
@@ -910,9 +912,10 @@ No mochitest or e2e scenario: nothing in the browser changes.
 
 ## Docs and changelog
 
-- `docs/security.md`: §14 with B1 to B7 and their test links; G4 amended; §11 gains "Build
+- `docs/security/`: §14 with B1 to B7 and their test links; G4 amended; §11 gains "Build
   infrastructure".
-- `docs/runbook.md`, "Full builds (`nightly.yml`, `release.yml`)" (already says they run on
+- `docs/runbook/ci-full-builds.md`, "Full builds (`nightly.yml`, `release.yml`)" (already says they
+  run on
   GitHub-hosted runners, with the self-hosted label as a known gap): the measured time and disk
   from sub-PR 4, the disk guard, `sha_pinning_required`, the steps to switch both builds on, and
   the `build` environment with the steps to move the secret into it; the known-gap paragraph
@@ -927,7 +930,8 @@ No mochitest or e2e scenario: nothing in the browser changes.
 - `CONTRIBUTING.md`, "Dependency updates": release-path packages, why they are never
   auto-merged, how to read the `release-path-diff` summary, and that install scripts are off.
 - `docs/review-checklist.md`: the pinned-key line (Security and privacy).
-- Decision 23: `docs/security.md` B8; `docs/runbook.md`, "Full builds" (the artifact, how to
+- Decision 23: `docs/security/14-build-and-release-supply-chain.md` B8;
+  `docs/runbook/ci-full-builds.md`, "Full builds" (the artifact, how to
   download it, who can); `docs/limits.md`, "Build and CI"; a "Since changed"
   note in spec m0-pipeline.
 - ADR-021 (new) and the ADR-001 paragraph (sub-PR 2 and sub-PR 1).
@@ -937,7 +941,7 @@ No mochitest or e2e scenario: nothing in the browser changes.
 
 ## Delivery
 
-Each sub-PR adds its `docs/security.md` rules together with the tests they link, so the link
+Each sub-PR adds its `docs/security/` rules together with the tests they link, so the link
 check (`npm run security-links`) holds at every step. None needs a build machine or a build
 variable, and only sub-PR 5 needs a repository setting changed; the order puts first what
 protects something that runs today.
@@ -973,7 +977,7 @@ protects something that runs today.
    cache, and drop `engine/.git` before building (R14); the `.vimma-firefox-version` shortcut
    goes. Before merging, a temporary job in the pull request's own CI (hosted runner, no secret,
    keyless, publishes nothing) runs `firefox-source.sh`, `npm run import` and a full build, and
-   records wall time, peak disk and peak memory; the numbers go into `docs/runbook.md`, set
+   records wall time, peak disk and peak memory; the numbers go into `docs/runbook/`, set
    `timeout-minutes` (decision 10), and select the runner (decision 6); the job is removed before
    merge. ADR-010 and ADR-015 corrected. B1 for builds (the hash; the signature with sub-PR 2),
    B2. The measurement (R15) ran from a separate branch that was never proposed for merging, so

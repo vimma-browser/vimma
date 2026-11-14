@@ -1214,10 +1214,10 @@ add_task(async function the_status_bar_says_not_secure_and_private() {
   gBrowser.removeTab(tab);
 });
 
-// docs/security.md C3: with the toolbar hidden the status bar is the only origin
-// indicator. It keeps the registrable domain in view, is never replaced by a title, names an
-// opener-controlled about:blank, shows what the page uses, and reads the security state from
-// the browser, not from the hidden address bar.
+// docs/security/06-chrome-ui-rendering.md C3: with the toolbar hidden the status bar is the only
+// origin indicator. It keeps the registrable domain in view, is never replaced by a title, names an
+// opener-controlled about:blank, shows what the page uses, and reads the security state from the
+// browser, not from the hidden address bar.
 /**
  * The host as the status bar shows it: the URL up to its path, without a cut's ellipses.
  * @param {string | null} url

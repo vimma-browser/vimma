@@ -54,7 +54,8 @@ calls reach the gate, where its requests may go, and where an API key is kept.
 
 ## Consequences
 
-- Every rule of [docs/security.md](../security.md) §12 covers the built-in agent; its own rules
+- Every rule of [docs/security/12-agents.md](../security/12-agents.md) §12 covers the built-in
+  agent; its own rules
   are M35-M41 there.
 - What the bench measures over `vimma-ctl mcp` is what the built-in agent runs: the same loop,
   tool definitions, system text and result text.
@@ -79,4 +80,4 @@ and web tools, outside the gate; the window says so before the first task and li
 header. Rejected for this: the ordinary agent role with the token and `:mcp on`, for the reason
 decision 1's alternatives give; an MCP server over HTTP served by Vimma, because it adds a
 listener that pages could reach by URL. Its rules are M51-M61 of
-[docs/security.md](../security.md) §12, and C2's third exception.
+[docs/security/](../security/README.md) §12, and C2's third exception.

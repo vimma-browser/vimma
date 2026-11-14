@@ -1,6 +1,7 @@
 # Spec: release-versioning
 
-Status: implemented · Area: CI (`release-please-config.json`, `docs/runbook.md` "Releases",
+Status: implemented · Area: CI (`release-please-config.json`, `docs/runbook/ci-releases.md`
+"Releases",
 `tools/package/test/release-workflow.test.mjs`). No upstream patch, no app code.
 
 ## Goal
@@ -17,7 +18,7 @@ Releases count up by the patch version: 0.1.1, 0.1.2, 0.1.3 and so on.
   `vX.Y.Z`. `release.yml` does not run for a draft. When the release gate opens, I publish the
   draft (or turn drafts off), and the release goes out as before. (Since changed: `release.yml`
   now builds and uploads to the draft, started by `release-please.yml`'s `release-build` job,
-  and drafts stay on after the gate opens; docs/runbook.md, "Releases".)
+  and drafts stay on after the gate opens; docs/runbook/ci-releases.md, "Releases".)
 - As the maintainer, no one-off setting pins every future release to one version.
 
 ## Research (release-please 17.6.0, bundled in release-please-action v5.0.0, pinned by SHA)
@@ -45,7 +46,7 @@ Releases count up by the patch version: 0.1.1, 0.1.2, 0.1.3 and so on.
   no workflow for the `created`/`edited`/`deleted` events of a draft. The tag is created with
   the release-please token through the API; no workflow here runs on tag pushes. (Since changed:
   `release.yml` starts only by `workflow_dispatch`, and `aur.yml` runs on `release: published`;
-  docs/runbook.md, "Release packages".)
+  docs/runbook/ci-release-packages.md, "Release packages".)
 
 ## Scope
 

@@ -186,7 +186,7 @@ describe("vimma-theme-reload.sh", () => {
     expect(calls("vimma-ctl")).toEqual([["--timeout", "2", "reload-theme"]]);
   });
 
-  // docs/security.md: the theme name comes from a theme directory anyone can publish. It must
+  // docs/security/: the theme name comes from a theme directory anyone can publish. It must
   // never reach Vimma or vimma-ctl as an argument (a flag, a path, a URL).
   it("never passes its arguments on: a hostile theme name changes nothing", () => {
     const hostile = ["-profile /tmp/x", "--remote-debugging-port", "9222", "$(touch pwned)"];

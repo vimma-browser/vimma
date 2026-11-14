@@ -129,7 +129,8 @@ reported focus, and only while that frame still shows the document that reported
 host keeps the frame's inner window ID with it), so a frame that has since loaded another site's
 page is not asked; the worst a compromised frame can do is focus an element of its own. The frame
 check of [m1-actor-insert-scroll](m1-actor-insert-scroll.md) ("only the focused frame may
-report") still guards which frame is remembered. Rules K2 and K3 in [security.md](../security.md)
+report") still guards which frame is remembered. Rules K2 and K3 in
+[security.md](../security/13-page-modes.md)
 hold this with tests.
 
 ## Tests
@@ -161,7 +162,7 @@ The behaviour 1 and 3 tests failed before the change (the page lost `t` and `j`,
 
 - `docs/guide.md`, "Normal and insert mode" and the key table's `i` row: `i` returns to the last
   field; insert from `i` or `gi` lasts until `Esc`.
-- `docs/security.md`: a section for page modes, rules K1 to K3.
+- `docs/security/13-page-modes.md`: a section for page modes, rules K1 to K3.
 - `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
 
 ## Delivery
@@ -287,7 +288,7 @@ forged `user: true` or a high `gen` lets a report do what any report could befor
 (enter insert in its own tab, K1); they can only narrow what a report does after `Esc`. `Vimma:Click`
 carries no data and only ends the hold, which a forged `user: true` could do as well. A page
 cannot set the hold, and ends it only by focusing while it handles the user's input. Rule K4 in
-[security.md](../security.md) holds behaviour 6 with tests.
+[security.md](../security/13-page-modes.md) holds behaviour 6 with tests.
 
 ### Tests
 
@@ -310,7 +311,7 @@ failed 8 of 8 runs before and passed 12 of 12 after.
 
 - `docs/guide.md`, "Normal and insert mode": a page cannot pull the tab back into insert after
   `Esc`; a dialog that keeps focus closes with a second `Esc`.
-- `docs/security.md`: rule K4.
+- `docs/security/13-page-modes.md`: rule K4.
 - `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
 
 ## Follow-up: a key right after Esc
@@ -406,7 +407,8 @@ so a page can neither add to the count nor hide a key from it; by moving focus b
 frames it can at most make a frame count more for one blur, which keeps the focus that frame has
 in normal mode. The `keys` field goes from the parent to the child; a compromised content process
 could skip any blur already, so the field gives it nothing. A kept focus decides the mode through
-an ordinary focus report under rules K1 and K4 in [security.md](../security.md): a page's own
+an ordinary focus report under rules K1 and K4 in [security.md](../security/13-page-modes.md): a
+page's own
 focus after `Esc` stays in normal unless a key the page got ended the hold, as before.
 
 ### Tests
@@ -422,7 +424,7 @@ so that the keys and the blur wait there together:
 
 ### Docs and changelog
 
-- `docs/security.md`: rule K4 names the three tests.
+- `docs/security/13-page-modes.md`: rule K4 names the three tests.
 - `CHANGELOG.md`: a Fixed line, added by the maintainer at merge time.
 
 ## Open questions

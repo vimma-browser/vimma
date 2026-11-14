@@ -33,8 +33,9 @@ describe("npm run typecheck", () => {
     expect(tools.compilerOptions.types).toEqual(["node"]);
     expect(tools.include).toContain("**/*.mjs");
     // Rust is not in it; the tests are, .mjs and .ts alike (issue #947), except the key guard's
-    // own test: editing it needs the key-rotation-approved label (docs/security.md B1).
-    // The whole list is pinned, so no other glob (a folder, "**/*.test.mjs") can drop tests.
+    // own test: editing it needs the key-rotation-approved label
+    // (docs/security/14-build-and-release-supply-chain.md B1). The whole list is pinned, so no
+    // other glob (a folder, "**/*.test.mjs") can drop tests.
     expect(tools.exclude).toEqual([
       "vimma-ctl/",
       "**/node_modules/**",

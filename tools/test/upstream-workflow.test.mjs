@@ -4,8 +4,8 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "./temp-dir.mjs";
 
-// Spec m7-upstream-autopilot, docs/security.md §10: the upstream autopilot's workflow shape.
-// Text checks, like safebrowsing-workflows.test.mjs: no YAML dependency.
+// Spec m7-upstream-autopilot, docs/security/10-firefox-updates.md §10: the upstream autopilot's
+// workflow shape. Text checks, like safebrowsing-workflows.test.mjs: no YAML dependency.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 /** @param {string} name */
 const workflow = (name) => readFileSync(new URL(name, dir), "utf8");
@@ -535,7 +535,8 @@ describe("fuzz re-export in the upstream autopilot", () => {
   });
 });
 
-// Spec upstream-bump-automation, decisions 6 to 13 (docs/security.md, G13 and G14).
+// Spec upstream-bump-automation, decisions 6 to 13 (docs/security/10-firefox-updates.md, G13 and
+// G14).
 describe("auto-merge in the upstream autopilot", () => {
   it("auto-merge only with the variable, the token, a ready PR and the allowlist", () => {
     const decide = step(upstream, "pr");
@@ -613,7 +614,7 @@ describe("auto-merge in the upstream autopilot", () => {
   });
 });
 
-// Spec upstream-bump-automation, decisions 16 to 21 (docs/security.md, G15).
+// Spec upstream-bump-automation, decisions 16 to 21 (docs/security/10-firefox-updates.md, G15).
 describe("the failing-patches issue in the upstream autopilot", () => {
   it("patch-issue runs only on a failed patch check, with issues: write and no secret", () => {
     const block = job(upstream, "patch-issue");

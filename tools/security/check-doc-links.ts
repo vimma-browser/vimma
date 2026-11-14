@@ -3,15 +3,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// docs/security.md names the test behind each rule as a link whose text is a code span, the
-// test's name, and whose target is the test file: [`test_handshake`](../tests/browser/x.js).
-// This check (CI, lint/test job) fails when a linked file is gone or no longer has a test of
-// that name, so the page cannot silently rot. Plain links must resolve to a file too.
+// The pages of docs/security/ name the test behind each rule as a link whose text is a code span,
+// the test's name, and whose target is the test file:
+// [`test_handshake`](../../tests/browser/x.js). This check (CI, lint/test job) fails when a linked
+// file is gone or no longer has a test of that name, so the pages cannot silently rot. Plain
+// links must resolve to a file too.
 //
-//   node tools/security/check-doc-links.ts [file.md ...]   (default: docs/security.md)
+//   node tools/security/check-doc-links.ts [file.md | folder ...]   (default: docs/security)
+//
+// A folder stands for every Markdown file under it. Its files need not each link a test (the
+// index and the out-of-scope page link none), but the folder as a whole must.
 
-import { closeSync, fstatSync, openSync, readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { closeSync, fstatSync, openSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -153,19 +157,56 @@ export function checkFile(mdPath: string): { problems: string[]; tests: number }
   return { problems, tests };
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const files = process.argv.slice(2);
-  const paths = (files.length ? files : ["docs/security.md"]).map((f) => resolve(ROOT, f));
-  let failed = false;
+/**
+ * The Markdown files `path` stands for: itself, or every `.md` file under it when it is a
+ * folder, sorted.
+ * @param path absolute
+ */
+export function docFiles(path: string): string[] {
+  if (!statSync(path).isDirectory()) return [path];
+  return readdirSync(path, { recursive: true, encoding: "utf8" })
+    .filter((name) => name.endsWith(".md"))
+    .sort()
+    .map((name) => join(path, name));
+}
+
+/**
+ * Checks every file and folder of `paths` (absolute). A file, or a folder as a whole, with no
+ * test link fails: the check would pass without checking anything.
+ */
+export function checkAll(paths: string[]): {
+  lines: string[];
+  errors: string[];
+  tests: number;
+  failed: boolean;
+} {
+  const lines: string[] = [];
+  const errors: string[] = [];
+  let all = 0;
   for (const path of paths) {
-    const { problems, tests } = checkFile(path);
-    for (const p of problems) console.error(p);
-    if (tests === 0) {
-      console.error(`${relative(ROOT, path)}: no test links found; the check would be vacuous`);
-      failed = true;
+    const files = docFiles(path);
+    let total = 0;
+    for (const file of files) {
+      const { problems, tests } = checkFile(file);
+      errors.push(...problems);
+      total += tests;
+      if (!problems.length) lines.push(`${relative(ROOT, file)}: ${tests} test links resolve`);
     }
-    if (problems.length) failed = true;
-    else console.log(`${relative(ROOT, path)}: ${tests} test links resolve`);
+    if (total === 0)
+      errors.push(`${relative(ROOT, path)}: no test links found; the check would be vacuous`);
+    else if (files[0] !== path)
+      lines.push(`${relative(ROOT, path)}: ${total} test links resolve in ${files.length} files`);
+    all += total;
   }
+  return { lines, errors, tests: all, failed: errors.length > 0 };
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const args = process.argv.slice(2);
+  const { lines, errors, failed } = checkAll(
+    (args.length ? args : ["docs/security"]).map((f) => resolve(ROOT, f)),
+  );
+  for (const e of errors) console.error(e);
+  for (const l of lines) console.log(l);
   process.exit(failed ? 1 : 0);
 }

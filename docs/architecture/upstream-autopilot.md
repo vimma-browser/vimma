@@ -10,8 +10,9 @@ is the maintainer's guide to the same jobs and to what to do when the bump stops
 [ADR-021](../adr/021-mozilla-release-key.md) and [ADR-022](../adr/022-green-bump-merges-itself.md);
 the behaviour is in [m7-upstream-autopilot](../specs/m7-upstream-autopilot.md) and
 [upstream-bump-automation](../specs/upstream-bump-automation.md); the rules with their tests are G1
-to G15 in [docs/security.md](../security.md) §10; setup and switches are in
-[docs/runbook.md](../runbook.md), "Upstream bumps".
+to G15 in [docs/security/10-firefox-updates.md](../security/10-firefox-updates.md) §10; setup and
+switches are in
+[docs/runbook/ci-upstream-bumps.md](../runbook/ci-upstream-bumps.md), "Upstream bumps".
 
 ```mermaid
 sequenceDiagram

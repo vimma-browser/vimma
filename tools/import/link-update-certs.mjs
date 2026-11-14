@@ -47,7 +47,7 @@ export function linkUpdateCerts(root, engine) {
     const st = lstatSync(src, { throwIfNoEntry: false });
     if (!st?.isFile() || st.size === 0) {
       throw new Error(
-        `${src}: missing, empty or not a regular file (docs/runbook.md, "Update signing keys")`,
+        `${src}: missing, empty or not a regular file (docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys")`,
       );
     }
     return src;

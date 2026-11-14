@@ -747,9 +747,9 @@ which presses real keys wherever focus is, in every workspace (mcp-drive, "Probl
 | **A screenshot shows a card number the user typed** in an agent tab.                               | A screenshot is refused while a sensitive field on screen has a value (F21).                                                                                                                                                                                                            |
 | **Flooding.**                                                                                      | Rates per tool (F21, F26) and the open rate for navigations (F11).                                                                                                                                                                                                                      |
 
-### docs/security.md (§12, rules added by the sub-PR that builds each)
+### docs/security/12-agents.md (§12, rules added by the sub-PR that builds each)
 
-Each rule enters `docs/security.md` with links to its tests in the sub-PR that implements it,
+Each rule enters `docs/security/` with links to its tests in the sub-PR that implements it,
 because the page links every rule to a test that exists. Until then §12 names this spec as
 planned.
 
@@ -843,7 +843,7 @@ Written first and seen to fail, by layer. Each names the rule it holds.
   screenshots and console output are untrusted.
 - `README.md` feature list: agents can click and fill forms in the agent workspace, never
   passwords or payment details.
-- `docs/security.md` §12: M25-M32 as each sub-PR lands.
+- `docs/security/12-agents.md` §12: M25-M32 as each sub-PR lands.
 - `CHANGELOG.md`: one Added line per sub-PR; each new e2e baseline named in its line.
 
 ## Delivery

@@ -11,7 +11,7 @@
  * §6), each as base64 DER SubjectPublicKeyInfo with its id, the first 8 hex digits of the SPKI's
  * SHA-256. Signatures are RSASSA-PKCS1-v1_5 with SHA-384. updates.test.mjs checks each entry
  * (RSA-4096, the id matches, one key per slot) and the primary's SHA-256 against the one
- * recorded in docs/runbook.md ("Update signing keys").
+ * recorded in docs/runbook/ci-update-signing-keys-and-the-update-host.md ("Update signing keys").
  *
  * The primary is the Google Cloud KMS key update-primary (key ring vimma-updates, version 1,
  * RSA_SIGN_RAW_PKCS1_4096 in an HSM). Until the offline key ceremony makes the secondary

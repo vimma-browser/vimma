@@ -1067,9 +1067,9 @@ describe("forms by consequence (mcp-consequence K1, K5)", () => {
   });
 });
 
-// docs/security.md M62 (issue #1018): what the gate keeps from a caller, and hands to a reader,
-// is its own frozen copy, so neither can change what a question showed, what it answers or a
-// row of `:mcp log` after the fact.
+// docs/security/12-agents.md M62 (issue #1018): what the gate keeps from a caller, and hands to a
+// reader, is its own frozen copy, so neither can change what a question showed, what it answers or
+// a row of `:mcp log` after the fact.
 describe("the gate's copies (security.md M62)", () => {
   test("frozenCopy copies plain data deeply and freezes every level", () => {
     const what = {

@@ -12,13 +12,13 @@
 # never told about shows.
 #
 # The key can push to vimma-site, whose release-sync pull requests merge themselves, so only
-# main's copy of this file may hold it (docs/security.md, B15). Publishing a release starts
-# `start`, which runs the tag's copy, and anyone with write access can create a tag with an
-# edited copy; so `start` holds no secret and no environment and only starts this workflow on
-# main (workflow_dispatch, release=true), as homebrew.yml and update-publish.yml do. `dispatch`
-# holds the key, in the site-dispatch environment, which accepts main alone.
-# No checkout and no third-party action: GitHub's create-github-app-token, then one API call with
-# the runner's gh.
+# main's copy of this file may hold it (docs/security/14-build-and-release-supply-chain.md, B15).
+# Publishing a release starts `start`, which runs the tag's copy, and anyone with write access can
+# create a tag with an edited copy; so `start` holds no secret and no environment and only starts
+# this workflow on main (workflow_dispatch, release=true), as homebrew.yml and update-publish.yml
+# do. `dispatch` holds the key, in the site-dispatch environment, which accepts main alone. No
+# checkout and no third-party action: GitHub's create-github-app-token, then one API call with the
+# runner's gh.
 name: Site dispatch
 
 on:

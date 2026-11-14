@@ -1,10 +1,10 @@
-# The quarterly patch audit (milestone M7, docs/security.md G8, docs/rebase.md "Patch-size audit").
-# tools/upstream/patch-audit.py checks every src/**/*.patch against the ADR-003 register: each
-# patch has a register line and each line a patch, each stays within its hunk and line budget,
-# and each review is at most 92 days old. The report becomes a tracking issue labelled
-# `upstream` and `audit`, so a person reviews the patch set once a quarter even when nothing
-# failed; a failing audit fails the run as well. (CI's `npm run test:py` already fails a push
-# that breaks the register or a budget; this run adds the review cadence.)
+# The quarterly patch audit (milestone M7, docs/security/10-firefox-updates.md G8, docs/rebase.md
+# "Patch-size audit"). tools/upstream/patch-audit.py checks every src/**/*.patch against the ADR-003
+# register: each patch has a register line and each line a patch, each stays within its hunk and
+# line budget, and each review is at most 92 days old. The report becomes a tracking issue labelled
+# `upstream` and `audit`, so a person reviews the patch set once a quarter even when nothing failed;
+# a failing audit fails the run as well. (CI's `npm run test:py` already fails a push that breaks
+# the register or a budget; this run adds the review cadence.)
 #
 # Minutes (private repo): two jobs of under a minute, four times a year. No npm or toolchain
 # install: the audit is Python stdlib on the runner's python3. Two jobs, so the step that runs

@@ -190,9 +190,9 @@ export function mergeUserJs(
 }
 
 /**
- * Developer tools a shipped build keeps off (docs/security.md, P8): the Browser Toolbox and a
- * chrome-privileged Browser Console, remote debugging, and dump() output on stdout. Only npm
- * start's profile gets them; the e2e harness shares devPrefs and needs none.
+ * Developer tools a shipped build keeps off (docs/security/09-privacy-defaults.md, P8): the Browser
+ * Toolbox and a chrome-privileged Browser Console, remote debugging, and dump() output on stdout.
+ * Only npm start's profile gets them; the e2e harness shares devPrefs and needs none.
  */
 export const DEVTOOLS_PREFS: ReadonlyArray<readonly [string, boolean]> = [
   ["devtools.chrome.enabled", true],

@@ -474,7 +474,7 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
       (Since changed: so do keys in hint, copy and element mode, where a hint label and the yank
       type letters (`y`, and with the default `hint_chars` a label starting with `a`, the grant
       key), and the line does not open by itself in them, because one answer can grant a
-      whole task's calls; issue #495, docs/security.md M4.)
+      whole task's calls; issue #495, docs/security/12-agents.md M4.)
 
 14. **No focus stealing.** The question never takes focus from what the user is doing:
     - It opens by itself only when the Vimma window has focus, focus is not in an editable field
@@ -985,7 +985,7 @@ text is broken with a zero-width space, so a page cannot close the block early (
 (`ChatUtils.sys.mjs:46-90`) and is a mitigation, not a guarantee; the tools' descriptions and
 the guide say the same.
 
-### docs/security.md
+### docs/security/
 
 - **§1 Control socket:** S1 "off unless `vimma.control.enabled` or `vimma.mcp.enabled`"; S7
   "only the commands of the connection's role run"; S12 "the `full` role runs only with
@@ -1145,7 +1145,7 @@ m7-a11y.
   `mcp_command`, `control_command`); `docs/limits.md` (sub-PR 4): no keys, clicks or
   screenshots for agents; the client label is self-reported; each agent tool's own approval
   settings are its own.
-- `docs/security.md` as above; ADR-019; the protocol 2 section of
+- `docs/security/` as above; ADR-019; the protocol 2 section of
   [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md).
 - `CHANGELOG.md`: one Added line per sub-PR; each changed help-text, `defaults.toml` or e2e
   baseline is named in its line.

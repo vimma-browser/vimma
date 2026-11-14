@@ -47,7 +47,7 @@ class MozillaKeyCheck(unittest.TestCase):
         self.assertIn(CURRENT_SUBKEY, report)
         self.assertIn("New revocation", report)
         self.assertIn(COMPROMISED_SUBKEY, report)
-        self.assertIn("docs/runbook.md", report)
+        self.assertIn("docs/runbook/", report)
         self.assertNotIn("different primary key", report)
         # The whole report reaches the issue through the step output.
         self.assertIn(CURRENT_SUBKEY, output)

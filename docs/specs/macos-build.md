@@ -9,7 +9,7 @@ Status: implemented · Area: `configs/macos/mozconfig`,
 `tools/start.ts`, ADR-025), `tools/vimma-ctl/src/discovery.rs`,
 `tools/vimma-ctl/src/mcp_serve.rs`, `.github/workflows/ci.yml`, `e2e.yml`, `macos.yml` (new),
 `release.yml`;
-`docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook.md` · Upstream patches: none
+`docs/guide.md`, `docs/limits.md`, `CONTRIBUTING.md`, `docs/runbook/` · Upstream patches: none
 (decision 7) · ADR:
 [ADR-018](../adr/018-macos-cross-build.md) ("macOS is cross-compiled on Linux, arm64 first")
 
@@ -410,7 +410,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 14. **Test builds are keyless.** `macos.yml` builds without the Safe Browsing key, so Safe
     Browsing is off by default in those builds (`configs/common/mozconfig:46-59`). The key stays in
     as few jobs as possible. `release.yml`'s `macos-build` uses the key as `build` does, from the
-    `build` environment (docs/security.md, B6), so released `.dmg` files have Safe Browsing on.
+    `build` environment (docs/security/14-build-and-release-supply-chain.md, B6), so released `.dmg`
+    files have Safe Browsing on.
 15. **Artifact names carry both versions.** `mach package` names the file
     `vimma-<firefox>.en-US.mac.dmg`; the workflow uploads it as
     `vimma-<vimma>-firefox-<firefox>-macos-aarch64`, matching the version line of
@@ -573,7 +574,7 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     bundle identifier, and the team ID is used to check the certificate (decision 27). Platform
     passkeys do not work until both are added
     ([#544](https://github.com/vimma-browser/vimma/issues/544)). The files are compared with
-    Firefox's on a Firefox bump, as `docs/runbook.md` says. Rejected: Firefox's file with the
+    Firefox's on a Firefox bump, as `docs/runbook/` says. Rejected: Firefox's file with the
     team ID swapped in, because without a provisioning profile the app would not start.
 25. **One `rcodesign sign` with mach's per-path settings, then the app is notarised, stapled and
     packed.** `tools/package/macos-sign-app.sh` signs as `mach macos-sign -r` does for the
@@ -608,7 +609,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
 27. **The `macos-sign` environment, `main` only, with no required reviewer.** It holds
     `APPLE_DEVELOPER_ID_P12` (base64), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY`
     (the JSON of `rcodesign encode-app-store-connect-api-key`) and `APPLE_TEAM_ID`; only `main`
-    may deploy to it, as `build` and `homebrew` (docs/security.md, B14), so no branch or tag can
+    may deploy to it, as `build` and `homebrew` (docs/security/14-build-and-release-supply-chain.md,
+    B14), so no branch or tag can
     read the secrets by editing a workflow. No reviewer is required, because a Firefox security
     release ships without a person (decision 12). The job writes the p12, its password and the key
     with the shell's `printf` to files of mode 600 under `$RUNNER_TEMP`, passes only their paths
@@ -623,7 +625,8 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     for, and only on runners without the Apple secrets (decision 23). A replaced tool in
     `macos-unpack` is caught by the manifest; one in `macos-pack` could pack another app, which
     `macos-smoke`'s signature checks then fail, or add entries to the unsigned `.dmg`, which no
-    check covers yet (docs/security.md, B14). Rejected: downloading
+    check covers yet (docs/security/14-build-and-release-supply-chain.md, B14). Rejected:
+    downloading
     the Firefox source again for `mach`, which adds gigabytes and minutes for three small binaries,
     and pinning the tools by hash, because they are rebuilt with Mozilla's toolchain tasks and the
     pin would change with Firefox releases (not measured).
@@ -724,8 +727,9 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   deletes (decisions 23 and 27). With rcodesign
   the p12 never enters a keychain. A leaked p12 lets its holder sign software that Gatekeeper
   accepts as Vimma's team until Apple revokes the certificate; a leaked API key lets its holder
-  notarise under the team until it is revoked in App Store Connect. `docs/security.md`, B14, and
-  `docs/runbook.md` describe the response.
+  notarise under the team until it is revoked in App Store Connect.
+  `docs/security/14-build-and-release-supply-chain.md`, B14, and
+  `docs/runbook/` describe the response.
 - **Ad hoc builds.** An ad hoc signature proves nothing about who built the app. Testers get the
   `.dmg` from this repository's GitHub Release, and check it with cosign against the same identity
   as the Linux files, `release.yml` at `refs/heads/main`; the guide says how. Open Anyway lowers Gatekeeper for that one app only.
@@ -833,9 +837,10 @@ With the sub-PRs:
 - README "Status": "Linux x86_64; macOS arm64 in CI" once sub-PR 4 is green.
 - `CONTRIBUTING.md`: building on a Mac (Xcode or the command line tools, `brew install gnu-tar`,
   30 GB disk) and the cross build.
-- `docs/runbook.md`: `macos.yml`, its measured time and disk; with sub-PR 7, setting up and
+- `docs/runbook/`: `macos.yml`, its measured time and disk; with sub-PR 7, setting up and
   rotating the certificate and the API key, the `macos-sign` environment, and re-running signing.
-- `docs/security.md`, B14 with sub-PR 7: the Apple secrets, their environment, and a leaked p12 or
+- `docs/security/14-build-and-release-supply-chain.md`, B14 with sub-PR 7: the Apple secrets, their
+  environment, and a leaked p12 or
   API key.
 - ADR-018 with sub-PR 3.
 - `CHANGELOG.md` `[Unreleased]`: one line per sub-PR that changes what a user can run (sub-PRs 2,

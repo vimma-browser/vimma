@@ -33,7 +33,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const WIDEN =
   "widening this allow-list is a change to tools/layering/ that needs a fresh security review (ADR-026)";
 const REVIEW =
-  "a new caller of the agent gate needs a security review (docs/security.md section 12)";
+  "a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)";
 const ONLY = {
   "host/AgentGate.sys.mjs": { importers: ["host/VimmaHost.sys.mjs"], review: REVIEW },
 };
@@ -599,7 +599,7 @@ describe("restrictedErrors", () => {
     [gate]: {
       importers: ["host/VimmaHost.sys.mjs", "ctl/VimmaControl.sys.mjs"],
       review:
-        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+        "a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)",
     },
   };
 
@@ -628,8 +628,8 @@ describe("restrictedErrors", () => {
         only,
       ),
     ).toEqual([
-      "host/VimmaParent.sys.mjs:7: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
-      "config/ConfigHost.sys.mjs:12: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+      "host/VimmaParent.sys.mjs:7: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12), then a line there",
+      "config/ConfigHost.sys.mjs:12: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12), then a line there",
     ]);
   });
 
@@ -641,7 +641,7 @@ describe("restrictedErrors", () => {
 
   test("the gate's importers are exactly today's seven", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
-    // docs/security.md section 12 first, then add it here and in layers.ts.
+    // docs/security/12-agents.md section 12 first, then add it here and in layers.ts.
     expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs"]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
@@ -661,7 +661,7 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
     [gate]: {
       importers: ["host/VimmaHost.sys.mjs"],
       review:
-        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+        "a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)",
     },
   };
   /** The gate's getters, read from the module itself: a holder may read one. */
@@ -676,7 +676,7 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
     const { edges, handOns } = scanModule(source, "host/VimmaHost.sys.mjs");
     return restrictedErrors(edges, only, handOns, data());
   }
-  const tail = `${gate}, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const tail = `${gate}, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)`;
   const error = (line: number, how = "re-exports") =>
     `host/VimmaHost.sys.mjs:${line}: ${how} ${tail}`;
   const handsOn = (line: number) => error(line, "hands on");
@@ -1139,7 +1139,7 @@ describe("patchErrors", () => {
     "host/AgentGate.sys.mjs": {
       importers: ["host/VimmaHost.sys.mjs"],
       review:
-        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+        "a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)",
     },
   };
   test("an added line of a Firefox patch that names a restricted module fails", () => {
@@ -1161,7 +1161,7 @@ describe("patchErrors", () => {
         only,
       ),
     ).toEqual([
-      "src/browser/x/a.patch:4: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)",
+      "src/browser/x/a.patch:4: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)",
     ]);
   });
 
@@ -1169,7 +1169,7 @@ describe("patchErrors", () => {
   const added = (line: string) =>
     patchErrors([{ file: "src/browser/x/a.patch", text: `+++ b/x.sys.mjs\n+${line}` }], only);
   const names = (n: number) =>
-    `src/browser/x/a.patch:${n}: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+    `src/browser/x/a.patch:${n}: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)`;
   const builds = (n: number, piece: string) =>
     `src/browser/x/a.patch:${n}: builds a Vimma URL from parts (${piece}); a Firefox patch names each Vimma module by its whole chrome:// URL, so that the check can read it`;
 
@@ -1259,7 +1259,7 @@ describe("treeErrors: what npm run layering runs", () => {
     execFileSync("git", ["init", "-q"], { cwd: root });
     execFileSync("git", ["add", "."], { cwd: root });
     expect(treeErrors(root).errors).toContain(
-      "host/VimmaParent.sys.mjs:1: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+      "host/VimmaParent.sys.mjs:1: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12), then a line there",
     );
   });
 });
@@ -1285,7 +1285,7 @@ const U = `${V}host/AgentGate.sys.mjs`;
 const LISTED = "host/agent-ui.mjs";
 const UNLISTED = "ui/foo.mjs";
 const GATE_TAIL =
-  "host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security.md section 12)";
+  "host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)";
 const CHROMEUTILS =
   "ChromeUtils is used other than as ChromeUtils.<name>, so the check cannot see which of its functions runs";
 
@@ -1486,7 +1486,7 @@ describe("scanModule: only module files are loaded", () => {
 });
 
 describe("patchErrors: escapes and markup that hide the gate's file name", () => {
-  const names = `src/x.patch:1: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const names = `src/x.patch:1: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)`;
   test.each([
     String.raw`+  x("${V}host/Agent\Gate.sys.mjs");`,
     String.raw`+  x("${V}host/\101gentGate.sys.mjs");`,
@@ -1526,14 +1526,14 @@ describe("restrictedErrors: a listed module names the gate's file only by its ex
         LISTED,
       ),
     ).toEqual([
-      `${LISTED}:2: names the file of host/AgentGate.sys.mjs other than by its exact chrome:// URL or a plain relative path: a new caller of the agent gate needs a security review (docs/security.md section 12)`,
-      `${LISTED}:3: names the file of host/AgentGate.sys.mjs other than by its exact chrome:// URL or a plain relative path: a new caller of the agent gate needs a security review (docs/security.md section 12)`,
+      `${LISTED}:2: names the file of host/AgentGate.sys.mjs other than by its exact chrome:// URL or a plain relative path: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)`,
+      `${LISTED}:3: names the file of host/AgentGate.sys.mjs other than by its exact chrome:// URL or a plain relative path: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12)`,
     ]);
   });
 
   test("a regular expression in an unlisted module counts as a string", () => {
     expect(allErrors("const r = /AgentGate.sys.mjs/;", UNLISTED)).toEqual([
-      `${UNLISTED}:1: names the file of host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there`,
+      `${UNLISTED}:1: names the file of host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security/12-agents.md section 12), then a line there`,
     ]);
   });
 });

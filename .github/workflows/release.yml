@@ -3,7 +3,7 @@
 # is the maintainer's click and rebuilds nothing; aur.yml then pushes AUR vimma-bin.
 # release-please creates the tag vX.Y.Z and the draft; this workflow adds the assets.
 # Nothing runs until the repository variable RELEASE_ENABLED is `true`, manual runs included.
-# Setup and verification: docs/runbook.md, "Releases".
+# Setup and verification: docs/runbook/ci-releases.md, "Releases".
 #
 # Spec m6a-updater §7: the Linux build has Firefox's updater (VIMMA_UPDATES=1), and while the
 # repository variable UPDATES_ENABLED is `true` a release also ships its complete MAR: package
@@ -43,23 +43,24 @@ env:
   TAG: ${{ inputs.tag }}
 
 jobs:
-  # Full build on the standard GitHub-hosted runner, never a self-hosted one (docs/security.md,
-  # B5), from Firefox source firefox-source.sh verifies and extracts in this job, restoring nothing
-  # from the Actions cache (spec build-supply-chain, B1 and B2). Read-only token, and one secret,
-  # the Google Safe Browsing key, which ships inside the binaries anyway (spec
-  # m0-safebrowsing-key): what it produces is checked, signed and uploaded by the jobs below. It
-  # builds in a fresh objdir with an empty compiler cache of its own, so the rule holds on any
-  # runner (docs/runbook.md, "Full builds").
+  # Full build on the standard GitHub-hosted runner, never a self-hosted one
+  # (docs/security/14-build-and-release-supply-chain.md, B5), from Firefox source firefox-source.sh
+  # verifies and extracts in this job, restoring nothing from the Actions cache (spec
+  # build-supply-chain, B1 and B2). Read-only token, and one secret, the Google Safe Browsing key,
+  # which ships inside the binaries anyway (spec m0-safebrowsing-key): what it produces is checked,
+  # signed and uploaded by the jobs below. It builds in a fresh objdir with an empty compiler cache
+  # of its own, so the rule holds on any runner (docs/runbook/ci-full-builds.md, "Full builds").
   build:
     if: >-
       vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
       github.ref == 'refs/heads/main'
     # The Safe Browsing key is a secret of the `build` environment, which only main may deploy
-    # from (docs/security.md, B6): GitHub enforces that outside this file.
+    # from (docs/security/14-build-and-release-supply-chain.md, B6): GitHub enforces that outside
+    # this file.
     environment: build
     runs-on: ubuntu-24.04
-    # About 1.5 times the measured job, 117 min (docs/runbook.md, "Full builds"), well under
-    # GitHub's 6 hours, so a hung build fails here with its own log and failure handling.
+    # About 1.5 times the measured job, 117 min (docs/runbook/ci-full-builds.md, "Full builds"),
+    # well under GitHub's 6 hours, so a hung build fails here with its own log and failure handling.
     timeout-minutes: 180
     permissions:
       contents: read
@@ -138,7 +139,7 @@ jobs:
 
       # The Rust stage of the build peaks at 15.3 GB of the runner's 16 GB of memory plus 10.4 GB
       # of swap; without this file the first measured build was killed after 38 minutes
-      # (docs/runbook.md, "Full builds").
+      # (docs/runbook/ci-full-builds.md, "Full builds").
       - name: Swap file (16 GB)
         run: |
           sudo fallocate -l 16G /vimma-swapfile
@@ -410,7 +411,7 @@ jobs:
           case "$listing" in *"vimma/vimma-ctl-licenses/musl-COPYRIGHT"*) ;; *) echo "::error::the tarball has no vimma-ctl notices"; exit 1 ;; esac
           p=$(mktemp -d)
           # First run creates the profile; --screenshot on a fresh profile races the bookmarks
-          # import (docs/runbook.md, Smoke check). timeout exits 124.
+          # import (docs/runbook/smoke-check.md, Smoke check). timeout exits 124.
           timeout 30 vimma --headless --no-remote --profile "$p" about:blank || true
           timeout 60 vimma --headless --no-remote --profile "$p" --screenshot "$RUNNER_TEMP/shot.png" "data:text/html,<h1>ok</h1>"
           test -s "$RUNNER_TEMP/shot.png"
@@ -480,8 +481,9 @@ jobs:
 
   # The update key signs the MAR in update-publish.yml's mar-sign job, called here: its token
   # names update-publish.yml at refs/heads/main, the one workflow Google Cloud admits for the key
-  # (docs/runbook.md, "Update signing keys and the update host", step 7b), and it runs no
-  # repository code. It reads mar-unsigned and uploads mar-signed in this run.
+  # (docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys and the update
+  # host", step 7b), and it runs no repository code. It reads mar-unsigned and uploads mar-signed in
+  # this run.
   #
   # These permissions are a ceiling, not a grant: each called job gets only what its own
   # `permissions:` asks for, within them. GitHub refuses a call whose jobs ask for more than the
@@ -746,9 +748,9 @@ jobs:
   # macOS (spec macos-build, decisions 12 and 13; ADR-018): the Apple Silicon .dmg, cross-compiled
   # on Linux, run on a hosted Mac, signed and added to the same release. No Linux job needs these,
   # so a macOS failure never holds back a Linux release; the failure job still reports it. Off
-  # until the repository variable MACOS_RELEASE_ENABLED is `true` (docs/runbook.md, "macOS build").
-  # The Homebrew cask, vimma.rb, is rendered beside the dmg and travels with it (spec
-  # macos-homebrew, decision 9); homebrew.yml pushes the published release's copy to the tap.
+  # until the repository variable MACOS_RELEASE_ENABLED is `true` (docs/runbook/ci-macos-build.md,
+  # "macOS build"). The Homebrew cask, vimma.rb, is rendered beside the dmg and travels with it
+  # (spec macos-homebrew, decision 9); homebrew.yml pushes the published release's copy to the tap.
   # vimma-ctl for the Mac (spec ship-vimma-ctl), built natively on a hosted Mac, since the
   # cross-build runner has no linker for a standalone Mach-O binary. It checks the tag as build
   # does; macos-build then refuses a binary from any other commit and signs it into the app.
@@ -829,8 +831,8 @@ jobs:
       vars.MACOS_RELEASE_ENABLED == 'true'
     environment: build
     runs-on: ubuntu-24.04
-    # As the weekly macOS build: about 1.5 times its measured 133 min (docs/runbook.md, "macOS
-    # build").
+    # As the weekly macOS build: about 1.5 times its measured 133 min
+    # (docs/runbook/ci-macos-build.md, "macOS build").
     timeout-minutes: 200
     permissions:
       contents: read
@@ -1016,7 +1018,7 @@ jobs:
             echo
             echo "The repository variable MACOS_SIGNING is not \`developer-id\`, so this release's"
             echo "\`.dmg\` is ad hoc signed and not notarised: Gatekeeper refuses its first open until"
-            echo "the user chooses Open Anyway (docs/runbook.md, \"macOS in a release\")."
+            echo "the user chooses Open Anyway (docs/runbook/ci-macos-build.md, \"macOS in a release\")."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::warning::the macOS dmg is ad hoc signed and not notarised (MACOS_SIGNING is not developer-id)"
 
@@ -1048,11 +1050,11 @@ jobs:
   # Developer ID (spec macos-build, decisions 23 to 28), only while the repository variable
   # MACOS_SIGNING is `developer-id`; then a missing secret fails the release rather than shipping
   # an ad hoc dmg. Three jobs, each on its own runner, so that the disk-image tools macos-build
-  # hands over never run on a runner that holds the Apple secrets (docs/security.md, B14):
-  # macos-unpack opens the ad hoc dmg with them, macos-notarise signs, notarises and staples the app
-  # with the pinned rcodesign alone, and macos-pack packs the signed app with them again and
-  # replaces the `macos` artifact. They run before macos-smoke, so the hosted Mac checks what is
-  # published.
+  # hands over never run on a runner that holds the Apple secrets
+  # (docs/security/14-build-and-release-supply-chain.md, B14): macos-unpack opens the ad hoc dmg
+  # with them, macos-notarise signs, notarises and staples the app with the pinned rcodesign alone,
+  # and macos-pack packs the signed app with them again and replaces the `macos` artifact. They run
+  # before macos-smoke, so the hosted Mac checks what is published.
   macos-unpack:
     needs: macos-build
     if: >-
@@ -1489,8 +1491,8 @@ jobs:
       - name: Start homebrew.yml for a published release
         run: |
           # The release's metadata, never the file: GitHub counts any request for a release file,
-          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
-          # answers 404 here, as at its download URLs.
+          # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download
+          # counts"). A draft answers 404 here, as at its download URLs.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
@@ -1513,8 +1515,8 @@ jobs:
         if: vars.UPDATES_ENABLED == 'true'
         run: |
           # The release's metadata, never the file: GitHub counts any request for a release file,
-          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
-          # answers 404 here, as at its download URLs.
+          # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download
+          # counts"). A draft answers 404 here, as at its download URLs.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in

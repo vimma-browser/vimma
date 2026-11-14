@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security.md section 20: the PDF viewer's
-// adapter, the pdf context, and the page and match count in the status bar.
+// Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security/20-pdf-viewer.md section 20: the PDF
+// viewer's adapter, the pdf context, and the page and match count in the status bar.
 
 "use strict";
 

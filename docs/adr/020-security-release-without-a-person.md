@@ -54,5 +54,6 @@ decisions 11 to 15, 17 and 18.
   publishing the draft stays a person's click while releases are drafts.
 - The first release is never merged automatically: the job requires an existing release.
 - Turning the variable off, or `gh pr merge --disable-auto <n>`, stops the chain. The guarantees
-  are G11 and G12 in `docs/security.md` §10; the switch and its dry run are in `docs/runbook.md`,
+  are G11 and G12 in `docs/security/10-firefox-updates.md` §10; the switch and its dry run are in
+  `docs/runbook/ci-releases.md`,
   "Releases".

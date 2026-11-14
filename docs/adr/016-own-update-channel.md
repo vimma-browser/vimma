@@ -78,9 +78,10 @@ loudly at `surfer import` when upstream moves the code around it.
 
 - A leaked primary can sign MARs that every install accepts; recovery needs the offline
   secondary (spec §6, "If the primary leaks"), and until it exists, installs must be updated by
-  hand. `docs/security.md` UP12 states the limit.
+  hand. `docs/security/16-update-check.md` UP12 states the limit.
 - The primary's certificate is self-signed by the KMS key, which only the maintainer's
-  credentials can ask to sign outside the release workflow (`docs/runbook.md`, "Update signing
+  credentials can ask to sign outside the release workflow
+  (`docs/runbook/ci-update-signing-keys-and-the-update-host.md`, "Update signing
   keys and the update host", step 5b).
 - Three upstream files carry Vimma's hunks for updates (`browser/moz.configure`,
   `toolkit/mozapps/update/updater/moz.build`, and with the manifest hook of sub-PR 3,

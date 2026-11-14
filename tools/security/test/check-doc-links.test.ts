@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { checkFile, markdownLinks, testNames } from "../check-doc-links.ts";
+import { checkAll, checkFile, docFiles, markdownLinks, testNames } from "../check-doc-links.ts";
 
 describe("testNames", () => {
   test("mochitest tasks, sync and async", () => {
@@ -106,9 +106,84 @@ describe("checkFile", () => {
   });
 });
 
-test("docs/security.md: every test link resolves", () => {
-  const doc = fileURLToPath(new URL("../../../docs/security.md", import.meta.url));
-  const { problems, tests } = checkFile(doc);
-  expect(problems).toEqual([]);
-  expect(tests).toBeGreaterThan(20);
+describe("docFiles", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vimma-doc-files-"));
+    mkdirSync(join(dir, "security", "deeper"), { recursive: true });
+    for (const name of ["README.md", "02-b.md", "01-a.md", "notes.txt", "deeper/03-c.md"])
+      writeFileSync(join(dir, "security", name), "x\n");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  test("a folder gives every Markdown file under it, sorted", () => {
+    expect(docFiles(join(dir, "security"))).toEqual(
+      ["01-a.md", "02-b.md", "README.md", "deeper/03-c.md"].map((f) => join(dir, "security", f)),
+    );
+  });
+
+  test("a file gives itself", () => {
+    expect(docFiles(join(dir, "security", "01-a.md"))).toEqual([join(dir, "security", "01-a.md")]);
+  });
+});
+
+describe("checkAll", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "vimma-doc-all-"));
+    mkdirSync(join(dir, "docs", "security"), { recursive: true });
+    mkdirSync(join(dir, "tests"));
+    writeFileSync(join(dir, "tests", "a.js"), "add_task(async function real_task() {});\n");
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+  const write = (name: string, md: string) =>
+    writeFileSync(join(dir, "docs", "security", name), md);
+
+  test("a folder passes when its files' links resolve, one of them without a test link", () => {
+    write("README.md", "[rules](01-a.md)\n");
+    write("01-a.md", "[`real_task`](../../tests/a.js)\n");
+    const r = checkAll([join(dir, "docs", "security")]);
+    expect(r).toMatchObject({ failed: false, errors: [], tests: 1 });
+    expect(r.lines.at(-1)).toMatch(/security: 1 test links resolve in 2 files$/);
+  });
+
+  test("a folder with no test link at all fails: the check would be vacuous", () => {
+    write("README.md", "[rules](01-a.md)\n");
+    write("01-a.md", "no links\n");
+    const r = checkAll([join(dir, "docs", "security")]);
+    expect(r.failed).toBe(true);
+    expect(r.errors.join("\n")).toMatch(/no test links found/);
+  });
+
+  test("a file named on its own still needs a test link", () => {
+    write("README.md", "[rules](01-a.md)\n");
+    write("01-a.md", "[`real_task`](../../tests/a.js)\n");
+    expect(checkAll([join(dir, "docs", "security", "README.md")]).failed).toBe(true);
+    expect(checkAll([join(dir, "docs", "security", "01-a.md")]).failed).toBe(false);
+  });
+
+  test("a broken link in any file of the folder fails", () => {
+    write("README.md", "[rules](02-gone.md)\n");
+    write("01-a.md", "[`real_task`](../../tests/a.js)\n");
+    const r = checkAll([join(dir, "docs", "security")]);
+    expect(r.failed).toBe(true);
+    expect(r.errors.join("\n")).toMatch(/README\.md:1: 02-gone\.md does not exist/);
+  });
+});
+
+// The path is a literal `new URL` of a Markdown file so that tools/ci/docs-only.mjs's check finds
+// this file among the tests a docs-only pull request runs.
+test("docs/security/: every test link of every section file resolves", () => {
+  const index = fileURLToPath(new URL("../../../docs/security/README.md", import.meta.url));
+  const files = docFiles(dirname(index));
+  expect(files).toContain(index);
+  expect(files.length).toBeGreaterThan(20);
+  let total = 0;
+  for (const file of files) {
+    const { problems, tests } = checkFile(file);
+    expect(problems).toEqual([]);
+    total += tests;
+  }
+  // One file's worth of links would pass a low floor: the whole folder has to be read.
+  expect(total).toBeGreaterThan(1000);
 });

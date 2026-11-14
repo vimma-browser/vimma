@@ -25,7 +25,8 @@ routing parsers"), and two more that take the same kind of text:
 | The `:` command line (cmdline.mjs)                                                           | you, pasted text; add-on names          | `test/fuzz/cmdline.fuzz.test.mjs`         |
 | Omarchy `colors.toml` and theme CSS (theme.mjs)                                              | theme authors                           | `test/fuzz/theme.fuzz.test.mjs`           |
 
-Out of scope: Gecko's own parsers (docs/security.md § Out of scope), and the browser-side glue
+Out of scope: Gecko's own parsers (docs/security/11-out-of-scope-and-trust-boundaries.md § Out of
+scope), and the browser-side glue
 that only passes these parsers' results on.
 
 ## Properties

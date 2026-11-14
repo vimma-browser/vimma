@@ -275,7 +275,8 @@ describe("pinned keys (update-keys.mjs)", () => {
     }
   });
 
-  // The primary's SPKI SHA-256, as recorded in docs/runbook.md ("Pin the public keys"). A changed
+  // The primary's SPKI SHA-256, as recorded in
+  // docs/runbook/ci-update-signing-keys-and-the-update-host.md ("Pin the public keys"). A changed
   // key has to change both, so a swapped key cannot pass review as a formatting edit.
   const PRIMARY_SHA256 = "fb4d33b6ea54ddb81a6a40ce50a61a6f9383b5850f27e2218045f5d3a07dab9a";
 
@@ -298,7 +299,13 @@ describe("pinned keys (update-keys.mjs)", () => {
   });
 
   test("the runbook records the pinned primary's id and SHA-256, and no secondary yet", () => {
-    const runbook = readFileSync(new URL("../../../docs/runbook.md", import.meta.url), "utf8");
+    const runbook = readFileSync(
+      new URL(
+        "../../../docs/runbook/ci-update-signing-keys-and-the-update-host.md",
+        import.meta.url,
+      ),
+      "utf8",
+    );
     const row = runbook.split("\n").find((l) => /^\| primary\s*\|/.test(l));
     expect(row).toContain(`\`${PRIMARY_SHA256.slice(0, 8)}\``);
     expect(row).toContain(`\`${PRIMARY_SHA256}\``);

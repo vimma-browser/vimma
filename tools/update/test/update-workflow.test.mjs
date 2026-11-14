@@ -1,8 +1,9 @@
-// update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook.md, "Update signing keys and
-// the update host"): a published release gets a signed update manifest on updates.vimma.dev.
-// The workflow is read as text, as release-workflow.test.mjs reads release.yml, and its signing
-// step is run here with a stand-in for gcloud that signs the way Cloud KMS's raw PKCS#1 key
-// does, so the bytes it writes are checked by the verifier the browser runs.
+// update-publish.yml (docs/specs/m6a-updater.md §7;
+// docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys and the update
+// host"): a published release gets a signed update manifest on updates.vimma.dev. The workflow is
+// read as text, as release-workflow.test.mjs reads release.yml, and its signing step is run here
+// with a stand-in for gcloud that signs the way Cloud KMS's raw PKCS#1 key does, so the bytes it
+// writes are checked by the verifier the browser runs.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
@@ -130,8 +131,9 @@ describe("update-publish.yml", () => {
   });
 
   it("builds a macOS manifest on macOS (hdiutil reads the app's build ID), signs on Linux", () => {
-    // A one-leg matrix, so that the runner check (docs/security.md, B5) sees every runner it
-    // can take; the exclude drops the other target's.
+    // A one-leg matrix, so that the runner check
+    // (docs/security/14-build-and-release-supply-chain.md, B5) sees every runner it can take; the
+    // exclude drops the other target's.
     expect(job("prepare")).toContain(
       "\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n" +
         "        os: [ubuntu-24.04, macos-15]\n        exclude:\n" +

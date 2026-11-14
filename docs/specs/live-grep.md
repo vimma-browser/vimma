@@ -430,7 +430,8 @@ match.
    the session. Sending results to the list only on request (`ctrl+q`, as Telescope) was
    rejected because `]q` and `[q` cost nothing until used; no list at all would mean reopening
    the picker for every next result. (Since changed: a step still waiting when the picker opens
-   again stops there and leaves its frame to the new search; see `docs/security.md` §15, L5.)
+   again stops there and leaves its frame to the new search; see `docs/security/15-live-grep.md`
+   §15, L5.)
 9. **Keys in the picker.** Search mode (the mode it opens in) types into the query; browse mode
    comes with `Esc`, as in Telescope and every Vimma picker. Moving keys follow the screen, as
    in Telescope: `ctrl+n`, `↓` (and `j` in browse mode) move down, toward the prompt and the
@@ -616,7 +617,7 @@ page's content process for page text and in the parent process for recently clos
 URLs, so a pathological pattern costs at most that, in one worker thread, and never freezes a
 page or the browser's own window. Recently closed tabs and windows come from SessionStore, which
 holds their titles and URLs in memory already; live grep keeps no copy after the search.
-[security.md §15](../security.md) lists the rules (L1 to L8) and their tests.
+[security.md §15](../security/15-live-grep.md) lists the rules (L1 to L8) and their tests.
 
 ## Tests
 
@@ -760,7 +761,8 @@ Written first and seen to fail.
   "The command line".
 - **README**: a feature line, "live grep: search the text of every tab in your workspace and jump
   to the match, like Telescope's `live_grep`".
-- **`docs/security.md`**: §15, rules L1 to L8: the grep messages between the parent and content
+- **`docs/security/15-live-grep.md`**: §15, rules L1 to L8: the grep messages between the parent and
+  content
   processes, what the parent accepts from a reply, the private and agent boundaries, and the
   worker that matches recently closed titles and URLs, each with its test.
 - **`docs/bindings.md`, `bindings.json`, `defaults.toml`**: regenerated with `npm run gen-docs`.

@@ -117,7 +117,8 @@ panes look as they do today. The border is 3 px wide, and unfocused panes are no
 - The e2e profile pins the built-in palette (`tools/e2e/launcher.mjs:46`, since changed:
   `launcher.ts`, ADR-025; `vimma.theme.source = builtin`) and a light theme, so baselines are the
   vimma light palette; a run under the Omarchy theme (`vimma.theme.source = omarchy`,
-  `vimma.theme.omarchyPath`) is for looking at screenshots, not for baselines (`docs/runbook.md`,
+  `vimma.theme.omarchyPath`) is for looking at screenshots, not for baselines
+  (`docs/runbook/testing.md`,
   "Baselines").
 
 ### Zen Browser (zen-browser/desktop at `185e856f`, `src/zen/split-view/zen-split-view.css`)
@@ -272,7 +273,7 @@ exposes nothing to pages or to the control socket.
   `issue-362-pane-focus-highlight-2`; `ctrl+b -`, screenshot `issue-362-pane-focus-highlight-3` (the new bottom-left
   pane focused). The existing `m4-split-panes` baseline changes, since its screenshot shows a
   focused pane; it is re-taken from CI's actual image and committed with its own `CHANGELOG.md`
-  line (`docs/runbook.md`, "Baselines"). Before the PR merges, the same scenario is run with
+  line (`docs/runbook/testing.md`, "Baselines"). Before the PR merges, the same scenario is run with
   `vimma.theme.source = omarchy` and `vimma.theme.omarchyPath` pointing at the current Omarchy
   theme, and the screenshots are looked at; they are not committed.
 

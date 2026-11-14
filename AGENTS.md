@@ -13,9 +13,9 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 
 - `docs/specs/<feature>.md` for the feature you touch, and `docs/specs/README.md` for how specs
   are written and move from draft to implemented.
-- `docs/security.md` before touching the control socket, MCP and the agent gate, content actors,
+- `docs/security/` before touching the control socket, MCP and the agent gate, content actors,
   the updater, workflows with secrets, or release.
-- `docs/runbook.md` for builds, lanes, CI, releases and the update signing chain.
+- `docs/runbook/` for builds, lanes, CI, releases and the update signing chain.
 - `ARCHITECTURE.md` for how the code fits together (processes, folders, dependencies, trust
   boundaries), `docs/roadmap.md` for the milestones, and `docs/README.md` for which page covers
   what.
@@ -61,11 +61,12 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run lane:setup` / `npm run lane:teardown`: a worktree's own artifact engine for browser
   tests, copied from the primary checkout's `engine/`. If setup fails on `verify-source --require`
   naming an older Firefox version, the primary checkout is behind `surfer.json` after a Firefox
-  bump: it is updated once for every lane (`docs/runbook.md`, "Parallel browser lanes"), not
+  bump: it is updated once for every lane (`docs/runbook/parallel-browser-lanes.md`, "Parallel
+  browser lanes"), not
   downloaded again per lane. If it says the engine was never verified, run `npm run verify-source`
   in the primary checkout.
 - `cargo test` and `cargo clippy -- -D warnings` in `tools/vimma-ctl` (Rust).
-- `npm run security-links`: every test link in `docs/security.md` resolves.
+- `npm run security-links`: every test link in `docs/security/` resolves.
 - `npm run test:py`, `npm run license-check`, `npx surfer license-check`: also run before pushing.
 - Do not run `npm run sites` locally: the live site-compat suite runs in nightly CI, and run from a
   developer machine it gets that machine's IP address blocked by the sites' bot protection.
@@ -103,7 +104,7 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - **Baselines and snapshots.** Never change a screenshot baseline or snapshot without saying why
   in the commit body.
 - **Security-sensitive changes** (the control socket, MCP and the agent gate, content actors, the
-  updater, workflows with secrets, release) update `docs/security.md` and get a review by a
+  updater, workflows with secrets, release) update `docs/security/` and get a review by a
   separate, fresh session with no stake in the change before merging; fix its findings first.
 - **Dependencies.** No new dependency without a licence check (`npm run license-check`) and a line
   in the pull request. No `eslint-disable` or `#[allow]` without a reason comment.
@@ -141,7 +142,7 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   `tools/claude-plugin` stays `.mjs`.
 - `tests/browser`: mochitests; `tests/e2e`: socket scenarios and baselines; `tests/contract`:
   protocol fixtures.
-- `docs/`: `README.md` (the index), `guide.md` (users), `security.md`, `limits.md`, `runbook.md`,
+- `docs/`: `README.md` (the index), `guide.md` (users), `security/`, `limits.md`, `runbook/`,
   `rebase.md`, `roadmap.md`, `adr/`, `specs/`.
 
 ## Where to work
@@ -202,12 +203,13 @@ labels`). An item with the other machine's label is not yours: do not push to it
 --update-baselines`. Chrome UI that keys cannot reach: a temporary mochitest that saves
    `drawSnapshot` PNGs, removed afterwards with its `browser.toml` line and engine symlink.
 4. `npm run lint`, `npm run typecheck`, `npm test` (and `npm run security-links` after editing
-   `docs/security.md`).
+   `docs/security/`).
 5. Security-sensitive: get the fresh review and fix its findings.
 6. Open the pull request: why, how it was tested (with the red and green output), `Closes #N` or
    `Part of #N`, and a dependency's licence line when one was added.
 7. Wait for green: `gh pr checks <N> --watch`. A failed job in a test your change cannot reach:
-   reproduce it in your lane first, on two busy CPUs as `docs/runbook.md` "To shake out a race"
+   reproduce it in your lane first, on two busy CPUs as `docs/runbook/testing.md` "To shake out a
+   race"
    shows (`--repeat=N` runs the file N+1 times). Failing there is a real failure, yours or
    `main`'s. Passing every time: re-run the job once, name the flake and its issue (open one with
    the log if none exists), and say so. Any other failed job: re-run at most once, only for a
@@ -246,7 +248,7 @@ release-please keeps a `chore(main): release X.Y.Z` pull request open. Merging i
 and a draft release, and `release.yml` builds, signs and uploads it (about 2 h 15 min). The
 maintainer publishes the draft; `update-publish.yml` then signs the update manifest and pushes it
 to `vimma-updates`, served at `updates.vimma.dev`. vimma.dev follows the latest release through
-its daily `release-sync` workflow. Details: `docs/runbook.md`, "Releases".
+its daily `release-sync` workflow. Details: `docs/runbook/ci-releases.md`, "Releases".
 
 Cadence: until Vimma is advertised, release whenever a useful batch is in; afterwards weekly
 (skipping weeks with nothing user-visible), with security releases (Firefox MFSA bumps, Vimma

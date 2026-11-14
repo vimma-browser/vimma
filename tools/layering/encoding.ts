@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Encoding (docs/security.md section 12): every file the check reads must be the UTF-8 it is read
-// as, so that a file Firefox decodes otherwise is not read as something harmless.
+// Encoding (docs/security/12-agents.md section 12): every file the check reads must be the UTF-8 it
+// is read as, so that a file Firefox decodes otherwise is not read as something harmless.
 
 /**
  * Why a file's bytes are not what the check reads them as, if they are not: a byte order mark

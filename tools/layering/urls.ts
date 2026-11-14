@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Load positions and URL cleaning (docs/security.md section 12): a specifier read as Firefox
-// reads it, and the Vimma module or folder it names, so that no spelling of a URL hides a load.
+// Load positions and URL cleaning (docs/security/12-agents.md section 12): a specifier read as
+// Firefox reads it, and the Vimma module or folder it names, so that no spelling of a URL hides a
+// load.
 
 import { posix } from "node:path";
 import { URL_PREFIX } from "./model.ts";

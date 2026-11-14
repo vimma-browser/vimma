@@ -12,7 +12,7 @@ for the `:module` commands and, in its own keymap PR, `defaults.mjs` for the req
 `host/VimmaHost.sys.mjs`, `host/addon-ops.mjs`, `ctl/VimmaControl.sys.mjs`,
 `ctl/agent-commands.mjs`, `vimma.js` for the sandbox flag, `ui/statusbar.mjs`);
 `tools/vimma-ctl/` (`vimma-ctl module`, new MCP tools); `tools/security/test/chrome-source.test.ts`;
-`docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none ·
+`docs/guide.md`, `docs/security/`, `docs/limits.md`, README · Upstream patches: none ·
 ADR: ADR-024, the module format (new, written with delivery PR 1, decision 7); ADR-007 and
 ADR-019 gain a consequence line for the `sandbox` role (decision 26)
 
@@ -45,7 +45,8 @@ own reviewed pipeline.
 - **A missing feature means waiting or writing an add-on.** Neovim users turn a missing feature
   into a few lines of Lua in their config. A Vimma user who wants "dim everything but the
   article" has no such place: Vimma's `config.toml` holds settings and bindings, never code
-  ([security.md](../security.md) F3), and a WebExtension must be signed by Mozilla before a
+  ([security.md](../security/08-config-toml.md) F3), and a WebExtension must be signed by Mozilla
+  before a
   release build loads it for good (Research, "Add-on signing").
 - **Personal tools should be easy to build.** Most such wishes are small and personal: a page
   tweak, a binding, a floating video, reader-style dimming. A tool for them is worth having only
@@ -845,7 +846,7 @@ can be prepared for a public issue.
   GitHub (D27). A promoted issue is untrusted input to the project and is never acted on by its
   agents or autopilot without the maintainer's label.
 
-### What `docs/security.md` must say, with the implementation
+### What `docs/security/` must say, with the implementation
 
 A new section after pdf-mode's §18, "19. Modules (`modules/ModuleHost.sys.mjs`)", with rules and
 their tests:
@@ -1003,7 +1004,7 @@ and modules only from ModuleHost`.
   protects, and what it does not" gains modules; "Keeping agents out of your Vimma profile"
   gets the new deny rules (Security and privacy, "Tampering on disk"); Features at a glance
   gains a line.
-- `docs/security.md`: §19 above, with A1, A3 and C2's test updated.
+- `docs/security/`: §19 above, with A1, A3 and C2's test updated.
 - `docs/limits.md`: the sandbox sees the signed-out page; a module's changes to an open page stay
   until it reloads; modules do not run on page load (open question 2); the network paths
   ModuleNet cannot see (D21); module storage is shared by every workspace.

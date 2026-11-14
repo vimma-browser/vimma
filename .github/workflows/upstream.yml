@@ -13,7 +13,7 @@
 #                Mozilla's artifacts exist.
 #   publish      push upstream/firefox-X.Y.Z and open the PR (a draft unless all green and CI
 #                can run), or, when Actions may not open PRs, comment a compare link on the issue.
-#   drift        Vimma past the drift limit (docs/security.md, G2): issue + a failing run.
+# drift Vimma past the drift limit (docs/security/10-firefox-updates.md, G2): issue + a failing run.
 #
 # The heavy jobs run once per release: when the upstream/firefox-X.Y.Z branch exists the
 # release has been handled (rerun with `gh workflow run upstream.yml -f rebuild=true`).
@@ -63,10 +63,10 @@ jobs:
           persist-credentials: false
           sparse-checkout: tools/upstream # and the root files, surfer.json among them
 
-      # Spec build-supply-chain, decision 21 (docs/security.md, B7): a new subkey, a new
-      # revocation, another primary key or a signing subkey within 60 days of expiry becomes an
-      # issue (the `key` job). It only reads the pinned key. A download or parse failure warns
-      # and never stops release detection, which drives security bumps.
+      # Spec build-supply-chain, decision 21 (docs/security/14-build-and-release-supply-chain.md,
+      # B7): a new subkey, a new revocation, another primary key or a signing subkey within 60 days
+      # of expiry becomes an issue (the `key` job). It only reads the pinned key. A download or
+      # parse failure warns and never stops release detection, which drives security bumps.
       - name: Compare Mozilla's release key with the pinned key
         id: key
         run: |
@@ -174,7 +174,7 @@ jobs:
           else
             gh issue create --title "$TITLE" --label security --body-file key.md
           fi
-          echo "::warning::$TITLE (docs/runbook.md, \"Mozilla's release key\")"
+          echo "::warning::$TITLE (docs/runbook/ci-mozillas-release-key.md, \"Mozilla's release key\")"
 
   track:
     needs: detect
@@ -284,8 +284,9 @@ jobs:
       needs.patch-check.result == 'success' && needs.test.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The App's key lives in this environment, which only main may deploy to (docs/security.md,
-    # G14): a workflow edited on another branch cannot read it.
+    # The App's key lives in this environment, which only main may deploy to
+    # (docs/security/10-firefox-updates.md, G14): a workflow edited on another branch cannot read
+    # it.
     environment: upstream-autopilot
     permissions:
       contents: write # push upstream/firefox-X.Y.Z
@@ -301,7 +302,8 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       # A PR or push made with the App's token starts CI, which GITHUB_TOKEN's does not. Without
-      # the App the bump opens as a draft with GITHUB_TOKEN (docs/runbook.md, "Upstream App").
+      # the App the bump opens as a draft with GITHUB_TOKEN (docs/runbook/ci-upstream-bumps.md,
+      # "Upstream App").
       - name: Token of the upstream App
         id: app
         if: vars.UPSTREAM_APP_ID != ''
@@ -430,7 +432,7 @@ jobs:
               --title "$title" --body-file "$RUNNER_TEMP/pr.md" 2> "$RUNNER_TEMP/pr-error.txt"); then
             pr="#${url##*/}"
           elif grep -qi "not permitted to create or approve pull requests" "$RUNNER_TEMP/pr-error.txt"; then
-            # The repository setting is off (docs/runbook.md): the branch is pushed; hand over.
+            # The repository setting is off (docs/runbook/): the branch is pushed; hand over.
             cat "$RUNNER_TEMP/pr-error.txt"
             echo "::warning::Actions may not open PRs here; commented a compare link on #$ISSUE"
             body fallback > "$RUNNER_TEMP/fallback.md"
@@ -547,5 +549,5 @@ jobs:
               --run-url "$RUN_URL" --owner "$OWNER" > drift.md
             gh issue create --title "$title" --label security --body-file drift.md
           fi
-          echo "::error::$DRIFT_LINE (docs/security.md, G2)"
+          echo "::error::$DRIFT_LINE (docs/security/10-firefox-updates.md, G2)"
           exit 1

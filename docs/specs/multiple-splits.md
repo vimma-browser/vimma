@@ -119,7 +119,7 @@ All references are to `main` at aac585a5, Firefox 157.
   rule a non-text indicator such as a split stripe needs.
 - **Agents.** The agent's `vimma_keys` runs an allowlist; every `pane.*` action is refused
   (`packages/vimma-core/src/agent-keys.mjs:114`, [mcp-drive](mcp-drive.md)). The agent role
-  never reaches `state` ([security.md](../security.md) S12).
+  never reaches `state` ([security.md](../security/01-control-socket.md) S12).
 
 ## Design
 
@@ -256,7 +256,8 @@ know (the rule `panes` and `loading` were added under):
 ## Security and privacy
 
 - **The control socket (security-relevant).** `state` grows by one read-only field over tabs the
-  window already lists. [security.md](../security.md) S9 changes from "and the pane structure"
+  window already lists. [security.md](../security/01-control-socket.md) S9 changes from "and the
+  pane structure"
   to "and the pane structure of every split", with tests that `state` stays read-only with
   several splits and that a private window's `splits` carries no URL or title. S11's fuzzing of
   the validator covers the new field. The agent role still never reaches `state` (S12), so an
@@ -334,7 +335,7 @@ Each test is written first and seen to fail.
   27, 28 and 29, pointing here, in the PR that changes each.
 - [m0-control-protocol-and-vimma-ctl](m0-control-protocol-and-vimma-ctl.md): a "Since
   multiple-splits" sentence on `splits`, as decision 28 of side-panel-unsplit added `hidden`.
-- `docs/security.md`: S9 as in Security and privacy.
+- `docs/security/01-control-socket.md`: S9 as in Security and privacy.
 - `CHANGELOG.md` comes from the commit subjects (release-please).
 
 ## Delivery
@@ -351,7 +352,8 @@ snapshot.
    parsing. Vitest only; merges when green, nothing user-visible.
 3. **feat(panes): several splits in the window, behind a pref.** PaneView with one wrapper per
    split, `WindowWorkspaces`, the side panel's labels, stripes, header and new-split flow, the
-   refusal text naming the split, `state.splits` and vimma-ctl's validator, `docs/security.md` S9,
+   refusal text naming the split, `state.splits` and vimma-ctl's validator,
+   `docs/security/01-control-socket.md` S9,
    the control protocol note. Security-relevant (the control socket): a fresh review before
    merging; merges when green, since the pref is off.
 4. **feat(panes): the split picker and the step actions, unbound, behind the pref.** The actions

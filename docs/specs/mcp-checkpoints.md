@@ -217,7 +217,8 @@ Threats and what stops them (additions to mcp-grants' and mcp-forms'):
 | **A hosted payment page reached without a signal**: a button whose text is not on the list leads to a payment provider's or bank's site. | The load itself is not stopped (C6 rejects a rule for loads of another site). The checkpoint stops the agent on that site instead, at its card fields or its pay button; a provider page that shows neither, such as a bank's confirm button worded otherwise, is not recognised. |
 | **A page floods checkpoints** to train `y`.                                                                                              | Each is an agent's call, so the agent's rates and the mute (vimma-mcp 18) bound them; a page cannot ask by itself.                                                                                                                                                                |
 
-`docs/security.md` gains a rule in §12 (next free M number): a payment step, by the signals of
+`docs/security/12-agents.md` gains a rule in §12 (next free M number): a payment step, by the
+signals of
 C6, **must** ask under any grant with only `y` and `n`, and its yes **never** makes or ends a
 grant; the rule says what it does not cover: a load of another site is not stopped, so a hosted
 payment page reached by a button whose text is not on the list stops the agent only at that

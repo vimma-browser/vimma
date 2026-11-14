@@ -9,7 +9,8 @@ summary; [m0-key-capture](../specs/m0-key-capture.md),
 [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md) and
 [insert-focus](../specs/insert-focus.md) give the behaviour,
 [ADR-009](../adr/009-flush-only-ambiguous.md) and [ADR-024](../adr/024-keymap-contexts.md) the
-decisions, and [docs/security.md](../security.md) §13 (page modes) the rules with their tests. This
+decisions, and [docs/security/13-page-modes.md](../security/13-page-modes.md) §13 (page modes) the
+rules with their tests. This
 page names the code that carries the key, in order.
 
 ```mermaid
@@ -254,6 +255,7 @@ security.md §13, among them `only_the_focused_frame_may_report` and
   in [The life of an agent call](agent-call.md).
 
 The time from key to action is gated twice: core's dispatch by the bench in `ci.yml` (under 50 µs a
-key, and no regression over 10 % against the baseline commit; docs/runbook.md, "Bench baseline"),
+key, and no regression over 10 % against the baseline commit; docs/runbook/ci-bench-baseline.md,
+"Bench baseline"),
 and key-to-paint in a real window by
 [browser_vimma_perf.js](../../tests/browser/browser_vimma_perf.js). See [Testing](testing.md).

@@ -6,7 +6,7 @@ here and not yet scheduled · Area: `packages/vimma-core/src/routes.mjs`,
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
 `tools/package/package.mjs`, `tools/package/cask.mjs`, the macOS bundle manifest; `tools/e2e/`;
-`.github/workflows/macos.yml`; `docs/guide.md`, `docs/security.md`, `docs/limits.md` · Upstream
+`.github/workflows/macos.yml`; `docs/guide.md`, `docs/security/`, `docs/limits.md` · Upstream
 patches: one new, `src/toolkit/xre/MacApplicationDelegate-mm.patch` (its ADR-003 register line is
 in decision 11) · ADR: none. No new dependency.
 
@@ -322,7 +322,8 @@ Today none of these paths names the right program:
   which `vimma` cannot take on its command line, and it has the same sender limits, because it
   reads the same attribute.
 - **`vimma-ctl open`** (`tools/vimma-ctl/src/cli.rs:143-147`) opens a URL through the control
-  socket. The socket is off by default (docs/security.md S1), needs the `full` role, and while MCP
+  socket. The socket is off by default (docs/security/01-control-socket.md S1), needs the `full`
+  role, and while MCP
   is on every new `full` connection waits for a `y/N` (S13), so a link would ask each time.
 - **One browser registration per workspace** (a desktop file, or on macOS an app bundle, per
   workspace). An app's links follow the system default browser, so this changes the workspace of
@@ -419,7 +420,7 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
      links an agent opens with its process chain intact, through `BROWSER` or `xdg-open`. An agent
      that runs arbitrary commands can still forge a chain: detach a process and rename it, set
      `TERM_PROGRAM` where the walk still uses it (decision 8), or call `vimma-open --from` or
-     `vimma -vimma-from` itself. That is the boundary docs/security.md §11 already accepts for
+     `vimma -vimma-from` itself. That is the boundary docs/security/11-out-of-scope-and-trust-boundaries.md §11 already accepts for
      programs running as the user.
 
 ### Collecting the names
@@ -635,7 +636,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   single sign-on URL in `work`, where the user's session may complete it. That is no more than it
   can do without the hint, since a link from another program already opens in a workspace with the
   user's logins (a `domain` rule, Firefox's guess or the workspace default), and malware running as
-  the user can read the profile directly (docs/security.md §11).
+  the user can read the profile directly (docs/security/11-out-of-scope-and-trust-boundaries.md
+  §11).
 - **The default workspace.** `[routing] default_workspace` sends every unmatched link from another
   program to one workspace, a forged or agent's link included, as the window's workspace does
   today; it is never the agent's or private (decision 16), and the guide recommends one without
@@ -663,7 +665,8 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   be an overridden sender (`:217`); the names are filtered to the token alphabet in native code and
   checked again by `parseAppList`, so no name can carry a comma, a flag or a newline into the
   command line.
-- **docs/security.md.** §2 "Workspace routing": R4 becomes "the names (`-vimma-from`, `VIMMA_FROM`)
+- **docs/security/02-workspace-routing.md.** §2 "Workspace routing": R4 becomes "the names
+  (`-vimma-from`, `VIMMA_FROM`)
   are at most eight tokens of at most 64 characters each, and only select a workspace a rule
   names"; new R7: "a link that arrives as an Apple Event is named only by its sender, when that is
   a running app; an inherited `VIMMA_FROM` never names it; any launch whose URL is an argument
@@ -675,7 +678,7 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   characters; new O8: "`--from` takes exactly an app token and one URL that is not a flag"; new
   O9: "`vimma-open` never runs a command of the multiplexer it inspects".
 - **Review.** Sub-PRs 1 to 4 each change the untrusted hint's parser, its collection or the
-  routing of links from other programs, so each updates docs/security.md and gets a review by a
+  routing of links from other programs, so each updates docs/security/ and gets a review by a
   fresh agent before merging.
 
 ## Tests
@@ -801,7 +804,7 @@ at most eight, never two equal neighbours`.
 
 ## Delivery
 
-Each sub-PR is mergeable and tested on its own, updates docs/security.md for what it changes, and
+Each sub-PR is mergeable and tested on its own, updates docs/security/ for what it changes, and
 gets a review by a fresh agent before merging. Sub-PRs 1 and 2 make the feature work on Linux and
 close the issue; sub-PRs 3 and 4 are the macOS step, specified here and built later, because they
 need a Mac for the patch's smoke and the cold-start measurement. Each part is usable on its own:

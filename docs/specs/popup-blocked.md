@@ -166,7 +166,8 @@ browser's blocker and permission, answers the bar, and runs a row. `ui/picker.mj
    key answers the bar, and when the keys come to count.
 7. **Refused in the agent workspace.** No key answers the bar and the picker does not open in an
    agent-container tab (`WorkspaceStore.isAgentContainer`), because pages there get no
-   permissions (`docs/security.md` M10) and allow would grant one. The host checks again when a
+   permissions (`docs/security/12-agents.md` M10) and allow would grant one. The host checks again
+   when a
    row runs, so that a tab moved into the agent workspace while the picker was open grants
    nothing.
 8. **Rows run on the page they were listed for.** The picker closes when the selected tab
@@ -189,7 +190,7 @@ across a navigation and an allow chosen for one site must not land on the next. 
 `dom.disable_open_during_load` stops every Vimma path that changes the permission, the keys'
 and the rows', down to the host's own `blockSite` and `allowSite`. A block is written with
 Firefox's own `Services.perms.addFromPrincipal`; in a private window the permission manager keeps
-it for the private session only. See `docs/security.md`, prompt keys.
+it for the private session only. See `docs/security/`, prompt keys.
 
 ## Tests
 

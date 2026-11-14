@@ -3,8 +3,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Downloads from the agent workspace, asked and quarantined (docs/specs/vimma-mcp.md decision
-// 31; docs/security.md M11-M13): an agent may download, and only what it downloads safely. All
-// through Firefox's own hooks, no upstream patch:
+// 31; docs/security/12-agents.md M11-M13): an agent may download, and only what it downloads
+// safely. All through Firefox's own hooks, no upstream patch:
 // - Where the bytes go: every agent tab's top browsing context has `downloadFolderOverride` set
 //   to the quarantine folder (AgentPages), which nsExternalAppHandler reads for its `.part` file
 //   (uriloader/exthandler/nsExternalHelperAppService.cpp, GetInitialDownloadDirectory), and the

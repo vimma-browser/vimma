@@ -6,8 +6,8 @@ Status: implemented · Area: `.github/workflows/upstream-beta.yml` (new), `.gith
 `tools/upstream/patch-check.py`, `tools/upstream/artifact-preflight.mjs`,
 `tools/upstream/bump-surfer-json.py`, `tools/artifact-build/artifact-build.mjs`,
 `tools/version-files/version-files.mjs` (Since changed: `version-files.ts`, ADR-025),
-`tools/e2e/e2e.mjs` (Since changed: `e2e.ts`, ADR-025), `docs/rebase.md`, `docs/security.md`,
-`docs/runbook.md` · Upstream patches: none · ADR: amends
+`tools/e2e/e2e.mjs` (Since changed: `e2e.ts`, ADR-025), `docs/rebase.md`, `docs/security/`,
+`docs/runbook/` · Upstream patches: none · ADR: amends
 [ADR-002](../adr/002-upstream-release-channel.md) and
 [ADR-010](../adr/010-pr-artifact-builds.md) (one paragraph each); no new ADR
 
@@ -28,7 +28,7 @@ from release day to the Beta, while there is no security deadline.
 The upstream autopilot (ADR-015, [m7-upstream-autopilot](m7-upstream-autopilot.md)) sees a
 Firefox version for the first time on the day it is released. That release is nearly always a
 security release, so every incompatibility it brings is found under the drift deadline of
-`docs/security.md` G2 (7 days for a major release, 3 for a security dot release).
+`docs/security/10-firefox-updates.md` G2 (7 days for a major release, 3 for a security dot release).
 
 The Firefox 158.0 bump, [#186](https://github.com/vimma-browser/vimma/pull/186), is the concrete case.
 On release day the autopilot reported that `src/browser/base/moz-build.patch` no longer applied,
@@ -211,7 +211,8 @@ the artifact build takes from Mozilla). Changes the artifact build cannot see ar
 known gaps (compiled-in defines); none of #186's failures was one.
 
 **R9. Cost.** The repository is public, so hosted runner minutes are free and uncapped
-(`docs/runbook.md`, "Actions minutes budget"). Per tested Beta build: detect < 1 min, patch check
+(`docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget"). Per tested Beta build:
+detect < 1 min, patch check
 about 2 min, `e2e.yml` about 12 min, report < 1 min, about 16 min in all. Five Beta builds per
 two-week cycle are about 11 runs a month, about 3 hours of runner time; the detect-only runs add
 about 2 hours. One run occupies one hosted runner at a time, of the 20 the free plan allows.
@@ -402,7 +403,8 @@ The canary reads public Mozilla data and the repository, and writes only issues.
   and `bump-surfer-json.py` refuses a Beta without `--allow-beta`, which only `e2e.yml`'s Beta
   mode passes.
 
-`docs/security.md` §10 gains rules for the canary: G9 (no write access beyond issues, no secrets,
+`docs/security/10-firefox-updates.md` §10 gains rules for the canary: G9 (no write access beyond
+issues, no secrets,
 no PR, no push) and G10 (no report from an unverified Beta tarball), each linked to its tests.
 
 ## Tests
@@ -477,8 +479,8 @@ and artifact checked by hand.
 - `docs/rebase.md`: a section "Before the release: the Beta canary" (what the issue means, how to
   fix on `main` for both versions, how to prepare a patch re-export). Section 5's "pins a real
   release (not a candidate, beta or ESR)" stays true for `main` and gains the Beta mode exception.
-- `docs/security.md` §10: G9 and G10 (Security and privacy).
-- `docs/runbook.md`: the canary's schedule, minutes (R9) and how to run it by hand
+- `docs/security/10-firefox-updates.md` §10: G9 and G10 (Security and privacy).
+- `docs/runbook/`: the canary's schedule, minutes (R9) and how to run it by hand
   (`gh workflow run upstream-beta.yml -f version=159.0b2`).
 - ADR-002: an "Amended by" paragraph. Vimma still tracks and ships the release channel; it tests
   the Beta channel without tracking it, because Firefox's two-week cycle (R1) leaves too little
