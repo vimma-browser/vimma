@@ -45,7 +45,10 @@ const DIR = getRootDirectory(gTestPath).replace(
 );
 const PAGE = `${DIR}file_vimma_agent_page.html`;
 const DISCOVERY = PathUtils.join(PathUtils.profileDir, "vimma-control.json");
-/** A provider no test sends a task to: the CLI, not a model, takes the steps here. */
+/**
+ * A provider no test sends a task to: the CLI, not a model, takes the steps here.
+ * @type {AgentProviderConfig}
+ */
 const PROVIDER = {
   name: "claude",
   kind: "openai",
@@ -58,18 +61,28 @@ const SESSION = "5e".repeat(16);
 
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
 const agentTabs = () =>
-  gBrowser.tabs.filter(
-    (t) => t.userContextId === /** @type {any} */ (WorkspaceStore.agent)?.userContextId,
-  );
+  gBrowser.tabs.filter((t) => t.userContextId === WorkspaceStore.agent?.userContextId);
 
 async function tidy() {
   AgentChat.stopAll();
   for (const c of AgentChat.list()) await AgentChat.delete(c.id);
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   AgentGate.revoke();
-  const ww = WindowWorkspaces.get(window);
-  ww.switchTo({ id: ww.model.workspaces.find((/** @type {any} */ w) => w.name === "main")?.id });
+  // Every window of these tests has its workspaces, main among them.
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  ww.switchTo({ id: found(ww.model.workspaces.find((w) => w.name === "main")).id });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
@@ -92,7 +105,7 @@ add_setup(async () => {
  * The handshake as vimma-ctl does it with a ticket (S4 with the ticket as the key): the hello
  * names the ticket by its id, the server proves it knows the ticket, then the auth carries it.
  * Resolves to the welcome, or to the error the server answered with.
- * @param {any} client @param {string} ticket
+ * @param {Client} client @param {string} ticket
  */
 async function ticketHandshake(client, ticket) {
   const id = await hmacHex(ticket, "vimma-ticket\0");
@@ -126,7 +139,8 @@ async function connect(port, ticket, session = SESSION) {
 async function noticesDuring(task) {
   /** @type {string[]} */
   const notices = [];
-  const onGate = (/** @type {any} */ e) => {
+  /** @type {Parameters<typeof AgentGate.addListener>[0]} */
+  const onGate = (e) => {
     if (e?.kind === "notice") notices.push(e.text);
   };
   AgentGate.addListener(onGate);
@@ -172,7 +186,7 @@ addTidyTask(async function test_ticket_connection_acts_as_the_conversation() {
   const listed = await client.call("agent-tabs");
   Assert.ok(listed.ok, "the conversation's grant covers the ticket's steps (B18)");
   Assert.deepEqual(
-    listed.result.tabs.map((/** @type {any} */ t) => t.id),
+    listed.result.tabs.map((/** @type {{ id: string }} */ t) => t.id),
     [opened.result.tab],
     "it sees the conversation's tabs only",
   );
@@ -232,10 +246,11 @@ addTidyTask(async function test_ticket_listener_with_mcp_off_takes_only_tickets(
 addTidyTask(async function test_mcp_agents_cannot_keep_out_a_ticket() {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
   await VimmaControl.settled();
-  /** @type {any[]} */
+  /** @type {Client[]} */
   const agents = [];
   const join = async () => {
-    const a = new Client(VimmaControl.port);
+    // Listening: MCP is on and settled.
+    const a = new Client(/** @type {number} */ (VimmaControl.port));
     agents.push(a);
     return (await a.handshake({ protocol: 2, role: "agent" }))?.type ?? "closed";
   };

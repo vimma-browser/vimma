@@ -62,17 +62,49 @@ const ASK_TIMEOUT = "vimma.mcp.askTimeoutMs";
 
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * `[agent]` as config.toml resolves it with only `over` set: AGENT_DEFAULTS' budgets, no default
+ * provider, local_only off and no keep_days or keep_results (the product reads each of these
+ * with `??`, so a config that leaves them out works the same).
+ * @param {Partial<AgentConfig>} over
+ * @returns {AgentConfig}
+ */
+const agentConfig = (over) => ({
+  ...AGENT_DEFAULTS,
+  default: null,
+  localOnly: false,
+  keepDays: null,
+  keepResults: null,
+  providers: [],
+  ...over,
+});
+
+/** The agent workspace, with its container (containers are on in the browser tests). */
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 
-/** The text of a task's tool results, in order. @param {any} result */
+/**
+ * The text of a task's tool results, in order.
+ * @param {Awaited<ReturnType<typeof AgentChat.done>>} result
+ */
 const toolTexts = (result) =>
   result.messages
-    .filter((/** @type {any} */ m) => m.role === "tool")
-    .flatMap((/** @type {any} */ m) => m.results)
-    .map((/** @type {any} */ r) => r.content.map((/** @type {any} */ c) => c.text).join("\n"));
+    .filter((m) => m.role === "tool")
+    .flatMap((m) => m.results)
+    .map((r) => r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n"));
 
 async function tidy() {
   AgentChat.stopAll();
@@ -80,8 +112,9 @@ async function tidy() {
   for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
   AgentGate.revoke();
   // vimma_show switches to the agent workspace: back to main before its tabs go.
-  const ww = WindowWorkspaces.get(window);
-  ww.switchTo({ id: ww.model.workspaces.find((/** @type {any} */ w) => w.name === "main")?.id });
+  // Every window of these tests has its workspaces, main among them.
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
+  ww.switchTo({ id: found(ww.model.workspaces.find((w) => w.name === "main")).id });
   for (const t of agentTabs()) BrowserTestUtils.removeTab(t);
   for (const t of gBrowser.tabs.slice(1)) BrowserTestUtils.removeTab(t);
   Services.prefs.clearUserPref(MCP_ENABLED_PREF);
@@ -114,7 +147,8 @@ addTidyTask(async function test_works_with_mcp_off_and_enter_grants_without_a_qu
   const c = AgentChat.create({ provider: PROVIDER });
   Assert.equal(c.conn, `builtin:${c.id}`, "a connection of its own, in this process");
   let asked = 0;
-  const onGate = (/** @type {any} */ e) => {
+  /** @type {Parameters<typeof AgentGate.addListener>[0]} */
+  const onGate = (e) => {
     if (e?.kind === "asked") asked++;
   };
   AgentGate.addListener(onGate);
@@ -202,7 +236,7 @@ addTidyTask(async function test_grant_ends_when_its_task_fails() {
   const { Budget } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/agent-budget.mjs",
   );
-  /** @param {{ id: number, conn: string }} c */
+  /** @param {{ id: number, conn: string }} c @param {string} how */
   const check = (c, how) => {
     Assert.ok(!AgentGate.grants().some((g) => g.conn === c.conn), `${how}: no grant is left`);
     Assert.ok(
@@ -247,11 +281,14 @@ addTidyTask(async function test_checkpoint_and_show_ask_under_the_conversation_g
   );
   let q = await question();
   Assert.equal(q.tool, "vimma_activate", "a submit asks under the conversation's grant (B18)");
-  Assert.ok(q.what.submit, "as a form submission");
+  Assert.ok(/** @type {AskedWhat} */ (q.what).submit, "as a form submission");
   AgentGate.answer(q.id, { kind: "deny" });
-  q = await TestUtils.waitForCondition(
-    () => AgentGate.waiting.find((w) => w.tool === "vimma_show"),
-    "vimma_show asks too",
+  // waitForCondition resolves with the question it found.
+  q = found(
+    await TestUtils.waitForCondition(
+      () => AgentGate.waiting.find((w) => w.tool === "vimma_show"),
+      "vimma_show asks too",
+    ),
   );
   AgentGate.answer(q.id, { kind: "once" });
   await until(() => held.size === 1, "the model's next turn");
@@ -291,7 +328,7 @@ addTidyTask(async function test_two_conversations_see_only_their_tabs() {
   );
   const rb = await AgentChat.done(b.id);
   const [, list, read] = toolTexts(rb);
-  Assert.ok(list.startsWith("1 tab in Vimma's agent workspace"), "b lists only its own tab");
+  Assert.ok(found(list).startsWith("1 tab in Vimma's agent workspace"), "b lists only its own tab");
   Assert.ok(list.includes("?b") && !list.includes("?a"), "and not a's");
   Assert.equal(
     read,
@@ -322,7 +359,9 @@ addTidyTask(async function test_mcp_agent_sees_only_unowned_tabs() {
   );
   const listing = mcp.request("agent-tabs", {});
   AgentGate.answer((await question()).id, { kind: "grant", minutes: null });
-  const tabs = (await mcp.response(listing)).result.tabs.map((/** @type {any} */ t) => t.id);
+  const tabs = (await mcp.response(listing)).result.tabs.map(
+    (/** @type {{ id: string }} */ t) => t.id,
+  );
   Assert.deepEqual(tabs, [idOf(loose)], "the MCP agent sees the tab no conversation owns only");
   const read = await mcp.call("agent-read", { tab: owned });
   Assert.equal(read.error?.code, "invalid-args", "and is refused the conversation's tab");
@@ -343,7 +382,9 @@ async function mcpTabs() {
   await mcp.call("agent-hello", { client: { name: "example" } });
   const listing = mcp.request("agent-tabs", {});
   AgentGate.answer((await question()).id, { kind: "once" });
-  const ids = (await mcp.response(listing)).result.tabs.map((/** @type {any} */ t) => t.id);
+  const ids = (await mcp.response(listing)).result.tabs.map(
+    (/** @type {{ id: string }} */ t) => t.id,
+  );
   mcp.close();
   return ids;
 }
@@ -358,7 +399,10 @@ addTidyTask(async function test_an_unloaded_tab_stays_its_conversations() {
   Assert.deepEqual(await mcpTabs(), [], "an MCP agent does not see the unloaded owned tab");
   await AgentChat.send(c.id, script([{ call: "vimma_tabs", args: {} }, { reply: "ok" }]));
   const list = toolTexts(await AgentChat.done(c.id)).at(-1);
-  Assert.ok(list.startsWith("1 tab in Vimma's agent workspace"), "its conversation still does");
+  Assert.ok(
+    found(list).startsWith("1 tab in Vimma's agent workspace"),
+    "its conversation still does",
+  );
 });
 
 addTidyTask(async function test_tabs_opened_from_an_owned_tab_stay_owned() {
@@ -367,7 +411,7 @@ addTidyTask(async function test_tabs_opened_from_an_owned_tab_stay_owned() {
   await AgentChat.done(c.id);
   const [owned] = agentTabs();
   // tabbrowser's addTab takes the opener as its browser, as a page's window.open passes it.
-  const opts = (/** @type {any} */ opener) => ({
+  const opts = (/** @type {MozTabbrowserTab} */ opener) => ({
     openerBrowser: opener.linkedBrowser,
     userContextId: agent().userContextId,
     triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
@@ -448,7 +492,7 @@ addTidyTask(async function test_requests_only_to_the_endpoint_without_credential
   Assert.equal(requests[0].path, "/v1/chat/completions", "to the endpoint");
   Assert.equal(requests[0].cookie, null, "with no cookie (credentials: omit)");
   Assert.equal(requests[0].authorization, null, "and no key for a local server without one");
-  Assert.equal(requests[0].body.model, "scripted", "for the conversation's model");
+  Assert.equal(requests[0].body?.model, "scripted", "for the conversation's model");
 
   requests.length = 0;
   const moved = AgentChat.create({
@@ -503,12 +547,9 @@ addTidyTask(async function test_leaving_out_older_results_forgets_the_last_eleme
   // agent-speed S4 and S5 (#693): a compact list names lines by a list the model no longer has
   // once that list is left out of its requests, so the next list of every site comes in full.
   const saved = McpHost.agentConfig;
-  McpHost.configureAgent({
-    ...AGENT_DEFAULTS,
-    default: "scripted",
-    providers: [PROVIDER],
-    keepResults: 2,
-  });
+  McpHost.configureAgent(
+    agentConfig({ default: "scripted", providers: [PROVIDER], keepResults: 2 }),
+  );
   try {
     const c = AgentChat.create({ provider: PROVIDER });
     const open = { call: "vimma_open", args: { url: CLICK, elements: true } };
