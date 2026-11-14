@@ -57,7 +57,10 @@ function deferred() {
  *   problem: string | null }} FoundCli
  */
 
-/** A model server on this machine, so it needs no key (and the window asks for none). */
+/**
+ * A model server on this machine, so it needs no key (and the window asks for none).
+ * @type {AgentProviderConfig}
+ */
 const LOCAL = {
   name: "local",
   kind: "openai",
@@ -65,7 +68,10 @@ const LOCAL = {
   model: "small",
   vision: false,
 };
-/** A hosted provider, whose key hint the picker asks for. */
+/**
+ * A hosted provider, whose key hint the picker asks for.
+ * @type {AgentProviderConfig}
+ */
 const HOSTED = {
   name: "hosted",
   kind: "openai",
@@ -73,7 +79,10 @@ const HOSTED = {
   model: "big",
   vision: false,
 };
-/** Setup's Anthropic provider, whose key the field asks for. */
+/**
+ * Setup's Anthropic provider, whose key the field asks for.
+ * @type {AgentProviderConfig}
+ */
 const ANTHROPIC = {
   name: "anthropic",
   kind: "anthropic",
@@ -498,7 +507,10 @@ const NOT_SENT =
 
 add_task(async function test_every_way_out_of_the_key_field_empties_it() {
   const f = fakeWindow({ providers: [LOCAL] });
-  /** @type {[string, (chat: InstanceType<typeof AgentChatWindow>) => void, object | null][]} */
+  /**
+   * @type {[string, (chat: InstanceType<typeof AgentChatWindow>) => void,
+   *   AgentProviderConfig | null][]}
+   */
   const ways = [
     ["Esc", (chat) => press(chat, "Escape"), null],
     ["closing the window", (chat) => chat.close(), null],
