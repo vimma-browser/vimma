@@ -74,6 +74,20 @@ declare function openSettingsPane(
  */
 declare function contextOf(browser: MozBrowser): CanonicalBrowsingContext;
 /**
+ * The web progress of `browser`'s context; the test fails here when it has none, as a read
+ * through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIWebProgress}
+ */
+declare function webProgressOf(browser: MozBrowser): nsIWebProgress;
+/**
+ * The principal of the page in `browser`; the test fails here before a remote browser's first
+ * page has committed, as a read through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIPrincipal}
+ */
+declare function contentPrincipalOf(browser: MozBrowser): nsIPrincipal;
+/**
  * The document (window global) `bc` shows now; the test fails here when it shows none.
  * @param {CanonicalBrowsingContext | null | undefined} bc
  * @returns {WindowGlobalParent}
@@ -85,13 +99,7 @@ declare function windowGlobalOf(
  * The back/forward list of `browser`'s tab; the test fails here when its context keeps none.
  * @param {MozBrowser} browser
  */
-declare function historyOf(browser: MozBrowser): {
-  readonly count: number;
-  readonly index: number;
-  getEntryAtIndex(index: number): {
-    readonly URI: nsIURI;
-  };
-};
+declare function historyOf(browser: MozBrowser): nsISHistory;
 
 // tests/browser/head_vimma_agent_model.js
 

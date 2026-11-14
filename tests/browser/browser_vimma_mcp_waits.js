@@ -33,6 +33,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
+const { AgentAct } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -357,4 +360,26 @@ addTidyTask(async function test_a_page_kept_busy_does_not_keep_the_allowance_ope
   Assert.ok(r.ok, "the click ran");
   Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's resubmission was cancelled");
   Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
+});
+
+// A wait wakes on the tab's own progress (a load starting, committing or stopping), not only on
+// its TICK_MS timer: it listens to its window's tab browser. Firefox renamed Node.ownerGlobal to
+// documentGlobal, and a read of the old name found no window, so the wait never listened.
+add_task(async function test_a_wait_listens_to_its_tab_progress() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  /** @type {object[]} */
+  const added = [];
+  const add = gBrowser.addTabsProgressListener;
+  gBrowser.addTabsProgressListener = function (/** @type {object} */ listener) {
+    added.push(listener);
+    return add.call(this, listener);
+  };
+  try {
+    // No page is the one waited for: the wait runs until its end, a few ticks.
+    await AgentAct.ready(tab.linkedBrowser, () => false, Date.now() + 300);
+  } finally {
+    gBrowser.addTabsProgressListener = add;
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.greater(added.length, 0, "the wait listened to the tab's progress");
 });

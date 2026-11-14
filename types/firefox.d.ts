@@ -208,7 +208,10 @@ interface nsILoginManager {
 // names its interface, and the IDL in the engine tree is the reference.
 declare const Cc: any;
 // engine/xpcom/base/ErrorList.py: the codes Vimma names, and any other by name.
-declare const Cr: Record<string, number> & { readonly NS_BINDING_ABORTED: number };
+declare const Cr: Record<string, number> & {
+  readonly NS_BINDING_ABORTED: number;
+  readonly NS_OK: number;
+};
 
 // engine/dom/chrome-webidl/PathUtils.webidl
 declare const PathUtils: {
@@ -428,6 +431,8 @@ interface Element {
 }
 interface Node {
   readonly ownerGlobal: Window;
+  /** The global of the document the node lives in (Node.webidl, ChromeOnly). */
+  readonly documentGlobal: Window | null;
 }
 interface Event {
   readonly originalTarget: EventTarget | null;
@@ -458,6 +463,19 @@ interface nsIPrincipal {
   readonly isSystemPrincipal: boolean;
   readonly isNullPrincipal: boolean;
   readonly isContentPrincipal: boolean;
+  /** Null for a principal without one, as the system principal. */
+  readonly URI: nsIURI | null;
+  /** Webidl `jsval`: an OriginAttributesDictionary (OriginAttributes.webidl). */
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
+  readonly originNoSuffix: string;
+  /** These three may throw where the principal's URI has no such part: read in a try. */
+  readonly host: string;
+  readonly asciiHost: string;
+  readonly baseDomain: string;
+  readonly exposablePrePath: string;
+  readonly privateBrowsingId: number;
+  schemeIs(scheme: string): boolean;
+  equals(other: nsIPrincipal): boolean;
 }
 
 // The exports Vimma's modules read through ChromeUtils.defineESModuleGetters, by export name (each
@@ -644,6 +662,13 @@ interface nsIHttpChannel {
   readonly URI: nsIURI;
   readonly loadInfo: nsILoadInfo;
   readonly requestMethod: string;
+  /** nsIRequest's: the request's result so far, a failure code once it failed. */
+  readonly status: number;
+  /** Throws while there is no response yet (a request that failed before one). */
+  readonly responseStatus: number;
+  /** Throws for a header the response does not have. */
+  getResponseHeader(header: string): string;
+  setResponseHeader(header: string, value: string, merge: boolean): void;
   cancel(status: number): void;
 }
 // engine/netwerk/base/nsILoadInfo.idl
@@ -654,6 +679,10 @@ interface nsILoadInfo {
   readonly browsingContext: CanonicalBrowsingContext | null;
   /** nsIRedirectHistoryEntry objects, one a redirect so far (webidl `jsval`). */
   readonly redirectChainIncludingInternalRedirects: readonly unknown[];
+  /** nsContentPolicyType: one of nsIContentPolicy's TYPE_ constants. */
+  readonly externalContentPolicyType: number;
+  /** Webidl `jsval`: an OriginAttributesDictionary. */
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
 }
 
 // engine/dom/webidl/Window.webidl: every window's own constructors (a page's differ from
@@ -664,6 +693,8 @@ interface Window {
   readonly KeyboardEvent: typeof KeyboardEvent;
   readonly MouseEvent: typeof MouseEvent;
   readonly Event: typeof Event;
+  readonly OffscreenCanvas: typeof OffscreenCanvas;
+  readonly CSS: typeof CSS;
   readonly docShell: any;
   fullScreen: boolean;
   /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
@@ -688,13 +719,20 @@ interface MozBrowser extends Element {
   readonly documentURI: { readonly spec: string } | null;
   readonly contentTitle: string;
   readonly isRemoteBrowser: boolean;
-  readonly webProgress: any;
+  /** Its context's (browser-custom-element.mjs); undefined without a context, null without one. */
+  readonly webProgress: nsIWebProgress | null | undefined;
   readonly browserId: number;
   readonly documentContentType: string | null;
   /** Null for a non-remote browser without a docshell. */
   readonly finder: MozFinder | null;
-  // engine/caps/nsIPrincipal.idl; read through Vimma's own checks.
-  readonly contentPrincipal: any;
+  /** A remote browser's is null until its first page committed; a local one reads its document's. */
+  readonly contentPrincipal: nsIPrincipal | null;
+  /** engine/dom/chrome-webidl/MozFrameLoaderOwner.webidl; FrameLoader.remoteTab is the remote
+   * browser's nsIRemoteTab (engine/dom/interfaces/base/nsIRemoteTab.idl). */
+  readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
+  /** Its context is active: shown, or kept rendering. */
+  docShellIsActive: boolean;
+  gotoIndex(index: number): void;
   // engine/browser/modules/PopupAndRedirectBlocker.sys.mjs (untyped here)
   readonly popupAndRedirectBlocker: any;
   focus(): void;
@@ -717,6 +755,8 @@ interface WindowGlobalParent {
 interface MozTabBrowser extends MozBrowser {
   readonly currentURI: nsIURI;
   readonly finder: MozFinder;
+  /** Tabbrowser makes it in its browser window's document. Null once that has no window. */
+  readonly documentGlobal: BrowserWindow | null;
 }
 
 // engine/browser/components/tabbrowser/content/tab.mjs (MozTabbrowserTab): a tab.
@@ -736,6 +776,9 @@ interface MozTabbrowserTab extends Element {
   readonly muted: boolean;
   readonly muteReason: string | null | undefined;
   readonly splitview: MozTabSplitViewWrapper | null;
+  /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
+   * for a tab addTab did not make, as the window's first. */
+  readonly openerTab: MozTabbrowserTab | null | undefined;
   readonly ownerGlobal: BrowserWindow;
   toggleMuteAudio(muteReason?: string | null): void;
 }
@@ -896,6 +939,7 @@ interface MozFinder {
   addResultListener(listener: object): void;
   removeResultListener(listener: object): void;
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
+  fastFind(query: string, linksOnly: boolean, outline: boolean): void;
   requestMatchesCount(query: string, args: object): void;
   removeSelection(keepHighlight?: boolean): void;
 }
@@ -930,6 +974,9 @@ interface BrowsingContext {
   readonly embedderElement: Element | null;
   readonly isDiscarded: boolean;
   readonly browserId: number;
+  readonly isContent: boolean;
+  /** engine/dom/base/nsSandboxFlags.h; the setter throws on a discarded context. */
+  sandboxFlags: number;
   getAllBrowsingContextsInSubtree(): BrowsingContext[];
 }
 // The parent process's context (BrowsingContext.webidl). In the parent every context is one
@@ -943,6 +990,12 @@ interface CanonicalBrowsingContext extends BrowsingContext {
   readonly children: readonly CanonicalBrowsingContext[];
   /** Its embedder element, or one around it, is hidden or has no frame. */
   readonly isUnderHiddenEmbedderElement: boolean;
+  readonly currentURI: nsIURI | null;
+  /** Top-level only; the setter throws on another. */
+  downloadFolderOverride: string;
+  /** The tab's back/forward list (engine/docshell/shistory/nsISHistory.idl), null for a context
+   * that keeps none. */
+  readonly sessionHistory: nsISHistory | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
 }
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
@@ -955,6 +1008,14 @@ interface WindowGlobalParent {
   readonly documentPrincipal: nsIPrincipal;
   readonly documentStoragePrincipal: nsIPrincipal;
   readonly documentURI: nsIURI | null;
+  /** WindowContext's: null once its context is gone. In the parent, canonical. */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  readonly isInitialDocument: boolean;
+  /** An image of its frame and the frames in it, drawn in the parent (`rect` null: the
+   * viewport). */
+  drawSnapshot(rect: DOMRect | null, scale: number, backgroundColor: string): Promise<ImageBitmap>;
+  /** engine/toolkit/components/pageextractor/PageExtractorParent.sys.mjs */
+  getActor(name: "PageExtractor"): PageExtractorParent;
   /** engine/dom/interfaces/base/nsIDOMProcessParent.idl; null once the process is gone. */
   readonly domProcess: { readonly remoteType: string | null } | null;
 }
@@ -1048,6 +1109,167 @@ interface nsITypeAheadFind {
 // engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
 interface nsIWebProgress {
   readonly isTopLevel: boolean;
+  readonly isLoadingDocument: boolean;
+}
+
+// engine/docshell/shistory/nsISHistory.idl and nsISHEntry.idl (the members Vimma reads).
+// getEntryAtIndex throws for an index out of range.
+interface nsISHistory {
+  readonly count: number;
+  /** The current entry's index. */
+  readonly index: number;
+  getEntryAtIndex(index: number): { readonly URI: nsIURI };
+}
+
+// engine/toolkit/components/pageextractor/PageExtractorParent.sys.mjs. Both answers come from
+// the page's process (sendQuery), or from the PDF viewer's: checked by the caller.
+interface PageExtractorParent {
+  getText(options: {
+    removeBoilerplate?: boolean;
+    useSimpleText?: boolean;
+    sufficientLength?: number;
+    sourceUrl?: string;
+  }): Promise<unknown>;
+  getPageMetadata(): Promise<unknown>;
+}
+
+// engine/dom/interfaces/base/nsIContentPermissionPrompt.idl (the members Vimma reads).
+interface nsIContentPermissionRequest {
+  readonly principal: nsIPrincipal;
+  readonly topLevelPrincipal: nsIPrincipal;
+  cancel(): void;
+}
+// engine/browser/components/permissions/ContentPermissionPrompt.sys.mjs: the integration point
+// `Integration.contentPermission` wraps; its prompt's prompt() shows it or decides at once.
+interface ContentPermissionIntegration {
+  createPermissionPrompt(
+    type: string,
+    request: nsIContentPermissionRequest,
+  ): { prompt(): void } | undefined;
+}
+
+// engine/toolkit/components/downloads/DownloadCore.sys.mjs: a Download, with the members of its
+// DownloadSource, DownloadTarget and DownloadSaver that Vimma's agent downloads read
+// (ctl/AgentDownloads.sys.mjs). The saver is a DownloadCopySaver or, for a helper-app download,
+// a DownloadLegacySaver, which alone has `request` (its channel, null until it starts) and
+// `deferExecuted`.
+interface FirefoxDownload {
+  readonly source: {
+    readonly url: string;
+    readonly originalUrl: string | null;
+    readonly userContextId?: number;
+    readonly browsingContextId?: number;
+  };
+  readonly target: { readonly path: string; readonly partFilePath: string | null };
+  readonly saver: {
+    readonly totalBytes?: number;
+    readonly request?: { readonly contentLength?: number } | null;
+    readonly deferExecuted?: { readonly promise: Promise<unknown> } | null;
+    cancel?(): void;
+  } | null;
+  readonly stopped: boolean;
+  readonly totalBytes: number;
+  readonly currentBytes: number;
+  readonly contentType: string | null;
+  launchWhenSucceeded: boolean;
+  launcherPath: string | null;
+  launcherId: string | null;
+  handleInternally: boolean;
+  finalize(removePartialData?: boolean): Promise<void>;
+  whenSucceeded(): Promise<void>;
+}
+// engine/toolkit/components/downloads/DownloadIntegration.sys.mjs: the hooks
+// `Integration.downloads` lets Vimma wrap (DownloadCore's Download.start and
+// _checkReputationAndMove call them).
+interface DownloadIntegrationBase {
+  shouldBlockForParentalControls(download: FirefoxDownload): Promise<boolean>;
+  shouldBlockForReputationCheck(
+    download: FirefoxDownload,
+  ): Promise<{ shouldBlock: boolean; verdict: unknown }>;
+  downloadDone(download: FirefoxDownload): Promise<unknown>;
+  launchDownload(download: FirefoxDownload, options: unknown): Promise<unknown>;
+}
+// engine/uriloader/exthandler/nsIExternalHelperAppService.idl (nsIHelperAppLauncher): the
+// members Vimma's download dialog reads. `file` is an nsIFile.
+interface nsIHelperAppLauncher {
+  readonly browsingContextId: number;
+  readonly contentLength: number;
+  promptForSaveDestination(): void;
+  saveDestinationAvailable(file: { readonly path: string } | null): void;
+}
+// engine/toolkit/modules/subprocess/Subprocess.sys.mjs (its Process, through the pipes Vimma
+// asked for): the scanner Vimma runs.
+interface ChildProcess {
+  readonly stdin: { close(): Promise<unknown> };
+  readonly stdout: { readString(): Promise<string> };
+  readonly stderr: { readString(): Promise<string> };
+  wait(): Promise<{ exitCode: number }>;
+  kill(): void;
+}
+// The modules ctl/AgentDownloads.sys.mjs reads lazily, named here and not there:
+// tools/security/test/chrome-source.test.ts pins every mention of the process module in it.
+type AgentDownloadsLazy = Lazy<
+  | "DownloadPaths"
+  | "Downloads"
+  | "FileUtils"
+  | "Integration"
+  | "Subprocess"
+  | "ctypes"
+  | "clearInterval"
+  | "clearTimeout"
+  | "setInterval"
+  | "setTimeout"
+  | "nsUnknownContentTypeDialog"
+>;
+
+// A control connection's socket and streams, as ctl/VimmaControl.sys.mjs reads them:
+// engine/netwerk/base/nsITransport.idl (nsISocketTransport), engine/xpcom/io/
+// nsIAsyncInputStream.idl and nsIAsyncOutputStream.idl. Named apart from the browser tests'
+// fuller declarations of those interfaces (types/mochitest/firefox.d.ts). QueryInterface gives
+// the stream as the interface asked for, or throws.
+interface ControlTransport {
+  openInputStream(
+    flags: number,
+    segmentSize: number,
+    segmentCount: number,
+  ): { QueryInterface(iid: unknown): ControlInputStream };
+  openOutputStream(
+    flags: number,
+    segmentSize: number,
+    segmentCount: number,
+  ): { QueryInterface(iid: unknown): ControlOutputStream };
+  close(reason: number): void;
+}
+interface ControlInputStream {
+  /** Throws at the end of the stream, or with NS_BASE_STREAM_WOULD_BLOCK. */
+  available(): number;
+  asyncWait(
+    callback: { onInputStreamReady(stream: unknown): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+  close(): void;
+}
+interface ControlOutputStream {
+  /** The bytes of `buf` (a binary string) written; throws NS_BASE_STREAM_WOULD_BLOCK. */
+  write(buf: string, count: number): number;
+  asyncWait(
+    callback: { onOutputStreamReady(stream: unknown): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+  close(): void;
+}
+
+// SpiderMonkey's built-ins newer than the type check's ES2022 library (engine/js/src/builtin/
+// String.cpp, ES2024; engine/js/src/vm/TypedArrayObject.cpp, ES2026).
+interface String {
+  toWellFormed(): string;
+}
+interface Uint8Array {
+  toBase64(options?: { alphabet?: "base64" | "base64url"; omitPadding?: boolean }): string;
 }
 
 // engine/toolkit/modules/JSONFile.sys.mjs: a JSON file kept in memory, saved after a delay.

@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent, contextOf, windowGlobalOf -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf, webProgressOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -270,7 +270,7 @@ add_task(async function test_the_load_wait_passes_over_an_initial_document() {
   const browser = tab.linkedBrowser;
   await until(() => !!browser.browsingContext?.currentWindowGlobal, "the tab has a document");
   Assert.ok(windowGlobalOf(contextOf(browser)).isInitialDocument, "its initial one");
-  Assert.ok(!browser.webProgress.isLoadingDocument, "which is not loading");
+  Assert.ok(!webProgressOf(browser).isLoadingDocument, "which is not loading");
   // What the tab showed before the step: another document at another URL.
   const before = { doc: 0, url: LINKS };
   Assert.equal(

@@ -32,7 +32,12 @@ import { ListedSites, actDetail, fillDetail } from "../core/agent-act.mjs";
 import { parseAgentKeys, shownKeys } from "../core/agent-keys.mjs";
 import { fillFits, shownNotice } from "../core/agent-prompt.mjs";
 import { ctlIsCurrent, ctlVersionNotice } from "../core/ctl-version.mjs";
-import { MAX_LINE_LENGTH, MAX_READ_CHARS } from "../core/control.mjs";
+import {
+  AGENT_COMMANDS,
+  MAX_LINE_LENGTH,
+  MAX_READ_CHARS,
+  parseAgentRequest,
+} from "../core/control.mjs";
 import { ELEMENT_REPLY_CAPS } from "../core/agent-element.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
@@ -48,7 +53,9 @@ import { AgentDrive } from "./AgentDrive.sys.mjs";
 import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 
-/** @import { ConnId } from "../core/agent.mjs" */
+/** @import { ConnId, LogOutcome } from "../core/agent.mjs" */
+/** @import { AgentArgs, AgentCommand } from "../core/control.mjs" */
+/** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
 import { allowanceKey, isConsequential, mayAllowHere } from "../core/agent-checkpoint.mjs";
 
 /**
@@ -103,7 +110,7 @@ const KEYS_CALL_MS = 60000;
 /**
  * Whether the user is using the tab of `browser` (mcp-drive D13), or a screenshot of it is
  * being taken, which the agent's own steps must not change (mcp-forms F21).
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 const inUse = (browser) => VimmaHost.inUse(browser) || AgentShot.capturing(browser);
 
@@ -159,8 +166,8 @@ const DENIED = /** @type {Record<string, string>} */ ({
 const denied = (reason) => new AgentError("denied", DENIED[reason] ?? reason, reason);
 
 /**
- * @typedef {any} Win
- * @typedef {any} Tab
+ * @typedef {BrowserWindow} Win
+ * @typedef {MozTabbrowserTab} Tab
  * @typedef {{ id: string, name: string, userContextId: number }} AgentWorkspace
  * @typedef {{ agent?: { client: string, via?: string }, cancels?: Map<number, () => void> }} AgentConn
  */
@@ -194,7 +201,7 @@ function own(tab, conn) {
 function ownerOf(tab) {
   /** @type {Set<Tab>} */
   const seen = new Set();
-  for (let t = tab; t && !seen.has(t); t = t.openerTab) {
+  for (let t = /** @type {Tab | null | undefined} */ (tab); t && !seen.has(t); t = t.openerTab) {
     seen.add(t);
     const conn = owners.get(t);
     if (conn !== undefined) {
@@ -296,10 +303,11 @@ function tabUrl(tab) {
 function findAgentTab(agent, id, conn) {
   const all = agentTabs(agent, conn);
   const index = all.findIndex(({ tab }) => tabId(tab) === id);
-  if (index === -1) {
+  const found = all[index];
+  if (!found) {
     throw new AgentError("invalid-args", `tab ${id} is not a tab of the agent workspace`);
   }
-  return { ...all[index], index: index + 1 };
+  return { ...found, index: index + 1 };
 }
 
 /** @param {Tab} tab */
@@ -313,7 +321,7 @@ function describeTab(tab) {
  * @param {string} url
  */
 function agentUri(url) {
-  /** @type {any} */
+  /** @type {nsIURI} */
   let uri;
   try {
     uri = Services.io.newURI(url);
@@ -344,7 +352,7 @@ function agentPrincipal(/** @type {number} */ userContextId) {
  */
 async function ask(conn, command, what, state, rid, until, always = false, covered = undefined) {
   const tool = /** @type {Record<string, string>} */ (AGENT_TOOLS)[command];
-  /** @type {any} */
+  /** @type {number | null} */
   let timer = null;
   const onCancel = (/** @type {() => void} */ cancel) => {
     if (rid !== undefined) (state.cancels ??= new Map()).set(rid, cancel);
@@ -395,7 +403,7 @@ const unmarked = (sent) => ({
 /** Whether the page in `tab` is loading no document now. @param {Tab} tab */
 const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
 
-/** @param {any} browser  the id of its top document */
+/** @param {MozBrowser} browser  the id of its top document */
 const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 
 /** Key steps that load a page: payment steps where the page may pay (mcp-checkpoints Behaviour 3). */
@@ -417,7 +425,8 @@ function firstActing(list) {
 
 /**
  * The link a follow names now, in the connection's current labels of the page, or null.
- * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
+ * @param {MozTabBrowser} browser @param {ConnId} conn
+ * @param {import("../core/agent-keys.mjs").AgentStep} step
  */
 function linkOf(browser, conn, step) {
   const session = AgentDrive.current(conn, browser);
@@ -428,8 +437,9 @@ function linkOf(browser, conn, step) {
 /**
  * Whether a key step may pay, and its question's payment part (mcp-checkpoints C6, C7): a
  * follow by the link's words and the page's card fields, a load by the card fields.
- * @param {any} browser @param {ConnId} conn @param {import("../core/agent-keys.mjs").AgentStep} step
- * @param {{ target: any, elements: boolean } | null} [found]  the follow's link, as the run
+ * @param {MozTabBrowser} browser @param {ConnId} conn
+ * @param {import("../core/agent-keys.mjs").AgentStep} step
+ * @param {{ target: HintTarget, elements: boolean } | null} [found]  the follow's link, as the run
  *   resolved it; else it is looked up in the connection's labels now
  */
 async function payStep(browser, conn, step, found = null) {
@@ -609,7 +619,11 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
   return { .../** @type {{ url: string, title: string }} */ (after ?? before), ...listed };
 }
 
-/** The agent tabs' browsers that commands are running on, and how many commands each. */
+/**
+ * The agent tabs' browsers that commands are running on, and how many commands each.
+ * @type {Map<MozBrowser, { count: number, ours: Set<{ priorityHint: boolean }>,
+ *   apply: () => void }>}
+ */
 const raised = new Map();
 
 /**
@@ -621,13 +635,13 @@ const raised = new Map();
  * same way, through nsIRemoteTab.priorityHint, which neither renders nor shows anything. A lazy
  * tab gets its process during the command, and a load can move the page to another process:
  * each new frame loader is raised too. Overlapping commands on one tab share the raise.
- * @param {any} browser XULBrowserElement
+ * @param {MozBrowser} browser
  * @returns {() => void} release
  */
 function raisePriority(browser) {
   let entry = raised.get(browser);
   if (!entry) {
-    /** @type {{ count: number, ours: Set<any>, apply: () => void }} */
+    /** @type {{ count: number, ours: Set<{ priorityHint: boolean }>, apply: () => void }} */
     const e = {
       count: 0,
       ours: new Set(),
@@ -690,7 +704,7 @@ async function loadedPage(win, tab, url, userContextId) {
   }
   const ready = await AgentAct.ready(
     browser,
-    (/** @type {any} */ wg) => !tab.hasAttribute("pending") && !wg.isInitialDocument,
+    (wg) => !tab.hasAttribute("pending") && !wg.isInitialDocument,
     Date.now() + LOAD_TIMEOUT_MS,
   );
   const wg = browser.browsingContext?.currentWindowGlobal;
@@ -714,7 +728,15 @@ function cut(text, max) {
  * U+FFFD, so the JSON line is one vimma-ctl's strict parser accepts (security.md M7).
  * @param {unknown} s
  */
-const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s)).toWellFormed());
+const wf = (s) => String(s).toWellFormed();
+
+/**
+ * `v`'s property `key`, or undefined when `v` is no object: a reply from a page's process.
+ * @param {unknown} v @param {string} key
+ * @returns {unknown}
+ */
+const fieldOf = (v, key) =>
+  typeof v === "object" && v !== null ? /** @type {unknown} */ (Reflect.get(v, key)) : undefined;
 
 /** UTF-8 length of `value` as JSON. @param {unknown} value */
 const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -725,7 +747,7 @@ const ctlNoticed = new Set();
 const COMMANDS = {
   /**
    * The connection's first command (decision 4): labels for the question. Neither is proof.
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-hello"]} args
    */
   "agent-hello"(conn, state, { client, via, ctl, session }) {
     state.agent = {
@@ -758,7 +780,7 @@ const COMMANDS = {
   /**
    * Withdraw the question of this connection's request `id`, if it still waits (decision 17).
    * Another connection's requests are not in `state`, so out of reach.
-   * @param {ConnId} _conn @param {AgentConn} state @param {{ id: number }} args
+   * @param {ConnId} _conn @param {AgentConn} state @param {AgentArgs["agent-cancel"]} args
    */
   "agent-cancel"(_conn, state, { id }) {
     const cancel = state.cancels?.get(id);
@@ -768,7 +790,10 @@ const COMMANDS = {
     return { cancelled: true };
   },
 
-  /** @param {ConnId} conn @param {AgentConn} state @param {any} _args @param {number} rid */
+  /**
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-tabs"]} _args
+   * @param {number | undefined} rid
+   */
   async "agent-tabs"(conn, state, _args, rid) {
     const agent = agentWorkspace();
     await ask(conn, "agent-tabs", { count: agentTabs(agent, conn).length }, state, rid);
@@ -785,7 +810,10 @@ const COMMANDS = {
     };
   },
 
-  /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
+  /**
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-read"]} args
+   * @param {number | undefined} rid
+   */
   async "agent-read"(conn, state, { tab: id, format = "markdown", max_chars }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
@@ -813,17 +841,19 @@ const COMMANDS = {
         sourceUrl: what.url,
       }),
     );
-    if (!result || typeof result.text !== "string") {
+    // The page's process's answer (PageExtractorChild), checked as any.
+    const read = fieldOf(result, "text");
+    if (typeof read !== "string") {
       throw new AgentError("failed", "Vimma could not read text from this page");
     }
-    let { text, truncated } = cut(wf(result.text), limit);
+    let { text, truncated } = cut(wf(read), limit);
     const picked = await VimmaActors.selection(tab.linkedBrowser, limit);
     /** @type {string | null} */
     let selection = picked === null ? null : wf(picked);
     let language = null;
     try {
-      const meta = await extractor.getPageMetadata();
-      language = typeof meta?.language === "string" && meta.language ? wf(meta.language) : null;
+      const meta = fieldOf(await extractor.getPageMetadata(), "language");
+      language = typeof meta === "string" && meta ? wf(meta) : null;
     } catch {
       // metadata is a nicety; the text stands without it
     }
@@ -858,7 +888,10 @@ const COMMANDS = {
     return reply();
   },
 
-  /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
+  /**
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-open"]} args
+   * @param {number | undefined} rid
+   */
   async "agent-open"(conn, state, { url, tab: id, elements = false, query, kinds }, rid) {
     const agent = agentWorkspace();
     const uri = agentUri(url);
@@ -912,7 +945,7 @@ const COMMANDS = {
           Promise.race([
             AgentAct.ready(
               browser,
-              (/** @type {any} */ wg) =>
+              (wg) =>
                 !wg.isInitialDocument &&
                 (wg.innerWindowId !== before || (sameDocument && tabUrl(tab) === uri.spec)),
               until,
@@ -940,7 +973,7 @@ const COMMANDS = {
       lazy.BrowserWindowTracker.getTopWindow({ private: false, allowPopups: false }) ??
       normalWindows()[0];
     const ww = win && WindowWorkspaces.get(win);
-    if (!ww?.model) throw new AgentError("failed", "no normal browser window to open in");
+    if (!win || !ww?.model) throw new AgentError("failed", "no normal browser window to open in");
     const tab = ww.quietly(() =>
       win.gBrowser.addTab(uri.spec, {
         triggeringPrincipal: principal,
@@ -961,7 +994,8 @@ const COMMANDS = {
   /**
    * Vimma's own page keys in an agent tab, in the background (mcp-drive D8-D17): parsed and
    * whitelisted in core before anything is asked, refused while the user is using the tab.
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-keys"]} args
+   * @param {number | undefined} rid
    */
   async "agent-keys"(conn, state, { tab: id, keys }, rid) {
     const agent = agentWorkspace();
@@ -971,7 +1005,7 @@ const COMMANDS = {
     const what = { ...describeTab(asked.tab), index: asked.index, keys: shownKeys(parsed.steps) };
     /**
      * A denial outside the gate goes into `:mcp log` too (D14, M23).
-     * @param {any} outcome @param {unknown} [error]
+     * @param {LogOutcome & string} outcome @param {unknown} [error]
      */
     const refuse = (outcome, error = denied(outcome)) => {
       AgentGate.note(conn, "vimma_keys", what, outcome);
@@ -1103,7 +1137,8 @@ const COMMANDS = {
    * always asked, never under a grant, and applied only to the normal window that holds the
    * tab, through the ordinary workspace switch, so ctrl+^ returns. No window is raised or
    * focused.
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-show"]} args
+   * @param {number | undefined} rid
    */
   async "agent-show"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
@@ -1149,7 +1184,8 @@ const COMMANDS = {
    * The buttons, fields, links and other clickable elements on screen in an agent tab, with
    * labels (mcp-forms F2-F7): read-only, so it runs while the user uses the tab (F27); nothing
    * on the page is touched and the tab stays in the background (M25).
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-elements"]} args
+   * @param {number | undefined} rid
    */
   async "agent-elements"(conn, state, { tab: id, query, kinds, full = false }, rid) {
     const agent = agentWorkspace();
@@ -1195,7 +1231,8 @@ const COMMANDS = {
    * refused while a sensitive field on screen has a value. With `labels`, the labels of the
    * connection's current `vimma_elements` list of the page are drawn on it, if it has not
    * scrolled since.
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-screenshot"]} args
+   * @param {number | undefined} rid
    */
   async "agent-screenshot"(conn, state, { tab: id, labels = false, full = false }, rid) {
     const agent = agentWorkspace();
@@ -1227,7 +1264,7 @@ const COMMANDS = {
       await loadedPage(win, tab, what.url, agent.userContextId);
     }
     const browser = tab.linkedBrowser;
-    /** @type {Map<string, any> | null} */
+    /** @type {Map<string, HintTarget> | null} */
     let drawn = null;
     let stale = false;
     if (labels) {
@@ -1268,7 +1305,8 @@ const COMMANDS = {
    * (mcp-forms F22-F24; security.md M30, M31): read-only, so it runs while the user uses the tab
    * (F27). Nothing runs in the page: the errors come from Firefox's own caches and the requests
    * from AgentConsole's log; the tab stays in the background (M25).
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-console"]} args
+   * @param {number | undefined} rid
    */
   async "agent-console"(conn, state, { tab: id, since = 0 }, rid) {
     const agent = agentWorkspace();
@@ -1318,7 +1356,8 @@ const COMMANDS = {
    * before the question when it is not clickable, asked every time when it submits a form or may
    * pay (mcp-checkpoints C1, C6; M33), and run in the background with the child's `click()`. A
    * tab the user is using is `in-use` (F27).
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-activate"]} args
+   * @param {number | undefined} rid
    */
   async "agent-activate"(conn, state, { tab: id, label, elements = false, query, kinds }, rid) {
     const agent = agentWorkspace();
@@ -1333,7 +1372,7 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {any} outcome @param {unknown} error @param {object} [what]
+     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what]
      */
     const refuse = (outcome, error, what = base) => {
       AgentGate.note(conn, "vimma_activate", what, outcome);
@@ -1487,7 +1526,8 @@ const COMMANDS = {
    * any refused one refuses the call; a fill that submits asks every time (F15, M28); the fields
    * are set in the background, in order, each checked again in its child just before. A tab the
    * user is using is `in-use` (F27). Fills share the clicks' rate (F26).
-   * @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-fill"]} args
+   * @param {number | undefined} rid
    */
   async "agent-fill"(
     conn,
@@ -1498,7 +1538,7 @@ const COMMANDS = {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
     const browser = asked.tab.linkedBrowser;
-    const labels = fields.map((/** @type {any} */ f) => f.label).join(" ");
+    const labels = fields.map((f) => f.label).join(" ");
     const base = {
       ...describeTab(asked.tab),
       index: asked.index,
@@ -1507,7 +1547,7 @@ const COMMANDS = {
     };
     /**
      * A refusal outside the gate goes into `:mcp log` too (M23, M32).
-     * @param {any} outcome @param {unknown} error @param {object} [what] @param {string} [why]
+     * @param {LogOutcome} outcome @param {unknown} error @param {object} [what] @param {string} [why]
      */
     const refuse = (outcome, error, what = base, why) => {
       AgentGate.note(conn, "vimma_fill", what, outcome, why);
@@ -1519,7 +1559,7 @@ const COMMANDS = {
     }
     if (elements) takeListSlot(conn, "vimma_fill", base);
     if (inUse(browser)) throw refuse("in-use", denied("in-use"));
-    /** @type {{ label: string, target: any, value: string | boolean, name: string,
+    /** @type {{ label: string, target: HintTarget, value: string | boolean, name: string,
      *   field: import("../core/agent-act.mjs").FillTarget }[]} */
     const steps = [];
     for (const { label, value } of fields) {
@@ -1536,7 +1576,7 @@ const COMMANDS = {
       if ("refused" in checked) throw refuse("failed", new AgentError("failed", checked.refused));
       steps.push({ label, target: found.target, value, name: checked.name, field: checked.field });
     }
-    /** @type {{ by: "click" | "form", target: any, submit: { method: string,
+    /** @type {{ by: "click" | "form", target: HintTarget, submit: { method: string,
      *   action: string, fields: number } } | null} */
     let submitting = null;
     if (typeof submitArg === "string") {
@@ -1722,7 +1762,10 @@ const COMMANDS = {
     };
   },
 
-  /** @param {ConnId} conn @param {AgentConn} state @param {any} args @param {number} rid */
+  /**
+   * @param {ConnId} conn @param {AgentConn} state @param {AgentArgs["agent-close"]} args
+   * @param {number | undefined} rid
+   */
   async "agent-close"(conn, state, { tab: id }, rid) {
     const agent = agentWorkspace();
     const asked = findAgentTab(agent, id, conn);
@@ -1799,13 +1842,33 @@ export const AgentTabOwners = {
 };
 
 /**
- * Run an agent command, validated already. `state` is the connection's: `agent` once its
- * hello is in. Throws AgentError for every refusal.
+ * The handlers by command, each with its own arguments (core AgentArgs).
+ * @typedef {{ [C in AgentCommand]: (conn: ConnId, state: AgentConn, args: AgentArgs[C],
+ *   rid: number | undefined) => object | Promise<object> }} Handlers
+ */
+
+/**
+ * Starts a parsed command's handler: the arguments are the ones its command takes.
+ * @template {AgentCommand} C
+ * @param {{ command: C, args: AgentArgs[C] }} request @param {ConnId} conn
+ * @param {AgentConn} state @param {number | undefined} rid
+ */
+function start(request, conn, state, rid) {
+  /** @type {Handlers} */
+  const handlers = COMMANDS;
+  return handlers[request.command](conn, state, request.args, rid);
+}
+
+/**
+ * Run an agent command, validated already. Its arguments are parsed again (core
+ * parseAgentRequest), so whatever reaches a handler has the shape it reads. `state` is the
+ * connection's: `agent` once its hello is in. Throws AgentError for every refusal.
  * @param {ConnId} conn
  * @param {AgentConn} state
  * @param {string} command
- * @param {any} args
+ * @param {unknown} args
  * @param {number} [rid]  the request's id, which `agent-cancel` names
+ * @returns {object | Promise<object>}
  */
 export function runAgentCommand(conn, state, command, args, rid) {
   if (command === "agent-hello") {
@@ -1813,18 +1876,20 @@ export function runAgentCommand(conn, state, command, args, rid) {
   } else if (!state.agent) {
     throw new AgentError("bad-request", "agent-hello must be the connection's first command");
   }
-  const run = /** @type {Record<string, (c: ConnId, s: AgentConn, a: any, r?: number) => any>} */ (
-    COMMANDS
-  )[command];
-  if (!run) throw new AgentError("unknown-command", `unknown command ${command}`);
+  if (!AGENT_COMMANDS.includes(command)) {
+    throw new AgentError("unknown-command", `unknown command ${command}`);
+  }
+  const request = parseAgentRequest(command, args);
+  if (!request) throw new AgentError("invalid-args", `${command}: invalid arguments`);
   // The tab the command names runs at foreground priority from the request until its reply,
   // the wait for the user's answer included (issue #605).
-  const release = command === "agent-hello" ? null : raiseNamedTab(conn, args?.tab);
-  if (!release) return run(conn, state, args, rid);
+  const tab = "tab" in request.args ? request.args.tab : undefined;
+  const release = request.command === "agent-hello" ? null : raiseNamedTab(conn, tab);
+  if (!release) return start(request, conn, state, rid);
   // Started at once, as any other command: questions keep the order their requests came in.
   let result;
   try {
-    result = run(conn, state, args, rid);
+    result = start(request, conn, state, rid);
   } catch (e) {
     release();
     throw e;

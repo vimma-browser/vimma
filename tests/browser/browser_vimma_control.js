@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m0-control-server.md (protocol: docs/specs/m0-control-protocol-and-vimma-ctl.md)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contentPrincipalOf -- from head.js */
 
 "use strict";
 
@@ -739,7 +739,7 @@ add_task(async function test_open() {
   Assert.equal(gBrowser.selectedTab, tab, "in the foreground");
   Assert.equal(r.result.tab, String(tab.linkedBrowser.browserId), "result names the tab");
   Assert.ok(
-    tab.linkedBrowser.contentPrincipal.isContentPrincipal,
+    contentPrincipalOf(tab.linkedBrowser).isContentPrincipal,
     "the page loads with its own content principal",
   );
 
