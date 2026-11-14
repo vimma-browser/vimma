@@ -52,7 +52,7 @@ import { SidePanel } from "../ui/side-panel.mjs";
 import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
 import { OutlinePanel } from "../ui/pdf-outline.mjs";
 import { AgentChatWindow } from "../ui/agent-chat.mjs";
-import { giveSelectedTab } from "./agent-chat-ops.mjs";
+import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
 import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
 import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
@@ -869,27 +869,31 @@ export const VimmaHost = {
         observe: observeBookmarks,
         effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
       }),
-      agentChat: new AgentChatWindow(win, {
-        ask: (question, yes) => state.rename.ask(question, yes),
-        say: (text, error) => state.notice.show(text, { error: !!error }),
-        give: (id) =>
-          giveSelectedTab(
-            win,
-            id,
-            (question, yes) => state.rename.ask(question, yes),
-            (text) => state.notice.show(text),
-          ),
-        copy: (text) =>
-          Cc["@mozilla.org/widget/clipboardhelper;1"]
-            .getService(Ci.nsIClipboardHelper)
-            .copyString(text),
-        rearm: () => AgentUi.rearmSlot(win),
-        prompt: (o) => state.rename.prompt(o),
-        changed: () => {
-          AgentUi.refresh();
-          this._emit(state);
+      agentChat: new AgentChatWindow(
+        win,
+        {
+          ask: (question, yes) => state.rename.ask(question, yes),
+          say: (text, error) => state.notice.show(text, { error: !!error }),
+          give: (id) =>
+            giveSelectedTab(
+              win,
+              id,
+              (question, yes) => state.rename.ask(question, yes),
+              (text) => state.notice.show(text),
+            ),
+          copy: (text) =>
+            Cc["@mozilla.org/widget/clipboardhelper;1"]
+              .getService(Ci.nsIClipboardHelper)
+              .copyString(text),
+          rearm: () => AgentUi.rearmSlot(win),
+          prompt: (o) => state.rename.prompt(o),
+          changed: () => {
+            AgentUi.refresh();
+            this._emit(state);
+          },
         },
-      }),
+        CHAT_SERVICES,
+      ),
       onAgentChat: () => this._emit(state),
     };
     state.element = new ElementFocus({

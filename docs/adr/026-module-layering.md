@@ -146,7 +146,17 @@ each without a change in behaviour:
 - **The agent chat window drives the agent** (lazy: `ui/agent-chat.mjs` →
   `agent/AgentChat.sys.mjs`, `agent/AgentCli.sys.mjs`, `agent/AgentKeys.sys.mjs`,
   `config/ConfigHost.sys.mjs`, `host/mcp-ops.mjs`). The host builds the window, so it passes the
-  agent's services in, as it is passed to `runners.mjs`.
+  agent's services in, as it is passed to `runners.mjs`. (Since changed: done.
+  `AgentChatWindow` takes a third argument, the agent's services: the conversations, the agent
+  CLIs, the API keys, `config.toml`'s refusal, setup's write to `config.toml` and the `[agent]`
+  providers. The host hands it `CHAT_SERVICES` (`host/agent-chat-ops.mjs`), which reads each one
+  when the window calls: `[agent]` from `host/mcp-ops.mjs`, the rest from `HostServices`, which
+  gained `agentCli`, `agentKeys`, `configRefused` and `addAgentProvider` beside `agentChat`, on
+  the same terms. Only `host/` imports the registry, so it does not become a lookup for every
+  folder. The keys' service is `AgentKeys` narrowed to `hint`, `set` and `delete`: the registry
+  never hands out the call that returns a key. Asked for before it is provided, no agent CLI is
+  offered, no key is known or stored, `config.toml` counts as refused and is not written.
+  `ui/agent-chat.mjs` imports nothing from `agent/`, `config/` or `host/`.)
 
 The eager cycle between `host/native-swap.mjs` and `host/private-swap.mjs` is gone: `startedUp`,
 the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `native-swap.mjs` beside
@@ -163,7 +173,8 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   `agent-ui.mjs` → `ctl/AgentGate.sys.mjs`). Putting them below the host would invert the many
   edges to save the few.
 - **`ui/` is a leaf.** Its widgets render and call back; only the agent chat window reaches up,
-  and that is listed.
+  and that is listed. (Since changed: the window no longer reaches up; the host passes it what
+  it uses.)
 - **Checked by a script, not eslint.** The edges are strings in calls and object literals, so
   the check parses each module with espree (the parser eslint uses) and walks it. A script also
   sees the whole tree at once, which a stale-entry check needs and a per-file lint rule cannot.

@@ -86,10 +86,21 @@
   const { ConfigHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
   );
+  const { AgentCli } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
+  );
+  const { AgentKeys } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
+  );
   HostServices.provide({
     agentChat: AgentChat,
     isAgentDownload: AgentDownloads.isAgentDownload,
     addRoute: ConfigHost.addRoute,
+    // The chat window's, which the host hands it when it builds it.
+    agentCli: AgentCli,
+    agentKeys: AgentKeys,
+    configRefused: ConfigHost.refused,
+    addAgentProvider: ConfigHost.addAgentProvider,
   });
   VimmaHost.init(window);
 
@@ -161,9 +172,6 @@
   AgentConsole.init();
 
   // docs/specs/builtin-agent-cli.md C5: what Gemini CLI kept of runs a crash ended.
-  const { AgentCli } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
-  );
   AgentCli.init();
 
   // The private workspace in place of this window on Hyprland (spec private-swap): learns the

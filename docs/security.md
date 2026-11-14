@@ -2166,8 +2166,16 @@ for the user.
   view) empties it. A provider that needs a key and has none for
   its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
-  deletes a key after a `y`.
+  deletes a key after a `y`. The window reaches the keys only through what the host hands it
+  from `host/host-services.mjs`: `AgentKeys` narrowed to `hint`, `set` and `delete`, never the
+  call that returns a key, passed straight through so that the registry holds no key, and
+  provided once by `vimma.js` and never replaced (D4 says what the caller check is worth). Asked
+  for before it is provided, no key is known, stored or deleted.
   [`test_hosted_openai_compatible_provider_set_up_in_the_window`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_the_picker_shows_a_keys_end_and_x_deletes_it_after_y`](../tests/browser/browser_vimma_agent_host.js),
+  [`test_the_keys_service_is_agentkeys_without_a_way_to_read_a_key`](../tests/browser/browser_vimma_host_services.js),
+  [`test_code_named_vimma_js_cannot_replace_the_chat_windows_services`](../tests/browser/browser_vimma_host_services.js),
+  [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js),
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_an_entered_key_is_never_shown_again_nor_copied_out`](../tests/browser/browser_vimma_agent_chat.js),
