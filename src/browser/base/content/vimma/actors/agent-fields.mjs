@@ -504,8 +504,57 @@ export function describeAgentElements(els) {
   return { elements, forms };
 }
 
-/** Elements whose own click a surrounding `<label>` does not pass on to its control. */
-const INTERACTIVE = new Set(["a", "button", "input", "select", "textarea", "label"]);
+/**
+ * HTML elements that are always interactive content to Gecko: a click in one is not passed on to
+ * the label around it (Element::IsInteractiveHTMLContent and its overrides, engine/dom/html/).
+ */
+const INTERACTIVE = new Set([
+  "button",
+  "details",
+  "embed",
+  "iframe",
+  "label",
+  "select",
+  "textarea",
+]);
+
+/**
+ * HTML elements that are interactive content to Gecko only with an attribute; any other element,
+ * and any element outside HTML, is not.
+ * @type {Record<string, string>}
+ */
+const INTERACTIVE_WITH = {
+  a: "href",
+  audio: "controls",
+  img: "usemap",
+  object: "usemap",
+  video: "controls",
+};
+
+/**
+ * Whether `el` is interactive content as Gecko decides it (Element::IsInteractiveHTMLContent):
+ * HTML only; an `a` only with an href, an `input` unless hidden.
+ * @param {Element} el
+ */
+function isInteractive(el) {
+  if (!isHTMLElement(el)) return false;
+  const name = el.localName;
+  if (INTERACTIVE.has(name)) return true;
+  if (name === "input") return /** @type {HTMLInputElement} */ (el).type !== "hidden";
+  const attr = INTERACTIVE_WITH[name];
+  return attr !== undefined && el.hasAttribute(attr);
+}
+
+/**
+ * The element's parent in the flattened tree, the path a click's event takes (a slotted
+ * element's slot, a shadow root's host); null at the top.
+ * @param {Element} el
+ * @returns {Element | null}
+ */
+function flatParent(el) {
+  const p = el.flattenedTreeParentNode ?? el.parentElement;
+  return p && p.nodeType === 1 ? /** @type {Element} */ (p) : null;
+}
 
 /**
  * What a click on `el` would reach that an agent may not click (F9): a text-like field, a
@@ -532,12 +581,19 @@ function fieldOf(el) {
  * @returns {Element | null}
  */
 function labelledControl(el) {
-  const label = el.closest("label");
-  if (!isHTML(label, "label") || !label.control || label.control === el) return null;
-  // Interactive content is HTML's: Gecko passes a label a click on any other element
-  // (Element::IsInteractiveHTMLContent, engine/dom/base/Element.cpp).
-  if (el !== label && isHTMLElement(el) && INTERACTIVE.has(el.localName)) return null;
-  return label.control;
+  // As HTMLLabelElement::PostHandleEvent: the nearest HTML label on the click's path takes it,
+  // unless an element from the target up to that label is interactive content
+  // (nsContentUtils::IsInInteractiveHTMLContent). A label of another namespace is no label.
+  let interactive = false;
+  /** @type {Element | null} */
+  let label = el;
+  while (label && !isHTML(label, "label")) {
+    interactive ||= isInteractive(label);
+    label = flatParent(label);
+  }
+  if (!isHTML(label, "label") || interactive) return null;
+  const control = label.control;
+  return control && control !== el ? control : null;
 }
 
 /**
