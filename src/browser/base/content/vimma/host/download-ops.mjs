@@ -28,16 +28,16 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { runCommand } from "./browser-ops.mjs";
 import { refusedScheme } from "../core/pageurl.mjs";
 import { openUrl } from "./tab-ops.mjs";
+import { HostServices } from "./host-services.mjs";
 
 /** @import { DownloadEndState, DownloadItem, DownloadOp, DownloadRecord, DownloadSegment } from "../core/downloads.mjs" */
 
 /**
- * @typedef {"AgentDownloads" | "AppConstants" | "DownloadHistory" | "DownloadIntegration"
- *   | "Downloads" | "DownloadsCommon" | "Integration" | "PrivateBrowsingUtils"} LazyName
+ * @typedef {"AppConstants" | "DownloadHistory" | "DownloadIntegration" | "Downloads"
+ *   | "DownloadsCommon" | "Integration" | "PrivateBrowsingUtils"} LazyName
  */
 const lazy = /** @type {Lazy<LazyName>} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
-  AgentDownloads: "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
   AppConstants: "resource://gre/modules/AppConstants.sys.mjs",
   DownloadHistory: "resource://gre/modules/DownloadHistory.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
@@ -139,8 +139,9 @@ function aboutOf(win, d) {
   const about = {
     key,
     // The test AgentDownloads applies to every download: its container, its tab's, or the
-    // quarantine folder (docs/security.md M11).
-    agent: !!lazy.AgentDownloads.isAgentDownload(d),
+    // quarantine folder (docs/security.md M11). Asked before vimma.js provides it, it calls
+    // every download an agent's, which the picker refuses to open.
+    agent: !!HostServices.isAgentDownload(d),
     workspace: workspaceOf(win, d),
     viewsInternally: viewsInternally(d),
   };

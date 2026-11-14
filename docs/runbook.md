@@ -1032,6 +1032,15 @@ changed files. Because that cannot see new tests, the first Sunday of the month 
 `gh workflow run mutation.yml -f full=true`) re-tests everything. The job running Stryker has no
 write token; the separate report job alone has `issues: write`.
 
+Stryker runs the tests in a copy of the repository without `stryker.config.mjs`'s
+`ignorePatterns` (the engine, `src/`, mochitests, git-ignored output). A core test that reads or
+imports a file there passes `npm test` and fails Stryker's dry run, so the run is red and tests no
+mutant. `tools/mutation/test/sandbox.test.ts` fails in every pull request on such a read that it
+can see: a path written in a core test or in a module the test imports. A path built at run time
+shows only in the dry run. Tests that assert a tight speed budget carry the Vitest tag `timing`,
+which the mutation run leaves out: Stryker's instrumented code runs several times slower. To
+check the setup without testing any mutant: `npx stryker run --dryRunOnly` (about a minute).
+
 ### Fuzzing (`fuzz.yml`, spec m7-fuzzing)
 
 The parsers of outside input (control protocol, `config.toml`, routing rules, key notation, the
@@ -1869,11 +1878,13 @@ PR per ecosystem, majors one PR each. Actions stay pinned to commit SHAs. Securi
 for security, patch and minor updates, so GitHub merges them once every required check is
 green; majors, every GitHub Actions update (workflows hold write tokens and the model API secret)
 and every change to a release-path package (Surfer, `ajv` and everything they depend on,
-`node tools/deps/release-path.mjs`), security updates included, get a comment and stay open
+`node tools/deps/release-path.ts`), security updates included, get a comment and stay open
 for review. The workflow's `classify` job decides from the lockfile diff and puts each changed
 package's `npm diff` in its summary and the `release-path-diff` artifact (30 days); the comment
 links the run. If `classify` fails, the PR is held as well: re-run the workflow, or review it
-as a release-path change. Surfer and `ajv` have their own `release-path` group, so a held
+as a release-path change. A re-run reuses the event's base commit, so a PR whose base predates
+`tools/deps/release-path.ts` (opened before #989, or reopened later) fails again: comment
+`@dependabot rebase` on it, which sends a new event on the current `main`, or review it. Surfer and `ajv` have their own `release-path` group, so a held
 update does not hold the other minor and patch updates. No repository setting is needed:
 `classify` is not a required check, because it runs only on Dependabot's PRs and the
 `automerge` job reads its result directly.

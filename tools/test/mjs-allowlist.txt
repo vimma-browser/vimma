@@ -8,8 +8,6 @@ tools/artifact-build/test/artifact-build.test.mjs
 tools/ci/test/docs-only.test.mjs
 tools/ci/test/tree-covered.test.mjs
 tools/ci/tree-covered.mjs
-tools/deps/release-path.mjs
-tools/deps/test/release-path.test.mjs
 tools/import/link-update-certs.mjs
 tools/import/relocate-checkout.mjs
 tools/import/restore-patched.mjs

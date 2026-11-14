@@ -94,60 +94,6 @@ export const EXCEPTIONS: Exception[] = [
     issue: 936,
   },
 
-  // A module lives in a folder other than the one that owns it; moving it changes a chrome://
-  // URL that mochitests import.
-  {
-    from: "workspaces/WindowWorkspaces.sys.mjs",
-    to: "host/tab-labels.mjs",
-    kind: "eager",
-    reason: "the workspace snapshot saves tab labels, which still live in host/",
-    fate: "goes",
-    issue: 936,
-  },
-
-  // The host runs commands that belong to a higher folder, and no registry hands them down yet.
-  {
-    from: "host/VimmaHost.sys.mjs",
-    to: "agent/AgentChat.sys.mjs",
-    kind: "lazy",
-    reason: "the agent line follows the conversations, and nothing passes the host the agent yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/agent-chat-ops.mjs",
-    to: "agent/AgentChat.sys.mjs",
-    kind: "lazy",
-    reason: ":agent give hands a tab to a conversation, and nothing passes the host the agent yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/agent-ui.mjs",
-    to: "agent/AgentChat.sys.mjs",
-    kind: "lazy",
-    reason: "the agent line stops the agent's runs, and nothing passes the host the agent yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/download-ops.mjs",
-    to: "ctl/AgentDownloads.sys.mjs",
-    kind: "lazy",
-    reason:
-      "the downloads picker marks an agent's downloads, and nothing passes the host that test yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/route-ops.mjs",
-    to: "config/ConfigHost.sys.mjs",
-    kind: "lazy",
-    reason: ":route add writes config.toml and reports the result, which a topic cannot carry back",
-    fate: "goes",
-    issue: 936,
-  },
-
   // The agent chat window, built by the host, reaches the agent's services itself.
   {
     from: "ui/agent-chat.mjs",

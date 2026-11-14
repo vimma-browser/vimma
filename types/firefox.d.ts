@@ -252,6 +252,12 @@ declare const Components: {
   ID(id: string): unknown;
   readonly manager: any;
   isSuccessCode(code: number): boolean;
+  // The calling script's frame (xpccomponents.idl, nsIStackFrame): host/host-services.mjs checks
+  // that only vimma.js provides the host's services.
+  readonly stack: {
+    readonly filename: string;
+    readonly caller: { readonly filename: string } | null;
+  };
 };
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
@@ -275,6 +281,8 @@ declare const ChromeUtils: {
   generateQI(interfaces: string[]): (iid: unknown) => any;
   now(): number;
   getXPCOMErrorName(code: number): string;
+  /** The parent process first, then every live content process (nsIDOMProcessParent). */
+  getAllDOMProcesses(): { readonly remoteType: string | null; readonly childID: number }[];
 };
 
 // engine/dom/webidl/Window.webidl (chrome-only part)

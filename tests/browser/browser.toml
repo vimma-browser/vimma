@@ -11,6 +11,8 @@ support-files = ["file_vimma_test.pdf"]
 
 ["browser_vimma_key_capture.js"]
 
+["browser_vimma_host_services.js"]
+
 ["browser_vimma_insert_scroll.js"]
 support-files = [
   "file_vimma_insert_scroll.html",
@@ -73,6 +75,8 @@ support-files = ["file_vimma_copy_motions.html"]
 ["browser_vimma_mozilla_services.js"]
 
 ["browser_vimma_firefox_surfaces_trim.js"]
+
+["browser_vimma_firefox_page_process.js"]
 
 ["browser_vimma_settings_managed.js"]
 
@@ -499,6 +503,9 @@ support-files = [
   "head_vimma_agent_model.js",
   "head_vimma_control.js",
 ]
+
+["browser_vimma_agent_host.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_agent_model.js"]
 
 ["browser_vimma_agent_keys.js"]
 

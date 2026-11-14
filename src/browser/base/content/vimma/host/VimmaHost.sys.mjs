@@ -55,10 +55,10 @@ import { AgentChatWindow } from "../ui/agent-chat.mjs";
 import { giveSelectedTab } from "./agent-chat-ops.mjs";
 import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
 import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
-import { pickerWorkspaces, tabById } from "./goto.mjs";
+import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
 import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
-import { getTabLabel, setTabLabel } from "./tab-labels.mjs";
+import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
 import { SearchHost } from "../search/SearchHost.sys.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
 import { closeTabById, openOrSay } from "./tab-ops.mjs";
@@ -109,6 +109,7 @@ import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popu
 import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 import { contentRunners, hostRunners } from "./runners.mjs";
+import { HostServices } from "./host-services.mjs";
 import {
   dropOutlineAsk,
   followOutline,
@@ -120,12 +121,6 @@ import {
 // Defined with the code that uses them; importers reach them here, as before the runners moved.
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
 export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.mjs";
-
-const lazy = /** @type {Lazy<"AgentChat">} */ ({});
-ChromeUtils.defineESModuleGetters(lazy, {
-  // Lazily: AgentChat reaches this module through the agent commands.
-  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
-});
 
 /** @import { Chord } from "../core/keys.mjs" */
 /** @import { ConfigError } from "../core/config.mjs" */
@@ -643,10 +638,7 @@ export const VimmaHost = {
           tabWindows = windowOf;
           return items;
         },
-        activeId: () =>
-          /** @type {{ gBrowser: { selectedTab: { linkedPanel: string } } }} */ (
-            /** @type {unknown} */ (win)
-          ).gBrowser.selectedTab.linkedPanel,
+        activeId: () => selectedTabId(win),
         select: (tabId) => goToTab(win, tabWindows.get(tabId), tabId),
         reopen: (id) => reopenClosed(win, id),
       }),
@@ -928,7 +920,7 @@ export const VimmaHost = {
       slotChanged: () => state.agentChat.slotChanged(),
       focusChat: () => state.agentChat.normal(),
     });
-    lazy.AgentChat.addListener(state.onAgentChat);
+    HostServices.agentChat.addListener(state.onAgentChat);
     // The update message and the security update question (docs/specs/update-notices.md): the
     // same guards as the agent question, which goes first.
     UpdateUi.register(win, {
@@ -1079,7 +1071,7 @@ export const VimmaHost = {
     state.panel.destroy();
     state.bookmarks.destroy();
     state.outline.destroy();
-    lazy.AgentChat.removeListener(state.onAgentChat);
+    HostServices.agentChat.removeListener(state.onAgentChat);
     state.agentChat.destroy();
     state.tabStrip?.uninit();
     state.toolbar?.uninit();

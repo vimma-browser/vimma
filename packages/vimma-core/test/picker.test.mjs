@@ -592,7 +592,8 @@ describe("tab search (docs/specs/tab-search.md)", () => {
     expect(openPicker(list, {}).mode).toBe("browse");
   });
 
-  test("500 open and 25 closed items: each key well under 8 ms; units are built once", () => {
+  /** 500 open and 25 closed items with the picker in search, and the keys of a typical search. */
+  const bigSearch = () => {
     const words = ["jira", "docs", "mail", "calendar", "bank", "news", "radio", "wiki", "git"];
     const big = Array.from({ length: 525 }, (_, n) => ({
       .../** @type {PickerItem} */ (tabs[0]),
@@ -615,17 +616,30 @@ describe("tab search (docs/specs/tab-search.md)", () => {
         return performance.now() - t0;
       });
     };
+    return { keys, pass };
+  };
+
+  test("500 open and 25 closed items: each text's units are built once", () => {
+    const { pass } = bigSearch();
+    pass();
+    const before = unitsBuilt();
+    pass();
+    // Every text was segmented in the first pass: the second builds no units at all.
+    expect(unitsBuilt() - before).toBe(0);
+  });
+
+  // Tagged `timing`: the budget is for the real matcher, and the mutation run (stryker.config.mjs)
+  // leaves it out, since Stryker's instrumented copy runs several times slower.
+  test("500 open and 25 closed items: each key well under 8 ms", { tags: ["timing"] }, () => {
+    const { keys, pass } = bigSearch();
     // Warm-up passes let the JIT optimise the matcher, as it is after the first few keys in a
     // browser; each key's time is then its fastest of five passes, so a GC pause or a busy
     // neighbour in one pass is not counted as its cost.
     for (let i = 0; i < 3; i++) pass();
-    const before = unitsBuilt();
     const runs = Array.from({ length: 5 }, pass);
     const times = keys.map((_, k) => Math.min(...runs.map((r) => /** @type {number} */ (r[k]))));
     expect(times.length).toBeGreaterThanOrEqual(20);
     expect(Math.max(...times)).toBeLessThan(8);
-    // Every text was segmented in the warm-up: the measured passes build no units at all.
-    expect(unitsBuilt() - before).toBe(0);
   });
 });
 

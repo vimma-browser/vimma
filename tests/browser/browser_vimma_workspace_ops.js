@@ -22,7 +22,7 @@ const { PaneViews } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
 );
 const { getTabLabel, setTabLabel } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/host/tab-labels.mjs",
+  "chrome://browser/content/vimma/workspaces/tab-labels.mjs",
 );
 const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");
 const { SessionStore } = ChromeUtils.importESModule(

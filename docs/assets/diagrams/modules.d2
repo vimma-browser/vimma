@@ -60,8 +60,6 @@ ctl -> host { class: down }
 ctl -> layer1: "3" { class: down }
 ctl -> workspaces { class: down }
 host -> actors { class: down }
-agent <- host { class: up-lazy }
-config <- host { class: up-lazy }
 ctl <- host { class: up }
 host -> layer1: "4" { class: down }
 host -> workspaces { class: down }
@@ -72,7 +70,6 @@ start -> layer1.ui { class: down }
 agent <- layer1.ui { class: up-lazy }
 config <- layer1.ui { class: up-lazy }
 host <- layer1.ui { class: up-lazy }
-host <- workspaces { class: up }
 workspaces -> layer1.split { class: down }
 
-legend: "An arrow points from a folder to one it imports: solid when the import loads with the\nmodule (eager), dashed when a getter or a call loads it later (lazy).\nGrey: down the layers, as ADR-026 allows.\nAn arrow to a band: imports that many of its folders.\nOrange: the 16 upward imports tools/layering/layers.ts lists, one arrow per pair of folders (#936 removes them).\nEager cycle, closed only by orange arrows: actors/, ctl/, host/, workspaces/.\nvimma.js imports every folder drawn here.\ncore/ is imported by every folder drawn here except omarchy/ and start/." { class: legend }
+legend: "An arrow points from a folder to one it imports: solid when the import loads with the\nmodule (eager), dashed when a getter or a call loads it later (lazy).\nGrey: down the layers, as ADR-026 allows.\nAn arrow to a band: imports that many of its folders.\nOrange: the 10 upward imports tools/layering/layers.ts lists, one arrow per pair of folders (#936 removes them).\nEager cycle, closed only by orange arrows: actors/, ctl/, host/.\nvimma.js imports every folder drawn here.\ncore/ is imported by every folder drawn here except omarchy/ and start/." { class: legend }

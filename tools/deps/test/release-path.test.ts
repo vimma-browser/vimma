@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ROOTS, classify, releasePath } from "../release-path.mjs";
+import { ROOTS, classify, releasePath } from "../release-path.ts";
+import type { Entry } from "../release-path.ts";
 import { defined } from "../../test/defined.ts";
 import { jobs } from "../../test/workflow-runners.mjs";
 
@@ -11,34 +12,25 @@ import { jobs } from "../../test/workflow-runners.mjs";
 // release build runs is computed from package-lock.json, and a Dependabot change to any of them
 // waits for a person.
 const root = new URL("../../../", import.meta.url);
-/** @param {string} path */
-const read = (path) => readFileSync(new URL(path, root), "utf8");
-const cli = new URL("../release-path.mjs", import.meta.url).pathname;
+const read = (path: string) => readFileSync(new URL(path, root), "utf8");
+const cli = new URL("../release-path.ts", import.meta.url).pathname;
 
-/**
- * A package-lock.json entry, with the fields npm writes that release-path.mjs does not read.
- * @typedef {import("../release-path.mjs").Entry
- *   & { devDependencies?: Record<string, string>, optional?: boolean }} LockEntry
- */
+/** A package-lock.json entry, with the fields npm writes that release-path.ts does not read. */
+type LockEntry = Entry & { devDependencies?: Record<string, string>; optional?: boolean };
 
-/**
- * @param {string} name
- * @param {string} version
- * @param {LockEntry} [extra]
- * @returns {LockEntry}
- */
-const entry = (name, version, extra = {}) => ({
+const entry = (name: string, version: string, extra: LockEntry = {}): LockEntry => ({
   version,
   resolved: `https://registry.npmjs.org/${name}/-/${name.split("/").pop()}-${version}.tgz`,
   integrity: `sha512-${name}-${version}`,
   ...extra,
 });
 
-/**
- * A small lockfile: Surfer and ajv with transitive, nested and optional packages, and others.
- * @returns {{ name: string, lockfileVersion: number, packages: Record<string, LockEntry> }}
- */
-const fixture = () => ({
+/** A small lockfile: Surfer and ajv with transitive, nested and optional packages, and others. */
+const fixture = (): {
+  name: string;
+  lockfileVersion: number;
+  packages: Record<string, LockEntry>;
+} => ({
   name: "fixture",
   lockfileVersion: 3,
   packages: {
@@ -63,12 +55,7 @@ const fixture = () => ({
   },
 });
 
-/**
- * @param {ReturnType<typeof fixture>} lock
- * @param {string} key
- * @param {LockEntry} change
- */
-const bump = (lock, key, change) => {
+const bump = (lock: ReturnType<typeof fixture>, key: string, change: LockEntry) => {
   const next = structuredClone(lock);
   next.packages[key] = { ...next.packages[key], ...change };
   return next;
@@ -105,9 +92,11 @@ describe("release path", () => {
   });
 
   it("the roots cover every package the release build job imports", () => {
-    const lock = JSON.parse(read("package-lock.json"));
-    /** @type {Map<string, string>} executable name -> top-level package */
-    const bins = new Map();
+    const lock = JSON.parse(read("package-lock.json")) as {
+      packages: Record<string, { bin?: Record<string, string> }>;
+    };
+    // executable name -> top-level package
+    const bins = new Map<string, string>();
     for (const [key, value] of Object.entries(lock.packages)) {
       const m = /^node_modules\/((?:@[^/]+\/)?[^/]+)$/.exec(key);
       if (m?.[1] && value.bin) for (const bin of Object.keys(value.bin)) bins.set(bin, m[1]);
@@ -116,12 +105,9 @@ describe("release path", () => {
     const steps = jobs(read(".github/workflows/release.yml")).get("build")?.steps;
     if (!Array.isArray(steps)) throw new Error("release.yml: the build job has no steps");
 
-    /** @type {Set<string>} */
-    const packages = new Set();
-    /** @type {Set<string>} */
-    const seen = new Set();
-    /** @type {{ shell: boolean, text: string }[]} */
-    const texts = steps.map((step) => ({
+    const packages = new Set<string>();
+    const seen = new Set<string>();
+    const texts: { shell: boolean; text: string }[] = steps.map((step) => ({
       shell: true,
       text: typeof step.run === "string" ? step.run : "",
     }));
@@ -160,8 +146,7 @@ describe("release path", () => {
       }
     }
     // Relative imports resolve against the importing file, so walk them from each module.
-    /** @type {string[]} */
-    const modules = [...seen].filter((p) => /\.m?js$/.test(p));
+    const modules: string[] = [...seen].filter((p) => /\.m?js$/.test(p));
     while (modules.length > 0) {
       const path = String(modules.pop());
       for (const m of read(path).matchAll(/(?:from|import)\s*\(?\s*"(\.[^"]+)"/g)) {

@@ -124,14 +124,25 @@ each without a change in behaviour:
   `workspaces/WindowWorkspaces.sys.mjs` saves and restores tab labels from `host/tab-labels.mjs`;
   the labels move to `workspaces/`, which saves the rest of the snapshot. Both moves change a
   `chrome://` URL that mochitests import, so each comes with its test edits in its own pull
-  request. (Since changed: the key log is `host/key-log.mjs`; 16 exceptions remain.)
+  request. (Since changed: both moves are done; the key log is `host/key-log.mjs` and the labels
+  are `workspaces/tab-labels.mjs`.)
 - **The host runs commands of higher folders** (lazy: `host/VimmaHost.sys.mjs`,
   `host/agent-chat-ops.mjs` and `host/agent-ui.mjs` → `agent/AgentChat.sys.mjs`;
   `host/download-ops.mjs` → `ctl/AgentDownloads.sys.mjs`; `host/route-ops.mjs` →
   `config/ConfigHost.sys.mjs`). The agent line follows conversations, `:agent give` hands a tab
   over, the downloads picker marks an agent's downloads, `:route add` writes `config.toml` and
   reports the result. The higher folder hands the host an interface object at startup instead
-  (decision 4).
+  (decision 4). (Since changed: done. `host/host-services.mjs` holds the three services the host
+  runs, `agentChat`, `isAgentDownload` and `addRoute`, and the host calls them through
+  `HostServices`. `vimma.js`, the window script, which may import every folder, provides them with
+  `HostServices.provide` before it starts the first window's host. A service is provided once
+  and never replaced (a second window's `vimma.js` hands over the same ones), which is the
+  guarantee; a check on the caller's file name catches a mistaken caller. One asked for before
+  it is provided gives the answer that does the least: every download counts as an agent's,
+  there are no conversations, and `config.toml` is not written.
+  A registry rather than arguments to `VimmaHost.init`, because the five calls sit in four
+  modules that the host reaches on different paths, and threading the services through each
+  would change their signatures for no gain in what they depend on.)
 - **The agent chat window drives the agent** (lazy: `ui/agent-chat.mjs` →
   `agent/AgentChat.sys.mjs`, `agent/AgentCli.sys.mjs`, `agent/AgentKeys.sys.mjs`,
   `config/ConfigHost.sys.mjs`, `host/mcp-ops.mjs`). The host builds the window, so it passes the
@@ -181,6 +192,10 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   live in a module file.
 - A module's folder is read from its URL, which is its source path only while `jar.mn`
   packages each module under its own path; the check fails on a `jar.mn` line that does not.
+- A string that names `vimma.js` outside a load position (as `host/host-services.mjs` names
+  its one expected caller) is not an edge: a classic script at the top of `vimma/` cannot be
+  imported by any module, so its URL is text, as a page's is. Passed to `importESModule` or
+  `import()`, it is still an edge.
 - Strings built at run time from parts the check cannot see (a value read from a pref or a
   file) are not import specifiers it can read; it refuses non-fixed specifiers where modules
   are loaded, and ignores other computed strings.
