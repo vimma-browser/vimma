@@ -100,9 +100,14 @@ only the agent workspace, and every request asks you first (§12).
   its `downloads` field only which `↓` segment the status bar draws, as one word of a fixed list
   (`progress`, `paused`, `done`, `failed`, `blocked`) or `null`; it **never** carries a file's
   name, size, URL or site, and is `null` in a private window. Its `grep` and `urlbar` fields
-  are one flag each (live grep's search or preview still to come; the address bar's suggestion
-  list drawn for the text last searched) and **never** carry the query, the typed text, a count
-  of matches or results, or a row; both are `null` in a private window.
+  are one flag each (live grep's search, preview or jump still to come; the address bar's
+  suggestion list drawn for the text last searched) and **never** carry the query, the typed
+  text, a count of matches or results, or a row; both are `null` in a private window. Its `pdf`
+  field is one flag, whether the selected tab's PDF viewer has drawn the pages in its view, and
+  `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
+  document's title or URL, or the outline, and is `null` in a private window. The viewer's own
+  report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
+  changes when a script's wait ends, nothing else.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
@@ -120,7 +125,11 @@ only the agent workspace, and every request asks you first (§12).
   [`grep and urlbar are one flag each, or null`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_live_grep_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_the_suggestion_list_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
-  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js)
+  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js),
+  [`test_state_reports_a_grep_jump_until_it_has_drawn`](../tests/browser/browser_vimma_state_waits.js),
+  [`pdf is one flag, or null`](../packages/vimma-core/test/control.test.mjs),
+  [`pdfDrawn`](../packages/vimma-core/test/pdf.test.mjs),
+  [`test_state_reports_the_pdf_viewer_as_drawn`](../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),
@@ -1713,21 +1722,36 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   the same link), and once more after the mouse events, which the page can handle; a changed
   element is not clicked and the call says so. It answers before it clicks, so a dialog the
   click opens never holds the call; a request that answers after the call stopped waiting
-  clicks nothing. A dialog's text reaches the agent only inside the untrusted-content
-  delimiters, and no tool answers a page dialog. After a click that loaded no page, the result
-  says which parts of the page changed in place (`changed`: the clicked element, the other
-  listed elements, the frame's text outside scripts and styles, a visible dialog element), as
-  fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
-  the clicked element's frame's child, which keeps only a hash of the text, sends no page text
-  and reads no sensitive field's value, as in `vimma_elements` (M31). That check runs once the
-  clicked element's frame has settled (M28), after the submission allowance of M28 is closed,
-  so it opens nothing; a submission the page tries during the call is still stopped and named.
+  clicks nothing. A click whose page is hidden between that answer and the click (a navigation in
+  the page's process, or the back-forward cache) clicks nothing: the child skips it on the page's
+  trusted `pagehide`, which the page cannot stop, and tells the parent then, naming the step by the
+  parent's own number, ahead of the next document, so the call says nothing was clicked instead of
+  reporting the new page as the click's. A navigation to another process is not covered: the old
+  process can still run the click or skip it after the switch, its message can arrive late or not at
+  all, and the call then reports the click as run. An element of a page its frame no longer shows is
+  never pressed, by an agent or by your hints, and no step the child runs after its answer is left
+  undecided when the page breaks it: it is skipped. A dialog's text reaches the agent only inside
+  the untrusted-content delimiters, and no tool answers a page dialog. After a click that loaded no
+  page, the result says which parts of the page changed in place (`changed`: the clicked element,
+  the other listed elements, the frame's text outside scripts and styles, a visible dialog element),
+  as fixed words from a list that both the browser and `vimma-ctl mcp` check; the comparison runs in
+  the clicked element's frame's child, which keeps only a hash of the text, sends no page text and
+  reads no sensitive field's value, as in `vimma_elements` (M31). That check runs once the clicked
+  element's frame has settled (M28), after the submission allowance of M28 is closed, so it opens
+  nothing; a submission the page tries during the call is still stopped and named.
   [`test_activate_gives_the_page_no_user_activation`](../tests/browser/browser_vimma_mcp_activate.js),
   [`test_activate_says_what_changed_in_place`](../tests/browser/browser_vimma_mcp_activate_changes.js),
   [`activate_says_what_changed_in_place`](../tools/vimma-ctl/src/mcp/render.rs),
   [`agent-activate: what changed in place, from a fixed list`](../packages/vimma-core/test/control-v2.test.mjs),
   [`agent_clicks_never_synthesise_input_or_user_activation`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_activate_reports_a_dialog`](../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_a_click_a_navigation_overtakes_is_skipped_and_said`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_click_on_a_page_going_into_the_bfcache_is_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_hint_click_after_the_page_was_replaced_clicks_nothing`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_page_that_stops_its_pagehide_still_has_the_click_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_an_outcome_asked_as_the_page_goes_away_reads_the_skip`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_late_skip_of_an_earlier_step_is_not_the_next_ones`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_late_skip_after_the_current_ones_leaves_it_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
   [`agent-activate: the page after the click, a dialog, a stopped submission`](../packages/vimma-core/test/control-v2.test.mjs),
   [`activate_says_what_the_click_did`](../tools/vimma-ctl/src/mcp/render.rs)
 - M27. `agent-fill` (mcp-forms F12, F13) **must never** set a sensitive field: one that is or
@@ -1753,9 +1777,15 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   fit and the fields it leaves out counted; a fill that submits is refused unless its question
   shows every name and value whole. `:mcp log` keeps the values of the calls asked or run in
   full, in memory; a call refused before its question is logged with its labels. A child
-  request that runs after the parent stopped waiting sets nothing.
+  request that runs after the parent stopped waiting sets nothing, nor does one whose page is
+  hidden before it runs (a navigation in the page's process, or the back-forward cache). The
+  call stops there and tells the agent that field "is gone: its page went away" when the
+  navigation replaced the page, or "changed since the user was asked" when the page went into
+  the back-forward cache.
   [`test_fill_refuses_password_card_otp_and_file_fields`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fill_stops_when_a_field_turns_sensitive`](../tests/browser/browser_vimma_mcp_fill.js),
+  [`test_a_fill_on_a_page_going_into_the_bfcache_sets_nothing`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_fill_a_navigation_overtakes_is_said_gone`](../tests/browser/browser_vimma_agent_click_race.js),
   [`test_fill_sets_values_and_fires_input_and_change`](../tests/browser/browser_vimma_mcp_fill.js),
   [`agent_fills_never_set_a_file`](../tests/browser/browser_vimma_security_invariants.js),
   [`password, payment card and one-time-code fields are never filled`](../packages/vimma-core/test/agent-act.test.mjs),
@@ -1837,21 +1867,25 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   message and every load or request the page's process starts later go over the same IPC
   channel, in order, so a page that puts the form back and submits by itself, at once or after
   keeping its process busy, is cancelled. The call then refuses the click, and a fill says the
-  form was not sent. A submission the page starts while the element is being pressed, before
-  the child's check, cannot be told from the click's own: it is let through only to the asked
-  method and destination, as the click's would be. A frame of another process in the tab is
-  not ordered with that message, and until the call ends it too can send only the asked
-  submission. So can a subframe that skips the step and is removed before its message is sent:
-  the allowance stays open until the call ends, still only for the method and destination
-  asked. The result
-  and `:mcp log` name the host it was going to. Clicks and fills on one tab run one at a time, so no call
-  takes another's allowance. Your activation after the step (a click or a key of yours in that
-  page) and your `f` hints end the mark, so your own submissions in an agent tab go through, and
-  so do those of a page no agent stepped in. Not covered: a page the agent's click loaded that
-  submits a form by itself (the mark ends with the document it was set on), requests that are
-  not http or https, and data a button's script sends with `fetch`, also from a cancelled
-  submission's `submit` listener: such a button is an ordinary click (mcp-forms F17).
+  form was not sent. A step whose page is hidden before it runs by a navigation in the page's
+  process, or the back-forward cache (M26), is skipped the same way, its message sent as the page is
+  hidden, while the frame can still send it; across a process switch it may not arrive, and the
+  allowance then stays open until the call ends, still only for the method and destination the
+  question named. A submission the page starts while the element is being pressed, before the
+  child's check, cannot be told from the click's own: it is let through only to the asked method and
+  destination, as the click's would be. A frame of another process in the tab is not ordered with
+  that message, and until the call ends it too can send only the asked submission. So can a subframe
+  that skips the step and is removed before its message is sent: the allowance stays open until the
+  call ends, still only for the method and destination asked. The result and `:mcp log` name the
+  host it was going to. Clicks and fills on one tab run one at a time, so no call takes another's
+  allowance. Your activation after the step (a click or a key of yours in that page) and your `f`
+  hints end the mark, so your own submissions in an agent tab go through, and so do those of a page
+  no agent stepped in. Not covered: a page the agent's click loaded that submits a form by itself
+  (the mark ends with the document it was set on), requests that are not http or https, and data a
+  button's script sends with `fetch`, also from a cancelled submission's `submit` listener: such a
+  button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_skipped_submit_in_a_frame_withdraws_the_allowance`](../tests/browser/browser_vimma_agent_click_race.js),
   [`test_basket_form_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_message_form_asks_under_a_grant`](../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_a_allows_that_button_on_that_site`](../tests/browser/browser_vimma_mcp_checkpoint.js),
@@ -4471,7 +4505,11 @@ bindings, so it is accepted here.
 - V6. The parent **must** parse every state record with `parsePdfState`, which bounds every
   number, drops a page label over 32 characters and strips control and Unicode format characters
   (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
-  status bar **must** draw it as text.
+  status bar **must** draw it as text. The record's `drawn` flag and size are read by the
+  adapter from the viewer's DOM and window through Xrays (from the current page outward, each
+  page's `data-loaded` attribute and `loadingIcon` class; `innerWidth`, `innerHeight` and `devicePixelRatio`), its
+  operation count is the actor's own, and they feed only the control socket's `state.pdf` flag
+  (S9).
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../packages/vimma-core/test/pdf.test.mjs)
 - V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded

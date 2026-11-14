@@ -7,6 +7,7 @@ import {
   parsePdfPosition,
   parsePdfState,
   pdfDocumentKey,
+  pdfDrawn,
   pdfPageText,
   pdfPageTarget,
   pdfRotation,
@@ -19,7 +20,18 @@ import {
 
 // docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
 // `doc` counts the documents pdf.js has opened in this viewer (V11).
-const good = { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 };
+// `drawn`, `ops`, `width` and `height` say what the viewer had drawn when it reported (#1006).
+const good = {
+  page: 3,
+  pages: 12,
+  label: "",
+  find: { current: 0, total: 0 },
+  doc: 1,
+  drawn: true,
+  ops: 0,
+  width: 1040,
+  height: 700,
+};
 
 describe("parsePdfState", () => {
   test("accepts a full record", () => {
@@ -55,11 +67,53 @@ describe("parsePdfState", () => {
     });
   });
 
+  // The fields only `state.pdf` reads (#1006) can never take away the page state PDF mode
+  // needs (the status bar's page, find, the outline, marks, `F`): unusable ones only make the
+  // report not drawn.
+  describe("a report whose drawing fields are unusable keeps its page and is not drawn", () => {
+    test.each([
+      ["no drawn flag", { ...good, drawn: undefined }],
+      ["a drawn flag that is not a boolean", { ...good, drawn: 1 }],
+      ["no count of operations", { ...good, ops: undefined }],
+      ["a count of operations that is not a count", { ...good, ops: -1 }],
+      ["a fractional width", { ...good, width: 1040.5 }],
+      ["a width beyond any screen", { ...good, width: 1e9 }],
+      ["no height", { ...good, height: undefined }],
+      ["none of them", { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 }],
+    ])("%s", (_name, raw) => {
+      const s = parsePdfState(raw);
+      expect(s).toMatchObject({ page: 3, pages: 12, label: "", doc: 1, drawn: false });
+      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700 })).toBe(false);
+    });
+  });
+
   test("a page label cannot carry bidi or zero-width characters", () => {
     const s = parsePdfState({ ...good, label: "i\u202Ev\u200B\u0007" });
     expect(s?.label).toBe("iv");
     expect(stripInvisible("a\u2066b\u2069c\uFEFF")).toBe("abc");
     expect(stripInvisible("i v\u2028x\u2029\u3000")).toBe("i vx");
+  });
+});
+
+// `state.pdf` (#1006): the viewer's last report says every page in view was drawn, it came after
+// every operation Vimma sent it, and the viewer then had the size its tab has now.
+describe("pdfDrawn", () => {
+  const now = { sent: 2, width: 1040, height: 700 };
+  test("drawn once the report answers every operation sent, at the tab's size", () => {
+    expect(pdfDrawn({ ...good, ops: 2 }, now)).toBe(true);
+    expect(pdfDrawn({ ...good, ops: 3 }, now)).toBe(true);
+  });
+  test.each([
+    ["no report yet", null],
+    ["a page in view still to draw", { ...good, ops: 2, drawn: false }],
+    ["an operation sent after the report", { ...good, ops: 1 }],
+    ["a report from before the tab was resized", { ...good, ops: 2, width: 1280 }],
+    ["a report from before the tab grew taller", { ...good, ops: 2, height: 760 }],
+  ])("not drawn: %s", (_name, s) => {
+    expect(pdfDrawn(s, now)).toBe(false);
+  });
+  test("a size within a pixel's rounding is the same size", () => {
+    expect(pdfDrawn({ ...good, ops: 2, width: 1041, height: 699 }, now)).toBe(true);
   });
 });
 

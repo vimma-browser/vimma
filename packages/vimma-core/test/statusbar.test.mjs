@@ -909,7 +909,17 @@ describe("the security cues outrank the kept URL", () => {
 });
 
 describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
-  const pdf = { page: 4, pages: 120, label: "iv", find: { current: 0, total: 0 }, doc: 1 };
+  const pdf = {
+    page: 4,
+    pages: 120,
+    label: "iv",
+    find: { current: 0, total: 0 },
+    doc: 1,
+    drawn: true,
+    ops: 0,
+    width: 1280,
+    height: 760,
+  };
   test("page 3/12 and page iv (4/120) beside the tab, nothing outside a PDF", () => {
     expect(
       texts(statusSegments({ ...base, pdf: { ...pdf, page: 3, pages: 12, label: "" } })).page,

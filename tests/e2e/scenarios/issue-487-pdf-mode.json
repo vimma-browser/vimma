@@ -26,24 +26,33 @@
       }
     },
     {
-      "sleep": 2
+      "wait-for-state": {
+        "pdf": {
+          "drawn": true
+        }
+      }
     },
     {
       "keys": "3 G"
     },
     {
-      "sleep": 1
+      "wait-for-state": {
+        "mode": "normal",
+        "pdf": {
+          "drawn": true
+        }
+      }
     },
     {
       "keys": "tab"
     },
     {
       "wait-for-state": {
-        "mode": "index"
+        "mode": "index",
+        "pdf": {
+          "drawn": true
+        }
       }
-    },
-    {
-      "sleep": 1
     },
     {
       "screenshot": "pdf-outline"

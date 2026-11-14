@@ -1156,18 +1156,20 @@ export const VimmaHost = {
    * m0-control-protocol-and-vimma-ctl.md, "state"): whether a notice is shown and whether the
    * prompt line is open; the agent chat window's view, how many list rows and transcript entries
    * it draws, and its question slot; the status bar's agent segment, with whether the agent
-   * question line shows its keys hint (armed); which `↓` segment the bar draws; and whether live
-   * grep and the address bar's suggestion list have more to draw for what was typed. All of it
-   * as drawn, so it says what a screenshot would show; counts, flags and fixed words only, never
-   * text, so no page, title, file, query or conversation reaches the socket through them
-   * (security.md S9). The chat window never opens in a private window: `null` there.
+   * question line shows its keys hint (armed); which `↓` segment the bar draws; whether live
+   * grep (its search, preview or jump) and the address bar's suggestion list have more to draw
+   * for what was typed; and whether the selected tab's PDF viewer has drawn the pages in view.
+   * All of it as drawn, so it says what a screenshot would show; counts, flags and fixed words
+   * only, never text, so no page, title, file, query or conversation reaches the socket through
+   * them (security.md S9). The chat window never opens in a private window: `null` there.
    * @param {BrowserWindow} win
    * @returns {{ notice: boolean, prompt: boolean,
    *   chat: { view: string, rows: number, entries: number,
    *     question: { armed: boolean } | null } | null,
    *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
    *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null,
-   *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null }}
+   *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null,
+   *   pdf: { drawn: boolean } | null }}
    */
   screen(win) {
     const state = states.get(win);
@@ -1180,6 +1182,7 @@ export const VimmaHost = {
         downloads: null,
         grep: null,
         urlbar: null,
+        pdf: null,
       };
     }
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
@@ -1203,9 +1206,11 @@ export const VimmaHost = {
           question: ui.slot.isOpen ? { armed: ui.slot.armed } : null,
         }
       : null;
-    const grep = state.grep.isOpen ? { busy: state.grep.busy } : null;
+    const grep = state.grep.drawn();
     const urlbar = state.urlbarQueries?.drawn() ?? null;
-    return { notice, prompt, chat, agent, downloads, grep, urlbar };
+    const browser = win.gBrowser?.selectedBrowser;
+    const pdf = browser ? PdfOps.drawn(browser) : null;
+    return { notice, prompt, chat, agent, downloads, grep, urlbar, pdf };
   },
 
   /**

@@ -313,24 +313,25 @@ describe("the m3-private-workspace scenario (#236)", () => {
 describe("screenshots taken a fixed time after a step (#981)", () => {
   // A screenshot right after a `sleep` photographs whatever the machine has drawn by then: under
   // load, a notice still shown or a list not yet filled. A scenario waits for the state it
-  // photographs instead (`wait-for-state` on `notice`, `chat`, `agent`). These still sleep, each
-  // judged in #981's pull request; a fixed one comes off the list, and none is added.
-  const LEFT = [
-    "issue-241-live-grep: live-grep-jump",
-    "issue-487-pdf-mode: pdf-outline",
-    "issue-618-downloads-picker: downloads-picker",
-  ];
+  // photographs instead (`wait-for-state` on the field of `state` that reports it; #1006).
   const all = loadScenarios(SCENARIOS, {});
 
-  it("no screenshot follows a sleep beyond the ones left for follow-ups", () => {
-    const afterSleep = all.flatMap((s) =>
-      s.steps.flatMap((step, i) =>
-        step.screenshot && s.steps[i - 1]?.sleep !== undefined
-          ? [`${s.name}: ${step.screenshot}`]
-          : [],
-      ),
+  // Not only the step right before: a wait, then a sleep or a key, then the screenshot would
+  // photograph the screen a time after the key all the same.
+  it("each screenshot waits on state after the last sleep and the last key before it", () => {
+    const last = (steps: (typeof all)[number]["steps"], i: number, key: string) => {
+      for (let j = i - 1; j >= 0; j--) if (Object.hasOwn(steps[j] ?? {}, key)) return j;
+      return -1;
+    };
+    const unwaited = all.flatMap((s) =>
+      s.steps.flatMap((step, i) => {
+        if (!step.screenshot) return [];
+        const wait = last(s.steps, i, "wait-for-state");
+        const ok = wait >= 0 && wait > last(s.steps, i, "sleep") && wait > last(s.steps, i, "keys");
+        return ok ? [] : [`${s.name}: ${step.screenshot}`];
+      }),
     );
-    expect(afterSleep).toEqual(LEFT);
+    expect(unwaited).toEqual([]);
   });
 
   it("m0-agent-cli photographs each screen once its notice is gone", () => {
@@ -393,6 +394,14 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     ],
     // Right after `y` to vimma_show: its notice and the ran dot, both still shown.
     ["m0-mcp-drive", "m0-mcp-drive-shown", { notice: true, agent: { ran: true } }],
+    // Enter on a result: the picker has closed and the jump has selected and scrolled to the
+    // match in its tab (live grep reports the jump under way as busy, then null).
+    ["issue-241-live-grep", "live-grep-jump", { mode: "normal", grep: null }],
+    // The outline has the keys, and the viewer has drawn every page in view at the width the
+    // outline leaves it, after the report that follows `3 G`.
+    ["issue-487-pdf-mode", "pdf-outline", { mode: "index", pdf: { drawn: true } }],
+    // The picker opens once its rows are read, and opening it clears the bar's `↓ done`.
+    ["issue-618-downloads-picker", "downloads-picker", { mode: "help", downloads: null }],
   ])("%s photographs %s once the screen it shows is drawn", (name, shot, expected) => {
     const steps = all.find((s) => s.name === name)?.steps ?? [];
     const i = steps.findIndex((step) => step.screenshot === shot);

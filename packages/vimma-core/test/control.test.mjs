@@ -523,6 +523,37 @@ describe("validateMessage: state", () => {
     ]);
   });
 
+  // #1006: whether the selected tab's PDF viewer has drawn every page in view, as one flag, so a
+  // script waits for that rather than for a time; never the page, the page count, the title or
+  // the outline (security.md S9).
+  test("pdf is one flag, or null", () => {
+    for (const pdf of [null, { drawn: true }, { drawn: false }]) {
+      expect(errorsOf(ok({ ...state, pdf }), { command: "state" })).toEqual([]);
+    }
+    for (const pdf of ["report.pdf", 3, true, [], { drawn: "yes" }, {}]) {
+      expect(errorsOf(ok({ ...state, pdf }), { command: "state" })).not.toEqual([]);
+    }
+    expect(errorsOf(ok({ ...state, pdf: { drawn: true, page: 3 } }), { command: "state" })).toEqual(
+      ['unknown field "result.pdf.page"'],
+    );
+    expect(errorsOf(ok({ ...state, pdf: { drawn: 1 } }), { command: "state" })).toEqual([
+      "result.pdf.drawn must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, pdf: "Page three" }), { command: "state" })).toEqual([
+      "result.pdf must be an object or null",
+    ]);
+    // A private window's documents are part of its browsing: withheld, as its URLs.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, pdf: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, pdf: { drawn: true } }), { command: "state" })).toEqual([
+      "result.pdf must be null in a private window",
+    ]);
+  });
+
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {
     const offer = {
       appVersion: "160.0",
