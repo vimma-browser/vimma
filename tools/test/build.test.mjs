@@ -1,5 +1,5 @@
 // npm run build (tools/build.ts): which command it runs. The interpreter choice is in
-// mach-python.test.mjs; nothing here builds.
+// mach-python.test.ts; nothing here builds.
 import { describe, expect, it } from "vitest";
 import { buildCommand } from "../build.ts";
 

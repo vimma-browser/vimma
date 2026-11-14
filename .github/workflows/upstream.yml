@@ -162,7 +162,7 @@ jobs:
           TITLE: ${{ needs.detect.outputs.key-title }}
           REPORT: ${{ needs.detect.outputs.key-report }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OWNER: JRanne # tools/repo.mjs MAINTAINER: an organization cannot be @-mentioned
+          OWNER: JRanne # tools/repo.ts MAINTAINER: an organization cannot be @-mentioned
         run: |
           printf '@%s %s\n\nDetected by [upstream.yml](%s).\n' "$OWNER" "$REPORT" "$RUN_URL" > key.md
           gh label create security --color B60205 --description "Security: act within days" --force
@@ -201,7 +201,7 @@ jobs:
           SECURITY: ${{ needs.detect.outputs.security }}
           ISSUE: ${{ needs.detect.outputs.issue }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OWNER: JRanne # tools/repo.mjs MAINTAINER: an organization cannot be @-mentioned
+          OWNER: JRanne # tools/repo.ts MAINTAINER: an organization cannot be @-mentioned
         run: |
           printf '%s' "$DETECTION" > detection.json
           gh label create upstream --color 1D76DB --description "Firefox upstream release" --force
@@ -535,7 +535,7 @@ jobs:
           DETECTION: ${{ needs.detect.outputs.detection }}
           DRIFT_LINE: ${{ needs.detect.outputs.drift-line }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OWNER: JRanne # tools/repo.mjs MAINTAINER: an organization cannot be @-mentioned
+          OWNER: JRanne # tools/repo.ts MAINTAINER: an organization cannot be @-mentioned
         run: |
           printf '%s' "$DETECTION" > detection.json
           title=$(node tools/upstream/autopilot-body.mjs drift-title --detection detection.json)

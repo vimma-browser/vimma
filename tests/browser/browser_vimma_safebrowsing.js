@@ -46,7 +46,7 @@ add_task(async function wait_for_safebrowsing_init() {
 });
 
 add_task(function test_build_has_the_expected_key() {
-  // tools/mochitest.mjs sets this from the key file; the nightly sets 1.
+  // tools/mochitest.ts sets this from the key file; the nightly sets 1.
   const expected = Services.env.get("VIMMA_EXPECT_SAFEBROWSING_KEY");
   if (expected === "") {
     info(`No expectation set; this build is ${HAS_KEY ? "keyed" : "keyless"}`);

@@ -14,7 +14,7 @@ import {
   supportsThemeName,
 } from "../promo.ts";
 import { ROSE_PINE } from "../shots.ts";
-import { flatCore } from "../../sync-core.mjs";
+import { flatCore } from "../../sync-core.ts";
 
 describe("parseGeometry", () => {
   it("reads WIDTHxHEIGHT", () => {

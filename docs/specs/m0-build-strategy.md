@@ -15,7 +15,8 @@ from forks once the repo is public.
   Writes `engine/mozconfig.artifact` from `engine/mozconfig`, runs `mach build` with
   `MOZ_ARTIFACT_REVISION` from `engine/sourcestamp.txt`, links `dist/bin/<binaryName>` to the
   `firefox` launcher, writes `dist/bin/browser/application.ini` (ours plus `UAName`).
-- `tools/mochitest.mjs --artifact`: `MOZCONFIG=engine/mozconfig.artifact` and
+- `tools/mochitest.mjs --artifact` (Since changed: `mochitest.ts`, ADR-025):
+  `MOZCONFIG=engine/mozconfig.artifact` and
   `--setenv=XUL_APP_FILE=…/obj-artifact/dist/bin/browser/application.ini`.
 - `e2e.yml`: one job on `ubuntu-24.04`, `pull_request` (+ `ready_for_review`, manual), no paths
   filter (a `changes` job skips docs-only PRs with `if:`), read-only token, no secrets, actions
@@ -32,7 +33,8 @@ from forks once the repo is public.
   options and objdir; refuses an already-artifact mozconfig; `sourceRevision` reads the
   40-hex revision and throws on empty, missing or short; `uaName` from `moz.configure`;
   `appIniForArtifact` adds/replaces `UAName` in `[App]`, no-op for null, throws without `[App]`.
-- `tools/test/mochitest.test.mjs`: default suite headless; path mapping; `--headed`; `--artifact`.
+- `tools/test/mochitest.test.mjs` (Since changed: `mochitest.test.ts`, ADR-025): default suite
+  headless; path mapping; `--headed`; `--artifact`.
 - Further tests: `candidateTree` (release for 0.x and `-nightly.*`; b/a/esr elsewhere),
   `indexNamespace`, `indexTask` on fixture responses (found, 404, expired, HTTP 500, malformed),
   `refreshAppIni` rewriting the copy after a rebuild (temp dir).

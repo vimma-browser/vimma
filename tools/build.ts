@@ -11,7 +11,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { machEnv, machPythonOrExit, writePythonShim } from "./mach-python.mjs";
+import { machEnv, machPythonOrExit, writePythonShim } from "./mach-python.ts";
 
 /**
  * @param argv arguments after `npm run build --`

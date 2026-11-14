@@ -1,4 +1,4 @@
-// The Python interpreter tools/mochitest.mjs and tools/build.ts run mach with (#436, #458).
+// The Python interpreter tools/mochitest.ts and tools/build.ts run mach with (#436, #458).
 import { describe, expect, it } from "vitest";
 import { existsSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +8,8 @@ import {
   pickMachPython,
   pickReport,
   writePythonShim,
-} from "../mach-python.mjs";
+} from "../mach-python.ts";
+import type { PythonBounds } from "../mach-python.ts";
 import { tempDir } from "./temp-dir.mjs";
 
 // Mach declares the Python range it supports; outside it the manifest parser breaks (Python 3.15
@@ -25,8 +26,7 @@ describe("machPythonBounds", () => {
 });
 
 describe("pickMachPython", () => {
-  /** @type {import("../mach-python.mjs").PythonBounds} */
-  const BOUNDS = { min: [3, 10], max: [3, 14] };
+  const BOUNDS: PythonBounds = { min: [3, 10], max: [3, 14] };
   const PATH = "/mise/bin:/mise/shims:/usr/bin";
   const FILES = [
     "/mise/bin/python3",
@@ -34,15 +34,14 @@ describe("pickMachPython", () => {
     "/usr/bin/python3",
     "/usr/bin/python3.14",
   ];
-  /** @type {Record<string, string | null>} */
-  const VERSIONS = {
+  const VERSIONS: Record<string, string | null> = {
     "/mise/bin/python3": "3.15.0",
     "/mise/shims/python3.14": null,
     "/usr/bin/python3": "3.14.8",
     "/usr/bin/python3.14": "3.14.8",
   };
-  const exists = (/** @type {string} */ p) => FILES.includes(p);
-  const probe = (/** @type {string} */ p) => VERSIONS[p] ?? null;
+  const exists = (p: string) => FILES.includes(p);
+  const probe = (p: string) => VERSIONS[p] ?? null;
 
   it("skips a python3 first on PATH that is newer than mach supports", () => {
     const res = pickMachPython({ PATH }, BOUNDS, exists, probe);
@@ -98,8 +97,7 @@ describe("pickMachPython", () => {
 });
 
 describe("pickReport", () => {
-  /** @type {import("../mach-python.mjs").PythonBounds} */
-  const BOUNDS = { min: [3, 10], max: [3, 14] };
+  const BOUNDS: PythonBounds = { min: [3, 10], max: [3, 14] };
 
   it("names the range, what it found and VIMMA_MACH_PYTHON when nothing fits", () => {
     const res = pickReport("npm run build", BOUNDS, {

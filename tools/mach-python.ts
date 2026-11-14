@@ -1,22 +1,20 @@
-// The Python interpreter mach runs with, for tools/mochitest.mjs and tools/build.ts. mach runs
+// The Python interpreter mach runs with, for tools/mochitest.ts and tools/build.ts. mach runs
 // under the first python3 on PATH, and a Python newer than engine/mach supports (for example 3.15
 // from mise) breaks the build and the test manifests in places far from the cause.
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, symlinkSync } from "node:fs";
 import { delimiter, join } from "node:path";
 
-/** @typedef {{ min: [number, number], max: [number, number] }} PythonBounds */
+export type PythonBounds = { min: [number, number]; max: [number, number] };
 
 /**
  * The Python range engine/mach declares it supports. Outside it mach may break in odd places:
  * Python 3.15's re.Scanner rejects the capturing groups in manifestparser's expression scanner,
  * so every `skip-if` in a manifest fails to parse.
- * @param {string} machSource the text of engine/mach
- * @returns {PythonBounds | null}
+ * @param machSource the text of engine/mach
  */
-export function machPythonBounds(machSource) {
-  /** @param {string} name @returns {[number, number] | null} */
-  const tuple = (name) => {
+export function machPythonBounds(machSource: string): PythonBounds | null {
+  const tuple = (name: string): [number, number] | null => {
     const m = machSource.match(new RegExp(`^${name} = \\((\\d+), (\\d+)\\)`, "m"));
     return m ? [Number(m[1]), Number(m[2])] : null;
   };
@@ -28,21 +26,21 @@ export function machPythonBounds(machSource) {
 /**
  * The interpreter to run mach with: VIMMA_MACH_PYTHON if set, else the first `python3`, then
  * `python3.N` (newest first), on PATH whose version is inside `bounds`.
- * @param {Record<string, string | undefined>} env
- * @param {PythonBounds} bounds
- * @param {(path: string) => boolean} exists
- * @param {(path: string) => string | null} probe the interpreter's version, null if it fails to run
- * @returns {{ python: string | null, version: string | null, tried: string[] }}
+ * @param probe the interpreter's version, null if it fails to run
  */
-export function pickMachPython(env, bounds, exists, probe) {
+export function pickMachPython(
+  env: Record<string, string | undefined>,
+  bounds: PythonBounds,
+  exists: (path: string) => boolean,
+  probe: (path: string) => string | null,
+): { python: string | null; version: string | null; tried: string[] } {
   if (env.VIMMA_MACH_PYTHON) return { python: env.VIMMA_MACH_PYTHON, version: null, tried: [] };
   const [major] = bounds.min;
   const names = [`python${major}`];
   for (let minor = bounds.max[1]; minor >= bounds.min[1]; minor--)
     names.push(`python${major}.${minor}`);
   const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
-  /** @type {string[]} */
-  const tried = [];
+  const tried: string[] = [];
   const seen = new Set();
   for (const name of names) {
     for (const dir of dirs) {
@@ -66,8 +64,7 @@ export function pickMachPython(env, bounds, exists, probe) {
   return { python: null, version: null, tried };
 }
 
-/** @param {string} path */
-export function pythonVersion(path) {
+export function pythonVersion(path: string) {
   const res = spawnSync(path, ["-c", "import platform; print(platform.python_version())"], {
     encoding: "utf8",
   });
@@ -77,12 +74,13 @@ export function pythonVersion(path) {
 /**
  * What to tell the developer about a pick: `error` (the lines to print before stopping) when none
  * fits, else a `note` naming the chosen interpreter when another one was skipped.
- * @param {string} label the command, for example `npm run build`
- * @param {PythonBounds} bounds
- * @param {{ python: string | null, version: string | null, tried: string[] }} pick
- * @returns {{ error: string[] | null, note: string | null }}
+ * @param label the command, for example `npm run build`
  */
-export function pickReport(label, bounds, pick) {
+export function pickReport(
+  label: string,
+  bounds: PythonBounds,
+  pick: { python: string | null; version: string | null; tried: string[] },
+): { error: string[] | null; note: string | null } {
   const range = `${bounds.min.join(".")} to ${bounds.max.join(".")}`;
   if (!pick.python) {
     const error = [
@@ -102,10 +100,9 @@ export function pickReport(label, bounds, pick) {
 /**
  * Makes `dir` hold `python3` and `python` linked to `python`. With `dir` first on PATH, the
  * `#!/usr/bin/env python3` line of `./mach`, which Surfer runs, finds the chosen interpreter.
- * @param {string} dir an empty directory
- * @param {string} python
+ * @param dir an empty directory
  */
-export function writePythonShim(dir, python) {
+export function writePythonShim(dir: string, python: string) {
   for (const name of ["python3", "python"]) symlinkSync(python, join(dir, name));
 }
 
@@ -113,13 +110,13 @@ export function writePythonShim(dir, python) {
  * The environment to run mach in: `shimDir` first on PATH, and `~/.mozbuild/sccache` (where
  * `mach bootstrap` puts sccache, which the mozconfig's --with-ccache=sccache names) last, when it
  * holds sccache and PATH does not already list it.
- * @param {Record<string, string | undefined>} env
- * @param {string} shimDir
- * @param {string} home
- * @param {(path: string) => boolean} exists
- * @returns {Record<string, string | undefined>}
  */
-export function machEnv(env, shimDir, home, exists) {
+export function machEnv(
+  env: Record<string, string | undefined>,
+  shimDir: string,
+  home: string,
+  exists: (path: string) => boolean,
+): Record<string, string | undefined> {
   const dirs = (env.PATH ?? "").split(delimiter).filter(Boolean);
   const sccache = join(home, ".mozbuild", "sccache");
   const tail = !dirs.includes(sccache) && exists(join(sccache, "sccache")) ? [sccache] : [];
@@ -129,11 +126,9 @@ export function machEnv(env, shimDir, home, exists) {
 /**
  * The interpreter to run engine/mach with, or null when engine/mach no longer declares its range
  * (then plain `./mach`). Prints the pick's note, or its error and exits 1 when none fits.
- * @param {string} engine absolute path of engine/
- * @param {string} label
- * @returns {string | null}
+ * @param engine absolute path of engine/
  */
-export function machPythonOrExit(engine, label) {
+export function machPythonOrExit(engine: string, label: string): string | null {
   const bounds = machPythonBounds(readFileSync(join(engine, "mach"), "utf8"));
   if (!bounds) return null;
   const pick = pickMachPython(process.env, bounds, existsSync, pythonVersion);

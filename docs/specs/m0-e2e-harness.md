@@ -58,10 +58,10 @@ ADR-025, #946.)
 
 - **Build**, in order: `--build <binary or dist/bin dir>`; `--artifact`
   (`engine/obj-artifact/dist/bin/vimma`, with `XUL_APP_FILE=…/dist/bin/browser/application.ini`
-  exactly as `tools/mochitest.mjs --artifact` sets it, ADR-010); `--tarball <vimma-*.tar.xz>`
-  (unpacked into a temp dir, removed at exit); `VIMMA_E2E_BUILD`; else the full objdir
-  `engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma`, else the artifact objdir. The error lists
-  every path tried.
+  exactly as `tools/mochitest.mjs --artifact` (Since changed: `mochitest.ts`, ADR-025) sets it,
+  ADR-010); `--tarball <vimma-*.tar.xz>` (unpacked into a temp dir, removed at exit);
+  `VIMMA_E2E_BUILD`; else the full objdir `engine/obj-x86_64-pc-linux-gnu/dist/bin/vimma`, else the
+  artifact objdir. The error lists every path tried.
 - **Profile**: `mkdtemp` (0700), `user.js` with `vimma.control.enabled=true`, first-run,
   default-browser, welcome and session-restore suppression, telemetry, Normandy, Safe Browsing,
   remote settings and other background network off (taken from the engine's

@@ -25,7 +25,7 @@ concurrency:
 
 jobs:
   # Issue #358: did a pull request already pass this workflow on the tree just pushed? A squash
-  # merge usually gives main the pull request head's tree, so tools/ci/tree-covered.mjs looks for
+  # merge usually gives main the pull request head's tree, so tools/ci/tree-covered.ts looks for
   # a successful pull_request run of this workflow with that tree and, on a match, skips the
   # checks below with a notice naming it. When main moved after that run the trees differ and the
   # checks run: the ruleset does not require up-to-date branches, so this is the only check of the
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           sparse-checkout: |
-            tools/ci/tree-covered.mjs
+            tools/ci/tree-covered.ts
             .nvmrc
           sparse-checkout-cone-mode: false
           persist-credentials: false
@@ -61,17 +61,17 @@ jobs:
 
       # The workflow file comes from GITHUB_WORKFLOW_REF, which the runner sets, so no workflow
       # can name another here and skip on its passes.
-      - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.mjs)
+      - name: Same tree as a successful pull_request run? (tools/ci/tree-covered.ts)
         id: tree
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node tools/ci/tree-covered.mjs
+        run: node tools/ci/tree-covered.ts
 
   scan:
     name: semgrep (javascript, typescript, rust, secrets, github-actions)
     needs: covered
     # Issue #443: a push to a draft pull request (opened, synchronize) skips the scan and reports
-    # success; marking it ready (ready_for_review above) scans the same head. tree-covered.mjs
+    # success; marking it ready (ready_for_review above) scans the same head. tree-covered.ts
     # takes no such run as a cover.
     if: ${{ !cancelled() && needs.covered.outputs.skip != 'true' && !(github.event.pull_request.draft == true && (github.event.action == 'opened' || github.event.action == 'synchronize')) }}
     runs-on: ubuntu-latest

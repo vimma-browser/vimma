@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
-import { MAINTAINER, REPO, SITE_REPO } from "../repo.mjs";
+import { MAINTAINER, REPO, SITE_REPO } from "../repo.ts";
 
-// tools/repo.mjs names the canonical repository once. Every workflow guard, the site dispatch
+// tools/repo.ts names the canonical repository once. Every workflow guard, the site dispatch
 // and the maintainer gate must agree with it, so a move cannot leave one job silently skipped.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const workflows = readdirSync(dir)
   .filter((f) => f.endsWith(".yml"))
-  .map((f) => /** @type {[string, string]} */ ([f, readFileSync(new URL(f, dir), "utf8")]));
+  .map((f) => [f, readFileSync(new URL(f, dir), "utf8")] as [string, string]);
 
 describe("canonical repository", () => {
   it("every github.repository guard names REPO", () => {

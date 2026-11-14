@@ -12,7 +12,7 @@
 // require branches to be up to date, so that run is the only check of the merged combination.
 // Equal trees include .github/workflows, so the covering run used this workflow definition.
 //
-//   GITHUB_TOKEN=... node tools/ci/tree-covered.mjs
+//   GITHUB_TOKEN=... node tools/ci/tree-covered.ts
 //       reads GITHUB_REPOSITORY, GITHUB_SHA and GITHUB_WORKFLOW_REF (the runner sets them),
 //       prints the verdict, appends skip=true|false (and run=<url>) to $GITHUB_OUTPUT when set
 //       exit 0: a verdict (an API failure is a warning and skip=false: the checks then run);
@@ -27,8 +27,9 @@ import { fileURLToPath } from "node:url";
 /** Successful pull_request runs looked at, newest first. One page: a cover is a recent run. */
 export const PER_PAGE = 50;
 
-/** @typedef {{ id: number, head_sha: string, html_url: string }} Run */
-/** @typedef {(path: string) => Promise<any>} Api  JSON of a GET, or null for 404 */
+export type Run = { id: number; head_sha: string; html_url: string };
+/** JSON of a GET, or null for 404 */
+export type Api = (path: string) => Promise<unknown>;
 
 const SHA = /^[0-9a-f]{40}$/;
 const REPO = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
@@ -39,13 +40,12 @@ const WORKFLOW = /^[A-Za-z0-9_.-]+\.ya?ml$/;
  * ("owner/repo/.github/workflows/ci.yml@refs/heads/main"). Each workflow could name itself in
  * its YAML instead, but a name copied from another workflow would let that workflow's passes
  * skip this one's checks.
- * @param {string | undefined} ref
  */
-export function workflowFile(ref) {
+export function workflowFile(ref: string | undefined) {
   const match = /\/\.github\/workflows\/([^/@]+)@/.exec(ref ?? "");
   if (!match || !WORKFLOW.test(match[1] ?? ""))
     throw new Error(`GITHUB_WORKFLOW_REF does not name a workflow file: ${JSON.stringify(ref)}`);
-  return /** @type {string} */ (match[1]);
+  return match[1] as string;
 }
 
 /** The guard job's name in every gated workflow; it is skipped on every pull request run. */
@@ -56,13 +56,12 @@ export const GUARD_JOB = "tree already checked on a pull request?";
  * when its checks were skipped by `if:`, as a draft pull request's Semgrep scan is (issue #443),
  * and such a run covers nothing. Steps skipped inside a job that ran, as on a docs-only pull
  * request, still count (docs/runbook.md, "Once per tree").
- * @param {any} list the JSON of `actions/runs/{id}/jobs`
+ * @param list the JSON of `actions/runs/{id}/jobs`
  */
-export function completeRun(list) {
-  /** @typedef {{ name?: unknown, conclusion?: unknown } | null | undefined} Job */
-  /** @type {Job[]} */
-  const jobs = Array.isArray(list?.jobs)
-    ? list.jobs.filter((/** @type {Job} */ j) => j?.name !== GUARD_JOB)
+export function completeRun(list: unknown) {
+  type Job = { name?: unknown; conclusion?: unknown } | null | undefined;
+  const jobs: Job[] = Array.isArray((list as { jobs?: unknown } | null | undefined)?.jobs)
+    ? (list as { jobs: Job[] }).jobs.filter((j: Job) => j?.name !== GUARD_JOB)
     : [];
   return jobs.length > 0 && jobs.every((j) => j?.conclusion !== "skipped");
 }
@@ -71,13 +70,19 @@ export function completeRun(list) {
  * The newest run whose head commit has `tree` and that `complete` accepts. A head commit the
  * API no longer has (null from `treeOf`) is skipped. Each head commit is looked up once: re-runs
  * share one.
- * @param {{ tree: string, runs: readonly Run[], treeOf: (sha: string) => Promise<string | null>,
- *   complete?: (run: Run) => Promise<boolean> }} q
- * @returns {Promise<Run | null>}
  */
-export async function coveringRun({ tree, runs, treeOf, complete = async () => true }) {
-  /** @type {Map<string, string | null>} */
-  const trees = new Map();
+export async function coveringRun({
+  tree,
+  runs,
+  treeOf,
+  complete = async () => true,
+}: {
+  tree: string;
+  runs: readonly Run[];
+  treeOf: (sha: string) => Promise<string | null>;
+  complete?: (run: Run) => Promise<boolean>;
+}): Promise<Run | null> {
+  const trees = new Map<string, string | null>();
   for (const run of runs) {
     if (!trees.has(run.head_sha)) trees.set(run.head_sha, await treeOf(run.head_sha));
     if (trees.get(run.head_sha) === tree && (await complete(run))) return run;
@@ -86,28 +91,37 @@ export async function coveringRun({ tree, runs, treeOf, complete = async () => t
 }
 
 /**
- * @param {{ repo: string, workflow: string, sha: string, api: Api }} q
- * @returns {Promise<{ tree: string, run: Run | null }>}  the pushed commit's tree and the run
+ * @returns  the pushed commit's tree and the run
  *   that covers it, null when the checks must run
  */
-export async function findCover({ repo, workflow, sha, api }) {
+export async function findCover({
+  repo,
+  workflow,
+  sha,
+  api,
+}: {
+  repo: string;
+  workflow: string;
+  sha: string;
+  api: Api;
+}): Promise<{ tree: string; run: Run | null }> {
   if (!REPO.test(repo)) throw new Error(`not a repository name: ${JSON.stringify(repo)}`);
   if (!WORKFLOW.test(workflow)) throw new Error(`not a workflow file: ${JSON.stringify(workflow)}`);
   if (!SHA.test(sha)) throw new Error(`not a commit hash: ${JSON.stringify(sha)}`);
-  /** @param {string} commit */
-  const treeOf = async (commit) => {
+  const treeOf = async (commit: string) => {
     if (!SHA.test(commit)) return null;
-    const json = await api(`repos/${repo}/git/commits/${commit}`);
+    const json = (await api(`repos/${repo}/git/commits/${commit}`)) as {
+      tree?: { sha?: unknown } | null;
+    } | null;
     return typeof json?.tree?.sha === "string" ? json.tree.sha : null;
   };
   const tree = await treeOf(sha);
   if (tree === null) throw new Error(`the pushed commit ${sha} has no tree in the API`);
-  const list = await api(
+  const list = (await api(
     `repos/${repo}/actions/workflows/${workflow}/runs?event=pull_request&status=success&per_page=${PER_PAGE}`,
-  );
-  const runs = Array.isArray(list?.workflow_runs) ? list.workflow_runs : [];
-  /** @param {Run} run */
-  const complete = async (run) =>
+  )) as { workflow_runs?: unknown } | null;
+  const runs = Array.isArray(list?.workflow_runs) ? (list.workflow_runs as Run[]) : [];
+  const complete = async (run: Run) =>
     Number.isInteger(run.id) &&
     completeRun(await api(`repos/${repo}/actions/runs/${run.id}/jobs?filter=latest&per_page=100`));
   return { tree, run: await coveringRun({ tree, runs, treeOf, complete }) };
@@ -116,9 +130,8 @@ export async function findCover({ repo, workflow, sha, api }) {
 /**
  * What the job prints and outputs. The notice (a workflow command on stdout) shows on the run's
  * summary, so a skipped run says which run checked the tree.
- * @param {{ tree: string, run: Run | null }} found
  */
-export function report({ tree, run }) {
+export function report({ tree, run }: { tree: string; run: Run | null }) {
   if (run)
     return {
       outputs: ["skip=true", `run=${run.html_url}`],
@@ -135,10 +148,16 @@ export function report({ tree, run }) {
 /**
  * A GET of GitHub's REST API as JSON: null for 404 (a commit the API no longer serves), an
  * error for any other failure.
- * @param {{ token: string, base: string, fetch?: typeof globalThis.fetch }} o
- * @returns {Api}
  */
-export function githubApi({ token, base, fetch = globalThis.fetch }) {
+export function githubApi({
+  token,
+  base,
+  fetch = globalThis.fetch,
+}: {
+  token: string;
+  base: string;
+  fetch?: typeof globalThis.fetch;
+}): Api {
   return async (path) => {
     const url = `${base.replace(/\/$/, "")}/${path}`;
     const res = await fetch(url, {
@@ -154,10 +173,8 @@ export function githubApi({ token, base, fetch = globalThis.fetch }) {
   };
 }
 
-/** @param {string[]} argv */
-async function main(argv) {
-  /** @param {string} name */
-  const arg = (name) => {
+async function main(argv: string[]) {
+  const arg = (name: string) => {
     const i = argv.indexOf(name);
     return i >= 0 ? (argv[i + 1] ?? "") : "";
   };
@@ -168,8 +185,7 @@ async function main(argv) {
   const sha = arg("--sha") || env.GITHUB_SHA || "";
   const workflow = arg("--workflow") || workflowFile(env.GITHUB_WORKFLOW_REF);
   const api = githubApi({ token, base: env.GITHUB_API_URL || "https://api.github.com" });
-  /** @type {ReturnType<typeof report>} */
-  let out;
+  let out: ReturnType<typeof report>;
   try {
     out = report(await findCover({ repo, workflow, sha, api }));
   } catch (err) {
