@@ -1206,8 +1206,14 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   a reader's write never reaches the object the caller acts on. What the caller then does is
   still checked against the page when it runs (decision 19), not against the gate's copy. The
   copy is of JSON-like data: a `__proto__` key stays data, never the copy's prototype, a shared
-  object is copied once, and a request nested deeper than 32 levels throws before it is queued,
-  so its caller fails closed.
+  object is copied once, and a request nested deeper than 32 levels throws before it is queued
+  or logged, so its caller fails closed. A value the copy made is passed through as it is when
+  the gate copies again (an event around a question), so a request at the limit is asked,
+  answered, run under a grant, logged and heard by every listener; an object anyone else froze
+  is still copied. Telling the listeners never throws (a listener's throw, or an event that cannot
+  be copied, is logged to the console), and a caller's `onCancel` that throws withdraws its
+  question, so a call is never logged as run behind a throw nor left waiting with its timer
+  behind a rejected promise.
   [`test_question_and_log_show_what_was_asked`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_dangerous_download_stays_one_file_after_the_caller_changes_it`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_here_answer_allows_the_button_the_question_named`](../tests/browser/browser_vimma_mcp_gate_copies.js),
@@ -1217,6 +1223,11 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_unscanned_and_pay_are_checked_as_asked`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_relabel_keeps_a_frozen_copy`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_request_too_deep_to_copy_is_never_queued`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_request_at_the_copy_limit_asks_and_is_heard`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_request_at_the_copy_limit_runs_under_a_grant`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_throwing_on_cancel_leaves_nothing_waiting`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`frozenCopy passes its own copy through, so an event around a request at the limit copies`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`frozenCopy still copies an object someone else froze`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null`](../packages/vimma-core/test/agent-gate.test.mjs),

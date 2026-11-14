@@ -130,10 +130,22 @@ function cancel(id) {
   changed();
 }
 
-/** @param {GateEvent} [event] */
+/**
+ * Tell every listener. Never throws: it runs after the gate changed (a call logged as run, a
+ * question queued with its timer), so a throw here would leave the gate half-updated (#1027).
+ * @param {GateEvent} [event]
+ */
 function changed(event) {
-  // One frozen copy for every listener: none can change what the next one hears (M62).
-  const told = event === undefined ? undefined : frozenCopy(event);
+  // One frozen copy for every listener: none can change what the next one hears (M62). The
+  // gate's own copies inside it (a request's `what`, a label) are passed through as they are.
+  /** @type {Readonly<GateEvent> | undefined} */
+  let told;
+  try {
+    told = event === undefined ? undefined : frozenCopy(event);
+  } catch (e) {
+    // Only an announce's `what` comes from outside: the listeners hear a plain change instead.
+    console.error("vimma agent gate:", e);
+  }
   for (const listener of listeners) {
     try {
       listener(told);
@@ -219,8 +231,10 @@ export const AgentGate = {
    *   that process's dropped link (docs/specs/mcp-session-grants.md S3)
    */
   connect(conn, label, session) {
+    // Copied first: a label that cannot be copied throws before the queue knows the connection.
+    const kept = frozenCopy({ ...label, since: Date.now() });
     queue.connect(conn, { ...(session ? { session } : {}), now: Date.now() });
-    labels.set(conn, frozenCopy({ ...label, since: Date.now() }));
+    labels.set(conn, kept);
     changed();
   },
 
@@ -297,7 +311,15 @@ export const AgentGate = {
         resolve,
         timer,
       });
-      onCancel?.(() => cancel(id));
+      try {
+        onCancel?.(() => cancel(id));
+      } catch (e) {
+        // The caller could not keep its way to withdraw the question: withdraw it now, so no
+        // question waits with its timer behind a promise that never settles (#1027).
+        console.error("vimma agent gate:", e);
+        cancel(id);
+        return;
+      }
       changed({ kind: "asked", question: /** @type {Question} */ (questionOf(id)) });
     });
   },
