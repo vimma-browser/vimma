@@ -43,7 +43,7 @@ import { ThemeHost } from "../ui/theme-host.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { MCP_CHANGED_TOPIC, MCP_ENABLED_PREF, McpHost } from "../host/mcp-ops.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { AgentGate } from "./AgentGate.sys.mjs";
+import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AgentError, forgetAgentConnection, runAgentCommand } from "./agent-commands.mjs";
 
 /** @import { Chord } from "../core/keys.mjs" */

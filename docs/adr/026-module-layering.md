@@ -87,7 +87,11 @@ getter map, which it cannot see.
    list entry whose import is gone or is now allowed, on an entry without a reason, on an eager
    cycle and on a folder without a `README.md`. Each entry says whether it stays or goes, and
    one that goes names the issue that removes it. A test pins the number of entries, so the
-   list grows only with an amendment to this record.
+   list grows only with an amendment to this record. (Since changed: the last entry went with
+   issue #936, and the list stays empty. `npm run layering` refuses any entry, whatever its
+   reason or fate, and its test expects none: a new upward import reaches the higher folder as
+   decision 4 says. Admitting one would change this decision, the check and its test, not a
+   list.)
 
    A specifier the check cannot read is an error too: `import()`, `importESModule` or a getter
    map whose specifier is not a fixed string (a template literal with `${}`, a `+` chain, a
@@ -123,6 +127,14 @@ each without a change in behaviour:
   in a new layer between `workspaces/`/`actors/` and `host/` (it imports `workspaces/`, so it
   cannot share their layer); `ctl/` keeps the socket and the commands. It crosses a security
   boundary, so it is reviewed on its own against `docs/security.md`.
+  (Since changed: done, without a new folder. The gate is `host/AgentGate.sys.mjs`, its code
+  unchanged but for one import path (`../host/mcp-ops.mjs` became `./mcp-ops.mjs`). The planned
+  folder was to hold the gate with `mcp-ops.mjs` and `control-ops.mjs`, and those two already
+  live in `host/`; the gate imports only `core/` and `mcp-ops.mjs`, so `host/` already is that
+  folder. `ctl/` and `agent/`, above it, import the gate downwards, and `mcp-ops.mjs` still loads
+  it lazily, since the gate imports `mcp-ops.mjs` eagerly. Every caller reaches the same module
+  as before under its new URL; what each can call is unchanged. The list is empty, and with it
+  the eager folder cycle: no two folders import each other eagerly.)
 - **Two modules live in the wrong folder.** `host/VimmaHost.sys.mjs` records each key in
   `about/key-log.mjs` for `about:vimma`; the log moves to `host/`, which writes it.
   `workspaces/WindowWorkspaces.sys.mjs` saves and restores tab labels from `host/tab-labels.mjs`;
@@ -196,6 +208,16 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   to `VimmaHost` and `PdfOps`, and the one thing that pins it to `actors/` is the URL
   `VimmaActors.register()` builds, which `vimma.js` can pass in. A permanent exception would
   keep the `actors/` ↔ `host/` loop for no gain.
+- **A folder of its own, in a layer between `workspaces/`/`actors/` and `host/`, for the gate**
+  (the plan above): the gate imports `host/mcp-ops.mjs` for `[mcp]`, so the folder needed
+  `mcp-ops.mjs` and `control-ops.mjs` too. That moves three modules instead of one, changes the
+  `chrome://` URL that 32 more test files import, and renumbers `host/` and every layer above it,
+  for the same direction the move into `host/` gives.
+- **Handing the gate to the host through `host/host-services.mjs`**, as the agent's commands are:
+  no file moves, but the agent line's listener, `:mcp revoke` and `:mcp log` would reach the gate
+  through a service `vimma.js` provides at startup. One that is missing must give the answer that
+  does the least, and for the agent line that is no listener: questions nobody sees, each waiting
+  out its timeout. A module import fails at load instead, which is louder.
 - **Breaking every cycle in one change**: the gate's move crosses a security boundary and the
   registrations change startup order; each needs its own review and its own proof that nothing
   changed.
@@ -225,7 +247,9 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
 
 - A new import between folders follows the layers. Adding an exception instead means a line in
   `tools/layering/layers.ts`, raising the pinned count in its test, and an amendment to this
-  record that says why the import cannot be avoided.
+  record that says why the import cannot be avoided. (Since changed: the list is empty and the
+  check refuses any entry, so an exception would mean changing `exceptionErrors` in
+  `tools/layering/layering.ts`, its test and decision 5.)
 - A new folder under `vimma/` needs a layer in `layers.ts`, a row in this record's table and a
   `README.md`.
 - Moving code to the folder that owns it can change a `chrome://` URL that tests import; such a

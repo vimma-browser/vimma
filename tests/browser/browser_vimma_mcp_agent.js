@@ -23,7 +23,7 @@ const { VimmaControl } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { McpHost, MCP_ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/mcp-ops.mjs",

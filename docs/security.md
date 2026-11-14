@@ -988,7 +988,7 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - **What you type.** Commands you type yourself (`:open`, `:source`, the control socket with your
   token) act with your authority; the rules above stop text from others from doing the same.
 
-## 12. Agents (MCP) (`ctl/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
+## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
 
 Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
 one workspace, **agent**, through the control socket's `agent` role. Spec:
@@ -1074,7 +1074,8 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
   [`a grant covers every tool of its connection, not another connection's`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`an_agents_question_reaches_the_user_and_the_answer_reaches_the_agent`](../tests/browser/browser_vimma_security_invariants.js)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.

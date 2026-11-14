@@ -4,7 +4,7 @@ Status: implemented · Area: `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`
 `src/protocol.rs`, `src/cli.rs`); `packages/vimma-core/src/` (`control.mjs`, `agent.mjs`,
 `agent-prompt.mjs`, `agent-downloads.mjs`, `config.mjs`, `defaults.mjs`, `actions.mjs`,
 `cmdline.mjs`, `statusbar.mjs`, `workspacedefs.mjs`, `workspaces.mjs`); `ctl/VimmaControl.sys.mjs`,
-`ctl/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/AgentPages.sys.mjs`,
+`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/AgentPages.sys.mjs`,
 `ctl/AgentDownloads.sys.mjs`, `ui/agent-prompt.mjs`, `host/agent-ui.mjs`, `host/mcp-ops.mjs`,
 `host/control-ops.mjs`, `host/workspace-ops.mjs`, `workspaces/WorkspaceStore.sys.mjs`,
 `workspaces/WorkspaceRouter.sys.mjs`, `config/ConfigHost.sys.mjs`, `about/AboutVimma.sys.mjs`;

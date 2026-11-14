@@ -29,7 +29,7 @@ const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { AgentUi } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/agent-ui.mjs");
 const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");

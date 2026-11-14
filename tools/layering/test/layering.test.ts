@@ -402,26 +402,25 @@ describe("jarModules", () => {
 });
 
 describe("exceptionErrors", () => {
-  const base = { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy" as const, reason: "r" };
+  const base = { from: "ui/x.mjs", to: "host/c.mjs", kind: "lazy" as const, reason: "r" };
 
-  test("each exception says whether it stays or goes, and a leaving one names its issue", () => {
+  test("refuses every entry: ADR-026 allows no upward import, whatever its fate or reason", () => {
     expect(
       exceptionErrors([
         { ...base, fate: "stays" },
-        { ...base, to: "host/b.mjs", fate: "goes", issue: 936 },
-        { ...base, to: "host/c.mjs", fate: "goes" },
+        { ...base, to: "host/b.mjs", kind: "eager", fate: "goes", issue: 936 },
       ]),
-    ).toEqual(["exception ui/x.mjs -> host/c.mjs (lazy) goes but names no issue"]);
+    ).toEqual([
+      "exception ui/x.mjs -> host/c.mjs (lazy): ADR-026 allows no upward import; reach the higher folder through a topic, a callback or an interface object (decision 4)",
+      "exception ui/x.mjs -> host/b.mjs (eager): ADR-026 allows no upward import; reach the higher folder through a topic, a callback or an interface object (decision 4)",
+    ]);
+    expect(exceptionErrors([])).toEqual([]);
   });
 
-  test("the list does not grow without a change to ADR-026", () => {
-    // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
-    // why it cannot be avoided. Lower it whenever an exception goes.
-    const PINNED = 3;
-    expect(
-      EXCEPTIONS.length,
-      `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,
-    ).toBeLessThanOrEqual(PINNED);
+  test("tools/layering/layers.ts lists no exception", () => {
+    // The last one went in #936. Adding one is not a list edit: it changes ADR-026's decision 5,
+    // exceptionErrors and this test.
+    expect(EXCEPTIONS).toEqual([]);
   });
 });
 

@@ -6,9 +6,9 @@
 // The import layering of src/browser/base/content/vimma/ (ADR-026), checked by
 // `npm run layering` (part of `npm run lint`) and by its own step in ci.yml. Each folder has a
 // layer (layers.ts); a module may import its own folder and any folder of a lower layer, never
-// one of its own layer or a higher one, eagerly or lazily. The imports that break this today are
-// listed one by one in layers.ts with their reason; a new one fails, and so does a listed one
-// that no longer exists. No two modules may import each other eagerly, at any distance.
+// one of its own layer or a higher one, eagerly or lazily, with no exception: layers.ts lists
+// none, and an entry there fails the check (ADR-026, decision 5). No two modules may import each
+// other eagerly, at any distance.
 //
 // eslint's no-restricted-imports cannot do this: it sees `import` declarations only, and most of
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
@@ -58,7 +58,10 @@ export interface Edge {
   line: number;
 }
 
-/** An import that crosses the layering upwards, kept for the reason given. */
+/**
+ * An import that crosses the layering upwards. layers.ts lists none and exceptionErrors refuses
+ * one there; layerErrors and the module diagram still take a list, which their tests fill.
+ */
 export interface Exception {
   from: string;
   to: string;
@@ -369,16 +372,15 @@ export function danglingEdges(
   return errors;
 }
 
-/** Exceptions without a fate, and leaving ones without the issue that removes them. */
+/**
+ * Every listed exception: the last one went with #936, and ADR-026 (decision 5) admits no new
+ * one. A higher folder is reached through a topic, a callback or an interface object instead.
+ */
 export function exceptionErrors(exceptions: Exception[]): string[] {
-  const errors: string[] = [];
-  for (const x of exceptions) {
-    const k = key(x);
-    if (x.fate !== "stays" && x.fate !== "goes")
-      errors.push(`exception ${k} says neither "stays" nor "goes"`);
-    else if (x.fate === "goes" && !x.issue) errors.push(`exception ${k} goes but names no issue`);
-  }
-  return errors;
+  return exceptions.map(
+    (x) =>
+      `exception ${key(x)}: ${ADR} allows no upward import; reach the higher folder through a topic, a callback or an interface object (decision 4)`,
+  );
 }
 
 /** The folder a path relative to vimma/ belongs to. */
@@ -571,9 +573,7 @@ function main(): void {
     );
     process.exit(1);
   }
-  console.log(
-    `Layering: ${edges.length} imports follow ${ADR} (${EXCEPTIONS.length} listed exceptions), no eager cycle.`,
-  );
+  console.log(`Layering: ${edges.length} imports follow ${ADR}, no exception, no eager cycle.`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

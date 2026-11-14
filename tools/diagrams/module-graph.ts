@@ -274,8 +274,10 @@ export function toD2(
       "module (eager), dashed when a getter or a call loads it later (lazy).",
       "Grey: down the layers, as ADR-026 allows.",
       ...(mergedKeys.size ? ["An arrow to a band: imports that many of its folders."] : []),
-      `Orange: the ${exceptions.length} upward imports tools/layering/layers.ts lists, one arrow per pair of folders` +
-        (issues.length ? ` (${listed(issues)} removes them).` : "."),
+      exceptions.length
+        ? `Orange: the ${exceptions.length} upward imports tools/layering/layers.ts lists, one arrow per pair of folders` +
+          (issues.length ? ` (${listed(issues)} removes them).` : ".")
+        : "No arrow points up: ADR-026 allows no upward import.",
       ...cycles.map((c) => `Eager cycle, closed only by orange arrows: ${c}.`),
       `vimma.js imports ${everyExcept(drawn, fromEntry)}.`,
       `${CORE}/ is imported by ${everyExcept(drawn, toCore)}.`,

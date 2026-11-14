@@ -122,10 +122,11 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `packages/vimma-core`: dispatcher, key notation, `actions.mjs`, keymap, config, theme, control
   protocol validator, agent gate logic, state tree (pure).
 - `src/browser/base/content/vimma/`:
-  - `host/`: `VimmaHost.sys.mjs` (key capture, applies actions to `gBrowser`) and `*-ops.mjs`.
+  - `host/`: `VimmaHost.sys.mjs` (key capture, applies actions to `gBrowser`), `*-ops.mjs` and
+    `AgentGate.sys.mjs` (the agent gate).
   - `actors/`: JSWindowActor parent/child (focus, scroll, hints, caret, page reads).
   - `ui/`: status bar, help overlay, command line, side panel, pickers, prompts, agent line.
-  - `ctl/`: control socket server (protocol 2, full and agent roles), `AgentGate`, agent pages.
+  - `ctl/`: control socket server (protocol 2, full and agent roles), agent commands, agent pages.
   - `agent/`: the built-in agent.
   - `workspaces/`, `split/`, `config/`, `search/`, `updates/`, `omarchy/`, `services/`, `about/`,
     `setup/`, `start/`, `licence/`.

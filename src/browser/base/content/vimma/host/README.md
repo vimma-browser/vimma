@@ -6,7 +6,10 @@ action tables in `runners.mjs`, one area's actions per `*-ops.mjs` module
 key events the host dispatched, which `about:vimma` shows. `VimmaParent.sys.mjs` is the parent
 side of the JSWindowActor pair `actors/` registers: it checks the page reports (focus, clicks,
 mouse selections, text blocks, the PDF viewer's state and outline) and hands them to the host
-and `pdf-ops.mjs`. `host-services.mjs` holds the
+and `pdf-ops.mjs`. `AgentGate.sys.mjs` is the agent gate: every agent command of `ctl/` and
+the built-in agent asks it, and it holds the questions the agent line (`agent-ui.mjs`) shows,
+the grants and `:mcp log` (`mcp-ops.mjs`), beside `[mcp]` and full control's state.
+`host-services.mjs` holds the
 commands of higher folders the host runs: the built-in agent's conversations, the agent-download
 test and `:route add`'s write to `config.toml`; and what the agent chat window it builds uses of
 them (the agent CLIs, the API keys, `config.toml`'s refusal and setup's write to it), which
@@ -23,14 +26,14 @@ the answer that does the least (every download counts as an agent's, no key is k
 
 **May import (layer 3, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/`, `services/`,
 `search/`, `updates/`, `split/`, `ui/`, `workspaces/` and `actors/`. Not `config/`, `ctl/`,
-`agent/` or `about/`: the imports of those that remain are listed in
-`tools/layering/layers.ts`, each with its reason. To reach a higher folder, take a callback or
-an interface object from it, or observe a topic it sends; a command the host runs for a higher
+`agent/` or `about/`, with no exception. To reach a higher folder, take a callback or an
+interface object from it, or observe a topic it sends; a command the host runs for a higher
 folder comes through `host-services.mjs`.
 
 **Security:** `VimmaParent.sys.mjs` is where content-process messages enter the parent; what it
 takes from a page is checked as [docs/security.md](../../../../../../docs/security.md) sections 13
-and 20 say.
+and 20 say. `AgentGate.sys.mjs` decides what an agent may do and asks you (section 12): a change
+to it gets a separate security review, as one to `ctl/` does.
 
 **Read more:** [The life of a keypress](../../../../../../docs/architecture/keypress.md),
 [Workspaces and panes](../../../../../../docs/architecture/workspaces-and-panes.md).

@@ -138,7 +138,7 @@ add_task(async function route_add_creates_a_private_config_toml() {
 // the command line or any prefix binding, and nothing is asked or changes.
 add_task(async function agent_keys_never_reach_the_prefix_the_command_line_or_mcp_answer() {
   const { AgentGate } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+    "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
   );
   const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/mcp-ops.mjs",
@@ -302,4 +302,55 @@ add_task(async function the_parent_actors_url_is_checked_before_it_is_registered
   }
   VimmaActors.register("chrome://browser/content/vimma/host/VimmaParent.sys.mjs");
   Assert.ok(true, "the real URL passes the check");
+});
+
+// security.md section 12: every agent command asks the agent gate (host/AgentGate.sys.mjs), and
+// the agent line shows its questions. The control commands (ctl/), the agent line and :mcp
+// (host/) must load one and the same gate: a second copy under another URL would hold questions
+// that no line shows, and every call would wait out its timeout instead of reaching the user. So
+// an agent's call over the socket must open the line with its question, be held by the gate this
+// test loads from host/, and get the user's no back.
+add_task(async function an_agents_question_reaches_the_user_and_the_answer_reaches_the_agent() {
+  const { AgentGate } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
+  );
+  const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/mcp-ops.mjs",
+  );
+  const ARMING = "security.dialog_enable_delay";
+  Services.prefs.setBoolPref(MCP_ENABLED_PREF, true);
+  Services.prefs.setIntPref(ARMING, 100);
+  await VimmaControl.settled();
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+  const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
+  const hint = () =>
+    /** @type {HTMLElement | null | undefined} */ (
+      line()?.querySelector(".vimma-agent-prompt-hint")
+    );
+  // Quiet keys and a focused page: the line opens by itself after 1,500 ms (vimma-mcp.md, 14).
+  await focusContent(gBrowser.selectedBrowser);
+  await new Promise((r) => setTimeout(r, 1600));
+  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  await c.handshake({ protocol: 2, role: "agent" });
+  await c.call("agent-hello", { client: { name: "gate-check" }, via: "example" });
+  const id = c.request("agent-tabs");
+  await until(lineOpen, "the agent line opens with the question");
+  Assert.stringMatches(
+    line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "",
+    /^◇ gate-check wants vimma_tabs: the list of agent tabs \(\d+\)$/,
+    "it says who wants what",
+  );
+  Assert.equal(AgentGate.waiting.length, 1, "the gate host/ holds is the one the socket asked");
+  await until(() => !!hint() && !hint()?.hidden && hint()?.textContent !== "", "the line arms");
+  EventUtils.synthesizeKey("n");
+  const r = await c.response(id);
+  Assert.equal(r.error?.code, "denied", "the user's n reaches the agent");
+  Assert.equal(r.error?.reason, "user", "as the user's no");
+  Assert.equal(AgentGate.waiting.length, 0, "nothing is left waiting");
+  await until(() => !lineOpen(), "the line closes");
+  c.close();
+  Services.prefs.clearUserPref(ARMING);
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await VimmaControl.settled();
 });

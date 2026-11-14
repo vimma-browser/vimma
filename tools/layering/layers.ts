@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The layers of src/browser/base/content/vimma/ and the imports that break them, as
-// docs/adr/026-module-layering.md decides. layering.ts checks the tree against both.
+// The layers of src/browser/base/content/vimma/, as docs/adr/026-module-layering.md decides, and
+// the empty list of imports that break them. layering.ts checks the tree against both.
 
 import type { Exception } from "./layering.ts";
 
@@ -40,35 +40,9 @@ export const LAYERS: Record<string, number> = {
 };
 
 /**
- * Imports that break the layers today, each named by importer, imported module and kind, with
- * why it cannot be avoided yet and the issue that removes it. The list only shrinks: a new
- * upward import fails the check, so does an entry whose import is gone, and the test pins the
- * count. ADR-026, "Exceptions", says how each goes.
+ * Imports that break the layers: none. The last three (the host reading the agent gate) went
+ * when the gate moved to host/ (#936), and ADR-026, decision 5, admits no new one: layering.ts
+ * fails on any entry here, whatever its reason. Reach a higher folder through a topic, a
+ * callback or an interface object (decision 4).
  */
-export const EXCEPTIONS: Exception[] = [
-  // The agent gate's state lives in ctl/, above the host that shows it.
-  {
-    from: "host/VimmaHost.sys.mjs",
-    to: "ctl/AgentGate.sys.mjs",
-    kind: "eager",
-    reason: "the :mcp log picker lists the gate's log, which only AgentGate holds",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/agent-ui.mjs",
-    to: "ctl/AgentGate.sys.mjs",
-    kind: "eager",
-    reason: "the agent line shows and answers the gate's questions, which only AgentGate holds",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "host/mcp-ops.mjs",
-    to: "ctl/AgentGate.sys.mjs",
-    kind: "lazy",
-    reason: ":mcp revoke and :mcp log act on the grants and log, which only AgentGate holds",
-    fate: "goes",
-    issue: 936,
-  },
-];
+export const EXCEPTIONS: Exception[] = [];
