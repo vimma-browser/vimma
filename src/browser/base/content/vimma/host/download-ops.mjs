@@ -61,7 +61,7 @@ const PROGRESS_MS = 1000;
 const ids = new WeakMap();
 let nextId = 1;
 
-/** @param {any} download */
+/** @param {DownloadListEntry} download */
 function idOf(download) {
   let id = ids.get(download);
   if (id === undefined) {
@@ -71,7 +71,7 @@ function idOf(download) {
   return id;
 }
 
-/** @param {any} error  a Downloads.Error, or null */
+/** @param {DownloadError | null | undefined} error  a Downloads.Error, or null */
 function errorOf(error) {
   if (!error) return null;
   /** @type {"parental" | "reputation" | "contentAnalysis" | "failed"} */
@@ -103,7 +103,7 @@ const abouts = new WeakMap();
  * The workspace whose container a session download came from, when it is not this window's
  * current one (decision 4). A history entry keeps no container, so it names none.
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  */
 function workspaceOf(win, d) {
   const ucid = d.source?.userContextId;
@@ -116,7 +116,7 @@ function workspaceOf(win, d) {
 /**
  * Whether Firefox would show the finished file in a tab of its own (a PDF), as its panel decides
  * `openInSystemViewer` (DownloadsViewUI.sys.mjs, isCommandEnabled).
- * @param {any} d
+ * @param {DownloadListEntry} d
  */
 function viewsInternally(d) {
   if (!d.succeeded) return false;
@@ -130,7 +130,7 @@ function viewsInternally(d) {
 
 /**
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @returns {About}
  */
 function aboutOf(win, d) {
@@ -154,7 +154,7 @@ function aboutOf(win, d) {
  * A Firefox `Download` (toolkit/components/downloads/DownloadCore.sys.mjs), or a history entry
  * (DownloadHistory.sys.mjs, HistoryDownload: no byte counts, no referrer, no start time but its
  * Places visit's), as a core record. With `win`, the picker's fields are filled too.
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @param {BrowserWindow | null} [win]
  * @returns {DownloadRecord}
  */
@@ -225,9 +225,9 @@ export class DownloadWatch {
     this.win = win;
     this.emit = emit;
     this.say = say;
-    /** @type {Set<any>} */
+    /** @type {Set<DownloadListEntry>} */
     this.downloads = new Set();
-    /** @type {any} */
+    /** @type {DownloadList | null} */
     this.list = null;
     this.view = null;
     /** @type {DownloadSegment | null} */
@@ -248,10 +248,10 @@ export class DownloadWatch {
   /** @private A view on the window's list, for the life of the window. */
   async attach() {
     const view = {
-      /** @param {any} d */
+      /** @param {DownloadListEntry} d */
       onDownloadAdded: (d) => (this.downloads.add(d), this.changed()),
       onDownloadChanged: () => this.changed(),
-      /** @param {any} d */
+      /** @param {DownloadListEntry} d */
       onDownloadRemoved: (d) => (this.downloads.delete(d), this.changed()),
     };
     this.view = view;
@@ -352,9 +352,9 @@ export class DownloadRows {
   constructor(win, changed) {
     this.win = win;
     this.changed = changed;
-    /** @type {Set<any>} */
+    /** @type {Set<DownloadListEntry>} */
     this.downloads = new Set();
-    /** @type {any} */
+    /** @type {DownloadList | null} */
     this.list = null;
     /** @type {object | null} */
     this.view = null;
@@ -371,10 +371,10 @@ export class DownloadRows {
   async open() {
     if (!this.view) {
       const view = {
-        /** @param {any} d */
+        /** @param {DownloadListEntry} d */
         onDownloadAdded: (d) => (this.downloads.add(d), this.update()),
         onDownloadChanged: () => this.update(),
-        /** @param {any} d */
+        /** @param {DownloadListEntry} d */
         onDownloadRemoved: (d) => (this.downloads.delete(d), this.update()),
       };
       this.view = view;
@@ -385,7 +385,7 @@ export class DownloadRows {
       // A history entry assumes its file is there, and a finished file can be deleted outside
       // Firefox: `refresh` checks the disk, as Firefox's views do, and reports a change.
       for (const d of this.downloads) {
-        if (d.stopped && typeof d.refresh === "function") d.refresh().catch(() => {});
+        if (d.stopped) d.refresh().catch(() => {});
       }
     }
     const { rows } = this.read();
@@ -448,13 +448,13 @@ export class DownloadRows {
  * Show a download's file in its folder through `Download.showContainingDirectory`, which goes
  * through DownloadIntegration (decision 5). A history entry is not a `Download`: one is made for
  * its path, as `DownloadsCommon.openDownload` makes one to open it.
- * @param {any} d
+ * @param {DownloadListEntry} d
  */
 async function showInFolder(d) {
-  const download =
-    typeof d.showContainingDirectory === "function"
-      ? d
-      : await lazy.Downloads.createDownload({ source: d.source.url, target: d.target.path });
+  /** @type {SessionDownload} */
+  const download = isSession(d)
+    ? d
+    : await lazy.Downloads.createDownload({ source: d.source.url, target: d.target.path });
   await download.showContainingDirectory();
 }
 
@@ -462,14 +462,14 @@ async function showInFolder(d) {
  * The download as it is now, or null when it has left the window's list (removed in the
  * Library, by another window, or by clearing history).
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  */
 async function current(win, d) {
   const list = await listFor(win);
   if (!(await list.getAll()).includes(d)) return null;
   // The file may have gone outside Firefox while the question was open: `refresh` reads the
   // disk, as Firefox's views do, before the answer is weighed.
-  if (d.stopped && typeof d.refresh === "function") await d.refresh().catch(() => {});
+  if (d.stopped) await d.refresh().catch(() => {});
   return recordOf(d, win);
 }
 
@@ -479,7 +479,7 @@ async function current(win, d) {
  * if it changed before the answer, nothing is done and the notice says so
  * (docs/security/21-downloads-picker.md D5).
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @param {DownloadRecord} asked  the download as it was when the question showed
  * @param {"cancel" | "delete"} op
  * @param {(text: string, error?: boolean) => void} say
@@ -492,8 +492,9 @@ async function answered(win, d, asked, op, say) {
   if (op === "cancel") {
     // DownloadsViewUI's downloadsCmd_cancel: cancel, then remove the partial data, the order
     // Firefox uses to avoid a race with the cancellation.
-    d.cancel().catch(() => {});
-    await d.removePartialData().finally(() => d.target.refresh());
+    const s = session(d);
+    s.cancel().catch(() => {});
+    await s.removePartialData().finally(() => s.target.refresh());
     say(`canceled "${asked.name}"`);
     return;
   }
@@ -501,7 +502,7 @@ async function answered(win, d, asked, op, say) {
     // Blocked data is removed as Firefox's blocked view removes it (downloadsCmd_confirmBlock):
     // `deleteDownloadFiles` would leave it marked as blocked (decision 7,
     // docs/security/21-downloads-picker.md D3).
-    await d.confirmBlock();
+    await session(d).confirmBlock();
     say(`deleted "${asked.name}"`);
     return;
   }
@@ -517,7 +518,7 @@ async function answered(win, d, asked, op, say) {
  * Pause, resume, retry and remove, as Firefox's panel runs them (DownloadsViewUI.sys.mjs,
  * downloadsCmd_pauseResume, downloadsCmd_retry and cmd_delete).
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @param {DownloadRecord} r
  * @param {DownloadOp} op
  * @param {(text: string, error?: boolean) => void} say
@@ -526,14 +527,16 @@ function runState(win, d, r, op, say) {
   if (op === "pauseResume") {
     if (d.stopped) {
       // A failure while it runs is reported as the download's own failed state.
-      d.start().catch(() => {});
+      session(d)
+        .start()
+        .catch(() => {});
       say(`resumed "${r.name}"`);
     } else {
-      d.cancel().catch(console.error);
+      session(d).cancel().catch(console.error);
       say(`paused "${r.name}"`);
     }
   } else if (op === "retry") {
-    if (typeof d.start === "function") {
+    if (isSession(d)) {
       d.start().catch(() => {});
     } else {
       // A history entry is not a Download: Firefox's Library downloads its URL again.
@@ -557,7 +560,7 @@ function runState(win, d, r, op, say) {
  * with it on screen: the full referrer may carry a token, and an agent can read that workspace's
  * pages (docs/security/21-downloads-picker.md D4). A private window opens it as any private tab.
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @param {string} referrer  core allows an http: or https: page only
  */
 function openReferrer(win, d, referrer) {
@@ -587,7 +590,7 @@ const allowOverride = () => Services.prefs.getBoolPref("browser.safebrowsing.all
  * D3). The answer stands only for the download asked about, as in D5: the dialog is modal, but the
  * list, the file and the pref can change under it.
  * @param {BrowserWindow} win
- * @param {any} d
+ * @param {DownloadListEntry} d
  * @param {DownloadRecord} asked
  * @param {(text: string, error?: boolean) => void} say
  */
@@ -609,14 +612,40 @@ async function unblock(win, d, asked, say) {
     // A download whose question was answered "open with" would open as it is released
     // (Download._succeed). An allowed file is opened with `o`, through Firefox's executable
     // prompt, never by the allow itself (Behaviour 10).
-    d.launchWhenSucceeded = false;
-    await d.unblock();
+    const s = session(d);
+    s.launchWhenSucceeded = false;
+    await s.unblock();
     say(`allowed "${asked.name}"; o opens it`);
   } else {
-    await d.confirmBlock();
+    await session(d).confirmBlock();
     say(`removed the blocked file "${asked.name}"`);
   }
 }
+
+/**
+ * What a failure says: its message, else the value itself.
+ * @param {unknown} e
+ */
+const failureText = (e) =>
+  String((e !== null && typeof e === "object" && "message" in e ? e.message : undefined) ?? e);
+
+/**
+ * `d` as a session download, for a key core offers only for one (a history entry is stopped,
+ * with no partial or blocked data): a history entry here is a bug, thrown as one.
+ * @param {DownloadListEntry} d
+ * @returns {SessionDownload}
+ */
+function session(d) {
+  if (!isSession(d)) throw new Error("not a session download");
+  return d;
+}
+
+/**
+ * A session download: a history entry has none of a Download's methods but `refresh`.
+ * @param {DownloadListEntry} d
+ * @returns {d is SessionDownload}
+ */
+const isSession = (d) => typeof (/** @type {Partial<SessionDownload>} */ (d).start) === "function";
 
 /** @param {string} text */
 function copy(text) {
@@ -652,9 +681,9 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
     // are kept.
     close();
     const asked = ask(downloadQuestion(r, op), () =>
-      answered(win, d, r, op, say).catch((/** @type {any} */ e) => {
+      answered(win, d, r, op, say).catch((/** @type {unknown} */ e) => {
         console.error(e);
-        say(`${op}: ${e?.message ?? e}`, true);
+        say(`${op}: ${failureText(e)}`, true);
       }),
     );
     // The question line does not show over a page in DOM fullscreen.
@@ -713,9 +742,9 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
       // on its own turn, not inside the key's dispatch.
       close();
       win.setTimeout(() =>
-        unblock(win, d, r, say).catch((/** @type {any} */ e) => {
+        unblock(win, d, r, say).catch((/** @type {unknown} */ e) => {
           console.error(e);
-          say(`allow: ${e?.message ?? e}`, true);
+          say(`allow: ${failureText(e)}`, true);
         }),
       );
       return;

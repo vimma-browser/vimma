@@ -292,7 +292,7 @@ export class Find {
     } else {
       // close() makes the finder forget the frame of the match, so n and N would search again
       // from the top frame's selection, forward only (FinderParent.doFind).
-      const finder = /** @type {any} */ (s.browser.finder);
+      const finder = s.browser.finder;
       const frame = finder._lastFoundBrowsingContext;
       s.findbar.close();
       if (frame && !finder._lastFoundBrowsingContext) finder._lastFoundBrowsingContext = frame;
@@ -456,8 +456,11 @@ export class Find {
   #watch(browser) {
     if (this.listeners.has(browser)) return;
     const listener = {
-      onFindResult: (/** @type {any} */ data) => this.#onResult(browser, data),
-      onMatchesCountResult: (/** @type {any} */ r) => this.#onCount(browser, r),
+      onFindResult: (/** @type {{ result: number, searchString: string }} */ data) =>
+        this.#onResult(browser, data),
+      onMatchesCountResult: (
+        /** @type {{ searchString: string, current: number, total: number, limit: number }} */ r,
+      ) => this.#onCount(browser, r),
       onHighlightFinished() {},
       onCurrentSelection() {},
       shouldFocusContent: () => !this.suppressFocus,

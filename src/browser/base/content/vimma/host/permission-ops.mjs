@@ -31,7 +31,7 @@ export const PAGE_CHANGED = "the page changed: run :site again";
 /**
  * The page a window's picker was opened for: its browser and that page's principal. Every key
  * checks the tab still shows it (SP2).
- * @type {WeakMap<BrowserWindow, { browser: any, principal: any }>}
+ * @type {WeakMap<BrowserWindow, { browser: MozBrowser, principal: nsIPrincipal }>}
  */
 const opened = new WeakMap();
 
@@ -51,7 +51,7 @@ function inAgentWorkspace(win) {
 
 /**
  * Whether a principal is in the agent workspace's container.
- * @param {any} principal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 const agentPrincipal = (principal) =>
   WorkspaceStore.isAgentContainer(principal?.originAttributes?.userContextId);
@@ -96,8 +96,8 @@ function stateLabel(id, state) {
 
 /**
  * The real state of every permission Page Info lists, for one page.
- * @param {any} browser
- * @param {any} principal
+ * @param {MozBrowser} browser
+ * @param {nsIPrincipal} principal
  * @returns {PermissionRecord[]}
  */
 function readRecords(browser, principal) {
@@ -111,7 +111,10 @@ function readRecords(browser, principal) {
     [SP.SCOPE_GLOBAL]: "global",
   };
   // Globally blocked permissions (and temporary ones) are only in the browser's list.
-  const forBrowser = new Map(SP.getAllForBrowser(browser).map((/** @type {any} */ p) => [p.id, p]));
+  // SitePermissions.getAllForBrowser: each permission set for the tab, with its state and scope.
+  /** @type {{ id: string, state: number, scope: number }[]} */
+  const browserPerms = SP.getAllForBrowser(browser);
+  const forBrowser = new Map(browserPerms.map((p) => [p.id, p]));
   return SP.listPermissions()
     .filter(
       (/** @type {string} */ id) => SP.getPermissionLabel(id) && id !== "open-protocol-handler",
@@ -120,7 +123,7 @@ function readRecords(browser, principal) {
       const def = SP.getDefault(id);
       let { state, scope } = SP.getForPrincipal(principal, id, browser);
       const global = forBrowser.get(id);
-      if (global?.scope === SP.SCOPE_GLOBAL) ({ state, scope } = global);
+      if (global && global.scope === SP.SCOPE_GLOBAL) ({ state, scope } = global);
       let set = state !== def || scope !== SP.SCOPE_PERSISTENT;
       let label = stateLabel(id, state);
       if (id === "cookie") {
@@ -203,8 +206,8 @@ export function sitePermissionKey(win, op, id) {
  * Sets (`state`) or resets (null) one permission for a page, as Page Info does: Firefox stores it
  * for the site (for the session in a private window) and removes the entry when the state is the
  * default; with the browser, a temporary setting for the tab goes too.
- * @param {any} principal
- * @param {any} browser
+ * @param {nsIPrincipal} principal
+ * @param {MozBrowser} browser
  * @param {string} id
  * @param {number | null} state
  */
@@ -229,7 +232,7 @@ function writePermission(principal, browser, id, state) {
  * (docs/specs/popup-blocked.md), written as `:site` writes it. Nothing changes for a page
  * without site permissions, an agent workspace page, or while a locked
  * `dom.disable_open_during_load` makes the permission read only, as in Page Info.
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {"allow" | "block" | "reset"} kind
  * @returns {boolean} whether it changed the permission
  */

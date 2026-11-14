@@ -53,9 +53,16 @@ export function bookmarksRoot() {
   return root;
 }
 
-/** @returns {any} PlacesUtils */
+/** @returns {PlacesUtilsApi} */
 function places() {
   return ChromeUtils.importESModule("resource://gre/modules/PlacesUtils.sys.mjs").PlacesUtils;
+}
+
+/** The whole bookmarks tree, from the Places root, which always exists. */
+async function placesTree() {
+  const all = await places().promiseBookmarksTree("");
+  if (!all) throw new Error("bookmarks: no Places root");
+  return all;
 }
 
 /** Places events that change what the panel lists (PlacesEvent.webidl). */
@@ -80,10 +87,8 @@ function link(id, guid) {
   try {
     WorkspaceStore.setBookmarksFolder(id, guid);
   } catch (e) {
-    if (
-      /** @type {any} */ (e)?.code !== "read-only" &&
-      /** @type {any} */ (e)?.code !== "disabled"
-    ) {
+    const code = e !== null && typeof e === "object" && "code" in e ? e.code : undefined;
+    if (code !== "read-only" && code !== "disabled") {
       console.error("vimma: bookmarks folder not linked", e);
     }
   }
@@ -96,7 +101,7 @@ function link(id, guid) {
  * @returns {Promise<Scope>}
  */
 export async function loadScope(win = null) {
-  const all = await places().promiseBookmarksTree("");
+  const all = await placesTree();
   const model = win ? WindowWorkspaces.get(win)?.model : null;
   if (root !== "workspace" || !model) {
     return {
@@ -154,10 +159,7 @@ async function makeFolders(parentGuid, missing) {
 async function makeWorkspaceFolder(id) {
   const def = WorkspaceStore.definitions.workspaces.find((d) => d.id === id);
   if (!def) throw new Error("that workspace is gone");
-  const found = workspaceFolderGuid(
-    fromPlaces(await places().promiseBookmarksTree(""), "toolbar"),
-    asWorkspace(def),
-  );
+  const found = workspaceFolderGuid(fromPlaces(await placesTree(), "toolbar"), asWorkspace(def));
   const guid = found ?? (await makeFolders(PLACES_ROOTS.toolbar, [def.name]));
   link(id, guid);
   return guid;
@@ -250,7 +252,7 @@ export async function findBookmark(win, url) {
       outside: !inTree(scope.tree, bm.parentGuid),
     };
   }
-  const all = fromPlaces(await places().promiseBookmarksTree(""), "all");
+  const all = fromPlaces(await placesTree(), "all");
   return {
     guid: bm.guid,
     path: formatBookmarkPath([...folderPath(all, bm.parentGuid), bm.title]),
@@ -317,7 +319,7 @@ export async function placeBookmark(win, guid, text) {
   const bm = await PU.bookmarks.fetch(guid);
   if (!bm) return "bookmark: it is gone";
   const title = leaf ?? bm.title;
-  /** @type {Record<string, unknown>} */
+  /** @type {{ guid: string, title: string, parentGuid?: string, index?: number }} */
   const change = { guid, title };
   if (bm.parentGuid !== parentGuid) {
     change.parentGuid = parentGuid;
@@ -372,7 +374,7 @@ export async function removeItem(guid) {
  * @returns {Promise<{ guid: string, count: number } | null>}
  */
 export async function workspaceFolder(def) {
-  const toolbar = fromPlaces(await places().promiseBookmarksTree(""), "toolbar");
+  const toolbar = fromPlaces(await placesTree(), "toolbar");
   const tree = workspaceTree(toolbar, asWorkspace(def));
   if (isPendingFolder(tree.guid)) return null;
   /** @param {Folder} f @returns {number} */

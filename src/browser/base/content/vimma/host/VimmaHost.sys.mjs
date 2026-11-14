@@ -138,12 +138,13 @@ export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.
 /** @import { BookmarksRoot } from "../core/bookmarks.mjs" */
 /** @import { OutlineHost } from "./outline-ops.mjs" */
 /** @import { HostState } from "./runners.mjs" */
+/** @import { SuggestionAction } from "../core/suggestions.mjs" */
 
 /**
  * Hint mode in one window (m1-hints): from `f` until a label is chosen or Esc. While the
  * targets are being collected, keys are kept and replayed once the labels are up.
  * @typedef {object} HintSession
- * @property {any} browser  the <browser> the hints are on
+ * @property {MozBrowser} browser  the <browser> the hints are on
  * @property {HintAction} action
  * @property {HintState<HintTarget> | null} hs  null while collecting
  * @property {Chord[]} buffered  keys typed while collecting
@@ -167,9 +168,31 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
 
 /**
  * A keydown with Gecko's chrome-only members for keys that went to a page in another process.
+ * `defaultPreventedByContent` and `defaultPreventedByChrome` are Event.webidl's (ChromeOnly).
  * @typedef {KeyboardEvent & { isReplyEventFromRemoteContent: boolean,
- *   requestReplyFromRemoteContent: () => void }} ChromeKeyEvent
+ *   requestReplyFromRemoteContent: () => void, defaultPreventedByContent: boolean,
+ *   defaultPreventedByChrome: boolean }} ChromeKeyEvent
  */
+
+/**
+ * @param {string} id
+ * @returns {id is SuggestionAction}
+ */
+const isSuggestionAction = (id) => /** @type {ReadonlySet<string>} */ (SUGGESTION_ACTIONS).has(id);
+
+/**
+ * A key typed in a password field (an <input type=password> in chrome or a parent-process page).
+ * @param {EventTarget | null} target
+ */
+const isPasswordField = (target) =>
+  /** @type {{ readonly type?: unknown } | null} */ (target)?.type === "password";
+
+/**
+ * A key whose target is a <browser> showing a page in another process.
+ * @param {EventTarget | null} target
+ */
+const isRemoteBrowserTarget = (target) =>
+  !!(/** @type {{ readonly isRemoteBrowser?: unknown } | null} */ (target)?.isRemoteBrowser);
 
 /**
  * @typedef {object} WindowState
@@ -223,7 +246,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  *   and `panel` mode (docs/specs/bookmarks.md)
  * @property {OutlinePanel} outline  the PDF viewer's outline on Tab, in the side panel's slot and
  *   `index` mode (docs/specs/pdf-mode.md decision 10)
- * @property {{ browser: any, timer: number } | null} outlineFor  the outline Tab asked for,
+ * @property {{ browser: MozBrowser, timer: number } | null} outlineFor  the outline Tab asked for,
  *   until it comes, another key is pressed, the tab changes or OUTLINE_WAIT_MS pass
  * @property {() => void} stopOutline  ends the PDF outline subscription (pdf-ops.mjs)
  * @property {AgentChatWindow} agentChat  `:agent`, the built-in agent's window in the side
@@ -321,7 +344,7 @@ const browserModes = new WeakMap();
 /** @typedef {"normal" | "insert" | "visual"} PageMode  visual: copy mode (m1-copy-mode) */
 
 /**
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {PageMode} mode
  */
 function setBrowserMode(browser, mode) {
@@ -357,14 +380,14 @@ const escapeHold = new WeakMap();
  */
 const lastBlur = new WeakMap();
 
-/** @param {any} browser */
+/** @param {MozBrowser} browser */
 function topWindowId(browser) {
   return browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 }
 
 /**
  * Enters explicit insert in `browser`'s tab.
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 function enterExplicitInsert(browser) {
   setBrowserMode(browser, "insert");
@@ -374,35 +397,33 @@ function enterExplicitInsert(browser) {
 /**
  * The frame of each tab whose text field last took focus, and its document's inner window ID,
  * so `i` can go back to that field.
- * @type {WeakMap<object, { frame: any, windowId: number }>}  browser → BrowsingContext and ID
+ * @type {WeakMap<object, { frame: CanonicalBrowsingContext, windowId: number }>}  browser → BrowsingContext and ID
  */
 const lastFieldFrame = new WeakMap();
 
 /**
  * Shows `text` as the notice of the window that owns `browser`.
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {string} text
  */
 function noticeFor(browser, text) {
-  const win = browser?.ownerDocument?.defaultView;
-  (win && states.get(win))?.notice.show(text);
+  stateOfBrowser(browser)?.notice.show(text);
 }
 
 /**
  * The element focus of the window that owns `browser`, while that browser is in ELEMENT mode.
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @returns {ElementFocus | null}
  */
 function elementOf(browser) {
-  const win = browser?.ownerDocument?.defaultView;
-  const element = (win && states.get(win))?.element;
+  const element = stateOfBrowser(browser)?.element;
   return element?.browser === browser ? element : null;
 }
 
 /**
  * Takes focus out of `browser`'s focused frame (Esc), and holds the tab in normal mode against
  * a focus the page's script makes next (insert-focus behaviour 6).
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 function blurPage(browser) {
   escapeHold.set(browser, topWindowId(browser));
@@ -413,12 +434,11 @@ function blurPage(browser) {
 
 /**
  * The find state of the window that owns `browser`.
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @returns {Find | undefined}
  */
 function findOf(browser) {
-  const win = browser?.ownerDocument?.defaultView;
-  return (win && states.get(win))?.find ?? undefined;
+  return stateOfBrowser(browser)?.find ?? undefined;
 }
 
 /**
@@ -451,11 +471,26 @@ const ON_SELECTED = new Set([
   "find.previous",
 ]);
 
-/** @type {WeakMap<BrowserWindow, WindowState>} */
+/**
+ * Keyed by any window, so a <browser>'s `ownerDocument.defaultView` looks its window up as it
+ * is: only browser windows are ever set.
+ * @type {WeakMap<Window, WindowState>}
+ */
 const states = new WeakMap();
 /** The windows in `states`, for `configure` (a WeakMap cannot be iterated). */
 /** @type {Set<BrowserWindow>} */
 const windows = new Set();
+
+/**
+ * The state of the window `browser` is in, if that is one of ours. Read through `defaultView`,
+ * the WindowProxy init() was given: the inner window would be another key.
+ * @param {MozBrowser | null | undefined} browser
+ * @returns {WindowState | undefined}
+ */
+function stateOfBrowser(browser) {
+  const win = browser?.ownerDocument?.defaultView;
+  return win ? states.get(win) : undefined;
+}
 
 /**
  * What config.toml sets for every window (m5-config-load; ConfigHost calls `configure`). Null
@@ -483,7 +518,7 @@ const editAfterPage = new WeakSet();
 
 /**
  * The `[sites."<host>"] insert` rule for the page in `browser`, "auto" without one.
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 function siteInsert(browser) {
   if (!settings.sites.length) return "auto";
@@ -581,6 +616,7 @@ export const VimmaHost = {
     /** @type {Map<string, BrowserWindow>} the window of each tab tab search listed (tab-search.mjs) */
     let tabWindows = new Map();
     const keymap = settings.keymap ?? compileKeymap({}, { mac: MAC });
+    const hintOverlay = new HintOverlay(win);
     /** @type {WindowState} */
     const state = {
       win,
@@ -640,10 +676,14 @@ export const VimmaHost = {
         state.element.leave();
       },
       hint: null,
-      // Set below, once the overlay it draws in exists.
-      element: /** @type {any} */ (null),
+      element: new ElementFocus({
+        overlay: hintOverlay,
+        notify: (text) => state.notice.show(text),
+        changed: () => this._emit(state),
+        setMode: setBrowserMode,
+      }),
       resize: false,
-      hintOverlay: new HintOverlay(win),
+      hintOverlay,
       listeners: new Set(),
       statusBar: null,
       picker: new GotoPicker(win, {
@@ -689,8 +729,10 @@ export const VimmaHost = {
           const ask = (/** @type {string} */ q, /** @type {() => void} */ yes) =>
             state.rename.ask(q, yes);
           const say = (/** @type {string} */ text) => state.notice.show(text);
-          const said = pickerMove(win, id, ask, say, tab);
-          const refused = said === undefined ? moveTabFromPicker(win, id, ask, say, tab) : said;
+          // The picker types its rows' tabs as elements: each is a tab of this window's strip.
+          const row = /** @type {MozTabbrowserTab} */ (tab);
+          const said = pickerMove(win, id, ask, say, row);
+          const refused = said === undefined ? moveTabFromPicker(win, id, ask, say, row) : said;
           if (refused) state.notice.show(refused);
         },
       }),
@@ -760,7 +802,7 @@ export const VimmaHost = {
       }),
       popups: new PopupPicker(win, {
         load: () => popupPickerItems(win),
-        refuse: (rows) => popupRefusal(win, /** @type {any} */ (rows)),
+        refuse: (rows) => popupRefusal(win, rows),
         notice: (text) => state.notice.show(text),
         select: (id) => {
           runPopupRow(win, id);
@@ -781,7 +823,7 @@ export const VimmaHost = {
       find: new Find(win, () => this._emit(state)),
       // The PDF viewer's page and match count (docs/specs/pdf-mode.md decision 13).
       stopPdf: PdfOps.subscribe((browser) => {
-        if (browser?.ownerDocument?.defaultView !== win) return;
+        if (stateOfBrowser(browser) !== state) return;
         // pdf.js opened another PDF in the viewer: the outline of the last one closes (V11).
         if (state.outline.isOpen && state.outline.browser === browser && !PdfOps.outline(browser)) {
           state.outline.close();
@@ -837,7 +879,7 @@ export const VimmaHost = {
             ? privatePanel(pickerWorkspaces(win)).options
             : { skip: WindowWorkspaces.get(win)?.cycleSkip },
         info: (tabId) => {
-          const tab = /** @type {any} */ (tabById(win, tabId));
+          const tab = tabById(win, tabId);
           if (!tab) return undefined;
           const browser = tab.linkedBrowser;
           return {
@@ -854,7 +896,7 @@ export const VimmaHost = {
           if (tab) closeTabById(win, tab);
         },
         move: (tabId) => {
-          const tab = /** @type {any} */ (tabById(win, tabId));
+          const tab = tabById(win, tabId);
           if (tab) state.wsPicker.openFor(tab, tab.linkedBrowser?.contentTitle || tab.label);
         },
         color: () => WindowWorkspaces.get(win)?.status()?.color,
@@ -910,12 +952,6 @@ export const VimmaHost = {
       ),
       onAgentChat: () => this._emit(state),
     };
-    state.element = new ElementFocus({
-      overlay: state.hintOverlay,
-      notify: (text) => state.notice.show(text),
-      changed: () => this._emit(state),
-      setMode: setBrowserMode,
-    });
     states.set(win, state);
     windows.add(win);
     win.addEventListener("keydown", state.onKeyDown, true);
@@ -1230,16 +1266,15 @@ export const VimmaHost = {
    * focused window, and that page is in insert or copy mode, in hint mode or in a `/` search,
    * or a key sequence is under way in the window. An agent's keys wait for none of these: they
    * are denied, so an agent never moves a page under the user's cursor while they type in it.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser XULBrowserElement
    */
   inUse(browser) {
-    const win = browser?.ownerDocument?.defaultView;
-    const state = win && states.get(win);
-    if (!state || Services.focus.activeWindow !== win) return false;
+    const state = stateOfBrowser(browser);
+    if (!state || Services.focus.activeWindow !== state.win) return false;
     if (!browser.docShellIsActive) return false;
     // The tab's own find bar open (the user's ctrl+f or `/` there): its finder is the agent's.
-    const tab = win.gBrowser?.getTabForBrowser(browser);
-    const findbar = tab && win.gBrowser.getCachedFindBar(tab);
+    const tab = state.win.gBrowser?.getTabForBrowser(browser);
+    const findbar = tab && state.win.gBrowser.getCachedFindBar(tab);
     // A page without our actor takes every key itself: in use while shown.
     return (
       (!!findbar && !findbar.hidden) ||
@@ -1253,12 +1288,12 @@ export const VimmaHost = {
   /**
    * Whether `browser` is the page with the user's focus, in the focused window: a find there
    * would focus a text field its match is in (docs/specs/mcp-drive.md D11, security.md M16).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser XULBrowserElement
    */
   isFocusedPage(browser) {
-    const win = browser?.ownerDocument?.defaultView;
-    if (!win || Services.focus.activeWindow !== win) return false;
-    return this._focusedBrowser(win) === browser;
+    const state = stateOfBrowser(browser);
+    if (!state || Services.focus.activeWindow !== state.win) return false;
+    return this._focusedBrowser(state.win) === browser;
   },
 
   /**
@@ -1346,8 +1381,9 @@ export const VimmaHost = {
 
   /**
    * A focus report from the content actor (VimmaParent) for a tab's <browser>.
-   * @param {any} browser
-   * @param {{ descriptor: EditableDescriptor, trigger: InsertTrigger, frame?: any,
+   * @param {MozBrowser} browser
+   * @param {{ descriptor: EditableDescriptor, trigger: InsertTrigger,
+   *   frame?: CanonicalBrowsingContext,
    *   windowId?: number, user?: boolean, gen?: number }} report
    *   `frame`: the BrowsingContext that reported; `windowId`: its document's inner window ID;
    *   `user`: the focus came from the user's input; `gen`: the last blur generation the
@@ -1386,7 +1422,7 @@ export const VimmaHost = {
   /**
    * The user clicked in the focused frame of `browser` (VimmaParent) where no focus report
    * says so: it ends the hold of Esc (insert-focus behaviour 6).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    */
   onUserClick(browser) {
     escapeHold.delete(browser);
@@ -1396,7 +1432,7 @@ export const VimmaHost = {
    * The user selected text with the mouse in the focused frame of `browser` (VimmaParent):
    * normal mode enters copy mode with that selection, so `y` copies it and motions extend it.
    * Insert mode keeps it (a text field's selection is its own).
-   * @param {any} browser
+   * @param {MozTabBrowser} browser
    */
   onMouseSelection(browser) {
     if (this._browserMode(browser) === "insert") return;
@@ -1408,27 +1444,24 @@ export const VimmaHost = {
    * report, `i`, `Esc`): tells the owning window's state listeners (the status bar).
    * The listeners read the mode back through `status(win)`; the mode itself only ends element
    * focus when it is insert.
-   * @type {(browser: any, mode: PageMode) => void}
+   * @type {(browser: MozBrowser, mode: PageMode) => void}
    */
   onModeChange: (browser, mode) => {
-    // defaultView is the WindowProxy init() was given; ownerGlobal is the inner window, a
-    // different object as a WeakMap key.
-    const win = browser?.ownerDocument?.defaultView;
-    const state = win && states.get(win);
+    const state = stateOfBrowser(browser);
     // A text field took focus (the page's script, a click): its keys are the field's, so a
     // focused block's ELEMENT mode ends, as copy mode does.
     if (state && mode === "insert" && state.element.browser === browser) state.element.leave();
     if (state) VimmaHost._emit(state);
     // Into a field: the agent question goes back to waiting (vimma-mcp decision 14), and so
     // does the update question.
-    if (state) AgentUi.onFocusChange(win);
-    if (state) UpdateUi.onFocusChange(win);
+    if (state) AgentUi.onFocusChange(state.win);
+    if (state) UpdateUi.onFocusChange(state.win);
   },
 
   /**
    * The page mode keys get while `browser` has focus. A page without our actor (extension
    * pages, data:, blob:) stays in insert, as every page was before M1.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {PageMode}
    */
   _browserMode(browser) {
@@ -1494,12 +1527,14 @@ export const VimmaHost = {
   },
 
   /**
-   * The focused content <browser> when it has our actor, else null.
+   * The focused content <browser> when it has our actor, else null. The actor is only in the
+   * `browsers` message manager group (VimmaActors.init), so that is a tab's <browser>.
    * @param {WindowState} state
+   * @returns {MozTabBrowser | null}
    */
   _contentBrowser(state) {
     const browser = this._focusedBrowser(state.win);
-    return browser && VimmaActors.has(browser) ? browser : null;
+    return browser && VimmaActors.has(browser) ? /** @type {MozTabBrowser} */ (browser) : null;
   },
 
   /**
@@ -1564,14 +1599,14 @@ export const VimmaHost = {
       !chord.ctrl &&
       !chord.alt &&
       !chord.meta &&
-      /** @type {any} */ (this._focusedBrowser(win))?.currentURI?.spec === "about:vimma-setup"
+      this._focusedBrowser(win)?.currentURI?.spec === "about:vimma-setup"
     ) {
       return;
     }
     const mode = this._mode(state);
     // Keys typed in a private window are never kept (private-workspace decision 8b), nor those
     // typed in a password field, such as the built-in agent's API key (security.md M46).
-    const secret = /** @type {any} */ (e.target)?.type === "password";
+    const secret = isPasswordField(e.target);
     if (!state.private && !secret) {
       this._lastChords.push(key);
       if (this._lastChords.length > MAX_RECORDED) this._lastChords.shift();
@@ -1719,7 +1754,7 @@ export const VimmaHost = {
         }
         // A suggestion key that does not wait for a page (a chrome field has focus) runs its
         // chord's [keys] binding: the address bar keeps ctrl+n and ctrl+p.
-        if (SUGGESTION_ACTIONS.has(/** @type {any} */ (result.action.id))) {
+        if (isSuggestionAction(result.action.id)) {
           this._suggest(state, result.action, first ? formatKey(chord) : null, mode);
           return;
         }
@@ -1764,7 +1799,7 @@ export const VimmaHost = {
    * @param {string} id  the action the chord runs
    */
   _pageFirstAction(state, chord, mode, id) {
-    if (SUGGESTION_ACTIONS.has(/** @type {any} */ (id)) && this._contentBrowser(state)) return true;
+    if (isSuggestionAction(id) && this._contentBrowser(state)) return true;
     return this._pageFirst(state, chord, mode);
   },
 
@@ -1801,8 +1836,7 @@ export const VimmaHost = {
    * @param {WindowState} state
    */
   _shortcutsBlocked(state) {
-    const browser = /** @type {any} */ (this._focusedBrowser(state.win));
-    const principal = browser?.contentPrincipal;
+    const principal = this._focusedBrowser(state.win)?.contentPrincipal;
     if (!principal) return false;
     try {
       const perms = Services.perms;
@@ -1842,9 +1876,7 @@ export const VimmaHost = {
     // instead, and no reply comes. `press` settles it as a key that stayed in this process:
     // `_onKeyPressAfter` runs it unless something calls preventDefault.
     if (!key) return;
-    if (
-      state.pageFirst.press(key, e.timeStamp, !!(/** @type {any} */ (e.target)?.isRemoteBrowser))
-    ) {
+    if (state.pageFirst.press(key, e.timeStamp, isRemoteBrowserTarget(e.target))) {
       e.stopPropagation();
       ev.requestReplyFromRemoteContent();
     }
@@ -1862,7 +1894,7 @@ export const VimmaHost = {
    */
   _pageTookKey(e, pending) {
     if (!e.defaultPrevented) return false;
-    if (/** @type {any} */ (e).defaultPreventedByContent) return true;
+    if (/** @type {ChromeKeyEvent} */ (e).defaultPreventedByContent) return true;
     return pending.mode === "insert";
   },
 
@@ -1905,7 +1937,7 @@ export const VimmaHost = {
     const { result } = pending;
     if (
       result.kind === "action" &&
-      SUGGESTION_ACTIONS.has(/** @type {any} */ (result.action.id)) &&
+      isSuggestionAction(result.action.id) &&
       RUNNABLE.has(result.action.id)
     ) {
       this._suggest(state, result.action, key, pending.mode, target);
@@ -1949,7 +1981,7 @@ export const VimmaHost = {
       return true;
     }
     if (mode !== "insert" || !VimmaActors.has(browser)) return false;
-    if (/** @type {any} */ (browser).isRemoteBrowser) {
+    if (browser.isRemoteBrowser) {
       /** @type {ChromeKeyEvent} */ (e).requestReplyFromRemoteContent();
     } else {
       editAfterPage.add(e);
@@ -1970,7 +2002,7 @@ export const VimmaHost = {
     if (
       keyBrowser?.isRemoteBrowser &&
       !(/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) &&
-      !(/** @type {any} */ (e).defaultPreventedByChrome)
+      !(/** @type {ChromeKeyEvent} */ (e).defaultPreventedByChrome)
     ) {
       VimmaActors.keySent(keyBrowser);
     }
@@ -2065,8 +2097,8 @@ export const VimmaHost = {
    * (VimmaParent, `Vimma:BlockMoved` / `Vimma:BlockGone`). From a content process: the window
    * whose block it is checks that the frame is one of its block's, with the same document.
    * @param {"moved" | "gone"} what
-   * @param {any} bc
-   * @param {any} wg
+   * @param {CanonicalBrowsingContext} bc
+   * @param {WindowGlobalParent} wg
    * @param {unknown} gen
    */
   onBlockReport(what, bc, wg, gen) {
@@ -2075,7 +2107,7 @@ export const VimmaHost = {
 
   /**
    * A frame's document went away (VimmaParent): element focus in it ends.
-   * @param {any} wg  its WindowGlobalParent
+   * @param {WindowGlobalParent} wg  its WindowGlobalParent
    */
   onFrameGone(wg) {
     for (const win of windows) states.get(win)?.element.onFrameGone(wg);
@@ -2084,12 +2116,11 @@ export const VimmaHost = {
   /**
    * `f` / `gF` / `F`: collects the targets, then enters hint mode with a label on each. With none,
    * the tab stays in normal (the status bar will say so, M2).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {Action} action
    */
   _startHints(browser, action) {
-    // The window proxy init() was given; ownerGlobal is the inner window, another key.
-    const state = states.get(browser.ownerDocument.defaultView);
+    const state = stateOfBrowser(browser);
     if (!state) return;
     this._cancelHints(state);
     state.element.leave();
@@ -2179,7 +2210,7 @@ export const VimmaHost = {
    * which the viewer resolves; its URL, with the fragment that reopens that place, is what `c`
    * copies.
    * @param {WindowState} state
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {HintTarget} target
    * @param {"hint.show_target" | "hint.copy_target"} action
    */

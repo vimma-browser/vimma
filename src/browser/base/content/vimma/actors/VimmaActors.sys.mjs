@@ -809,7 +809,7 @@ export const VimmaActors = {
    * last step sent there: a frame that sends a forged one can only make its own click read as
    * skipped, as its outcome reply already could.
    * @param {CanonicalBrowsingContext | null | undefined} bc  the frame that skipped it
-   * @param {object} wg  its window global (WindowGlobalParent), the sender's own
+   * @param {object | null} wg  its window global (WindowGlobalParent), the sender's own
    * @param {unknown} data  `{ gen, id, step }`: `step` is the number the parent sent it with
    */
   agentSkipped(bc, wg, data) {

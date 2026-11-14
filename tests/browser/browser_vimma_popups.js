@@ -69,11 +69,13 @@ const line = () => bar()?.querySelector(".vimma-prompt-keys") ?? null;
 /** The line says `text` and shows: armed, and visible. @param {string} text */
 const lineShows = (text) =>
   line()?.textContent === text &&
-  line().hasAttribute("armed") &&
-  getComputedStyle(line()).visibility === "visible";
+  found(line()).hasAttribute("armed") &&
+  getComputedStyle(found(line())).visibility === "visible";
 /** The line is there, keeping its place, but hidden while the keys wait. */
 const lineWaits = () =>
-  !!line() && !line().hasAttribute("armed") && getComputedStyle(line()).visibility === "hidden";
+  !!line() &&
+  !found(line()).hasAttribute("armed") &&
+  getComputedStyle(found(line())).visibility === "hidden";
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg, tries = 100) {
@@ -182,7 +184,8 @@ add_task(async function the_cue_follows_the_selected_tab() {
   await until(() => cue() === CUE, "back: the cue again");
 
   // Firefox's own close button on the bar: the cue goes with it.
-  bar().shadowRoot.querySelector("moz-button.close").click();
+  const close = found(found(bar()).shadowRoot).querySelector("moz-button.close");
+  found(/** @type {HTMLElement | null} */ (close)).click();
   await until(() => cue() === null, "the bar closed: no cue");
   BrowserTestUtils.removeTab(plain);
   BrowserTestUtils.removeTab(blocking);
@@ -259,8 +262,12 @@ add_task(async function y_answers_only_once_the_bar_is_armed_and_allows_the_site
   const tab = await blockingTab();
   await until(() => cue() === UNARMED, "no keys named before the bar is armed");
   Assert.ok(lineWaits(), "the bar's keys line waits too");
-  Assert.equal(line().getAttribute("aria-hidden"), "true", "the buttons stay the labels");
-  Assert.equal(line().parentNode, bar().buttonContainer, "the line sits beside the bar's button");
+  Assert.equal(found(line()).getAttribute("aria-hidden"), "true", "the buttons stay the labels");
+  Assert.equal(
+    found(line()).parentNode,
+    found(found(bar()).buttonContainer),
+    "the line sits beside the bar's button",
+  );
   EventUtils.synthesizeKey("y");
   await wait(DELAY / 4);
   Assert.ok(bar() && !allowed(tab), "y before the bar is armed answers nothing");
@@ -506,7 +513,7 @@ add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
   );
   Assert.ok(!isOpen(), "no picker, so no row to allow or reset the site");
   Assert.equal(permission(tab), DENY, "the permission is as it was");
-  bar().dismiss();
+  found(bar()).dismiss();
   await until(() => !bar(), "the bar closed");
   // The bar leaves its box after its closing animation; the status bar redraws then.
   await until(() => cue() === null, "no way to allow is named in the agent workspace");
