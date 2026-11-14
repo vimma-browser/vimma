@@ -37,16 +37,28 @@ add_setup(async () => {
   });
 });
 
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
 const panel = () => document.getElementById("vimma-outline");
-const shown = () => !!panel() && !panel().hidden;
+const shown = () => panel()?.hidden === false;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
-const mode = () => VimmaHost._mode(VimmaHost._state(window));
+/** The window's state, which VimmaHost made when it started this window. */
+const state = () => found(VimmaHost._state(window));
+const mode = () => VimmaHost._mode(state());
 /** @param {string} id */
-const run = (id) => VimmaHost._run(VimmaHost._state(window), { kind: "action", action: { id } });
+const run = (id) => VimmaHost._run(state(), { kind: "action", action: { id } });
 /** The titles of the rows shown, and the selected one. */
 const rows = () =>
   [...(panel()?.querySelectorAll("[role=treeitem]") ?? [])].map(
-    (li) => li.querySelector(".vimma-panel-title").textContent,
+    (li) => found(li.querySelector(".vimma-panel-title")).textContent,
   );
 const selected = () =>
   panel()?.querySelector("[role=treeitem][aria-selected=true] .vimma-panel-title")?.textContent;
@@ -56,6 +68,7 @@ const segment = (id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
     ?.textContent ?? "";
 
+/** @param {XULBrowserElement} browser @param {string} url */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -79,7 +92,7 @@ async function focusNormal(browser) {
 }
 
 /**
- * @param {(browser: XULBrowserElement, tab: any) => Promise<void>} fn
+ * @param {(browser: MozTabBrowser, tab: MozTabbrowserTab) => Promise<void>} fn
  * @param {string} [url]
  */
 async function withPdf(fn, url = PDF) {
@@ -100,14 +113,18 @@ async function withPdf(fn, url = PDF) {
 async function closeOutline() {
   if (!shown()) return;
   // An outline shown beside the document (decision 19) has not the keys: give it them first.
-  if (mode() !== "index") VimmaHost._state(window).outline.focus();
+  if (mode() !== "index") state().outline.focus();
   EventUtils.synthesizeKey("KEY_Escape");
   await TestUtils.waitForCondition(() => !shown(), "the outline closes");
 }
 
 /** @param {XULBrowserElement} browser */
 const page = (browser) =>
-  SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.PDFViewerApplication.page);
+  SpecialPowers.spawn(
+    browser,
+    [],
+    () => /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication.page,
+  );
 
 /**
  * Until pdf.js shows page `want` and the parent has heard so: the outline opens on the page the
@@ -144,18 +161,21 @@ add_task(async function index_mode() {
     // Another panel in the slot gives way.
     run("bookmarks.toggle");
     await TestUtils.waitForCondition(
-      () => !document.getElementById("vimma-bookmarks")?.hidden,
+      () => document.getElementById("vimma-bookmarks")?.hidden === false,
       "the bookmarks panel is open",
     );
     browser.focus();
     await TestUtils.waitForCondition(() => mode() === "panel", "panel mode");
     run("pdf.outline");
     await TestUtils.waitForCondition(shown, "the outline opens");
-    Assert.ok(document.getElementById("vimma-bookmarks").hidden, "the bookmarks panel closed");
-    Assert.equal(panel().parentNode.id, "browser", "in the side panel's slot");
+    Assert.ok(
+      found(document.getElementById("vimma-bookmarks")).hidden,
+      "the bookmarks panel closed",
+    );
+    Assert.equal(found(panel()).parentElement?.id, "browser", "in the side panel's slot");
     // On the left of the pages; other panels' boxes may come first in the slot, hidden.
     Assert.lessOrEqual(
-      panel().getBoundingClientRect().right,
+      found(panel()).getBoundingClientRect().right,
       browser.getBoundingClientRect().left,
       "on the left",
     );
@@ -227,12 +247,12 @@ add_task(async function closing_keys_do_not_move() {
     type("2J");
     await untilPage(browser, 3, "2J");
     // Tab, Esc, ctrl+[, ctrl+c and q close without moving.
-    for (const [key, opts] of [
+    for (const [key, opts] of /** @type {[string, KeyEventOptions][]} */ ([
       ["KEY_Tab", {}],
       ["KEY_Escape", {}],
       ["[", { ctrlKey: true }],
       ["q", {}],
-    ]) {
+    ])) {
       await openOutline();
       type("gg");
       await untilSelected("Preface", "gg");
@@ -252,9 +272,13 @@ add_task(async function the_filter() {
     type("sec");
     await TestUtils.waitForCondition(() => rows().length === 2, "sec matches two");
     Assert.deepEqual(rows(), ["Section 1.1", "Section 1.2"], "best first");
-    const path = panel().querySelector("[role=treeitem] .vimma-panel-host")?.textContent;
+    const path = found(panel()).querySelector("[role=treeitem] .vimma-panel-host")?.textContent;
     Assert.equal(path, "Chapter 1", "each with the titles above it");
-    Assert.equal(panel().querySelector("[role=treeitem] mark")?.textContent, "Sec", "marked");
+    Assert.equal(
+      found(panel()).querySelector("[role=treeitem] mark")?.textContent,
+      "Sec",
+      "marked",
+    );
     EventUtils.synthesizeKey("KEY_ArrowDown");
     await untilSelected("Section 1.2", "down in the filter");
     EventUtils.synthesizeKey("KEY_ArrowUp");
@@ -286,9 +310,13 @@ add_task(async function each_kind_of_entry() {
       "Deep",
     ]);
     // Only pdf.js's navigation actions are followed.
-    Assert.equal(PdfOps.outline(browser).entries[6].kind, "none", "Print follows nothing");
+    Assert.equal(found(PdfOps.outline(browser)).entries[6].kind, "none", "Print follows nothing");
     // outline_titles_with_html_stay_text
-    Assert.equal(panel().querySelector("img"), null, "a title that looks like markup is text");
+    Assert.equal(
+      found(panel()).querySelector("img"),
+      null,
+      "a title that looks like markup is text",
+    );
     // A named destination resolves to its page.
     type("gg");
     EventUtils.synthesizeKey("KEY_Enter");
@@ -360,6 +388,12 @@ add_task(async function switching_tabs_closes_the_outline() {
 });
 
 /**
+ * The viewer's window with the function a_read_under_way_does_not_outlive_its_document puts on
+ * it, which answers the first document's outline read.
+ * @typedef {PdfJsWindow & { vimmaAnswerOutline: () => void }} AnsweringWindow
+ */
+
+/**
  * Records the outline messages the parent gets.
  * @param {(seen: unknown[]) => Promise<void>} fn
  */
@@ -384,7 +418,7 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
       type("3J");
       await untilPage(browser, 4, "3J");
       Assert.equal(seen.length, 0, "no outline message before Tab");
-      Assert.equal(PdfOps.outline(browser), null, "and none kept");
+      Assert.strictEqual(PdfOps.outline(browser), null, "and none kept");
       await openOutline();
       Assert.equal(seen.length, 1, "one after Tab");
       await closeOutline();
@@ -392,12 +426,15 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
       Assert.equal(seen.length, 1, "a second Tab opens the outline already read");
       await closeOutline();
       // An outline the parent did not ask for is dropped (V8).
+      /** @type {WindowGlobalParent} */
       const wg = browser.browsingContext.currentWindowGlobal;
       const before = PdfOps.outline(browser);
+      Assert.ok(before, "the parent has the outline it read");
       wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfOp", { op: "outline", n: 0 });
       await TestUtils.waitForCondition(() => seen.length === 2, "the child answers");
-      Assert.equal(PdfOps.outline(browser), before, "and the parent keeps what it had");
+      Assert.strictEqual(PdfOps.outline(browser), before, "and the parent keeps what it had");
       // the_parent_sends_only_operations_and_numbers: Enter names the entry by its index.
+      /** @type {unknown[]} */
       const sent = [];
       const actor = wg.getActor("Vimma");
       const orig = actor.sendAsyncMessage;
@@ -421,7 +458,7 @@ add_task(async function the_outline_is_read_only_on_the_users_key() {
     await loadPdf(browser, NO_OUTLINE);
     await TestUtils.waitForCondition(() => !shown(), "another document closes the outline");
     await TestUtils.waitForCondition(() => PdfOps.state(browser)?.pages === 1, "another PDF");
-    Assert.equal(PdfOps.outline(browser), null, "the outline went with its document");
+    Assert.strictEqual(PdfOps.outline(browser), null, "the outline went with its document");
   });
 });
 
@@ -440,13 +477,13 @@ add_task(async function another_pdf_in_the_same_viewer_drops_the_outline() {
     );
     // The same bytes again: a new document with the same page count.
     await SpecialPowers.spawn(browser, [], async () => {
-      const app = content.wrappedJSObject.PDFViewerApplication;
-      const data = await app.pdfDocument.getData();
+      const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+      const data = await /** @type {PdfJsDocument} */ (app.pdfDocument).getData();
       app.open(Cu.cloneInto({ data }, content));
     });
     await loaded;
     await TestUtils.waitForCondition(() => !shown(), "the open outline closes");
-    Assert.equal(PdfOps.outline(browser), null, "the outline went with the first document");
+    Assert.strictEqual(PdfOps.outline(browser), null, "the outline went with the first document");
   });
 });
 
@@ -456,14 +493,15 @@ add_task(async function a_read_under_way_does_not_outlive_its_document() {
     await recordingOutline(async (seen) => {
       // The first document answers only once the second one is open.
       await SpecialPowers.spawn(browser, [], () => {
+        /** @type {AnsweringWindow} */
         const w = content.wrappedJSObject;
-        const doc = w.PDFViewerApplication.pdfDocument;
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
         // The old document is gone by then: an outline of its own shape stands in for it.
         const old = Cu.cloneInto([{ title: "Old", dest: [0], items: [] }], content);
         doc.getOutline = Cu.exportFunction(
           () =>
             new w.Promise(
-              Cu.exportFunction((resolve) => {
+              Cu.exportFunction((/** @type {(outline: object[]) => void} */ resolve) => {
                 w.vimmaAnswerOutline = Cu.exportFunction(() => resolve(old), content);
               }, content),
             ),
@@ -480,17 +518,19 @@ add_task(async function a_read_under_way_does_not_outlive_its_document() {
         true,
       );
       await SpecialPowers.spawn(browser, [], async () => {
-        const app = content.wrappedJSObject.PDFViewerApplication;
-        const data = await app.pdfDocument.getData();
+        const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        const data = await /** @type {PdfJsDocument} */ (app.pdfDocument).getData();
         app.open(Cu.cloneInto({ data }, content));
       });
       await loaded;
       // The new document's state has reached the parent before the old answer.
       await TestUtils.waitForCondition(() => PdfOps.state(browser)?.doc === 1, "the new PDF");
-      await SpecialPowers.spawn(browser, [], () => content.wrappedJSObject.vimmaAnswerOutline());
+      await SpecialPowers.spawn(browser, [], () =>
+        /** @type {AnsweringWindow} */ (content.wrappedJSObject).vimmaAnswerOutline(),
+      );
       await new Promise((r) => setTimeout(r, 300));
       Assert.equal(seen.length, 0, "the old document's outline is not sent");
-      Assert.equal(PdfOps.outline(browser), null, "nor kept");
+      Assert.strictEqual(PdfOps.outline(browser), null, "nor kept");
       Assert.ok(!shown(), "nor shown");
     });
   });
@@ -501,9 +541,16 @@ add_task(async function a_hostile_outline_gets_only_primitives_through() {
     await recordingOutline(async (seen) => {
       // A thenable that is not a promise is never called back.
       await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
         const w = content.wrappedJSObject;
-        w.PDFViewerApplication.pdfDocument.getOutline = Cu.exportFunction(
-          () => Cu.cloneInto({ then: (r) => r([]) }, content, { cloneFunctions: true }),
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
+        // Not a promise, which is the point: the cast says only that pdf.js is handed it.
+        const thenable = { then: (/** @type {(outline: object[]) => void} */ r) => r([]) };
+        doc.getOutline = Cu.exportFunction(
+          () =>
+            /** @type {Promise<object[]>} */ (
+              /** @type {unknown} */ (Cu.cloneInto(thenable, content, { cloneFunctions: true }))
+            ),
           content,
         );
       });
@@ -513,26 +560,36 @@ add_task(async function a_hostile_outline_gets_only_primitives_through() {
       Assert.equal(seen.length, 0, "no outline from a thenable");
       Assert.ok(!shown(), "and no panel");
       await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
         const w = content.wrappedJSObject;
-        const fn = (/** @type {Function} */ f) => Cu.exportFunction(f, content);
         const obj = (/** @type {object} */ o) => Cu.cloneInto(o, content, { cloneFunctions: true });
-        const item = new w.Object();
+        /** An outline entry of the page's own, with the fields this test gives it. */
+        const entry = () =>
+          /** @type {{ title?: unknown, dest?: object, items?: object[] }} */ (new w.Object());
+        const item = entry();
         // A title that is an object, a count behind a getter.
         item.title = obj({ toString: () => "evil" });
-        Object.defineProperty(item, "count", { get: fn(() => -1), enumerable: true });
+        Object.defineProperty(item, "count", {
+          get: Cu.exportFunction(() => -1, content),
+          enumerable: true,
+        });
         item.dest = obj([0]);
         item.items = new w.Array();
-        const long = new w.Object();
+        const long = entry();
         long.title = "x".repeat(100000);
         long.dest = obj([1]);
         long.items = new w.Array();
+        /** @type {object[]} */
         const list = new w.Array();
         list.push(item, long);
-        w.PDFViewerApplication.pdfDocument.getOutline = fn(() => w.Promise.resolve(list));
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
+        doc.getOutline = Cu.exportFunction(() => w.Promise.resolve(list), content);
       });
       await openOutline();
       Assert.equal(seen.length, 1, "one message");
-      const msg = /** @type {any} */ (seen[0]);
+      // The message as the child sends it; the checks below hold each field to a primitive.
+      const msg =
+        /** @type {{ entries: { title: string, collapsed: boolean, page: number }[] }} */ (seen[0]);
       for (const entry of msg.entries) {
         for (const v of Object.values(entry)) {
           Assert.ok(["number", "string", "boolean"].includes(typeof v), "a primitive");
@@ -551,13 +608,14 @@ add_task(async function a_late_outline_opens_nothing() {
     await recordingOutline(async (seen) => {
       // The viewer answers late, after the user has pressed another key.
       await SpecialPowers.spawn(browser, [], () => {
+        /** @type {PdfJsWindow} */
         const w = content.wrappedJSObject;
-        const doc = w.PDFViewerApplication.pdfDocument;
+        const doc = /** @type {PdfJsDocument} */ (w.PDFViewerApplication.pdfDocument);
         const real = doc.getOutline.bind(doc);
         doc.getOutline = Cu.exportFunction(
           () =>
             new w.Promise(
-              Cu.exportFunction((resolve) => {
+              Cu.exportFunction((/** @type {(outline: object[] | null) => void} */ resolve) => {
                 content.setTimeout(() => real().then(resolve), 500);
               }, content),
             ),
@@ -583,7 +641,7 @@ const PAGEMODE = ROOT + "file_vimma_outline_pagemode.pdf";
 const outlinePref = (hidden) =>
   SpecialPowers.pushPrefEnv({ set: [["vimma.ui.pdf_outline.hidden", hidden]] });
 
-/** @param {any} tab */
+/** @param {MozTabbrowserTab} tab */
 async function awayAndBack(tab) {
   const other = BrowserTestUtils.addTab(gBrowser, "about:blank");
   gBrowser.selectedTab = other;
@@ -655,7 +713,8 @@ add_task(async function pdf_outline_hidden_keeps_it_closed() {
 
 add_task(async function a_pdf_without_an_outline_opens_none() {
   await outlinePref(false);
-  const notice = VimmaHost._state(window).notice;
+  const notice = state().notice;
+  /** @type {string[]} */
   const said = [];
   const show = notice.show;
   notice.show = function (text, ...rest) {

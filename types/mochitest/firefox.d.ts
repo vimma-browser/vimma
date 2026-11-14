@@ -152,6 +152,8 @@ interface Event {
 // engine/caps/nsIPrincipal.idl
 interface nsIPrincipal {
   readonly origin: string;
+  /** The origin without its origin attributes' suffix. */
+  readonly originNoSuffix: string;
 }
 
 // engine/xpcom/ds/nsIObserver.idl and nsIObserverService.idl: the object form of an observer.
@@ -330,7 +332,18 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
   readonly documentURI: { readonly spec: string } | null;
+  readonly documentPrincipal: nsIPrincipal;
   readonly isInitialDocument: boolean;
+  /**
+   * A snapshot of `rect` of the global's document (the whole viewport for null), at `scale`,
+   * over `backgroundColor`; the options are the webidl's DrawSnapshotOptions.
+   */
+  drawSnapshot(
+    rect: DOMRect | null,
+    scale: number,
+    backgroundColor: string,
+    options?: { resetScrollPosition?: boolean; drawView?: boolean },
+  ): Promise<ImageBitmap>;
 }
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
@@ -400,6 +413,11 @@ interface UrlbarInputTestMembers {
 interface nsIPromptService {
   /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
   confirm(parent: Window | null, title: string, text: string): boolean;
+  /**
+   * An alert for a browsing context; `modalType` is a MODAL_TYPE_* constant. Spins a nested
+   * event loop until it closes.
+   */
+  alertBC(browsingContext: BrowsingContext, modalType: number, title: string, text: string): void;
 }
 interface FirefoxServices {
   prompt: nsIPromptService;
@@ -411,6 +429,12 @@ interface MozDialogElement extends Element {
   getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
     disabled: boolean;
   };
+  /**
+   * Runs the accept button's command, as a click on it does: false when a "dialogaccept"
+   * listener cancelled it, true otherwise, also when the button is disabled and nothing ran
+   * (_doButtonCommand).
+   */
+  acceptDialog(): boolean;
 }
 
 // engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
@@ -444,10 +468,12 @@ interface Document {
 
 // engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
 // command on doCommand. Like an HTML element, it has its inline style (XULElement includes
-// ElementCSSInlineStyle).
+// ElementCSSInlineStyle) and takes focus (it includes HTMLOrSVGOrMathMLElement, whose `focus`
+// is in engine/dom/webidl/Element.webidl).
 interface XULElement extends Element, ElementCSSInlineStyle {
   hidden: boolean;
   doCommand(): void;
+  focus(options?: FocusOptions): void;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
 // shows the requested tab once its layers are ready.
@@ -503,6 +529,8 @@ interface MozNotificationBox {
   readonly PRIORITY_INFO_LOW: number;
   /** Its <vbox class="notificationbox-stack">, which its `stack` getter makes on first use. */
   readonly _stack: Element | undefined;
+  /** The <notification-message> elements it shows, without one that is closing. */
+  readonly allNotifications: Element[];
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
@@ -541,10 +569,15 @@ interface MozTabSplitViewWrapper {
   ): void;
 }
 
-// engine/xpcom/threads/nsITimer.idl
+// engine/xpcom/threads/nsITimer.idl; nsITimerManager.getTimers(), in the same file, lists the
+// pending timers for tests.
 interface nsITimer {
   /** Its delay in ms; setting it on a pending timer reschedules it. */
   delay: number;
+  /** A TYPE_* constant (TYPE_ONE_SHOT, the repeating ones). */
+  type: number;
+  /** The callback's name, for logs. */
+  readonly name: string;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs
 interface AsyncTabSwitcher {
@@ -779,39 +812,124 @@ interface OverflowableToolbarElement extends XULElement {
   readonly overflowable: { isHandlingOverflow(): boolean } | null;
 }
 
-// engine/dom/chrome-webidl/WindowGlobalActors.webidl: a snapshot of `rect` of the global's
-// document (the whole viewport for null), at `scale`, over `backgroundColor`.
-interface WindowGlobalParent {
-  drawSnapshot(
-    rect: DOMRect | null,
-    scale: number,
-    backgroundColor: string,
-    options?: { resetScrollPosition?: boolean },
-  ): Promise<ImageBitmap>;
-}
-
-// engine/toolkit/components/windowwatcher/nsIPromptService.idl: an alert for a browsing
-// context; `modalType` is a MODAL_TYPE_* constant. Spins a nested event loop until it closes.
-interface nsIPromptService {
-  alertBC(browsingContext: unknown, modalType: number, title: string, text: string): void;
-}
-
-// engine/toolkit/content/widgets/dialog.js (MozDialog): runs the accept button's command, as a
-// click on it does; false when a "dialogaccept" listener cancelled it.
-interface MozDialogElement {
-  acceptDialog(): boolean;
-}
-
-// engine/xpcom/threads/nsITimer.idl: `type` is a TYPE_* constant (TYPE_ONE_SHOT, the repeating
-// ones); `name` is the callback's name, for logs. nsITimerManager.getTimers(), in the same file,
-// lists the pending timers for tests.
-interface nsITimer {
-  readonly type: number;
-  readonly name: string;
-}
-
 // engine/browser/components/tabbrowser/content/tab.mjs: the tab that opened this one, which
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
+}
+
+// The pdf.js viewer's own objects, which a test reads past the Xray wrapper
+// (`content.wrappedJSObject`, untyped by nature): only the members the tests read, set or call.
+// Lines are those of engine/toolkit/components/pdfjs/content/web/viewer.mjs.
+
+/** `class EventBus` (line 1293): `dispatch` (1324) calls the listeners of `eventName`. */
+interface PdfJsEventBus {
+  dispatch(eventName: string, data?: object): void;
+}
+/** `class PDFViewer` (line 13365). */
+interface PdfJsViewer {
+  /** 13476: the page views it holds. */
+  readonly pagesCount: number;
+  /** 13547: the current page's label, null for a document without page labels. */
+  readonly currentPageLabel: string | null;
+  /** 13568: 1 while the scale is unknown. */
+  readonly currentScale: number;
+  /** 13582 and 13585: a number as text or a named fit; null until a scale is set (14122). */
+  get currentScaleValue(): string | null;
+  set currentScaleValue(value: string);
+  /** 13593 and 13596: 0, 90, 180 or 270. */
+  pagesRotation: number;
+  /** 14611 */
+  readonly isInPresentationMode: boolean;
+  /** 14754: ScrollMode (VERTICAL 0, PAGE 3). */
+  readonly scrollMode: number;
+  /** 14797: SpreadMode (NONE 0, ODD 1, EVEN 2). */
+  readonly spreadMode: number;
+}
+/**
+ * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
+ * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
+ * `getData` (15441) with the document's bytes.
+ */
+interface PdfJsDocument {
+  getOutline(): Promise<object[] | null>;
+  getData(): Promise<Uint8Array>;
+}
+/** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
+interface PdfJsViewsManager {
+  readonly isOpen: boolean;
+}
+/**
+ * `const PDFViewerApplication` (line 17587). Its parts are null (17594 to 17617) until the viewer
+ * has initialised them (`eventBus` 17785, `pdfViewer` 17933, `viewsManager` 18086, which a viewer
+ * without a sidebar never makes) or, for `pdfDocument`, while no document is open.
+ */
+interface PdfJsApplication {
+  readonly pdfDocument: PdfJsDocument | null;
+  readonly pdfViewer: PdfJsViewer | null;
+  readonly viewsManager: PdfJsViewsManager | null;
+  readonly eventBus: PdfJsEventBus | null;
+  /** 18197: 0 while no document is open. */
+  readonly pagesCount: number;
+  /** 18200 and 18203: the current page's number, from 1. */
+  page: number;
+  /** 18331: opens another document in the same viewer, here from its bytes. */
+  open(args: { data: Uint8Array }): Promise<void>;
+}
+/** The viewer's window (viewer.mjs sets `window.PDFViewerApplication`), with its own globals. */
+type PdfJsWindow = typeof globalThis & { readonly PDFViewerApplication: PdfJsApplication };
+
+// engine/js/xpconnect/idl/xpccomponents.idl: exportFunction returns a forwarder in the target's
+// compartment that calls `fn` with the same arguments (cloned) and hands back its result, so a
+// test that gives it to the page keeps the function's own signature.
+interface XPCComponentsUtils {
+  exportFunction<F extends Function>(fn: F, target: object): F;
+}
+
+// Firefox's import wizard, as Settings shows it in its <dialog id="migrationWizardDialog">
+// (engine/browser/components/preferences/preferences.xhtml): the parts of
+// engine/browser/components/migration/content/migration-wizard.mjs (MigrationWizard) that the
+// wizard tests reach through its shadow root.
+
+/**
+ * A browser and profile in the wizard's list: a <panel-item> the wizard gives the migrator's
+ * `profile` (migration-wizard.mjs line 686), null for a browser without profiles.
+ */
+interface MigrationWizardItem extends HTMLElement {
+  readonly profile?: { readonly id: string; readonly name: string } | null;
+}
+/**
+ * The wizard's <button id="browser-profile-selector">, which opens the list.
+ * #onBrowserProfileSelectionChanged (line 513) sets `selectedPanelItem`, so it is undefined
+ * until the wizard has chosen its first browser.
+ */
+interface MigrationWizardSelector extends HTMLButtonElement {
+  readonly selectedPanelItem?: MigrationWizardItem;
+}
+/**
+ * engine/toolkit/content/widgets/panel-list/panel-list.mjs (PanelList), the wizard's list of
+ * browsers, inside a XUL <panel> in a chrome document (migration-wizard.mjs line 493): `open`
+ * (line 80) is its `open` attribute.
+ */
+interface PanelListElement extends HTMLElement {
+  open: boolean;
+}
+/**
+ * Settings' window (engine/browser/components/preferences/main.js, `var gMainPane`, line 598):
+ * showMigrationWizardDialog (line 1498) opens the wizard's dialog, making the wizard on first
+ * use.
+ */
+type PreferencesWindow = Window &
+  typeof globalThis & {
+    readonly gMainPane: {
+      showMigrationWizardDialog(options?: { closeTabWhenDone?: boolean }): Promise<void>;
+    };
+  };
+
+// engine/browser/components/passwordmgr/content/login-doorhanger-username-field.mjs
+// (LoginDoorhangerUsernameField): the save-password prompt's username field, a MozInputText
+// (engine/toolkit/content/widgets/moz-input-text/moz-input-text.mjs), whose `value` is its
+// text (MozBaseInputElement's property, engine/toolkit/content/widgets/lit-utils.mjs).
+interface LoginDoorhangerUsernameField extends HTMLElement {
+  value: string;
 }

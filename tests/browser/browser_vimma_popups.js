@@ -40,11 +40,25 @@ const UNDO_CUE = "pop-ups blocked · :popups to allow";
 const LOCKED_CUE = "pop-up blocked · Esc close";
 const LOCK_PREF = "dom.disable_open_during_load";
 
-const picker = () => document.getElementById(PICKER_ID);
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** The picker, a <dialog> (ui/picker.mjs); null until its first opening makes it. */
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const isOpen = () => !!picker()?.open;
-const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
+const rows = () => [
+  .../** @type {NodeListOf<HTMLElement>} */ (picker()?.querySelectorAll("[role=option]") ?? []),
+];
 const ids = () => rows().map((r) => r.dataset.id);
-const title = (row) => row.querySelector(".vimma-picker-title").textContent;
+const title = (/** @type {Element} */ row) =>
+  found(row.querySelector(".vimma-picker-title")).textContent;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 const cue = () =>
   document.querySelector('#vimma-statusbar [data-segment="popups"]')?.textContent ?? null;
@@ -107,15 +121,17 @@ const popupTab = (query) =>
 /**
  * Selects `tab`. Closing a pop-up's tab gives the selection back to its opener, and switchTab to
  * the selected tab waits for a TabSwitchDone that never comes.
+ * @param {MozTabbrowserTab} tab
  */
 async function select(tab) {
   if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
 }
 
-const permission = (tab) =>
+const permission = (/** @type {MozTabbrowserTab} */ tab) =>
   Services.perms.testPermissionFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
-const allowed = (tab) => permission(tab) === Services.perms.ALLOW_ACTION;
-const forget = (tab) =>
+const allowed = (/** @type {MozTabbrowserTab} */ tab) =>
+  permission(tab) === Services.perms.ALLOW_ACTION;
+const forget = (/** @type {MozTabbrowserTab} */ tab) =>
   Services.perms.removeFromPrincipal(tab.linkedBrowser.contentPrincipal, "popup");
 
 add_task(async function setup() {
@@ -139,14 +155,18 @@ add_task(async function setup() {
     // Selecting the agent's tab moved the window into the agent workspace; the next test file
     // expects the user's.
     const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
-    if (main) WindowWorkspaces.get(window).switchTo({ id: main.id });
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    if (main) found(WindowWorkspaces.get(window)).switchTo({ id: main.id });
+    while (gBrowser.tabs.length > 1) {
+      BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
   });
 });
 
 add_task(async function nothing_blocked_says_so_and_opens_no_picker() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
-  Assert.equal(cue(), null, "no cue without the bar");
+  // The cue is a segment of the status bar: without the bar itself there would be none to miss.
+  Assert.ok(document.getElementById("vimma-statusbar"), "the status bar is there");
+  Assert.strictEqual(cue(), null, "no cue without the bar");
   openPicker();
   await until(() => noticeText().includes("no pop-ups blocked on this page"), "the notice");
   Assert.ok(!isOpen(), "no picker");
@@ -283,12 +303,12 @@ add_task(async function a_permission_prompt_over_the_bar_hides_its_keys_line() {
   await until(() => lineWaits(), "the bar's line hides while the prompt is open");
   Assert.equal(cue(), UNARMED, "as the status bar's cue names no key");
   // Firefox's buttons refuse a click until the prompt's own delay has passed.
-  const prompt = /** @type {any} */ (panel.firstElementChild);
+  const prompt = /** @type {MozPopupNotification} */ (panel.firstElementChild);
   await until(() => !!prompt.querySelector(".vimma-prompt-keys[armed]"), "the prompt is armed");
   const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
   prompt.secondaryButton.click();
   await hidden;
-  Assert.equal(await answer, false, "the prompt is cancelled");
+  Assert.strictEqual(await answer, false, "the prompt is cancelled");
   await until(() => lineShows("y allow · n block · Esc close"), "and the bar's keys again");
   Assert.ok(bar() && !allowed(tab), "nothing decided for the bar");
   BrowserTestUtils.removeTab(tab);
@@ -328,7 +348,8 @@ add_task(async function keys_typed_in_a_field_or_the_command_line_are_theirs() {
   const typed = await SpecialPowers.spawn(
     browser,
     [],
-    () => content.document.getElementById("vimma-popups-field").value,
+    () =>
+      /** @type {HTMLInputElement} */ (content.document.getElementById("vimma-popups-field")).value,
   );
   Assert.equal(typed, "yn", "y and n were typed in the field");
   Assert.ok(bar(), "and Esc left the field, not the bar");
@@ -340,7 +361,11 @@ add_task(async function keys_typed_in_a_field_or_the_command_line_are_theirs() {
   await until(cmdlineOpen, "the command line opens");
   EventUtils.sendString("yn");
   await wait(DELAY + 100);
-  Assert.equal(document.getElementById("vimma-cmdline-input").value, "yn", "typed there");
+  Assert.equal(
+    /** @type {HTMLInputElement} */ (document.getElementById("vimma-cmdline-input")).value,
+    "yn",
+    "typed there",
+  );
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !cmdlineOpen(), "Esc closes the command line");
   Assert.ok(bar(), "and not the bar");
@@ -414,7 +439,8 @@ add_task(async function a_row_never_lands_on_a_site_the_page_navigated_to() {
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !isOpen(), "Enter closes the picker");
   await wait(DELAY);
-  const action = (/** @type {any} */ p) => Services.perms.testPermissionFromPrincipal(p, "popup");
+  const action = (/** @type {unknown} */ p) =>
+    Services.perms.testPermissionFromPrincipal(p, "popup");
   Assert.equal(action(otherPrincipal), Services.perms.UNKNOWN_ACTION, "the new site gets nothing");
   Assert.equal(action(listedFor), Services.perms.UNKNOWN_ACTION, "nor the listed one");
   Assert.ok(bar(), "and the new site's bar stays");
@@ -455,9 +481,9 @@ add_task(async function a_locked_popup_pref_leaves_the_site_permission_alone() {
 });
 
 add_task(async function the_agent_workspace_refuses_and_grants_nothing() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
-  Assert.ok(agent?.userContextId > 0, "the agent workspace has its container");
-  const tab = BrowserTestUtils.addTab(gBrowser, BLOCKING, { userContextId: agent.userContextId });
+  const container = WorkspaceStore.agent?.userContextId ?? 0;
+  Assert.greater(container, 0, "the agent workspace has its container");
+  const tab = BrowserTestUtils.addTab(gBrowser, BLOCKING, { userContextId: container });
   gBrowser.selectedTab = tab;
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   await until(() => !!bar(), "Firefox shows the bar");
