@@ -432,7 +432,6 @@ interface Element {
   readonly scrollLeftMax: number;
 }
 interface Node {
-  readonly ownerGlobal: Window;
   /** The global of the document the node lives in (Node.webidl, ChromeOnly). */
   readonly documentGlobal: Window | null;
 }
@@ -785,7 +784,6 @@ interface MozTabbrowserTab extends Element {
   /** The tab it was opened from, null when none (Tabbrowser addTab's `openerTab`); undefined
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
-  readonly ownerGlobal: BrowserWindow;
   toggleMuteAudio(muteReason?: string | null): void;
 }
 
