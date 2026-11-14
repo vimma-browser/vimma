@@ -349,7 +349,10 @@ add_task(async function test_the_window_uses_the_services_the_host_hands_it() {
       "which says they are on",
     );
     await until(
-      () => chat.rows.find((r) => r.provider === hosted)?.detail === "key stored · ends …fake",
+      () =>
+        chat.rows.find(
+          (/** @type {{ provider: unknown, detail?: string }} */ r) => r.provider === hosted,
+        )?.detail === "key stored · ends …fake",
       "the provider's key comes from the host's keys",
     );
   } finally {

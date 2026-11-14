@@ -286,7 +286,7 @@ add_task(async function test_before_it_is_provided_each_service_does_the_least()
   const refused = services.configRefused();
   Assert.equal(refused.file, "config.toml", "the refusal is about config.toml");
   Assert.deepEqual(
-    refused.errors.map((e) => e.message),
+    refused.errors.map((/** @type {{ message: string }} */ e) => e.message),
     ["not read yet: Vimma has not started"],
     "which counts as refused, so the window offers no setup and names no [agent] provider",
   );
