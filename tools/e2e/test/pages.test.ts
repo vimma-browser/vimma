@@ -6,10 +6,9 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
-import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "../pages.mjs";
+import { PAGE_PORT, fixtureText, fixtureUrl, pagePort, startPageServer } from "../pages.ts";
 
-/** @type {Array<() => unknown>} */
-const cleanups = [];
+const cleanups: Array<() => unknown> = [];
 afterEach(async () => {
   for (const c of cleanups.splice(0).reverse()) await c();
 });

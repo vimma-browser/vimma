@@ -2,8 +2,8 @@
 // Skipped where Xvfb is not installed, except in CI (e2e.yml sets E2E_REQUIRE_XVFB).
 import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
-import { findXvfb, startXvfb } from "../launcher.mjs";
-import { capture } from "../screenshot.mjs";
+import { findXvfb, startXvfb } from "../launcher.ts";
+import { capture } from "../screenshot.ts";
 
 const xvfb = findXvfb();
 if (!xvfb && process.env.E2E_REQUIRE_XVFB) {

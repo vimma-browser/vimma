@@ -50,13 +50,11 @@ const FULL_OBJDIR = "obj-x86_64-pc-linux-gnu";
 const ARTIFACT_OBJDIR = "obj-artifact";
 const MAC_APP_BINARY = "dist/Vimma.app/Contents/MacOS/vimma";
 
-/**
- * @param {string[]} argv arguments after `npm start --`
- * @param {string} home
- * @returns {{ profile: string, fresh: boolean, import: boolean, help: boolean,
- *   browserArgs: string[] }}
- */
-export function parseStartArgs(argv, home) {
+/** @param argv arguments after `npm start --` */
+export function parseStartArgs(
+  argv: string[],
+  home: string,
+): { profile: string; fresh: boolean; import: boolean; help: boolean; browserArgs: string[] } {
   const split = argv.indexOf("--");
   const own = split < 0 ? argv : argv.slice(0, split);
   const browserArgs = split < 0 ? [] : argv.slice(split + 1);
@@ -86,16 +84,18 @@ export function parseStartArgs(argv, home) {
  * The full build if there is one, else the artifact build, which runs Mozilla's binaries with
  * our front end through XUL_APP_FILE (ADR-010; tools/mochitest.mjs does the same).
  * On macOS both run the launcher inside dist/Vimma.app.
- * @param {{ engine: string, exists?: (path: string) => boolean, platform?: string,
- *   arch?: string }} options
- * @returns {{ kind: "full" | "artifact", binary: string, env: Record<string, string> }}
  */
 export function selectBuild({
   engine,
   exists = existsSync,
   platform = process.platform,
   arch = process.arch,
-}) {
+}: {
+  engine: string;
+  exists?: (path: string) => boolean;
+  platform?: string;
+  arch?: string;
+}): { kind: "full" | "artifact"; binary: string; env: Record<string, string> } {
   const mac = platform === "darwin";
   const fullObjdir = mac
     ? `obj-${arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`
@@ -117,13 +117,11 @@ export function selectBuild({
   );
 }
 
-/**
- * @param {{ binary: string }} build
- * @param {string} profile
- * @param {string[]} extra
- * @returns {[string, string[]]}
- */
-export function browserCommand(build, profile, extra) {
+export function browserCommand(
+  build: { binary: string },
+  profile: string,
+  extra: string[],
+): [string, string[]] {
   return [build.binary, ["--profile", profile, ...extra]];
 }
 
@@ -131,11 +129,13 @@ export function browserCommand(build, profile, extra) {
  * Prefs every dev profile needs: content processes may read the repo's src/ (real path, as the
  * objdir's symlinks resolve to it; trailing slash, so the whole directory is allowed). macOS
  * takes the directory without the slash: the sandbox profile allows `(subpath <path>)`.
- * @param {string} root the repository root
- * @param {string} [platform] process.platform
- * @returns {Array<[string, string]>}
+ * @param root the repository root
+ * @param [platform] process.platform
  */
-export function devPrefs(root, platform = process.platform) {
+export function devPrefs(
+  root: string,
+  platform: string = process.platform,
+): Array<[string, string]> {
   const src = `${realpathSync(root).replace(/\/$/, "")}/src`;
   if (platform === "darwin") return [[MAC_READ_PATH_PREF, src]];
   return [[READ_PATH_PREF, `${src}/`]];
@@ -151,26 +151,26 @@ const USER_PREF = /^\s*user_pref\(\s*("(?:[^"\\]|\\.)*")\s*,\s*(.*?)\s*\)\s*;?\s
  * Merge prefs into the text of a user.js, keeping every other line as it was. A pref already
  * set is rewritten in place (a list pref gains the missing entries, a kept one stays as it is);
  * a new one is appended.
- * @param {string} existing
- * @param {ReadonlyArray<readonly [string, string | number | boolean]>} prefs
- * @returns {string}
  */
-export function mergeUserJs(existing, prefs) {
+export function mergeUserJs(
+  existing: string,
+  prefs: ReadonlyArray<readonly [string, string | number | boolean]>,
+): string {
   const lines = existing === "" ? [] : existing.replace(/\n$/, "").split("\n");
-  const line = (/** @type {string} */ name, /** @type {unknown} */ value) =>
+  const line = (name: string, value: unknown) =>
     `user_pref(${JSON.stringify(name)}, ${JSON.stringify(value)});`;
   for (const [name, value] of prefs) {
     let found = false;
     for (let i = 0; i < lines.length; i++) {
-      const m = USER_PREF.exec(/** @type {string} */ (lines[i]));
-      if (!m || JSON.parse(/** @type {string} */ (m[1])) !== name) continue;
+      const m = USER_PREF.exec(lines[i] as string);
+      if (!m || JSON.parse(m[1] as string) !== name) continue;
       found = true;
       if (KEEP_PREFS.has(name)) continue;
       let next = value;
       if (LIST_PREFS.has(name)) {
         let old;
         try {
-          old = JSON.parse(/** @type {string} */ (m[2]));
+          old = JSON.parse(m[2] as string);
         } catch {
           old = "";
         }
@@ -193,9 +193,8 @@ export function mergeUserJs(existing, prefs) {
  * Developer tools a shipped build keeps off (docs/security.md, P8): the Browser Toolbox and a
  * chrome-privileged Browser Console, remote debugging, and dump() output on stdout. Only npm
  * start's profile gets them; the e2e harness shares devPrefs and needs none.
- * @type {ReadonlyArray<readonly [string, boolean]>}
  */
-export const DEVTOOLS_PREFS = [
+export const DEVTOOLS_PREFS: ReadonlyArray<readonly [string, boolean]> = [
   ["devtools.chrome.enabled", true],
   ["devtools.debugger.remote-enabled", true],
   ["browser.dom.window.dump.enabled", true],
@@ -206,26 +205,25 @@ export const DEVTOOLS_PREFS = [
  * What npm start writes into its profile's user.js. With a profile, the build gets a config.toml
  * of its own inside it: without one it would read and write the installed Vimma's
  * (`~/.config/vimma/config.toml`), and a setting only this build knows would break that release.
- * @param {string} root the repository root
- * @param {string} [platform] process.platform
- * @param {string} [profile]
- * @returns {Array<readonly [string, string | boolean]>}
+ * @param root the repository root
+ * @param [platform] process.platform
  */
-export function startPrefs(root, platform = process.platform, profile) {
+export function startPrefs(
+  root: string,
+  platform: string = process.platform,
+  profile?: string,
+): Array<readonly [string, string | boolean]> {
   return [
     ...devPrefs(root, platform),
     ...DEVTOOLS_PREFS,
-    ...(profile
-      ? [/** @type {const} */ ([CONFIG_PATH_PREF, join(profile, "vimma", "config.toml")])]
-      : []),
+    ...(profile ? [[CONFIG_PATH_PREF, join(profile, "vimma", "config.toml")] as const] : []),
   ];
 }
 
-/**
- * @param {string} profile
- * @param {ReadonlyArray<readonly [string, string | number | boolean]>} prefs
- */
-export function prepareProfile(profile, prefs) {
+export function prepareProfile(
+  profile: string,
+  prefs: ReadonlyArray<readonly [string, string | number | boolean]>,
+) {
   mkdirSync(profile, { recursive: true });
   const userJs = join(profile, "user.js");
   // Read, not exists-then-read; replace by rename, so a reader never sees half a file and a
@@ -234,7 +232,7 @@ export function prepareProfile(profile, prefs) {
   try {
     existing = readFileSync(userJs, "utf8");
   } catch (e) {
-    if (/** @type {NodeJS.ErrnoException} */ (e).code !== "ENOENT") throw e;
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
   const merged = mergeUserJs(existing, prefs);
   if (merged === existing) return;
@@ -243,18 +241,16 @@ export function prepareProfile(profile, prefs) {
   renameSync(tmp, userJs);
 }
 
-/** @param {number} pid */
-function pidAlive(pid) {
+function pidAlive(pid: number) {
   try {
     process.kill(pid, 0);
     return true;
   } catch (e) {
-    return /** @type {NodeJS.ErrnoException} */ (e).code === "EPERM";
+    return (e as NodeJS.ErrnoException).code === "EPERM";
   }
 }
 
-/** @returns {string} */
-function readProcLocks() {
+function readProcLocks(): string {
   try {
     return readFileSync("/proc/locks", "utf8");
   } catch {
@@ -262,12 +258,8 @@ function readProcLocks() {
   }
 }
 
-/**
- * The pids that have `path` open, from lsof (macOS has no /proc/locks).
- * @param {string} path
- * @returns {number[]}
- */
-function lsofPids(path) {
+/** The pids that have `path` open, from lsof (macOS has no /proc/locks). */
+function lsofPids(path: string): number[] {
   const res = spawnSync("lsof", ["-t", path], { encoding: "utf8" });
   return (res.stdout ?? "")
     .split("\n")
@@ -283,20 +275,21 @@ function lsofPids(path) {
  * On macOS (toolkit/profile/nsProfileLock.cpp) there is no `lock` link: a process that has
  * `.parentlock` open (it keeps the fcntl-locked file open while it runs), else a `.parentlock`
  * link, the fallback where fcntl locks are not supported.
- * @param {string} profile
- * @param {{ alive?: (pid: number) => boolean, procLocks?: () => string,
- *   openers?: (path: string) => number[], platform?: string }} [deps]
- * @returns {{ pid: number | null } | null}
  */
 export function profileInUse(
-  profile,
+  profile: string,
   {
     alive = pidAlive,
     procLocks = readProcLocks,
     openers = lsofPids,
     platform = process.platform,
+  }: {
+    alive?: (pid: number) => boolean;
+    procLocks?: () => string;
+    openers?: (path: string) => number[];
+    platform?: string;
   } = {},
-) {
+): { pid: number | null } | null {
   const mac = platform === "darwin";
   let ino = null;
   try {
@@ -334,13 +327,13 @@ function readHelp() {
     .trim();
 }
 
-/** @returns {Promise<number>} exit code */
-async function main() {
+/** @returns exit code */
+async function main(): Promise<number> {
   let options;
   try {
     options = parseStartArgs(process.argv.slice(2), homedir());
   } catch (e) {
-    process.stderr.write(`start: ${/** @type {Error} */ (e).message}\n\n${readHelp()}\n`);
+    process.stderr.write(`start: ${(e as Error).message}\n\n${readHelp()}\n`);
     return 2;
   }
   if (options.help) {
@@ -386,7 +379,7 @@ async function main() {
     });
   });
   if (options.fresh) rmSync(profile, { recursive: true, force: true });
-  return /** @type {number} */ (code);
+  return code as number;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

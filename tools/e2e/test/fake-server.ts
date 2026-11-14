@@ -11,47 +11,46 @@ import {
   tokensEqual,
   validateMessage,
 } from "../../../packages/vimma-core/src/control.mjs";
+import type { Socket } from "node:net";
+import type { ValidateOptions } from "../../../packages/vimma-core/src/control.mjs";
 
-/**
- * @typedef {{ id: string, url: string, title: string, selected: boolean }} FakeTab
- * @typedef {{
- *   busyConnections?: number,
- *   rejectAuth?: boolean,
- *   dropOn?: string,
- *   errorOn?: Record<string, string>,
- *   errorMessage?: string,
- *   errorTimes?: number,
- *   hangOn?: string,
- *   discoveryMode?: number,
- *   writeDiscovery?: boolean,
- * }} FakeOptions
- * @typedef {{
- *   port: number,
- *   token: string,
- *   discoveryPath: string,
- *   requests: Array<{ command: string, args: Record<string, unknown> }>,
- *   connections: number,
- *   state: { mode: string, pending: string | null, workspace: null, tabs: FakeTab[], panes: null },
- *   options: FakeOptions,
- *   writeDiscovery: () => void,
- *   close: (opts?: { keepFile?: boolean }) => Promise<void>,
- * }} FakeServer
- */
+export type FakeTab = { id: string; url: string; title: string; selected: boolean };
+export type FakeOptions = {
+  busyConnections?: number;
+  rejectAuth?: boolean;
+  dropOn?: string;
+  errorOn?: Record<string, string>;
+  errorMessage?: string;
+  errorTimes?: number;
+  hangOn?: string;
+  discoveryMode?: number;
+  writeDiscovery?: boolean;
+};
+export type FakeServer = {
+  port: number;
+  token: string;
+  discoveryPath: string;
+  requests: Array<{ command: string; args: Record<string, unknown> }>;
+  connections: number;
+  state: { mode: string; pending: string | null; workspace: null; tabs: FakeTab[]; panes: null };
+  options: FakeOptions;
+  writeDiscovery: () => void;
+  close: (opts?: { keepFile?: boolean }) => Promise<void>;
+};
 
 /**
  * Start the fake server for `profile`; it writes `<profile>/vimma-control.json` like the real one.
- * @param {string} profile
- * @param {FakeOptions} [options] mutable later through `server.options`
- * @returns {Promise<FakeServer>}
+ * @param [options] mutable later through `server.options`
  */
-export async function startFakeServer(profile, options = {}) {
+export async function startFakeServer(
+  profile: string,
+  options: FakeOptions = {},
+): Promise<FakeServer> {
   const token = randomBytes(32).toString("hex");
   const discoveryPath = join(profile, "vimma-control.json");
-  /** @type {Set<import("node:net").Socket>} */
-  const sockets = new Set();
+  const sockets: Set<Socket> = new Set();
   let nextTab = 2;
-  /** @type {FakeServer} */
-  const fake = {
+  const fake: FakeServer = {
     port: 0,
     token,
     discoveryPath,
@@ -79,21 +78,15 @@ export async function startFakeServer(profile, options = {}) {
     },
   };
 
-  /**
-   * @param {unknown} message
-   * @param {import("../../../packages/vimma-core/src/control.mjs").ValidateOptions} [opts]
-   */
-  function check(message, opts) {
+  function check(message: unknown, opts?: ValidateOptions) {
     const { valid, errors } = validateMessage(message, opts);
     if (!valid) throw new Error(`fake server broke the contract: ${errors.join("; ")}`);
   }
 
-  /**
-   * @param {string} command
-   * @param {Record<string, unknown>} args
-   * @returns {{ result?: object, error?: { code: string, message: string } }}
-   */
-  function execute(command, args) {
+  function execute(
+    command: string,
+    args: Record<string, unknown>,
+  ): { result?: object; error?: { code: string; message: string } } {
     const forced = fake.options.errorOn?.[command];
     // errorTimes: fail only that many times, then answer normally (a server still starting up)
     if (forced && (fake.options.errorTimes ?? Infinity) > 0) {
@@ -128,8 +121,7 @@ export async function startFakeServer(profile, options = {}) {
     socket.on("close", () => sockets.delete(socket));
     socket.on("error", () => {});
     fake.connections++;
-    /** @param {object} message @param {import("../../../packages/vimma-core/src/control.mjs").ValidateOptions} [opts] */
-    const send = (message, opts) => {
+    const send = (message: object, opts?: ValidateOptions) => {
       check(message, opts);
       socket.write(`${JSON.stringify(message)}\n`);
     };

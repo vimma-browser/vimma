@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Ctl, CtlError, classify, findVimmaCtl } from "../driver.mjs";
-import { startFakeServer } from "./fake-server.mjs";
+import { Ctl, CtlError, classify, findVimmaCtl } from "../driver.ts";
+import { startFakeServer } from "./fake-server.ts";
+import type { FakeServer } from "./fake-server.ts";
 
 describe("classify (vimma-ctl exit codes, spec m0-control-protocol)", () => {
   it.each([
@@ -34,8 +35,7 @@ describe("classify (vimma-ctl exit codes, spec m0-control-protocol)", () => {
 });
 
 describe("findVimmaCtl", () => {
-  /** @param {string[]} present */
-  const exists = (present) => (/** @type {string} */ p) => present.includes(p);
+  const exists = (present: string[]) => (p: string) => present.includes(p);
   const root = "/repo/";
   it("takes the flag, then VIMMA_CTL, then a cargo build (release before debug)", () => {
     expect(findVimmaCtl({ flag: "/f", root, exists: exists(["/f"]) })).toBe("/f");
@@ -51,8 +51,7 @@ describe("findVimmaCtl", () => {
   });
 });
 
-/** @type {string | null} */
-let bin = null;
+let bin: string | null = null;
 try {
   bin = findVimmaCtl({ env: process.env });
 } catch (e) {
@@ -62,16 +61,13 @@ try {
 describe.skipIf(!bin)(
   `Ctl against the fake server${bin ? "" : " (skipped: no vimma-ctl built)"}`,
   () => {
-    /** @type {string} */
-    let profile;
-    /** @type {import("./fake-server.mjs").FakeServer} */
-    let fake;
-    /** @type {Ctl} */
-    let ctl;
+    let profile: string;
+    let fake: FakeServer;
+    let ctl: Ctl;
     beforeEach(async () => {
       profile = mkdtempSync(join(tmpdir(), "vimma-e2e-ctl-"));
       fake = await startFakeServer(profile);
-      ctl = new Ctl({ bin: /** @type {string} */ (bin), profile, timeoutSecs: 2 });
+      ctl = new Ctl({ bin: bin as string, profile, timeoutSecs: 2 });
     });
     afterEach(async () => {
       await fake.close().catch(() => {});
@@ -167,7 +163,7 @@ describe.skipIf(!bin)(
       fake.options.hangOn = "state";
       const controller = new AbortController();
       const slow = new Ctl({
-        bin: /** @type {string} */ (bin),
+        bin: bin as string,
         profile,
         timeoutSecs: 60,
         signal: controller.signal,

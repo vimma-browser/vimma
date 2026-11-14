@@ -11,6 +11,9 @@ import { connect } from "node:net";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { CHALLENGE_CONTEXT } from "../../packages/vimma-core/src/control.mjs";
+import type { Socket } from "node:net";
+import type { AgentSend, McpSend } from "./scenario.ts";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 /**
  * The version a vimma-ctl built from this tree names in its agent-hello (surfer.json's
@@ -24,13 +27,16 @@ const CTL_VERSION = JSON.parse(readFileSync(new URL("../../surfer.json", import.
 const ANSWER_MS = 310_000;
 
 export class ControlClient {
-  /** @param {import("node:net").Socket} socket */
-  constructor(socket) {
+  declare socket: Socket;
+  declare buffer: string;
+  declare messages: any[];
+  declare waiters: Array<() => void>;
+  declare closed: boolean;
+  declare nextId: number;
+  constructor(socket: Socket) {
     this.socket = socket;
     this.buffer = "";
-    /** @type {any[]} */
     this.messages = [];
-    /** @type {Array<() => void>} */
     this.waiters = [];
     this.closed = false;
     this.nextId = 0;
@@ -51,10 +57,15 @@ export class ControlClient {
     socket.on("error", () => {});
   }
 
-  /**
-   * @param {{ port: number, token: string, role: "full" | "agent" }} o
-   */
-  static async connect({ port, token, role }) {
+  static async connect({
+    port,
+    token,
+    role,
+  }: {
+    port: number;
+    token: string;
+    role: "full" | "agent";
+  }) {
     const socket = connect({ host: "127.0.0.1", port });
     await new Promise((resolve, reject) => {
       socket.once("connect", resolve);
@@ -89,11 +100,8 @@ export class ControlClient {
     for (const w of this.waiters.splice(0)) w();
   }
 
-  /**
-   * The next message matching `pred`, or null once closed or after `ms`.
-   * @param {number} [ms] @param {(m: any) => boolean} [pred]
-   */
-  async take(ms = 10_000, pred = () => true) {
+  /** The next message matching `pred`, or null once closed or after `ms`. */
+  async take(ms: number = 10_000, pred: (m: any) => boolean = () => true) {
     const deadline = Date.now() + ms;
     for (;;) {
       const i = this.messages.findIndex(pred);
@@ -110,25 +118,22 @@ export class ControlClient {
     }
   }
 
-  /** @param {object} message */
-  send(message) {
+  send(message: object) {
     this.socket.write(`${JSON.stringify(message)}\n`);
   }
 
-  /** Send a request; its id. @param {string} command @param {object} args */
-  request(command, args) {
+  /** Send a request; its id. */
+  request(command: string, args: object) {
     const id = ++this.nextId;
     this.send({ type: "request", id, command, args });
     return id;
   }
 
-  /** @param {number} id @param {number} [ms] */
-  response(id, ms = ANSWER_MS) {
+  response(id: number, ms: number = ANSWER_MS) {
     return this.take(ms, (m) => m.type === "response" && m.id === id);
   }
 
-  /** @param {string} command @param {object} args */
-  call(command, args) {
+  call(command: string, args: object) {
     return this.response(this.request(command, args));
   }
 
@@ -139,29 +144,36 @@ export class ControlClient {
 
 /** One scenario's connections and vimma-ctl runs. */
 export class ControlSessions {
-  /** @param {{ profile: string, bin: string, signal?: AbortSignal }} o */
-  constructor({ profile, bin, signal }) {
+  declare profile: string;
+  declare bin: string;
+  declare signal: AbortSignal | undefined;
+  declare full: ControlClient | null;
+  declare agent: Promise<ControlClient> | null;
+  declare pending: Map<string, Promise<unknown>>;
+  declare runs: Map<string, Promise<{ exitCode: number | null; stderr: string }>>;
+  declare mcp: McpProcess | null;
+  declare held: {
+    state: () => Promise<any>;
+    sendKeys: (keys: string) => Promise<void>;
+    open: (url: string) => Promise<string>;
+  };
+  constructor({ profile, bin, signal }: { profile: string; bin: string; signal?: AbortSignal }) {
     this.profile = profile;
     this.bin = bin;
     this.signal = signal;
-    /** @type {ControlClient | null} */
     this.full = null;
-    /** @type {Promise<ControlClient> | null} */
     this.agent = null;
-    /** @type {Map<string, Promise<unknown>>} */
     this.pending = new Map();
-    /** @type {Map<string, Promise<{ exitCode: number | null, stderr: string }>>} */
     this.runs = new Map();
-    /** @type {McpProcess | null} */
     this.mcp = null;
     const self = this;
     this.held = {
       state: async () => self.result(await self.heldCall("state", {})),
-      sendKeys: async (/** @type {string} */ keys) => {
+      sendKeys: async (keys: string) => {
         self.result(await self.heldCall("send-keys", { keys }));
       },
-      open: async (/** @type {string} */ url) =>
-        String(/** @type {any} */ (self.result(await self.heldCall("open", { url }))).tab),
+      open: async (url: string) =>
+        String((self.result(await self.heldCall("open", { url })) as any).tab),
     };
   }
 
@@ -175,21 +187,18 @@ export class ControlSessions {
     this.full = await ControlClient.connect({ port, token, role: "full" });
   }
 
-  /** @param {string} command @param {object} args */
-  async heldCall(command, args) {
+  async heldCall(command: string, args: object) {
     if (!this.full) throw new Error("no held connection");
     return this.full.call(command, args);
   }
 
-  /** @param {any} reply */
-  result(reply) {
+  result(reply: any) {
     if (!reply) throw new Error("the held connection closed");
     if (!reply.ok) throw new Error(`${reply.error?.code}: ${reply.error?.message}`);
     return reply.result;
   }
 
-  /** @param {import("./scenario.mjs").AgentSend} spec */
-  agentSend(spec) {
+  agentSend(spec: AgentSend) {
     this.agent ??= (async () => {
       const { port, token } = this.discovery();
       const c = await ControlClient.connect({ port, token, role: "agent" });
@@ -207,15 +216,13 @@ export class ControlSessions {
     );
   }
 
-  /** @param {string} name */
-  async agentResult(name) {
+  async agentResult(name: string) {
     const p = this.pending.get(name);
     if (!p) throw new Error(`no agent request named ${name}`);
     return p;
   }
 
-  /** @param {string[]} args @param {string} as */
-  ctlSpawn(args, as) {
+  ctlSpawn(args: string[], as: string) {
     this.runs.set(
       as,
       new Promise((resolve) => {
@@ -232,8 +239,7 @@ export class ControlSessions {
     );
   }
 
-  /** @param {string} name */
-  async ctlResult(name) {
+  async ctlResult(name: string) {
     const p = this.runs.get(name);
     if (!p) throw new Error(`no ctl run named ${name}`);
     return p;
@@ -247,8 +253,7 @@ export class ControlSessions {
       ...(this.signal ? { signal: this.signal } : {}),
       killSignal: "SIGKILL",
     });
-    /** @type {McpProcess} */
-    const p = {
+    const p: McpProcess = {
       child,
       nextId: 0,
       ids: new Map(),
@@ -285,11 +290,14 @@ export class ControlSessions {
     return p;
   }
 
-  /** Send one JSON-RPC message; a request when `as` names its answer. @param {McpSend} spec */
-  mcpSend({ method, params, as }) {
+  /** Send one JSON-RPC message; a request when `as` names its answer. */
+  mcpSend({ method, params, as }: McpSend) {
     const p = this.mcpProcess();
-    /** @type {Record<string, unknown>} */
-    const message = { jsonrpc: "2.0", method, ...(params ? { params } : {}) };
+    const message: Record<string, unknown> = {
+      jsonrpc: "2.0",
+      method,
+      ...(params ? { params } : {}),
+    };
     if (as) {
       const id = ++p.nextId;
       p.ids.set(as, id);
@@ -298,11 +306,8 @@ export class ControlSessions {
     p.child.stdin.write(`${JSON.stringify(message)}\n`);
   }
 
-  /**
-   * The response to the request named `name`, once it comes (a call waits for the user).
-   * @param {string} name
-   */
-  async mcpResult(name) {
+  /** The response to the request named `name`, once it comes (a call waits for the user). */
+  async mcpResult(name: string) {
     const p = this.mcp;
     const id = p?.ids.get(name);
     if (!p || id === undefined) throw new Error(`no mcp request named ${name}`);
@@ -358,11 +363,13 @@ export class ControlSessions {
   }
 }
 
-/**
- * @typedef {import("./scenario.mjs").McpSend} McpSend
- * @typedef {{
- *   child: import("node:child_process").ChildProcessWithoutNullStreams,
- *   nextId: number, ids: Map<string, number>, replies: Map<unknown, any>, bad: string[],
- *   stderr: string, exitCode: number | null | undefined, waiters: Array<() => void>,
- * }} McpProcess
- */
+export type McpProcess = {
+  child: ChildProcessWithoutNullStreams;
+  nextId: number;
+  ids: Map<string, number>;
+  replies: Map<unknown, any>;
+  bad: string[];
+  stderr: string;
+  exitCode: number | null | undefined;
+  waiters: Array<() => void>;
+};
