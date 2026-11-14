@@ -511,6 +511,8 @@ support-files = [
 ["browser_vimma_agent_host.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_agent_model.js"]
 
+["browser_vimma_agent_picker_race.js"]
+
 ["browser_vimma_agent_keys.js"]
 
 ["browser_vimma_pdf_focus.js"]
