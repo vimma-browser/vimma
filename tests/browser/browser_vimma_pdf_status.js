@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security/20-pdf-viewer.md section 20: the PDF
-// viewer's adapter, the pdf context, and the page and match count in the status bar.
+// Spec: docs/specs/pdf-mode.md (delivery PR 2), docs/security.md section 20: the PDF viewer's
+// adapter, the pdf context, and the page and match count in the status bar.
 
 "use strict";
 
@@ -259,7 +259,6 @@ add_task(async function a_pdf_in_a_frame_gets_no_pdf_context() {
     const browser = tab.linkedBrowser;
     try {
       // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
-      // The framed viewer's own actor sends nothing (pdf-view.mjs checks for a top document).
       /** @type {CanonicalBrowsingContext | undefined} */
       let frame;
       let fromFrame = 0;
@@ -451,10 +450,61 @@ add_task(async function pdf_mode_writes_no_pdfjs_prefs() {
   Assert.deepEqual(after, before, "opening a PDF in the PDF mode writes no pdfjs.* pref");
 });
 
+/**
+ * The tab's size in whole device pixels, as PdfOps.drawn reads it.
+ * @param {XULBrowserElement} browser
+ */
+function deviceSize(browser) {
+  const box = browser.getBoundingClientRect();
+  return [box.width, box.height].map((v) => Math.round(v * window.devicePixelRatio));
+}
+
+/**
+ * Makes the tab's size in device pixels other than a multiple of 5 in at least one direction,
+ * so that at devPixelsPerPx 1.5 and full zoom 1.1 the viewer's size is not whole CSS pixels.
+ * The chrome has round(60 / 1.5) = 40 app units per device pixel, the page round(40 / 1.1) =
+ * round(36.36) = 36 (nsDeviceContext::ApplyFullZoomToAPD), and a CSS pixel is 60 app units: the
+ * viewer's size is 36 / 60 = 3 / 5 of its size in device pixels, whole exactly when that is a
+ * multiple of 5. No zoom or scale avoids this for every window size (any whole number of app
+ * units makes some sizes whole), so the window is sized instead: one chrome pixel narrower is
+ * 1 or 2 device pixels narrower (1.5, rounded), and a multiple of 5 minus 1 or 2 is not one.
+ * The window is not put back here: the task restores the outer size it had before the scale
+ * changed (resizeWindow).
+ * @param {XULBrowserElement} browser
+ */
+async function offWholePixels(browser) {
+  const [width, height] = deviceSize(browser);
+  if (width % 5 || height % 5) return;
+  await resizeWindow(() => window.resizeBy(-1, 0));
+  const [now] = deviceSize(browser);
+  Assert.ok(now < width && now % 5 !== 0, `the tab is ${now} device pixels wide, not ${width}`);
+}
+
+/**
+ * Resizes the window with `resize` and waits for it. A maximized, full-screen or tiled window
+ * would never get its resize event, so the test says so instead of timing out.
+ * @param {() => void} resize
+ */
+async function resizeWindow(resize) {
+  Assert.equal(
+    window.windowState,
+    window.STATE_NORMAL,
+    "the test window can be resized (not maximized, full screen or tiled)",
+  );
+  const resized = BrowserTestUtils.waitForEvent(window, "resize");
+  resize();
+  await resized;
+}
+
 // At a fractional desktop scale and a full zoom other than 100 %, the viewer's size is not a
 // whole number of CSS pixels: PDF mode keeps its page state (the status bar's page, the
 // outline, `G`) and `state.pdf` still turns drawn (#1006).
 add_task(async function pdf_mode_at_a_fractional_size() {
+  // The outer size, in CSS pixels at the usual scale. resizeBy rounds the outer size to whole
+  // CSS pixels at scale 1.5 and changes both directions (nsGlobalWindowOuter::ResizeByOuter),
+  // so resizing back by one pixel would not always restore it: the size is restored as a whole
+  // once the scale is back, for the files that run after this one.
+  const outer = [window.outerWidth, window.outerHeight];
   await SpecialPowers.pushPrefEnv({
     set: [
       ["vimma.ui.pdf_outline.hidden", true],
@@ -463,6 +513,7 @@ add_task(async function pdf_mode_at_a_fractional_size() {
   });
   try {
     await withPdf(async (browser) => {
+      await offWholePixels(browser);
       browser.fullZoom = 1.1;
       const size = await SpecialPowers.spawn(browser, [], () => [
         content.innerWidth,
@@ -493,5 +544,13 @@ add_task(async function pdf_mode_at_a_fractional_size() {
     });
   } finally {
     await SpecialPowers.popPrefEnv();
+    if (window.outerWidth !== outer[0] || window.outerHeight !== outer[1]) {
+      await resizeWindow(() => window.resizeTo(outer[0], outer[1]));
+    }
+    Assert.deepEqual(
+      [window.outerWidth, window.outerHeight],
+      outer,
+      "the window has its size from before the task",
+    );
   }
 });

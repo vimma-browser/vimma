@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 4, decision 10), docs/security/20-pdf-viewer.md section
-// 20 (V7, V8, V11): the outline panel on Tab and its `index` mode.
+// Spec: docs/specs/pdf-mode.md (delivery PR 4, decision 10), docs/security.md section 20 (V7,
+// V8, V11): the outline panel on Tab and its `index` mode.
 // file_vimma_outline_kinds.pdf has one outline entry of each kind: a named destination (page 2),
 // a named action (LastPage), an https link, a javascript: link pdf.js refuses (no target), a
 // title that looks like markup (page 3), an attachment, a Print action (not a navigation, so
@@ -246,20 +246,33 @@ add_task(async function closing_keys_do_not_move() {
     // No jumps in this document's history: nothing but the outline could move the page.
     type("2J");
     await untilPage(browser, 3, "2J");
-    // Tab, Esc, ctrl+[, ctrl+c and q close without moving.
-    for (const [key, opts] of /** @type {[string, KeyEventOptions][]} */ ([
-      ["KEY_Tab", {}],
-      ["KEY_Escape", {}],
-      ["[", { ctrlKey: true }],
-      ["q", {}],
+    // Tab, Esc, ctrl+[ and q close without moving.
+    for (const [name, key, opts] of /** @type {[string, string, KeyEventOptions][]} */ ([
+      ["Tab", "KEY_Tab", {}],
+      ["Esc", "KEY_Escape", {}],
+      ["ctrl+[", "[", { ctrlKey: true }],
+      ["q", "q", {}],
     ])) {
       await openOutline();
       type("gg");
       await untilSelected("Preface", "gg");
       EventUtils.synthesizeKey(key, opts);
-      await TestUtils.waitForCondition(() => !shown(), `${key} closes the outline`);
-      Assert.equal(await page(browser), 3, `${key} does not move`);
+      await TestUtils.waitForCondition(() => !shown(), `${name} closes the outline`);
+      Assert.equal(await page(browser), 3, `${name} does not move`);
     }
+    // zathura's ctrl+c does not: index mode binds no ctrl chord Vimma leaves to Firefox, and
+    // ctrl+c stays copy (pdf-mode.md, "No new ctrl chords"). The j after it moves the selection,
+    // so ctrl+c has been handled by then.
+    await openOutline();
+    type("gg");
+    await untilSelected("Preface", "gg");
+    EventUtils.synthesizeKey("c", { ctrlKey: true });
+    type("j");
+    await untilSelected("Chapter 1", "j after ctrl+c");
+    Assert.ok(shown(), "ctrl+c leaves the outline open");
+    EventUtils.synthesizeKey("KEY_Escape");
+    await TestUtils.waitForCondition(() => !shown(), "Esc closes it");
+    Assert.equal(await page(browser), 3, "ctrl+c does not move");
   });
 });
 

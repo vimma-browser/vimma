@@ -402,33 +402,56 @@ add_task(async function menubar_help_has_no_mozilla_items() {
   });
 });
 
-add_task(async function app_menu_help_has_no_mozilla_items() {
-  await BrowserTestUtils.withNewTab("https://example.com/", async () => {
-    const appMenu = popupById("appMenu-popup");
-    const panelShown = BrowserTestUtils.waitForPopupEvent(appMenu, "shown");
-    PanelUI.show();
-    await panelShown;
-    const helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
-    const viewShown = BrowserTestUtils.waitForEvent(helpView, "ViewShown");
-    PanelMultiView.getViewNode(document, "appMenu-help-button2").click();
-    await viewShown;
-    const ids = [...HIDDEN_HELP, ...KEPT_HELP, "-nova-switch-device-promo"].map((id) =>
-      id.startsWith("-") ? `appMenu${id}` : `appMenu_${id}`,
-    );
-    // The view copies only the Help menu's items that are not `hidden` (panelUI.js,
-    // _onHelpViewShow), so an id here may have no element: menubar_help_has_no_mozilla_items
-    // checks that Firefox still has each item.
-    const visible = ids.filter(shown);
-    Assert.deepEqual(
-      visible,
-      KEPT_HELP.map((id) => `appMenu_${id}`),
-      "the app menu's Help view keeps Get Help and Share Ideas, not the rest",
-    );
-    const panelHidden = BrowserTestUtils.waitForPopupEvent(appMenu, "hidden");
-    PanelUI.hide();
-    await panelHidden;
-  });
-});
+// The app menu's Help view has one Switch Device item or the other (panelUI.js,
+// _onHelpViewShow): with browser.nova.enabled, on by default, Firefox replaces the copy of the
+// menu bar's Switch Device item with a promo; without it the copy stays. The pref is read each
+// time the view opens and a user can turn it off, so both are hidden, and each is made here
+// so that the rule hiding it is what keeps it out of sight.
+for (const [name, nova, item] of /** @type {[string, boolean, string][]} */ ([
+  ["app_menu_help_has_no_mozilla_items_with_nova", true, "appMenu-nova-switch-device-promo"],
+  ["app_menu_help_has_no_mozilla_items_without_nova", false, "appMenu_helpSwitchDevice"],
+])) {
+  // A named function per run, so that the log tells the two apart.
+  const task = {
+    async [name]() {
+      await SpecialPowers.pushPrefEnv({ set: [["browser.nova.enabled", nova]] });
+      try {
+        await BrowserTestUtils.withNewTab("https://example.com/", async () => {
+          const appMenu = popupById("appMenu-popup");
+          const panelShown = BrowserTestUtils.waitForPopupEvent(appMenu, "shown");
+          PanelUI.show();
+          await panelShown;
+          const helpView = PanelMultiView.getViewNode(document, "PanelUI-helpView");
+          const viewShown = BrowserTestUtils.waitForEvent(helpView, "ViewShown");
+          PanelMultiView.getViewNode(document, "appMenu-help-button2").click();
+          await viewShown;
+          const ids = [...HIDDEN_HELP, ...KEPT_HELP, "-nova-switch-device-promo"].map((id) =>
+            id.startsWith("-") ? `appMenu${id}` : `appMenu_${id}`,
+          );
+          Assert.ok(
+            helpView.querySelector(`#${item}`),
+            `${item} is in the Help view with browser.nova.enabled ${nova}`,
+          );
+          // The view copies only the Help menu's items that are not `hidden`, so another id here
+          // may have no element: menubar_help_has_no_mozilla_items checks that Firefox still has
+          // each item.
+          const visible = ids.filter(shown);
+          Assert.deepEqual(
+            visible,
+            KEPT_HELP.map((id) => `appMenu_${id}`),
+            `the app menu's Help view keeps Get Help and Share Ideas, not the rest (nova ${nova})`,
+          );
+          const panelHidden = BrowserTestUtils.waitForPopupEvent(appMenu, "hidden");
+          PanelUI.hide();
+          await panelHidden;
+        });
+      } finally {
+        await SpecialPowers.popPrefEnv();
+      }
+    },
+  }[name];
+  add_task(task);
+}
 
 add_task(async function customize_palette_has_no_send_tab_or_firefox_view() {
   const ready = BrowserTestUtils.waitForEvent(gNavToolbox, "customizationready");
