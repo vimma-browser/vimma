@@ -14,7 +14,7 @@
 // `await waitForPageKey(...)` or `await pageKeys(browser)`.
 
 /* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey,
-   useShippedSupportBase, inSettingsPane */
+   useShippedSupportBase, openSettingsPane */
 
 "use strict";
 
@@ -132,7 +132,7 @@ async function useShippedSupportBase() {
  * @param {string | string[]} selectors
  * @param {(doc: Document, el: HTMLElement) => Promise<void> | void} check
  */
-async function inSettingsPane(pane, selectors, check) {
+async function openSettingsPane(pane, selectors, check) {
   const wanted = typeof selectors === "string" ? [selectors] : selectors;
   await BrowserTestUtils.withNewTab(`about:preferences#${pane}`, async (browser) => {
     const doc = browser.contentDocument;

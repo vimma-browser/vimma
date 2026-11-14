@@ -152,7 +152,7 @@ files of their own: each `about:preferences` tab builds its pane on the parent's
 which takes seconds under load, so the Settings tests are in
 `browser_vimma_firefox_settings_trim.js` and `browser_vimma_firefox_settings_hidden.js`, and a
 test opens each pane once (#992). `requestLongerTimeout(N)` is the last resort, with its reason
-in a comment; the second file needs `2` for its six Settings tabs.
+in a comment; both files take `2` for their Settings tabs.
 
 ## 7. End-to-end scenarios and screenshots
 

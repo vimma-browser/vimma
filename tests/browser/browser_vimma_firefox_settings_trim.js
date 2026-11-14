@@ -15,7 +15,13 @@
 
 "use strict";
 
-/* global useShippedSupportBase, inSettingsPane -- from head.js */
+/* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+/* global useShippedSupportBase, openSettingsPane -- from head.js */
+
+// Five Settings tabs, General twice, each building its pane on the parent's main thread: about
+// 6 s at a low load average, but up to 35 s at a load average of 8 to 16 (#992). Each wait
+// still fails on its own, within TestUtils.waitForCondition's 50 polls.
+requestLongerTimeout(2);
 
 add_task(async function settings_learn_more_links_open_vimma_dev() {
   const base = await useShippedSupportBase();
@@ -60,7 +66,7 @@ add_task(async function sync_sign_in_stays_in_settings() {
 // Step 4b: Settings keeps Sync and support (decision 1) and looks like Vimma (decision 8).
 
 add_task(async function settings_keep_sync_and_support() {
-  await inSettingsPane("general", "#setting-control-supportGetHelp", (doc, help) => {
+  await openSettingsPane("general", "#setting-control-supportGetHelp", (doc, help) => {
     const sync = /** @type {HTMLElement} */ (doc.getElementById("category-sync"));
     Assert.ok(BrowserTestUtils.isVisible(sync), "Settings' navigation keeps Sync");
     Assert.notEqual(
@@ -80,7 +86,7 @@ add_task(async function settings_show_firefox_home_without_the_start_page() {
       ["browser.newtab.preload", false],
     ],
   });
-  await inSettingsPane("home", 'setting-group[groupid="home"]', (doc, group) => {
+  await openSettingsPane("home", 'setting-group[groupid="home"]', (doc, group) => {
     Assert.notEqual(
       doc.defaultView.getComputedStyle(group).display,
       "none",
@@ -91,7 +97,7 @@ add_task(async function settings_show_firefox_home_without_the_start_page() {
 });
 
 add_task(async function settings_look_like_vimma() {
-  await inSettingsPane("general", "setting-group moz-card", (doc, card) => {
+  await openSettingsPane("general", "setting-group moz-card", (doc, card) => {
     const win = doc.defaultView;
     const radius = (/** @type {Element | null | undefined} */ el) =>
       el ? win.getComputedStyle(el).borderTopLeftRadius : "missing";

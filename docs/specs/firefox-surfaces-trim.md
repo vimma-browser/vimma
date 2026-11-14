@@ -503,9 +503,10 @@ Written first and seen to fail, by step.
   `browser_vimma_firefox_surfaces_trim.js` (new mochitest) asserts that `getHelpLinkURL("x")` and a
   Settings "Learn more" link start with the vimma.dev base and carry the version, OS and locale
   (step 1) (Since changed: the tests that open Settings, this link among them, are in
-  `browser_vimma_firefox_settings_trim.js`, #992), that the account panel's Monitor button and `#appMenu-fxa-sign-in-promo` are hidden,
-  that the content context menu has no chatbot or link-preview item, and that `Services.prefs`
-  reports each pref back at Firefox's value after a user reset is reverted.
+  `browser_vimma_firefox_settings_trim.js`, #992), that the account panel's Monitor button and
+  `#appMenu-fxa-sign-in-promo` are hidden, that the content context menu has no chatbot or
+  link-preview item, and that `Services.prefs` reports each pref back at Firefox's value after a
+  user reset is reverted.
 - **Branding** (step 3): a vitest that Vimma's `brand.ftl` defines `-brand-shortcut-name`, and
   `tools/branding/test/brandings.test.mjs` (Since changed: `brandings.test.ts`, ADR-025) for the
   generator (decision 14); the mochitest formats `desktop-entry-name` and

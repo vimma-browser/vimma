@@ -11,10 +11,11 @@
 "use strict";
 
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
-/* global inSettingsPane -- from head.js */
+/* global openSettingsPane -- from head.js */
 
 // Six Settings tabs (Home, Privacy and General, twice), each building its pane on the parent's
-// main thread: under 11 s on a quiet CI runner, but up to 47 s at a load average of 14 (#992).
+// main thread: under 11 s on a quiet CI runner, but up to 50 s at a load average of 8 to 16
+// (#992).
 // Each wait still fails on its own, within TestUtils.waitForCondition's 50 polls.
 requestLongerTimeout(2);
 
@@ -38,7 +39,7 @@ async function settingsHideWhatControlsNothing(label) {
   for (const pane of new Set(HIDDEN_IN_SETTINGS.map(([p]) => p))) {
     const rows = HIDDEN_IN_SETTINGS.filter(([p]) => p === pane);
     const selectors = rows.map(([, selector]) => selector);
-    await inSettingsPane(pane, pane === "general" ? [...selectors, LABS] : selectors, (doc) => {
+    await openSettingsPane(pane, pane === "general" ? [...selectors, LABS] : selectors, (doc) => {
       const win = /** @type {Window} */ (doc.defaultView);
       for (const [, selector, what] of rows) {
         Assert.equal(
