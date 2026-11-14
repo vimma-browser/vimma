@@ -275,3 +275,31 @@ add_task(async function a_tabs_focus_report_reaches_the_host_through_the_parent_
     );
   });
 });
+
+// security.md section 13: a parent actor URL that is not a module of host/ is refused before
+// anything is registered, so a typo fails at startup instead of dropping page reports in silence.
+// The actor is registered once per process already; the check runs before that guard, and the
+// real URL passes it (a second call with it is the guard's no-op).
+add_task(async function the_parent_actors_url_is_checked_before_it_is_registered() {
+  const { VimmaActors } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+  );
+  const bad = [
+    undefined,
+    "",
+    "https://example.org/VimmaParent.sys.mjs",
+    "chrome://browser/content/other/VimmaParent.sys.mjs",
+    "chrome://browser/content/vimma/actors/VimmaParent.sys.mjs",
+    "chrome://browser/content/vimma/host/../actors/VimmaChild.sys.mjs",
+    "chrome://browser/content/vimma/host/VimmaParent.mjs",
+  ];
+  for (const uri of bad) {
+    Assert.throws(
+      () => VimmaActors.register(/** @type {string} */ (uri)),
+      /parent actor/,
+      `refused: ${JSON.stringify(uri)}`,
+    );
+  }
+  VimmaActors.register("chrome://browser/content/vimma/host/VimmaParent.sys.mjs");
+  Assert.ok(true, "the real URL passes the check");
+});
