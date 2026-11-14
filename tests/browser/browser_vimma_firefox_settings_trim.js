@@ -31,10 +31,19 @@ add_task(async function settings_learn_more_links_open_vimma_dev() {
       // Settings builds some groups after load, so wait for its Learn more links to have an href.
       const selector = 'a[is="moz-support-link"][support-page], moz-support-link[support-page]';
       await ContentTaskUtils.waitForCondition(
-        () => [...content.document.querySelectorAll(selector)].some((a) => a.href),
+        () =>
+          [
+            .../** @type {NodeListOf<HTMLAnchorElement>} */ (
+              content.document.querySelectorAll(selector)
+            ),
+          ].some((a) => a.href),
         "Settings' Learn more links",
       );
-      return [...content.document.querySelectorAll(selector)]
+      return [
+        .../** @type {NodeListOf<HTMLAnchorElement>} */ (
+          content.document.querySelectorAll(selector)
+        ),
+      ]
         .filter((a) => a.href)
         .map((a) => ({ page: a.getAttribute("support-page"), href: a.href }));
     });
@@ -51,7 +60,7 @@ add_task(async function settings_learn_more_links_open_vimma_dev() {
 
 add_task(async function sync_sign_in_stays_in_settings() {
   await BrowserTestUtils.withNewTab("about:preferences#sync", async (browser) => {
-    const doc = browser.contentDocument;
+    const doc = /** @type {Document} */ (browser.contentDocument);
     info("Waiting for Settings > Sync to render its sign-in button");
     await TestUtils.waitForCondition(
       () => doc.getElementById("noFxaSignIn"),
@@ -70,7 +79,7 @@ add_task(async function settings_keep_sync_and_support() {
     const sync = /** @type {HTMLElement} */ (doc.getElementById("category-sync"));
     Assert.ok(BrowserTestUtils.isVisible(sync), "Settings' navigation keeps Sync");
     Assert.notEqual(
-      doc.defaultView.getComputedStyle(help).display,
+      /** @type {Window} */ (doc.defaultView).getComputedStyle(help).display,
       "none",
       "Settings keeps the Vimma support link",
     );
@@ -88,7 +97,7 @@ add_task(async function settings_show_firefox_home_without_the_start_page() {
   });
   await openSettingsPane("home", 'setting-group[groupid="home"]', (doc, group) => {
     Assert.notEqual(
-      doc.defaultView.getComputedStyle(group).display,
+      /** @type {Window} */ (doc.defaultView).getComputedStyle(group).display,
       "none",
       "with Firefox Home as the new tab page, Settings shows its content group",
     );
@@ -98,7 +107,7 @@ add_task(async function settings_show_firefox_home_without_the_start_page() {
 
 add_task(async function settings_look_like_vimma() {
   await openSettingsPane("general", "setting-group moz-card", (doc, card) => {
-    const win = doc.defaultView;
+    const win = /** @type {Window} */ (doc.defaultView);
     const radius = (/** @type {Element | null | undefined} */ el) =>
       el ? win.getComputedStyle(el).borderTopLeftRadius : "missing";
     const font = win.getComputedStyle(doc.documentElement).getPropertyValue("--vimma-font").trim();

@@ -135,7 +135,7 @@ async function useShippedSupportBase() {
 async function openSettingsPane(pane, selectors, check) {
   const wanted = typeof selectors === "string" ? [selectors] : selectors;
   await BrowserTestUtils.withNewTab(`about:preferences#${pane}`, async (browser) => {
-    const doc = browser.contentDocument;
+    const doc = /** @type {Document} */ (browser.contentDocument);
     for (const selector of wanted) {
       info(`Waiting for Settings' ${pane} pane to build ${selector}`);
       await TestUtils.waitForCondition(
