@@ -2600,11 +2600,7 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   where the actor already runs for `about:` pages and the start page. Its replies go through the
   same parent checks (K1, `parseHintReply`, `parseGrepReply`). Agents gain no reach from it: the
   agent tools open only http and https (M6), and the document's principal keeps the
-  `view-source:` scheme, so every agent check for an http or https page refuses on it. The
-  actor's parent side (`host/VimmaParent.sys.mjs`), where these documents' messages enter the
-  parent process, loads from the URL `vimma.js` hands `VimmaActors.register`; a normal tab
-  **must** have it, since without it every page report would be dropped in silence.
-  [`a_tabs_focus_report_reaches_the_host_through_the_parent_actor`](../tests/browser/browser_vimma_security_invariants.js),
+  `view-source:` scheme, so every agent check for an http or https page refuses on it.
   [`j_k_G_and_gg_scroll_the_source`](../tests/browser/browser_vimma_view_source.js),
   [`f_labels_the_link_in_the_source_and_follows_it`](../tests/browser/browser_vimma_view_source.js),
   [`the_actor_reaches_settings_and_the_pdf_viewer_but_not_data_urls`](../tests/browser/browser_vimma_insert_scroll.js)
@@ -2615,6 +2611,13 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   leaves the keys to the page.
   [`j_scrolls_the_cookie_settings_list_not_the_page_behind`](../tests/browser/browser_vimma_insert_scroll.js),
   [`j_scrolls_the_page_past_a_fixed_element_that_is_no_scrolling_layer`](../tests/browser/browser_vimma_insert_scroll.js)
+- K9. A normal tab **must** have the actor's parent side (`host/VimmaParent.sys.mjs`), where
+  content-process messages enter the parent process: without it every page report would be
+  dropped in silence. It loads from the URL `vimma.js` hands `VimmaActors.register`, which
+  **must** refuse, before registering anything, a URL that is not a `host/` system module, and
+  `npm run layering` fails on a URL in the tree that names no tracked, packaged module.
+  [`a_tabs_focus_report_reaches_the_host_through_the_parent_actor`](../tests/browser/browser_vimma_security_invariants.js),
+  [`the_parent_actors_url_is_checked_before_it_is_registered`](../tests/browser/browser_vimma_security_invariants.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
