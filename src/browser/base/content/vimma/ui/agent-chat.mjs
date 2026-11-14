@@ -72,7 +72,6 @@ const NORMAL_HINT =
 const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Esc back";
 const MODELS_HINT = "j k move · Enter use · D default · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
-/** Where a message that was not sent is when its conversation was deleted meanwhile. */
 /**
  * Whether two providers are the same model at the same endpoint under the same name.
  * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
@@ -80,6 +79,7 @@ const SLOT_HINT = "a question waits: answer it here";
 const sameProvider = (a, b) =>
   a.endpoint === b.endpoint && a.model === b.model && a.name === b.name;
 
+/** Where a message that was not sent is when its conversation was deleted meanwhile. */
 const DROPPED = "its conversation was deleted, and the message with it";
 
 /**
