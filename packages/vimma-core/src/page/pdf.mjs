@@ -28,10 +28,20 @@ const MAX_MATCHES = 10_000_000;
  * @property {number} ops       how many operations the viewer's actor had received from Vimma
  * @property {number} width     the viewer's size then, in whole device pixels, so a report
  * @property {number} height    from before a resize is not taken for one after it
+ * @property {number} zoom      the tab's full zoom then, as the viewer's browsing context had it,
+ *   so a report from before a full-zoom change is not taken for one after it (#1040); 0 when
+ *   unusable
  */
 
 /** Larger than any screen, in device pixels. */
 const MAX_SIZE = 100000;
+
+/**
+ * Bounds of a full zoom: Firefox keeps it within zoom.minPercent and zoom.maxPercent (30% and
+ * 500% by default); these leave room for changed prefs and nothing more.
+ */
+const MIN_ZOOM = 0.01;
+const MAX_ZOOM = 100;
 
 /**
  * Control (Cc) and format (Cf) characters: bidi overrides and isolates, zero-width marks; and
@@ -84,37 +94,50 @@ export function parsePdfState(raw) {
 }
 
 /**
- * The report's drawing fields, which only `state.pdf` reads (#1006): all four in bounds, else a
- * report that is not drawn. They never cost the record itself, so a size or count the viewer
- * reports oddly cannot take away the page state PDF mode runs on.
- * @param {Record<string, unknown>} r
- * @returns {{ drawn: boolean, ops: number, width: number, height: number }}
+ * Whether `zoom` can be a full zoom: a finite number from MIN_ZOOM to MAX_ZOOM.
+ * @param {unknown} zoom
+ * @returns {zoom is number}
  */
-function drawing({ drawn, ops, width, height }) {
+const isZoom = (zoom) =>
+  typeof zoom === "number" && Number.isFinite(zoom) && zoom >= MIN_ZOOM && zoom <= MAX_ZOOM;
+
+/**
+ * The report's drawing fields, which only `state.pdf` reads (#1006): all five in bounds, else a
+ * report that is not drawn. They never cost the record itself, so a size, count or zoom the
+ * viewer reports oddly cannot take away the page state PDF mode runs on.
+ * @param {Record<string, unknown>} r
+ * @returns {{ drawn: boolean, ops: number, width: number, height: number, zoom: number }}
+ */
+function drawing({ drawn, ops, width, height, zoom }) {
   if (
     typeof drawn !== "boolean" ||
     !intIn(ops, 0, Number.MAX_SAFE_INTEGER) ||
     !intIn(width, 0, MAX_SIZE) ||
-    !intIn(height, 0, MAX_SIZE)
+    !intIn(height, 0, MAX_SIZE) ||
+    !isZoom(zoom)
   ) {
-    return { drawn: false, ops: 0, width: 0, height: 0 };
+    return { drawn: false, ops: 0, width: 0, height: 0, zoom: 0 };
   }
-  return { drawn, ops, width, height };
+  return { drawn, ops, width, height, zoom };
 }
 
 /**
  * Whether the viewer has drawn every page in view as the tab shows it now (`state.pdf`, #1006):
  * its last report says so, came after every operation Vimma sent it, and was made at the size
- * the tab has now; a report from before a resize (the outline opening beside the document) says
- * nothing of the pages drawn after it. Sizes are in device pixels, the one unit both sides
- * share at any desktop scale and full zoom (the viewer's CSS pixels follow the zoom, snapped by
- * the engine); each side rounds its own, so a pixel apart is the same size.
+ * and the full zoom the tab has now; a report from before a resize (the outline opening beside
+ * the document) or a zoom change says nothing of the pages drawn after it. Sizes are in device
+ * pixels, the one unit both sides share at any desktop scale and full zoom (the viewer's CSS
+ * pixels follow the zoom, snapped by the engine); each side rounds its own, so a pixel apart is
+ * the same size. A zoom change leaves that size as it was, so the zoom is compared too, and
+ * exactly (#1040): both sides read the same synced BrowsingContext.fullZoom, a float, so the
+ * same zoom is the same number on both sides at any desktop scale and zoom level.
  * @param {PdfState | null} state  the last report
- * @param {{ sent: number, width: number, height: number }} now  the operations sent to the
- *   viewer's document, and its tab's size in whole device pixels
+ * @param {{ sent: number, width: number, height: number, zoom: number }} now  the operations
+ *   sent to the viewer's document, its tab's size in whole device pixels and its tab's full zoom
  */
-export function pdfDrawn(state, { sent, width, height }) {
+export function pdfDrawn(state, { sent, width, height, zoom }) {
   if (!state?.drawn || state.ops < sent) return false;
+  if (!isZoom(zoom) || state.zoom !== zoom) return false;
   return Math.abs(state.width - width) <= 1 && Math.abs(state.height - height) <= 1;
 }
 
