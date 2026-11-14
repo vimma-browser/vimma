@@ -930,6 +930,11 @@ interface BrowsingContext {
   readonly embedderElement: Element | null;
   readonly isDiscarded: boolean;
   readonly browserId: number;
+  /**
+   * The full zoom, 1 at 100 % (engine/dom/chrome-webidl/BrowsingContext.webidl, a synced float
+   * field; its setter throws on a discarded context).
+   */
+  fullZoom: number;
   getAllBrowsingContextsInSubtree(): BrowsingContext[];
 }
 // The parent process's context (BrowsingContext.webidl). In the parent every context is one
