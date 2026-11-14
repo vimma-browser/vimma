@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
 import { describe, expect, it } from "vitest";
@@ -12,9 +12,12 @@ import { describe, expect, it } from "vitest";
 // .nvmrc runs on the runner image's own Node, which this repository does not choose and which may
 // be older than 22.18, where a .ts tool fails with ERR_UNKNOWN_FILE_EXTENSION. Such a job gets the
 // step before its tool can move (#946). RUNNER_NODE lists the jobs that still lack it; the list
-// only shrinks, as each area's move adds the step. Only `run:` text is read: a tools/**/*.sh
-// wrapper that starts node is not followed, so a job that runs one is checked by hand.
-const WORKFLOWS = fileURLToPath(new URL("../../.github/workflows/", import.meta.url));
+// only shrinks, as each area's move adds the step. A `run:` step's text is read, and so is every
+// tools/**/*.sh wrapper it names and every wrapper those name: a job that reaches node through a
+// script counts as running node. None of these jobs may reach a .ts file, through a wrapper or
+// through a .mjs that imports one.
+const REPO = fileURLToPath(new URL("../../", import.meta.url));
+const WORKFLOWS = join(REPO, ".github/workflows/");
 
 const RUNNER_NODE = [
   "upstream-beta.yml detect",
@@ -169,10 +172,80 @@ function guardFaults(workflow: object, job: Job): string[] {
 /** A shell line that starts Node: `node`, `npm` or `npx` as a command, not inside a word. */
 const RUNS_NODE = /(?:^|[\s;&|(`])(?:node|npm|npx)(?:\s|$)/;
 
-function runsNode(step: Step): boolean {
-  return (step.run ?? "")
-    .split("\n")
-    .some((line) => !line.trim().startsWith("#") && RUNS_NODE.test(line));
+/** A repository file's text, or null when there is none (the tests pass their own files). */
+type ReadFile = (path: string) => string | null;
+const readRepoFile: ReadFile = (path) => {
+  const file = join(REPO, path);
+  return existsSync(file) ? readFileSync(file, "utf8") : null;
+};
+
+const codeLines = (text: string) => text.split("\n").filter((l) => !l.trim().startsWith("#"));
+
+// A path a shell text names: from the repository root (a workflow step's working directory) or
+// from the script's own directory ($here, ${here}, $(dirname "$0"), the form the wrappers use).
+const SCRIPT_DIR = String.raw`(?:\$here|\$\{here\}|\$\(dirname "\$0"\)|\$\(dirname "\$\{BASH_SOURCE\[0\]\}"\))/`;
+const named = (ext: string) =>
+  new RegExp(String.raw`(${SCRIPT_DIR}|\btools/)([\w./-]+?\.(?:${ext}))\b`, "g");
+const WRAPPER = named("sh|bash");
+const RUNS_NODE_FILE = /(?:^|[\s;&|(`])node\s/;
+const SCRIPT_FILE = named("mjs|js|cjs|mts|ts");
+
+/** The repository paths a shell text names with `pattern`, resolved against its script's directory. */
+function paths(text: string, dir: string, pattern: RegExp): string[] {
+  const out: string[] = [];
+  for (const line of codeLines(text))
+    for (const m of line.matchAll(pattern)) {
+      const [, from = "", rest = ""] = m;
+      out.push(normalize(from === "tools/" ? `tools/${rest}` : join(dir, rest)));
+    }
+  return out;
+}
+
+/** The shell texts a step runs: its `run:` text and each tools wrapper it reaches, with their directories. */
+function shellTexts(step: Step, read: ReadFile = readRepoFile): { text: string; dir: string }[] {
+  const out = [{ text: step.run ?? "", dir: "." }];
+  const seen = new Set<string>();
+  for (let i = 0; i < out.length; i++) {
+    const { text, dir } = out[i] as { text: string; dir: string };
+    for (const path of paths(text, dir, WRAPPER)) {
+      if (seen.has(path)) continue;
+      seen.add(path);
+      const script = read(path);
+      // A path inside a container (/repo/tools/…) or in a temporary directory is not one of ours.
+      if (script !== null) out.push({ text: script, dir: dirname(path) });
+    }
+  }
+  return out;
+}
+
+function runsNode(step: Step, read: ReadFile = readRepoFile): boolean {
+  return shellTexts(step, read).some(({ text }) =>
+    codeLines(text).some((line) => RUNS_NODE.test(line)),
+  );
+}
+
+// A relative static import or re-export, or a dynamic import of a literal path.
+const IMPORT = /(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.{1,2}\/[^"']+)["']/g;
+
+/** The .ts files a step reaches: run by node directly, or imported by a .mjs or .js it runs. */
+function tsReached(step: Step, read: ReadFile = readRepoFile): string[] {
+  const files: string[] = [];
+  for (const { text, dir } of shellTexts(step, read))
+    // Every script a node line names, its arguments included: a wider net than needed.
+    for (const line of codeLines(text).filter((l) => RUNS_NODE_FILE.test(l)))
+      files.push(...paths(line, dir, SCRIPT_FILE));
+  const seen = new Set<string>();
+  const ts: string[] = [];
+  while (files.length) {
+    const file = files.pop() as string;
+    if (seen.has(file)) continue;
+    seen.add(file);
+    if (/\.m?ts$/.test(file)) ts.push(file);
+    const source = read(file);
+    if (source === null) continue;
+    for (const m of source.matchAll(IMPORT)) files.push(normalize(join(dirname(file), m[1] ?? "")));
+  }
+  return ts.sort();
 }
 
 const isAnySetupNode = (s: Step) => (s.uses ?? "").startsWith("actions/setup-node@");
@@ -182,16 +255,18 @@ const isSetupNode = (s: Step) =>
   s.with?.["node-version-file"] === ".nvmrc" &&
   s.with?.["node-version"] === undefined;
 
+/** Whether a job's first Node step comes before any setup-node step. */
+function onRunnerNodeJob(job: Job, read: ReadFile = readRepoFile): boolean {
+  const steps = job.steps ?? [];
+  const first = steps.findIndex((s) => runsNode(s, read));
+  const setup = steps.findIndex(isAnySetupNode);
+  return first >= 0 && (setup < 0 || setup > first);
+}
+
 /** The jobs whose first Node step comes before any setup-node step. */
 function onRunnerNode(): string[] {
   return workflowJobs()
-    .filter(({ name, job }) => {
-      if (PRINTS_ONLY.includes(name)) return false;
-      const steps = job.steps ?? [];
-      const first = steps.findIndex(runsNode);
-      const setup = steps.findIndex(isAnySetupNode);
-      return first >= 0 && (setup < 0 || setup > first);
-    })
+    .filter(({ name, job }) => !PRINTS_ONLY.includes(name) && onRunnerNodeJob(job))
     .map(({ name }) => name)
     .sort();
 }
@@ -263,6 +338,46 @@ describe("the Node a workflow job runs its tools on", () => {
     }
   });
 
+  // A job left on the runner's Node fails at once on a .ts tool (ERR_UNKNOWN_FILE_EXTENSION before
+  // 22.18), whether a step runs it, a wrapper does, or a .mjs it runs imports it.
+  it("no job left on the runner's Node reaches a .ts file", () => {
+    const reached = workflowJobs()
+      .filter(({ name }) => RUNNER_NODE.includes(name) || BASE_GUARDS.includes(name))
+      .map(({ name, job }) => [name, (job.steps ?? []).flatMap((s) => tsReached(s))] as const)
+      .filter(([, ts]) => ts.length);
+    expect(Object.fromEntries(reached)).toEqual({});
+  });
+
+  const WRAPPED: Record<string, string> = {
+    "tools/x/check.sh": 'here=$(cd "$(dirname "$0")" && pwd)\nbash "$here/inner.sh" "$1"\n',
+    "tools/x/inner.sh": '# node is named in a comment only\nnode "$here/tool.ts" --out x\n',
+    "tools/x/quiet.sh": "# node tools/x/tool.ts\nprintf ok\n",
+    "tools/x/pre.sh": 'node "$(dirname "$0")/pre.mjs"\n',
+    "tools/x/pre.mjs": 'import { a } from "../y/build.mjs";\nexport { b } from "./b.mjs";\n',
+    "tools/x/b.mjs": "export const b = 1;\n",
+    "tools/y/build.mjs": 'import { c } from "./c.ts";\nexport const a = c;\n',
+    "tools/y/c.ts": "export const c = 1;\n",
+  };
+  const readWrapped: ReadFile = (path) => WRAPPED[path] ?? null;
+  const checkout = { uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" };
+  const setupNode = { uses: "actions/setup-node@0", with: { "node-version-file": ".nvmrc" } };
+
+  it("follows a tools/**/*.sh wrapper, and the wrappers it runs, to the node it starts", () => {
+    const wrapped = { run: 'tools/x/check.sh "$VERSION"' };
+    expect(runsNode(wrapped, readWrapped)).toBe(true);
+    expect(runsNode({ run: "bash tools/x/quiet.sh" }, readWrapped)).toBe(false);
+    expect(runsNode({ run: "tools/x/missing.sh" }, readWrapped)).toBe(false);
+    expect(onRunnerNodeJob({ steps: [checkout, wrapped] }, readWrapped)).toBe(true);
+    expect(onRunnerNodeJob({ steps: [checkout, setupNode, wrapped] }, readWrapped)).toBe(false);
+    expect(tsReached(wrapped, readWrapped)).toEqual(["tools/x/tool.ts"]);
+  });
+
+  it("follows a .mjs a step runs through its relative imports to a .ts", () => {
+    expect(tsReached({ run: "tools/x/pre.sh" }, readWrapped)).toEqual(["tools/y/c.ts"]);
+    expect(tsReached({ run: "node tools/x/b.mjs" }, readWrapped)).toEqual([]);
+    expect(tsReached({ run: "node --test tools/y/c.ts" }, readWrapped)).toEqual(["tools/y/c.ts"]);
+  });
+
   it("finds node, npm or npx at the end of a line too", () => {
     expect(runsNode({ run: "node" })).toBe(true);
     expect(runsNode({ run: "cat x | npx" })).toBe(true);
@@ -273,7 +388,7 @@ describe("the Node a workflow job runs its tools on", () => {
     for (const { name, job } of workflowJobs()) {
       if (!NO_AUTO_CACHE.includes(name)) continue;
       const steps = job.steps ?? [];
-      const first = steps.findIndex(runsNode);
+      const first = steps.findIndex((s) => runsNode(s));
       const setup = steps.findIndex(isAnySetupNode);
       expect(setup, name).toBeGreaterThanOrEqual(0);
       expect(setup, name).toBeLessThan(first);

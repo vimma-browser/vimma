@@ -86,7 +86,8 @@ setup-node, so it reads that tag's `.nvmrc`; every release tag has one (from v0.
 build jobs of the same commit read it too, so a tree without it could not be released anyway.
 `tools/test/runner-node.test.ts` fails on a setup-node without `.nvmrc`, and lists the jobs that
 still run `node` or `npm` on the runner image's own Node, whose version this repository does not
-choose; that list only shrinks (#946). A Node bump is its
+choose, directly or through a `tools/**/*.sh` wrapper; none of them may reach a `.ts` file, run
+or imported by a `.mjs`, and that list only shrinks (#946). A Node bump is its
 own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node` to it
 (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
