@@ -35,7 +35,11 @@ name: nightly
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    # In the night in Finland, after the day's merges. GitHub starts this repository's schedules
+    # about 7 hours late (6 h 40 min to 7 h 34 min on 2026-11-08 to 2026-11-13), so 17:23 UTC
+    # starts the build at about 00:00 to 01:00 UTC; tools/test/nightly-workflow.test.mjs holds
+    # the sum. If the delay goes away, move this to the hour wanted.
+    - cron: "23 17 * * *"
   workflow_dispatch:
 
 permissions:

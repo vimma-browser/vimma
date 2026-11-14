@@ -891,3 +891,29 @@ esac
     expect(s.env).toMatchObject({ RUN_ID: "${{ github.run_id }}" });
   });
 });
+
+// GitHub starts this repository's scheduled workflows about 7 hours late, on every day measured
+// (2026-11-08 to 2026-11-13: 6 h 40 min to 7 h 34 min after the cron's time). A cron at 03:00 UTC
+// therefore built at midday in Finland. The schedule is set early by that delay, so the build
+// starts in the night there: main holds the whole day's merges, and a failure is found by morning.
+describe("nightly.yml: the schedule starts the build in the night", () => {
+  /** Minutes after midnight UTC of the one daily cron. */
+  const minute = () => {
+    const crons = [...TEXT.matchAll(/^ +- cron: "(\d+) (\d+) \* \* \*"$/gm)];
+    expect(TEXT.match(/^ +- cron:/gm)).toHaveLength(1);
+    expect(crons).toHaveLength(1);
+    return Number(crons[0]?.[2]) * 60 + Number(crons[0]?.[1]);
+  };
+
+  it("with GitHub's measured delay of 6 h 40 min to 7 h 34 min, it starts between 00:00 and 01:30 UTC", () => {
+    const earliest = (minute() + 400) % 1440;
+    const latest = (minute() + 454) % 1440;
+    expect(earliest).toBeGreaterThanOrEqual(0);
+    expect(latest).toBeLessThanOrEqual(90);
+    expect(earliest).toBeLessThanOrEqual(latest);
+  });
+
+  it("is not on the hour, the busiest time for GitHub's schedules", () => {
+    expect(minute() % 60).not.toBe(0);
+  });
+});
