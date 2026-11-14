@@ -58,22 +58,31 @@ add_task(async function webcompat_interventions_see_firefox_version() {
   const policy = WebExtensionPolicy.getByID("webcompat@mozilla.org");
   Assert.ok(policy, "webcompat add-on is installed");
   await policy.extension.promiseBackgroundStarted();
+  // The background has started, so it has its page and the page its browser; spawn throws
+  // without one, as the read through it did before.
+  const background = /** @type {{ xulBrowser: MozBrowser }} */ (policy.extension.backgroundContext);
   // interventions.js parses this value to gate min_version / max_version.
-  const seen = await SpecialPowers.spawn(policy.extension.backgroundContext.xulBrowser, [], () =>
+  const seen = await SpecialPowers.spawn(background.xulBrowser, [], () =>
     content.wrappedJSObject.browser.appConstants.getAppVersion(),
   );
   Assert.equal(seen, FIREFOX_VERSION, "webcompat getAppVersion()");
 });
 
 add_task(async function extensions_see_firefox_version() {
+  /** @type {ExtensionWrapper} */
   const extension = ExtensionTestUtils.loadExtension({
     async background() {
+      // The extension's own global `browser`, which a test file's scope does not have.
+      const { browser } = /** @type {typeof globalThis & { browser: WebExtensionApi }} */ (
+        globalThis
+      );
       const info = await browser.runtime.getBrowserInfo();
       browser.test.sendMessage("info", info);
     },
   });
   await extension.startup();
-  const info = await extension.awaitMessage("info");
+  // The BrowserInfo the background sent; a read through a missing one throws.
+  const info = /** @type {{ version: string }} */ (await extension.awaitMessage("info"));
   await extension.unload();
   Assert.equal(info.version, FIREFOX_VERSION, "runtime.getBrowserInfo().version");
 });
@@ -86,7 +95,12 @@ add_task(async function about_dialog_shows_vimma_version() {
   openAboutDialog();
   const dialog = await opened;
   try {
-    const { args } = dialog.document.l10n.getAttributes(dialog.document.getElementById("version"));
+    // The About dialog is localized (aboutDialog.xhtml links its .ftl files) and has its version
+    // line; getAttributes throws for a missing one.
+    const l10n = /** @type {DocumentL10n} */ (dialog.document.l10n);
+    const { args } = l10n.getAttributes(
+      /** @type {HTMLElement} */ (dialog.document.getElementById("version")),
+    );
     Assert.equal(args?.version, AppConstants.MOZ_APP_VERSION_DISPLAY, "About dialog version");
   } finally {
     await BrowserTestUtils.closeWindow(dialog);

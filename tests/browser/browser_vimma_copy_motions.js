@@ -51,7 +51,8 @@ function waitForMode(browser, mode) {
 /** @param {XULBrowserElement} browser */
 function selectionIn(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const sel = content.getSelection();
+    // A window that shows a document has its selection.
+    const sel = /** @type {Selection} */ (content.getSelection());
     return {
       text: sel.toString(),
       collapsed: sel.isCollapsed,
@@ -62,24 +63,33 @@ function selectionIn(browser) {
   });
 }
 
+/** @typedef {Awaited<ReturnType<typeof selectionIn>>} PageSelection */
+
 /**
  * Waits until the selection matches `want` (a subset of selectionIn's fields), then asserts it.
  * @param {XULBrowserElement} browser
- * @param {object} want
+ * @param {Partial<PageSelection>} want
  * @param {string} what
  */
 async function waitForSelection(browser, want, what) {
+  const wanted = /** @type {[keyof PageSelection, PageSelection[keyof PageSelection]][]} */ (
+    Object.entries(want)
+  );
+  /** @type {PageSelection | undefined} */
   let last;
   try {
     await TestUtils.waitForCondition(async () => {
-      last = await selectionIn(browser);
-      return Object.entries(want).every(([k, v]) => last[k] === v);
+      const now = await selectionIn(browser);
+      last = now;
+      return wanted.every(([k, v]) => now[k] === v);
     }, what);
   } catch {
     // fall through to the assertions, which show what was there
   }
-  for (const [k, v] of Object.entries(want)) Assert.equal(last[k], v, `${what}: ${k}`);
-  return last;
+  // Read at least once, unless the page's selection could not be read at all: that throws here.
+  const seen = /** @type {PageSelection} */ (last);
+  for (const [k, v] of wanted) Assert.strictEqual(seen[k], v, `${what}: ${k}`);
+  return seen;
 }
 
 /**
@@ -93,8 +103,8 @@ async function waitForSelection(browser, want, what) {
  */
 async function caretAt(browser, id, child, offset, select = true) {
   await SpecialPowers.spawn(browser, [id, child, offset], (i, c, o) => {
-    const node = content.document.getElementById(i).childNodes[c];
-    content.getSelection().collapse(node, o);
+    const node = /** @type {HTMLElement} */ (content.document.getElementById(i)).childNodes[c];
+    /** @type {Selection} */ (content.getSelection()).collapse(node, o);
   });
   EventUtils.synthesizeKey("v");
   await waitForMode(browser, "visual");
@@ -102,7 +112,7 @@ async function caretAt(browser, id, child, offset, select = true) {
   if (select) EventUtils.synthesizeKey("v");
 }
 
-/** Types each key of `keys` (a string of single keys). */
+/** Types each key of `text` (a string of single keys). @param {string} text */
 function keys(text) {
   for (const k of text) EventUtils.synthesizeKey(k);
 }
@@ -312,7 +322,7 @@ add_task(async function malformed_find_messages_are_refused() {
       { op: "right", char: "a" },
     ];
     for (const data of bad) {
-      Assert.equal(await actor.sendQuery("Vimma:Caret", data), false, JSON.stringify(data));
+      Assert.strictEqual(await actor.sendQuery("Vimma:Caret", data), false, JSON.stringify(data));
     }
   });
 });

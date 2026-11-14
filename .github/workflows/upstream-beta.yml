@@ -109,6 +109,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
       # Shared with upstream.yml. Exits 1 on a SHA-512 mismatch: the job fails, nothing is
       # tested or reported from that tarball (B3, docs/security/10-firefox-updates.md G10).
       - name: Check the Beta's source (SHA-512, patches, audit, artifact preflight)

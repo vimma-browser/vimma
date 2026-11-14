@@ -10,7 +10,7 @@
 /** The repository, found through `surfer import`'s symlink to this test file. */
 function repoDir() {
   const self = getChromeDir(getResolvedURI(gTestPath));
-  self.append(gTestPath.split("/").pop());
+  self.append(gTestPath.split("/").at(-1) ?? "");
   self.normalize();
   return self.parent.parent.parent; // tests/browser/<file>
 }
@@ -35,7 +35,10 @@ add_task(async function about_license_lists_smol_toml_with_its_full_licence() {
   Assert.stringContains(licence, "Copyright (c) Squirrel Chat et al.", "sanity: the LICENSE file");
 
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:license");
-  const doc = tab.linkedBrowser.contentDocument;
+  // about:license loads in the parent process (nsAboutRedirector.cpp gives it no
+  // URI_MUST_LOAD_IN_CHILD), so the browser has its document; a read through a missing one
+  // throws, as it did before.
+  const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
 
   const link = doc.querySelector('a[href="about:license#smol-toml"]');
   Assert.ok(link, "the index links to the smol-toml entry");

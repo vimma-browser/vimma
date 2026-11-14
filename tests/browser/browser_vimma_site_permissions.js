@@ -29,11 +29,29 @@ const OTHER = "https://example.org/";
 const PICKER_ID = "vimma-permission-picker";
 const NOTICE_ID = "vimma-notice";
 
-const picker = () => document.getElementById(PICKER_ID);
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+// The pickers are modal <dialog>s in the chrome document (ui/picker.mjs), their rows HTML
+// elements.
+/** @param {Document} doc @param {string} id */
+const dialogIn = (doc, id) => /** @type {HTMLDialogElement | null} */ (doc.getElementById(id));
+/** @param {HTMLDialogElement | null} dialog */
+const rowsOf = (dialog) =>
+  /** @type {HTMLElement[]} */ ([...(dialog?.querySelectorAll("[role=option]") ?? [])]);
+const picker = () => dialogIn(document, PICKER_ID);
 const isOpen = () => !!picker()?.open;
-const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
+const rows = () => rowsOf(picker());
 const ids = () => rows().map((r) => r.dataset.id);
 const selectedId = () => rows().find((r) => r.getAttribute("aria-selected") === "true")?.dataset.id;
+/** @param {string} id */
 const detail = (id) =>
   rows()
     .find((r) => r.dataset.id === id)
@@ -41,7 +59,12 @@ const detail = (id) =>
 const heading = () => picker()?.querySelector("h1")?.textContent ?? "";
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/**
+ * Resolves with the first truthy value of `cond`.
+ * @template T
+ * @param {() => T} cond
+ * @param {string} msg
+ */
 function until(cond, msg, tries = 100) {
   return TestUtils.waitForCondition(cond, msg, 50, tries);
 }
@@ -61,7 +84,10 @@ async function openPicker() {
   await until(() => isOpen() && rows().length > 0, ":site opens the picker");
 }
 
-/** Moves the selection down to the row of `id`. */
+/**
+ * Moves the selection down to the row of `id`.
+ * @param {string} id
+ */
 function selectRow(id) {
   for (let i = 0; i < rows().length && selectedId() !== id; i++) EventUtils.synthesizeKey("j");
   Assert.equal(selectedId(), id, `${id} is selected`);
@@ -69,19 +95,25 @@ function selectRow(id) {
 
 // Vimma isolates permissions by container (permissions.isolateBy.userContext), and a
 // workspace's tab is in that workspace's container: the site's principal is the tab's.
+/** @param {string} url @param {MozTabbrowserTab} tab */
 const principalOf = (url, tab) =>
   Services.scriptSecurityManager.createContentPrincipal(
     Services.io.newURI(url),
     tab.linkedBrowser.contentPrincipal.originAttributes,
   );
+/** @param {string} url @param {string} id @param {MozTabbrowserTab} tab */
 const stateOf = (url, id, tab) => SitePermissions.getForPrincipal(principalOf(url, tab), id).state;
+/** @param {string} id @param {number} state */
 const label = (id, state) => SitePermissions.getMultichoiceStateLabel(id, state);
 
 /** Page Info's list (pageinfo/permissions.js): labelled, not open-protocol-handler, by label. */
 function pageInfoList() {
   return SitePermissions.listPermissions()
-    .filter((id) => SitePermissions.getPermissionLabel(id) && id !== "open-protocol-handler")
-    .sort((a, b) =>
+    .filter(
+      (/** @type {string} */ id) =>
+        SitePermissions.getPermissionLabel(id) && id !== "open-protocol-handler",
+    )
+    .sort((/** @type {string} */ a, /** @type {string} */ b) =>
       SitePermissions.getPermissionLabel(a).localeCompare(SitePermissions.getPermissionLabel(b)),
     );
 }
@@ -107,8 +139,11 @@ add_task(async function setup() {
     // Selecting the agent's tab moved the window into the agent workspace; the next test file
     // expects the user's.
     const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
-    if (main) WindowWorkspaces.get(window).switchTo({ id: main.id });
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    // Vimma made the window's workspaces when it started this window.
+    if (main) found(WindowWorkspaces.get(window)).switchTo({ id: main.id });
+    while (gBrowser.tabs.length > 1) {
+      BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
   });
 });
 
@@ -146,7 +181,7 @@ add_task(async function test_keys_change_it_through_firefox_and_the_row_follows(
 
   EventUtils.synthesizeKey("r");
   await until(() => stateOf(PAGE, "camera", tab) === SitePermissions.UNKNOWN, "r resets");
-  await until(() => detail("camera").endsWith(" · default"), "row: the default");
+  await until(() => found(detail("camera")).endsWith(" · default"), "row: the default");
 
   // Enter: the next of Firefox's states for it, after the default (Always Ask) comes Allow.
   const states = SitePermissions.getAvailableStates("camera");
@@ -216,14 +251,19 @@ add_task(async function test_popups_can_be_allowed_blocked_and_reset() {
 // undo cue follows a change made in `:site`.
 const POPUP_PICKER_ID = "vimma-popup-picker";
 const UNDO_CUE = "pop-ups blocked · :popups to allow";
+/** @param {Window} [win] */
 const popupCue = (win = window) =>
   win.document.querySelector('#vimma-statusbar [data-segment="popups"]')?.textContent ?? null;
-const popupRows = (win = window) => [
-  ...(win.document.getElementById(POPUP_PICKER_ID)?.querySelectorAll("[role=option]") ?? []),
-];
-const popupPickerOpen = (win = window) => !!win.document.getElementById(POPUP_PICKER_ID)?.open;
+/** @param {Window} [win] */
+const popupRows = (win = window) => rowsOf(dialogIn(win.document, POPUP_PICKER_ID));
+/** @param {Window} [win] */
+const popupPickerOpen = (win = window) => !!dialogIn(win.document, POPUP_PICKER_ID)?.open;
 
-/** Runs the `:popups` row `id`. */
+/**
+ * Runs the `:popups` row `id`.
+ * @param {string} id
+ * @param {Window} [win]
+ */
 async function runPopupRow(id, win = window) {
   command("popups", win);
   await until(
@@ -295,14 +335,12 @@ add_task(async function test_a_private_window_keeps_a_popup_block_for_its_sessio
   Assert.greater(principal.privateBrowsingId, 0, "a private page");
   const entry = () => Services.perms.getPermissionObject(principal, "popup", true);
   const doc = win.document;
-  const privRows = () => [
-    ...(doc.getElementById(PICKER_ID)?.querySelectorAll("[role=option]") ?? []),
-  ];
+  const privRows = () => rowsOf(dialogIn(doc, PICKER_ID));
 
   command("site", win);
-  await until(() => !!doc.getElementById(PICKER_ID)?.open && privRows().length > 0, ":site opens");
+  await until(() => !!dialogIn(doc, PICKER_ID)?.open && privRows().length > 0, ":site opens");
   Assert.equal(
-    doc.getElementById(PICKER_ID).querySelector("h1").textContent,
+    found(found(doc.getElementById(PICKER_ID)).querySelector("h1")).textContent,
     "Site permissions · example.com · private: until the private workspace closes",
     "the heading says how long a change lasts",
   );
@@ -310,16 +348,16 @@ add_task(async function test_a_private_window_keeps_a_popup_block_for_its_sessio
   for (let i = 0; i < at; i++) EventUtils.synthesizeKey("j", {}, win);
   EventUtils.synthesizeKey("b", {}, win);
   await until(() => entry()?.capability === Services.perms.DENY_ACTION, ":site b blocks");
-  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  Assert.equal(found(entry()).expireType, Services.perms.EXPIRE_SESSION, "for the session only");
   EventUtils.synthesizeKey("KEY_Escape", {}, win);
-  await until(() => !doc.getElementById(PICKER_ID)?.open, "closed");
+  await until(() => !dialogIn(doc, PICKER_ID)?.open, "closed");
 
   await runPopupRow("allow", win);
   await until(() => entry()?.capability === Services.perms.ALLOW_ACTION, ":popups allows");
-  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  Assert.equal(found(entry()).expireType, Services.perms.EXPIRE_SESSION, "for the session only");
   await runPopupRow("block", win);
   await until(() => entry()?.capability === Services.perms.DENY_ACTION, ":popups blocks");
-  Assert.equal(entry().expireType, Services.perms.EXPIRE_SESSION, "for the session only");
+  Assert.equal(found(entry()).expireType, Services.perms.EXPIRE_SESSION, "for the session only");
   Services.perms.removeFromPrincipal(principal, "popup");
   await BrowserTestUtils.closeWindow(win);
 });
@@ -340,7 +378,7 @@ add_task(async function test_a_locked_default_makes_the_row_read_only() {
   Services.prefs.lockPref("permissions.default.camera");
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   await openPicker();
-  Assert.ok(detail("camera").endsWith(" · locked"), "the row says it is locked");
+  Assert.ok(found(detail("camera")).endsWith(" · locked"), "the row says it is locked");
   selectRow("camera");
   EventUtils.synthesizeKey("a");
   await until(() => noticeText().includes("is locked"), "the refusal");
@@ -382,10 +420,13 @@ add_task(async function test_a_page_without_site_permissions_says_so() {
 });
 
 add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
-  const agent = /** @type {any} */ (WorkspaceStore.agent);
-  Assert.ok(agent?.userContextId > 0, "the agent workspace has its container");
+  // The test profile has the agent workspace; a read through a missing one throws.
+  const agent = found(WorkspaceStore.agent);
+  const agentContext = agent.userContextId;
+  Assert.ok(agentContext && agentContext > 0, "the agent workspace has its container");
   // Every permission the agent's page has, but the WebRTC denies Vimma itself sets on each agent
   // tab (AgentPages, AGENT_DENIED_PERMISSIONS).
+  /** @param {MozTabbrowserTab} tab */
   const agentPerms = (tab) =>
     Services.perms
       .getAllForPrincipal(tab.linkedBrowser.contentPrincipal)
@@ -402,7 +443,7 @@ add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
   const mine = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
   await openPicker();
   selectRow("popup");
-  const tab = BrowserTestUtils.addTab(gBrowser, PAGE, { userContextId: agent.userContextId });
+  const tab = BrowserTestUtils.addTab(gBrowser, PAGE, { userContextId: agentContext });
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   gBrowser.selectedTab = tab;
   await until(() => !isOpen(), "selecting the agent's tab closes the picker");

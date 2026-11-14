@@ -21,7 +21,9 @@
  */
 async function inSettingsPane(pane, rows, check) {
   await BrowserTestUtils.withNewTab(`about:preferences#${pane}`, async (browser) => {
-    const doc = browser.contentDocument;
+    // Settings loads in the parent process, so the browser has its document; a read through a
+    // missing one throws, as it did before.
+    const doc = /** @type {Document} */ (browser.contentDocument);
     for (const [selector, what] of rows) {
       const shownByFirefox = () =>
         [...doc.querySelectorAll(selector)].find(
@@ -44,9 +46,14 @@ async function eachPane(rows, check) {
   }
 }
 
-/** @param {Element} el */
+/**
+ * Whether `el`, an element of the open Settings page, is laid out. Its document is shown, so it
+ * has a window.
+ * @param {Element} el
+ */
 function shown(el) {
-  return el.ownerDocument.defaultView.getComputedStyle(el).display !== "none";
+  const win = /** @type {Window} */ (el.ownerDocument.defaultView);
+  return win.getComputedStyle(el).display !== "none";
 }
 
 /** @type {Array<[string, string, string]>} What Vimma manages itself: [pane, selector, what]. */
@@ -94,6 +101,7 @@ const KEPT = [
   ["accessibility", 'setting-group[groupid="fonts"]', "fonts"],
 ];
 
+/** @param {string} label */
 async function settingsHideWhatVimmaManages(label) {
   await eachPane(MANAGED, (el, what) => {
     Assert.ok(!shown(el), `Settings does not show ${what}${label}`);

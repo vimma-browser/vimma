@@ -122,6 +122,8 @@ interface FirefoxServices {
   // engine/intl/locale/mozILocaleService.idl
   locale: { appLocaleAsBCP47: string };
   scriptloader: mozIJSSubScriptLoader;
+  // engine/intl/build/components.conf (js_name "strings")
+  strings: nsIStringBundleService;
 }
 
 // engine/dom/chrome-webidl/IOUtils.webidl
@@ -152,6 +154,8 @@ interface Event {
 // engine/caps/nsIPrincipal.idl
 interface nsIPrincipal {
   readonly origin: string;
+  /** The origin without its origin attributes' suffix. */
+  readonly originNoSuffix: string;
 }
 
 // engine/xpcom/ds/nsIObserver.idl and nsIObserverService.idl: the object form of an observer.
@@ -184,6 +188,8 @@ interface MozBrowser {
 
 // engine/dom/webidl/Document.webidl
 interface Document {
+  /** Its DocumentL10n; null for a document that does not support Fluent (DocumentSupportsL10n). */
+  readonly l10n: DocumentL10n | null;
   readonly hasValidTransientUserGestureActivation: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
@@ -330,7 +336,18 @@ interface CanonicalBrowsingContext extends BrowsingContext {
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
   readonly documentURI: { readonly spec: string } | null;
+  readonly documentPrincipal: nsIPrincipal;
   readonly isInitialDocument: boolean;
+  /**
+   * A snapshot of `rect` of the global's document (the whole viewport for null), at `scale`,
+   * over `backgroundColor`; the options are the webidl's DrawSnapshotOptions.
+   */
+  drawSnapshot(
+    rect: DOMRect | null,
+    scale: number,
+    backgroundColor: string,
+    options?: { resetScrollPosition?: boolean; drawView?: boolean },
+  ): Promise<ImageBitmap>;
 }
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
@@ -400,6 +417,11 @@ interface UrlbarInputTestMembers {
 interface nsIPromptService {
   /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
   confirm(parent: Window | null, title: string, text: string): boolean;
+  /**
+   * An alert for a browsing context; `modalType` is a MODAL_TYPE_* constant. Spins a nested
+   * event loop until it closes.
+   */
+  alertBC(browsingContext: BrowsingContext, modalType: number, title: string, text: string): void;
 }
 interface FirefoxServices {
   prompt: nsIPromptService;
@@ -411,6 +433,12 @@ interface MozDialogElement extends Element {
   getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
     disabled: boolean;
   };
+  /**
+   * Runs the accept button's command, as a click on it does: false when a "dialogaccept"
+   * listener cancelled it, true otherwise, also when the button is disabled and nothing ran
+   * (_doButtonCommand).
+   */
+  acceptDialog(): boolean;
 }
 
 // engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
@@ -444,10 +472,12 @@ interface Document {
 
 // engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
 // command on doCommand. Like an HTML element, it has its inline style (XULElement includes
-// ElementCSSInlineStyle).
+// ElementCSSInlineStyle) and takes focus (it includes HTMLOrSVGOrMathMLElement, whose `focus`
+// is in engine/dom/webidl/Element.webidl).
 interface XULElement extends Element, ElementCSSInlineStyle {
   hidden: boolean;
   doCommand(): void;
+  focus(options?: FocusOptions): void;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
 // shows the requested tab once its layers are ready.
@@ -503,6 +533,8 @@ interface MozNotificationBox {
   readonly PRIORITY_INFO_LOW: number;
   /** Its <vbox class="notificationbox-stack">, which its `stack` getter makes on first use. */
   readonly _stack: Element | undefined;
+  /** The <notification-message> elements it shows, without one that is closing. */
+  readonly allNotifications: Element[];
   /** Resolves with the <notification-message> it shows. */
   appendNotification(
     type: string,
@@ -541,10 +573,15 @@ interface MozTabSplitViewWrapper {
   ): void;
 }
 
-// engine/xpcom/threads/nsITimer.idl
+// engine/xpcom/threads/nsITimer.idl; nsITimerManager.getTimers(), in the same file, lists the
+// pending timers for tests.
 interface nsITimer {
   /** Its delay in ms; setting it on a pending timer reschedules it. */
   delay: number;
+  /** A TYPE_* constant (TYPE_ONE_SHOT, the repeating ones). */
+  type: number;
+  /** The callback's name, for logs. */
+  readonly name: string;
 }
 // engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs
 interface AsyncTabSwitcher {
@@ -779,39 +816,264 @@ interface OverflowableToolbarElement extends XULElement {
   readonly overflowable: { isHandlingOverflow(): boolean } | null;
 }
 
-// engine/dom/chrome-webidl/WindowGlobalActors.webidl: a snapshot of `rect` of the global's
-// document (the whole viewport for null), at `scale`, over `backgroundColor`.
-interface WindowGlobalParent {
-  drawSnapshot(
-    rect: DOMRect | null,
-    scale: number,
-    backgroundColor: string,
-    options?: { resetScrollPosition?: boolean },
-  ): Promise<ImageBitmap>;
-}
-
-// engine/toolkit/components/windowwatcher/nsIPromptService.idl: an alert for a browsing
-// context; `modalType` is a MODAL_TYPE_* constant. Spins a nested event loop until it closes.
-interface nsIPromptService {
-  alertBC(browsingContext: unknown, modalType: number, title: string, text: string): void;
-}
-
-// engine/toolkit/content/widgets/dialog.js (MozDialog): runs the accept button's command, as a
-// click on it does; false when a "dialogaccept" listener cancelled it.
-interface MozDialogElement {
-  acceptDialog(): boolean;
-}
-
-// engine/xpcom/threads/nsITimer.idl: `type` is a TYPE_* constant (TYPE_ONE_SHOT, the repeating
-// ones); `name` is the callback's name, for logs. nsITimerManager.getTimers(), in the same file,
-// lists the pending timers for tests.
-interface nsITimer {
-  readonly type: number;
-  readonly name: string;
-}
-
 // engine/browser/components/tabbrowser/content/tab.mjs: the tab that opened this one, which
 // closing this one selects again; null without one, or once the owner is closing.
 interface MozTabbrowserTab {
   owner: MozTabbrowserTab | null;
+}
+
+// The pdf.js viewer's own objects, which a test reads past the Xray wrapper
+// (`content.wrappedJSObject`, untyped by nature): only the members the tests read, set or call.
+// Lines are those of engine/toolkit/components/pdfjs/content/web/viewer.mjs.
+
+/** `class EventBus` (line 1293): `dispatch` (1324) calls the listeners of `eventName`. */
+interface PdfJsEventBus {
+  dispatch(eventName: string, data?: object): void;
+}
+/** `class PDFViewer` (line 13365). */
+interface PdfJsViewer {
+  /** 13476: the page views it holds. */
+  readonly pagesCount: number;
+  /** 13547: the current page's label, null for a document without page labels. */
+  readonly currentPageLabel: string | null;
+  /** 13568: 1 while the scale is unknown. */
+  readonly currentScale: number;
+  /** 13582 and 13585: a number as text or a named fit; null until a scale is set (14122). */
+  get currentScaleValue(): string | null;
+  set currentScaleValue(value: string);
+  /** 13593 and 13596: 0, 90, 180 or 270. */
+  pagesRotation: number;
+  /** 14611 */
+  readonly isInPresentationMode: boolean;
+  /** 14754 and 14757: ScrollMode (VERTICAL 0, PAGE 3). */
+  scrollMode: number;
+  /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
+  spreadMode: number;
+}
+/**
+ * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
+ * `getOutline` (15421) resolves with the outline's top entries, null for a document without one;
+ * `getData` (15441) with the document's bytes.
+ */
+interface PdfJsDocument {
+  getOutline(): Promise<object[] | null>;
+  getData(): Promise<Uint8Array>;
+}
+/** `class ViewsManager` (line 17218), pdf.js's sidebar: `isOpen` is its own field (17255). */
+interface PdfJsViewsManager {
+  readonly isOpen: boolean;
+}
+/**
+ * `const PDFViewerApplication` (line 17587). Its parts are null (17594 to 17617) until the viewer
+ * has initialised them (`eventBus` 17785, `pdfViewer` 17933, `viewsManager` 18086, which a viewer
+ * without a sidebar never makes) or, for `pdfDocument`, while no document is open.
+ */
+interface PdfJsApplication {
+  readonly pdfDocument: PdfJsDocument | null;
+  readonly pdfViewer: PdfJsViewer | null;
+  readonly viewsManager: PdfJsViewsManager | null;
+  readonly eventBus: PdfJsEventBus | null;
+  /** 18197: 0 while no document is open. */
+  readonly pagesCount: number;
+  /** 18200 and 18203: the current page's number, from 1. */
+  page: number;
+  /** 18331: opens another document in the same viewer, here from its bytes. */
+  open(args: { data: Uint8Array }): Promise<void>;
+}
+/** The viewer's window (viewer.mjs sets `window.PDFViewerApplication`), with its own globals. */
+type PdfJsWindow = typeof globalThis & { readonly PDFViewerApplication: PdfJsApplication };
+
+// engine/js/xpconnect/idl/xpccomponents.idl: exportFunction returns a forwarder in the target's
+// compartment that calls `fn` with the same arguments (cloned) and hands back its result, so a
+// test that gives it to the page keeps the function's own signature. The forwarder leaves `this`
+// unbound: `fn` must not use it, which `F` cannot say. `defineAs` also sets the forwarder on
+// `target` under that name.
+interface XPCComponentsUtils {
+  exportFunction<F extends Function>(fn: F, target: object, options?: { defineAs?: string }): F;
+}
+
+// Firefox's import wizard, as Settings shows it in its <dialog id="migrationWizardDialog">
+// (engine/browser/components/preferences/preferences.xhtml): the parts of
+// engine/browser/components/migration/content/migration-wizard.mjs (MigrationWizard) that the
+// wizard tests reach through its shadow root.
+
+/**
+ * A browser and profile in the wizard's list: a <panel-item> the wizard gives the migrator's
+ * `profile` (migration-wizard.mjs line 686), null for a browser without profiles.
+ */
+interface MigrationWizardItem extends HTMLElement {
+  readonly profile?: { readonly id: string; readonly name: string } | null;
+}
+/**
+ * The wizard's <button id="browser-profile-selector">, which opens the list.
+ * #onBrowserProfileSelectionChanged (line 513) sets `selectedPanelItem`, so it is undefined
+ * until the wizard has chosen its first browser.
+ */
+interface MigrationWizardSelector extends HTMLButtonElement {
+  readonly selectedPanelItem?: MigrationWizardItem;
+}
+/**
+ * engine/toolkit/content/widgets/panel-list/panel-list.mjs (PanelList), the wizard's list of
+ * browsers, inside a XUL <panel> in a chrome document (migration-wizard.mjs line 493): `open`
+ * (line 80) is its `open` attribute.
+ */
+interface PanelListElement extends HTMLElement {
+  open: boolean;
+}
+/**
+ * Settings' window (engine/browser/components/preferences/main.js, `var gMainPane`, line 598):
+ * showMigrationWizardDialog (line 1498) opens the wizard's dialog, making the wizard on first
+ * use.
+ */
+type PreferencesWindow = Window &
+  typeof globalThis & {
+    readonly gMainPane: {
+      showMigrationWizardDialog(options?: { closeTabWhenDone?: boolean }): Promise<void>;
+    };
+  };
+
+// engine/browser/components/passwordmgr/content/login-doorhanger-username-field.mjs
+// (LoginDoorhangerUsernameField): the save-password prompt's username field, a MozInputText
+// (engine/toolkit/content/widgets/moz-input-text/moz-input-text.mjs), whose `value` is its
+// text (MozBaseInputElement's property, engine/toolkit/content/widgets/lit-utils.mjs).
+interface LoginDoorhangerUsernameField extends HTMLElement {
+  value: string;
+}
+
+// Fluent, as chrome code formats strings with it: engine/dom/webidl/Localization.webidl,
+// engine/dom/webidl/DOMLocalization.webidl, engine/dom/chrome-webidl/DocumentL10n.webidl,
+// engine/dom/chrome-webidl/L10nRegistry.webidl and engine/dom/chrome-webidl/Fluent.webidl.
+
+/** Fluent's arguments (Fluent.webidl, L10nArgs). */
+type L10nArgs = Record<string, string | number | null>;
+/** A resource's path, or the path and whether it may be missing (L10nRegistry.webidl). */
+type L10nResourceId = string | { path: string; _optional?: boolean };
+/** A message's id and arguments (Localization.webidl, L10nIdArgs); both are null by default. */
+interface L10nIdArgs {
+  id?: string | null;
+  args?: L10nArgs | null;
+}
+/** Localization.webidl (L10nMessage): `value` and `attributes` are null for a message without. */
+interface L10nMessage {
+  readonly value: string | null;
+  readonly attributes: { readonly name: string; readonly value: string }[] | null;
+}
+/**
+ * Localization.webidl: formats messages from `resourceIds`; `sync` true allows the *Sync
+ * methods. A message it cannot find is null in the lists it returns.
+ */
+interface Localization {
+  formatValue(id: string, args?: L10nArgs): Promise<string | null>;
+  formatMessages(keys: (string | L10nIdArgs)[]): Promise<(L10nMessage | null)[]>;
+  formatMessagesSync(keys: (string | L10nIdArgs)[]): (L10nMessage | null)[];
+}
+declare var Localization: {
+  prototype: Localization;
+  new (
+    resourceIds: L10nResourceId[],
+    sync?: boolean,
+    registry?: L10nRegistry,
+    locales?: string[],
+  ): Localization;
+};
+/** DOMLocalization.webidl: a Localization that translates elements by their data-l10n-id. */
+interface DOMLocalization extends Localization {
+  /** An element's data-l10n-id and data-l10n-args (L10nIdArgs). */
+  getAttributes(element: Element): { id: string | null; args: L10nArgs | null };
+  translateElements(elements: Element[]): Promise<void>;
+}
+/** DocumentL10n.webidl: a document's DOMLocalization (`document.l10n`). */
+interface DocumentL10n extends DOMLocalization {}
+/** Fluent.webidl: a message's pattern, which only FluentBundle.formatPattern reads. */
+interface FluentPattern {}
+/** Fluent.webidl (FluentMessage): `value` is null for a message with attributes only. */
+interface FluentMessage {
+  readonly value: FluentPattern | null;
+  readonly attributes: Record<string, FluentPattern>;
+}
+/** Fluent.webidl: a parsed .ftl source. */
+interface FluentResource {}
+declare var FluentResource: { prototype: FluentResource; new (source: string): FluentResource };
+/** Fluent.webidl: getMessage is null for an id the bundle does not have. */
+interface FluentBundle {
+  addResource(resource: FluentResource, options?: { allowOverrides?: boolean }): void;
+  getMessage(id: string): FluentMessage | null;
+  formatPattern(pattern: FluentPattern, args?: L10nArgs | null, errors?: object): string;
+}
+/** L10nRegistry.webidl (FluentBundleIterator): `value` is null once `done`. */
+interface FluentBundleIterator {
+  next(): { value: FluentBundle | null; done: boolean };
+}
+/** L10nRegistry.webidl */
+interface L10nRegistry {
+  generateBundlesSync(locales: string[], resourceIds: L10nResourceId[]): FluentBundleIterator;
+}
+declare var L10nRegistry: { getInstance(): L10nRegistry };
+
+// engine/intl/strres/nsIStringBundle.idl: a .properties bundle. GetStringFromName throws for a
+// name the bundle does not have; getSimpleEnumeration lists its strings as nsIPropertyElement
+// (engine/xpcom/ds/nsIPersistentProperties2.idl), iterable in JS
+// (engine/xpcom/ds/nsISimpleEnumerator.idl).
+interface nsIPropertyElement {
+  readonly key: string;
+  readonly value: string;
+}
+interface nsIStringBundle {
+  GetStringFromName(name: string): string;
+  getSimpleEnumeration(): Iterable<nsIPropertyElement>;
+}
+interface nsIStringBundleService {
+  createBundle(urlSpec: string): nsIStringBundle;
+}
+
+// engine/browser/components/tabbrowser/NewTabPagePreloading.sys.mjs, a browser window global
+// (engine/browser/base/content/browser.js): removes the window's preloaded new-tab browser, if
+// it has one.
+declare var NewTabPagePreloading: { removePreloadedBrowser(window: Window): void };
+
+// engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
+// null for an id that has none. `extension` is the Extension that registered it
+// (engine/toolkit/components/extensions/Extension.sys.mjs sets it, an expando of the policy
+// object): promiseBackgroundStarted is set on an extension with a background
+// (parent/ext-backgroundPage.js); backgroundContext is undefined while it has no background page
+// (Extension.sys.mjs), and the page's xulBrowser undefined without a message manager proxy
+// (ExtensionParent.sys.mjs).
+interface WebExtensionPolicy {
+  readonly id: string;
+  readonly extension: {
+    promiseBackgroundStarted(): Promise<void>;
+    readonly backgroundContext: { readonly xulBrowser: MozBrowser | undefined } | undefined;
+  };
+}
+declare var WebExtensionPolicy: {
+  prototype: WebExtensionPolicy;
+  getByID(id: string): WebExtensionPolicy | null;
+};
+
+// engine/browser/components/sidebar/sidebar-history.mjs (SidebarHistory): the History sidebar's
+// <sidebar-history>. Its constructor makes `controller`, so it is undefined until the element is
+// upgraded. engine/browser/components/firefoxview/HistoryController.sys.mjs: isHistoryPending is
+// true until the history has loaded; profileAge, in days, decides the import promo.
+interface SidebarHistoryElement extends HTMLElement {
+  readonly controller?: { readonly isHistoryPending: boolean; profileAge: number };
+}
+
+// engine/toolkit/components/extensions/ExtensionXPCShellUtils.sys.mjs (ExtensionWrapper): what
+// ExtensionTestUtils.loadExtension returns, a test extension. startup() and unload() reject when
+// the extension is not in the state they start from; awaitMessage resolves with the first
+// argument the extension sent with `msg` (browser.test.sendMessage), undefined without one.
+interface ExtensionWrapper {
+  startup(): Promise<unknown>;
+  unload(): Promise<void>;
+  awaitMessage(msg: string): Promise<unknown>;
+}
+// The WebExtension API a test extension's own scripts see as their global `browser`: the members
+// they call. runtime.getBrowserInfo resolves with a BrowserInfo
+// (engine/toolkit/components/extensions/schemas/runtime.json); test.sendMessage is
+// engine/toolkit/components/extensions/schemas/test.json's, which awaitMessage receives.
+interface WebExtensionApi {
+  readonly runtime: {
+    getBrowserInfo(): Promise<{ name: string; vendor: string; version: string; buildID: string }>;
+  };
+  readonly test: { sendMessage(msg: string, ...args: unknown[]): void };
 }

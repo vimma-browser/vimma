@@ -120,6 +120,10 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
   `covered`; semgrep.yml `covered`; dependabot-automerge.yml `classify`; downloads.yml `collect`;
   mutation.yml `report`; spec-status.yml `check`; upstream.yml `detect`, `track`, `publish`,
   `patch-issue` and `drift`; upstream-beta.yml `detect` and `render`; upstream-merge.yml `merge`.
+  `tools/test/runner-node.test.ts` also follows the `tools/**/*.sh` wrappers a step runs, and the
+  relative imports of a `.mjs` it runs: upstream.yml `patch-check` and upstream-beta.yml
+  `source-check` reached node through `tools/upstream/source-check.sh` and took the step before
+  `tools/artifact-build/` moved. None of the jobs still on the runner's Node may reach a `.ts`.
 - Every `actions/setup-node` step takes `node-version-file: .nvmrc`, never a bare major: a
   `node-version: 22` step gets the newest 22.x the runner has, not the version the tools were
   checked on. The last six such jobs (release.yml `ctl`, `package`, `mar`, `macos-ctl` and
