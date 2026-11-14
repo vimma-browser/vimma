@@ -155,7 +155,11 @@ names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `h
 file may still have type errors, every other file, a new one included, may not, and a listed
 file that has none must come off the list. `Assert.equal` and its kin take an expected value of
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
-the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
+the wrong kind of thing, or asserts on a promise it forgot to await, fails the check. That holds
+only where the actual value has a type: `ChromeUtils.importESModule` returns `any` here, so what
+a test reads from one of Vimma's modules, and the JSDoc types a test gives such values, are not
+checked against the module yet; typing `importESModule` for each `chrome://` URL of Vimma's is
+the next step.
 
 ## 7. End-to-end scenarios and screenshots
 
