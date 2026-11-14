@@ -11,6 +11,7 @@
 "use strict";
 
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
+/* global contextOf, windowGlobalOf -- from head.js */
 
 // Six tests, each waiting for one to three content processes to launch and end: about 15 s in
 // CI, over the default 45 s per file on a loaded machine.
@@ -19,6 +20,20 @@ requestLongerTimeout(2);
 const { AboutNewTab } = ChromeUtils.importESModule("resource:///modules/AboutNewTab.sys.mjs");
 
 const START = "chrome://browser/content/vimma/start/start.html";
+
+/**
+ * The ID of the content process `browser`'s page runs in. The product's declaration of a window
+ * global's process (types/firefox.d.ts) names only its remote type; it is an nsIDOMProcessParent,
+ * which has the child ID too (engine/dom/interfaces/base/nsIDOMProcessParent.idl).
+ * @param {MozBrowser} browser
+ */
+function childIDOf(browser) {
+  const process = /** @type {DOMProcessParent | null} */ (
+    windowGlobalOf(contextOf(browser)).domProcess
+  );
+  if (!process) throw new Error("the page has no content process");
+  return process.childID;
+}
 
 /** Whether a privilegedabout content process (Firefox's new tab and home pages) is running. */
 const aboutProcessRuns = () =>
@@ -42,7 +57,7 @@ async function endAboutProcesses(what) {
       .filter((p) => p.remoteType === "privilegedabout")
       .map((p) => p.childID),
   );
-  /** @type {(subject: unknown, topic: string, id: string) => void} */
+  /** @type {(subject: nsISupports, topic: string, id: string | null) => void} */
   const ended = (_subject, _topic, id) => ending.delete(Number(id));
   Services.obs.addObserver(ended, "ipc:content-shutdown");
   try {
@@ -65,11 +80,11 @@ async function endAboutProcesses(what) {
  * Closes `tab` and waits for its content process's ipc:content-shutdown. With
  * dom.ipc.keepProcessesAlive.privilegedabout at 0, the process is marked dead as the tab goes, so
  * it has already left getAllDOMProcesses and endAboutProcesses alone would not wait for it.
- * @param {any} tab
+ * @param {MozTabbrowserTab} tab
  * @param {string} what  the wait's message
  */
 async function closeAndEndProcess(tab, what) {
-  const childID = tab.linkedBrowser.browsingContext.currentWindowGlobal.domProcess.childID;
+  const childID = childIDOf(tab.linkedBrowser);
   const ended = TestUtils.topicObserved("ipc:content-shutdown", (_s, id) => Number(id) === childID);
   BrowserTestUtils.removeTab(tab);
   info(`waiting: ${what} (${childID})`);
@@ -80,16 +95,21 @@ async function closeAndEndProcess(tab, what) {
 /**
  * Hands out Firefox's page for `uri` through the start page module and opens its channel, as a
  * load does; vimma.startpage.newtab must be off. `stopped` settles at its onStopRequest.
- * @param {any} uri
- * @returns {{ channel: any, stopped: Promise<void> }}
+ * @param {nsIURI} uri
+ * @returns {{ channel: nsIRequest, stopped: Promise<void> }}
  */
 function openFirefoxChannel(uri) {
   const { NetUtil } = ChromeUtils.importESModule("resource://gre/modules/NetUtil.sys.mjs");
   const channel = NetUtil.newChannel({ uri, loadUsingSystemPrincipal: true });
+  /** @type {PromiseWithResolvers<void>} */
   const { promise, resolve } = Promise.withResolvers();
   channel.asyncOpen({
     onStartRequest() {},
-    onDataAvailable(/** @type {any} */ _r, /** @type {any} */ stream, _o, count) {
+    /**
+     * @param {nsIRequest} _r @param {nsIInputStream} stream @param {number} _o
+     * @param {number} count
+     */
+    onDataAvailable(_r, stream, _o, count) {
       NetUtil.readInputStream(stream, count);
     },
     onStopRequest: () => resolve(),
@@ -124,7 +144,7 @@ async function withFirefoxNewTab(task) {
 
 /**
  * Loads `url` in `browser` and waits for it.
- * @param {any} browser
+ * @param {MozTabBrowser} browser
  * @param {string} url
  */
 async function load(browser, url) {
@@ -170,7 +190,7 @@ add_task(async function firefox_flags_stay_until_a_privilegedabout_process_ends(
       url: "https://example.org/",
       forceNewProcess: true,
     });
-    const webID = web.linkedBrowser.browsingContext.currentWindowGlobal.domProcess.childID;
+    const webID = childIDOf(web.linkedBrowser);
     const webEnded = TestUtils.topicObserved(
       "ipc:content-shutdown",
       (_s, id) => Number(id) === webID,
@@ -215,14 +235,14 @@ add_task(async function firefox_flags_stay_while_its_page_is_on_its_way() {
       ["browser.newtab.preload", false],
     ],
   });
-  /** @type {any} */
+  /** @type {nsIRequest | null} */
   let channel = null;
   /** @type {Promise<void> | null} */
   let stopped = null;
   let suspended = false;
-  /** @type {any} */
+  /** @type {MozTabbrowserTab | null} */
   let first = null;
-  /** @type {any} */
+  /** @type {MozTabbrowserTab | null} */
   let second = null;
   try {
     await endAboutProcesses("no privilegedabout process to begin with");
@@ -286,14 +306,14 @@ add_task(async function a_finished_firefox_page_holds_nothing_after_a_process_en
       ["browser.newtab.preload", false],
     ],
   });
-  /** @type {any} */
+  /** @type {MozTabbrowserTab | null} */
   let tab = null;
   try {
     await endAboutProcesses("no privilegedabout process to begin with");
     Assert.ok(startFlags(), "the start page's flags to begin with");
 
     await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", false]] });
-    /** @type {any} */
+    /** @type {{ channel: nsIRequest, stopped: Promise<void> } | undefined} */
     let loaded;
     try {
       loaded = openFirefoxChannel(home);
@@ -334,7 +354,7 @@ add_task(async function firefox_new_tab_stays_without_the_start_page() {
 add_task(async function turning_the_start_page_on_keeps_firefox_new_tab_alive() {
   /** @type {number[]} */
   const abnormal = [];
-  /** @type {(subject: any, topic: string, id: string) => void} */
+  /** @type {(subject: nsISupports, topic: string, id: string | null) => void} */
   const onShutdown = (subject, _topic, id) => {
     const props = subject.QueryInterface(Ci.nsIPropertyBag2);
     if (props.hasKey("abnormal")) abnormal.push(Number(id));
@@ -348,7 +368,7 @@ add_task(async function turning_the_start_page_on_keeps_firefox_new_tab_alive() 
       info("loading about:newtab");
       await load(browser, "about:newtab");
       Assert.equal(browser.remoteType, "privilegedabout", "Firefox's page is in its own process");
-      childID = browser.browsingContext.currentWindowGlobal.domProcess.childID;
+      childID = childIDOf(browser);
       await SpecialPowers.pushPrefEnv({ set: [["vimma.startpage.newtab", true]] });
       try {
         // The registration reaches the parent now; its unregistration when the tab goes, below.
