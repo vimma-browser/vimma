@@ -473,6 +473,56 @@ describe("validateMessage: state", () => {
     ]);
   });
 
+  // #1006: whether live grep and the address bar's suggestion list have drawn all they will for
+  // what was typed, as one flag each, so a script waits for them rather than for a time; never
+  // the query, a count of matches or results, or a row (security.md S9).
+  test("grep and urlbar are one flag each, or null", () => {
+    for (const grep of [null, { busy: true }, { busy: false }]) {
+      expect(errorsOf(ok({ ...state, grep }), { command: "state" })).toEqual([]);
+    }
+    for (const urlbar of [null, { settled: true }, { settled: false }]) {
+      expect(errorsOf(ok({ ...state, urlbar }), { command: "state" })).toEqual([]);
+    }
+    for (const grep of ["credit", 7, true, [], { busy: "yes" }, {}]) {
+      expect(errorsOf(ok({ ...state, grep }), { command: "state" })).not.toEqual([]);
+    }
+    expect(
+      errorsOf(ok({ ...state, grep: { busy: false, rows: 7 } }), { command: "state" }),
+    ).toEqual(['unknown field "result.grep.rows"']);
+    expect(errorsOf(ok({ ...state, grep: { busy: 0 } }), { command: "state" })).toEqual([
+      "result.grep.busy must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, grep: "credit" }), { command: "state" })).toEqual([
+      "result.grep must be an object or null",
+    ]);
+    expect(
+      errorsOf(ok({ ...state, urlbar: { settled: true, text: "about:blank" } }), {
+        command: "state",
+      }),
+    ).toEqual(['unknown field "result.urlbar.text"']);
+    expect(errorsOf(ok({ ...state, urlbar: { settled: 1 } }), { command: "state" })).toEqual([
+      "result.urlbar.settled must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, urlbar: 1 }), { command: "state" })).toEqual([
+      "result.urlbar must be an object or null",
+    ]);
+    // A private window's search and typing are part of its browsing: withheld, as its URLs.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, grep: null, urlbar: null }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...hidden, grep: { busy: false }, urlbar: { settled: true } }), {
+        command: "state",
+      }),
+    ).toEqual([
+      "result.grep must be null in a private window",
+      "result.urlbar must be null in a private window",
+    ]);
+  });
+
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {
     const offer = {
       appVersion: "160.0",

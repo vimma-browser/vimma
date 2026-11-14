@@ -191,6 +191,7 @@ const SYSTEM_GROUP_CAPTURE = /** @type {AddEventListenerOptions} */ ({
  * @property {CommandLine} cmdline  the `:` line (m1-cmdline)
  * @property {TabStrip | null} tabStrip  hides Firefox's tab strip (m0-tabstrip-hidden)
  * @property {Toolbar | null} toolbar  hides Firefox's toolbar (docs/specs/toolbar-toggle.md)
+ * @property {UrlbarQueries | null} urlbarQueries  the address bar's queries, for `state.urlbar`
  * @property {PromptKeys | null} promptKeys  y and n for Firefox's permission prompts
  * @property {number | null} timer   pending-sequence timeout (dispatcher.flush)
  * @property {() => void} onCancelHints  resize, a mouse click in chrome
@@ -618,6 +619,7 @@ export const VimmaHost = {
       }),
       tabStrip: null,
       toolbar: null,
+      urlbarQueries: null,
       promptKeys: null,
       timer: null,
       onCancelHints: () => this._cancelHints(state),
@@ -986,6 +988,11 @@ export const VimmaHost = {
     } catch (e) {
       console.error("vimma: toolbar toggle unavailable", e);
     }
+    try {
+      state.urlbarQueries = new UrlbarQueries(win);
+    } catch (e) {
+      console.error("vimma: the address bar's queries are not reported", e);
+    }
     // Firefox's permission prompts from the keyboard (toolbar-toggle decision 11a).
     try {
       const promptKeys = new PromptKeys(win, {
@@ -1079,6 +1086,7 @@ export const VimmaHost = {
     state.agentChat.destroy();
     state.tabStrip?.uninit();
     state.toolbar?.uninit();
+    state.urlbarQueries?.destroy();
     state.promptKeys?.uninit();
     WindowWorkspaces.uninit(win);
     state.statusBar?.uninit();
@@ -1148,20 +1156,32 @@ export const VimmaHost = {
    * m0-control-protocol-and-vimma-ctl.md, "state"): whether a notice is shown and whether the
    * prompt line is open; the agent chat window's view, how many list rows and transcript entries
    * it draws, and its question slot; the status bar's agent segment, with whether the agent
-   * question line shows its keys hint (armed); and which `↓` segment the bar draws. All of it as
-   * drawn, so it says what a screenshot would show; counts, flags and fixed words only, never
-   * text, so no page, title, file or conversation reaches the socket through them (security.md
-   * S9). The chat window never opens in a private window: `null` there.
+   * question line shows its keys hint (armed); which `↓` segment the bar draws; and whether live
+   * grep and the address bar's suggestion list have more to draw for what was typed. All of it
+   * as drawn, so it says what a screenshot would show; counts, flags and fixed words only, never
+   * text, so no page, title, file, query or conversation reaches the socket through them
+   * (security.md S9). The chat window never opens in a private window: `null` there.
    * @param {BrowserWindow} win
    * @returns {{ notice: boolean, prompt: boolean,
    *   chat: { view: string, rows: number, entries: number,
    *     question: { armed: boolean } | null } | null,
    *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
-   *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null }}
+   *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null,
+   *   grep: { busy: boolean } | null, urlbar: { settled: boolean } | null }}
    */
   screen(win) {
     const state = states.get(win);
-    if (!state) return { notice: false, prompt: false, chat: null, agent: null, downloads: null };
+    if (!state) {
+      return {
+        notice: false,
+        prompt: false,
+        chat: null,
+        agent: null,
+        downloads: null,
+        grep: null,
+        urlbar: null,
+      };
+    }
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
     // dropped at the redraw. Its grant minutes and the built-in agent's budget stay out, as
     // nothing waits on them. `armed` is the line's, as drawn now; the chat window's slot has
@@ -1183,7 +1203,9 @@ export const VimmaHost = {
           question: ui.slot.isOpen ? { armed: ui.slot.armed } : null,
         }
       : null;
-    return { notice, prompt, chat, agent, downloads };
+    const grep = state.grep.isOpen ? { busy: state.grep.busy } : null;
+    const urlbar = state.urlbarQueries?.drawn() ?? null;
+    return { notice, prompt, chat, agent, downloads, grep, urlbar };
   },
 
   /**
@@ -2226,3 +2248,75 @@ VimmaUpdates.addListener(() => {
     if (state) VimmaHost._emit(state);
   }
 });
+
+/**
+ * The address bar's queries, for `state.urlbar` (docs/specs/m0-control-protocol-and-vimma-ctl.md,
+ * "state"; #1006): whether its suggestion list draws all it will for the text last searched.
+ * Firefox starts a query on each key typed in the field and draws each one's results as they
+ * come; this follows the query under way through the controller's own notifications, which
+ * reach the list first (it listens from the field's start), so the flag turns once the list
+ * has drawn the end of the query. It finds the field by its id when first read, never through
+ * `gURLBar`: that getter, read before the field exists, leaves the window without one.
+ */
+class UrlbarQueries {
+  /** @param {BrowserWindow} win */
+  constructor(win) {
+    this.win = win;
+    /** @type {any} the address bar (UrlbarInput), once found */
+    this.bar = null;
+    /** @type {any} the controller listened to: the field makes a new one when it starts again */
+    this.controller = null;
+    /** @type {unknown} the id of the query under way, until it finishes or is cancelled */
+    this.running = null;
+    this.listener = {
+      /** @param {{ id: unknown }} context */
+      onQueryStarted: (context) => {
+        this.running = context.id;
+      },
+      /** @param {{ id: unknown }} context */
+      onQueryFinished: (context) => this.ended(context),
+      /** @param {{ id: unknown }} context */
+      onQueryCancelled: (context) => this.ended(context),
+    };
+    // A query starts from a focused field: listening from the first focus misses none.
+    this.onFocus = () => this.attach();
+    win.addEventListener("focusin", this.onFocus, true);
+  }
+
+  /** Listens to the field's current controller. */
+  attach() {
+    this.bar ??= this.win.document.getElementById("urlbar");
+    const controller = this.bar?.controller;
+    if (!controller || controller === this.controller) return;
+    this.controller?.removeListener(this.listener);
+    controller.addListener(this.listener);
+    this.controller = controller;
+    this.running = null;
+  }
+
+  /** @param {{ id: unknown }} context */
+  ended(context) {
+    if (context.id === this.running) this.running = null;
+  }
+
+  /**
+   * `null` while the list is closed; else whether no query is under way and the results it
+   * draws are those of the text last searched (`lastSearchString` is set as the query starts,
+   * before the controller hears of it: a query held back for the search engines has not
+   * started yet).
+   * @returns {{ settled: boolean } | null}
+   */
+  drawn() {
+    this.attach();
+    const view = this.bar?.view;
+    if (!view?.isOpen) return null;
+    const searched = view.queryContext?.searchString === this.bar.lastSearchString;
+    return { settled: this.running === null && searched };
+  }
+
+  destroy() {
+    this.win.removeEventListener("focusin", this.onFocus, true);
+    this.controller?.removeListener(this.listener);
+    this.controller = null;
+  }
+}

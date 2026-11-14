@@ -478,8 +478,8 @@ add_task(async function test_state_names_each_top_level_field() {
   Assert.deepEqual(
     Object.keys(result).sort(),
     [
-      ...["agent", "chat", "downloads", "mode", "notice", "panes", "pending", "prompt"],
-      ...["splits", "tabs", "update", "workspace"],
+      ...["agent", "chat", "downloads", "grep", "mode", "notice", "panes", "pending", "prompt"],
+      ...["splits", "tabs", "update", "urlbar", "workspace"],
     ],
     "a new state field: add it here, to the protocol spec's state section " +
       "(docs/specs/m0-control-protocol-and-vimma-ctl.md) and to security.md S9, " +

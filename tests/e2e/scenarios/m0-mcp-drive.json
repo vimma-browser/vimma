@@ -146,7 +146,7 @@
         "tabs": [{ "selected": true, "title": "Drive next page" }]
       }
     },
-    { "sleep": 0.5 },
+    { "wait-for-state": { "notice": true, "agent": { "ran": true } } },
     { "screenshot": "m0-mcp-drive-shown" },
     { "keys": "ctrl+^" },
     {

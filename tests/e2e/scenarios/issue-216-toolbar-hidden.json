@@ -67,7 +67,12 @@
       "keys": "a b o u t : b l a n k"
     },
     {
-      "sleep": 1
+      "wait-for-state": {
+        "mode": "insert",
+        "urlbar": {
+          "settled": true
+        }
+      }
     },
     {
       "screenshot": "toolbar-minimal"
