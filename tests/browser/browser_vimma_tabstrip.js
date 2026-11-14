@@ -12,8 +12,17 @@ const PREF = "vimma.ui.tabstrip.hidden";
 const ROOT_ATTR = "vimma-tabstrip-hidden";
 
 const $ = (/** @type {string} */ id) => document.getElementById(id);
+/**
+ * A XUL element of browser.xhtml that every browser window has, which getElementById types as an
+ * HTML element; a read of a missing one throws, as before.
+ * @param {string} id
+ */
+const known = (id) => /** @type {XULElement} */ (/** @type {Element} */ ($(id)));
 
-/** Non-zero size, like Firefox's isElementVisible (what gTabsPanel.canOpen uses). */
+/**
+ * Non-zero size, like Firefox's isElementVisible (what gTabsPanel.canOpen uses).
+ * @param {Element | null} el
+ */
 function hasSize(el) {
   if (!el) return false;
   const r = el.getBoundingClientRect();
@@ -24,10 +33,12 @@ function stripShown() {
   return hasSize($("TabsToolbar"));
 }
 
+/** @param {boolean} value */
 async function setPref(value) {
   await SpecialPowers.pushPrefEnv({ set: [[PREF, value]] });
 }
 
+/** @param {number} n */
 async function openTabs(n) {
   const tabs = [];
   for (let i = 0; i < n; i++) {
@@ -37,7 +48,9 @@ async function openTabs(n) {
 }
 
 function closeAllButFirst() {
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 }
 
 registerCleanupFunction(() => {
@@ -106,12 +119,16 @@ async function withCustomTitlebar(fn) {
 /** Forget what the last TabBarVisibility.update() decided, so the next one has to redo it. */
 function clearToolboxState() {
   window.gNavToolbox.removeAttribute("tabs-hidden");
-  $("nav-bar").classList.remove("browser-titlebar");
+  known("nav-bar").classList.remove("browser-titlebar");
 }
 
+/** @param {string} label */
 function assertToolboxHidden(label) {
   Assert.ok(window.gNavToolbox.hasAttribute("tabs-hidden"), `${label}: toolbox has tabs-hidden`);
-  Assert.ok($("nav-bar").classList.contains("browser-titlebar"), `${label}: nav bar is titlebar`);
+  Assert.ok(
+    known("nav-bar").classList.contains("browser-titlebar"),
+    `${label}: nav bar is titlebar`,
+  );
 }
 
 // ctrl+w is no longer Firefox's close tab (docs/specs/key-handling-batch.md): Vimma's
@@ -124,7 +141,7 @@ add_task(async function ctrl_t_and_closing_the_tab_still_work() {
     const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
     // ctrl+t is Vimma's new_tab on every platform; cmd+t, accel on a Mac, is off there (#385).
     EventUtils.synthesizeKey("t", { ctrlKey: true });
-    const { target: tab } = await opened;
+    const tab = /** @type {MozTabbrowserTab} */ ((await opened).target);
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "new tab is selected");
     Assert.equal(gBrowser.tabs.length, before + 1, "ctrl+t opened a tab");
     Assert.ok(!stripShown(), "the strip stays hidden with two tabs");
@@ -164,7 +181,7 @@ add_task(async function ctrl_tab_pagedown_and_digits_switch_tabs() {
 
   // Firefox's tab 2 key: alt+2 on Linux (XP_GNOME in browser-sets.inc.xhtml), cmd+2 on macOS,
   // where Vimma binds select_tab_2 to it (defaults.mjs MAC_KEYS) since Option+2 types a character.
-  const modifier = $("key_selectTab2").getAttribute("modifiers");
+  const modifier = known("key_selectTab2").getAttribute("modifiers");
   Assert.equal(modifier, AppConstants.platform == "macosx" ? "accel" : "alt", "key_selectTab2");
   await BrowserTestUtils.switchTab(gBrowser, first);
   EventUtils.synthesizeKey("2", modifier === "alt" ? { altKey: true } : { accelKey: true });
@@ -182,15 +199,18 @@ add_task(async function list_all_tabs_waits_for_m2_while_hidden() {
   await TestUtils.waitForCondition(stripShown, "strip shows when the pref is false");
   Assert.ok(window.gTabsPanel.canOpen, "List All Tabs is back with the strip");
   window.gTabsPanel.initElements();
-  const view = $("allTabsMenu-allTabsView");
+  // gTabsPanel.initElements() made the panel's view; the <command> is in browser.xhtml.
+  const view = known("allTabsMenu-allTabsView");
   const shown = BrowserTestUtils.waitForEvent(view, "ViewShown");
-  $("Browser:ShowAllTabs").doCommand();
+  known("Browser:ShowAllTabs").doCommand();
   await shown;
-  const rows = $("allTabsMenu-allTabsView-tabs").querySelectorAll(
+  const rows = known("allTabsMenu-allTabsView-tabs").querySelectorAll(
     ".all-tabs-item:not(.all-tabs-group-item)",
   );
   Assert.equal(rows.length, gBrowser.tabs.length, "the panel lists every tab");
-  const hidden = BrowserTestUtils.waitForEvent(view.closest("panel"), "popuphidden");
+  // The shown view is in its <panel>.
+  const panel = /** @type {Element} */ (view.closest("panel"));
+  const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
   window.gTabsPanel.hideAllTabsPanel();
   await hidden;
   await SpecialPowers.popPrefEnv();
@@ -223,12 +243,17 @@ add_task(async function popup_with_two_tabs_shows_its_strip() {
 add_task(async function window_controls_move_to_the_nav_bar() {
   await withCustomTitlebar(async () => {
     window.TabBarVisibility.update(true);
-    const navControls = $("nav-bar").querySelector(".titlebar-buttonbox-container");
-    const tabsControls = $("TabsToolbar").querySelector(".titlebar-buttonbox-container");
-    Assert.notEqual(getComputedStyle(navControls).display, "none", "nav bar shows the controls");
+    const navControls = known("nav-bar").querySelector(".titlebar-buttonbox-container");
+    const tabsControls = known("TabsToolbar").querySelector(".titlebar-buttonbox-container");
+    Assert.notEqual(
+      // getComputedStyle throws on a missing box, as before.
+      getComputedStyle(/** @type {Element} */ (navControls)).display,
+      "none",
+      "nav bar shows the controls",
+    );
     Assert.ok(hasSize(navControls), "the nav bar's window controls have a size");
     Assert.ok(!hasSize(tabsControls), "no window controls left in the hidden strip");
-    Assert.ok($("nav-bar").classList.contains("browser-titlebar"), "nav bar is a drag region");
+    Assert.ok(known("nav-bar").classList.contains("browser-titlebar"), "nav bar is a drag region");
   });
 });
 
@@ -285,10 +310,11 @@ add_task(async function vertical_tabs_are_hidden_too() {
       ["sidebar.verticalTabs", true],
     ],
   });
-  await TestUtils.waitForCondition(
-    () => gBrowser.tabContainer.verticalMode,
-    "tabs moved to the vertical strip",
-  );
+  // gBrowser.tabContainer is the <tabs id="tabbrowser-tabs"> element, a MozTabbrowserTabs.
+  const tabStrip = /** @type {MozTabbrowserTabs} */ (gBrowser.tabContainer);
+  await TestUtils.waitForCondition(() => tabStrip.verticalMode, "tabs moved to the vertical strip");
+  // hasSize() is false for a missing element too.
+  Assert.ok($("vertical-tabs"), "the vertical tab list exists");
   Assert.ok(!hasSize($("vertical-tabs")), "vertical tab list has no size");
   Assert.ok(!hasSize($("tabbrowser-tabs")), "tabs have no size");
   Assert.ok(hasSize($("urlbar")), "URL bar visible with vertical tabs");
@@ -299,7 +325,7 @@ add_task(async function vertical_tabs_are_hidden_too() {
   await SpecialPowers.popPrefEnv();
   await SpecialPowers.popPrefEnv();
   await TestUtils.waitForCondition(
-    () => !gBrowser.tabContainer.verticalMode,
+    () => !tabStrip.verticalMode,
     "tabs back in the horizontal strip",
   );
   await TestUtils.waitForCondition(() => !stripShown(), "horizontal strip hidden again");
@@ -314,7 +340,10 @@ add_task(async function help_overlay_still_opens() {
     await TestUtils.waitForCondition(() => !!dialog()?.open, "ctrl+b ? opens the help overlay");
     Assert.ok(BrowserTestUtils.isVisible(dialog()), "overlay is visible");
     EventUtils.synthesizeKey("KEY_Escape");
-    await TestUtils.waitForCondition(() => !dialog().open, "Esc closes it");
+    await TestUtils.waitForCondition(
+      () => !(/** @type {HTMLDialogElement} */ (dialog()).open),
+      "Esc closes it",
+    );
   });
 });
 
@@ -340,7 +369,10 @@ add_task(async function vimma_keys_survive_a_failing_tab_strip() {
     const dialog = () => /** @type {HTMLDialogElement | null} */ ($("vimma-help"));
     await TestUtils.waitForCondition(() => !!dialog()?.open, "ctrl+b ? opens help anyway");
     EventUtils.synthesizeKey("KEY_Escape");
-    await TestUtils.waitForCondition(() => !dialog().open, "Esc closes it");
+    await TestUtils.waitForCondition(
+      () => !(/** @type {HTMLDialogElement} */ (dialog()).open),
+      "Esc closes it",
+    );
   });
   VimmaHost.uninit(window);
   VimmaHost.init(window);

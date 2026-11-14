@@ -51,9 +51,6 @@ tests/browser/browser_vimma_pdf_outline.js
 tests/browser/browser_vimma_pdf_status.js
 tests/browser/browser_vimma_perf.js
 tests/browser/browser_vimma_popups.js
-tests/browser/browser_vimma_private_swap.js
-tests/browser/browser_vimma_private_swap_native.js
-tests/browser/browser_vimma_rename.js
 tests/browser/browser_vimma_restart.js
 tests/browser/browser_vimma_safebrowsing.js
 tests/browser/browser_vimma_settings_managed.js
@@ -62,9 +59,7 @@ tests/browser/browser_vimma_sidebar_theme.js
 tests/browser/browser_vimma_site_permissions.js
 tests/browser/browser_vimma_square_corners.js
 tests/browser/browser_vimma_start_page.js
-tests/browser/browser_vimma_statusbar.js
 tests/browser/browser_vimma_system_addons.js
-tests/browser/browser_vimma_tabstrip.js
 tests/browser/browser_vimma_theme.js
 tests/browser/browser_vimma_theme_appearance.js
 tests/browser/browser_vimma_toolbar.js

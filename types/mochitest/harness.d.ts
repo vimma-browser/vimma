@@ -335,6 +335,9 @@ declare var DownloadURL: BrowserWindow["DownloadURL"];
 declare var gUnifiedExtensions: BrowserWindow["gUnifiedExtensions"];
 declare var BrowserAddonUI: BrowserWindow["BrowserAddonUI"];
 declare var windowState: ChromeWindow["windowState"];
+declare var STATE_MAXIMIZED: ChromeWindow["STATE_MAXIMIZED"];
+declare var STATE_NORMAL: ChromeWindow["STATE_NORMAL"];
+declare var STATE_FULLSCREEN: ChromeWindow["STATE_FULLSCREEN"];
 declare var isFullyOccluded: ChromeWindow["isFullyOccluded"];
 declare var getAttention: ChromeWindow["getAttention"];
 declare var maximize: ChromeWindow["maximize"];
@@ -348,6 +351,10 @@ declare function openAboutDialog(): void;
 declare var BookmarkingUI: { readonly star: XULElement | null };
 // engine/browser/base/content/browser.js: the View > Toolbars menu items' command handler.
 declare function onViewToolbarCommand(aEvent: Event): void;
+// engine/browser/components/tabbrowser/content/browser-allTabsMenu.js (`var gTabsPanel`).
+declare var gTabsPanel: BrowserWindow["gTabsPanel"];
+// engine/browser/base/content/browser.js (a lazy getter on the window: CustomizeMode.sys.mjs).
+declare var gCustomizeMode: BrowserWindow["gCustomizeMode"];
 // engine/browser/base/content/browser.js: opens a browser window; `args` is its first URL (an
 // nsISupportsString).
 declare function OpenBrowserWindow(options?: { private?: boolean; args?: unknown }): BrowserWindow;
@@ -375,4 +382,3 @@ declare const E10SUtils: any;
 declare const NetUtil: any;
 declare const BrowserWindowTracker: any;
 declare const ExtensionTestUtils: any;
-declare const gCustomizeMode: any;

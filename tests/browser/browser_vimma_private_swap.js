@@ -35,7 +35,11 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 );
 
-/** A Unix-socket server at `file` (netwerk/test/unit/test_unix_domain.js does the same). */
+/**
+ * A Unix-socket server at `file` (netwerk/test/unit/test_unix_domain.js does the same).
+ * @param {nsIFile} file
+ * @returns {nsIServerSocket}
+ */
 function unixServer(file) {
   const server = Cc["@mozilla.org/network/server-socket;1"].createInstance(Ci.nsIServerSocket);
   server.initWithFilename(file, 0o600, -1);
@@ -68,7 +72,12 @@ function privateWindows() {
   );
 }
 
-/** ctrl+b, then `key` with `mods`, in `win`. */
+/**
+ * ctrl+b, then `key` with `mods`, in `win`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ * @param {Window} [win]
+ */
 function prefix(key, mods = {}, win = window) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, mods, win);
@@ -83,11 +92,20 @@ function utf8(s) {
 
 /** A short temp dir: a Unix socket path must stay under 107 bytes. */
 function shortDir() {
-  const dir = Services.dirsvc.get("TmpD", Ci.nsIFile);
+  const dir = /** @type {nsIFile} */ (Services.dirsvc.get("TmpD", Ci.nsIFile));
   dir.append(`vh${Math.random().toString(36).slice(2, 8)}`);
   dir.create(Ci.nsIFile.DIRECTORY_TYPE, 0o700);
   return dir;
 }
+
+/**
+ * A window as the fake has it: j/clients' fields (as core/hyprswap.mjs reads them) and the
+ * window itself. `grouped` lists the addresses of its group, as Hyprland does.
+ * @typedef {{ address: string, win: WeakRef<BrowserWindow>, pid: number,
+ *   workspace: { id: number, name: string }, floating: boolean, fullscreen: number,
+ *   fullscreenClient: number, grouped: string[], pinned: boolean, at: number[], size: number[] }}
+ *   FakeClient
+ */
 
 /**
  * The fake Hyprland. Discovers every browser window, gives it an address, and answers
@@ -144,11 +162,16 @@ class FakeHypr {
     /** Batches with the clients reply that preceded each. */
     this.batches = /** @type {{ text: string, before: string }[]} */ ([]);
     this.lastClients = "[]";
-    /** @type {Map<string, any>} */
+    /** @type {Map<string, FakeClient>} */
     this.clients = new Map();
     /** @type {WeakMap<Window, string>} */
     this.addr = new WeakMap();
+    /** Each window's title, as Hyprland has it. @type {Map<string, string>} */
     this.titles = new Map();
+    /** The window Hyprland focused last. @type {string | undefined} */
+    this.focused = undefined;
+    /** True while the fake itself focuses a window. */
+    this.focusing = false;
     this.next = 0x5a0001;
     /** Verbs that fail, to test the fallback. @type {Set<string>} */
     this.failing = new Set();
@@ -156,11 +179,12 @@ class FakeHypr {
     this.onBatch = null;
     /** Called on each j/clients request before it is answered. @type {(() => void) | null} */
     this.onClients = null;
-    this.events = /** @type {any[]} */ ([]);
+    /** The event socket's listeners. @type {{ t: nsISocketTransport, out: nsIOutputStream }[]} */
+    this.events = [];
     /**
      * Each request's connection, streams included: a socket transport closes once nothing holds
      * its streams, so a collection would end a request the fake has not answered yet (#695).
-     * @type {{ t: any, input?: any, out?: any }[]}
+     * @type {{ t: nsISocketTransport, input?: nsIAsyncInputStream, out?: nsIOutputStream }[]}
      */
     this.conns = [];
     const req = this.dir.clone();
@@ -185,7 +209,7 @@ class FakeHypr {
     this.poll();
   }
 
-  /** @param {any} t */
+  /** @param {nsISocketTransport} t */
   accept(t) {
     this.reqAccepts++;
     if (this.mode === "hangup") {
@@ -194,6 +218,7 @@ class FakeHypr {
       return;
     }
     const flags = Ci.nsITransport.OPEN_UNBUFFERED;
+    /** @type {nsIAsyncInputStream} */
     const input = t.openInputStream(flags, 0, 0).QueryInterface(Ci.nsIAsyncInputStream);
     const out = t.openOutputStream(flags, 0, 0);
     this.conns.push({ t, input, out });
@@ -257,7 +282,10 @@ class FakeHypr {
     }
   }
 
-  /** A movewindowv2, late with `delayMoves` as Hyprland's can be after its reply. */
+  /**
+   * A movewindowv2, late with `delayMoves` as Hyprland's can be after its reply.
+   * @param {string} line
+   */
   emitMove(line) {
     if (this.delayMoves) setTimeout(() => this.emit(line), this.delayMoves);
     else this.emit(line);
@@ -269,9 +297,22 @@ class FakeHypr {
     this.events = [];
   }
 
-  /** @param {Window} win */
+  /**
+   * `win`'s client; undefined for a window the fake has not seen, or one that closed.
+   * @param {Window} win
+   */
   rec(win) {
-    return this.clients.get(this.addr.get(win));
+    const a = this.addr.get(win);
+    return a === undefined ? undefined : this.clients.get(a);
+  }
+
+  /**
+   * The client of an open browser window, which poll() has given one; a read of a missing one
+   * throws, as before.
+   * @param {Window} win
+   */
+  client(win) {
+    return /** @type {FakeClient} */ (this.rec(win));
   }
 
   poll() {
@@ -420,8 +461,11 @@ class FakeHypr {
       const a = get(m[1]);
       const b = get(m[2]);
       if (!a || !b) return "warning: hl.window.swap: target window not found";
-      if (fail("swap")) return fail("swap");
-      for (const k of ["workspace", "at", "size"]) [a[k], b[k]] = [b[k], a[k]];
+      const refused = fail("swap");
+      if (refused) return refused;
+      [a.workspace, b.workspace] = [b.workspace, a.workspace];
+      [a.at, b.at] = [b.at, a.at];
+      [a.size, b.size] = [b.size, a.size];
       return "ok";
     }
     if ((m = new RegExp(`^dispatch hl\\.dsp\\.focus\\(\\{ ${W} \\}\\)$`).exec(cmd))) {
@@ -469,9 +513,14 @@ class FakeHypr {
     return "error: unknown dispatcher";
   }
 
-  /** The user moving a window with their own key (decision 7). */
+  /**
+   * The user moving a window with their own key (decision 7).
+   * @param {Window} win
+   * @param {number} id
+   * @param {string} [name]
+   */
   userMove(win, id, name = String(id)) {
-    const c = this.rec(win);
+    const c = this.client(win);
     c.workspace = { id, name };
     this.emit(`movewindowv2>>${c.address.slice(2)},${id},${name}`);
   }
@@ -492,8 +541,38 @@ class FakeHypr {
 
 /** @type {FakeHypr | null} */
 let fake = null;
+/**
+ * The running fake, which a task reads after it started one; a read of a missing one throws, as
+ * before.
+ */
+const hypr = () => /** @type {FakeHypr} */ (fake);
 
-/** A fresh fake (or `sockets` for the no-Hyprland cases) and a fresh PrivateSwap. */
+/** @typedef {NonNullable<ConstructorParameters<typeof FakeHypr>[0]>} FakeOptions */
+/** @typedef {Parameters<typeof PrivateSwap._resetForTests>[1]} ResetOptions */
+/** Sockets that are not a fake's, or null for no Hyprland in the environment. @typedef {{ request: string, events: string } | null} OtherSockets */
+
+/**
+ * A fresh fake (or `sockets` for the no-Hyprland cases) and a fresh PrivateSwap. Resolves with
+ * the fake; with null where `sockets` is given.
+ * @overload
+ * @param {FakeOptions} [options]
+ * @param {undefined} [sockets]
+ * @param {ResetOptions} [reset]
+ * @returns {Promise<FakeHypr>}
+ */
+/**
+ * @overload
+ * @param {FakeOptions} options
+ * @param {OtherSockets} sockets
+ * @param {ResetOptions} [reset]
+ * @returns {Promise<null>}
+ */
+/**
+ * @param {FakeOptions} [options]
+ * @param {OtherSockets} [sockets]
+ * @param {ResetOptions} [reset]
+ * @returns {Promise<FakeHypr | null>}
+ */
 async function start(options = {}, sockets, reset = {}) {
   await teardown();
   fake = sockets === undefined ? new FakeHypr(options) : null;
@@ -530,11 +609,11 @@ function spyParkedFocus(win) {
 }
 
 /** @param {Window} win */
-const parked = (win) => fake.rec(win)?.workspace.name === PARK;
+const parked = (win) => hypr().rec(win)?.workspace.name === PARK;
 
-/** @param {Window} win */
+/** @param {Window} win @param {typeof SLOT} [slot] */
 function inSlot(win, slot = SLOT) {
-  const c = fake.rec(win);
+  const c = hypr().rec(win);
   return (
     c?.workspace.id === slot.workspace.id &&
     c.at.join() === slot.at.join() &&
@@ -563,16 +642,24 @@ add_task(async function entering_swaps_in_place_and_every_way_back_swaps_again()
   Assert.equal(privateWindows().length, 1, "one private window");
   Assert.ok(parked(window), "the normal window waits in special:vimma");
   Assert.ok(inSlot(priv), "private has the normal window's workspace, position and size");
-  Assert.equal(fake.focused, fake.rec(priv).address, "Hyprland focused the private window");
+  Assert.equal(hypr().focused, hypr().client(priv).address, "Hyprland focused the private window");
   Assert.deepEqual(PrivateSwap._pair?.parked, "normal");
 
   // The batch sent is exactly core's plan for the clients read just before it.
-  const [{ text, before }] = fake.batches;
+  const [{ text, before }] = hypr().batches;
   const list = parseClients(before);
-  const find = (/** @type {Window} */ w) => list.find((c) => c.address === fake.addr.get(w));
-  Assert.equal(text, encodeBatch("lua", planShow("lua", find(priv), find(window)).commands).text);
+  // j/clients listed both windows, the plan is a swap and it encodes: planShow throws on a
+  // missing client, encodeBatch on a refusal's missing commands, and `.text` on a null batch.
+  const find = (/** @type {Window} */ w) =>
+    /** @type {HyprClient} */ (list.find((c) => c.address === hypr().addr.get(w)));
+  const plan = /** @type {HyprShowPlan} */ (planShow("lua", find(priv), find(window)));
+  const batch = /** @type {NonNullable<ReturnType<typeof encodeBatch>>} */ (
+    encodeBatch("lua", plan.commands)
+  );
+  Assert.equal(text, batch.text);
 
   // Back by each route: the toggle, ctrl+^, ctrl+b ).
+  /** @type {[string, () => void][]} */
   const routes = [
     ["the toggle", () => prefix("P", { shiftKey: true }, priv)],
     ["ctrl+^", () => prefix("^", { shiftKey: true, code: "Digit6" }, priv)],
@@ -583,7 +670,7 @@ add_task(async function entering_swaps_in_place_and_every_way_back_swaps_again()
     press();
     await until(() => parked(priv) && inSlot(window), `${name}: normal is back in its slot`);
     await PrivateSwap._settled();
-    Assert.equal(fake.focused, fake.rec(window).address, `${name}: Hyprland focused normal`);
+    Assert.equal(hypr().focused, hypr().client(window).address, `${name}: Hyprland focused normal`);
     const again = await enter();
     Assert.equal(again, priv, `${name}: going there again shows the same private window`);
   }
@@ -600,40 +687,45 @@ add_task(async function fullscreen_floating_and_grouped_slots() {
   for (const fs of [1, 2]) {
     const f = await start();
     f.poll();
-    Object.assign(f.rec(window), { fullscreen: fs, fullscreenClient: fs });
+    Object.assign(f.client(window), { fullscreen: fs, fullscreenClient: fs });
     const priv = await enter();
-    Assert.equal(f.rec(priv).fullscreen, fs, `fullscreen ${fs} moves to the private window`);
-    Assert.equal(f.rec(window).fullscreen, 0, "and is unset on the parked one");
+    Assert.equal(f.client(priv).fullscreen, fs, `fullscreen ${fs} moves to the private window`);
+    Assert.equal(f.client(window).fullscreen, 0, "and is unset on the parked one");
     await SimpleTest.promiseFocus(priv);
     prefix("P", { shiftKey: true }, priv);
-    await until(() => parked(priv) && f.rec(window).fullscreen === fs, "and back again");
+    await until(() => parked(priv) && f.client(window).fullscreen === fs, "and back again");
   }
 
   const f = await start();
   f.poll();
   const float = { workspace: { id: 3, name: "3" }, at: [100, 120], size: [500, 300] };
-  Object.assign(f.rec(window), { floating: true, at: float.at, size: float.size });
+  Object.assign(f.client(window), { floating: true, at: float.at, size: float.size });
   const priv = await enter(float);
-  Assert.ok(f.rec(priv).floating, "a floating slot: the private window floats there");
+  Assert.ok(f.client(priv).floating, "a floating slot: the private window floats there");
 
   const g = await start();
   g.poll();
-  g.rec(window).grouped = [g.rec(window).address, "0x77"];
+  g.client(window).grouped = [g.client(window).address, "0x77"];
   await SimpleTest.promiseFocus(window);
   const opened = BrowserTestUtils.waitForNewWindow();
   prefix("P", { shiftKey: true });
   const gp = await opened;
-  await until(() => g.focused === g.rec(gp)?.address, "a grouped slot: private is focused");
+  // Before Hyprland focuses anything `focused` is undefined, as is the address of a window the
+  // fake has not seen yet.
+  await until(
+    () => g.focused !== undefined && g.focused === g.rec(gp)?.address,
+    "a grouped slot: private is focused",
+  );
   await PrivateSwap._settled();
   Assert.ok(!parked(window), "nothing is parked beside a group");
-  Assert.equal(PrivateSwap._pair, null, "no pair");
+  Assert.strictEqual(PrivateSwap._pair, null, "no pair");
 });
 
 add_task(async function closing_the_private_window_any_way_brings_normal_back() {
   for (const how of ["close()", "closeWindow", "ctrl+b shift+d"]) {
     const f = await start();
     const priv = await enter();
-    let closedAtSwap = null;
+    let closedAtSwap = /** @type {boolean | null} */ (null);
     f.onBatch = () => (closedAtSwap ??= priv.closed);
     if (how === "close()") priv.close();
     else if (how === "closeWindow") await BrowserTestUtils.closeWindow(priv);
@@ -644,13 +736,16 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back() 
       EventUtils.synthesizeKey("y", {}, priv);
     }
     await until(() => priv.closed, `${how}: the private window closed`);
-    await until(() => !parked(window) && f.rec(window).workspace.id === 3, `${how}: normal back`);
+    await until(
+      () => !parked(window) && f.client(window).workspace.id === 3,
+      `${how}: normal back`,
+    );
     if (how === "ctrl+b shift+d") {
       Assert.strictEqual(closedAtSwap, false, "the swap was sent before the window closed");
       Assert.ok(inSlot(window), "in its exact slot");
     }
     await PrivateSwap._settled();
-    Assert.equal(PrivateSwap._pair, null, `${how}: the pair is forgotten`);
+    Assert.strictEqual(PrivateSwap._pair, null, `${how}: the pair is forgotten`);
   }
 });
 
@@ -659,7 +754,8 @@ add_task(async function closing_the_private_window_any_way_brings_normal_back() 
 add_task(async function a_closewindow_read_before_the_unload_still_brings_normal_back() {
   const f = await start();
   const priv = await enter();
-  const a = f.addr.get(priv);
+  // enter() saw priv in its slot, so the fake has its address; a missing one throws below.
+  const a = /** @type {string} */ (f.addr.get(priv));
   // What the fake's poll does once the window is gone, before the window itself closes.
   f.clients.delete(a);
   f.emit(`closewindow>>${a.slice(2)}`);
@@ -668,7 +764,7 @@ add_task(async function a_closewindow_read_before_the_unload_still_brings_normal
   Assert.ok(!parked(window), "normal is not left parked");
   // As in the task above: with the slot window gone its geometry cannot be swapped, only its
   // workspace (the active one would be 7).
-  Assert.equal(f.rec(window).workspace.id, 3, "normal is back on the closed window's workspace");
+  Assert.equal(f.client(window).workspace.id, 3, "normal is back on the closed window's workspace");
   await BrowserTestUtils.closeWindow(priv);
 });
 
@@ -679,7 +775,8 @@ add_task(async function a_closewindow_read_before_the_unload_still_brings_normal
 add_task(async function a_closewindow_read_during_the_swap_back_still_brings_normal_back() {
   const f = await start();
   const priv = await enter();
-  const a = f.addr.get(priv);
+  // enter() saw priv in its slot, so the fake has its address; a missing one throws below.
+  const a = /** @type {string} */ (f.addr.get(priv));
   await wait(500); // past the swap's own late activations (SETTLE_MS)
   f.onClients = () => {
     f.onClients = null;
@@ -693,7 +790,7 @@ add_task(async function a_closewindow_read_during_the_swap_back_still_brings_nor
   await until(() => PrivateSwap._pair === null, "the close event was read");
   await PrivateSwap._settled();
   Assert.ok(!parked(window), "normal is not left parked");
-  Assert.equal(f.rec(window).workspace.id, 3, "normal is back on the closed window's workspace");
+  Assert.equal(f.client(window).workspace.id, 3, "normal is back on the closed window's workspace");
   await BrowserTestUtils.closeWindow(priv);
 });
 
@@ -712,7 +809,7 @@ add_task(async function a_link_from_another_app_brings_the_parked_window_back() 
   await until(() => parked(priv) && inSlot(window), "normal swapped back in place");
   Assert.equal(PrivateSwap._pair?.parked, "private", "private waits, one key away");
   await PrivateSwap._settled();
-  gBrowser.removeTab(gBrowser.tabs.at(-1));
+  gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
   Assert.ok(f.received.length > 0);
 });
 
@@ -726,7 +823,7 @@ add_task(async function moving_the_parked_window_away_forgets_the_pair() {
   prefix("P", { shiftKey: true }, priv);
   await until(() => Services.focus.activeWindow === window, "back by focus, as before");
   Assert.equal(f.batches.length, batches, "no swap fights the user");
-  Assert.equal(f.rec(window).workspace.id, 2, "the window stays where the user put it");
+  Assert.equal(f.client(window).workspace.id, 2, "the window stays where the user put it");
 });
 
 add_task(async function a_refused_swap_shows_the_window_and_says_so_once() {
@@ -739,7 +836,7 @@ add_task(async function a_refused_swap_shows_the_window_and_says_so_once() {
   await until(() => f.batches.length >= 2, "the swap and the rescue were sent");
   await PrivateSwap._settled();
   Assert.ok(!parked(window), "the normal window is not left parked");
-  Assert.equal(PrivateSwap._pair, null);
+  Assert.strictEqual(PrivateSwap._pair, null);
   await until(
     () => /refused the swap/.test(priv.document.getElementById(NOTICE_ID)?.textContent ?? ""),
     "the notice says so",
@@ -759,6 +856,7 @@ add_task(async function without_hyprland_everything_is_as_before() {
   notSocket.create(Ci.nsIFile.NORMAL_FILE_TYPE, 0o600);
   const missing = file.clone();
   missing.append("nothing");
+  /** @type {[string, OtherSockets | "silent" | "errors"][]} */
   const cases = [
     ["no socket", { request: missing.path, events: missing.path }],
     ["a refused connection", { request: notSocket.path, events: notSocket.path }],
@@ -766,8 +864,11 @@ add_task(async function without_hyprland_everything_is_as_before() {
     ["errors to both probes", "errors"],
     ["no Hyprland in the environment", null],
   ];
+  /** @type {string[]} */
   const lines = [];
-  const listener = { observe: (m) => lines.push(m.message ?? String(m)) };
+  const listener = {
+    observe: (/** @type {nsIConsoleMessage} */ m) => lines.push(m.message ?? String(m)),
+  };
   Services.console.registerListener(listener);
   for (const [name, how] of cases) {
     lines.length = 0;
@@ -799,10 +900,13 @@ add_task(async function without_hyprland_everything_is_as_before() {
 });
 
 add_task(async function nothing_private_or_titled_is_ever_sent_logged_or_kept() {
+  /** @type {string[]} */
   const lines = [];
-  const listener = { observe: (m) => lines.push(m.message ?? String(m)) };
+  const listener = {
+    observe: (/** @type {nsIConsoleMessage} */ m) => lines.push(m.message ?? String(m)),
+  };
   Services.console.registerListener(listener);
-  const profile = Services.dirsvc.get("ProfD", Ci.nsIFile);
+  const profile = /** @type {nsIFile} */ (Services.dirsvc.get("ProfD", Ci.nsIFile));
   const filesBefore = new Set([...profile.directoryEntries].map((f) => f.leafName));
   const f = await start();
   const priv = await enter();
@@ -864,7 +968,7 @@ add_task(async function placement_window_sends_nothing() {
 // Going back to the normal window is always instant: whatever the user does with the private
 // window, the normal one is never left in special:vimma.
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const wait = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
 add_task(async function a_private_window_moved_to_a_scratchpad_still_gives_normal_back() {
   const f = await start();
@@ -875,9 +979,9 @@ add_task(async function a_private_window_moved_to_a_scratchpad_still_gives_norma
   await SimpleTest.promiseFocus(priv);
   prefix("P", { shiftKey: true }, priv);
   await until(() => !parked(window), "normal is out of special:vimma");
-  Assert.equal(f.rec(window).workspace.id, 7, "on the active workspace");
+  Assert.equal(f.client(window).workspace.id, 7, "on the active workspace");
   await PrivateSwap._settled();
-  Assert.equal(PrivateSwap._pair, null, "the pair is forgotten");
+  Assert.strictEqual(PrivateSwap._pair, null, "the pair is forgotten");
   Assert.ok(PrivateSwap.status.endsWith("private placement: swap"), "swap is still on");
 });
 
@@ -1154,7 +1258,10 @@ add_task(async function a_dropped_switch_does_not_shorten_later_waits() {
   Assert.ok(!PrivateSwap._unnamed, "no switch waited on it: later namings keep NAME_MS");
 });
 
-/** The start names the normal window (open-on-nonce), so a switch names only the private one. */
+/**
+ * The start names the normal window (open-on-nonce), so a switch names only the private one.
+ * @param {FakeOptions} [options]
+ */
 async function startNamed(options) {
   const f = await start({ mode: "open-on-nonce", ...options }, undefined, { configured: false });
   PrivateSwap.configure("swap");
@@ -1187,8 +1294,14 @@ add_task(async function a_slow_j_clients_does_not_stretch_the_wait() {
   prefix("P", { shiftKey: true });
   const priv = await opened;
   await until(() => NONCE.test(priv.document.title), "the private window is being named");
-  await until(() => NONCE.test(f.titles.get(f.addr.get(priv)) ?? ""), "Hyprland has the nonce");
-  const titled = f.titledAt.get(f.addr.get(priv));
+  // No window has the address "": until the fake has seen priv, the lookup finds nothing, as
+  // with the missing address itself.
+  await until(
+    () => NONCE.test(f.titles.get(f.addr.get(priv) ?? "") ?? ""),
+    "Hyprland has the nonce",
+  );
+  const titled = f.titledAt.get(f.addr.get(priv) ?? "");
+  Assert.ok(titled, "the fake has the time it got that title");
   await until(() => !NONCE.test(priv.document.title), "the naming gave up");
   const asked = f.clientsAt.slice(from);
   Assert.equal(asked.length, 2, "j/clients at REPLY_MS and at the deadline");
@@ -1210,9 +1323,12 @@ add_task(async function a_fresh_private_window_is_named_once_its_document_is_up(
 
 add_task(async function a_window_hyprland_never_names_is_shown_as_a_window_and_said_once() {
   // console.warn from a module goes to the console API storage, not nsIConsoleService.
+  /** @type {string[]} */
   const lines = [];
   const storage = Cc["@mozilla.org/consoleAPI-storage;1"].getService(Ci.nsIConsoleAPIStorage);
-  const onLog = (/** @type {any} */ m) => lines.push((m.arguments ?? []).map(String).join(" "));
+  // A ConsoleEvent (dom/webidl/Console.webidl): the call's arguments.
+  const onLog = (/** @type {{ arguments?: unknown[] }} */ m) =>
+    lines.push((m.arguments ?? []).map(String).join(" "));
   storage.addLogEventListener(onLog, Services.scriptSecurityManager.getSystemPrincipal());
   const f = await start({ mode: "nameless" });
   await SimpleTest.promiseFocus(window);
