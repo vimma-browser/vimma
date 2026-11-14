@@ -10,7 +10,7 @@
 
 "use strict";
 
-/* global focusContent, recordPageKeys, pageKeys -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, contextOf -- from head.js */
 /* global BrowserCommands -- browser window global (browser.js) */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -171,7 +171,7 @@ add_task(async function the_pdf_viewer() {
 add_task(async function with_focus_in_a_frame() {
   await BrowserTestUtils.withNewTab(FRAMED, async (browser) => {
     await focusContent(browser);
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await SpecialPowers.spawn(frame, [], () => {
       content.focus();
       return ContentTaskUtils.waitForCondition(() => content.document.hasFocus(), "frame focus");
