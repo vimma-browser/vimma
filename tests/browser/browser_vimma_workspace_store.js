@@ -47,7 +47,9 @@ registerCleanupFunction(async () => {
 });
 
 const publicCount = () => CIS.getPublicIdentities().length;
-const identity = (/** @type {number} */ id) => CIS.getPublicIdentityFromId(id);
+// A workspace's container id, null without one: then there is no container to find, and the
+// assertion that reads it fails.
+const identity = (/** @type {number | null} */ id) => CIS.getPublicIdentityFromId(id);
 
 /** @param {string} path @param {object} [options] */
 async function started(path, options = {}) {
@@ -56,11 +58,11 @@ async function started(path, options = {}) {
   return store;
 }
 
-const cookieCount = (/** @type {number} */ userContextId) =>
+const cookieCount = (/** @type {number | null} */ userContextId) =>
   Services.cookies.getCookiesWithOriginAttributes(JSON.stringify({ userContextId }), "example.com")
     .length;
 
-function setCookie(/** @type {number} */ userContextId) {
+function setCookie(/** @type {number | null} */ userContextId) {
   Services.cookies.add(
     "example.com",
     "/",
@@ -89,7 +91,11 @@ add_task(async function first_run_creates_main_the_file_and_the_container() {
   Assert.equal(publicCount(), before + 1, "exactly one new container");
   const c = identity(main.userContextId);
   Assert.deepEqual([c.name, c.color, c.icon], ["main", "gray", "circle"], "named and styled");
-  Assert.ok(!startIds.has(main.userContextId), "never one of the existing containers");
+  // A number: its container was found just above.
+  Assert.ok(
+    !startIds.has(/** @type {number} */ (main.userContextId)),
+    "never one of the existing containers",
+  );
   await store.finalize();
   const onDisk = await IOUtils.readJSON(path);
   Assert.deepEqual(onDisk, store.definitions, "the file holds the definitions");
@@ -262,8 +268,8 @@ add_task(async function a_stale_answer_closes_nothing() {
     config: [{ name: "work", color: "blue", icon: "briefcase", autofill: true }],
   });
   const shop = store.addWorkspace({ name: "shop", color: "pink", icon: "cart" });
-  const work = store.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === "work",
+  const work = /** @type {WorkspaceDefinition} */ (
+    store.definitions.workspaces.find((/** @type {WorkspaceDefinition} */ w) => w.name === "work")
   );
   setCookie(shop.userContextId);
   setCookie(work.userContextId);

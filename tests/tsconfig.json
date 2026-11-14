@@ -4,7 +4,8 @@
     "types": [],
     "target": "es2024",
     "moduleDetection": "force",
-    "noUncheckedIndexedAccess": false
+    "noUncheckedIndexedAccess": false,
+    "skipLibCheck": false
   },
   "include": ["browser/**/*.js", "e2e/**/*.js", "../types/*.d.ts", "../types/mochitest/*.d.ts"],
   "exclude": []

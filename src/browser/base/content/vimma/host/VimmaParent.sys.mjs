@@ -7,9 +7,9 @@
 // out through VimmaActors.
 
 import { parseDescriptor } from "../core/editable.mjs";
-import { VimmaHost } from "../host/VimmaHost.sys.mjs";
-import { VimmaActors } from "./VimmaActors.sys.mjs";
-import { PdfOps } from "../host/pdf-ops.mjs";
+import { VimmaHost } from "./VimmaHost.sys.mjs";
+import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
+import { PdfOps } from "./pdf-ops.mjs";
 
 const TRIGGERS = new Set(["focusin", "recheck"]);
 const MESSAGES = new Set(["Vimma:Focus", "Vimma:MouseSelection", "Vimma:Click"]);

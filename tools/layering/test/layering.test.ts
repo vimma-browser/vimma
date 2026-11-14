@@ -6,11 +6,13 @@ import { tempDir } from "../../test/temp-dir.mjs";
 import {
   type Edge,
   type Exception,
+  danglingEdges,
   eagerCycles,
   exceptionErrors,
   htmlImports,
   importsOf,
   jarErrors,
+  jarModules,
   layerErrors,
   missingReadmes,
   scanModule,
@@ -96,7 +98,7 @@ describe("importsOf: every way a module reaches another", () => {
       found(
         [
           `const BASE = "${V}actors/";`,
-          "const parent = { esModuleURI: `${BASE}VimmaParent.sys.mjs` };",
+          "const child = { esModuleURI: `${BASE}VimmaChild.sys.mjs` };",
           `const worker = new ChromeWorker("${V}actors/grep-worker.mjs", { type: "module" });`,
           `const uri = \`${V}start/StartPage.sys.mjs\`;`,
         ].join("\n"),
@@ -122,6 +124,17 @@ describe("importsOf: every way a module reaches another", () => {
           `const b = null;`,
           `const word = "./not-an-import.mjs";`,
         ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a regular expression is not an edge, even one that spells a module URL", () => {
+    // VimmaActors.register checks the parent actor's URL against such a pattern: it loads
+    // nothing, so it is no import.
+    expect(
+      found(
+        String.raw`const PARENT = /^chrome:\/\/browser\/content\/vimma\/host\/[\w-]+\.sys\.mjs$/;`,
+        "actors/VimmaActors.sys.mjs",
       ),
     ).toEqual([]);
   });
@@ -334,6 +347,60 @@ describe("jarErrors", () => {
   });
 });
 
+describe("danglingEdges", () => {
+  const edge = (from: string, to: string, line = 1): Edge => ({ from, to, kind: "lazy", line });
+
+  test("an edge to a file git does not track is reported, with the importing file and line", () => {
+    expect(
+      danglingEdges(
+        [
+          edge("vimma.js", "host/VimmaParent.sys.mjs", 57),
+          edge("vimma.js", "host/VimmaParnet.sys.mjs", 58),
+        ],
+        new Set(["vimma.js", "host/VimmaParent.sys.mjs"]),
+        new Set(["vimma.js", "host/VimmaParent.sys.mjs"]),
+      ),
+    ).toEqual([
+      "vimma.js:58: names host/VimmaParnet.sys.mjs, which is not a module git tracks under vimma/",
+    ]);
+  });
+
+  test("an edge to a tracked module that jar.mn does not package is reported", () => {
+    expect(
+      danglingEdges(
+        [edge("host/a.mjs", "ui/b.mjs", 4)],
+        new Set(["host/a.mjs", "ui/b.mjs"]),
+        new Set(["host/a.mjs"]),
+      ),
+    ).toEqual(["host/a.mjs:4: names ui/b.mjs, which jar.mn does not package"]);
+  });
+
+  test("core/ (a git-ignored copy) and folder prefixes are not checked", () => {
+    expect(
+      danglingEdges(
+        [edge("host/a.mjs", "core/modes.mjs"), edge("actors/VimmaActors.sys.mjs", "actors/")],
+        new Set(["host/a.mjs"]),
+        new Set(["host/a.mjs"]),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("jarModules", () => {
+  test("the modules jar.mn packages, by their path under vimma/; a wildcard line adds none", () => {
+    expect([
+      ...jarModules(
+        [
+          "browser.jar:",
+          "        content/browser/vimma/vimma.js                    (vimma.js)",
+          "        content/browser/vimma/host/VimmaHost.sys.mjs      (host/VimmaHost.sys.mjs)",
+          "        content/browser/vimma/core                        (core/**/*.mjs)",
+        ].join("\n"),
+      ),
+    ]).toEqual(["vimma.js", "host/VimmaHost.sys.mjs"]);
+  });
+});
+
 describe("exceptionErrors", () => {
   const base = { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy" as const, reason: "r" };
 
@@ -350,7 +417,7 @@ describe("exceptionErrors", () => {
   test("the list does not grow without a change to ADR-026", () => {
     // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
     // why it cannot be avoided. Lower it whenever an exception goes.
-    const PINNED = 5;
+    const PINNED = 3;
     expect(
       EXCEPTIONS.length,
       `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,

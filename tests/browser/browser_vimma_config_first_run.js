@@ -91,7 +91,8 @@ add_task(async function a_missing_file_is_created_from_the_template_once() {
   Assert.equal(ConfigHost.file, "read", "and was read");
   Assert.deepEqual(ConfigHost.errors, [], "a valid config");
   Assert.deepEqual(
-    bindingTable(ConfigHost.keymap),
+    // Read above, so not null.
+    bindingTable(/** @type {NonNullable<typeof ConfigHost.keymap>} */ (ConfigHost.keymap)),
     // The platform's defaults: macOS has its own (docs/specs/macos-build.md decision 29).
     bindingTable(compileKeymap({}, { mac: Services.appinfo.OS === "Darwin" })),
     "that changes no binding",

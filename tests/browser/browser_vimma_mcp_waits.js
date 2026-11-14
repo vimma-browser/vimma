@@ -54,9 +54,11 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const mainId = () =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 
 /** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
@@ -105,7 +107,7 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**

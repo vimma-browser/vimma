@@ -46,28 +46,6 @@ export const LAYERS: Record<string, number> = {
  * count. ADR-026, "Exceptions", says how each goes.
  */
 export const EXCEPTIONS: Exception[] = [
-  // The parent actor lives in actors/ and forwards page reports to the host. Firefox loads it
-  // from the URL VimmaActors.register() names, which is fixed to actors/ today; the actor moves
-  // to host/ once vimma.js passes the parent's URL in.
-  {
-    from: "actors/VimmaParent.sys.mjs",
-    to: "host/VimmaHost.sys.mjs",
-    kind: "eager",
-    reason:
-      "focus, click and block reports must reach the host, and the parent actor sits in actors/ until register() takes its URL",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "actors/VimmaParent.sys.mjs",
-    to: "host/pdf-ops.mjs",
-    kind: "eager",
-    reason:
-      "the PDF viewer's state and outline must reach the host's PDF code, from the same parent actor",
-    fate: "goes",
-    issue: 936,
-  },
-
   // The agent gate's state lives in ctl/, above the host that shows it.
   {
     from: "host/VimmaHost.sys.mjs",

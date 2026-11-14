@@ -49,7 +49,8 @@ registerCleanupFunction(async () => {
 function workspace(name) {
   const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
   created.push(w.id);
-  return w;
+  // Containers are on: the workspace has its own.
+  return /** @type {ContainedWorkspace} */ (w);
 }
 
 /**
@@ -87,8 +88,11 @@ function watchBrackets() {
 async function openWindow() {
   const win = await BrowserTestUtils.openNewBrowserWindow();
   windows.push(win);
-  await WindowWorkspaces.get(win).ready;
-  await until(() => !!WindowWorkspaces.get(win).model, "the new window has its workspaces");
+  await /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win)).ready;
+  await until(
+    () => !!(/** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win)).model),
+    "the new window has its workspaces",
+  );
   return win;
 }
 
@@ -97,7 +101,7 @@ async function openWindow() {
  * @param {BrowserWindow} win
  */
 function outOfStep(win) {
-  const ww = WindowWorkspaces.get(win);
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
   const model = ww.model;
   const problems = [];
   const inModel = new Set(model.workspaces.flatMap((/** @type {WorkspaceState} */ w) => w.tabs));
@@ -112,9 +116,7 @@ function outOfStep(win) {
   }
   const selected = win.gBrowser.selectedTab;
   if (!selected.pinned) {
-    const listed = pickerWorkspaces(win).workspaces.flatMap(
-      (/** @type {{ tabs: string[] }} */ w) => w.tabs,
-    );
+    const listed = pickerWorkspaces(win).workspaces.flatMap((w) => w.tabs);
     const key = selected.linkedPanel || ww.idOf(selected);
     if (!listed.includes(key)) problems.push("tab search does not list the selected tab");
   }
@@ -224,15 +226,16 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
   const A = workspace("dr-a");
   const B = workspace("dr-b");
   const w0 = await openWindow();
-  const ww0 = WindowWorkspaces.get(w0);
+  const ww0 = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(w0));
   ww0.switchTo({ id: A.id });
   const a1 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-a1`);
   const a2 = await BrowserTestUtils.openNewForegroundTab(w0.gBrowser, `${PAGE}?dr-a2`);
   w0.gBrowser.selectedTab = a1;
   await until(
     () =>
-      ww0.model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === A.id).activeTab ===
-      ww0.idOf(a1),
+      /** @type {WorkspaceState} */ (
+        ww0.model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === A.id)
+      ).activeTab === ww0.idOf(a1),
     "A's selected tab is its first page",
   );
   ww0.switchTo({ id: B.id });
@@ -250,7 +253,7 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
   await BrowserTestUtils.closeWindow(w0);
 
   await lastWindowCase(withAClosedTab, async (win) => {
-    const ww = WindowWorkspaces.get(win);
+    const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
     const stuck = ww.health().recovered;
     Assert.ok(stuck, "the reopened window's restore never finished");
 
@@ -283,7 +286,9 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
 
     const model = ww.model;
     const ws = (/** @type {string} */ id) =>
-      model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id);
+      /** @type {WorkspaceState} */ (
+        model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id)
+      );
     Assert.deepEqual(
       ws(A.id).tabs.slice(-2),
       [uuids.get(a1), uuids.get(a2)],
@@ -298,7 +303,7 @@ add_task(async function a_whole_window_restore_into_a_recovered_window_keeps_its
 
 add_task(async function a_window_reopened_after_the_last_one_closed_with_a_pinned_tab() {
   await lastWindowCase(async (first) => {
-    WindowWorkspaces.get(first).unpinsPinnedTabs = false;
+    /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(first)).unpinsPinnedTabs = false;
     const pinned = await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?pinned`);
     first.gBrowser.pinTab(pinned);
     await BrowserTestUtils.openNewForegroundTab(first.gBrowser, `${PAGE}?kept`);
@@ -329,7 +334,7 @@ add_task(async function a_restore_that_throws_partway_does_not_stop_the_model() 
 /** A restore that throws partway, then tabs opened; the calling task sets the bound. */
 async function throwingRestore() {
   const win = await openWindow();
-  const ww = WindowWorkspaces.get(win);
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
   const gone = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, `${PAGE}?undo`);
   await TabStateFlusher.flush(gone.linkedBrowser);
   BrowserTestUtils.removeTab(gone);

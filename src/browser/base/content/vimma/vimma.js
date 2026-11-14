@@ -48,11 +48,13 @@
   );
   UrlbarRows.init();
 
-  // Once per process, before the host dispatches page keys (m1-actor-insert-scroll).
+  // Once per process, before the host dispatches page keys (m1-actor-insert-scroll). The parent
+  // actor is the host's (ADR-026), and actors/ does not name host/'s modules: its URL comes from
+  // here.
   const { VimmaActors } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
   );
-  VimmaActors.register();
+  VimmaActors.register("chrome://browser/content/vimma/host/VimmaParent.sys.mjs");
 
   // The theme tokens, before any UI uses them (m5-omarchy-theme): the built-in palette now, the
   // Omarchy theme once read, then whatever omarchy-theme-set switches to.

@@ -116,7 +116,7 @@
         "expect": { "result": { "content": [{ "type": "text" }, { "type": "text" }] } }
       }
     },
-    { "sleep": 3 },
+    { "wait-for-state": { "notice": false, "agent": { "waiting": 0, "ran": false } } },
     { "screenshot": "m0-mcp-stdio-grant" },
     { "keys": "ctrl+b shift+a" },
     { "sleep": 1.8 },

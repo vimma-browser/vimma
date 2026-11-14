@@ -154,20 +154,42 @@ which takes seconds under load, so the Settings tests are in
 test opens each pane once (#992). `requestLongerTimeout(N)` is the last resort, with its reason
 in a comment; both files take `2` for their Settings tabs.
 
+**Hidden surfaces.** A test that Vimma hides one of Firefox's surfaces shows that Vimma's rule is
+what hides it: a bare `display: none` check passes whatever Vimma's rules say once Firefox hides
+the element itself (`hidden`, a group's `data-hidden-by-setting-group`, a pane not shown).
+`browser_vimma_firefox_settings_hidden.js` takes `firefox-pages.css` off the page, waits for
+Firefox to show the surface, then asserts `display: none` with the sheet back (#997);
+`browser_vimma_settings_managed.js` checks only an element with nothing on it or above it that
+Firefox hides.
+
 **Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
 browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
 (`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
 `firefox.d.ts` for the Firefox members only tests use, `vimma.d.ts` for Vimma's types a test
-names, and `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files).
+names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
+`modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
+layout).
 `tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
 file may still have type errors, every other file, a new one included, may not, and a listed
 file that has none must come off the list. `Assert.equal` and its kin take an expected value of
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
-the wrong kind of thing, or asserts on a promise it forgot to await, fails the check. That holds
-only where the actual value has a type: `ChromeUtils.importESModule` returns `any` here, so what
-a test reads from one of Vimma's modules, and the JSDoc types a test gives such values, are not
-checked against the module yet; typing `importESModule` for each `chrome://` URL of Vimma's is
-the next step.
+the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
+`ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the
+type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
+one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
+values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
+does not have (a typo) is an error. The declarations themselves are checked too:
+`tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
+`types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
+would make the type it declares `any`, and every annotation naming that type would check
+nothing, with no error shown. Not checked: a module imported from a URL held in a variable,
+Firefox's own modules (`resource://`, `moz-src://`, other `chrome://` URLs), which still return
+`any`, and what the product itself types loosely: an agent question's `what` (a `Record`
+of `any`, as the question line reads it), a child's console entries before the parent checks
+them. A test that knows more than the product's type (a window whose workspaces are built, a
+workspace with its container, a check that was refused) casts to a named type from
+`vimma.d.ts`, such as `LiveWorkspaces`, `ContainedWorkspace` or `RefusedUpdate`, which says
+what it assumes.
 
 ## 7. End-to-end scenarios and screenshots
 

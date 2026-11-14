@@ -49,7 +49,7 @@ browser.jar:
         content/browser/vimma/host/bookmark-actions.mjs   (host/bookmark-actions.mjs)
         content/browser/vimma/actors/VimmaActors.sys.mjs  (actors/VimmaActors.sys.mjs)
         content/browser/vimma/actors/VimmaChild.sys.mjs   (actors/VimmaChild.sys.mjs)
-        content/browser/vimma/actors/VimmaParent.sys.mjs  (actors/VimmaParent.sys.mjs)
+        content/browser/vimma/host/VimmaParent.sys.mjs    (host/VimmaParent.sys.mjs)
         content/browser/vimma/actors/hint-collect.mjs     (actors/hint-collect.mjs)
         content/browser/vimma/actors/agent-fields.mjs     (actors/agent-fields.mjs)
         content/browser/vimma/actors/caret.mjs            (actors/caret.mjs)

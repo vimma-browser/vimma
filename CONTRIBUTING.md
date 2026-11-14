@@ -162,8 +162,11 @@ new test file passes it from its first commit: give a helper's parameters JSDoc 
 Firefox's type is wider than the test knows (an element `getElementById` returns, an about: page's
 document), cast it with `/** @type {...} */ (expr)` rather than adding a guard that changes what
 the test does. The files that still have errors are listed in `tools/test/mochitest-allowlist.txt`;
-fixing one takes it off. After changing a `tests/browser/head*.js` file, run
-`npm run gen-mochitest-head`.
+fixing one takes it off. A Vimma module a test imports by its `chrome://` URL has the module's
+own types there, so a test that knows more than they say (a window whose workspaces are built, a
+workspace that has its container) casts to one of the named types in `types/mochitest/vimma.d.ts`.
+After changing a `tests/browser/head*.js` file, run `npm run gen-mochitest-head`; after adding,
+moving or removing a module, `npm run gen-mochitest-modules`.
 
 You can also test the front end without a full build. An artifact build puts our front end on
 top of Mozilla's compiled binaries for the same release, and is what PR CI uses

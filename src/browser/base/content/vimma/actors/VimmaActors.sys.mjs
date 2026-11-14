@@ -29,6 +29,8 @@ const { clearTimeout, setTimeout } = ChromeUtils.importESModule(
 
 const NAME = "Vimma";
 const BASE = "chrome://browser/content/vimma/actors/";
+/** What the parent actor's URL must look like: a system module of host/ (ADR-026). */
+const PARENT_URI = /^chrome:\/\/browser\/content\/vimma\/host\/[\w-]+\.sys\.mjs$/;
 /** start/StartPage.sys.mjs START_PAGE_URL; a match pattern needs no import for one string. */
 const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
 
@@ -238,12 +240,24 @@ function forgetMark(id) {
 }
 
 export const VimmaActors = {
-  /** Registers the actor pair once per process; vimma.js calls this before VimmaHost.init. */
-  register() {
+  /**
+   * Registers the actor pair once per process; vimma.js calls this before VimmaHost.init.
+   * @param {string} parentURI  the parent actor's module, host/VimmaParent.sys.mjs: it lives in
+   *   host/, a higher layer that this folder does not name (ADR-026), so vimma.js passes it in
+   * @throws {TypeError} unless `parentURI` is a host/ system module's chrome:// URL, before
+   *   anything is registered, so a later call with the right one still registers the pair
+   */
+  register(parentURI) {
+    // A wrong URL would register a parent that never loads: page reports dropped, no error.
+    if (typeof parentURI !== "string" || !PARENT_URI.test(parentURI)) {
+      throw new TypeError(
+        `VimmaActors.register: the parent actor must be a host/ module, not ${JSON.stringify(parentURI)}`,
+      );
+    }
     if (registered) return;
     registered = true;
     ChromeUtils.registerWindowActor(NAME, {
-      parent: { esModuleURI: `${BASE}VimmaParent.sys.mjs` },
+      parent: { esModuleURI: parentURI },
       child: {
         esModuleURI: `${BASE}VimmaChild.sys.mjs`,
         events: {
