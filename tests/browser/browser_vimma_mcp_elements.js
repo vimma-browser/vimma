@@ -1081,6 +1081,34 @@ addTidyTask(async function test_label_forwarding_follows_geckos_interactive_cont
     doc.body.append(shadowed);
     const inner = /** @type {Element} */ (root.querySelector("span"));
     submits["span in a shadow root"] = "submit" in actTargetOf(inner);
+    // Gecko's walk for interactive content stops where the flattened tree ends: at an element
+    // no slot takes, and at a slot's own content while nodes are assigned to it. The label is
+    // still on the click's path, so it passes the click on, a link around them or not.
+    /** @param {string} name @param {string} shadow @param {string} light @param {string} pick */
+    const inLink = (name, shadow, light, pick) => {
+      const label = doc.createElement("label");
+      label.htmlFor = "buy";
+      label.innerHTML = `<a href="#x"><span>${light}</span></a>`;
+      const host = /** @type {Element} */ (label.querySelector("span"));
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = shadow;
+      doc.body.append(label);
+      const el = /** @type {Element} */ (host.querySelector(pick) ?? root.querySelector(pick));
+      submits[name] = "submit" in actTargetOf(el);
+    };
+    inLink("slotted span in a link", '<slot name="s"></slot>', '<span slot="s">Go</span>', "span");
+    inLink(
+      "unslotted span in a link",
+      '<slot name="s"></slot>',
+      '<span slot="t">Go</span>',
+      "span",
+    );
+    inLink(
+      "slot fallback in a link",
+      '<slot><b id="fallback">Go</b></slot>',
+      "<i>Assigned</i>",
+      "#fallback",
+    );
     return submits;
   });
   Assert.deepEqual(
@@ -1097,6 +1125,9 @@ addTidyTask(async function test_label_forwarding_follows_geckos_interactive_cont
       "video with controls": false,
       "span in a foreign label": true,
       "span in a shadow root": true,
+      "slotted span in a link": false,
+      "unslotted span in a link": true,
+      "slot fallback in a link": true,
     },
     "a label passes on a click as Gecko does (IsInInteractiveHTMLContent)",
   );

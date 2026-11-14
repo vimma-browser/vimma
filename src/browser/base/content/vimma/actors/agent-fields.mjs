@@ -521,15 +521,14 @@ const INTERACTIVE = new Set([
 /**
  * HTML elements that are interactive content to Gecko only with an attribute; any other element,
  * and any element outside HTML, is not.
- * @type {Record<string, string>}
  */
-const INTERACTIVE_WITH = {
-  a: "href",
-  audio: "controls",
-  img: "usemap",
-  object: "usemap",
-  video: "controls",
-};
+const INTERACTIVE_WITH = new Map([
+  ["a", "href"],
+  ["audio", "controls"],
+  ["img", "usemap"],
+  ["object", "usemap"],
+  ["video", "controls"],
+]);
 
 /**
  * Whether `el` is interactive content as Gecko decides it (Element::IsInteractiveHTMLContent):
@@ -541,18 +540,19 @@ function isInteractive(el) {
   const name = el.localName;
   if (INTERACTIVE.has(name)) return true;
   if (name === "input") return /** @type {HTMLInputElement} */ (el).type !== "hidden";
-  const attr = INTERACTIVE_WITH[name];
+  const attr = INTERACTIVE_WITH.get(name);
   return attr !== undefined && el.hasAttribute(attr);
 }
 
 /**
- * The element's parent in the flattened tree, the path a click's event takes (a slotted
- * element's slot, a shadow root's host); null at the top.
+ * The element's parent on a click event's path: the slot it is assigned to, else its parent,
+ * and for a shadow root's child the root's host; null at the top.
  * @param {Element} el
  * @returns {Element | null}
  */
-function flatParent(el) {
-  const p = el.flattenedTreeParentNode ?? el.parentElement;
+function pathParent(el) {
+  const p = el.assignedSlot ?? el.parentNode;
+  if (p && p.nodeType === 11) return /** @type {ShadowRoot} */ (p).host ?? null;
   return p && p.nodeType === 1 ? /** @type {Element} */ (p) : null;
 }
 
@@ -584,12 +584,18 @@ function labelledControl(el) {
   // As HTMLLabelElement::PostHandleEvent: the nearest HTML label on the click's path takes it,
   // unless an element from the target up to that label is interactive content
   // (nsContentUtils::IsInInteractiveHTMLContent). A label of another namespace is no label.
+  // The interactive check follows the flattened tree and stops where it ends (an element no
+  // slot takes, a slot's own content while nodes are assigned to it): nothing above counts.
   let interactive = false;
+  let flat = true;
   /** @type {Element | null} */
   let label = el;
   while (label && !isHTML(label, "label")) {
-    interactive ||= isInteractive(label);
-    label = flatParent(label);
+    if (flat) {
+      interactive ||= isInteractive(label);
+      flat = label.flattenedTreeParentNode !== null;
+    }
+    label = pathParent(label);
   }
   if (!isHTML(label, "label") || interactive) return null;
   const control = label.control;
