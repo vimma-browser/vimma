@@ -310,6 +310,56 @@ describe("the m3-private-workspace scenario (#236)", () => {
   });
 });
 
+describe("screenshots taken a fixed time after a step (#981)", () => {
+  // A screenshot right after a `sleep` photographs whatever the machine has drawn by then: under
+  // load, a notice still shown or a list not yet filled. A scenario waits for the state it
+  // photographs instead (`wait-for-state` on `notice`, `chat`, `agent`). These still sleep, each
+  // judged in #981's pull request; a fixed one comes off the list, and none is added.
+  const LEFT = [
+    "issue-216-toolbar-hidden: toolbar-minimal",
+    "issue-241-live-grep: live-grep",
+    "issue-241-live-grep: live-grep-jump",
+    "issue-487-pdf-mode: pdf-outline",
+    "issue-618-downloads-picker: downloads-done",
+    "issue-618-downloads-picker: downloads-picker",
+    "issue-682-multiple-splits: multiple-splits-panel",
+    "m0-mcp-checkpoints: m0-mcp-checkpoints-basket-ran",
+    "m0-mcp-checkpoints: m0-mcp-checkpoints-pay-question",
+    "m0-mcp-checkpoints: m0-mcp-checkpoints-card-question",
+    "m0-mcp-checkpoints: m0-mcp-checkpoints-hosted-question",
+    "m0-mcp-checkpoints: m0-mcp-checkpoints-hosted-allowed",
+    "m0-mcp-drive: m0-mcp-drive-keys-question",
+    "m0-mcp-drive: m0-mcp-drive-shown",
+    "m0-mcp-forms: m0-mcp-forms-fill-question",
+    "m0-mcp-forms: m0-mcp-forms-submit-question",
+    "m0-mcp-stdio: m0-mcp-stdio-question",
+    "m0-mcp-stdio: m0-mcp-stdio-grant",
+  ];
+  const all = loadScenarios(SCENARIOS, {});
+
+  it("no screenshot follows a sleep beyond the ones left for follow-ups", () => {
+    const afterSleep = all.flatMap((s) =>
+      s.steps.flatMap((step, i) =>
+        step.screenshot && s.steps[i - 1]?.sleep !== undefined
+          ? [`${s.name}: ${step.screenshot}`]
+          : [],
+      ),
+    );
+    expect(afterSleep).toEqual(LEFT);
+  });
+
+  it("m0-agent-cli photographs each screen once its notice is gone", () => {
+    const steps = all.find((s) => s.name === "m0-agent-cli")?.steps ?? [];
+    const shots = steps.flatMap((step, i) => (step.screenshot ? [i] : []));
+    expect(shots.length).toBe(3);
+    for (const i of shots) {
+      const wait = steps[i - 1]?.["wait-for-state"];
+      expect(wait, `the step before ${steps[i]?.screenshot}`).toMatchObject({ notice: false });
+    }
+    expect(steps.some((step) => step.sleep !== undefined)).toBe(false);
+  });
+});
+
 describe("baselines", () => {
   const BASELINES = fileURLToPath(new URL("../../../tests/e2e/baselines/", import.meta.url));
   const shots = loadScenarios(SCENARIOS, {}).flatMap((s) =>

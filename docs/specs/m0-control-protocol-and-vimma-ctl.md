@@ -261,6 +261,25 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   downloads or replaces the AppImage, `staged` once it applies at the next start). Added without
   a version bump; vimma-ctl accepts it when present and checks every field's type and the two
   lists.
+- `notice`, `prompt`, `chat` and `agent` (since #981, for the e2e harness's waits): what the
+  window shows for a moment, so that a script waits for the screen it photographs rather than for
+  a time. `notice`: `true` while a notice (the toast) is shown. `prompt`: `true` while the prompt
+  line (a y/N question, a rename or a line of text, such as a model's name) is open. `chat`:
+  `null` while the agent chat window is closed, else
+  `{ "view": "models", "rows": 1, "entries": 0, "question": { "armed": true } | null }`.
+  `view` is one of `chat` (the transcript), `models` (the model picker and setup's list), `list`
+  (the conversations) and `key` (the key field); `rows` and `entries` are how many list rows and
+  transcript entries it draws, counted from the window as drawn; `question` is the question
+  waiting in its slot, `armed` once its keys count and its hint shows. `agent`: the status bar's
+  agent segment ([vimma-mcp](vimma-mcp.md), decision 24) as the bar last drew it, `null` while
+  none is drawn, else `{ "waiting": 1, "ran": false }`: how many questions it shows waiting
+  (`◇ agent 1?`) and whether it shows the dot of a step that just ran (`◇ agent ·`). Flags and
+  counts only, never text (security.md S9); in a private window `notice`, `prompt` and `agent`
+  are kept, because they name nothing, and `chat` is `null`, because the chat window never opens
+  there. Added without a version bump; vimma-ctl passes them through, and vimma-core's validator
+  checks their types and refuses any other field in `chat` and `agent`. `chat` and `agent` exist
+  for test harnesses and scripts that wait on what is on screen: they may change shape without a
+  protocol bump, so a script matches only the keys it needs.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

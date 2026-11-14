@@ -1144,6 +1144,44 @@ export const VimmaHost = {
   },
 
   /**
+   * What the control socket's `state` reports of `win`'s transient screen (docs/specs/
+   * m0-control-protocol-and-vimma-ctl.md, "state"): whether a notice is shown and whether the
+   * prompt line is open; the agent chat window's view, how many list rows and transcript entries
+   * it draws, and its question slot; and the status bar's agent segment. All of it as drawn, so
+   * it says what a screenshot would show; counts and flags only, never text, so no page, title
+   * or conversation reaches the socket through them (security.md S9). The chat window never
+   * opens in a private window: `null` there.
+   * @param {BrowserWindow} win
+   * @returns {{ notice: boolean, prompt: boolean,
+   *   chat: { view: string, rows: number, entries: number,
+   *     question: { armed: boolean } | null } | null,
+   *   agent: { waiting: number, ran: boolean } | null }}
+   */
+  screen(win) {
+    const state = states.get(win);
+    if (!state) return { notice: false, prompt: false, chat: null, agent: null };
+    // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
+    // dropped at the redraw. Its grant minutes and the built-in agent's budget stay out, as
+    // nothing waits on them.
+    const agent = state.statusBar?.drawnAgent ?? null;
+    const notice = !!state.notice.el?.matches(":popover-open");
+    const prompt = state.rename.isOpen;
+    const ui = state.agentChat;
+    const log = ui.isOpen ? ui.log : null;
+    const count = (/** @type {string} */ cls) =>
+      log?.querySelectorAll(`:scope > .${cls}`).length ?? 0;
+    const chat = log
+      ? {
+          view: ui.view,
+          rows: count("vimma-agent-chat-row"),
+          entries: count("vimma-agent-chat-entry"),
+          question: ui.slot.isOpen ? { armed: ui.slot.armed } : null,
+        }
+      : null;
+    return { notice, prompt, chat, agent };
+  },
+
+  /**
    * Whether the user is using `browser`'s page (docs/specs/mcp-drive.md D13): it is shown in the
    * focused window, and that page is in insert or copy mode, in hint mode or in a `/` search,
    * or a key sequence is under way in the window. An agent's keys wait for none of these: they

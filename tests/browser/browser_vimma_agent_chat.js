@@ -36,6 +36,12 @@ const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/h
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
 );
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
+const { validateMessage } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
+);
 const { OSKeyStoreTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/OSKeyStoreTestUtils.sys.mjs",
 );
@@ -304,6 +310,92 @@ addTidyTask(async function test_question_in_the_prompt_slot_and_never_answered_b
   Assert.equal(imitation.querySelector(".vimma-agent-chat-label")?.textContent, "agent");
   Assert.ok(!slotOpen(), "and never in the prompt slot");
   Assert.equal(AgentGate.waiting.length, 0, "nor waiting as a question");
+});
+
+// #981: the control socket's `state` says what the window draws, as counts and flags, so that
+// an e2e scenario waits for the screen it photographs rather than for a time; never its text
+// (security.md S9).
+addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn() {
+  const state = () => {
+    const result = VimmaControl._commands.state();
+    const v = validateMessage(
+      { type: "response", id: 1, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+    return result;
+  };
+  const drawn = (/** @type {string} */ cls) => log().querySelectorAll(`:scope > .${cls}`).length;
+  await openPage();
+  Assert.deepEqual(
+    Object.keys(state()).sort(),
+    [
+      ...["agent", "chat", "mode", "notice", "panes", "pending", "prompt", "splits", "tabs"],
+      ...["update", "workspace"],
+    ],
+    "state's fields are listed one by one: nothing the host adds reaches the socket by itself",
+  );
+  Assert.strictEqual(state().chat, null, "no chat window: chat is null");
+
+  // `agent` is the segment as the status bar last drew it, not as it will draw it next: the
+  // ran dot goes at its redraw, RAN_MS + 50 ms after the step, later under load.
+  const bar = /** @type {any} */ (VimmaHost._state(window).statusBar);
+  Assert.strictEqual(AgentUi.status(), null, "sanity: no agent connection, no segment to draw");
+  bar.renderBar({ ...bar.input(), agent: { waiting: 0, minutes: null, ran: true, builtin: null } });
+  Assert.equal(statusText("agent"), "◇ agent ·", "sanity: the bar draws the ran dot");
+  Assert.deepEqual(state().agent, { waiting: 0, ran: true }, "state reports the dot drawn");
+  bar.renderBar({ ...bar.input(), agent: { waiting: 2, minutes: null, ran: true, builtin: null } });
+  Assert.deepEqual(state().agent, { waiting: 2, ran: false }, "a question hides the dot");
+  bar.renderBar(bar.input());
+  Assert.strictEqual(state().agent, null, "and no segment drawn: null");
+
+  const { notice } = VimmaHost._state(window);
+  notice.show("agent: found claude 2.1.303 · /tmp/claude");
+  Assert.strictEqual(state().notice, true, "a notice is shown");
+  notice.hide();
+  Assert.strictEqual(state().notice, false, "and gone");
+  Assert.strictEqual(state().prompt, false, "no prompt line");
+  const asked = VimmaHost._state(window).rename;
+  asked.ask("send to example.com? y/N", () => {});
+  Assert.strictEqual(state().prompt, true, "a question on the prompt line");
+  EventUtils.synthesizeKey("KEY_Escape");
+  await until(() => !asked.isOpen, "Esc says no");
+  Assert.strictEqual(state().prompt, false, "and it is gone");
+
+  runCommand("agent model");
+  await until(
+    () => logText().includes("add: OpenAI-compatible endpoint"),
+    "the picker lists its rows",
+  );
+  let { chat } = state();
+  Assert.equal(chat.view, "models", "the model picker");
+  Assert.ok(chat.rows >= 3, `with its rows: ${chat.rows}`);
+  Assert.equal(chat.rows, drawn("vimma-agent-chat-row"), "as many as it draws");
+  Assert.equal(chat.entries, 0, "no transcript in the picker");
+  Assert.strictEqual(chat.question, null, "and no question");
+  Assert.deepEqual(
+    Object.keys(chat).sort(),
+    ["entries", "question", "rows", "view"],
+    "counts and flags, no text",
+  );
+  VimmaHost._state(window).agentChat.close();
+  await until(() => !isOpen(), "the picker closed");
+  Assert.strictEqual(state().chat, null, "closed: null again");
+
+  await openChat();
+  send(script([openStep(PAGE), { reply: "done" }]), { ask: true });
+  await until(slotOpen, "the step asks in the prompt slot");
+  ({ chat } = state());
+  Assert.equal(chat.view, "chat", "the transcript");
+  Assert.equal(chat.rows, 0, "lists no rows");
+  Assert.ok(chat.entries > 0, `draws its entries: ${chat.entries}`);
+  Assert.equal(chat.entries, drawn("vimma-agent-chat-entry"), "as many as it draws");
+  Assert.ok(chat.question, "a question waits in the slot");
+  await until(() => state().chat?.question?.armed === true, "the question arms");
+  const { agent } = state();
+  Assert.equal(agent?.waiting, AgentGate.waiting.length, "the status bar counts it waiting");
+  Assert.ok(agent.waiting >= 1, "as the status bar's ◇ agent 1? does");
+  Assert.deepEqual(Object.keys(agent).sort(), ["ran", "waiting"], "a count and a flag");
 });
 
 addTidyTask(async function test_slot_arms_again_when_focus_comes_back_into_the_window() {

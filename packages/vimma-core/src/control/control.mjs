@@ -990,6 +990,14 @@ function checkStateResult(result, errors) {
   if ("splits" in result) checkSplits(result.splits, errors);
   // The update check (docs/specs/m6a-updater.md, decision 41): optional, as `splits`.
   if ("update" in result) checkUpdate(result.update, errors);
+  // What is on screen for a moment (#981): optional, as `update`.
+  for (const key of ["notice", "prompt"]) {
+    if (key in result && typeof result[key] !== "boolean") {
+      errors.push(`result.${key} must be a boolean`);
+    }
+  }
+  if ("chat" in result) checkChat(result.chat, hidden, errors);
+  if ("agent" in result) checkAgentSegment(result.agent, errors);
 }
 
 /**
@@ -1008,6 +1016,59 @@ export const UPDATE_OUTCOMES = Object.freeze([
 ]);
 /** How far the offered build got: downloading or replacing (`pending`), or `staged`. */
 export const UPDATE_STAGES = Object.freeze(["none", "pending", "staged"]);
+
+/**
+ * `state.agent`: the status bar's agent segment (docs/specs/vimma-mcp.md, decision 24), or null
+ * while it is hidden: how many questions wait (`◇ agent 2?`) and whether a step ran in the last
+ * RAN_MS (`◇ agent ·`). An allow-list, as `chat`.
+ * @param {unknown} agent @param {string[]} errors
+ */
+function checkAgentSegment(agent, errors) {
+  if (agent === null) return;
+  if (!isObject(agent)) {
+    errors.push("result.agent must be an object or null");
+    return;
+  }
+  noExtraFields(agent, ["waiting", "ran"], errors, "result.agent.");
+  if (!isCount(agent.waiting)) errors.push("result.agent.waiting must be a non-negative integer");
+  if (typeof agent.ran !== "boolean") errors.push("result.agent.ran must be a boolean");
+}
+
+/** `state.chat.view`: the agent chat window's transcript, model picker, conversations or key. */
+export const CHAT_VIEWS = Object.freeze(["chat", "models", "list", "key"]);
+
+/**
+ * `state.chat`: the agent chat window's view, how many list rows and transcript entries it
+ * draws, and its question slot, or null while it is closed. An allow-list of counts and flags,
+ * so that no text (a row's label, an entry, the question) reaches the socket unless a change
+ * here lets it (security.md S9); never open in a private window.
+ * @param {unknown} chat @param {boolean} hidden  a private window's @param {string[]} errors
+ */
+function checkChat(chat, hidden, errors) {
+  if (chat === null) return;
+  if (!isObject(chat)) {
+    errors.push("result.chat must be an object or null");
+    return;
+  }
+  if (hidden) errors.push("result.chat must be null in a private window");
+  noExtraFields(chat, ["view", "rows", "entries", "question"], errors, "result.chat.");
+  if (!CHAT_VIEWS.includes(/** @type {any} */ (chat.view))) {
+    errors.push(`result.chat.view must be one of ${CHAT_VIEWS.join(", ")}`);
+  }
+  for (const key of ["rows", "entries"]) {
+    if (!isCount(chat[key])) errors.push(`result.chat.${key} must be a non-negative integer`);
+  }
+  const { question } = chat;
+  if (question === null) return;
+  if (!isObject(question)) {
+    errors.push("result.chat.question must be an object or null");
+    return;
+  }
+  noExtraFields(question, ["armed"], errors, "result.chat.question.");
+  if (typeof question.armed !== "boolean") {
+    errors.push("result.chat.question.armed must be a boolean");
+  }
+}
 
 /**
  * `state.update` from VimmaUpdates.status() and the install type: an allow-list, so that a field
