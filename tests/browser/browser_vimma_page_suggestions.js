@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent, recordPageKeys, pageKeys -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, contextOf -- from head.js */
 /* global PrintUtils, BrowserWindowTracker -- browser.js, in the test's window */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -174,7 +174,7 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
       content.document.body.append(frame);
       await loaded;
     });
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     await focusContent(browser);
     await focusField(browser, frameBC, "combo");
     EventUtils.sendString("a");

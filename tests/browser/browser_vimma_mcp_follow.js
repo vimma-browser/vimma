@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 /* global Client -- from head_vimma_control.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -269,7 +269,7 @@ add_task(async function test_the_load_wait_passes_over_an_initial_document() {
   const tab = BrowserTestUtils.addTab(gBrowser);
   const browser = tab.linkedBrowser;
   await until(() => !!browser.browsingContext?.currentWindowGlobal, "the tab has a document");
-  Assert.ok(browser.browsingContext.currentWindowGlobal.isInitialDocument, "its initial one");
+  Assert.ok(windowGlobalOf(contextOf(browser)).isInitialDocument, "its initial one");
   Assert.ok(!browser.webProgress.isLoadingDocument, "which is not loading");
   // What the tab showed before the step: another document at another URL.
   const before = { doc: 0, url: LINKS };
@@ -492,14 +492,14 @@ add_task(async function test_a_page_that_goes_away_ends_the_wait() {
   utils.advanceTimeAndRefresh(0);
   const tab = await openAgentTab();
   const browser = tab.linkedBrowser;
-  const pid = browser.browsingContext.currentWindowGlobal.osPid;
+  const pid = windowGlobalOf(contextOf(browser)).osPid;
   const collection = VimmaActors.collectHints(browser, "hint.follow", { agent: true });
   await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) > 0, "it waits", 20, 250);
   const t0 = Date.now();
   BrowserTestUtils.startLoadingURIString(browser, PAGE);
   await BrowserTestUtils.browserLoaded(browser, false, PAGE);
   const found = await collection;
-  Assert.equal(browser.browsingContext.currentWindowGlobal.osPid, pid, "in the same process");
+  Assert.equal(windowGlobalOf(contextOf(browser)).osPid, pid, "in the same process");
   await TestUtils.waitForCondition(async () => (await sizeWaits(tab)) === 0, "it ends", 20, 250);
   const ms = Date.now() - t0;
   utils.restoreNormalRefresh();

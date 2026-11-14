@@ -6,28 +6,27 @@ import { tempDir } from "./temp-dir.mjs";
 
 // Spec m7-upstream-autopilot, docs/security/10-firefox-updates.md §10: the upstream autopilot's
 // workflow shape.
-// Text checks, like safebrowsing-workflows.test.mjs: no YAML dependency.
+// Text checks, like safebrowsing-workflows.test.ts: no YAML dependency.
 const dir = new URL("../../.github/workflows/", import.meta.url);
-/** @param {string} name */
-const workflow = (name) => readFileSync(new URL(name, dir), "utf8");
+const workflow = (name: string) => readFileSync(new URL(name, dir), "utf8");
 const upstream = workflow("upstream.yml");
 const e2e = workflow("e2e.yml");
 const source = readFileSync(new URL("../upstream/source-check.sh", import.meta.url), "utf8");
 
 /**
- * @param {string} text a workflow
- * @param {string} id a job id
- * @returns {string} that job's YAML block
+ * @param text a workflow
+ * @param id a job id
+ * @returns that job's YAML block
  */
-function job(text, id) {
+function job(text: string, id: string): string {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
   throw new Error(`no job ${id}`);
 }
 
-/** @param {string} block @returns {string[]} the job's `permissions:` lines, comments dropped */
-function permissions(block) {
+/** @returns the job's `permissions:` lines, comments dropped */
+function permissions(block: string): string[] {
   const m = /^ {4}permissions:\n((?: {6}[a-z-]+: [a-z]+.*\n)+)/m.exec(block);
   if (!m?.[1]) return [];
   return m[1]
@@ -125,17 +124,11 @@ describe("upstream autopilot workflow", () => {
     // B1: no caller may check a hash against an unsigned SHA512SUMS. Every workflow and every
     // shell script under tools/ that calls the verifier fetches SHA512SUMS.asc and passes it.
     const callers = [
-      ...readdirSync(dir).map(
-        (f) => /** @type {const} */ ([`.github/workflows/${f}`, workflow(f)]),
-      ),
+      ...readdirSync(dir).map((f) => [`.github/workflows/${f}`, workflow(f)] as const),
       ...readdirSync(new URL("..", import.meta.url), { recursive: true, encoding: "utf8" })
         .filter((f) => f.endsWith(".sh"))
         .map(
-          (f) =>
-            /** @type {const} */ ([
-              `tools/${f}`,
-              readFileSync(new URL(`../${f}`, import.meta.url), "utf8"),
-            ]),
+          (f) => [`tools/${f}`, readFileSync(new URL(`../${f}`, import.meta.url), "utf8")] as const,
         ),
     ];
     const calls = callers.flatMap(([name, text]) => {
@@ -158,10 +151,10 @@ describe("upstream autopilot workflow", () => {
   it("a report on a tarball that failed verification is never uploaded", () => {
     // source-check.sh writes `result` only after the signature and hash are verified, so an
     // upload gated on it never publishes patch-check output from an unverified tarball (G4, G10).
-    for (const [name, step] of /** @type {const} */ ([
+    for (const [name, step] of [
       ["upstream.yml", "Upload the patch-check report"],
       ["upstream-beta.yml", "Upload the source check"],
-    ])) {
+    ] as const) {
       const text = workflow(name);
       const at = text.indexOf(`- name: ${step}`);
       expect(at, name).toBeGreaterThan(0);
@@ -197,8 +190,7 @@ describe("upstream autopilot workflow", () => {
 
   // Spec upstream-beta-canary, decision 11: detect looks up the canary's issues with the
   // issues: read it already holds; publish only renders them into the bump PR's body.
-  /** @param {string} version @param {string} ghOut @param {number} [ghStatus] */
-  const betaLookup = (version, ghOut, ghStatus = 0) => {
+  const betaLookup = (version: string, ghOut: string, ghStatus: number = 0) => {
     const tmp = tempDir("upstream-beta-lookup-");
     const out = join(tmp, "out");
     const argv = join(tmp, "argv");
@@ -269,19 +261,19 @@ describe("upstream autopilot workflow", () => {
 });
 
 /**
- * @param {string} text a workflow
- * @param {string} id a step's `id:`
- * @returns {string} that step's YAML, from its `- name:` line to the next step
+ * @param text a workflow
+ * @param id a step's `id:`
+ * @returns that step's YAML, from its `- name:` line to the next step
  */
-function step(text, id) {
+function step(text: string, id: string): string {
   const steps = text.split(/^(?= {6}- )/m);
   const found = steps.find((s) => new RegExp(`^ {8}id: ${id}$`, "m").test(s));
   if (!found) throw new Error(`no step with id ${id}`);
   return found.replace(/\n{2,}[^]*$/, "\n");
 }
 
-/** @param {string} block a step @returns {string} its `run: |` script, unindented */
-function script(block) {
+/** @param block a step @returns its `run: |` script, unindented */
+function script(block: string): string {
   const m = /^ {8}run: \|\n((?: {10}.*\n|\n)+)/m.exec(block);
   if (!m?.[1]) throw new Error("no run block");
   return m[1].replace(/^ {10}/gm, "");
@@ -291,8 +283,8 @@ function script(block) {
 // check and suite runs and is reported in suite-results.json. Anything else, PR CI and the
 // release autopilot included, fails on the first failure exactly as before.
 describe("e2e.yml Beta mode", () => {
-  /** @param {string} version @returns {string} the mode step's `beta` output */
-  const mode = (version) => {
+  /** @returns the mode step's `beta` output */
+  const mode = (version: string): string => {
     const dir = tempDir("e2e-mode-");
     const out = join(dir, "out");
     writeFileSync(out, "");
@@ -363,8 +355,7 @@ describe("e2e.yml Beta mode", () => {
 
   // `npm run mochitest` prints mach's own log format, not TBPL: Beta mode asks mozlog for a TBPL
   // log file as well. A fake npm records the command each step runs.
-  /** @param {string} id @param {string} beta @returns {{ status: number | null, argv: string }} */
-  const runStep = (id, beta) => {
+  const runStep = (id: string, beta: string): { status: number | null; argv: string } => {
     const dir = tempDir("e2e-step-");
     const record = join(dir, "argv");
     writeFileSync(join(dir, "npm"), `#!/bin/sh\nprintf '%s\\n' "$@" > "${record}"\nexit 3\n`, {
@@ -423,8 +414,8 @@ describe("e2e.yml Beta mode", () => {
     );
     const block = step(e2e, "suite-results");
     expect(block).toContain("FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}");
-    /** @param {number} exit suite-results.mjs's status @param {string} flag */
-    const run = (exit, flag) => {
+    /** @param exit suite-results.mjs's status */
+    const run = (exit: number, flag: string) => {
       const tmp = tempDir("e2e-findings-");
       writeFileSync(join(tmp, "node"), `#!/bin/sh\nexit ${exit}\n`, { mode: 0o755 });
       return spawnSync("bash", ["-e", "-c", script(block)], {
@@ -452,7 +443,7 @@ describe("e2e.yml concurrency", () => {
     // A manual Beta run on a branch must not cancel the canary's run of that Beta on main, nor
     // the autopilot's run on main a manual run without a version; a new push to a PR still
     // cancels that PR's older run. Only a PR run cancels: a manual run of the version the
-    // autopilot or the canary is testing waits for that run (workflow-concurrency.test.mjs).
+    // autopilot or the canary is testing waits for that run (workflow-concurrency.test.ts).
     expect(e2e).toContain("group: e2e-${{ github.ref }}-${{ inputs.firefox-version }}");
     expect(e2e).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
   });

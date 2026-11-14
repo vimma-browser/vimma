@@ -11,6 +11,8 @@
 // own colours stay. Apart from browser_vimma_firefox_surfaces_theme.js, which is near the
 // harness's time limit for a file on a two-CPU runner.
 
+/* global contextOf -- from head.js */
+
 "use strict";
 
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
@@ -268,7 +270,7 @@ async function assertWizard(label, w) {
   const box = dialog.getBoundingClientRect();
   nearly(
     await pixel(
-      /** @type {WindowGlobalParent} */ (tab.linkedBrowser.browsingContext.currentWindowGlobal),
+      /** @type {WindowGlobalParent} */ (contextOf(tab.linkedBrowser).currentWindowGlobal),
       box.left + 4,
       box.bottom - 4,
     ),

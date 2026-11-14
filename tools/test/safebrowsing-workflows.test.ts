@@ -3,24 +3,22 @@ import { readFileSync } from "node:fs";
 
 // Spec m0-safebrowsing-key: builds that ship get the Google Safe Browsing key from a temp file
 // that is deleted afterwards; PR builds never see it.
-/** @param {string} name */
-const workflow = (name) =>
+const workflow = (name: string) =>
   readFileSync(new URL(`../../.github/workflows/${name}`, import.meta.url), "utf8");
 
 /**
- * @param {string} text a workflow
- * @param {string} id a job id
- * @returns {string} that job's YAML block
+ * @param text a workflow
+ * @param id a job id
+ * @returns that job's YAML block
  */
-function job(text, id) {
+function job(text: string, id: string): string {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
   return "";
 }
 
-/** @param {string} block */
-function checkKeyFileSteps(block) {
+function checkKeyFileSteps(block: string) {
   // Written by a shell builtin into a mode-600 file, never echoed, deleted whatever happens.
   expect(block).toContain("SAFEBROWSING_API_KEY: ${{ secrets.SAFEBROWSING_API_KEY }}");
   expect(block).toContain(`(umask 077 && printf '%s' "$SAFEBROWSING_API_KEY" > "$keyfile")`);

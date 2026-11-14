@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { evaluate, runJobs } from "./workflow-if.mjs";
+import { evaluate, runJobs } from "./workflow-if.ts";
 
-// workflow-if.mjs evaluates job conditions as GitHub documents them, so that a workflow test can
+// workflow-if.ts evaluates job conditions as GitHub documents them, so that a workflow test can
 // say which jobs an event starts.
 const CONTEXT = {
   github: { event_name: "schedule", ref: "refs/heads/main" },

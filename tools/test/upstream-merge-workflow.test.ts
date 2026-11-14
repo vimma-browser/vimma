@@ -1,24 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { jobs, parseWorkflow, triggers } from "./workflow-runners.mjs";
+import type { Job, Step } from "./workflow-types.ts";
 
 // Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md
 // G13 and G14: the bump PR is set to auto-merge only once every check on its head is green.
 const dir = new URL("../../.github/workflows/", import.meta.url);
-/** @param {string} name */
-const read = (name) => readFileSync(new URL(name, dir), "utf8");
+const read = (name: string) => readFileSync(new URL(name, dir), "utf8");
 const text = read("upstream-merge.yml");
 const wf = parseWorkflow(text);
-const merge = /** @type {Record<string, any>} */ (jobs(text).get("merge"));
-/** @type {Record<string, any>[]} */
-const steps = merge?.steps ?? [];
-/** @param {string} id */
-const stepById = (id) => steps.find((s) => s.id === id) ?? {};
+const merge = jobs(text).get("merge") as Job;
+const steps: Step[] = merge?.steps ?? [];
+const stepById = (id: string): Step => steps.find((s) => s.id === id) ?? {};
 
 describe("upstream merge workflow (upstream-merge.yml)", () => {
   it("runs when any workflow a pull request starts completes, and on nothing else", () => {
     expect(triggers(text)).toEqual(["workflow_run"]);
-    const on = /** @type {Record<string, any>} */ (wf.on).workflow_run;
+    const on = (wf.on as { workflow_run: { types: string[]; workflows: string[] } }).workflow_run;
+
     expect(on.types).toEqual(["completed"]);
     // A PR workflow missing here would never wake the merge if it finished last.
     const prWorkflows = readdirSync(dir)

@@ -429,8 +429,8 @@ network):
 - `says the suites did not run when Mozilla's beta build is not indexed`
 - `fences test output and cuts the body to 60,000 characters`
 
-Vitest, `tools/test/upstream-beta-workflow.test.mjs` (text checks of the workflow, as
-`upstream-workflow.test.mjs` does):
+Vitest, `tools/test/upstream-beta-workflow.test.ts` (text checks of the workflow, as
+`upstream-workflow.test.ts` does):
 
 - `runs every 6 hours and by hand, never on pull_request_target`
 - `grants nothing by default and no job more than issues: write`
@@ -444,7 +444,7 @@ Vitest, `tools/test/upstream-beta-workflow.test.mjs` (text checks of the workflo
 
 Vitest, existing files:
 
-- `tools/test/upstream-workflow.test.mjs`: `upstream.yml checks the source through source-check.sh`;
+- `tools/test/upstream-workflow.test.ts`: `upstream.yml checks the source through source-check.sh`;
   `e2e.yml continues after a failed suite only in beta mode`;
   `detect finds the canary's issues for the release's major, open and closed`;
   `a failed lookup never stops the bump: no issues, a warning`;

@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent, recordPageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, waitForPageKey, contextOf -- from head.js */
 
 const { VimmaHost } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
@@ -110,7 +110,7 @@ for (const id of ["text", "area", "ce"]) {
 
 add_task(async function ctrl_w_in_a_cross_origin_frame() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await SpecialPowers.spawn(frame, [], async () => {
       await ContentTaskUtils.waitForCondition(() => content.document.getElementById("framed"));
     });

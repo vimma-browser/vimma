@@ -8,6 +8,8 @@
 // about:config). Checked in the built-in palette dark and light, and in an Omarchy theme that
 // gives only its base colours; with forced colours Firefox's own colours stay.
 
+/* global windowGlobalOf -- from head.js */
+
 "use strict";
 
 /* global setToolbarVisibility -- browser window global (browser.js) */
@@ -152,12 +154,13 @@ async function findBarOf(tab) {
 }
 
 /**
- * The window's own document as the parent process draws it. It changes nothing at run time: a
- * read through a missing global throws.
- * @param {{ readonly browsingContext: CanonicalBrowsingContext }} owner  a window or a <browser>
+ * The window's own document as the parent process draws it; the test fails here without one, as
+ * a read through a missing global did.
+ * @param {{ readonly browsingContext: CanonicalBrowsingContext | null }} owner  a window or a
+ *   <browser>
  */
 function globalOf(owner) {
-  return /** @type {WindowGlobalParent} */ (owner.browsingContext.currentWindowGlobal);
+  return windowGlobalOf(owner.browsingContext);
 }
 
 /**

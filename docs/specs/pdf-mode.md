@@ -802,8 +802,9 @@ cannot carry bidi or zero-width characters`); page targets for
   - `index_mode`: `Tab` opens the outline panel on the left with the current entry selected, in
     the side panel's slot (an open side panel or bookmarks panel gives way); `j`, `k`, arrows,
     `l`, `h`, `zo`, `zc`, `zO`, `zC`, `L`, `H`, `zR`, `zM`, `gg`, `G`, `ctrl+d`, `ctrl+u`;
-    `Enter`, `space` and `ctrl+j` jump and close, and `ctrl+o` returns; `Tab`, `Esc`, `ctrl+[`,
-    `ctrl+c` and `q` close without moving; `/` and a word filters and `Enter` jumps; a named
+    `Enter` and `space` jump and close, and `ctrl+o` returns; `Tab`, `Esc`, `ctrl+[` and `q`
+    close without moving; `ctrl+c` stays Firefox's copy and leaves the outline open (decision "No
+    new ctrl chords"); `/` and a word filters and `Enter` jumps; a named
     destination, a named action and a URL entry are each followed; an attachment entry shows its
     notice; a PDF without an outline says so; switching tabs closes the panel;
     `the_outline_is_read_only_on_the_users_key` (no outline message before `Tab`);

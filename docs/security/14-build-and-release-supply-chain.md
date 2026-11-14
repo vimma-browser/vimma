@@ -21,7 +21,7 @@ files (B6, B9, B10). Apple's Developer ID signing and notarisation add the `maco
 environment and its secrets (B14). No Linux job needs them, so a macOS failure holds back no Linux release.
 [`no Linux job needs a macOS job`](../../tools/package/test/release-workflow.test.mjs),
 [`macos-build checks the tag like build, then cross-builds with the key`](../../tools/package/test/release-workflow.test.mjs),
-[`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.mjs),
+[`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.ts),
 [`reads no secret, deploys to no environment and only reads the repository`](../../tools/package/test/macos.test.mjs),
 [`pins one rcodesign release and its SHA-256, checked before the file is used`](../../tools/package/test/macos.test.mjs)
 
@@ -82,8 +82,8 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`test_a_signed_message_in_place_of_a_detached_signature_fails`](../../tools/upstream/test_verify_sha512.py),
   [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.mjs),
   [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.mjs),
-  [`npm run import refuses an engine/ whose source was never verified`](../../tools/test/upstream-workflow.test.mjs),
-  [`every verify-sha512.py call passes a signature`](../../tools/test/upstream-workflow.test.mjs),
+  [`npm run import refuses an engine/ whose source was never verified`](../../tools/test/upstream-workflow.test.ts),
+  [`every verify-sha512.py call passes a signature`](../../tools/test/upstream-workflow.test.ts),
   [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.mjs),
   [`fails a changed key file without the label`](../../tools/ci/test/key-guard.test.mjs),
   [`fails a change to any of the guard's own files without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
@@ -97,9 +97,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   cache from the Actions cache; a release **must** build in a fresh objdir with an empty
   compiler cache.
   [`a tarball already on disk is verified again and engine/ is extracted from it afresh`](../../tools/upstream/test/firefox-source.test.mjs),
-  [`no workflow reads or writes engine/.vimma-firefox-version`](../../tools/test/full-build-workflows.test.mjs),
-  [`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.mjs),
-  [`a release builds in a fresh objdir with an empty compiler cache`](../../tools/test/full-build-workflows.test.mjs)
+  [`no workflow reads or writes engine/.vimma-firefox-version`](../../tools/test/full-build-workflows.test.ts),
+  [`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.ts),
+  [`a release builds in a fresh objdir with an empty compiler cache`](../../tools/test/full-build-workflows.test.ts)
 - B3. Surfer **must** be pinned to one exact version, locked by its integrity hash, and a
   Dependabot change to any package on the release path (Surfer, `ajv` and every package they
   depend on, computed from `package-lock.json` by `tools/deps/release-path.ts`) **never** merges
@@ -111,15 +111,15 @@ of the same commit read it too, so a tree without it could not be released anywa
   of the pull request ever reaches the workspace. It shows the published diff (`npm diff`) in its
   summary and the `release-path-diff` artifact. A failed classification, an update whose
   dependency names are missing, and a Surfer name in Dependabot's metadata wait for a person too.
-  [`package.json pins Surfer to an exact version, locked by integrity`](../../tools/test/build-supply-chain.test.mjs),
-  [`a Surfer update is never auto-merged, security updates included`](../../tools/test/build-supply-chain.test.mjs),
-  [`Surfer is held whatever the separator, quoting or case, or when only the title names it`](../../tools/test/build-supply-chain.test.mjs),
-  [`an update whose dependency list is empty waits for a person`](../../tools/test/build-supply-chain.test.mjs),
-  [`the release-path group comes before the minor and patch group`](../../tools/test/build-supply-chain.test.mjs),
-  [`dependabot-automerge classifies on base-branch code with a read-only token`](../../tools/test/build-supply-chain.test.mjs),
-  [`classify sets up Node on the base commit alone, before any of the head commit`](../../tools/test/build-supply-chain.test.mjs),
-  [`classify's order check catches %s`](../../tools/test/build-supply-chain.test.mjs),
-  [`a release-path change is never auto-merged, security updates included`](../../tools/test/build-supply-chain.test.mjs),
+  [`package.json pins Surfer to an exact version, locked by integrity`](../../tools/test/build-supply-chain.test.ts),
+  [`a Surfer update is never auto-merged, security updates included`](../../tools/test/build-supply-chain.test.ts),
+  [`Surfer is held whatever the separator, quoting or case, or when only the title names it`](../../tools/test/build-supply-chain.test.ts),
+  [`an update whose dependency list is empty waits for a person`](../../tools/test/build-supply-chain.test.ts),
+  [`the release-path group comes before the minor and patch group`](../../tools/test/build-supply-chain.test.ts),
+  [`dependabot-automerge classifies on base-branch code with a read-only token`](../../tools/test/build-supply-chain.test.ts),
+  [`classify sets up Node on the base commit alone, before any of the head commit`](../../tools/test/build-supply-chain.test.ts),
+  [`classify's order check catches %s`](../../tools/test/build-supply-chain.test.ts),
+  [`a release-path change is never auto-merged, security updates included`](../../tools/test/build-supply-chain.test.ts),
   [`the release path is Surfer, ajv and everything they depend on`](../../tools/deps/test/release-path.test.ts),
   [`the roots cover every package the release build job imports`](../../tools/deps/test/release-path.test.ts),
   [`a changed release-path package needs review, security updates included`](../../tools/deps/test/release-path.test.ts),
@@ -128,10 +128,10 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`only registry names and exact versions are handed to npm diff`](../../tools/deps/test/release-path.test.ts)
 - B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from
   `node_modules`, never a package `npx` fetches, and **never** lets Surfer fetch an add-on.
-  [`.npmrc turns install scripts off for every install`](../../tools/test/build-supply-chain.test.mjs),
-  [`the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`](../../tools/test/build-supply-chain.test.mjs),
-  [`no workflow lets npx fetch a package`](../../tools/test/build-supply-chain.test.mjs),
-  [`surfer.json lists no add-ons`](../../tools/test/build-supply-chain.test.mjs)
+  [`.npmrc turns install scripts off for every install`](../../tools/test/build-supply-chain.test.ts),
+  [`the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`](../../tools/test/build-supply-chain.test.ts),
+  [`no workflow lets npx fetch a package`](../../tools/test/build-supply-chain.test.ts),
+  [`surfer.json lists no add-ons`](../../tools/test/build-supply-chain.test.ts)
 - B5. A workflow **never** targets a self-hosted runner: every job runs on a standard
   GitHub-hosted image or calls a workflow file of this repository, and a `runs-on` expression
   that cannot be resolved to a hosted image fails. The test parses each workflow as YAML and
@@ -145,14 +145,14 @@ of the same commit read it too, so a tree without it could not be released anywa
   no self-hosted runner (`gh api orgs/vimma-browser/actions/runners`, organization owners only),
   since an organization runner shared with this repository is invisible to every
   repository-level check.
-  [`no workflow an outsider can trigger runs a job on a self-hosted runner`](../../tools/test/self-hosted-runner.test.mjs),
-  [`a runs-on expression in such a workflow fails unless it resolves to a hosted image`](../../tools/test/self-hosted-runner.test.mjs),
-  [`a quoted job id is a job of its own`](../../tools/test/self-hosted-runner.test.mjs),
-  [`a job written as a flow mapping is checked`](../../tools/test/self-hosted-runner.test.mjs),
-  [`a matrix key is read only from the job's own strategy.matrix`](../../tools/test/self-hosted-runner.test.mjs),
-  [`triggers are read in every spelling YAML allows`](../../tools/test/self-hosted-runner.test.mjs),
-  [`no workflow names a self-hosted runner, and both build jobs run on ubuntu-24.04`](../../tools/test/self-hosted-runner.test.mjs),
-  [`each build job runs only from main`](../../tools/test/self-hosted-runner.test.mjs)
+  [`no workflow an outsider can trigger runs a job on a self-hosted runner`](../../tools/test/self-hosted-runner.test.ts),
+  [`a runs-on expression in such a workflow fails unless it resolves to a hosted image`](../../tools/test/self-hosted-runner.test.ts),
+  [`a quoted job id is a job of its own`](../../tools/test/self-hosted-runner.test.ts),
+  [`a job written as a flow mapping is checked`](../../tools/test/self-hosted-runner.test.ts),
+  [`a matrix key is read only from the job's own strategy.matrix`](../../tools/test/self-hosted-runner.test.ts),
+  [`triggers are read in every spelling YAML allows`](../../tools/test/self-hosted-runner.test.ts),
+  [`no workflow names a self-hosted runner, and both build jobs run on ubuntu-24.04`](../../tools/test/self-hosted-runner.test.ts),
+  [`each build job runs only from main`](../../tools/test/self-hosted-runner.test.ts)
 - B6. The Safe Browsing key **must** be available only to jobs in the `build` environment,
   deployable only from `main`, and only the build jobs of `nightly.yml` and `release.yml`
   (`build` and, for the macOS `.dmg`, `macos-build`) use it. The environment's deployment rule is enforced by GitHub, outside any
@@ -163,7 +163,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   deployment rule, holds `SAFEBROWSING_API_KEY`, and no repository secret of that name exists
   (`gh api repos/vimma-browser/vimma/actions/secrets`; docs/runbook/ci-google-safe-browsing-key.md, "Google Safe Browsing
   key"). While a repository secret of that name remains, any job of any branch can read it.
-  [`the Safe Browsing key comes only from the build environment, in the release and nightly builds`](../../tools/test/build-supply-chain.test.mjs)
+  [`the Safe Browsing key comes only from the build environment, in the release and nightly builds`](../../tools/test/build-supply-chain.test.ts)
 - B7. A change to Mozilla's release key **must** open a `security` issue within 4 hours of
   appearing in Mozilla's `KEY` file, and 60 days before the pinned signing subkey expires.
   `upstream.yml`'s `detect` job (every 4 hours) downloads
@@ -177,7 +177,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`test_a_different_primary_key_is_reported_and_never_adopted`](../../tools/upstream/test_mozilla_key_check.py),
   [`test_a_signing_subkey_expiring_within_60_days_is_reported`](../../tools/upstream/test_mozilla_key_check.py),
   [`test_an_unchanged_key_reports_nothing`](../../tools/upstream/test_mozilla_key_check.py),
-  [`detect compares Mozilla's KEY with the pinned key; a change opens a security issue`](../../tools/test/upstream-workflow.test.mjs)
+  [`detect compares Mozilla's KEY with the pinned key; a change opens a security issue`](../../tools/test/upstream-workflow.test.ts)
 - B8. Unless the repository variables `NIGHTLY_RELEASE_ENABLED` and `UPDATES_ENABLED` are both
   `true`, the nightly **never** creates, replaces or deletes a release, and no job of it can
   write contents. Its `build` job, which runs npm, Surfer, `mach` and the
@@ -224,28 +224,28 @@ of the same commit read it too, so a tree without it could not be released anywa
   mochitest suite, not soaked as a release is; whether that may go public is the release gate,
   decided by setting the variable. **⚠ setting:** `NIGHTLY_RELEASE_ENABLED` is unset until
   public nightly releases start (`gh variable list`; docs/runbook/ci-full-builds.md, "Full builds").
-  [`the workflow and its build job can only read the repository`](../../tools/test/nightly-workflow.test.mjs),
-  [`the build job keeps the package as a workflow artifact for 7 days`](../../tools/test/nightly-workflow.test.mjs),
-  [`every job after the build runs only with NIGHTLY_RELEASE_ENABLED and UPDATES_ENABLED`](../../tools/test/nightly-workflow.test.mjs),
-  [`only publish can write contents, and it runs no repository code`](../../tools/test/nightly-workflow.test.mjs),
-  [`the nightly release is a pre-release, never Latest or deleted, and no v* tag is touched`](../../tools/test/nightly-workflow.test.mjs),
-  [`publish uploads only files SHA256SUMS lists, after checking them`](../../tools/test/nightly-workflow.test.mjs),
-  [`cosign signs SHA256SUMS as nightly.yml on main, running no repository code`](../../tools/test/nightly-workflow.test.mjs),
-  [`refuses a nightly release whose state is %s, and uploads nothing`](../../tools/test/nightly-workflow.test.mjs),
-  [`refuses a re-run of an older night once a newer build is on the release`](../../tools/test/nightly-workflow.test.mjs),
-  [`keeps this build, the previous one and the one the live manifest offers`](../../tools/test/nightly-workflow.test.mjs),
-  [`removes nothing when the update host does not answer, nor any newer build`](../../tools/test/nightly-workflow.test.mjs),
-  [`a failure of any job is reported by its own job, from the redacted log artifact`](../../tools/test/nightly-workflow.test.mjs),
-  [`the report job names the repository, since it checks nothing out`](../../tools/test/nightly-workflow.test.mjs),
-  [`names the failed job and step in the issue`](../../tools/test/nightly-workflow.test.mjs),
-  [`reads the run's jobs with a read-only actions token, beside its issues one`](../../tools/test/nightly-workflow.test.mjs),
-  [`a scheduled run on an unchanged commit builds nothing and re-signs the recorded build`](../../tools/test/nightly-workflow.test.mjs),
-  [`a scheduled run on a changed commit builds, publishes and offers the new build`](../../tools/test/nightly-workflow.test.mjs),
-  [`a manual run builds, whatever the change check says`](../../tools/test/nightly-workflow.test.mjs),
-  [`the change check reads with contents: read alone, no secret and no environment`](../../tools/test/nightly-workflow.test.mjs),
-  [`a skipped day starts no job in the build environment and none that reads the Safe Browsing key`](../../tools/test/nightly-workflow.test.mjs),
+  [`the workflow and its build job can only read the repository`](../../tools/test/nightly-workflow.test.ts),
+  [`the build job keeps the package as a workflow artifact for 7 days`](../../tools/test/nightly-workflow.test.ts),
+  [`every job after the build runs only with NIGHTLY_RELEASE_ENABLED and UPDATES_ENABLED`](../../tools/test/nightly-workflow.test.ts),
+  [`only publish can write contents, and it runs no repository code`](../../tools/test/nightly-workflow.test.ts),
+  [`the nightly release is a pre-release, never Latest or deleted, and no v* tag is touched`](../../tools/test/nightly-workflow.test.ts),
+  [`publish uploads only files SHA256SUMS lists, after checking them`](../../tools/test/nightly-workflow.test.ts),
+  [`cosign signs SHA256SUMS as nightly.yml on main, running no repository code`](../../tools/test/nightly-workflow.test.ts),
+  [`refuses a nightly release whose state is %s, and uploads nothing`](../../tools/test/nightly-workflow.test.ts),
+  [`refuses a re-run of an older night once a newer build is on the release`](../../tools/test/nightly-workflow.test.ts),
+  [`keeps this build, the previous one and the one the live manifest offers`](../../tools/test/nightly-workflow.test.ts),
+  [`removes nothing when the update host does not answer, nor any newer build`](../../tools/test/nightly-workflow.test.ts),
+  [`a failure of any job is reported by its own job, from the redacted log artifact`](../../tools/test/nightly-workflow.test.ts),
+  [`the report job names the repository, since it checks nothing out`](../../tools/test/nightly-workflow.test.ts),
+  [`names the failed job and step in the issue`](../../tools/test/nightly-workflow.test.ts),
+  [`reads the run's jobs with a read-only actions token, beside its issues one`](../../tools/test/nightly-workflow.test.ts),
+  [`a scheduled run on an unchanged commit builds nothing and re-signs the recorded build`](../../tools/test/nightly-workflow.test.ts),
+  [`a scheduled run on a changed commit builds, publishes and offers the new build`](../../tools/test/nightly-workflow.test.ts),
+  [`a manual run builds, whatever the change check says`](../../tools/test/nightly-workflow.test.ts),
+  [`the change check reads with contents: read alone, no secret and no environment`](../../tools/test/nightly-workflow.test.ts),
+  [`a skipped day starts no job in the build environment and none that reads the Safe Browsing key`](../../tools/test/nightly-workflow.test.ts),
   [`builds when %s`](../../tools/update/test/nightly-change.test.mjs),
-  [`only the nightly's failure-issue step, its publish job and its change check get GH_TOKEN`](../../tools/test/full-build-workflows.test.mjs)
+  [`only the nightly's failure-issue step, its publish job and its change check get GH_TOKEN`](../../tools/test/full-build-workflows.test.ts)
 - B9. Every file `release.yml` uploads to a release, the Arch Linux `PKGBUILD` and `SRCINFO`
   included, **must** be listed in that release's `SHA256SUMS` and get a cosign bundle from the
   `sign` job, so a user can verify any asset, and the `PKGBUILD`, which pacman runs as root, is
@@ -432,10 +432,10 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`the tap key reaches only the push step`](../../tools/package/test/release-workflow.test.mjs),
   [`pushes Casks/vimma.rb to the tap over SSH with github.com's pinned host key`](../../tools/package/test/release-workflow.test.mjs),
   [`never replaces a newer cask with an older one`](../../tools/package/test/release-workflow.test.mjs),
-  [`reads the release's metadata and never requests a release file`](../../tools/test/release-asset-checks.test.mjs),
-  [`starts nothing, green, when %s`](../../tools/test/release-asset-checks.test.mjs),
-  [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.mjs),
-  [`no workflow requests a release file only to see that it exists`](../../tools/test/release-asset-checks.test.mjs)
+  [`reads the release's metadata and never requests a release file`](../../tools/test/release-asset-checks.test.ts),
+  [`starts nothing, green, when %s`](../../tools/test/release-asset-checks.test.ts),
+  [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts),
+  [`no workflow requests a release file only to see that it exists`](../../tools/test/release-asset-checks.test.ts)
 
 - B12. The Flatpak build, `flatpak.yml` (spec [flatpak](../specs/flatpak.md)), publishes nothing,
   holds no secret and no environment, and each job's token only reads the repository. It
@@ -613,18 +613,18 @@ of the same commit read it too, so a tree without it could not be released anywa
   (that needs the Workflows permission). **⚠ limit:** the Cloudflare Workers and Pages app builds
   `vimma-site`'s pushed branches, so a leaked key could also get a branch of its own built as a
   preview.
-  [`the job that uses the key deploys to site-dispatch and runs only from main`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`the release event never reaches the key: start only starts main's copy`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`has no permission at the top level, and only start asks for one: actions: write`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`mints the app token for vimma-browser/vimma-site alone, with contents: write only`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`holds the app's key and no other secret, and no personal token`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`pins every action by full commit SHA and checks nothing out`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`sends the dispatch to vimma-site only`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`passes the tag and every event value to run: through env only`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`finds every form of run: script, so none escapes the env-only check`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`keeps the release event's run, a release dispatch and a bindings dispatch apart`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`fails without the app's ID or key instead of skipping the dispatch`](../../tools/test/site-dispatch-workflow.test.mjs),
-  [`never runs for a pre-release or outside vimma-browser/vimma`](../../tools/test/site-dispatch-workflow.test.mjs)
+  [`the job that uses the key deploys to site-dispatch and runs only from main`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`the release event never reaches the key: start only starts main's copy`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`has no permission at the top level, and only start asks for one: actions: write`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`mints the app token for vimma-browser/vimma-site alone, with contents: write only`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`holds the app's key and no other secret, and no personal token`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`pins every action by full commit SHA and checks nothing out`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`sends the dispatch to vimma-site only`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`passes the tag and every event value to run: through env only`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`finds every form of run: script, so none escapes the env-only check`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`keeps the release event's run, a release dispatch and a bindings dispatch apart`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`fails without the app's ID or key instead of skipping the dispatch`](../../tools/test/site-dispatch-workflow.test.ts),
+  [`never runs for a pre-release or outside vimma-browser/vimma`](../../tools/test/site-dispatch-workflow.test.ts)
 - B16. The fonts in `tests/e2e/fonts/` are binary files from outside the project that a browser
   opens: the e2e harness gives them to the scenarios' browser on Linux (issue #944), and
   no package ships them. Each **must** be an unchanged copy of an upstream release (DejaVu 2.37,

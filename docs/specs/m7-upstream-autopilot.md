@@ -128,7 +128,7 @@ month**, 14 % of the budget (was ≈ 130). Once the repo is public, hosted minut
   its step outputs and heredocs, the CLI on fixtures; PR body, draft decision, conflict list,
   size limit, fallback compare link, tracking and drift issues.
 - `tools/upstream/test/upstream-prefs.test.mjs`, `artifact-preflight.test.mjs`.
-- `tools/test/upstream-workflow.test.mjs`: schedule, per-job permissions, no secrets, no
+- `tools/test/upstream-workflow.test.ts`: schedule, per-job permissions, no secrets, no
   `pull_request_target`, SHA pins, the SHA-512 check before import, the fallback and the drift
   failure.
 - `test_patch_check.py`: the report's `revision`.

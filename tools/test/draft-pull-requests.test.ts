@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
+import type { Job, Step } from "./workflow-types.ts";
 
 // Issue #443: release-please opens its release pull request as a draft, and the heavy required
 // checks (the artifact build with the mochitests, Semgrep, CodeQL) skip a draft pull request, so
@@ -11,8 +12,7 @@ import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 // review".
 const ROOT = new URL("../../", import.meta.url);
 const dir = new URL(".github/workflows/", ROOT);
-/** @param {string} name */
-const read = (name) => readFileSync(new URL(name, dir), "utf8");
+const read = (name: string) => readFileSync(new URL(name, dir), "utf8");
 
 /** The `main` ruleset's required checks (ruleset 24842084, rule required_status_checks). */
 const REQUIRED = [
@@ -41,9 +41,8 @@ const RUNS = `!(${SKIP})`;
  * reports success under its name), `steps` skips every step and lets the job report success.
  * A matrix job must use `steps`: skipped by its own `if:`, it reports one check named with the
  * unexpanded `${{ matrix.language }}`, and the required names would never report.
- * @type {{ file: string, job: string, skip: "job" | "steps", checks: string[] }[]}
  */
-const HEAVY = [
+const HEAVY: { file: string; job: string; skip: "job" | "steps"; checks: string[] }[] = [
   { file: "e2e.yml", job: "mochitest", skip: "job", checks: ["mochitest (artifact build)"] },
   {
     file: "semgrep.yml",
@@ -60,21 +59,19 @@ const HEAVY = [
 ];
 
 /**
- * @param {Record<string, unknown>} job
- * @returns {string[]} the check names the job reports
+ * @returns the check names the job reports
  */
-function checkNames(job) {
+function checkNames(job: Job): string[] {
   const name = String(job.name ?? "");
   const m = /\$\{\{\s*matrix\.([\w-]+)\s*\}\}/.exec(name);
   if (!m?.[1]) return [name];
-  const matrix = /** @type {any} */ (job.strategy)?.matrix;
+  const matrix = job.strategy?.matrix;
   const values = matrix?.[m[1]];
   if (!Array.isArray(values)) throw new Error(`job ${name}: matrix.${m[1]} is not a list`);
   return values.map((v) => name.replace(m[0], String(v)));
 }
 
-/** @param {unknown} cond */
-const condition = (cond) => String(cond ?? "").replace(/^\$\{\{\s*|\s*\}\}$/g, "");
+const condition = (cond: unknown) => String(cond ?? "").replace(/^\$\{\{\s*|\s*\}\}$/g, "");
 
 describe("draft pull requests", () => {
   it("release-please opens the release pull request as a draft", () => {
@@ -83,10 +80,9 @@ describe("draft pull requests", () => {
   });
 
   it("every required check is reported by exactly one job", () => {
-    /** @type {string[]} */
-    const reported = [];
+    const reported: string[] = [];
     for (const file of readdirSync(dir).filter((f) => /\.ya?ml$/.test(f))) {
-      for (const job of jobs(read(file)).values()) {
+      for (const job of (jobs(read(file)) as Map<string, Job>).values()) {
         reported.push(...checkNames(job).filter((n) => REQUIRED.includes(n)));
       }
     }
@@ -97,11 +93,10 @@ describe("draft pull requests", () => {
     for (const heavy of HEAVY) skipsDraft(heavy);
   });
 
-  /** @param {(typeof HEAVY)[number]} heavy */
-  function skipsDraft(heavy) {
-    const job = /** @type {Record<string, any>} */ (jobs(read(heavy.file)).get(heavy.job));
+  function skipsDraft(heavy: (typeof HEAVY)[number]) {
+    const job = jobs(read(heavy.file)).get(heavy.job) as Job;
     expect(checkNames(job)).toEqual(heavy.checks);
-    const steps = /** @type {Record<string, unknown>[]} */ (job.steps);
+    const steps = job.steps as Step[];
     if (heavy.skip === "job") {
       expect(job.strategy, "a matrix job skipped by its if: reports no required name").toBe(
         undefined,
@@ -122,7 +117,7 @@ describe("draft pull requests", () => {
 
   it("each runs on every pull request push and when a draft is marked ready", () => {
     for (const heavy of HEAVY) {
-      const on = /** @type {Record<string, any>} */ (parseWorkflow(read(heavy.file)).on);
+      const on = parseWorkflow(read(heavy.file)).on as { pull_request: { types: string[] } };
       expect(on.pull_request.types, heavy.file).toEqual(
         expect.arrayContaining(["opened", "synchronize", "reopened", "ready_for_review"]),
       );
@@ -130,8 +125,9 @@ describe("draft pull requests", () => {
   });
 
   it("CodeQL still uploads an analysis for every pull request that is not a draft", () => {
-    const job = /** @type {Record<string, any>} */ (jobs(read("codeql.yml")).get("analyze"));
-    const uses = job.steps.map((/** @type {any} */ s) => [String(s.uses ?? ""), condition(s.if)]);
+    const job = jobs(read("codeql.yml")).get("analyze") as Job;
+    const uses = (job.steps as Step[]).map((s) => [String(s.uses ?? ""), condition(s.if)]);
+
     expect(uses).toEqual(
       expect.arrayContaining([
         [expect.stringMatching(/^github\/codeql-action\/init@/), RUNS],

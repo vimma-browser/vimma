@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/insert-focus.md
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 
 "use strict";
 
@@ -185,7 +185,7 @@ add_task(async function i_focuses_the_editor_last_used() {
 
 add_task(async function i_focuses_the_field_last_used_in_a_cross_origin_frame() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await pageFocuses(frame, "framed");
     await waitForMode(browser, "insert");
     await leaveInsert(browser);
@@ -211,11 +211,11 @@ add_task(async function i_focuses_the_field_last_used_in_a_cross_origin_frame() 
 
 add_task(async function i_falls_back_to_the_first_field_when_the_last_frame_navigated() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await pageFocuses(frame, "framed");
     await waitForMode(browser, "insert");
     await leaveInsert(browser);
-    const before = frame.currentWindowGlobal.innerWindowId;
+    const before = windowGlobalOf(frame).innerWindowId;
     // The page loads a new document into its frame; the field the user typed in is gone.
     await SpecialPowers.spawn(browser, [], () => {
       const el = /** @type {HTMLIFrameElement} */ (content.document.getElementById("frame"));
@@ -475,7 +475,7 @@ add_task(async function a_page_focusing_a_field_after_a_click_on_no_control_ente
 // Behaviour 7: a focus report the frame sent before Esc reached it does not undo the Esc.
 add_task(async function esc_right_after_tab_into_a_cross_origin_frame_stays_in_normal() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await pageFocuses(browser, "first");
     await waitForMode(browser, "insert");
     EventUtils.synthesizeKey("KEY_Tab");
@@ -511,7 +511,7 @@ add_task(async function esc_right_after_tab_into_a_cross_origin_frame_stays_in_n
 // but the parent passed the page a key.
 add_task(async function after_esc_tab_into_a_cross_origin_frame_enters_insert() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await pageFocuses(browser, "first");
     await waitForMode(browser, "insert");
     await leaveInsert(browser);

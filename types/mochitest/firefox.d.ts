@@ -321,23 +321,30 @@ interface AutoCompletePopupElement extends XULPopupElement {
   readonly popupOpen: boolean;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl: a frame's browsing context, which a test passes
-// to SpecialPowers.spawn. Firefox's own types read it as `any` (a browser's `browsingContext`), so
-// this names it for a test's JSDoc; the members are the ones the tests read.
-interface BrowsingContext {
-  readonly id: number;
-  readonly children: BrowsingContext[];
+// engine/dom/chrome-webidl/BrowsingContext.webidl (CanonicalBrowsingContext): the members the
+// tests read beyond the product's (types/firefox.d.ts). The tab's back/forward list
+// (engine/docshell/shistory/nsISHistory.idl), null for a context that keeps none.
+interface CanonicalBrowsingContext {
+  readonly sessionHistory: {
+    readonly count: number;
+    /** The current entry's index. */
+    readonly index: number;
+    getEntryAtIndex(index: number): { readonly URI: nsIURI };
+  } | null;
 }
-// The same webidl's CanonicalBrowsingContext: a browsing context as the parent process sees it,
-// the only side that has its document's global (WindowGlobalActors.webidl), once it has one.
-interface CanonicalBrowsingContext extends BrowsingContext {
-  readonly children: CanonicalBrowsingContext[];
+// The same webidl's BrowsingContext: its sandboxing flags (engine/dom/base/nsSandboxFlags.h).
+interface BrowsingContext {
+  sandboxFlags: number;
 }
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
-  readonly documentURI: { readonly spec: string } | null;
-  readonly documentPrincipal: nsIPrincipal;
   readonly isInitialDocument: boolean;
+  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
+  getActor(
+    name: "Vimma",
+  ): import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
+  /** The id of the process the document is in. */
+  readonly osPid: number;
   /**
    * A snapshot of `rect` of the global's document (the whole viewport for null), at `scale`,
    * over `backgroundColor`; the options are the webidl's DrawSnapshotOptions.

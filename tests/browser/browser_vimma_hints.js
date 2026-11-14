@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-hints.md; docs/specs/follow-link-switch.md (gF's upper-case last key)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 
 "use strict";
 
@@ -173,7 +173,7 @@ async function centres(browser, ids) {
     out.frame = { x: f.x, y: f.y };
     return out;
   });
-  const frameBC = browser.browsingContext.children[0];
+  const frameBC = contextOf(browser).children[0];
   const inner = await SpecialPowers.spawn(frameBC, [], () => {
     const framed = /** @type {HTMLElement} */ (content.document.getElementById("framed"));
     const r = framed.getBoundingClientRect();
@@ -251,7 +251,7 @@ add_task(async function a_label_follows_the_link() {
 
 add_task(async function a_label_in_a_shadow_root_and_in_a_cross_origin_frame() {
   await withPage(PAGE, async (browser) => {
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     const framed = await labelFor(browser, "framed");
     const frameLoaded = BrowserTestUtils.browserLoaded(browser, true, (u) =>
       u.endsWith("?to=framed"),
@@ -259,7 +259,7 @@ add_task(async function a_label_in_a_shadow_root_and_in_a_cross_origin_frame() {
     type(framed);
     await frameLoaded;
     Assert.ok(
-      frameBC.currentWindowGlobal.documentURI.spec.endsWith("?to=framed"),
+      !!windowGlobalOf(frameBC).documentURI?.spec.endsWith("?to=framed"),
       "the frame followed its link",
     );
     Assert.ok(
@@ -425,7 +425,9 @@ add_task(async function the_switching_action_selects_the_tab_in_either_case() {
 add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
   const segment = () =>
     document.querySelector('#vimma-statusbar [data-segment="hint"]')?.textContent ?? null;
-  await withPage(PAGE, async () => {
+  // More links in view than the hint alphabet has keys, so that some labels take two keys and
+  // a typed prefix leaves several of them.
+  await withPage(MANY, async () => {
     const hints = await startHints("gF");
     const first = hints.hints[0].label;
     const upper = first.slice(0, -1) + first.slice(-1).toUpperCase();
@@ -434,15 +436,14 @@ add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
       "the bar names both outcomes",
     );
     const long = hints.hints.find((h) => h.label.length > 1);
-    if (long) {
-      const prefix = long.label[0];
-      type(prefix);
-      const next = found(hints.hints.find((h) => h.label.startsWith(prefix))).label;
-      await TestUtils.waitForCondition(
-        () => segment()?.startsWith(`${next} background`),
-        "it follows the typed prefix",
-      );
-    }
+    Assert.ok(long, "some labels have two keys");
+    const prefix = found(long).label[0];
+    type(prefix);
+    const next = found(hints.hints.find((h) => h.label.startsWith(prefix))).label;
+    await TestUtils.waitForCondition(
+      () => segment()?.startsWith(`${next} background`),
+      "it follows the typed prefix",
+    );
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => segment() === null, "gone when hint mode ends");
     await startHints("f");
@@ -511,7 +512,7 @@ add_task(async function the_status_bar_shows_hint_mode_while_labels_are_up() {
       doc.body.append(frame);
       await loaded;
     });
-    await SpecialPowers.spawn(browser.browsingContext.children[0], [], () => {
+    await SpecialPowers.spawn(contextOf(browser).children[0], [], () => {
       content.setTimeout(() => {
         const end = Date.now() + 2000;
         while (Date.now() < end);
@@ -566,7 +567,7 @@ add_task(async function no_targets_stays_in_normal() {
 add_task(async function a_busy_frame_does_not_hold_up_the_hints() {
   await withPage(PAGE, async (browser) => {
     await SpecialPowers.pushPrefEnv({ clear: [[FRAME_TIMEOUT_PREF]] });
-    const frameBC = browser.browsingContext.children[0];
+    const frameBC = contextOf(browser).children[0];
     // The cross-origin frame's process spins for 3 s, after this reply.
     await SpecialPowers.spawn(frameBC, [], () => {
       content.setTimeout(() => {

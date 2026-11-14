@@ -527,6 +527,18 @@ function consume(e) {
   e.stopPropagation();
 }
 
+const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
+
+/**
+ * Whether `el` is a XUL <browser>: every one is a MozBrowser (browser-custom-element.mjs defines
+ * the element for the XUL namespace).
+ * @param {Element} el
+ * @returns {el is MozBrowser}
+ */
+function isBrowser(el) {
+  return el.localName === "browser" && el.namespaceURI === XUL_NS;
+}
+
 export const VimmaHost = {
   /**
    * Test-only: formatted chords seen by any window, oldest first.
@@ -1427,10 +1439,11 @@ export const VimmaHost = {
   /**
    * The content <browser> that has focus, or null when focus is in chrome (URL bar, find bar).
    * @param {BrowserWindow} win
+   * @returns {MozBrowser | null}
    */
   _focusedBrowser(win) {
     const el = win.document.activeElement;
-    return el?.localName === "browser" ? el : null;
+    return el && isBrowser(el) ? el : null;
   },
 
   /**
@@ -1955,7 +1968,7 @@ export const VimmaHost = {
     // behaviour 8). Not a reply, which the page has had already.
     const keyBrowser = this._focusedBrowser(state.win);
     if (
-      /** @type {any} */ (keyBrowser)?.isRemoteBrowser &&
+      keyBrowser?.isRemoteBrowser &&
       !(/** @type {ChromeKeyEvent} */ (e).isReplyEventFromRemoteContent) &&
       !(/** @type {any} */ (e).defaultPreventedByChrome)
     ) {

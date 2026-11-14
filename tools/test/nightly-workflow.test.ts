@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 import { tempDir } from "./temp-dir.mjs";
-import { runJobs } from "./workflow-if.mjs";
+import { runJobs } from "./workflow-if.ts";
+import type { Job, Step } from "./workflow-types.ts";
 import { readRecord } from "../update/nightly-change.mjs";
 import { PACKED, fakeTree } from "../update/test/fake-objdir.mjs";
 
@@ -15,9 +16,9 @@ import { PACKED, fakeTree } from "../update/test/fake-objdir.mjs";
 // does a nightly reach the public: its MAR is signed by update-publish.yml's mar-sign, checked,
 // listed in a cosign-signed SHA256SUMS, uploaded to the rolling `nightly` pre-release by a job
 // that runs no repository code, and offered by the nightly channel's update manifest. Reporting a
-// failure is a job of its own. Parsed as YAML (js-yaml), like self-hosted-runner.test.mjs.
+// failure is a job of its own. Parsed as YAML (js-yaml), like self-hosted-runner.test.ts.
 const TEXT = readFileSync(new URL("../../.github/workflows/nightly.yml", import.meta.url), "utf8");
-const JOBS = jobs(TEXT);
+const JOBS = jobs(TEXT) as Map<string, Job>;
 const PINNED = /^actions\/(upload|download)-artifact@[0-9a-f]{40}$/;
 /** What every job after the build needs: public nightlies and update signing both on. */
 const PUBLIC =
@@ -33,33 +34,20 @@ const CEILING = {
   issues: "write",
 };
 
-/**
- * @param {string} id
- * @returns {Record<string, any>}
- */
-function job(id) {
+function job(id: string): Job {
   const found = JOBS.get(id);
   if (!found) throw new Error(`no job ${id}`);
   return found;
 }
 
-/** @param {unknown} v */
-const oneLine = (v) =>
+const oneLine = (v: unknown) =>
   String(v ?? "")
     .replace(/\s+/g, " ")
     .trim();
 
-/**
- * @param {string} id
- * @returns {Record<string, any>[]}
- */
-const steps = (id) => /** @type {Record<string, any>[]} */ (job(id).steps ?? []);
+const steps = (id: string): Step[] => job(id).steps ?? [];
 
-/**
- * @param {string} id
- * @param {string} name
- */
-function step(id, name) {
+function step(id: string, name: string) {
   const found = steps(id).find((s) => s.name === name);
   if (!found) throw new Error(`${id}: no step ${name}`);
   return found;
@@ -68,11 +56,8 @@ function step(id, name) {
 /**
  * The one step of job `id` that uses `action` (an `owner/name` without the ref), with
  * `with.name` equal to `artifact` when that is given.
- * @param {string} id
- * @param {string} action
- * @param {string} [artifact]
  */
-function uses(id, action, artifact) {
+function uses(id: string, action: string, artifact?: string) {
   const found = steps(id).filter(
     (s) =>
       String(s.uses ?? "").startsWith(`${action}@`) &&
@@ -133,7 +118,7 @@ describe("nightly.yml: a workflow artifact, and a public nightly only when switc
 
   it("only publish can write contents, and it runs no repository code", () => {
     for (const [id, j] of JOBS) {
-      const perms = /** @type {Record<string, string>} */ (j.permissions ?? {});
+      const perms = j.permissions ?? {};
       expect(perms.contents ?? "read", id).toBe(id === "publish" ? "write" : "read");
       // The change check only reads the release, with a read-only token.
       const raw = JSON.stringify(j);
@@ -322,12 +307,15 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
     UPDATES_ENABLED: "true",
   };
   /**
-   * @param {string} event
-   * @param {{ build: string, build_id: string }} changes  the change check's outputs
-   * @param {Record<string, string>} [vars]
-   * @param {Record<string, "failure" | "cancelled">} [results]  jobs that do not succeed
+   * @param changes the change check's outputs
+   * @param results jobs that do not succeed
    */
-  function nightly(event, changes, vars = VARS, results = {}) {
+  function nightly(
+    event: string,
+    changes: { build: string; build_id: string },
+    vars: Record<string, string> = VARS,
+    results: Record<string, "failure" | "cancelled"> = {},
+  ) {
     const ran = runJobs(JOBS, {
       github: { event_name: event, ref: "refs/heads/main", repository: "vimma-browser/vimma" },
       vars,
@@ -389,8 +377,7 @@ describe("nightly.yml: an unchanged day skips the build and re-signs the manifes
     }
     for (const failed of ["build", "mar-sign", "mar", "sign", "publish"]) {
       // mar runs after a failed mar-sign only to fail on its first step ("The MAR was signed").
-      /** @type {Record<string, "failure">} */
-      const also = failed === "mar-sign" ? { mar: "failure" } : {};
+      const also: Record<string, "failure"> = failed === "mar-sign" ? { mar: "failure" } : {};
       const run = nightly("schedule", CHANGED, VARS, { [failed]: "failure", ...also });
       expect(run.started, failed).not.toContain("manifest");
       expect(run.started, failed).toContain("report");
@@ -460,11 +447,9 @@ describe.skipIf(process.platform !== "linux")("the change check's step, run", ()
     JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8")).version.version,
   );
   /**
-   * @param {"pre" | "none" | "error"} release
-   * @param {string} [sha]  main's commit
-   * @param {string} [event]
+   * @param sha main's commit
    */
-  function check(release, sha = SHA, event = "schedule") {
+  function check(release: "pre" | "none" | "error", sha: string = SHA, event: string = "schedule") {
     const dir = tempDir("vimma-nightly-changes-");
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "runner"));
@@ -535,18 +520,24 @@ esac
 // records every call.
 describe.skipIf(process.platform !== "linux")("the nightly release's steps, run", () => {
   const BUILD = "20261112030512";
-  /** @param {string} id */
-  const files = (id) => [
+  const files = (id: string) => [
     `vimma-nightly-${id}-linux-x86_64.tar.xz`,
     `vimma-nightly-${id}-linux-x86_64.complete.mar`,
   ];
 
   /**
-   * @param {{ release: "none" | "pre" | "full" | "draft" | "error", assets?: string[],
-   *   live?: string | null | "down" }} state  live: the build ID the published nightly
+   * @param state live: the build ID the published nightly
    *   manifest offers, null for a 404, "down" for an update host that does not answer
    */
-  function setUp({ release, assets = [], live = null }) {
+  function setUp({
+    release,
+    assets = [],
+    live = null,
+  }: {
+    release: "none" | "pre" | "full" | "draft" | "error";
+    assets?: string[];
+    live?: string | null | "down";
+  }) {
     const dir = tempDir("vimma-nightly-publish-");
     mkdirSync(join(dir, "bin"));
     mkdirSync(join(dir, "release"));
@@ -600,10 +591,8 @@ printf '%s' ${code}
 
   /**
    * As GitHub runs a step with no `shell:`: bash -e, without pipefail.
-   * @param {string} dir
-   * @param {string} name
    */
-  function run(dir, name) {
+  function run(dir: string, name: string) {
     const script = String(step("publish", name).run);
     const result = spawnSync("bash", ["-e", "-c", script], {
       cwd: dir,
@@ -631,8 +620,7 @@ printf '%s' ${code}
 
   const UPLOAD = "Upload to the rolling nightly release";
   const PRUNE = "Remove the files of older builds";
-  /** @param {{ calls: string[] }} r */
-  const deleted = (r) =>
+  const deleted = (r: { calls: string[] }) =>
     r.calls.filter((c) => c.startsWith("release delete-asset")).map((c) => c.split(" ")[3]);
 
   it("creates the nightly pre-release the first time, at the commit built, and uploads", () => {
@@ -665,10 +653,10 @@ printf '%s' ${code}
     expect(r.calls.some((c) => c.startsWith("release upload nightly"))).toBe(true);
   });
 
-  it.each(["full", "draft", "error"])(
+  it.each<"full" | "draft" | "error">(["full", "draft", "error"])(
     "refuses a nightly release whose state is %s, and uploads nothing",
     (release) => {
-      const r = run(setUp({ release: /** @type {any} */ (release) }), UPLOAD);
+      const r = run(setUp({ release }), UPLOAD);
       expect(r.status).not.toBe(0);
       expect(r.stdout + r.stderr).toMatch(/::error::/);
       expect(r.calls.some((c) => /^release (upload|create|edit)/.test(c))).toBe(false);
@@ -723,12 +711,10 @@ describe("nightly.yml: the MAR tools, packed and checked as release.yml's", () =
   const PACK = "MAR tools, packed and checked";
   const RELEASE = jobs(
     readFileSync(new URL("../../.github/workflows/release.yml", import.meta.url), "utf8"),
-  );
-  /** @param {string} name */
-  const releaseStep = (name) => {
-    const found = /** @type {Record<string, any>[]} */ (RELEASE.get("build")?.steps ?? []).find(
-      (s) => s.name === name,
-    );
+  ) as Map<string, Job>;
+  const releaseStep = (name: string) => {
+    const found = (RELEASE.get("build")?.steps ?? []).find((s) => s.name === name);
+
     if (!found) throw new Error(`release.yml build: no step ${name}`);
     return found;
   };
@@ -805,10 +791,7 @@ describe.skipIf(process.platform !== "linux")("nightly.yml: the failure report, 
     ],
   });
 
-  /**
-   * @param {{ open: string, runView: "ok" | "fail" | "none" }} o
-   */
-  function report({ open, runView }) {
+  function report({ open, runView }: { open: string; runView: "ok" | "fail" | "none" }) {
     const dir = tempDir("vimma-nightly-report-");
     mkdirSync(join(dir, "bin"));
     writeFileSync(join(dir, "jobs.json"), runView === "none" ? '{"jobs":[]}' : JOBS_JSON);

@@ -6,18 +6,15 @@ import { readFileSync, readdirSync } from "node:fs";
 // extracted in the same job, and restore nothing from the Actions cache. Text checks, like
 // release-workflow.test.mjs: no YAML dependency.
 const DIR = new URL("../../.github/workflows/", import.meta.url);
-/** @param {string} name */
-const workflow = (name) => readFileSync(new URL(name, DIR), "utf8");
+const workflow = (name: string) => readFileSync(new URL(name, DIR), "utf8");
 const ALL = readdirSync(DIR)
   .filter((f) => /\.ya?ml$/.test(f))
   .map((name) => ({ name, text: workflow(name) }));
 
 /**
  * The YAML block of job `id` (up to the next job at the same indent).
- * @param {string} text
- * @param {string} id
  */
-function job(text, id) {
+function job(text: string, id: string) {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
@@ -33,10 +30,8 @@ const BUILDS = [
 
 /**
  * Index of `needle` in `block`, failing the test when it is missing.
- * @param {string} block
- * @param {string} needle
  */
-function at(block, needle) {
+function at(block: string, needle: string) {
   const i = block.indexOf(needle);
   expect(i, needle).toBeGreaterThan(-1);
   return i;

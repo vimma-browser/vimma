@@ -310,17 +310,17 @@ another line in firefox-branding.js`; `refuses a re-exported patch`.
   `lists refreshed prefs with old and new values`; `lists re-exported patches`.
 - `tools/upstream/test_reexport.py`: `test_fuzz_patch_is_reexported_and_applies_clean`;
   `test_reexport_keeps_added_and_removed_lines`; `test_failed_patch_is_not_reexported`.
-- `tools/test/upstream-workflow.test.mjs`: `auto-merge only with the variable, the token, a ready
+- `tools/test/upstream-workflow.test.ts`: `auto-merge only with the variable, the token, a ready
 PR and the allowlist`; `auto-merge uses --match-head-commit`; `rebuild disables auto-merge
 before the push`; `the e2e call passes the prefs patch and no secret`.
   (Since changed: `auto-merge uses --match-head-commit` moved to
-  `tools/test/upstream-merge-workflow.test.mjs`, `reads every run and check of the head, and
+  `tools/test/upstream-merge-workflow.test.ts`, `reads every run and check of the head, and
 merges that head only, with the bump's subject`, beside `tools/upstream/test/merge-ready.test.mjs`.)
 - `tools/upstream/test/autopilot.test.mjs`: the failing-patches issue lists each failing hunk and
   links the PR and run.
-- `tools/test/upstream-workflow.test.mjs`: `patch-issue runs only on a failed patch check, with
+- `tools/test/upstream-workflow.test.ts`: `patch-issue runs only on a failed patch check, with
 issues: write and no secret`; `patch-issue updates the open issue with the same title`.
-- `tools/test/upstream-workflow.test.mjs` also covers `e2e.yml`: `a pull request run never writes
+- `tools/test/upstream-workflow.test.ts` also covers `e2e.yml`: `a pull request run never writes
 prefs`.
 - actionlint (with shellcheck) on every changed workflow.
 - Dry runs, one per sub-PR, with `gh workflow run upstream.yml -f rebuild=true` against a scratch

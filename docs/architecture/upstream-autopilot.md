@@ -59,7 +59,7 @@ when it is or may be one). `drift`, when `main` is past its limit (3 days behind
 release, 7 for a major, 14 otherwise), opens an issue and fails the run (G2). Tests:
 [releases.test.mjs](../../tools/upstream/test/releases.test.mjs),
 [autopilot.test.mjs](../../tools/upstream/test/autopilot.test.mjs) and
-[upstream-workflow.test.mjs](../../tools/test/upstream-workflow.test.mjs).
+[upstream-workflow.test.ts](../../tools/test/upstream-workflow.test.ts).
 
 ## 2. The source and the patches: `patch-check`
 
@@ -136,7 +136,7 @@ token of the org's GitHub App when one is set up, because a pull request opened 
 Tests: [autopilot.test.mjs](../../tools/upstream/test/autopilot.test.mjs) ("a ready PR only when
 patches apply, suites pass and a token starts CI", "names the first condition that did not hold"),
 [bump-diff.test.mjs](../../tools/upstream/test/bump-diff.test.mjs) and
-[upstream-workflow.test.mjs](../../tools/test/upstream-workflow.test.mjs) ("the allowlist reads
+[upstream-workflow.test.ts](../../tools/test/upstream-workflow.test.ts) ("the allowlist reads
 the branch as pushed", "rebuild disables auto-merge before the push").
 
 ## 5. The merge: `upstream-merge.yml`
@@ -160,7 +160,7 @@ App's token, whose merge, unlike one made with `GITHUB_TOKEN`, starts the push w
 `main`. GitHub's auto-merge still waits for every required check and code scanning. A red,
 cancelled or unapproved run leaves the bump for a person; re-running it green starts the decision
 again (G13). Tests: [merge-ready.test.mjs](../../tools/upstream/test/merge-ready.test.mjs) and
-[upstream-merge-workflow.test.mjs](../../tools/test/upstream-merge-workflow.test.mjs).
+[upstream-merge-workflow.test.ts](../../tools/test/upstream-merge-workflow.test.ts).
 
 ## 6. After the merge: a security release
 
@@ -185,5 +185,5 @@ Beta mode, where `bump-surfer-json.py --allow-beta` changes only that job's chec
 pushes, commits, opens a pull request or changes the Firefox pin; its only output is a
 "Firefox N beta: canary findings" issue, which the bump's pull request names when the release
 arrives (G9, G10). Tests:
-[upstream-beta-workflow.test.mjs](../../tools/test/upstream-beta-workflow.test.mjs) and
+[upstream-beta-workflow.test.ts](../../tools/test/upstream-beta-workflow.test.ts) and
 [canary.test.mjs](../../tools/upstream/test/canary.test.mjs).
