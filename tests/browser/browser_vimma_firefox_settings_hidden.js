@@ -66,7 +66,11 @@ async function assertVimmaHides(doc, selector, what, label) {
   try {
     info(`Waiting for Settings to show ${what} without Vimma's sheet${label}`);
     await TestUtils.waitForCondition(
-      () => (shown = [...doc.querySelectorAll(selector)].find((el) => el.checkVisibility())),
+      () =>
+        (shown = [...doc.querySelectorAll(selector)].find((el) =>
+          // visibility: hidden on an ancestor counts as Firefox hiding it, as display: none does.
+          el.checkVisibility({ visibilityProperty: true }),
+        )),
       `Firefox shows ${what} (${selector}) when Vimma's sheet is off${label}`,
     );
   } finally {
@@ -108,6 +112,9 @@ add_task(async function settings_hide_what_controls_nothing() {
 
 add_task(async function settings_hide_them_under_forced_colours() {
   await SpecialPowers.pushPrefEnv({ set: [["ui.useAccessibilityTheme", 1]] });
-  await settingsHideWhatControlsNothing(" under forced colours");
-  await SpecialPowers.popPrefEnv();
+  try {
+    await settingsHideWhatControlsNothing(" under forced colours");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
 });

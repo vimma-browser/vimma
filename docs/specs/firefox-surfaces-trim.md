@@ -521,18 +521,18 @@ Written first and seen to fail, by step.
   are not displayed, also with `prefers-contrast` forced (Since changed, issue
   [#997](https://github.com/vimma-browser/vimma/issues/997): each in the pane Firefox shows it in,
   and only once Firefox is seen to show it with `firefox-pages.css` taken off the page, so a
-  surface Firefox hides itself fails the test rather than passing it); that a Settings card's computed
-  `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and tab menus
-  show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app menu's
-  Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
+  surface Firefox hides itself fails the test rather than passing it); that a Settings card's
+  computed `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and
+  tab menus show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app
+  menu's Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to
   Device or Tab Overview widget, while Get Help, Share Ideas and Settings > Sync's sign-in show
   (step 4a); that the About dialog's `#contributeDesc` and mozilla.org bottom links are not
-  displayed while its licensing information link and `#communityDesc` (step 5's attribution
-  line, decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
+  displayed while its licensing information link and `#communityDesc` (step 5's attribution line,
+  decision 16) are; that the link status panel and the account panel's sign-in box take the theme's
   colours; that the error page illustrations serve the empty SVG; and that typing `about:home`,
-  `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's
-  page with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the
-  control socket and checks the tab's URL.
+  `about:newtab` and `about:welcome` ends on the start page, and `about:newtab` on Firefox's page
+  with `vimma.startpage.newtab` off. An e2e scenario types those URLs through the control socket and
+  checks the tab's URL.
 - **Strings** (step 5): the mochitest formats each patched message and asserts it contains neither
   "Vimma" nor "Mozilla" where decision 4 says so, and that the About dialog and `about:vimma` show
   the attribution line.
