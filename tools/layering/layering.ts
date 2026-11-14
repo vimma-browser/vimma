@@ -11,12 +11,14 @@
 // other eagerly, at any distance. A restricted module (the agent gate) may be imported only by
 // the modules layers.ts lists for it, whatever their layer; no module may hand it on (export it,
 // return it, pass it, store it, take a method of it uncalled: handOnsOf), and no Firefox patch
-// may name it or build a Vimma URL from parts, so a new caller is a reviewed change. No other
-// module or page may name its file in any string, a listed one names it only by its exact URL,
-// and jar.mn may not override a script or re-root Vimma's files. Tabs and line breaks, a query,
-// a fragment, `.` or `..` segments, `%` escapes or the case of a URL's scheme and host do not
-// hide an import; a string that names content/vimma/ without resolving is an error, and so is
-// one that reaches a Vimma file through resource:// (ALIAS_ROOTS), which loads a second copy.
+// may name it or build a Vimma URL from parts, so a new caller is a reviewed change. Where a rule
+// could list forms to refuse, it lists instead the one form the tree uses and refuses the rest:
+// ChromeUtils only as ChromeUtils.<name>, the loader only called directly, a lazy getter object
+// only a fresh const, the gate only by its exact URL, jar.mn and vimma/moz.build only as they
+// are, only the file types the check reads (ADR-026, "Limits of the check"). Tabs and line
+// breaks, a query, a fragment, `.` or `..` segments, `%` escapes or the case of a URL's scheme
+// and host do not hide an import; a string that names content/vimma/ without resolving is an
+// error, and so is one that reaches a Vimma file through resource:// (ALIAS_ROOTS).
 //
 // eslint's no-restricted-imports cannot do this: it sees `import` declarations only, and most of
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
@@ -46,6 +48,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { analyze, type Reference } from "eslint-scope";
 import * as espree from "espree";
 import { EXCEPTIONS, LAYERS, RESTRICTED } from "./layers.ts";
 
@@ -113,7 +116,15 @@ export interface Mention {
   from: string;
   to: string;
   line: number;
+  /** whether the string is the module's exact URL or a plain relative path to it */
+  exact?: boolean;
 }
+
+/**
+ * Text reduced to its letters and digits, in lower case: a file name searched in it cannot be
+ * hidden by an escape, a control character, markup or punctuation between its letters.
+ */
+export const lettersOnly = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /**
  * A place where a module lets a restricted module, or one of its methods, out of its own hands:
@@ -177,6 +188,9 @@ const OPTIONS =
   "loads a restricted module with an options argument, which can load a second copy of it in another global";
 /** The two loader functions whose specifiers the check reads, only where called directly. */
 const LOADERS = new Set(["importESModule", "defineESModuleGetters"]);
+const CHROMEUTILS =
+  "ChromeUtils is used other than as ChromeUtils.<name>, so the check cannot see which of its functions runs";
+const NOT_MODULE = "loads a Vimma file that is not a module (.mjs or .js)";
 
 type Resolved = { to: string } | "partial" | "unresolved" | "alias" | null;
 
@@ -199,9 +213,6 @@ const clean = (spec: string) => {
 
 /** Whether the character at `i` is a control character or a space (code 0x20 or below). */
 const isControl = (text: string, i: number) => text.charCodeAt(i) <= 0x20;
-
-/** Text without its control characters and spaces, for a search that they must not split. */
-const dropControls = (text: string) => [...text].filter((c) => !isControl(c, 0)).join("");
 
 /** A path's `.` and `..` segments resolved, as a URL parser does; `//` stays. */
 function removeDots(path: string): string {
@@ -347,11 +358,12 @@ export function scanModule(
     ecmaVersion: "latest",
     sourceType: file.endsWith(".js") ? "script" : "module",
     loc: true,
+    range: true,
   }) as unknown as AstNode;
   const edges: Edge[] = [];
   const problems: string[] = [];
   const names: Mention[] = [];
-  const bases = [...watched].map((m) => [m, posix.basename(m).toLowerCase()] as const);
+  const bases = [...watched].map((m) => [m, lettersOnly(posix.basename(m))] as const);
   /** Nodes already read by the form that holds them. */
   const done = new Set<AstNode>();
   const lineOf = (node: AstNode) => node.loc?.start.line ?? 0;
@@ -394,6 +406,13 @@ export function scanModule(
     }
     mention(spec, node);
     const r = resolveSpec(spec, file, relative);
+    // A Vimma file of another type (a .sh, a .png) would load unread.
+    const canon = canonical(spec);
+    const inside =
+      vimmaPath(canon) !== null ||
+      (relative && (canon.startsWith("./") || canon.startsWith("../")));
+    if (r === null && inside && /\.[a-z0-9]+$/i.test(canon) && !/\.m?js$/i.test(canon))
+      problem(node, NOT_MODULE);
     if (r === "partial") problem(node, PARTIAL);
     else if (r === "unresolved") problem(node, UNRESOLVED);
     else if (r === "alias") problem(node, ALIAS);
@@ -406,9 +425,15 @@ export function scanModule(
   };
   /** A string that names a restricted module's file, for restrictedErrors (Scan.names). */
   const mention = (text: string, node: AstNode) => {
-    const lower = dropControls(unescape(text)).toLowerCase();
+    const letters = lettersOnly(unescape(text));
     for (const [to, base] of bases)
-      if (lower.includes(base)) names.push({ from: file, to, line: lineOf(node) });
+      if (letters.includes(base))
+        names.push({
+          from: file,
+          to,
+          line: lineOf(node),
+          exact: loadedUrl(text, file, true) === URL_PREFIX + to,
+        });
   };
 
   const walk = (node: AstNode, lazy: boolean, invoked = false): void => {
@@ -471,12 +496,17 @@ export function scanModule(
       // Aliased, bound, called through .call or a comma, or destructured: not a load the check
       // can read.
       problem(node, LOADER);
+    } else if (node.type === "Literal" && isNode(node) && node["regex"]) {
+      const pattern = (node["regex"] as { pattern?: string }).pattern ?? "";
+      if (LOADERS.has(pattern)) problem(node, LOADER);
+      mention(pattern, node);
     } else if (node.type === "Literal" && typeof node["value"] === "string") {
       if (LOADERS.has(node["value"])) problem(node, LOADER);
       mention(node["value"], node);
       reference(node["value"], node);
     } else if (node.type === "TemplateLiteral") {
       const fixed = fixedString(node);
+      if (fixed !== null && LOADERS.has(fixed)) problem(node, LOADER);
       for (const q of (node["quasis"] as unknown[]) ?? []) {
         const cooked = isNode(q) ? (q["value"] as { cooked?: string }).cooked : undefined;
         if (typeof cooked !== "string") continue;
@@ -504,7 +534,42 @@ export function scanModule(
     done.add(node);
   };
   walk(ast, false);
+  for (const node of chromeUtilsMisuse(ast)) problem(node, CHROMEUTILS);
+  problems.sort((a, b) => lineNumber(a) - lineNumber(b));
   return { edges, problems, handOns: handOnsOf(ast, file, watched), names };
+}
+
+/** The line number in a `file:line: message` problem. */
+const lineNumber = (problem: string) => Number(/:(\d+): /.exec(problem)?.[1] ?? 0);
+
+/**
+ * Every use of `ChromeUtils` other than `ChromeUtils.<name>`: as a value, an argument, a spread,
+ * a destructuring source, an `in` operand, a computed member, or a name a module declares. Only
+ * the direct form lets the check see which function runs, and so which loader.
+ */
+function chromeUtilsMisuse(ast: AstNode): AstNode[] {
+  const out: AstNode[] = [];
+  const visit = (node: AstNode, parent: AstNode | null, key: string): void => {
+    if (node.type === "Identifier" && node["name"] === "ChromeUtils") {
+      const named =
+        parent !== null &&
+        ((parent.type === "MemberExpression" && key === "property" && !parent["computed"]) ||
+          (["Property", "MethodDefinition", "PropertyDefinition"].includes(parent.type) &&
+            key === "key" &&
+            !parent["computed"]));
+      const direct = parent?.type === "MemberExpression" && key === "object" && !parent["computed"];
+      if (!named && !direct) out.push(node);
+      return;
+    }
+    for (const [k, value] of Object.entries(node)) {
+      if (k === "loc" || k === "range") continue;
+      if (Array.isArray(value)) {
+        for (const child of value) if (isNode(child)) visit(child, node, k);
+      } else if (isNode(value)) visit(value, node, k);
+    }
+  };
+  visit(ast, null, "");
+  return out;
 }
 
 /** The restricted modules, whose hand-ons a scan looks for. */
@@ -555,6 +620,46 @@ const BINDING_KEYS: Record<string, string[]> = {
 function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): HandOn[] {
   const out: HandOn[] = [];
   if (!watched.size) return out;
+  // Scopes as the language defines them: which declaration, if any, each name read or written
+  // resolves to. A name no scope declares is a property of the shared global.
+  const scopes = analyze(ast as unknown as Parameters<typeof analyze>[0], {
+    ecmaVersion: 2022,
+    sourceType: file.endsWith(".js") ? "script" : "module",
+  });
+  const refs = new Map<unknown, Reference>();
+  for (const scope of scopes.scopes)
+    for (const ref of scope.references) refs.set(ref.identifier, ref);
+  /** Whether a name, read or written here, resolves to a declaration in scope. */
+  const local = (id: AstNode) => Boolean(refs.get(id)?.resolved);
+  /**
+   * Whether a name is a fresh object of this module's own: one `const X = {}` or
+   * `const X = Object.create(null)`, the only form a lazy getter object takes.
+   */
+  const ownObject = (id: AstNode) => {
+    const variable = refs.get(id)?.resolved;
+    const def = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+    if (def?.type !== "Variable" || (def.parent as { kind?: string } | null)?.kind !== "const")
+      return false;
+    const init = (def.node as unknown as AstNode)["init"];
+    if (!isNode(init)) return false;
+    if (init.type === "ObjectExpression")
+      return ((init["properties"] as unknown[]) ?? []).length === 0;
+    const callee = init["callee"];
+    const args = (init["arguments"] as unknown[]) ?? [];
+    return (
+      init.type === "CallExpression" &&
+      isNode(callee) &&
+      callee.type === "MemberExpression" &&
+      isNode(callee["object"]) &&
+      callee["object"]["name"] === "Object" &&
+      isNode(callee["property"]) &&
+      callee["property"]["name"] === "create" &&
+      args.length === 1 &&
+      isNode(args[0]) &&
+      args[0].type === "Literal" &&
+      args[0]["value"] === null
+    );
+  };
   const add = (node: AstNode, to: string, how: string, member?: string) =>
     out.push({
       from: file,
@@ -574,19 +679,13 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
   const parents = new Map<AstNode, AstNode>();
   const reads = new Set<AstNode>();
   const nodes: AstNode[] = [];
-  /** The names the module declares: variables, functions, classes, parameters, imports. */
-  const declared = new Set<string>();
-  type Binding = false | "declare" | "assign";
-  const visit = (node: AstNode, parent: AstNode | null, binding: Binding): void => {
+  const visit = (node: AstNode, parent: AstNode | null, binding: boolean): void => {
     if (parent) parents.set(node, parent);
     nodes.push(node);
     if (node.type === "Identifier") {
       if (!binding) reads.add(node);
-      else if (binding === "declare") declared.add(String(node["name"]));
       return;
     }
-    if (node.type.startsWith("Import") && node.type.endsWith("Specifier") && isNode(node["local"]))
-      declared.add(String(node["local"]["name"]));
     for (const [k, value] of Object.entries(node)) {
       if (k === "loc" || k === "range") continue;
       // Names that are not references: a member's or a key's name, an import's or an export's
@@ -605,9 +704,8 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       // `export { X } from "…"` names the other module's X, not a local one.
       if (node.type === "ExportNamedDeclaration" && k === "specifiers" && node["source"]) continue;
       // A member on the left of an assignment is read, not bound: `AgentGate.request = f`.
-      let bind: Binding = node.type === "MemberExpression" ? false : binding;
-      if (BINDING_KEYS[node.type]?.includes(k))
-        bind = node.type === "AssignmentExpression" ? "assign" : "declare";
+      let bind = node.type === "MemberExpression" ? false : binding;
+      if (BINDING_KEYS[node.type]?.includes(k)) bind = true;
       // A default value or a computed key inside a pattern is an expression again.
       if (node.type === "AssignmentPattern" && k === "right") bind = false;
       if (node.type === "Property" && k === "key") bind = false;
@@ -650,7 +748,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       isNode(object) &&
       object.type === "Identifier" &&
       object["name"] === "ChromeUtils" &&
-      !declared.has("ChromeUtils") &&
+      !local(object) &&
       !callee["computed"] &&
       isNode(property) &&
       ["defineESModuleGetters", "defineLazyGetter"].includes(String(property["name"]))
@@ -713,7 +811,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
         else keys.set(key, to);
       }
       if (!keys.size) continue;
-      if (isNode(on) && on.type === "Identifier" && declared.has(String(on["name"])))
+      if (isNode(on) && on.type === "Identifier" && ownObject(on))
         hold(String(on["name"]), { kind: "lazy", keys }, node);
       else
         for (const to of new Set(keys.values()))
@@ -760,7 +858,8 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       const value = prop["value"];
       if (!isNode(value) || !isNode(prop["key"])) continue;
       const key = keyName(prop["key"], Boolean(prop["computed"]));
-      const to = h.kind === "ns" ? h.to : key === null ? undefined : h.keys.get(key);
+      // A computed key the check cannot read may be any of the lazy object's getters.
+      const to = h.kind === "ns" ? h.to : key === null ? [...h.keys.values()][0] : h.keys.get(key);
       const inner = value.type === "AssignmentPattern" ? value["left"] : value;
       if (to && isNode(inner)) changed = bindPattern(inner, { kind: "value", to }, at) || changed;
     }
@@ -778,9 +877,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       ) {
         // An assignment makes an alias only of a name the module declares; any other is a
         // store on the shared global (`vimmaLeak = AgentGate`), which check() reports.
-        const alias =
-          node.type === "VariableDeclarator" ||
-          (id.type === "Identifier" && declared.has(String(id["name"])));
+        const alias = node.type === "VariableDeclarator" || (id.type === "Identifier" && local(id));
         const h = alias ? holdOf(init) : null;
         if (h) changed = bindPattern(id, h, node) || changed;
       }
@@ -790,6 +887,37 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
     add(at, to, "gives a name a second, different hold of");
 
   const toOf = (h: Hold) => (h.kind === "lazy" ? [...new Set(h.keys.values())] : [h.to]);
+  /**
+   * Checks a destructuring pattern that takes apart a value holding `h`, at any depth: under
+   * the gate itself each key is a member read (a getter passes, a method fails); under its
+   * namespace or a lazy object each key that may be the gate is checked again; a name is an
+   * alias, whose own uses are checked; any other pattern lets it out.
+   */
+  const checkPattern = (pattern: AstNode, h: Hold): void => {
+    if (pattern.type === "Identifier") return;
+    if (pattern.type === "AssignmentPattern" && isNode(pattern["left"]))
+      return checkPattern(pattern["left"], h);
+    if (pattern.type !== "ObjectPattern") {
+      for (const to of toOf(h)) add(pattern, to, "hands on");
+      return;
+    }
+    for (const prop of (pattern["properties"] as unknown[]) ?? []) {
+      if (!isNode(prop)) continue;
+      if (prop.type === "RestElement") {
+        if (h.kind === "value") add(prop, h.to, "hands on");
+        continue;
+      }
+      const key = isNode(prop["key"]) ? keyName(prop["key"], Boolean(prop["computed"])) : null;
+      const value = prop["value"];
+      if (h.kind === "value") {
+        if (key === null) add(prop, h.to, "takes a member, uncalled, of", "");
+        else add(prop, h.to, `takes the method ${key}, uncalled, of`, key);
+        continue;
+      }
+      const to = h.kind === "ns" ? h.to : key === null ? [...h.keys.values()][0] : h.keys.get(key);
+      if (to && isNode(value)) checkPattern(value, { kind: "value", to });
+    }
+  };
   /** Checks where an expression that holds `h` goes (see the function's comment). */
   const check = (node: AstNode, h: Hold): void => {
     const { expr, parent } = up(node);
@@ -829,29 +957,16 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       parent["callee"] === expr
     )
       return;
-    if (parent.type === "VariableDeclarator" && parent["init"] === expr) {
-      const id = parent["id"];
-      if (isNode(id) && id.type === "Identifier") return;
-      if (isNode(id) && id.type === "ObjectPattern" && h.kind === "value") {
-        for (const prop of (id["properties"] as unknown[]) ?? []) {
-          if (!isNode(prop)) continue;
-          const key =
-            prop.type === "Property" && isNode(prop["key"])
-              ? keyName(prop["key"], Boolean(prop["computed"]))
-              : null;
-          if (key === null) add(prop, h.to, "hands on");
-          else add(prop, h.to, `takes the method ${key}, uncalled, of`, key);
-        }
-        return;
-      }
-      if (isNode(id) && id.type === "ObjectPattern") return;
+    if (parent.type === "VariableDeclarator" && parent["init"] === expr && isNode(parent["id"])) {
+      checkPattern(parent["id"], h);
+      return;
     }
     if (
       parent.type === "AssignmentExpression" &&
       parent["right"] === expr &&
       isNode(parent["left"]) &&
       parent["left"].type === "Identifier" &&
-      declared.has(String(parent["left"]["name"]))
+      local(parent["left"])
     )
       return;
     if (
@@ -960,15 +1075,31 @@ export function importsOf(source: string, file: string): Edge[] {
 const decodeEntities = (text: string) =>
   text.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);?/gi, (_, ref: string) => {
     const r = ref.toLowerCase();
-    if (r.startsWith("#x")) return String.fromCodePoint(parseInt(r.slice(2), 16) || 0xfffd);
-    if (r.startsWith("#")) return String.fromCodePoint(parseInt(r.slice(1), 10) || 0xfffd);
+    if (r.startsWith("#"))
+      return codePoint(r.startsWith("#x") ? parseInt(r.slice(2), 16) : parseInt(r.slice(1), 10));
     return { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[r] ?? "";
   });
 
+/** A character by its code, U+FFFD for none or one past U+10FFFF, as a parser reads it. */
+const codePoint = (code: number) =>
+  String.fromCodePoint(Number.isFinite(code) && code > 0 && code <= 0x10ffff ? code : 0xfffd);
+
+/** The five named references a page may use; the check refuses any other (ENTITY). */
+const NAMED = new Set(["amp", "quot", "apos", "lt", "gt"]);
+const ENTITY =
+  "a page may use only the character references &amp; &quot; &apos; &lt; &gt; and numeric ones, which the check decodes";
+const INLINE = "an inline <script> is not read; load the code from a module file";
+const RISKY =
+  "an on… event attribute, srcdoc or <base> changes what a page runs or loads in a way the check does not read";
+
 /**
- * The modules a page under vimma/ loads (`<script src>`, `<link href>`, quoted or not, with
- * character references decoded), as eager edges, and the lines that name a restricted module's
- * file (Scan.names). An inline `<script>` is a problem: its imports would go unread.
+ * The modules a page under vimma/ loads (`<script src>`, `<link href>`), as eager edges, and
+ * the lines that name a restricted module's file (Scan.names). The page is read whole, as its
+ * parser reads it: an attribute value may span lines (a URL parser drops the line breaks),
+ * quoted or not, with numeric references and the five named ones decoded. Anything the check
+ * cannot read is a problem: another named reference, an inline `<script>` (any case, with or
+ * without `src`), an `on…` event attribute, `srcdoc`, or `<base>`. Every search moves forward
+ * only, so a page is read in linear time.
  * @param html  the page's text
  * @param file  its path relative to vimma/
  */
@@ -980,28 +1111,85 @@ export function htmlImports(
   const edges: Edge[] = [];
   const problems: string[] = [];
   const names: Mention[] = [];
-  const bases = [...watched].map((m) => [m, posix.basename(m).toLowerCase()] as const);
-  html.split("\n").forEach((raw, i) => {
-    const text = decodeEntities(raw);
-    const lower = dropControls(text).toLowerCase();
-    for (const [to, base] of bases)
-      if (lower.includes(base)) names.push({ from: file, to, line: i + 1 });
-    for (const m of text.matchAll(
-      /\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi,
-    )) {
-      const r = resolveSpec(m[1] ?? m[2] ?? m[3] ?? "", file, true);
-      if (r === "alias") problems.push(`${file}:${i + 1}: ${ALIAS}`);
-      else if (typeof r === "object" && r !== null && !r.to.endsWith("/"))
-        edges.push({ from: file, to: r.to, kind: "eager", line: i + 1 });
+  const starts = [0];
+  for (let i = html.indexOf("\n"); i >= 0; i = html.indexOf("\n", i + 1)) starts.push(i + 1);
+  /** The line of an offset in the page. */
+  const lineAt = (offset: number) => {
+    let lo = 0;
+    let hi = starts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if ((starts[mid] ?? 0) <= offset) lo = mid;
+      else hi = mid - 1;
     }
+    return lo + 1;
+  };
+  const problem = (offset: number, message: string) => {
+    const text = `${file}:${lineAt(offset)}: ${message}`;
+    if (!problems.includes(text)) problems.push(text);
+  };
+  for (const m of html.matchAll(/&([a-z][a-z0-9]*)/gi))
+    if (!NAMED.has((m[1] ?? "").toLowerCase())) problem(m.index, ENTITY);
+
+  const bases = [...watched].map((m) => [m, lettersOnly(posix.basename(m))] as const);
+  html.split("\n").forEach((raw, i) => {
+    const letters = lettersOnly(decodeEntities(raw));
+    for (const [to, base] of bases)
+      if (letters.includes(base)) names.push({ from: file, to, line: i + 1 });
   });
-  for (const m of html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>([\s\S]*?)<\/script>/g)) {
-    if (!(m[1] ?? "").trim()) continue;
-    const line = html.slice(0, m.index).split("\n").length;
-    problems.push(
-      `${file}:${line}: an inline <script> is not read; load the code from a module file`,
-    );
+  const whole = lettersOnly(decodeEntities(html));
+  for (const [to, base] of bases)
+    if (whole.includes(base) && !names.some((n) => n.to === to))
+      names.push({ from: file, to, line: 1 });
+
+  // Attributes: a regex finds each name, and the value is read by hand, so an unclosed quote
+  // ends the search instead of being tried again from every later attribute.
+  const attribute = /(?<![\w-])(src|href|srcdoc|on[a-z]+)\s*=\s*/gi;
+  for (let m = attribute.exec(html); m; m = attribute.exec(html)) {
+    const name = (m[1] ?? "").toLowerCase();
+    const at = m.index;
+    let pos = attribute.lastIndex;
+    let value: string;
+    const quote = html[pos];
+    if (quote === '"' || quote === "'") {
+      const close = html.indexOf(quote, pos + 1);
+      value = html.slice(pos + 1, close < 0 ? html.length : close);
+      pos = close < 0 ? html.length : close + 1;
+    } else {
+      let end = pos;
+      while (end < html.length && !/[\s>]/.test(html[end] ?? "")) end++;
+      value = html.slice(pos, end);
+      pos = end;
+    }
+    attribute.lastIndex = pos;
+    if (name !== "src" && name !== "href") {
+      problem(at, RISKY);
+      continue;
+    }
+    const r = resolveSpec(clean(decodeEntities(value)), file, true);
+    if (r === "alias") problem(at, ALIAS);
+    else if (typeof r === "object" && r !== null && !r.to.endsWith("/"))
+      edges.push({ from: file, to: r.to, kind: "eager", line: lineAt(at) });
   }
+
+  const lower = html.toLowerCase();
+  for (let at = lower.indexOf("<base"); at >= 0; at = lower.indexOf("<base", at + 5))
+    if (/[\s>/]/.test(lower[at + 5] ?? "")) problem(at, RISKY);
+  // Inline scripts: each search starts where the last one ended.
+  for (let at = lower.indexOf("<script"); at >= 0;) {
+    if (!/[\s>/]/.test(lower[at + 7] ?? "")) {
+      at = lower.indexOf("<script", at + 7);
+      continue;
+    }
+    const open = lower.indexOf(">", at);
+    if (open < 0) break;
+    const close = lower.indexOf("</script", open);
+    const body = html.slice(open + 1, close < 0 ? html.length : close);
+    if (body.trim()) problem(at, INLINE);
+    if (close < 0) break;
+    at = lower.indexOf("<script", close + 8);
+  }
+  problems.sort((a, b) => lineNumber(a) - lineNumber(b));
   return { edges, problems, names };
 }
 
@@ -1012,35 +1200,56 @@ export function htmlImports(
  */
 export function jarErrors(jar: string): string[] {
   const errors: string[] = [];
+  /** A file that runs code: a module, a script or a page. */
+  const runs = (path: string) => /\.(m?js|x?html?)$/i.test(path);
   jar.split("\n").forEach((text, i) => {
-    // A manifest line could override a module's URL with another file, or map a new chrome
-    // or resource root onto Vimma's files: either loads code the check never reads, or a second
-    // copy. Only overrides of non-script files outside Vimma's content may stand.
+    // A manifest line could override a module's or a page's URL with another file, or map a
+    // new chrome or resource root onto Vimma's files: either loads code the check never reads,
+    // or a second copy. Only what the tree has may stand: one .svg image over another, both
+    // outside Vimma's content.
     const manifest = /^\s*%\s*(\S+)\s*(.*)$/.exec(text);
     if (manifest) {
       const [, directive = "", rest = ""] = manifest;
       const urls = rest.split(/\s+/).filter(Boolean);
-      const unsafe = (url: string) => {
+      const image = (url: string) => {
         const canon = canonical(url);
         return (
-          /\.m?js$/i.test(canon) || vimmaPath(canon) !== null || /content\/vimma(\/|$)/i.test(canon)
+          /\.svg$/i.test(canon) && vimmaPath(canon) === null && !/content\/vimma(\/|$)/i.test(canon)
         );
       };
-      if (directive !== "override" || urls.length < 2 || urls.some(unsafe))
+      if (directive !== "override" || urls.length !== 2 || !urls.every(image))
         errors.push(
-          `jar.mn:${i + 1}: a manifest line here may only override a file that is no script, outside content/vimma/: no line may swap, re-root or register a Vimma module`,
+          `jar.mn:${i + 1}: a manifest line here may only override one .svg image with another, outside content/vimma/: no line may swap, re-root or register a Vimma module`,
         );
       return;
     }
-    const m = /^\s*content\/browser\/vimma\/(\S+)\s+\((\S+)\)/.exec(text);
-    if (!m) return;
-    const [, url = "", from = ""] = m;
+    // A preprocessed line packages a file the preprocessor rewrites first.
+    if (/^\s*\*/.test(text)) {
+      errors.push(
+        `jar.mn:${i + 1}: a preprocessed (*) line is not read by the check; package Vimma's files as they are`,
+      );
+      return;
+    }
+    const line = /^\s*(\S+)\s+\((\S+)\)\s*$/.exec(text);
+    if (!line) return;
+    const [, target = "", from = ""] = line;
+    const inside = target.startsWith("content/browser/vimma/");
+    const url = inside ? target.slice("content/browser/vimma/".length) : "";
     const moved = from.includes("*")
-      ? !from.startsWith(`${url}/`)
-      : /\.m?js$/.test(url) && from !== url;
-    if (moved)
+      ? !inside || !from.startsWith(`${url}/`)
+      : inside && /\.m?js$/.test(url) && from !== url;
+    // A file of vimma/ (a relative source) or anything that runs is packaged only as itself.
+    const misplaced =
+      !from.includes("*") &&
+      (runs(target) || runs(from) || !from.startsWith("/")) &&
+      (!inside || from !== url);
+    if (moved && inside)
       errors.push(
         `jar.mn:${i + 1}: content/browser/vimma/${url} is packaged from ${from}; a module's URL must be its source path`,
+      );
+    else if (moved || misplaced)
+      errors.push(
+        `jar.mn:${i + 1}: a script or page may be packaged only from vimma/, under its own path in content/browser/vimma/`,
       );
   });
   return errors;
@@ -1139,8 +1348,17 @@ export function restrictedErrors(
     const named = new Set<string>();
     for (const n of names) {
       const at = `${n.from}:${n.line}`;
-      if (n.to !== module || allowed.has(n.from) || n.from === module) continue;
-      if (imported.has(at) || named.has(at)) continue;
+      if (n.to !== module || n.from === module || named.has(at)) continue;
+      if (allowed.has(n.from)) {
+        // A listed module names it only to load it, by the URL of the one copy.
+        if (n.exact) continue;
+        named.add(at);
+        errors.push(
+          `${at}: names the file of ${module} other than by its exact chrome:// URL or a plain relative path: ${review}`,
+        );
+        continue;
+      }
+      if (imported.has(at)) continue;
       named.add(at);
       errors.push(
         `${at}: names the file of ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import: ${review}, then a line there`,
@@ -1162,10 +1380,14 @@ export function restrictedErrors(
  */
 function decodeEscapes(line: string): string {
   return decodeEntities(line)
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/&[a-z][a-z0-9]*;/gi, "")
     .replace(/\\u\{([0-9a-f]{1,6})\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi, (_, a, b, c) =>
-      String.fromCodePoint(Math.min(parseInt(String(a ?? b ?? c), 16), 0x10ffff)),
+      codePoint(parseInt(String(a ?? b ?? c), 16)),
     )
-    .replace(/\\[tnr]|[\t\r\n]/g, "");
+    .replace(/\\([0-7]{1,3})/g, (_, octal: string) => codePoint(parseInt(octal, 8)))
+    .replace(/\\[tnr]|[\t\r\n]/g, "")
+    .replace(/\\/g, "");
 }
 
 /**
@@ -1183,7 +1405,7 @@ export function patchErrors(
   restricted: Record<string, Restricted>,
 ): string[] {
   const errors: string[] = [];
-  const files = Object.keys(restricted).map((m) => [m, posix.basename(m).toLowerCase()] as const);
+  const files = Object.keys(restricted).map((m) => [m, lettersOnly(posix.basename(m))] as const);
   for (const { file, text } of patches)
     text.split("\n").forEach((line, i) => {
       if (!line.startsWith("+") || line.startsWith("+++")) return;
@@ -1205,7 +1427,8 @@ export function patchErrors(
           pieces.push(url);
       }
       const lower = unescape(decoded).toLowerCase();
-      for (const [module, base] of files) if (lower.includes(base)) named.add(module);
+      const letters = lettersOnly(lower);
+      for (const [module, base] of files) if (letters.includes(base)) named.add(module);
       if (/content\/browser\/vimma/i.test(lower))
         errors.push(
           `${file}:${i + 1}: maps or names Vimma's packaged files by their path (content/browser/vimma); only vimma/jar.mn packages them`,
@@ -1391,6 +1614,13 @@ function trackedPatches(root: string): { file: string; text: string }[] {
     .map((file) => ({ file, text: readFileSync(join(root, file), "utf8") }));
 }
 
+/** The files git tracks under a folder of the repository, relative to the repository. */
+function gitFiles(root: string, folder: string): string[] {
+  return execFileSync("git", ["ls-files", "-z", "--", folder], { cwd: root, encoding: "utf8" })
+    .split("\0")
+    .filter(Boolean);
+}
+
 /** Everything `npm run layering` checks in the tree at `root`, and the edges it read. */
 export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
   const { edges, problems, handOns = [], names = [] } = treeScan(root);
@@ -1401,8 +1631,14 @@ export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
     }),
   );
   const jar = readFileSync(join(root, VIMMA, "jar.mn"), "utf8");
+  const vimmaFiles = gitFiles(root, VIMMA).map((f) => f.slice(VIMMA.length));
+  const mozBuild = join(root, VIMMA, "moz.build");
+  const core = gitFiles(root, "packages/vimma-core/src/").filter((f) => /\.m?js$/.test(f));
   const errors = [
     ...problems,
+    ...fileTypeErrors(vimmaFiles),
+    ...(existsSync(mozBuild) ? mozBuildErrors(readFileSync(mozBuild, "utf8")) : []),
+    ...core.flatMap((f) => coreErrors(readFileSync(join(root, f), "utf8"), f)),
     ...jarErrors(jar),
     ...danglingEdges(edges, new Set(trackedFiles(root)), jarModules(jar)),
     ...exceptionErrors(EXCEPTIONS),
@@ -1415,6 +1651,107 @@ export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
     ),
   ];
   return { edges, errors };
+}
+
+/**
+ * The file types under vimma/: those the check reads (modules, scripts, pages) and those that
+ * cannot carry code it would miss (docs, the build files it reads itself, images, the theme
+ * hook's shell script, which no module can import as one: NOT_MODULE). A new type needs a
+ * reader first, so that no page or script hides in a format the check skips.
+ */
+const FILE_TYPES = new Set(["mjs", "js", "html", "md", "mn", "build", "png", "sh"]);
+
+/**
+ * Files under vimma/ of a type the check does not know (FILE_TYPES).
+ * @param files  every file git tracks under vimma/, relative to it
+ */
+export function fileTypeErrors(files: string[]): string[] {
+  return files
+    .filter((f) => !FILE_TYPES.has(/\.([a-z0-9]+)$/i.exec(f)?.[1]?.toLowerCase() ?? ""))
+    .map(
+      (f) =>
+        `vimma/${f}: a file type the check does not read; teach tools/layering/layering.ts to read it first`,
+    );
+}
+
+/** The variables vimma/moz.build sets today; any other could export a module elsewhere. */
+const MOZ_BUILD_VARIABLES = new Set(["JAR_MANIFESTS", "BROWSER_CHROME_MANIFESTS"]);
+
+/**
+ * Statements of vimma/moz.build other than the two it has: EXTRA_JS_MODULES, MOZ_SRC_FILES or
+ * any other variable could ship a Vimma module under resource:// or moz-src:// as well, a
+ * second copy with its own state. Each statement at bracket depth 0 must set one of
+ * MOZ_BUILD_VARIABLES.
+ * @param text  vimma/moz.build's text
+ */
+export function mozBuildErrors(text: string): string[] {
+  const errors: string[] = [];
+  let depth = 0;
+  text.split("\n").forEach((raw, i) => {
+    const line = raw.replace(/#.*$/, "");
+    if (depth === 0 && line.trim()) {
+      const name = /^([A-Za-z_][A-Za-z0-9_]*)\s*\+?=/.exec(line)?.[1];
+      if (!name || !MOZ_BUILD_VARIABLES.has(name))
+        errors.push(
+          `vimma/moz.build:${i + 1}: may set only JAR_MANIFESTS and BROWSER_CHROME_MANIFESTS, so that no Vimma file is exported under another URL`,
+        );
+    }
+    for (const c of line) depth += c === "[" || c === "(" ? 1 : c === "]" || c === ")" ? -1 : 0;
+  });
+  return errors;
+}
+
+/**
+ * What vimma-core must not do, since the layering check does not read core/ (a copy made at
+ * build time): reach a loader or Firefox through `import()`, `globalThis`, `eval` or
+ * `Function`, or name a restricted module's file. eslint's purity rules (ADR-005) refuse
+ * Firefox's URLs in `import` declarations and Firefox's globals by name; these close the
+ * reflective ways around them.
+ * @param source  a vimma-core source file's text
+ * @param file  its path, for the error
+ */
+export function coreErrors(source: string, file: string): string[] {
+  const ast = espree.parse(source, {
+    ecmaVersion: "latest",
+    sourceType: "module",
+    loc: true,
+  }) as unknown as AstNode;
+  const lines = new Set<number>();
+  const bases = Object.keys(RESTRICTED).map((m) => lettersOnly(posix.basename(m)));
+  const visit = (node: AstNode, parent: AstNode | null, key: string): void => {
+    const name = node.type === "Identifier" ? String(node["name"]) : null;
+    const named =
+      parent !== null &&
+      ((parent.type === "MemberExpression" && key === "property" && !parent["computed"]) ||
+        (parent.type === "Property" && key === "key" && !parent["computed"]));
+    const text =
+      node.type === "Literal"
+        ? typeof node["value"] === "string"
+          ? node["value"]
+          : ((node["regex"] as { pattern?: string } | undefined)?.pattern ?? "")
+        : node.type === "TemplateElement"
+          ? ((node["value"] as { cooked?: string }).cooked ?? "")
+          : "";
+    if (
+      node.type === "ImportExpression" ||
+      (name !== null && !named && ["globalThis", "eval", "Function"].includes(name)) ||
+      bases.some((b) => text && lettersOnly(text).includes(b))
+    )
+      lines.add(node.loc?.start.line ?? 0);
+    for (const [k, value] of Object.entries(node)) {
+      if (k === "loc" || k === "range") continue;
+      if (Array.isArray(value)) {
+        for (const child of value) if (isNode(child)) visit(child, node, k);
+      } else if (isNode(value)) visit(value, node, k);
+    }
+  };
+  visit(ast, null, "");
+  return [...lines]
+    .sort((a, b) => a - b)
+    .map(
+      (n) =>
+        `${file}:${n}: vimma-core may not use import(), globalThis, eval or Function, nor name a restricted module's file: the layering check does not read core/`,
+    );
 }
 
 /** Folders of vimma/ that git tracks and that have no README.md. */

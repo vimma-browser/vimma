@@ -996,24 +996,33 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](specs/vimma-mcp.md), [ADR-019](adr/019-agents-over-mcp.md).
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
-`tools/layering/layers.ts`): `npm run layering` fails on any other module or page of `vimma/`
-that loads it or names its file in any string, whatever the URL's tabs and line breaks, query,
-fragment, `.` and `..` segments, `%` escapes or case of scheme and host; on a `resource://` URL
-to the packaged files, and on a listed module that names the gate by anything but its exact
+`tools/layering/layers.ts`). `npm run layering` fails on any other module or page of `vimma/`
+(`core/` aside: a copy of vimma-core, whose sources eslint keeps free of Firefox's URLs and
+globals and the layering check keeps free of `import()`, `globalThis`, `eval`, `Function` and
+the gate's file name) that loads the gate or names its file in a string, a template string or
+a regular expression. A URL's tabs, line breaks, query, fragment, `.` and `..` segments, `%`
+escapes or case of scheme and host do not hide a load. It fails on a `resource://` URL to the
+packaged files, and on a listed module that names the gate by anything but its exact
 `chrome://` URL or a plain relative path, or with an options argument, since each would load a
-second gate with its own grants; on a module that lets the gate object or one of its methods out
-(an export, a return, an argument, an array, an object or a field holding it, a store on an
-object, on `globalThis` or on an undeclared name, a method taken without a call, a member
-replaced or deleted), however it got it (`import`, `ChromeUtils.importESModule`, `import()`, a
-lazy getter) and through local aliases; on the module loader reached other than by a direct
-call; on a `jar.mn` line that overrides a script or maps a root onto Vimma's files; and on an
-added line of a Firefox patch that names the gate's file or holds a Vimma URL that names no
-file. So a new caller, such as the parent actor, is reviewed against this section first. The
-check does not follow a function that calls the gate for someone else (an exported wrapper, a
-callback or a listener handed out), what a call or a getter of the gate returns (the
-connections' labels and a waiting question's `label` are shared objects), code run from a
-string, or a URL assembled from finer pieces than ADR-026 "Limits of the check" lists; a review
-of a listed module's change, or of a new patch, looks for those.
+second gate with its own grants. It fails on a module that lets the gate object or one of its
+methods out: an export, a return, an argument, an array, an object or a field holding it, a
+store on an object or on a name no scope declares, a method taken without a call (also by
+destructuring, at any depth), a member replaced or deleted, or getters for it defined on
+anything but a fresh `const` object of the module's own (`{}` or
+`Object.create(null)`). That holds however the module got it
+(`import`, `ChromeUtils.importESModule`, `import()`, a lazy getter) and through its aliases. It
+also fails on `ChromeUtils` used other than as `ChromeUtils.<name>`, on the loader reached
+other than by a direct call, on a computed specifier where a module loads, on a `jar.mn` line
+that packages a script or page anywhere but under its own path or overrides anything but an
+`.svg` image, on a `vimma/moz.build` line that sets anything but its two manifests, on a file
+under `vimma/` of a type the check does not read, and on an added line of a Firefox patch that
+names the gate's file or holds a Vimma URL that names no file. So a new caller, such as the
+parent actor, is reviewed against this section first. The check does not follow a function
+that calls the gate for someone else (an exported wrapper, a callback or a listener handed
+out), what a call or a getter of the gate returns (the connections' labels and a waiting
+question's `label` are shared objects, issue #1018), code run from a string, reflection that
+does not name `ChromeUtils`, or a URL assembled from finer pieces than ADR-026 "Limits of the
+check" lists; a review of a listed module's change, or of a new patch, looks for those.
 [`a new importer of the agent gate fails, in host/ or a higher folder alike`](../tools/layering/test/layering.test.ts),
 [`a function that returns it, a list or a static field that holds it`](../tools/layering/test/layering.test.ts),
 [`one of its methods, bound or not`](../tools/layering/test/layering.test.ts),
@@ -1031,6 +1040,19 @@ of a listed module's change, or of a new patch, looks for those.
 [`handOnsOf: holders a name could hide`](../tools/layering/test/layering.test.ts),
 [`scanModule: a listed importer may not load a second gate`](../tools/layering/test/layering.test.ts),
 [`jarErrors: manifest lines`](../tools/layering/test/layering.test.ts),
+[`scanModule: ChromeUtils is read only as ChromeUtils.<name>`](../tools/layering/test/layering.test.ts),
+[`handOnsOf: a lazy getter object is a fresh local object, bound once`](../tools/layering/test/layering.test.ts),
+[`handOnsOf: an assignment to a name no scope declares is a store on the global`](../tools/layering/test/layering.test.ts),
+[`handOnsOf: nested and computed destructuring`](../tools/layering/test/layering.test.ts),
+[`htmlImports: a page is read whole, as the parser reads it`](../tools/layering/test/layering.test.ts),
+[`jarErrors: scripts and pages are packaged only under their own path`](../tools/layering/test/layering.test.ts),
+[`scanModule: only module files are loaded`](../tools/layering/test/layering.test.ts),
+[`patchErrors: escapes and markup that hide the gate's file name`](../tools/layering/test/layering.test.ts),
+[`fileTypeErrors: every file under vimma/ is of a type the check reads or packages`](../tools/layering/test/layering.test.ts),
+[`mozBuildErrors: vimma/moz.build exports no module`](../tools/layering/test/layering.test.ts),
+[`restrictedErrors: a listed module names the gate's file only by its exact URL`](../tools/layering/test/layering.test.ts),
+[`coreErrors: vimma-core reaches no loader the layering check cannot read`](../tools/layering/test/layering.test.ts),
+[`treeErrors: file types, vimma/moz.build and vimma-core are read too`](../tools/layering/test/layering.test.ts),
 [`htmlImports: entities, unquoted attributes and the gate's file name`](../tools/layering/test/layering.test.ts),
 [`JS escapes, tabs and a new root over Vimma's files fail`](../tools/layering/test/layering.test.ts)
 
