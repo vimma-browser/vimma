@@ -2176,17 +2176,23 @@ for the user.
   still being read when the user leaves the transcript **must not** be sent, nor its notice
   asked: it stays in the input, and a notice says so. A second Enter while that key is read
   **must not** send the message again (nor as steering into the task the first one starts): it
-  stays in the input, and a notice says so. Text in the input belongs to the conversation it
+  stays in the input, and a notice says so. A message edited while its key is read **must
+  not** be sent, neither the text of the first Enter nor the edit: the edit stays in the input,
+  and a notice says so. Text in the input belongs to the conversation it
   was typed in: switching conversations keeps each one's input apart, and a message that was
   not sent or was refused goes back to its own conversation's input, never to the one shown
   after a switch, so Enter sends nothing to a provider it was not written for; a notice names
   the conversation that keeps it. Text put back goes before what the user typed since, never
-  over it, and the notice says where it is.
+  over it, and the notice says where it is. A conversation deleted while its message waits
+  takes the message with it, and `:agent forget all` leaves no text for the next conversation.
   [`test_external_provider_notice_before_first_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_send_waiting_for_its_key_hint_is_sent_only_if_the_user_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_second_enter_while_a_send_reads_its_key_sends_nothing_twice`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_message_kept_unsent_stays_with_its_own_conversation`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_refused_send_keeps_both_its_message_and_what_was_typed_since`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_message_edited_while_its_key_is_read_is_not_sent`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_conversation_deleted_while_its_key_is_read_takes_its_message`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_forget_all_leaves_no_text_for_the_next_conversation`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs)
 - M46. A hosted provider's key **must** be typed only into the window's password field, which
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
@@ -2206,12 +2212,15 @@ for the user.
   key field or the picker over another view nor takes focus from the field, prompt or page the
   user is typing in: the pick is not used, the message is not sent (or, refused, stays in the
   input), each with a notice, and the stored key changes no conversation's model, which its
-  notice says, with how to use the key and never the key's text; of two picks, the later is
-  used. A key stored after focus left the window leaves the transcript shown, unfocused,
+  notice says, with how to use the key (unless the key was asked for the shown conversation's
+  own model) and never the key's text; of two picks, the later is used. A key stored after focus left the window leaves the transcript shown, unfocused,
   instead of an empty key field for no provider. Opening the window the first time, which
   waits for the stored conversations to be decrypted, **must not** take focus from a user who
-  moved elsewhere meanwhile: it opens without focus, and what was to follow (`:agent give`'s
-  question) is not asked. A second key entered while one is being stored is
+  moved meanwhile to another field of the window's chrome (the address bar, the command line)
+  or to another tab: it opens without focus, and what was to follow is not done, with a notice
+  (`:agent give`'s question is not asked; `:agent forget all`'s y/N is not asked, so a typed y
+  deletes nothing). A move between two fields of the same page, or inside one shadow host, is
+  not seen by this check, as the chrome document's focused element stays the same. A second key entered while one is being stored is
   not stored, and a notice without its text says so. A provider that needs a key and has none
   for its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
@@ -2247,6 +2256,9 @@ for the user.
   [`test_a_key_stored_after_focus_left_the_window_takes_no_focus`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_key_stored_after_the_field_was_left_says_the_model_is_unchanged`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_opening_on_first_use_takes_focus_only_from_a_user_who_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_agent_give_on_first_use_gives_nothing_after_focus_moved`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_forget_all_on_first_use_asks_only_a_user_who_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_key_asked_by_a_send_says_nothing_of_an_unchanged_model`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_refused_add_provider_leaves_a_waiting_pick_alone`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and

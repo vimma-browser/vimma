@@ -73,6 +73,13 @@ const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Es
 const MODELS_HINT = "j k move · Enter use · D default · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
 /** Where a message that was not sent is when its conversation was deleted meanwhile. */
+/**
+ * Whether two providers are the same model at the same endpoint under the same name.
+ * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
+ */
+const sameProvider = (a, b) =>
+  a.endpoint === b.endpoint && a.model === b.model && a.name === b.name;
+
 const DROPPED = "its conversation was deleted, and the message with it";
 
 /**
@@ -450,14 +457,21 @@ export class AgentChatWindow {
         ? { where: "the message is still in the input", plain: true }
         : { where: "the message is back in the input, before what was typed since", plain: false };
     }
-    const c = this.services.chat.list().find((/** @type {any} */ x) => x.id === id);
-    if (!c) return { where: DROPPED, plain: false };
+    const kept = this.keptIn(id);
+    if (!kept) return { where: DROPPED, plain: false };
     const draft = this.drafts.get(id);
     this.drafts.set(id, draft ? `${text}\n${draft}` : text);
-    return {
-      where: `the message is kept in the input of "${c.title || "New conversation"}"`,
-      plain: false,
-    };
+    return { where: kept, plain: false };
+  }
+
+  /**
+   * The notice's words for where a message of conversation `id`, not the one shown, is kept.
+   * @param {number} id
+   * @returns {string | null} null once that conversation was deleted
+   */
+  keptIn(id) {
+    const c = this.services.chat.list().find((x) => x.id === id);
+    return c ? `the message is kept in the input of "${c.title || "New conversation"}"` : null;
   }
 
   /** A new conversation with the default provider, or null when none is set up. */
@@ -546,7 +560,14 @@ export class AgentChatWindow {
    * goes, with every file of the store.
    */
   async forgetAll() {
+    // The first read can wait on the keyring: a user who moved meanwhile is not handed a y/N
+    // that takes their focus, where a typed y would delete everything (security.md M46).
+    const from = this.win.document.activeElement;
     await this.services.chat.restore();
+    if (this.win.document.activeElement !== from && !this.focused) {
+      this.host.say("agent: not deleted: focus moved while the conversations were read");
+      return;
+    }
     const n = this.services.chat.list().length;
     if (!n) {
       this.host.say("agent: there are no conversations");
@@ -747,13 +768,10 @@ export class AgentChatWindow {
       const left = () => {
         if (this.sendingAt === shownAt) this.sendingAt = -1;
         if (this.listed === shownAt && this.focused) return false;
-        const c = this.services.chat.list().find((/** @type {any} */ x) => x.id === id);
         const where =
           this.conversation === id
             ? "the message is still in the input"
-            : c
-              ? `the message is kept in the input of "${c.title || "New conversation"}"`
-              : DROPPED;
+            : (this.keptIn(id) ?? DROPPED);
         this.host.say(`agent: not sent: the chat was left before its key was read; ${where}`);
         return true;
       };
@@ -761,7 +779,13 @@ export class AgentChatWindow {
         (/** @type {string | null} */ hint) => {
           if (left()) return;
           if (hint === null) this.askKey(chosen);
-          else this.afterKey(id, go);
+          else if (input.value !== text) {
+            // The input stays editable while the hint waits: what is sent is what the user has
+            // now, never the text of the first Enter over an edit (a password taken out).
+            this.host.say(
+              "agent: not sent: the message was changed while its key was read; it is still in the input",
+            );
+          } else this.afterKey(id, go);
         },
         (/** @type {any} */ e) => {
           console.error("vimma agent: the key could not be read", e?.name);
@@ -1269,12 +1293,7 @@ export class AgentChatWindow {
       this.services.chat.choose(provider);
       return true;
     }
-    const now = this.services.chat.get(this.conversation).provider;
-    if (
-      now.endpoint !== provider.endpoint ||
-      now.model !== provider.model ||
-      now.name !== provider.name
-    ) {
+    if (!sameProvider(this.services.chat.get(this.conversation).provider, provider)) {
       const refused = this.services.chat.setProvider(this.conversation, provider);
       if (refused) {
         this.host.say(`agent: ${refused}`, true);
@@ -1409,11 +1428,16 @@ export class AgentChatWindow {
     const failed = note.startsWith(";");
     // The model and the key's end only, never the key (M46).
     const what = `${provider.name} · ${provider.model}`;
-    const unchanged = stayed
-      ? ""
-      : failed
-        ? `; the model was left as it was: add ${what} in :agent model again to use it`
-        : `; the model was left as it was: pick ${what} in :agent model to use it`;
+    // A key asked for the shown conversation's own model (a send's) leaves nothing to pick.
+    const own =
+      this.conversation !== null &&
+      sameProvider(this.services.chat.get(this.conversation).provider, provider);
+    const unchanged =
+      stayed || own
+        ? ""
+        : failed
+          ? `; the model was left as it was: add ${what} in :agent model again to use it`
+          : `; the model was left as it was: pick ${what} in :agent model to use it`;
     this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}${unchanged}`, failed);
     return undefined;
   }

@@ -27,6 +27,9 @@ const { AgentChatWindow } = ChromeUtils.importESModule(
 const { RenamePrompt } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/rename-prompt.mjs",
 );
+const { runAgentCommand } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/host/agent-chat-ops.mjs",
+);
 
 /**
  * A promise with its resolve and reject, for an answer the test gives when it chooses.
@@ -199,7 +202,20 @@ function fakeWindow({
       },
       list: () => conversations,
       get: byId,
-      create: () => conversation,
+      // The first conversation while it lasts; after it was deleted, a new one.
+      create: (/** @type {{ provider: AgentProviderConfig }} */ { provider }) => {
+        if (conversations.includes(conversation)) return conversation;
+        const fresh = make(10 + conversations.length, "", provider);
+        conversations.push(fresh);
+        return fresh;
+      },
+      delete: (/** @type {number} */ id) => {
+        const at = conversations.findIndex((c) => c.id === id);
+        if (at >= 0) conversations.splice(at, 1);
+      },
+      forgetAll: async () => {
+        conversations.length = 0;
+      },
       addListener() {},
       removeListener() {},
       transcript: () => ({ version: 0, entries: [] }),
@@ -1565,6 +1581,160 @@ add_task(async function test_a_refused_send_keeps_both_its_message_and_what_was_
     );
   } finally {
     revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_message_edited_while_its_key_is_read_is_not_sent() {
+  const f = fakeWindow({ providers: [HOSTED], notice: true });
+  try {
+    f.chat.open();
+    inputOf(f).value = "deploy with password hunter2";
+    press(f.chat, "Enter");
+    inputOf(f).value = "deploy";
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    Assert.deepEqual(f.sends, [], "the text of the first Enter is not sent");
+    Assert.deepEqual(f.asked, [], "nor is the notice asked");
+    Assert.equal(inputOf(f).value, "deploy", "the edited text stays in the input");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: not sent: the message was changed while its key was read; it is still in the input",
+      "and the notice says so",
+    );
+    press(f.chat, "Enter");
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    Assert.deepEqual(f.sends, ["deploy"], "Enter again sends what the input holds now");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_forget_all_on_first_use_asks_only_a_user_who_stayed() {
+  info("the user waits while the stored conversations are read");
+  let f = fakeWindow({ providers: [LOCAL], unrestored: true });
+  try {
+    const done = f.chat.forgetAll();
+    f.restores[0].resolve();
+    await done;
+    Assert.deepEqual(f.asked, ["Delete all 1 agent conversation? y/N"], "the question is asked");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("the user clicks into the address bar while they are read");
+  f = fakeWindow({ providers: [LOCAL], unrestored: true });
+  try {
+    // From the page, where the command line hands focus back after `:agent forget all`.
+    gBrowser.selectedBrowser.focus();
+    const done = f.chat.forgetAll();
+    typeElsewhere("abc");
+    f.restores[0].resolve();
+    await done;
+    assertFocusStaysElsewhere("forget all after the user moved");
+    Assert.deepEqual(f.asked, [], "the y/N question, which would take focus, is not asked");
+    Assert.equal(f.chat.services.chat.list().length, 1, "nothing is deleted");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: not deleted: focus moved while the conversations were read",
+      "and the notice says why",
+    );
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_conversation_deleted_while_its_key_is_read_takes_its_message() {
+  const f = fakeWindow({ providers: [HOSTED], second: LOCAL });
+  try {
+    f.chat.open({ conversation: 1 });
+    inputOf(f).value = "for the hosted model";
+    press(f.chat, "Enter");
+    press(f.chat, "Escape");
+    press(f.chat, "c");
+    selectRow(f.chat, (r) => r.label === "first");
+    press(f.chat, "d");
+    Assert.ok(!f.chat.services.chat.list().some((c) => c.id === 1), "first is deleted");
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    Assert.deepEqual(f.sends, [], "nothing is sent");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: not sent: the chat was left before its key was read; its conversation was deleted, and the message with it",
+      "the notice says the message went with its conversation",
+    );
+    Assert.equal(inputOf(f).value, "", "and the input holds none of it");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_forget_all_leaves_no_text_for_the_next_conversation() {
+  const f = fakeWindow({ providers: [LOCAL] });
+  try {
+    f.chat.open();
+    inputOf(f).value = "typed before forgetting";
+    await f.chat.forgetAll();
+    Assert.equal(f.chat.services.chat.list().length, 0, "every conversation is deleted");
+    f.chat.newConversation();
+    Assert.ok(f.chat.isOpen, "a new conversation opens");
+    Assert.equal(inputOf(f).value, "", "with an empty input");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_agent_give_on_first_use_gives_nothing_after_focus_moved() {
+  const f = fakeWindow({ providers: [LOCAL], unrestored: true });
+  /** @type {string[]} */
+  const said = [];
+  let given = false;
+  f.chat.give = () => {
+    given = true;
+  };
+  try {
+    runAgentCommand(f.chat, "give", (/** @type {string} */ text) => said.push(text));
+    typeElsewhere("abc");
+    f.restores[0].resolve();
+    await until(() => f.chat.isOpen, "the window opens");
+    assertFocusStaysElsewhere(":agent give after the user moved");
+    Assert.ok(!given, "the tab is not given, which would ask a y/N");
+    Assert.deepEqual(
+      said,
+      ["agent: not given: focus moved while the conversations were read"],
+      "and the notice says why",
+    );
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_key_asked_by_a_send_says_nothing_of_an_unchanged_model() {
+  const f = fakeWindow({ providers: [HOSTED] });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    f.hints[0].resolve(null);
+    await afterWindow([f.hints[0].promise]);
+    Assert.equal(f.chat.view, "key", "the key is asked for the conversation's own provider");
+    typeKey(f.chat, "sk-secret-two");
+    press(f.chat, "Enter");
+    press(f.chat, "Escape");
+    f.sets[0].resolve();
+    await afterWindow([f.sets[0].promise]);
+    f.hints[1].resolve("key stored · ends …-two");
+    await until(() => f.said.some((s) => s.startsWith("agent: hosted:")), "it is said");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: hosted: key stored · ends …-two",
+      "the model is the conversation's already, so no notice says to pick it",
+    );
+    Assert.ok(!f.said.some((s) => s.includes("sk-secret")), "no notice holds the key's text");
+  } finally {
     f.chat.destroy();
   }
 });
