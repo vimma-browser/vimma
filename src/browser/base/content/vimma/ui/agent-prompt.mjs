@@ -52,7 +52,7 @@ export class AgentPrompt {
    * socket's `state.agent.armed` (#1006) reads what is on screen, not the `armed` flag.
    */
   get hintShown() {
-    return this.isOpen && !!this.hint && !this.hint.hidden;
+    return this.isOpen && this.hint?.hidden === false;
   }
 
   /**

@@ -356,6 +356,13 @@ add_task(async function test_state_reports_the_segment_as_drawn() {
   const hidden = state();
   Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
   Assert.strictEqual(hidden.downloads, null, "a private window's downloads stay out of state");
+  // Back in the normal window, with the private download still running: state reports what
+  // this window draws, never the private window's progress.
+  await SimpleTest.promiseFocus(window);
+  await until(() => !state().private, "state reads the normal window again");
+  Assert.notEqual(state().downloads, "progress", "the private download is not counted here");
+  Assert.strictEqual(state().downloads, null, "this window draws no segment");
+  Assert.strictEqual(segment(), null, "sanity: nor does its status bar");
   await release();
   await done;
   await BrowserTestUtils.closeWindow(priv);

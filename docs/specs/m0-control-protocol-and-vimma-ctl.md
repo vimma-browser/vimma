@@ -284,7 +284,8 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   the agent question line at the window's foot ([vimma-mcp](vimma-mcp.md), decision 13) is open
   and shows its keys hint, which it draws once armed (its keys count); `false` otherwise, and
   for a question in the chat window's slot, which `chat.question.armed` reports. Read from the
-  hint as drawn. `downloads`: which `↓` segment the status bar draws
+  hint as drawn. It is reported only while the status bar draws the agent segment: `agent` is
+  `null` otherwise (as on a bar too narrow for it), so a wait on `agent.armed` then times out. `downloads`: which `↓` segment the status bar draws
   ([downloads](downloads.md), decision 9), `null` while none is drawn, else one word of
   `progress` (downloads under way: `↓ 42%`, `↓ 3`), `paused`, `done`, `failed` or `blocked`;
   never the segment's text, a file's name, size or site. It is `null` in a private window,

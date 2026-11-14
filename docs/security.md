@@ -96,10 +96,10 @@ only the agent workspace, and every request asks you first (§12).
   questions and its ran dot) and **never** carry text: no notice, prompt, row label, entry,
   question or agent name reaches the socket through them, and `chat` is `null` in a private
   window, where the chat window never opens. Its `agent.armed` flag says only whether the agent
-  question line shows its keys hint, and its `downloads` field only which `↓` segment the status
-  bar draws, as one word of a fixed list (`progress`, `paused`, `done`, `failed`, `blocked`) or
-  `null`; it **never** carries a file's name, size, URL or site, and is `null` in a private
-  window.
+  question line shows its keys hint (reported only while the bar draws the agent segment), and
+  its `downloads` field only which `↓` segment the status bar draws, as one word of a fixed list
+  (`progress`, `paused`, `done`, `failed`, `blocked`) or `null`; it **never** carries a file's
+  name, size, URL or site, and is `null` in a private window.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
