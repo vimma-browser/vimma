@@ -13,7 +13,8 @@
 // So: `await recordPageKeys(browser)` and `await focusContent(browser)`, then press, then
 // `await waitForPageKey(...)` or `await pageKeys(browser)`.
 
-/* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey */
+/* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey,
+   useShippedSupportBase, inSettingsPane */
 
 "use strict";
 
@@ -107,4 +108,41 @@ function bindUnbuiltPrefixKey() {
     VimmaHost.configure({ keymap: compileKeymap({}, mac) });
   });
   return "Go back: not implemented yet";
+}
+
+/**
+ * The support base as Vimma ships it, formatted: the harness profile points app.support.baseURL
+ * at a dummy server (testing/profiles/unittest-required/user.js), so its user value is cleared.
+ */
+async function useShippedSupportBase() {
+  await SpecialPowers.pushPrefEnv({ clear: [["app.support.baseURL"]] });
+  const { version, OS } = Services.appinfo;
+  return `https://vimma.dev/support/${version}/${OS}/${Services.locale.appLocaleAsBCP47}/`;
+}
+
+/**
+ * Open a Settings pane and wait for each of `selectors` to be in it. `check` gets the first
+ * one's element.
+ *
+ * Settings runs in the parent process and builds a pane on its main thread when the pane opens:
+ * on a loaded machine that takes General several seconds each time (#992). So a test opens each
+ * pane once and checks everything it needs there. Used by the browser_vimma_firefox_settings_*
+ * files.
+ * @param {string} pane the hash, such as "home"
+ * @param {string | string[]} selectors
+ * @param {(doc: Document, el: HTMLElement) => Promise<void> | void} check
+ */
+async function inSettingsPane(pane, selectors, check) {
+  const wanted = typeof selectors === "string" ? [selectors] : selectors;
+  await BrowserTestUtils.withNewTab(`about:preferences#${pane}`, async (browser) => {
+    const doc = browser.contentDocument;
+    for (const selector of wanted) {
+      info(`Waiting for Settings' ${pane} pane to build ${selector}`);
+      await TestUtils.waitForCondition(
+        () => doc.querySelector(selector),
+        `Settings' ${pane} pane builds ${selector}`,
+      );
+    }
+    await check(doc, /** @type {HTMLElement} */ (doc.querySelector(wanted[0])));
+  });
 }

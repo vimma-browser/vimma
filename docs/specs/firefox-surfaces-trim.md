@@ -502,7 +502,8 @@ Written first and seen to fail, by step.
   `branding-prefs.test.ts`, ADR-025) asserts each value in the Design table.
   `browser_vimma_firefox_surfaces_trim.js` (new mochitest) asserts that `getHelpLinkURL("x")` and a
   Settings "Learn more" link start with the vimma.dev base and carry the version, OS and locale
-  (step 1), that the account panel's Monitor button and `#appMenu-fxa-sign-in-promo` are hidden,
+  (step 1) (Since changed: the tests that open Settings, this link among them, are in
+  `browser_vimma_firefox_settings_trim.js`, #992), that the account panel's Monitor button and `#appMenu-fxa-sign-in-promo` are hidden,
   that the content context menu has no chatbot or link-preview item, and that `Services.prefs`
   reports each pref back at Firefox's value after a user reset is reverted.
 - **Branding** (step 3): a vitest that Vimma's `brand.ftl` defines `-brand-shortcut-name`, and
@@ -510,7 +511,9 @@ Written first and seen to fail, by step.
   generator (decision 14); the mochitest formats `desktop-entry-name` and
   `private-browsing-shortcut-text-2` and gets "Vimma" and "Vimma Private Browsing"; it loads each
   overridden chrome URL and asserts it is Vimma's file.
-- **Settings, menus, About dialog** (step 4): the mochitest opens `about:preferences` and asserts
+- **Settings, menus, About dialog** (step 4): the mochitest (Since changed: for Settings,
+  `browser_vimma_firefox_settings_trim.js` and, for what it hides,
+  `browser_vimma_firefox_settings_hidden.js`, #992) opens `about:preferences` and asserts
   the Labs, AI controls, Firefox Home and data collection groups and the connect.mozilla.org link
   are not displayed, also with `prefers-contrast` forced; that a Settings card's computed
   `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and tab menus
