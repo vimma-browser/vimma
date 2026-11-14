@@ -38,7 +38,9 @@ const START = "chrome://browser/content/vimma/start/start.html";
 registerCleanupFunction(async () => {
   const view = PaneViews.get(window);
   while (view?.panes) view.close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
@@ -47,7 +49,21 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -70,7 +86,7 @@ async function leaveUrlbar() {
 /**
  * Presses I and checks the result: the URL bar has focus with all of its text selected, it shows
  * the selected tab's address, the status bar says INSERT, and `browser`'s page never saw the I.
- * @param {XULBrowserElement} browser  the page I was pressed on
+ * @param {MozTabBrowser} browser  the page I was pressed on: a tab's browser
  * @param {string} what
  */
 async function pressIAndExpectUrlbar(browser, what) {
@@ -188,12 +204,18 @@ add_task(async function in_copy_mode_i_leaves_it_and_focuses_the_url_bar() {
 add_task(async function in_insert_mode_i_is_a_typed_capital_i() {
   await BrowserTestUtils.withNewTab(FRAMED, async (browser) => {
     await focusContent(browser);
-    await SpecialPowers.spawn(browser, [], () => content.document.getElementById("text").focus());
+    await SpecialPowers.spawn(browser, [], () =>
+      /** @type {HTMLElement} */ (content.document.getElementById("text")).focus(),
+    );
     await waitForMode(browser, "insert");
     EventUtils.synthesizeKey("I", { shiftKey: true });
     await until(() => VimmaHost.status(window).mode === "insert", "still insert");
     const value = () =>
-      SpecialPowers.spawn(browser, [], () => content.document.getElementById("text").value);
+      SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {HTMLInputElement} */ (content.document.getElementById("text")).value,
+      );
     await TestUtils.waitForCondition(async () => (await value()) === "I", "I is typed");
     Assert.ok(!gURLBar.focused, "the URL bar does not take focus");
     Assert.equal(document.activeElement, browser, "focus stays in the page");
@@ -202,9 +224,12 @@ add_task(async function in_insert_mode_i_is_a_typed_capital_i() {
 
 add_task(async function in_a_split_the_focused_panes_url_bar() {
   const a = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PLAIN}?left`);
-  const b = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PLAIN}?right`);
+  const b = /** @type {SplitTab} */ (
+    await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PLAIN}?right`)
+  );
   await BrowserTestUtils.switchTab(gBrowser, a);
-  const view = PaneViews.get(window);
+  // Every browser window has its pane view; a read through a missing one throws.
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   Assert.ok(view.split("vertical", { tab: b }).ok, "split left | right");
   await until(() => gBrowser.selectedTab === b, "the new right pane has focus");
   await focusContent(b.linkedBrowser);
@@ -229,7 +254,7 @@ add_task(async function with_the_bookmarks_panel_open_i_closes_it_first() {
   await BrowserTestUtils.withNewTab(PLAIN, async (browser) => {
     await focusContent(browser);
     await waitForMode(browser, "normal");
-    const state = VimmaHost._state(window);
+    const state = found(VimmaHost._state(window));
     prefix("B", { shiftKey: true });
     await until(() => state.bookmarks.isOpen, "ctrl+b shift+b opens the bookmarks panel");
     Assert.equal(VimmaHost.status(window).mode, "panel", "sanity: in panel mode");
@@ -240,11 +265,11 @@ add_task(async function with_the_bookmarks_panel_open_i_closes_it_first() {
 });
 
 add_task(async function with_the_side_panel_open_i_closes_it_first() {
-  await WindowWorkspaces.get(window).ready;
+  await found(WindowWorkspaces.get(window)).ready;
   await BrowserTestUtils.withNewTab(PLAIN, async (browser) => {
     await focusContent(browser);
     await waitForMode(browser, "normal");
-    const state = VimmaHost._state(window);
+    const state = found(VimmaHost._state(window));
     prefix("b");
     await until(() => state.panel.isOpen, "ctrl+b b opens the side panel");
     Assert.equal(VimmaHost.status(window).mode, "panel", "sanity: in panel mode");

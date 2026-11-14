@@ -351,6 +351,15 @@ declare function openAboutDialog(): void;
 declare var BookmarkingUI: { readonly star: XULElement | null };
 // engine/browser/base/content/browser.js: the View > Toolbars menu items' command handler.
 declare function onViewToolbarCommand(aEvent: Event): void;
+// engine/browser/base/content/browser.js: shows or hides a toolbar (the menu bar by its
+// `autohide` attribute, any other by `collapsed`); `persist` saves the state, `animated`
+// animates the bookmarks toolbar.
+declare function setToolbarVisibility(
+  toolbar: Element,
+  isVisible: boolean,
+  persist?: boolean,
+  animated?: boolean,
+): void;
 // engine/browser/components/tabbrowser/content/browser-allTabsMenu.js (`var gTabsPanel`).
 declare var gTabsPanel: BrowserWindow["gTabsPanel"];
 // engine/browser/base/content/browser.js (a lazy getter on the window: CustomizeMode.sys.mjs).
