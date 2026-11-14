@@ -178,6 +178,13 @@ const submitMarks = new Map();
 /** @type {((subject: any) => void) | null} */
 let submitObserver = null;
 
+/**
+ * The agent's step each frame's document skipped (`Vimma:AgentSkipped`), by its window global:
+ * once the page has gone, its child can no longer be asked how the step went (issue #1028).
+ * @type {WeakMap<object, { gen: number, id: number }>}
+ */
+const skippedSteps = new WeakMap();
+
 /** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
 const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
 
@@ -276,6 +283,10 @@ export const VimmaActors = {
           // sends. The first lets the viewer take the theme before its pages are drawn.
           documentloaded: {},
           pagesloaded: {},
+          // An agent's step still to run when its page is hidden is skipped then, while the
+          // child can still tell the parent (issue #1028). The system group: the page cannot
+          // stop it.
+          pagehide: { mozSystemGroup: true, createActor: false },
         },
       },
       allFrames: true,
@@ -641,6 +652,8 @@ export const VimmaActors = {
    */
   async agentActivate(target, { submit, href, until }) {
     if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    // A skip of an earlier step on the same element is not this one's (agentClickOutcome).
+    skippedSteps.delete(target.wg);
     try {
       const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
         op: "activate",
@@ -733,13 +746,21 @@ export const VimmaActors = {
   /**
    * The child skipped the agent's click or submission (VimmaParent, `Vimma:AgentSkipped`): the
    * submission the question allowed is withdrawn at once, before the call ends, so the page cannot
-   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays.
+   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays. The step
+   * it names is kept for that document alone (agentClickOutcome): a frame that sends a forged
+   * one can only make its own click read as skipped, as its outcome reply already could.
    * @param {any} bc  the frame that skipped it (BrowsingContext)
+   * @param {object} wg  its window global (WindowGlobalParent), the sender's own
+   * @param {unknown} step  `{ gen, id }`, the step the child skipped
    */
-  agentSkipped(bc) {
+  agentSkipped(bc, wg, step) {
     const id = bc?.top?.browserId;
     const mark = id ? submitMarks.get(id) : undefined;
     if (mark) mark.allowed = null;
+    const { gen, id: el } = /** @type {{ gen?: unknown, id?: unknown }} */ (step ?? {});
+    if (wg && Number.isSafeInteger(gen) && Number.isSafeInteger(el)) {
+      skippedSteps.set(wg, { gen: /** @type {number} */ (gen), id: /** @type {number} */ (el) });
+    }
   },
 
   /**
@@ -858,13 +879,17 @@ export const VimmaActors = {
 
   /**
    * Whether the agent's last click on `target` ran, or was skipped because the page changed
-   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
-   * (the click loaded a page) ran it.
+   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away ran
+   * it (the click loaded a page), unless its child said it skipped it: the child skips a step
+   * whose page is hidden before it runs, and says so as the page is hidden, ahead of the next
+   * document over the same IPC channel (issue #1028).
    * @param {HintTarget} target
    * @returns {Promise<"clicked" | "skipped" | "pending">}
    */
   async agentClickOutcome(target) {
-    if (target.bc.currentWindowGlobal !== target.wg) return "clicked";
+    const skipped = skippedSteps.get(target.wg);
+    const gone = skipped?.gen === target.gen && skipped.id === target.id ? "skipped" : "clicked";
+    if (target.bc.currentWindowGlobal !== target.wg) return gone;
     try {
       const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
         op: "outcome",
@@ -873,7 +898,7 @@ export const VimmaActors = {
       });
       return reply === "skipped" || reply === "pending" ? reply : "clicked";
     } catch {
-      return "clicked";
+      return gone; // the frame went away mid-question
     }
   },
 
@@ -1020,6 +1045,7 @@ export const VimmaActors = {
    */
   async agentSubmit(target, { submit, until }) {
     if (target.bc.currentWindowGlobal !== target.wg) return "gone";
+    skippedSteps.delete(target.wg);
     try {
       const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
         op: "submit",

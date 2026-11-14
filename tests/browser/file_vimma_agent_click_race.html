@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_agent_click_race.js: a button that counts its clicks in the page
+   - and in the tab's session storage, a text field, and a form that sends a hidden value to this
+   - page. With `?auto` the form sends itself once the page has loaded, as a page's own script
+   - would. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Click race fixture</title>
+  </head>
+  <body>
+    <p><button id="go" type="button">Go</button></p>
+    <p><input id="name" type="text" name="name" aria-label="Name" /></p>
+    <form action="file_vimma_agent_click_race.html" method="get">
+      <input type="hidden" name="sent" value="1" />
+      <button id="send" type="submit">Send</button>
+    </form>
+    <script>
+      document.getElementById("go").addEventListener("click", () => {
+        const clicks = Number(document.body.dataset.clicks ?? 0) + 1;
+        document.body.dataset.clicks = String(clicks);
+        sessionStorage.setItem("clicks", String(clicks));
+      });
+      if (location.search === "?auto") {
+        addEventListener("load", () => document.forms[0].requestSubmit());
+      }
+    </script>
+  </body>
+</html>
