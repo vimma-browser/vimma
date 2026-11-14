@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-actor-insert-scroll.md
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf -- from head.js */
 
 "use strict";
 
@@ -251,7 +251,7 @@ for (const how of ["area", "ce", "aria", "open", "closed"]) {
 
 add_task(async function an_input_in_a_cross_origin_iframe_enters_insert() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     Assert.ok(frame, "the iframe has a browsing context");
     await focusIn(frame, "framed");
     await waitForMode(browser, "insert");
@@ -414,7 +414,7 @@ add_task(async function a_design_mode_page_enters_insert_on_click() {
 
 add_task(async function a_cross_origin_design_mode_iframe_enters_insert_on_click() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await BrowserTestUtils.synthesizeMouseAtCenter("#p", {}, frame);
     await waitForMode(browser, "insert");
     EventUtils.synthesizeKey("j");
@@ -459,7 +459,7 @@ const INPUT_FOCUSIN = { descriptor: { tagName: "input" }, trigger: "focusin" };
 
 add_task(async function only_the_focused_frame_may_report() {
   await withPage(async (browser) => {
-    const top = browser.browsingContext;
+    const top = contextOf(browser);
     const frame = top.children[0];
     await sendReport(frame, INPUT_FOCUSIN);
     Assert.equal(
@@ -498,14 +498,14 @@ add_task(async function malformed_descriptors_are_dropped() {
   ];
   await withPage(async (browser) => {
     for (const data of bad) {
-      await sendReport(browser.browsingContext, data);
+      await sendReport(contextOf(browser), data);
       Assert.equal(
         VimmaHost._browserMode(browser),
         "normal",
         `dropped: ${JSON.stringify(data)?.slice(0, 120)}`,
       );
     }
-    await sendReport(browser.browsingContext, {
+    await sendReport(contextOf(browser), {
       descriptor: { tagName: "div", role: null, classes: Array(64).fill("ProseMirror") },
       trigger: "focusin",
     });

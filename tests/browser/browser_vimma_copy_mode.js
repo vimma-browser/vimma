@@ -4,7 +4,7 @@
 
 // Spec: docs/specs/m1-copy-mode.md
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 
 "use strict";
@@ -247,7 +247,7 @@ add_task(async function the_page_gets_no_keys_in_copy_mode() {
 
 add_task(async function copy_mode_works_in_a_focused_cross_origin_frame() {
   await withPage(async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     Assert.ok(frame, "the iframe has a browsing context");
     await SpecialPowers.spawn(frame, [], () => content.focus());
     await TestUtils.waitForCondition(
@@ -269,7 +269,7 @@ add_task(async function copy_mode_works_in_a_focused_cross_origin_frame() {
 
 add_task(async function malformed_or_unfocused_caret_messages_are_refused() {
   await withPage(async (browser) => {
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    const actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     const bad = [
       null,
       "enter",
@@ -285,8 +285,8 @@ add_task(async function malformed_or_unfocused_caret_messages_are_refused() {
     }
     Assert.equal((await selectionIn(browser)).caret, false, "no caret from them");
     // The frame does not have focus: it takes no caret.
-    const frame = browser.browsingContext.children[0];
-    const frameActor = frame.currentWindowGlobal.getActor("Vimma");
+    const frame = contextOf(browser).children[0];
+    const frameActor = windowGlobalOf(frame).getActor("Vimma");
     Assert.equal(await frameActor.sendQuery("Vimma:Caret", { op: "enter" }), false, "unfocused");
     Assert.equal(await actor.sendQuery("Vimma:Caret", { op: "enter" }), true, "focused: entered");
     Assert.equal(await actor.sendQuery("Vimma:Caret", { op: "exit" }), true, "and left");

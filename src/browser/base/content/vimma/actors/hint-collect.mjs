@@ -28,7 +28,7 @@ import { needsBlockText, pickBlocks } from "../core/blocks.mjs";
  * @property {BlockKind} [blockKind]  blocks only
  * @property {Rect} [box]  blocks only: the border box, viewport-clipped, for the outline
  */
-/** @typedef {{ bc: any, rect: Rect }} FoundFrame */
+/** @typedef {{ bc: BrowsingContext, rect: Rect }} FoundFrame */
 
 /** At most this many targets and subframes per frame (the parent's caps); the rest are dropped. */
 const MAX_TARGETS = HINT_REPLY_MAX_TARGETS;
@@ -453,9 +453,9 @@ function visibleFrames(win, candidates) {
   /** @type {FoundFrame[]} */
   const frames = [];
   for (const el of candidates) {
-    if (el.localName !== "iframe" && el.localName !== "frame") continue;
+    if (!isHTML(el, "iframe") && !isHTML(el, "frame")) continue;
     if (frames.length >= MAX_FRAMES) break;
-    const bc = /** @type {any} */ (el).browsingContext;
+    const bc = el.browsingContext;
     if (!bc) continue;
     const rect = frameViewport(win, el);
     if (rect) frames.push({ bc, rect });
@@ -480,6 +480,37 @@ export function frameViewport(win, el) {
   const height = el.clientHeight - pt - (parseFloat(style.paddingBottom) || 0);
   if (width < 1 || height < 1) return null;
   return { x: r.left + el.clientLeft + pl, y: r.top + el.clientTop + pt, width, height };
+}
+
+const XHTML = "http://www.w3.org/1999/xhtml";
+
+/**
+ * Whether `node` is an HTML element, whose interface is HTMLElement's or one under it: an element
+ * of another namespace (SVG, MathML, a page's `createElementNS`) has none of their members.
+ * @param {unknown} node
+ * @returns {node is HTMLElement}
+ */
+export function isHTMLElement(node) {
+  return (
+    !!node &&
+    typeof node === "object" &&
+    "nodeType" in node &&
+    node.nodeType === 1 /* Node.ELEMENT_NODE */ &&
+    "namespaceURI" in node &&
+    node.namespaceURI === XHTML
+  );
+}
+
+/**
+ * Whether `node` is the HTML element `name`. An element's interface follows its namespace and
+ * local name, so a page's `createElementNS(other, "input")`, which a selector or a local name
+ * test takes for one, is no HTMLInputElement and has none of its members.
+ * @template {keyof (HTMLElementTagNameMap & HTMLElementDeprecatedTagNameMap)} K
+ * @param {unknown} node @param {K} name
+ * @returns {node is (HTMLElementTagNameMap & HTMLElementDeprecatedTagNameMap)[K]}
+ */
+export function isHTML(node, name) {
+  return isHTMLElement(node) && node.localName === name;
 }
 
 /**

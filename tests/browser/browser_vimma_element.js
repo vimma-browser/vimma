@@ -5,7 +5,7 @@
 // Spec: docs/specs/element-focus.md (sub-PR 1: text blocks as hint targets; sub-PR 2: the
 // ELEMENT mode, v, y, +, -, j, k; sub-PR 3: ip and ap in copy mode)
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, contextOf, windowGlobalOf -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 
 "use strict";
@@ -170,7 +170,7 @@ async function boxes(browser) {
     out.frame = { x: f.x, y: f.y };
     return out;
   });
-  const inner = await SpecialPowers.spawn(browser.browsingContext.children[0], [], () => {
+  const inner = await SpecialPowers.spawn(contextOf(browser).children[0], [], () => {
     const r = /** @type {HTMLElement} */ (
       content.document.getElementById("framed")
     ).getBoundingClientRect();
@@ -768,7 +768,7 @@ add_task(async function blocks_in_open_and_closed_shadow_roots() {
 
 add_task(async function a_block_in_a_cross_origin_frame() {
   await withPage(PAGE, async (browser) => {
-    const frame = browser.browsingContext.children[0];
+    const frame = contextOf(browser).children[0];
     await focusBlock(browser, "framed");
     await waitForRingOn(browser, "framed");
     EventUtils.synthesizeKey("+");
@@ -875,8 +875,8 @@ add_task(async function no_element_hints_in_the_pdf_viewer() {
 
 add_task(async function malformed_block_messages_are_refused() {
   await withPage(PAGE, async (browser) => {
-    const top = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
-    const inner = browser.browsingContext.children[0].currentWindowGlobal.getActor("Vimma");
+    const top = windowGlobalOf(contextOf(browser)).getActor("Vimma");
+    const inner = windowGlobalOf(contextOf(browser).children[0]).getActor("Vimma");
     for (const data of [
       null,
       "focus",
@@ -909,7 +909,7 @@ add_task(async function malformed_block_messages_are_refused() {
         });
     });
     // A report from a frame that is not the block's is not heard.
-    await SpecialPowers.spawn(browser.browsingContext.children[0], [gen], (g) => {
+    await SpecialPowers.spawn(contextOf(browser).children[0], [gen], (g) => {
       /** @type {WindowGlobalChild} */ (content.windowGlobalChild)
         .getActor("Vimma")
         .sendAsyncMessage("Vimma:BlockGone", { gen: g });

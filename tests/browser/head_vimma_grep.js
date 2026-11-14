@@ -8,7 +8,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf -- from head.js */
 /* exported VimmaHost, WorkspaceStore, PaneViews, leaves, SessionStore, TabStateFlusher */
 /* exported GrepMatcher, PAGE, OTHER_SITE, OTHER_WS, def, ww, dialog, isOpen, rows, textOf */
 /* exported texts, selectedRow, countText, flagsText, noticeText, scopeTitle, scopeLines */
@@ -145,7 +145,7 @@ async function openFixture(params, base = PAGE) {
   if (params.frame) {
     await until(
       () =>
-        tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.spec ===
+        contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.spec ===
         FRAME_URL,
       "the frame loaded",
     );

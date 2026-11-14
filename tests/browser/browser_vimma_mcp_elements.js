@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
@@ -113,7 +113,7 @@ async function openAgentTab(url = FORM) {
     // The frame of another site has loaded its button.
     await until(
       () =>
-        tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
+        contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
           "file_vimma_agent_widget.html",
         ),
       "the widget frame loaded",
@@ -878,5 +878,46 @@ addTidyTask(async function test_cards_name_their_buttons() {
     "a query for the product finds its add button too",
   );
   c.close();
+  await mcp(false);
+});
+
+// An element of another namespace that shares a form control's local name (a page's
+// `createElementNS(other, "input")`) is matched by the `input` selector but has none of an
+// input's members: it is listed and inspected as what it is, a click target, never as a field
+// (issue #938).
+addTidyTask(async function test_a_foreign_namespace_input_is_no_field() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const style = doc.createElement("style");
+    // A stylesheet, not a style attribute: that is HTML's, SVG's and MathML's only.
+    style.textContent =
+      "[aria-label='Not a field'] { display: inline-block; width: 120px; height: 20px }";
+    doc.head.append(style);
+    const fake = doc.createElementNS("urn:vimma:test", "input");
+    fake.setAttribute("aria-label", "Not a field");
+    doc.body.prepend(fake);
+  });
+  const targets = await VimmaActors.collectHints(browser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const fake = targets.find(
+    (t) => t.info?.text === "Not a field" || t.info?.caption === "Not a field",
+  );
+  Assert.ok(fake, "the element is listed");
+  const target = /** @type {HintTarget} */ (fake);
+  Assert.equal(target.info?.kind, "click", "as a click target, not a field");
+  Assert.equal(target.info?.type, undefined, "with no input type");
+  const inspected = await VimmaActors.agentInspect(target);
+  Assert.equal(inspected?.alive, true, "it is still there");
+  Assert.equal(
+    inspected && "field" in inspected ? inspected.field : undefined,
+    undefined,
+    "a click on it reaches no field",
+  );
+  BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });

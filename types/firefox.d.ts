@@ -127,7 +127,8 @@ interface nsIConsoleService {
 // engine/dom/interfaces/base/nsIFocusManager.idl
 interface nsIFocusManager {
   readonly focusedElement: Element | null;
-  readonly focusedContentBrowsingContext: any;
+  /** Parent-process only: the content frame with focus, if any. */
+  readonly focusedContentBrowsingContext: CanonicalBrowsingContext | null;
   readonly activeWindow: Window | null;
   clearFocus(window: Window): void;
 }
@@ -206,7 +207,8 @@ interface nsILoginManager {
 // XPCOM component classes and results (engine/js/xpconnect). Untyped on purpose: each use
 // names its interface, and the IDL in the engine tree is the reference.
 declare const Cc: any;
-declare const Cr: Record<string, number>;
+// engine/xpcom/base/ErrorList.py: the codes Vimma names, and any other by name.
+declare const Cr: Record<string, number> & { readonly NS_BINDING_ABORTED: number };
 
 // engine/dom/chrome-webidl/PathUtils.webidl
 declare const PathUtils: {
@@ -290,14 +292,15 @@ declare const Components: {
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
 declare const BrowsingContext: {
-  get(id: number): any;
+  /** Null when no context has the id; in the parent process a CanonicalBrowsingContext. */
+  get(id: number): BrowsingContext | null;
   /** Called in the parent process, where a context is canonical. */
   getCurrentTopByBrowserId(id: number): CanonicalBrowsingContext | null;
 };
 
 // engine/dom/webidl/URL.webidl (chrome-only)
 interface URL {
-  readonly URI: unknown;
+  readonly URI: nsIURI;
 }
 
 // Vimma's own modules by chrome:// URL, typed as their source modules. Empty here, so the
@@ -341,7 +344,8 @@ declare class JSWindowActorParent {
   /** engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent) */
   readonly manager: { readonly isInProcess: boolean; readonly innerWindowId: number };
   sendAsyncMessage(name: string, data?: unknown): void;
-  sendQuery(name: string, data?: unknown): Promise<any>;
+  /** The child's answer, from a content process that may be compromised: checked by the caller. */
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
 }
 // engine/dom/webidl/Worker.webidl (ChromeWorker): a Worker with chrome privileges (system modules)
 declare class ChromeWorker extends Worker {}
@@ -449,6 +453,8 @@ interface Node {
 }
 // engine/caps/nsIPrincipal.idl
 interface nsIPrincipal {
+  /** The origin with the host cut to its site (scheme and eTLD+1); the origin otherwise. */
+  readonly siteOrigin: string;
   readonly isSystemPrincipal: boolean;
   readonly isNullPrincipal: boolean;
   readonly isContentPrincipal: boolean;
@@ -536,7 +542,8 @@ interface LazyModules {
   // autofill, search, containers, js-ctypes and subprocesses).
   AboutNewTab: any;
   AddonManager: any;
-  AutofillFormFactory: any;
+  // engine/toolkit/components/formautofill/shared/AutofillFormFactory.sys.mjs
+  AutofillFormFactory: { createFromField(field: Element): FormLike };
   ContextualIdentityService: any;
   DownloadHistory: any;
   DownloadIntegration: any;
@@ -544,8 +551,16 @@ interface LazyModules {
   Downloads: any;
   DownloadsCommon: any;
   ExtensionPermissions: any;
-  FormAutofillHeuristics: any;
-  FormAutofillUtils: any;
+  // engine/toolkit/components/formautofill/shared/FormAutofillHeuristics.sys.mjs: undefined
+  // when the form has no field it reads.
+  FormAutofillHeuristics: {
+    getFormInfo(formLike: FormLike, ignoreInvisibleInput: boolean): FormAutofillField[] | undefined;
+  };
+  // engine/toolkit/components/formautofill/shared/FormAutofillUtils.sys.mjs
+  FormAutofillUtils: {
+    isCreditCardField(fieldName: unknown): boolean;
+    isAddressField(fieldName: unknown): boolean;
+  };
   Integration: any;
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
@@ -576,6 +591,19 @@ interface LazyModules {
 }
 
 /** A module's `lazy` object: the named exports ChromeUtils.defineESModuleGetters defines on it. */
+// engine/toolkit/modules/FormLikeFactory.sys.mjs: a form, or the fields around a field outside one.
+interface FormLike {
+  readonly rootElement: Element;
+  readonly elements: Element[];
+}
+// engine/toolkit/components/formautofill/shared/FieldScanner.sys.mjs (FieldDetail)
+interface FormAutofillField {
+  /** Held by a WeakRef: undefined once the element is collected. */
+  readonly element: Element | undefined;
+  /** The field name the heuristics inferred, null when none. */
+  readonly fieldName: string | null;
+}
+
 type Lazy<K extends keyof LazyModules> = { readonly [P in K]: LazyModules[P] };
 
 // engine/toolkit/components/passwordmgr/nsILoginInfo.idl
@@ -601,7 +629,31 @@ interface nsIURI {
   readonly scheme: string;
   /** Throws for a URI without a host (about:, data:); callers read it inside a try. */
   readonly host: string;
+  /** Throws as `host` does. */
+  readonly asciiHost: string;
+  /** The scheme, user, host and port: `https://example.com:8080`. */
+  readonly prePath: string;
+  /** The path without query and fragment (a simple URI's whole path: nsSimpleURI::GetFilePath). */
+  readonly filePath: string;
   schemeIs(scheme: string): boolean;
+}
+
+// engine/netwerk/protocol/http/nsIHttpChannel.idl, with nsIChannel's and nsIRequest's members
+// (engine/netwerk/base/): the members a form submission's request is checked by.
+interface nsIHttpChannel {
+  readonly URI: nsIURI;
+  readonly loadInfo: nsILoadInfo;
+  readonly requestMethod: string;
+  cancel(status: number): void;
+}
+// engine/netwerk/base/nsILoadInfo.idl
+interface nsILoadInfo {
+  readonly isFormSubmission: boolean;
+  readonly hasValidUserGestureActivation: boolean;
+  /** The frame the load is for; null once it is gone. In the parent, canonical. */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  /** nsIRedirectHistoryEntry objects, one a redirect so far (webidl `jsval`). */
+  readonly redirectChainIncludingInternalRedirects: readonly unknown[];
 }
 
 // engine/dom/webidl/Window.webidl: every window's own constructors (a page's differ from
@@ -610,9 +662,12 @@ interface Window {
   readonly MutationObserver: typeof MutationObserver;
   readonly ResizeObserver: typeof ResizeObserver;
   readonly KeyboardEvent: typeof KeyboardEvent;
+  readonly MouseEvent: typeof MouseEvent;
   readonly Event: typeof Event;
   readonly docShell: any;
   fullScreen: boolean;
+  /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
+  readonly wrappedJSObject: { readonly [name: string]: unknown };
 }
 
 // engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
@@ -626,7 +681,8 @@ interface ChromeWindow extends Window {
 
 // engine/toolkit/content/widgets/browser-custom-element.mjs (MozBrowser): a <browser>.
 interface MozBrowser extends Element {
-  readonly browsingContext: any;
+  /** Null without a frame loader (browser-custom-element.mjs, `get browsingContext`). */
+  readonly browsingContext: CanonicalBrowsingContext | null;
   /** Null while the browser has no docshell or remote navigation yet. */
   readonly currentURI: nsIURI | null;
   readonly documentURI: { readonly spec: string } | null;
@@ -643,7 +699,7 @@ interface MozBrowser extends Element {
   readonly popupAndRedirectBlocker: any;
   focus(): void;
   reload(): void;
-  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown }): void;
+  loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown; referrerInfo?: unknown }): void;
   /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
   fullZoom: number;
 }
@@ -792,7 +848,8 @@ interface BrowserWindow extends ChromeWindow {
     openNew?: boolean,
     params?: { relatedToCurrent?: boolean; triggeringPrincipal?: unknown },
   ): boolean;
-  // utilityOverlay.js
+  // utilityOverlay.js (URILoadingHelper.sys.mjs openLinkIn: `params` are its many options)
+  openLinkIn(url: string, where: string, params: object): void;
   openTrustedLinkIn(
     url: string,
     where: string,
@@ -858,20 +915,57 @@ interface XULFrameElement extends Element {
   readonly contentDocument: Document | null;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's and a
-// browser's `browsingContext` are still `any`).
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's
+// `browsingContext` is still `any`).
 interface BrowsingContext {
   // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
   // (engine/dom/chrome-webidl/OriginAttributes.webidl).
   readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
+  readonly id: number;
+  readonly parent: BrowsingContext | null;
+  readonly top: BrowsingContext;
+  /** The frames of its current document (BrowsingContext::Children, its current WindowContext's). */
+  readonly children: readonly BrowsingContext[];
+  /** The frame element in its embedder's document, null when that is in another process. */
+  readonly embedderElement: Element | null;
+  readonly isDiscarded: boolean;
+  readonly browserId: number;
+  getAllBrowsingContextsInSubtree(): BrowsingContext[];
 }
-// The parent process's context (BrowsingContext.webidl).
+// The parent process's context (BrowsingContext.webidl). In the parent every context is one
+// (engine/docshell/base/BrowsingContext.cpp: CreateDetached and CreateFromIPC make a
+// CanonicalBrowsingContext there), so the contexts it reaches from one are too, though the webidl
+// types them as BrowsingContext.
 interface CanonicalBrowsingContext extends BrowsingContext {
   readonly currentWindowGlobal: WindowGlobalParent | null;
+  readonly parent: CanonicalBrowsingContext | null;
+  readonly top: CanonicalBrowsingContext;
+  readonly children: readonly CanonicalBrowsingContext[];
+  /** Its embedder element, or one around it, is hidden or has no frame. */
+  readonly isUnderHiddenEmbedderElement: boolean;
+  getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
 }
-// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's member)
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
+// members). The principals are never null (webidl `Principal`, not nullable).
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** The document's window has closed: it no longer shows in its frame. */
+  readonly isClosed: boolean;
+  readonly isInProcess: boolean;
+  readonly documentPrincipal: nsIPrincipal;
+  readonly documentStoragePrincipal: nsIPrincipal;
+  readonly documentURI: nsIURI | null;
+  /** engine/dom/interfaces/base/nsIDOMProcessParent.idl; null once the process is gone. */
+  readonly domProcess: { readonly remoteType: string | null } | null;
+}
+
+// engine/dom/webidl/MozFrameLoaderOwner.webidl, which both frame elements include: the frame's
+// context, null while it has none (an element not in a document).
+interface HTMLIFrameElement {
+  readonly browsingContext: BrowsingContext | null;
+}
+interface HTMLFrameElement {
+  readonly browsingContext: BrowsingContext | null;
 }
 
 // engine/dom/webidl/Node.webidl (ChromeOnly): a slotted node's slot, a shadow root's host, else
@@ -887,6 +981,30 @@ interface HTMLInputElement {
 }
 interface HTMLTextAreaElement {
   readonly editor: nsIEditor | null;
+}
+// The chrome-only members of the form controls that form autofill and Vimma's agent fills read
+// (engine/dom/webidl/HTMLInputElement.webidl, HTMLSelectElement.webidl,
+// HTMLTextAreaElement.webidl; AutocompleteInfo.webidl). `setUserInput` is the MozEditableElement
+// mixin's, which a text area includes.
+interface AutocompleteInfo {
+  readonly fieldName: string;
+}
+interface HTMLInputElement {
+  /** It is a password field, or was one at any time. */
+  readonly hasBeenTypePassword: boolean;
+  /** Form autofill's preview, shown before it is a value. */
+  readonly previewValue: string;
+  getAutocompleteInfo(): AutocompleteInfo | null;
+  setUserInput(input: string): void;
+}
+interface HTMLSelectElement {
+  getAutocompleteInfo(): AutocompleteInfo;
+  /** Ends a user's choice as the select's popup does: fires input and change when `changed`. */
+  userFinishedInteracting(changed: boolean): void;
+}
+interface HTMLTextAreaElement {
+  getAutocompleteInfo(): AutocompleteInfo;
+  setUserInput(input: string): void;
 }
 // engine/editor/nsIEditor.idl. EditorBase::GetSelectionController fails (the getter throws)
 // rather than give null.

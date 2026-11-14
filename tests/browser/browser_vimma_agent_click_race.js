@@ -36,7 +36,7 @@
 "use strict";
 
 /* global Client, tidyTask -- from head_vimma_control.js */
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf -- from head.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
@@ -417,7 +417,7 @@ addTidyTask(async function test_a_skipped_submit_in_a_frame_withdraws_the_allowa
   const browser = tab.linkedBrowser;
   const c = await agentClient();
   const by = await labels(c, tab);
-  const frame = browser.browsingContext.children[0];
+  const frame = contextOf(browser).children[0];
   const errors = childErrors();
   try {
     // The frame's next page sends the form the question allows, by itself, as it loads.

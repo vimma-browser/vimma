@@ -17,6 +17,7 @@ import { parseActTarget, parseFillTarget } from "../core/agent-act.mjs";
 import { parsePayInfo, parseSentFields } from "../core/agent-checkpoint.mjs";
 import { ACTIVATE_CHANGES } from "../core/control.mjs";
 import { INSERT_ENTER } from "../core/editable.mjs";
+import { parseScrollPosition } from "../core/find.mjs";
 import { suggestionStep } from "../core/suggestions.mjs";
 import { pressKeyLater } from "./enter-key.mjs";
 
@@ -52,8 +53,12 @@ const START_PAGE_MATCH = "chrome://browser/content/vimma/start/start.html";
  *   `vimma_elements` only: the element's form; `key` tells forms of different frames apart
  * @property {number} gen  the collection it came from
  * @property {number} id  the element's index in its frame's collection
- * @property {any} bc  its frame's BrowsingContext
- * @property {any} wg  the frame's WindowGlobalParent at collection time
+ * @property {CanonicalBrowsingContext} bc  its frame
+ * @property {WindowGlobalParent} wg  the frame's document at collection time
+ */
+/**
+ * A frame and its document (WindowGlobalParent) when it was chosen: null when it had none.
+ * @typedef {{ bc: CanonicalBrowsingContext, wg: WindowGlobalParent | null }} FrameRef
  */
 
 let registered = false;
@@ -131,8 +136,8 @@ function intersect(a, b) {
 /**
  * The actor of a frame's current document, or null when the document does not match
  * (moz-extension:, data:, blob:) or the frame is gone.
- * @param {any} bc BrowsingContext
- * @returns {any} JSWindowActorParent
+ * @param {CanonicalBrowsingContext | null | undefined} bc
+ * @returns {JSWindowActorParent | null}
  */
 function actorFor(bc) {
   try {
@@ -145,8 +150,8 @@ function actorFor(bc) {
 /**
  * `browser` still has focus, and `frame` is still its focused frame: a key pressed later goes
  * where the user typed or nowhere.
- * @param {any} browser XULBrowserElement
- * @param {any} frame BrowsingContext
+ * @param {MozBrowser} browser
+ * @param {CanonicalBrowsingContext} frame
  */
 function stillFocused(browser, frame) {
   return (
@@ -157,11 +162,12 @@ function stillFocused(browser, frame) {
 
 /**
  * The browser's focused frame when it is a subframe, then its top frame.
- * @param {any} browser XULBrowserElement
- * @returns {any[]} BrowsingContexts
+ * @param {MozBrowser} browser
+ * @returns {CanonicalBrowsingContext[]}
  */
 function framesFor(browser) {
   const top = browser.browsingContext;
+  if (!top) return [];
   const focused = Services.focus.focusedContentBrowsingContext;
   return focused && focused !== top && focused.top === top ? [focused, top] : [top];
 }
@@ -175,7 +181,7 @@ function framesFor(browser) {
  *   blocked: string[] }>}
  */
 const submitMarks = new Map();
-/** @type {((subject: any) => void) | null} */
+/** @type {typeof onRequest | null} */
 let submitObserver = null;
 
 /** The number of the agent's last click or submission sent to a child (`nextStep`). */
@@ -221,7 +227,7 @@ function saidSkipped(target) {
   );
 }
 
-/** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
+/** A URI's destination as a submission is compared: scheme, host, port and path. @param {nsIURI} uri */
 const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
 
 /**
@@ -231,12 +237,15 @@ const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
  * cancelled unless it is the one the question allowed, to the method and destination it named.
  * The request carries its document's transient user activation, which an agent's click never
  * gives, so a submission with it is the user's, and it ends the mark.
- * @param {any} subject
+ * @param {unknown} subject  an nsISupports
  */
 function onRequest(subject) {
   let channel;
   try {
-    channel = subject.QueryInterface(Ci.nsIHttpChannel);
+    // QueryInterface gives the object as the interface asked or throws, as a subject without it
+    // does: either way the catch below.
+    const qi = /** @type {{ QueryInterface(iid: unknown): nsIHttpChannel }} */ (subject);
+    channel = qi.QueryInterface(Ci.nsIHttpChannel);
   } catch {
     return;
   }
@@ -245,7 +254,7 @@ function onRequest(subject) {
   const top = info.browsingContext?.top;
   const id = top?.browserId;
   const mark = id ? submitMarks.get(id) : undefined;
-  if (!mark) return;
+  if (!top || !id || !mark) return;
   if (top.currentWindowGlobal?.innerWindowId !== mark.doc || info.hasValidUserGestureActivation) {
     forgetMark(id);
     return;
@@ -271,6 +280,12 @@ function onRequest(subject) {
     // no host to name
   }
   if (host && mark.blocked.length < 16) mark.blocked.push(host);
+}
+
+/** The mark of the tab of `browser`, if any. @param {MozBrowser | null | undefined} browser */
+function markOf(browser) {
+  const id = browser?.browsingContext?.browserId;
+  return id === undefined ? undefined : submitMarks.get(id);
 }
 
 /** @param {number} id  a browserId whose mark ends; the observer goes with the last mark */
@@ -348,7 +363,7 @@ export const VimmaActors = {
 
   /**
    * Whether the browser's page has our actor (else the host keeps it in insert).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    */
   has(browser) {
     return !!actorFor(browser.browsingContext);
@@ -356,7 +371,7 @@ export const VimmaActors = {
 
   /**
    * Scrolls the focused frame, or the top frame if the focused one has nothing to scroll.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {ScrollKind} kind
    * @param {number} [count]
    * @param {{ instant?: boolean, top?: boolean }} [options]  `instant`: no smooth scroll;
@@ -375,7 +390,7 @@ export const VimmaActors = {
   /**
    * How far the top frame is scrolled down, from 0 to 1 (docs/specs/mcp-drive.md D16). The
    * page's child answers, so the number is checked here.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {Promise<number>}
    */
   async scrollFraction(browser) {
@@ -392,7 +407,7 @@ export const VimmaActors = {
    * in the focused frame, on its focused text field, if any. INSERT_ENTER (ctrl+j, ctrl+m) is
    * an Enter pressed here in the parent, which Firefox routes to the page's focused element as
    * it does a keyboard's.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {string} command  one of core INSERT_EDIT_COMMANDS, or INSERT_ENTER
    */
   edit(browser, command) {
@@ -413,7 +428,7 @@ export const VimmaActors = {
    * focused frame whether its field's suggestion list is open, and if so presses ArrowDown or
    * ArrowUp there, from the parent, so the page gets a trusted key. The frame focused now: one
    * that loses focus before the press gets none.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {string} actionId  page.suggestion_next or page.suggestion_prev
    * @param {() => boolean} [still]  the caller's own check, made again just before the press
    * @returns {Promise<boolean>} whether a list was open; false means the caller falls back
@@ -438,7 +453,7 @@ export const VimmaActors = {
   /**
    * The top frame's selected text, at most `max` characters, or null (an agent's read,
    * docs/specs/vimma-mcp.md decision 4).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} max
    * @returns {Promise<string | null>}
    */
@@ -454,7 +469,7 @@ export const VimmaActors = {
   /**
    * A keydown is on its way to `browser`'s focused frame: chrome left it alone, so Firefox
    * passes it to the page once chrome's handlers are done.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    */
   keySent(browser) {
     const wg = framesFor(browser)[0]?.currentWindowGlobal;
@@ -466,21 +481,22 @@ export const VimmaActors = {
   /**
    * Blurs the focused element of the focused frame (Esc in insert). Each blur has a new
    * generation, which the frame's later focus reports carry.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {{ windowId: number, gen: number } | null} the document the blur went to and its
    *   generation
    */
   blur(browser) {
     const bc = framesFor(browser)[0];
+    // An actor is its document's: a frame with one has a document.
+    const wg = bc?.currentWindowGlobal;
     const actor = actorFor(bc);
-    if (!actor) return null;
+    if (!wg || !actor) return null;
     const gen = (blurGens.get(browser) ?? 0) + 1;
     blurGens.set(browser, gen);
-    const wg = bc.currentWindowGlobal;
-    const keys = wg?.isInProcess ? undefined : (keysSent.get(wg) ?? 0);
+    const keys = wg.isInProcess ? undefined : (keysSent.get(wg) ?? 0);
     keysSent.delete(wg);
     actor.sendAsyncMessage("Vimma:Blur", { gen, keys });
-    return { windowId: bc.currentWindowGlobal?.innerWindowId ?? 0, gen };
+    return { windowId: wg.innerWindowId, gen };
   },
 
   /**
@@ -491,7 +507,7 @@ export const VimmaActors = {
 
   /**
    * Test-only: why the last collectHints of this browser's top frame returned what it did.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {string}
    */
   lastCollectReason(browser) {
@@ -504,7 +520,7 @@ export const VimmaActors = {
    * other processes, so the parent merges them, offset by the frame rects their embedder
    * reported and clipped to them. Replies are from content processes and checked like any
    * other message: a malformed one drops that frame.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {string} action "hint.follow", "hint.follow_new_tab" or "hint.follow_new_tab_fg"
    *   (links only) or "hint.element"
    *   (text blocks, docs/specs/element-focus.md)
@@ -516,7 +532,9 @@ export const VimmaActors = {
    */
   async collectHints(browser, action, { agent = false, elements = false } = {}) {
     const gen = ++hintGen;
-    const key = agent ? browser : browser.ownerDocument.defaultView;
+    // A <browser>'s document has no view only once its window has closed, where liveGen.set
+    // throws: the collection fails, as before the type said so.
+    const key = agent ? browser : /** @type {Window} */ (browser.ownerDocument.defaultView);
     liveGen.set(key, gen);
     const live = () => liveGen.get(key) === gen;
     const frameTimeout = Services.prefs.getIntPref(FRAME_TIMEOUT_PREF, FRAME_TIMEOUT_DEFAULT);
@@ -540,7 +558,7 @@ export const VimmaActors = {
     const out = [];
     let ms = 0;
     /**
-     * @param {any} bc BrowsingContext
+     * @param {CanonicalBrowsingContext} bc
      * @param {Rect} frame the frame's viewport in top-frame pixels, as clipped by its ancestors
      * @param {{ x: number, y: number }} origin the frame's viewport origin in top-frame pixels
      * @param {number} depth
@@ -557,6 +575,7 @@ export const VimmaActors = {
       const queried = !!actor;
       try {
         // A busy or hung frame (its process spinning) must not hold up the others' labels.
+        /** @type {Promise<null>} */
         const late = new Promise((resolve) => {
           timer = setTimeout(resolve, timeoutAt(depth), null);
         });
@@ -579,7 +598,8 @@ export const VimmaActors = {
       if (depth === 0) {
         lastReasons.set(browser, hintCollectReason({ queried, raw, reply, live: live() }));
       }
-      if (!reply || !live()) return;
+      // A reply came from the actor of `wg`'s document, so there is one.
+      if (!reply || !wg || !live()) return;
       ms += reply.ms;
       for (const t of reply.targets) {
         if (out.length >= MAX_HINTS) break;
@@ -603,16 +623,18 @@ export const VimmaActors = {
       }
       if (depth >= MAX_FRAME_DEPTH) return;
       const children = reply.frames.map((f) => {
-        const child = BrowsingContext.get(f.id);
         // Only a frame this document embeds: a content process names no other.
-        if (!child || child.parent !== bc) return null;
+        const child = bc.children.find((c) => c.id === f.id);
+        if (!child) return null;
         const rect = offset(f.rect, origin);
         const clipped = intersect(rect, frame);
         return clipped && visit(child, clipped, { x: rect.x, y: rect.y }, depth + 1);
       });
       await Promise.all(children);
     };
-    const top = browser.browsingContext;
+    // A browser without a frame loader has no context, and visit's first read throws on it: the
+    // collection fails, as before the type said so.
+    const top = /** @type {CanonicalBrowsingContext} */ (browser.browsingContext);
     const all = { x: 0, y: 0, width: Infinity, height: Infinity };
     await visit(top, all, { x: 0, y: 0 }, 0);
     this._lastCollectMs = ms;
@@ -710,7 +732,7 @@ export const VimmaActors = {
    * cancelled, but for `allowed`, the one the question named, once, during this call. The
    * user's activation from before the step is consumed in every frame first, so that only their
    * input after it counts as theirs.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {{ method: string, action: string } | null} allowed
    * @returns {Promise<boolean>} false when the page has no document to mark
    */
@@ -718,7 +740,7 @@ export const VimmaActors = {
     const top = browser.browsingContext;
     const doc = top?.currentWindowGlobal?.innerWindowId ?? 0;
     if (!top || !doc) return false;
-    /** @type {any[]} */
+    /** @type {CanonicalBrowsingContext[]} */
     let contexts;
     try {
       contexts = top.getAllBrowsingContextsInSubtree();
@@ -762,14 +784,14 @@ export const VimmaActors = {
    * mcp-forms.md F15, F16): a fill marks the tab before its first field and allows the
    * submission only for its last step, so a page that submits the form while it is being
    * filled sends nothing in its place.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {{ method: string, action: string }} allowed
    * @returns {boolean} false when the tab has no mark of this page
    */
   agentAllow(browser, allowed) {
+    const mark = markOf(browser);
     const top = browser.browsingContext;
-    const mark = submitMarks.get(top?.browserId);
-    if (!mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
+    if (!top || !mark || top.currentWindowGlobal?.innerWindowId !== mark.doc) return false;
     try {
       mark.allowed = { method: allowed.method, where: whereOf(Services.io.newURI(allowed.action)) };
     } catch {
@@ -785,7 +807,7 @@ export const VimmaActors = {
    * of the step it names is kept for that document alone (agentClickOutcome), only when it is the
    * last step sent there: a frame that sends a forged one can only make its own click read as
    * skipped, as its outcome reply already could.
-   * @param {any} bc  the frame that skipped it (BrowsingContext)
+   * @param {CanonicalBrowsingContext | null | undefined} bc  the frame that skipped it
    * @param {object} wg  its window global (WindowGlobalParent), the sender's own
    * @param {unknown} data  `{ gen, id, step }`: `step` is the number the parent sent it with
    */
@@ -794,8 +816,10 @@ export const VimmaActors = {
     const mark = id ? submitMarks.get(id) : undefined;
     if (mark) mark.allowed = null;
     // Kept only for the last step sent there: a late skip of an earlier one changes nothing.
-    const step = /** @type {{ step?: unknown }} */ (data ?? {}).step;
-    if (wg && step === sentSteps.get(wg)?.step) skippedSteps.set(wg, /** @type {number} */ (step));
+    const step = data && typeof data === "object" && "step" in data ? data.step : undefined;
+    if (wg && typeof step === "number" && step === sentSteps.get(wg)?.step) {
+      skippedSteps.set(wg, step);
+    }
   },
 
   /**
@@ -803,21 +827,21 @@ export const VimmaActors = {
    * step that started no load within a second has none of its own to make, and a page that
    * keeps the call's wait going must not keep the allowance open with it. The mark and the
    * hosts of the submissions stopped stay for the call's result.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    */
   agentWithdraw(browser) {
-    const mark = submitMarks.get(browser?.browsingContext?.browserId);
+    const mark = markOf(browser);
     if (mark) mark.allowed = null;
   },
 
   /**
    * The agent's call is over: the allowed submission is no longer allowed, and the hosts of the
    * submissions stopped since the mark are returned (the mark stays).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {string[]}
    */
   agentSettle(browser) {
-    const mark = submitMarks.get(browser.browsingContext?.browserId);
+    const mark = markOf(browser);
     if (!mark) return [];
     mark.allowed = null;
     const blocked = mark.blocked;
@@ -831,15 +855,15 @@ export const VimmaActors = {
    * frame is asked in its own process: `shown` when one says so or fails; `unchecked` when a
    * frame has no actor (a data: or blob: document) or does not answer within `ms`, which refuses
    * too; else `clear`.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} ms
    * @returns {Promise<"shown" | "unchecked" | "clear">}
    */
   async agentSensitiveShown(browser, ms) {
-    /** @type {any[]} BrowsingContexts */
     const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
     /** @type {number | undefined} */
     let timer;
+    /** @type {Promise<"late">} */
     const late = new Promise((resolve) => {
       timer = setTimeout(resolve, ms, "late");
     });
@@ -872,19 +896,19 @@ export const VimmaActors = {
    * in its own process, for its newest `max` entries after `since` and how many more it holds.
    * The answer is the child's, which the caller checks entry by entry. A frame that has no actor
    * (a data: or blob: document), fails or does not answer within `ms` answers nothing.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} ms
    * @param {{ since: number, max: number, frames?: number }} ask
    * @returns {Promise<{ entries: unknown[], omitted: number }[]>}
    */
   async agentConsole(browser, ms, { since, max, frames: most = 100 }) {
-    /** @type {any[]} BrowsingContexts */
     const frames = (browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []).slice(
       0,
       most,
     );
     /** @type {number | undefined} */
     let timer;
+    /** @type {Promise<null>} */
     const late = new Promise((resolve) => {
       timer = setTimeout(resolve, ms, null);
     });
@@ -899,9 +923,12 @@ export const VimmaActors = {
               actor.sendQuery("Vimma:AgentConsole", { since, max }),
               late,
             ]);
-            if (!r || !Array.isArray(r.entries)) return none;
-            const omitted = Number.isSafeInteger(r.omitted) && r.omitted > 0 ? r.omitted : 0;
-            return { entries: r.entries.slice(0, max), omitted };
+            if (!r || typeof r !== "object" || !("entries" in r)) return none;
+            const { entries } = r;
+            if (!Array.isArray(entries)) return none;
+            const more = "omitted" in r ? r.omitted : undefined;
+            const omitted = typeof more === "number" && Number.isSafeInteger(more) && more > 0;
+            return { entries: entries.slice(0, max), omitted: omitted ? more : 0 };
           } catch {
             return none; // the frame navigated or its process went away
           }
@@ -958,7 +985,7 @@ export const VimmaActors = {
    * #579; docs/specs/mcp-forms.md F11): `ready`, from its DOMContentLoaded; `net`, until no
    * request the step started is open; then a quiet period, bounded (core AGENT_WAITS). The
    * answer is checked like any reply from a content process.
-   * @param {any} bc BrowsingContext
+   * @param {CanonicalBrowsingContext} bc
    * @param {{ ready?: boolean, net?: boolean, quiet: number, still: number, max: number,
    *   until: number }} ask  `until`: ms since the epoch, past which the child stops waiting
    * @returns {Promise<{ settled: "quiet" | "busy", state: string } | null>} null: the frame
@@ -969,9 +996,11 @@ export const VimmaActors = {
     if (!actor) return null;
     try {
       const r = await actor.sendQuery("Vimma:AgentQuiet", ask);
-      if (r?.settled !== "quiet" && r?.settled !== "busy") return null;
-      if (!["loading", "interactive", "complete"].includes(r.state)) return null;
-      return { settled: r.settled, state: r.state };
+      if (!r || typeof r !== "object" || !("settled" in r) || !("state" in r)) return null;
+      const { settled, state } = r;
+      if (settled !== "quiet" && settled !== "busy") return null;
+      if (state !== "loading" && state !== "interactive" && state !== "complete") return null;
+      return { settled, state };
     } catch {
       return null; // the frame navigated or its process went away
     }
@@ -1064,7 +1093,9 @@ export const VimmaActors = {
         gen: target.gen,
         id: target.id,
       });
-      return ["pending", "kept", "reset", "skipped"].includes(reply) ? reply : "gone";
+      return reply === "pending" || reply === "kept" || reply === "reset" || reply === "skipped"
+        ? reply
+        : "gone";
     } catch {
       return "gone";
     }
@@ -1100,15 +1131,15 @@ export const VimmaActors = {
    * payment providers' frames of other sites included: each frame answers in its own process.
    * A frame that fails or does not answer within `ms` counts as one, so that a doubt asks; one
    * that navigated away mid-check, or has no actor (a data: or blob: document), does not.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} ms
    * @returns {Promise<boolean>}
    */
   async agentCards(browser, ms) {
-    /** @type {any[]} BrowsingContexts */
     const frames = browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? [];
     /** @type {number | undefined} */
     let timer;
+    /** @type {Promise<"late">} */
     const late = new Promise((resolve) => {
       timer = setTimeout(resolve, ms, "late");
     });
@@ -1159,7 +1190,7 @@ export const VimmaActors = {
   /**
    * The total the top page of `browser` states last (docs/specs/mcp-checkpoints.md C7), for a
    * key step, which presses no control; null when none, or the reply is malformed.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {Promise<string | null>}
    */
   async agentPageTotal(browser) {
@@ -1202,7 +1233,7 @@ export const VimmaActors = {
    * browser.tabs.loadInBackground never decides (docs/specs/follow-link-switch.md decision 5). A
    * foreground tab is opened selected rather than selected afterwards: its TabOpen and TabSelect
    * in one task make it take the focused pane in a split (decision 4).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {HintTarget} target
    * @param {{ background: boolean }} options
    * @returns {boolean} whether a tab was opened
@@ -1222,7 +1253,12 @@ export const VimmaActors = {
     } catch {
       return false;
     }
-    const win = browser.ownerDocument.defaultView;
+    // Its document's view: ownerGlobal reads undefined from this module.
+    /** @type {Window | null} */
+    const view = browser.ownerDocument.defaultView;
+    // A tab's <browser> is in a browser window; once that has closed there is no view, and the
+    // read of gBrowser below throws, as before the type said so.
+    const win = /** @type {BrowserWindow} */ (view);
     const tab = win.gBrowser.getTabForBrowser(browser);
     win.openLinkIn(url.href, "tab", {
       inBackground: background,
@@ -1243,9 +1279,9 @@ export const VimmaActors = {
    * agent's follow, docs/specs/mcp-drive.md D12). It sends no referrer: the child does not
    * report the page's referrer policy or the link's `rel`, and none is the strictest of them.
    * The caller checked the scheme, the document and checkLoadURIWithPrincipal.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {HintTarget} target
-   * @param {any} uri nsIURI of the target's href
+   * @param {nsIURI} uri  the target's href
    */
   loadLink(browser, target, uri) {
     const wg = target.wg;
@@ -1268,9 +1304,9 @@ export const VimmaActors = {
    * document and still has it, else the first visible text field in the top frame. Only a frame
    * of this tab is asked, and only the document that reported the field (a frame that has since
    * loaded another page, perhaps from another site, is not).
-   * @param {any} browser XULBrowserElement
-   * @param {{ frame: any, windowId: number }} [last] the frame (BrowsingContext) and its
-   *   document's inner window ID
+   * @param {MozBrowser} browser
+   * @param {{ frame: CanonicalBrowsingContext | null, windowId: number }} [last] the frame and
+   *   its document's inner window ID
    */
   async focusInput(browser, last) {
     const top = browser.browsingContext;
@@ -1292,7 +1328,7 @@ export const VimmaActors = {
 
   /**
    * Focuses the visible text field a count picks in the top frame (`gi`, `3gi`).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} [count]
    * @returns {Promise<boolean>} whether one took focus
    */
@@ -1306,12 +1342,14 @@ export const VimmaActors = {
 
   /**
    * The top frame's scroll position (where `/` started, spec m1-find), or null.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @returns {Promise<{ x: number, y: number } | null>}
    */
   async scrollPosition(browser) {
     try {
-      return (await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollPosition")) ?? null;
+      return parseScrollPosition(
+        await actorFor(browser.browsingContext)?.sendQuery("Vimma:ScrollPosition"),
+      );
     } catch {
       return null;
     }
@@ -1320,7 +1358,7 @@ export const VimmaActors = {
   /**
    * Makes the next find start where Vim's would (spec m1-find): at a selection still on screen,
    * else at the top of the viewport, not at the document's first match.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    */
   findAnchor(browser) {
     actorFor(browser.browsingContext)?.sendAsyncMessage("Vimma:FindAnchor");
@@ -1331,7 +1369,7 @@ export const VimmaActors = {
    * may focus a text field it matches in again, even one whose focus an earlier step gave back
    * (VimmaChild #focusedByFind, #442). Sent before the step's own Finder messages, on the same
    * channel per frame, so each frame gets it first.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    */
   findStep(browser) {
     for (const bc of browser.browsingContext?.getAllBrowsingContextsInSubtree() ?? []) {
@@ -1342,7 +1380,7 @@ export const VimmaActors = {
   /**
    * Tells the frame a find bar closed on that the close is through (VimmaChild #findClosed).
    * Sent after the find bar's close(), so the frame gets it after the finder's own messages.
-   * @param {any} bc BrowsingContext the finder sent its close to
+   * @param {CanonicalBrowsingContext | null} bc  the frame the finder sent its close to
    */
   findClosed(bc) {
     actorFor(bc)?.sendAsyncMessage("Vimma:FindClosed");
@@ -1350,7 +1388,7 @@ export const VimmaActors = {
 
   /**
    * Scrolls the top frame back to a position from `scrollPosition` (Esc in a find).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {{ x: number, y: number }} at
    */
   scrollTo(browser, at) {
@@ -1362,15 +1400,15 @@ export const VimmaActors = {
    * contexts in tree order, skipping those under a hidden embedder, as
    * FinderParent.gatherBrowsingContexts does.
    * At most `max` frames; `cut` says some were left out.
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {number} max
-   * @returns {{ frames: any[], cut: boolean }} BrowsingContexts
+   * @returns {{ frames: CanonicalBrowsingContext[], cut: boolean }}
    */
   grepFrames(browser, max) {
-    /** @type {any[]} */
+    /** @type {CanonicalBrowsingContext[]} */
     const out = [];
     let cut = false;
-    /** @param {any} bc @param {number} depth */
+    /** @param {CanonicalBrowsingContext | null} bc @param {number} depth */
     const gather = (bc, depth) => {
       if (!bc || bc.isUnderHiddenEmbedderElement || depth > MAX_FRAME_DEPTH) return;
       if (out.length >= max) {
@@ -1389,7 +1427,7 @@ export const VimmaActors = {
    * `Vimma:GrepEnd`) to a frame's current document. The raw reply, unchecked: the caller
    * parses it (core grep.mjs). Null when the frame has no actor, went away, or did not answer
    * within `ms`.
-   * @param {any} bc BrowsingContext
+   * @param {CanonicalBrowsingContext} bc
    * @param {string} name
    * @param {object} data
    * @param {number} ms
@@ -1401,6 +1439,7 @@ export const VimmaActors = {
     try {
       const query = actorFor(bc)?.sendQuery(name, data);
       if (!query) return null;
+      /** @type {Promise<null>} */
       const late = new Promise((resolve) => {
         timer = setTimeout(resolve, ms, null);
       });
@@ -1417,8 +1456,7 @@ export const VimmaActors = {
    * for the collection `gen`. The reply is from a content process and checked (core
    * parseBlockReply): null for none, a malformed one, or a frame that since shows another
    * document.
-   * @param {{ bc: any, wg: any }} frame  the frame and its WindowGlobalParent when the block
-   *   was chosen
+   * @param {FrameRef} frame  the frame and its document when the block was chosen
    * @param {number} gen
    * @param {string} op
    * @param {object} [extra]
@@ -1437,7 +1475,7 @@ export const VimmaActors = {
   /**
    * A `Vimma:Block` op with no reply (`track`, `blur`) to a frame, if it still shows the same
    * document.
-   * @param {{ bc: any, wg: any }} frame
+   * @param {FrameRef} frame
    * @param {number} gen
    * @param {"track" | "blur"} op
    */
@@ -1452,13 +1490,17 @@ export const VimmaActors = {
 
   /**
    * A frame and the frames around it up to the top, each with its WindowGlobalParent now.
-   * @param {any} bc BrowsingContext
-   * @returns {{ bc: any, wg: any }[]}  the frame first, the top last
+   * @param {CanonicalBrowsingContext} bc
+   * @returns {FrameRef[]}  the frame first, the top last
    */
   frameChain(bc) {
-    /** @type {{ bc: any, wg: any }[]} */
+    /** @type {FrameRef[]} */
     const out = [];
-    for (let c = bc; c && out.length <= MAX_FRAME_DEPTH; c = c.parent) {
+    for (
+      let c = /** @type {CanonicalBrowsingContext | null} */ (bc);
+      c && out.length <= MAX_FRAME_DEPTH;
+      c = c.parent
+    ) {
       out.push({ bc: c, wg: c.currentWindowGlobal });
     }
     return out;
@@ -1468,7 +1510,7 @@ export const VimmaActors = {
    * Where a box in the first frame of `chain` is in the top frame's CSS pixels, clipped to
    * every frame around it, as hint rects are: each frame's embedder is asked for its viewport.
    * Null when it shows in none of them, or a frame did not answer.
-   * @param {{ bc: any, wg: any }[]} chain  from frameChain
+   * @param {FrameRef[]} chain  from frameChain
    * @param {number} gen
    * @param {Rect} box
    * @returns {Promise<Rect | null>}
@@ -1477,8 +1519,8 @@ export const VimmaActors = {
     let origin = { x: 0, y: 0 };
     let clip = /** @type {Rect | null} */ ({ x: 0, y: 0, width: Infinity, height: Infinity });
     for (let i = chain.length - 1; i > 0; i--) {
-      const outer = /** @type {{ bc: any, wg: any }} */ (chain[i]);
-      const inner = /** @type {{ bc: any, wg: any }} */ (chain[i - 1]);
+      const outer = /** @type {FrameRef} */ (chain[i]);
+      const inner = /** @type {FrameRef} */ (chain[i - 1]);
       const reply = /** @type {{ rect: Rect } | null} */ (
         await this.block(outer, gen, "frame", { id: inner.bc.id })
       );
@@ -1495,7 +1537,7 @@ export const VimmaActors = {
    * Copy mode (m1-copy-mode) in the focused frame: `enter`, a motion (caret.mjs), `toggle`,
    * a selection op, `yank`, `yank_lines` or `exit`. The reply is from a content process:
    * anything but the expected type counts as a failure (false, or "" for `yank`).
-   * @param {any} browser XULBrowserElement
+   * @param {MozBrowser} browser
    * @param {string} op
    * @param {number} [count]
    * @param {string} [char]  a find's character (`f x`)
