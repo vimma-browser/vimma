@@ -2,20 +2,20 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodePng } from "../png.mjs";
+import { decodePng } from "../png.ts";
 import {
   loadScenarios,
   matchState,
   runSteps,
   scenarioLaunch,
   validateScenario,
-} from "../scenario.mjs";
+} from "../scenario.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
+import type { InstallState } from "../scenario.ts";
 
 const SCENARIOS = fileURLToPath(new URL("../../../tests/e2e/scenarios/", import.meta.url));
 
-/** @param {object} over */
-const scenario = (over) => ({
+const scenario = (over: object) => ({
   name: "m0-sample",
   description: "a sample",
   steps: [{ "assert-state": { mode: "insert" } }],
@@ -356,10 +356,8 @@ describe("matchState", () => {
 });
 
 describe("runSteps", () => {
-  /** @param {Array<object>} states */
-  const fakeCtl = (states) => {
-    /** @type {string[]} */
-    const calls = [];
+  const fakeCtl = (states: Array<object>) => {
+    const calls: string[] = [];
     let i = 0;
     return {
       calls,
@@ -368,38 +366,37 @@ describe("runSteps", () => {
           calls.push("state");
           return states[Math.min(i++, states.length - 1)];
         },
-        sendKeys: async (/** @type {string} */ k) => void calls.push(`keys ${k}`),
-        open: async (/** @type {string} */ u) => (calls.push(`open ${u}`), "2"),
+        sendKeys: async (k: string) => void calls.push(`keys ${k}`),
+        open: async (u: string) => (calls.push(`open ${u}`), "2"),
       },
     };
   };
 
   /** A fake ControlSessions: records what the agent steps ask of it. */
   const fakeControl = () => {
-    /** @type {string[]} */
-    const calls = [];
-    /** @type {Record<string, any>} */
-    const replies = { open1: { ok: true, result: { tab: "42" } }, read1: { ok: true } };
+    const calls: string[] = [];
+    const replies: Record<string, any> = {
+      open1: { ok: true, result: { tab: "42" } },
+      read1: { ok: true },
+    };
     return {
       calls,
       control: {
         hold: async () => void calls.push("hold"),
         held: {
           state: async () => (calls.push("held state"), { mode: "normal" }),
-          sendKeys: async (/** @type {string} */ k) => void calls.push(`held keys ${k}`),
-          open: async (/** @type {string} */ u) => (calls.push(`held open ${u}`), "3"),
+          sendKeys: async (k: string) => void calls.push(`held keys ${k}`),
+          open: async (u: string) => (calls.push(`held open ${u}`), "3"),
         },
-        agentSend: (/** @type {any} */ spec) =>
+        agentSend: (spec: any) =>
           void calls.push(`agent ${spec.send} ${JSON.stringify(spec.args ?? {})} as ${spec.as}`),
-        agentResult: async (/** @type {string} */ name) => replies[name],
-        ctlSpawn: (/** @type {string[]} */ args, /** @type {string} */ as) =>
-          void calls.push(`ctl ${args.join(" ")} as ${as}`),
+        agentResult: async (name: string) => replies[name],
+        ctlSpawn: (args: string[], as: string) => void calls.push(`ctl ${args.join(" ")} as ${as}`),
         ctlResult: async () => ({ exitCode: 0, stderr: "" }),
-        mcpSend: (/** @type {any} */ spec) =>
+        mcpSend: (spec: any) =>
           void calls.push(`mcp ${spec.method} ${JSON.stringify(spec.params ?? {})} as ${spec.as}`),
-        mcpResult: async (/** @type {string} */ name) => replies[name],
-        external: async (/** @type {string[]} */ args) =>
-          void calls.push(`external ${args.join(" ")}`),
+        mcpResult: async (name: string) => replies[name],
+        external: async (args: string[]) => void calls.push(`external ${args.join(" ")}`),
       },
     };
   };
@@ -517,9 +514,8 @@ describe("runSteps", () => {
   // baseline of a re-record at once. The steps after it still run and can fail on their own.
   it("a screenshot that fails lets the steps go on and fails the scenario at its end", async () => {
     const { ctl, calls } = fakeCtl([{ mode: "normal" }]);
-    /** @type {string[]} */
-    const shots = [];
-    const screenshot = async (/** @type {string} */ name) => {
+    const shots: string[] = [];
+    const screenshot = async (name: string) => {
       shots.push(name);
       return name === "ok" ? undefined : `${name}: 1.00 % of pixels differ`;
     };
@@ -595,8 +591,7 @@ describe("runSteps", () => {
 
   it("runs each step in order", async () => {
     const { ctl, calls } = fakeCtl([{ mode: "insert" }, { mode: "insert" }, { mode: "help" }]);
-    /** @type {string[]} */
-    const shots = [];
+    const shots: string[] = [];
     await runSteps(
       scenario({
         steps: [
@@ -606,7 +601,7 @@ describe("runSteps", () => {
           { screenshot: "m0-sample-help" },
         ],
       }),
-      { ctl, screenshot: async (/** @type {string} */ n) => void shots.push(n), pollMs: 1 },
+      { ctl, screenshot: async (n: string) => void shots.push(n), pollMs: 1 },
     );
     expect(calls).toEqual(["open about:blank", "keys ctrl+b ?", "state", "state", "state"]);
     expect(shots).toEqual(["m0-sample-help"]);
@@ -644,7 +639,7 @@ describe("runSteps", () => {
       {
         ctl,
         screenshot: async () => {},
-        restart: async (/** @type {string} */ how) => void calls.push(`restart ${how}`),
+        restart: async (how: string) => void calls.push(`restart ${how}`),
       },
     );
     expect(calls).toEqual(["keys esc", "restart quit", "state"]);
@@ -655,7 +650,7 @@ describe("runSteps", () => {
     await runSteps(scenario({ steps: [{ restart: "kill" }] }), {
       ctl,
       screenshot: async () => {},
-      restart: async (/** @type {string} */ how) => void calls.push(`restart ${how}`),
+      restart: async (how: string) => void calls.push(`restart ${how}`),
     });
     expect(calls).toEqual(["restart kill"]);
   });
@@ -683,7 +678,7 @@ describe("runSteps", () => {
 });
 
 describe("update scenarios (m6a-updater, e2e)", () => {
-  const update = (/** @type {object} */ over) =>
+  const update = (over: object) =>
     scenario({ name: "m6a-sample", update: { updater: "test" }, ...over });
   const ctl = { state: async () => ({}), sendKeys: async () => {}, open: async () => "1" };
 
@@ -704,8 +699,7 @@ describe("update scenarios (m6a-updater, e2e)", () => {
         undefined,
       ),
     ).toEqual([]);
-    const bad = (/** @type {object} */ over) =>
-      validateScenario(update(over), undefined).join("; ");
+    const bad = (over: object) => validateScenario(update(over), undefined).join("; ");
     expect(bad({ update: { updater: "mine" } })).toMatch(/update: updater is test or shipped/);
     expect(bad({ update: { updater: "test", extra: 1 } })).toMatch(/update: unknown field extra/);
     expect(bad({ steps: [{ "serve-update": { offer: "n2" } }] })).toMatch(
@@ -735,11 +729,9 @@ describe("update scenarios (m6a-updater, e2e)", () => {
   });
 
   it("serve-update hands the offer to the session, wait-for-install waits for the install", async () => {
-    /** @type {string[]} */
-    const calls = [];
+    const calls: string[] = [];
     let reads = 0;
-    /** @type {() => Promise<import("../scenario.mjs").InstallState>} */
-    const install = async () => {
+    const install: () => Promise<InstallState> = async () => {
       reads++;
       return reads < 3
         ? { buildId: "n", marker: false, updateError: null, marRequests: 0 }
@@ -764,8 +756,12 @@ describe("update scenarios (m6a-updater, e2e)", () => {
   });
 
   it("wait-for-install times out naming what differs", async () => {
-    /** @type {() => Promise<import("../scenario.mjs").InstallState>} */
-    const install = async () => ({ buildId: "n", marker: false, updateError: 23, marRequests: 1 });
+    const install: () => Promise<InstallState> = async () => ({
+      buildId: "n",
+      marker: false,
+      updateError: 23,
+      marRequests: 1,
+    });
     await expect(
       runSteps(
         update({ steps: [{ "wait-for-install": { updateError: 19 }, timeoutSeconds: 0.05 }] }),

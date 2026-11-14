@@ -39,6 +39,9 @@ import {
 } from "../../packages/vimma-core/src/updates.mjs";
 import { buildManifest, marName } from "../update/manifest.mjs";
 import { buildMarFromDir, insertSignature, signedBytes as marBytes } from "../update/mar.mjs";
+import type { KeyObject } from "node:crypto";
+import type { ExecFileSyncOptions } from "node:child_process";
+import type { InstallState, UpdateServe } from "./scenario.ts";
 
 /** The file N+1 adds, so the scenario can tell the MAR's files reached the install. */
 export const MARKER = "vimma-e2e-update-marker";
@@ -46,11 +49,8 @@ export const MARKER = "vimma-e2e-update-marker";
 export const UPDATER_ERRORS = Object.freeze({ CERT_VERIFY: 19, VERSION_DOWNGRADE: 23 });
 const BUILD_ID = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/;
 
-/**
- * application.ini's lines, with the section each is in.
- * @param {string} text
- */
-function iniLines(text) {
+/** application.ini's lines, with the section each is in. */
+function iniLines(text: string) {
   let section = "";
   return text.split("\n").map((raw) => {
     const line = raw.trim();
@@ -62,22 +62,16 @@ function iniLines(text) {
   });
 }
 
-/**
- * @param {string} text  an ini file
- * @param {string} section
- * @param {string} key
- * @returns {string | null}
- */
-export function iniValue(text, section, key) {
+/** @param text an ini file */
+export function iniValue(text: string, section: string, key: string): string | null {
   return iniLines(text).find((l) => l.section === section && l.key === key)?.value ?? null;
 }
 
 /**
  * The ini file with `key` in `section` set to `value`. A key that is not there is refused, not
  * added: the scenarios change only what the build wrote.
- * @param {string} text @param {string} section @param {string} key @param {string} value
  */
-export function setIni(text, section, key, value) {
+export function setIni(text: string, section: string, key: string, value: string) {
   const lines = iniLines(text);
   const at = lines.findIndex((l) => l.section === section && l.key === key);
   if (at < 0) throw new Error(`application.ini: no ${key} in [${section}]`);
@@ -87,37 +81,23 @@ export function setIni(text, section, key, value) {
 /**
  * The build ID of the build that last ran on a profile: compatibility.ini's `LastVersion`,
  * `<version>_<appBuildID>/<platformBuildID>`, which Firefox writes at every start.
- * @param {string} text
  */
-export function lastBuildId(text) {
+export function lastBuildId(text: string) {
   const last = iniValue(text, "Compatibility", "LastVersion");
   return /_(\d{14})\//.exec(last ?? "")?.[1] ?? null;
 }
 
-/**
- * A build ID `seconds` later.
- * @param {string} buildId @param {number} seconds
- */
-export function laterBuildId(buildId, seconds) {
+/** A build ID `seconds` later. */
+export function laterBuildId(buildId: string, seconds: number) {
   const m = BUILD_ID.exec(buildId);
   if (!m) throw new Error(`${buildId} is not a build ID`);
   const [, y, mo, d, h, mi, s] = m.map(Number);
-  const at = Date.UTC(
-    /** @type {number} */ (y),
-    /** @type {number} */ (mo) - 1,
-    d,
-    h,
-    mi,
-    /** @type {number} */ (s) + seconds,
-  );
+  const at = Date.UTC(y as number, (mo as number) - 1, d, h, mi, (s as number) + seconds);
   return new Date(at).toISOString().replace(/\D/g, "").slice(0, 14);
 }
 
-/**
- * A Vimma version `n` patch releases later, without a pre-release part.
- * @param {string} version @param {number} n
- */
-export function laterVersion(version, n) {
+/** A Vimma version `n` patch releases later, without a pre-release part. */
+export function laterVersion(version: string, n: number) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(version);
   if (!m) throw new Error(`${version} is not a Vimma version`);
   return `${m[1]}.${m[2]}.${Number(m[3]) + n}`;
@@ -125,10 +105,13 @@ export function laterVersion(version, n) {
 
 /**
  * A manifest key for this run, in the shape vimma.update.testKeys takes, with its private key.
- * @returns {Promise<{ id: string, slot: "primary", spki: string,
- *   privateKey: import("node:crypto").KeyObject }>}
  */
-export async function makeManifestKey() {
+export async function makeManifestKey(): Promise<{
+  id: string;
+  slot: "primary";
+  spki: string;
+  privateKey: KeyObject;
+}> {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 });
   const spki = new Uint8Array(publicKey.export({ type: "spki", format: "der" }));
   // Node's global Web Crypto (the same object as node:crypto's webcrypto), typed as the DOM's
@@ -140,10 +123,8 @@ export async function makeManifestKey() {
 /**
  * The manifest body with its signature comment (core/updates.mjs, rule 1): RSA-PKCS#1 v1.5
  * with SHA-384 over the prefixed body, as Cloud KMS signs a published one.
- * @param {string} body
- * @param {{ id: string, privateKey: import("node:crypto").KeyObject }} key
  */
-export function signManifest(body, key) {
+export function signManifest(body: string, key: { id: string; privateKey: KeyObject }) {
   const sig = sign("sha384", Buffer.from(manifestBytes(body)), {
     key: key.privateKey,
     padding: constants.RSA_PKCS1_PADDING,
@@ -157,11 +138,16 @@ const NO_PACKAGE = Object.freeze({ size: 1, sha512: "0".repeat(128) });
 /**
  * A manifest body from tools/update/manifest.mjs offering `offer`, whose `<patch>` is the local
  * MAR instead of the release's (the one thing the release manifest does not let a caller set).
- * @param {{ serial: string,
- *   offer: { appVersion: string, buildId: string, displayVersion: string },
- *   mar: { size: number, sha512: string, url: string } }} o
  */
-export function localManifest({ serial, offer, mar }) {
+export function localManifest({
+  serial,
+  offer,
+  mar,
+}: {
+  serial: string;
+  offer: { appVersion: string; buildId: string; displayVersion: string };
+  mar: { size: number; sha512: string; url: string };
+}) {
   if (!mar.url.startsWith("https://")) throw new Error(`the MAR URL ${mar.url} is not https`);
   const body = buildManifest({
     serial,
@@ -182,12 +168,8 @@ export function localManifest({ serial, offer, mar }) {
   return body.split(released).join(`URL="${mar.url}"`);
 }
 
-/**
- * A MAR from mar.mjs's `build` (one zeroed placeholder) signed with `privateKey`.
- * @param {Buffer} buf
- * @param {import("node:crypto").KeyObject} privateKey
- */
-export function signMar(buf, privateKey) {
+/** A MAR from mar.mjs's `build` (one zeroed placeholder) signed with `privateKey`. */
+export function signMar(buf: Buffer, privateKey: KeyObject) {
   const signature = sign("sha384", marBytes(buf), {
     key: privateKey,
     padding: constants.RSA_PKCS1_PADDING,
@@ -201,9 +183,8 @@ export function signMar(buf, privateKey) {
  * itself writes in the install. Firefox's own record of a failed update (updates.xml) is not
  * written in every case: after an update was applied in the same install, a later failed one
  * left none.
- * @param {string} log
  */
-export function updaterError(log) {
+export function updaterError(log: string) {
   const statuses = [...log.matchAll(/Writing status to file: (.+)$/gm)];
   const last = statuses.at(-1)?.[1]?.trim() ?? "";
   const m = /^failed: (\d+)$/.exec(last);
@@ -220,9 +201,8 @@ const APP_INI = "browser/application.ini";
 /**
  * Writes application.ini where the package has it and where the scenarios' browser reads it
  * (APP_INI), so both say the same and a MAR of the tree carries both.
- * @param {string} dir @param {string} text
  */
-function writeIni(dir, text) {
+function writeIni(dir: string, text: string) {
   writeFileSync(join(dir, "application.ini"), text);
   writeFileSync(join(dir, APP_INI), text);
 }
@@ -231,10 +211,19 @@ function writeIni(dir, text) {
  * A copy of an unpacked `./mach package` tree (`vimma/`) as an install the scenario updates:
  * its update URL is the local host's, and with `testUpdater` its `updater` is Mozilla's test
  * build (`updater-xpcshell`, which trusts `mycert`), as Mozilla's own updater tests do.
- * @param {{ from: string, to: string, url: string, testUpdater: string | null }} o
- * @returns {string} the install directory
+ * @returns the install directory
  */
-export function installTree({ from, to, url, testUpdater }) {
+export function installTree({
+  from,
+  to,
+  url,
+  testUpdater,
+}: {
+  from: string;
+  to: string;
+  url: string;
+  testUpdater: string | null;
+}): string {
   cpSync(from, to, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
   const ini = join(to, "application.ini");
   writeIni(to, setIni(readFileSync(ini, "utf8"), "AppUpdate", "URL", url));
@@ -250,10 +239,18 @@ export function installTree({ from, to, url, testUpdater }) {
  * N+1 from N's tree: a later build ID (what Firefox's updater and rule 4 compare), the marker
  * file, and with `appVersion` another Firefox version (the downgrade MAR's product version comes
  * from it, mar.mjs).
- * @param {{ from: string, to: string, buildId: string, appVersion?: string }} o
- * @returns {string}
  */
-export function nextTree({ from, to, buildId, appVersion }) {
+export function nextTree({
+  from,
+  to,
+  buildId,
+  appVersion,
+}: {
+  from: string;
+  to: string;
+  buildId: string;
+  appVersion?: string;
+}): string {
   cpSync(from, to, { recursive: true, preserveTimestamps: true, verbatimSymlinks: true });
   const ini = join(to, "application.ini");
   let text = setIni(readFileSync(ini, "utf8"), "App", "BuildID", buildId);
@@ -272,12 +269,15 @@ export function nextTree({ from, to, buildId, appVersion }) {
  * adds its v3_ca section to a self-signed certificate, and 1.1.1 and LibreSSL add -addext's
  * extensions beside it instead of in its place, so the CA carried Basic Constraints twice and
  * OpenSSL 3 and NSS refused it as an issuer.
- * @param {string} dir
- * @returns {{ ca: string, caFile: string, cert: string, key: string }}
  */
-export function hostCertificate(dir) {
-  const f = (/** @type {string} */ n) => join(dir, n);
-  const run = (/** @type {string[]} */ args) =>
+export function hostCertificate(dir: string): {
+  ca: string;
+  caFile: string;
+  cert: string;
+  key: string;
+} {
+  const f = (n: string) => join(dir, n);
+  const run = (args: string[]) =>
     execFileSync("openssl", args, { stdio: ["ignore", "ignore", "pipe"] });
   writeFileSync(
     f("openssl.cnf"),
@@ -329,12 +329,10 @@ export function hostCertificate(dir) {
 
 /**
  * Makes the profile trust the run's CA, before the browser first starts on it (NSS's certutil).
- * @param {string} profile @param {string} caFile
  */
-export function trustCa(profile, caFile) {
+export function trustCa(profile: string, caFile: string) {
   const db = `sql:${profile}`;
-  /** @type {import("node:child_process").ExecFileSyncOptions} */
-  const opts = { stdio: ["ignore", "ignore", "pipe"] };
+  const opts: ExecFileSyncOptions = { stdio: ["ignore", "ignore", "pipe"] };
   if (!existsSync(join(profile, "cert9.db"))) {
     execFileSync("certutil", ["-N", "-d", db, "--empty-password"], opts);
   }
@@ -345,34 +343,33 @@ export function trustCa(profile, caFile) {
   );
 }
 
-/**
- * @typedef {{ path: string, cookie: boolean, range: string | null }} HostRequest
- * @typedef {{
- *   origin: string,
- *   serve: (text: string | null) => void,
- *   addFile: (name: string, file: string) => string,
- *   requests: () => HostRequest[],
- *   marRequests: () => number,
- *   close: () => Promise<void>,
- * }} UpdateHost
- */
+export type HostRequest = { path: string; cookie: boolean; range: string | null };
+export type UpdateHost = {
+  origin: string;
+  serve: (text: string | null) => void;
+  addFile: (name: string, file: string) => string;
+  requests: () => HostRequest[];
+  marRequests: () => number;
+  close: () => Promise<void>;
+};
 
 /**
  * The local update host: `/update.xml` (whatever the query) answers the manifest last given to
  * `serve` (404 before, or after `serve(null)`), and `/<name>` each file added, with the byte
  * ranges nsIncrementalDownload asks for. It listens on 127.0.0.1 only, on any free port: unlike
- * the fixture pages' fixed one (pages.mjs, PAGE_PORT), no screenshot shows its origin, since the
+ * the fixture pages' fixed one (pages.ts, PAGE_PORT), no screenshot shows its origin, since the
  * update scenarios take none, so a fixed port would only make two runs collide.
- * @param {{ cert: string, key: string }} tls
- * @returns {Promise<UpdateHost>}
  */
-export async function startUpdateHost({ cert, key }) {
-  /** @type {string | null} */
-  let manifest = null;
-  /** @type {Map<string, string>} */
-  const files = new Map();
-  /** @type {HostRequest[]} */
-  const log = [];
+export async function startUpdateHost({
+  cert,
+  key,
+}: {
+  cert: string;
+  key: string;
+}): Promise<UpdateHost> {
+  let manifest: string | null = null;
+  const files: Map<string, string> = new Map();
+  const log: HostRequest[] = [];
   const server = createServer({ cert, key }, (req, res) => {
     const path = new URL(req.url ?? "/", "https://127.0.0.1").pathname;
     const range = req.headers.range ?? null;
@@ -427,11 +424,8 @@ export async function startUpdateHost({ cert, key }) {
   };
 }
 
-/**
- * A file's size and SHA-512, as the manifest's `<patch>` names them.
- * @param {string} file
- */
-export function fileDigest(file) {
+/** A file's size and SHA-512, as the manifest's `<patch>` names them. */
+export function fileDigest(file: string) {
   const data = readFileSync(file);
   return { size: data.length, sha512: createHash("sha512").update(data).digest("hex") };
 }
@@ -443,10 +437,9 @@ export function fileDigest(file) {
  * focused address bar connects to the search engine) are off, as in Mozilla's test profiles
  * (testing/profiles/unittest-required/user.js). And Firefox's updater on, which the harness's
  * profile turns off for every other scenario.
- * @param {{ id: string, slot: string, spki: string }} key
- * @param {string} url the manifest's URL on the update host
+ * @param url the manifest's URL on the update host
  */
-export const updatePrefs = (key, url) => ({
+export const updatePrefs = (key: { id: string; slot: string; spki: string }, url: string) => ({
   "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer": true,
   "vimma.update.url": url,
   "vimma.update.testKeys": JSON.stringify([key]),
@@ -466,9 +459,8 @@ export const updatePrefs = (key, url) => ({
  * XUL_APP_FILE names it, as the artifact build does; so the install's file (APP_INI), with the
  * local update URL, and after the update N+1's build ID, is what the browser runs with. The updater
  * execs the browser in the same process, so the variables reach N+1 too.
- * @param {string} install
  */
-export const updateEnv = (install) => ({
+export const updateEnv = (install: string) => ({
   MOZ_DISABLE_NONLOCAL_CONNECTIONS: "1",
   XUL_APP_FILE: join(install, APP_INI),
 });
@@ -482,10 +474,10 @@ const OLDER_FIREFOX = "100.0";
 
 /**
  * `mycert`'s private key, out of libmar's test database (NSS's pk12util, then openssl).
- * @param {string} engine  the Firefox tree
- * @param {string} dir     a private directory for the PKCS #12 file
+ * @param engine the Firefox tree
+ * @param dir a private directory for the PKCS #12 file
  */
-export function mycertKey(engine, dir) {
+export function mycertKey(engine: string, dir: string) {
   const p12 = join(dir, "mycert.p12");
   execFileSync(
     "pk12util",
@@ -503,39 +495,44 @@ export function mycertKey(engine, dir) {
 /**
  * Vimma's and Firefox's versions from the build's `--version` line (`Vimma 0.1.15 · Firefox
  * 159.0.1`, tools/release/version-line.mjs).
- * @param {string} binary
  */
-export function buildVersions(binary) {
+export function buildVersions(binary: string) {
   const line = execFileSync(binary, ["--version"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "ignore"],
   }).trim();
   const m = /^Vimma (\S+) · Firefox (\S+)$/.exec(line);
   if (!m) throw new Error(`${binary} --version printed "${line}"`);
-  return { display: /** @type {string} */ (m[1]), firefox: /** @type {string} */ (m[2]) };
+  return { display: m[1] as string, firefox: m[2] as string };
 }
 
-/**
- * @typedef {{
- *   host: UpdateHost,
- *   caFile: string,
- *   testKey: { id: string, slot: "primary", spki: string },
- *   buildIds: { n: string, n1: string, older: string },
- *   newInstall: (updater: "test" | "shipped", to: string) => string,
- *   serve: (spec: import("./scenario.mjs").UpdateServe) => void,
- *   close: () => Promise<void>,
- * }} UpdateRun
- */
+export type UpdateRun = {
+  host: UpdateHost;
+  caFile: string;
+  testKey: { id: string; slot: "primary"; spki: string };
+  buildIds: { n: string; n1: string; older: string };
+  newInstall: (updater: "test" | "shipped", to: string) => string;
+  serve: (spec: UpdateServe) => void;
+  close: () => Promise<void>;
+};
 
 /**
  * Everything the update scenarios share, made once per run from a VIMMA_UPDATES=1 objdir with
  * a `./mach package` tarball: N (the tarball, its update URL the local host's), N+1 (a later
  * build ID and the marker) and the downgrade build (later still, an older Firefox), their
  * complete MARs signed with `mycert`, the manifest keys and the host.
- * @param {{ objdir: string, engine: string, work: string, log?: (line: string) => void }} o
- * @returns {Promise<UpdateRun>}
  */
-export async function prepareUpdateRun({ objdir, engine, work, log = () => {} }) {
+export async function prepareUpdateRun({
+  objdir,
+  engine,
+  work,
+  log = () => {},
+}: {
+  objdir: string;
+  engine: string;
+  work: string;
+  log?: (line: string) => void;
+}): Promise<UpdateRun> {
   const dist = join(objdir, "dist");
   const tarball = readdirSync(dist).find((f) => /^vimma-.*\.linux-x86_64\.tar\.xz$/.test(f));
   if (!tarball) throw new Error(`no vimma-*.linux-x86_64.tar.xz in ${dist}: run ./mach package`);
@@ -571,12 +568,11 @@ export async function prepareUpdateRun({ objdir, engine, work, log = () => {} })
     });
     const nTest = installTree({ from: n, to: join(work, "n-test"), url, testUpdater });
     const ini = readFileSync(join(n, "application.ini"), "utf8");
-    const nId = /** @type {string} */ (iniValue(ini, "App", "BuildID"));
-    const appVersion = /** @type {string} */ (iniValue(ini, "App", "Version"));
+    const nId = iniValue(ini, "App", "BuildID") as string;
+    const appVersion = iniValue(ini, "App", "Version") as string;
     const { display } = buildVersions(join(n, "vimma"));
     const buildIds = { n: nId, n1: laterBuildId(nId, 60), older: laterBuildId(nId, 120) };
-    /** @param {string} name @param {string} dir */
-    const mar = (name, dir) => {
+    const mar = (name: string, dir: string) => {
       const out = join(work, name);
       buildMarFromDir({ dir, tools, channel: "vimma", out: `${out}.unsigned` });
       writeFileSync(out, signMar(readFileSync(`${out}.unsigned`), mycert));
@@ -629,7 +625,7 @@ export async function prepareUpdateRun({ objdir, engine, work, log = () => {} })
         return to;
       },
       serve: ({ offer, key = "test" }) => {
-        const serial = laterBuildId(/** @type {string} */ (start), served++);
+        const serial = laterBuildId(start as string, served++);
         const body =
           offer === "none"
             ? buildManifest({ serial, update: null })
@@ -653,14 +649,22 @@ function serialNow() {
  * What a `wait-for-install` step compares: which build the install holds and the profile last
  * ran (n, n1, or null when they differ or are neither), N+1's marker, the error code the
  * updater's last run ended with, and the MAR requests the host saw since `since`.
- * @param {{ install: string, profile: string, run: UpdateRun, since: number }} o
- * @returns {import("./scenario.mjs").InstallState}
  */
-export function installState({ install, profile, run, since }) {
-  const read = (/** @type {string} */ f) => (existsSync(f) ? readFileSync(f, "utf8") : "");
+export function installState({
+  install,
+  profile,
+  run,
+  since,
+}: {
+  install: string;
+  profile: string;
+  run: UpdateRun;
+  since: number;
+}): InstallState {
+  const read = (f: string) => (existsSync(f) ? readFileSync(f, "utf8") : "");
   const installed = iniValue(read(join(install, "application.ini")), "App", "BuildID");
   const ran = lastBuildId(read(join(profile, "compatibility.ini")));
-  const name = (/** @type {string | null} */ id) =>
+  const name = (id: string | null) =>
     id === run.buildIds.n ? "n" : id === run.buildIds.n1 ? "n1" : null;
   return {
     buildId: installed === ran ? name(installed) : null,

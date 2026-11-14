@@ -65,13 +65,16 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -145,7 +148,8 @@ async function decode(result) {
   const bytes = /** @type {any} */ (Uint8Array).fromBase64(result.data);
   const bitmap = await createImageBitmap(new Blob([bytes], { type: result.mimeType }));
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const ctx = canvas.getContext("2d");
+  // A fresh canvas: getContext("2d") is null only after another context type.
+  const ctx = /** @type {OffscreenCanvasRenderingContext2D} */ (canvas.getContext("2d"));
   ctx.drawImage(bitmap, 0, 0);
   return {
     width: bitmap.width,
@@ -157,7 +161,9 @@ async function decode(result) {
 
 /** A CSS colour as [r, g, b]. @param {string} css */
 function rgb(css) {
-  const ctx = new OffscreenCanvas(1, 1).getContext("2d");
+  const ctx = /** @type {OffscreenCanvasRenderingContext2D} */ (
+    new OffscreenCanvas(1, 1).getContext("2d")
+  );
   ctx.fillStyle = css;
   ctx.fillRect(0, 0, 1, 1);
   return [...ctx.getImageData(0, 0, 1, 1).data.slice(0, 3)];
@@ -177,12 +183,15 @@ async function typeInto(tab, id, value, { frame = false, scroll = true } = {}) {
     ? tab.linkedBrowser.browsingContext.children[0]
     : tab.linkedBrowser.browsingContext;
   await SpecialPowers.spawn(bc, [id, value], (fid, v) => {
-    const el = content.document.getElementById(fid);
+    const el = /** @type {HTMLInputElement} */ (content.document.getElementById(fid));
     el.setUserInput(v);
   });
   if (!frame) {
     await SpecialPowers.spawn(tab.linkedBrowser, [id, scroll], (fid, s) => {
-      if (s) content.document.getElementById(fid).scrollIntoView({ block: "center" });
+      if (s)
+        /** @type {HTMLElement} */ (content.document.getElementById(fid)).scrollIntoView({
+          block: "center",
+        });
       else content.scrollTo(0, 0);
     });
   }
@@ -193,7 +202,8 @@ add_task(async function test_screenshot_of_a_background_tab_shows_its_page() {
   const tab = await openAgentTab();
   // The page changes after its load, while it is in the background: the image must show it now.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.getElementById("band").style.background = "rgb(255, 0, 0)";
+    /** @type {HTMLElement} */ (content.document.getElementById("band")).style.background =
+      "rgb(255, 0, 0)";
   });
   const before = { workspace: activeName(), selected: gBrowser.selectedTab };
   const c = await agentClient();
@@ -243,7 +253,8 @@ add_task(async function test_screenshot_is_smaller_unless_asked_full() {
   await mcp(true);
   const tab = await openAgentTab();
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.getElementById("band").style.background = "rgb(255, 0, 0)";
+    /** @type {HTMLElement} */ (content.document.getElementById("band")).style.background =
+      "rgb(255, 0, 0)";
   });
   const c = await agentClient();
   const small = await screenshot(c, tab);
@@ -274,7 +285,9 @@ add_task(async function test_screenshot_is_smaller_unless_asked_full() {
   BrowserTestUtils.removeTab(noisy);
   // Labels are drawn on the default image too, at their elements' corners scaled to it.
   const go = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    const b = content.document.getElementById("go").getBoundingClientRect();
+    const b = /** @type {HTMLElement} */ (
+      content.document.getElementById("go")
+    ).getBoundingClientRect();
     return { x: b.x, y: b.y };
   });
   Assert.ok((await elements(c, tab)).ok, "vimma_elements lists the page");
@@ -325,13 +338,17 @@ add_task(async function test_screenshot_draws_labels() {
   Assert.ok(r.ok, "a screenshot with labels runs");
   Assert.deepEqual([r.result.labels, r.result.stale], [0, true], "no list: stale, none drawn");
   const go = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    const b = content.document.getElementById("go").getBoundingClientRect();
+    const b = /** @type {HTMLElement} */ (
+      content.document.getElementById("go")
+    ).getBoundingClientRect();
     return { x: b.x, y: b.y };
   });
   const plain = await decode(r.result);
   const listed = await elements(c, tab);
   Assert.ok(listed.ok, "vimma_elements lists the page");
-  const count = listed.result.elements.split("\n").filter((l) => l.includes('"label"')).length;
+  const count = listed.result.elements
+    .split("\n")
+    .filter((/** @type {string} */ l) => l.includes('"label"')).length;
   r = await screenshot(c, tab, { labels: true, full: true });
   Assert.ok(r.ok, "and the screenshot runs");
   Assert.equal(r.result.labels, count, "every listed label on screen is drawn");
@@ -340,7 +357,7 @@ add_task(async function test_screenshot_draws_labels() {
   const scale = r.result.width / tab.linkedBrowser.getBoundingClientRect().width;
   const style = getComputedStyle(document.documentElement);
   const hint = rgb(style.getPropertyValue("--vimma-hint-bg").trim() || "#ff4fb8");
-  const corner = [go.x * scale + 2, go.y * scale + 2];
+  const corner = /** @type {[number, number]} */ ([go.x * scale + 2, go.y * scale + 2]);
   Assert.ok(
     near(labelled.at(...corner), hint),
     `the button's label in the hint colour at its corner: ${labelled.at(...corner)} vs ${hint}`,

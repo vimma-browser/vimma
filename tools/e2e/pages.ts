@@ -8,19 +8,18 @@ import { extname, join } from "node:path";
 const NAME = /^[\w-][\w.-]*$/;
 /** A fragment the page may read (`fixture:cookie.html#work`); the server never sees it. */
 const FRAGMENT = /^#[\w.=-]*$/;
-const TYPES = /** @type {Record<string, string>} */ ({
+const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".pdf": "application/pdf",
-});
+} as Record<string, string>;
 
 /**
- * @param {string} url a scenario's `open` value: `fixture:<name>[#fragment]` or a URL
- * @param {string | null} base the page server's base URL (with a trailing slash)
- * @returns {string}
+ * @param url a scenario's `open` value: `fixture:<name>[#fragment]` or a URL
+ * @param base the page server's base URL (with a trailing slash)
  */
-export function fixtureUrl(url, base) {
+export function fixtureUrl(url: string, base: string | null): string {
   if (!url.startsWith("fixture:")) return url;
   const rest = url.slice("fixture:".length);
   const hash = rest.indexOf("#");
@@ -36,11 +35,8 @@ export function fixtureUrl(url, base) {
 /**
  * A typed text with each `fixture:<name>[#fragment]` in it mapped onto the server; a name ends
  * at a space or `]`, so a fake agent CLI's `[[open fixture:shop.html]]` works.
- * @param {string} text
- * @param {string | null} base
- * @returns {string}
  */
-export function fixtureText(text, base) {
+export function fixtureText(text: string, base: string | null): string {
   return text.replace(/fixture:[^\s\]]*/g, (url) => fixtureUrl(url, base));
 }
 
@@ -55,10 +51,14 @@ export const PAGE_PORT = 28471;
 /**
  * The port the e2e page server listens on: `--port`, else `VIMMA_E2E_PORT`, else PAGE_PORT.
  * 0 asks for any free port (screenshots that show the URL then differ from the baselines).
- * @param {{ flag: string | undefined, env: Record<string, string | undefined> }} o
- * @returns {number}
  */
-export function pagePort({ flag, env }) {
+export function pagePort({
+  flag,
+  env,
+}: {
+  flag: string | undefined;
+  env: Record<string, string | undefined>;
+}): number {
   // An empty VIMMA_E2E_PORT is an unset one, as VIMMA_E2E_BUILD; an empty --port is an error.
   const [name, value] =
     flag !== undefined ? ["--port", flag] : ["VIMMA_E2E_PORT", env.VIMMA_E2E_PORT || undefined];
@@ -73,11 +73,11 @@ export function pagePort({ flag, env }) {
  * Serve the plain files of `dir` (no subdirectories) on 127.0.0.1, at `port` (default: any
  * free one). A port another process holds rejects with EADDRINUSE: the caller decides what to
  * do, since another port changes what the pages' URLs look like.
- * @param {string} dir
- * @param {{ port?: number }} [options]
- * @returns {Promise<{ base: string, close: () => Promise<void> }>}
  */
-export async function startPageServer(dir, { port: wanted = 0 } = {}) {
+export async function startPageServer(
+  dir: string,
+  { port: wanted = 0 }: { port?: number } = {},
+): Promise<{ base: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     let name = "";
     try {
@@ -97,7 +97,7 @@ export async function startPageServer(dir, { port: wanted = 0 } = {}) {
     createReadStream(path).pipe(res);
   });
   await new Promise((resolve, reject) => {
-    server.once("error", (/** @type {NodeJS.ErrnoException} */ e) => {
+    server.once("error", (e: NodeJS.ErrnoException) => {
       if (e.code === "EADDRINUSE") e.message = `127.0.0.1:${wanted} is in use by another process`;
       reject(e);
     });

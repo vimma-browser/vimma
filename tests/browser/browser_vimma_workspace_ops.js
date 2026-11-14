@@ -39,7 +39,9 @@ const PROMPT_ID = "vimma-rename";
 const CMDLINE_INPUT_ID = "vimma-cmdline-input";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
+  WorkspaceStore.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  );
 const main = () => def("main");
 const ww = () => WindowWorkspaces.get(window);
 const active = () => ww().model.active;
@@ -51,19 +53,21 @@ registerCleanupFunction(async () => {
   await WorkspaceStore.setConfig([]);
   ww().switchTo({ id: main().id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
-    (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
+    (/** @type {WorkspaceDefinition} */ d) =>
+      d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/** ctrl+b, then `key`. @param {string} key @param {KeyEventOptions} [mods] */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -88,6 +92,7 @@ function startPageLoaded() {
 }
 
 /** `:line` Enter, from the selected page in normal mode. */
+/** @param {string} line */
 async function runCommand(line) {
   await focusPage();
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -103,7 +108,10 @@ const promptText = () =>
     document.getElementById(PROMPT_ID)?.querySelector(".vimma-cmdline-prompt")?.textContent ?? ""
   ).trim();
 
-/** Waits for a tab of container `ucid` to have loaded `url`, and returns it. */
+/**
+ * Waits for a tab of container `ucid` to have loaded `url`, and returns it.
+ * @param {number} ucid @param {string} url
+ */
 async function reopened(ucid, url) {
   await until(
     () => tabsOf(ucid).some((t) => t.linkedBrowser.currentURI.spec === url),
@@ -144,7 +152,7 @@ function setCookie(/** @type {number} */ userContextId) {
   );
 }
 
-/** :wsnew `name`, waiting for the window to show it. */
+/** :wsnew `name`, waiting for the window to show it. @param {string} name */
 async function create(name) {
   await runCommand(`wsnew ${name}`);
   await until(() => def(name) && active() === def(name).id, `created and switched to ${name}`);
@@ -155,7 +163,7 @@ async function create(name) {
 add_task(async function the_last_workspace_cannot_be_closed() {
   // And the agent workspace, which never counts as the one left (docs/specs/vimma-mcp.md 8).
   Assert.deepEqual(
-    WorkspaceStore.definitions.workspaces.map((w) => w.name),
+    WorkspaceStore.definitions.workspaces.map((/** @type {WorkspaceDefinition} */ w) => w.name),
     ["main", "agent"],
     "only main (and the agent workspace) to begin with",
   );
@@ -168,7 +176,7 @@ add_task(async function the_last_workspace_cannot_be_closed() {
 add_task(async function new_workspace_appears_in_cycling_the_bar_and_the_snapshot() {
   await focusPage();
   prefix("N", { shiftKey: true });
-  const input = document.getElementById(CMDLINE_INPUT_ID);
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById(CMDLINE_INPUT_ID));
   await until(() => input?.value === "wsnew ", "prefix+shift+n asks on the command line");
   EventUtils.sendString("shop");
   EventUtils.synthesizeKey("KEY_Enter");
@@ -179,7 +187,7 @@ add_task(async function new_workspace_appears_in_cycling_the_bar_and_the_snapsho
   Assert.ok(identity(shop.userContextId), "with a container of its own");
   await until(() => wsSegment() === "● 2:shop", "the bar shows it");
   await until(
-    () => snapshot().workspaces?.some((w) => w.id === shop.id),
+    () => snapshot().workspaces?.some((/** @type {WorkspaceState} */ w) => w.id === shop.id),
     "the window's snapshot has it",
   );
   Assert.equal(gBrowser.selectedTab.userContextId, shop.userContextId, "its home tab is in it");
@@ -194,7 +202,9 @@ add_task(async function new_workspace_appears_in_cycling_the_bar_and_the_snapsho
   await runCommand("wsnew shop");
   await until(() => /exists/.test(noticeText()), "a taken name is refused");
   Assert.equal(
-    WorkspaceStore.definitions.workspaces.filter((w) => w.name === "shop").length,
+    WorkspaceStore.definitions.workspaces.filter(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === "shop",
+    ).length,
     1,
     "no second shop",
   );
@@ -213,7 +223,7 @@ add_task(async function rename_shows_in_the_bar_and_renames_the_container() {
   ww().switchTo({ id: shop.id });
   await focusPage();
   prefix("W", { shiftKey: true });
-  const input = document.getElementById(CMDLINE_INPUT_ID);
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById(CMDLINE_INPUT_ID));
   await until(() => input?.value === "wsrename shop", "prefix+shift+w offers the name to edit");
   EventUtils.synthesizeKey("KEY_Escape");
 
@@ -222,7 +232,9 @@ add_task(async function rename_shows_in_the_bar_and_renames_the_container() {
   Assert.equal(def("market")?.id, shop.id, "same workspace, new name");
   Assert.equal(identity(shop.userContextId)?.name, "market", "the container is renamed too");
   await until(
-    () => snapshot().workspaces?.find((w) => w.id === shop.id)?.name === "market",
+    () =>
+      snapshot().workspaces?.find((/** @type {WorkspaceState} */ w) => w.id === shop.id)?.name ===
+      "market",
     "and the snapshot",
   );
 });
@@ -261,11 +273,15 @@ add_task(async function closing_asks_n_keeps_y_deletes_the_container_and_its_coo
   await until(promptOpen, ":wsdelete asks too");
   /** @type {string[]} every origin-attributes clear while deleting */
   const clears = [];
-  const record = (_s, _t, data) => clears.push(data);
+  const record = (
+    /** @type {unknown} */ _s,
+    /** @type {string} */ _t,
+    /** @type {string | null} */ data,
+  ) => clears.push(/** @type {string} */ (data));
   Services.obs.addObserver(record, "clear-origin-attributes-data");
   const cleared = TestUtils.topicObserved(
     "clear-origin-attributes-data",
-    (_s, data) => JSON.parse(data).userContextId === market.userContextId,
+    (_s, data) => JSON.parse(/** @type {string} */ (data)).userContextId === market.userContextId,
   );
   EventUtils.synthesizeKey("y");
   await cleared;
@@ -283,7 +299,10 @@ add_task(async function closing_asks_n_keeps_y_deletes_the_container_and_its_coo
   Assert.equal(tabsOf(market.userContextId).length, 0, "and its tabs");
   Assert.equal(cookieCount(main().userContextId), 1, "main's cookie stays");
   Assert.equal(active(), main().id, "the window shows main");
-  Assert.ok(!ww().model.workspaces.some((w) => w.id === market.id), "the model has no market");
+  Assert.ok(
+    !ww().model.workspaces.some((/** @type {WorkspaceState} */ w) => w.id === market.id),
+    "the model has no market",
+  );
   Services.cookies.removeAll();
 });
 
@@ -291,7 +310,12 @@ add_task(async function closing_a_config_workspace_closes_its_tabs_only() {
   await WorkspaceStore.setConfig([
     { name: "job", color: "red", icon: "briefcase", autofill: true },
   ]);
-  await until(() => def("job") && ww().model.workspaces.some((w) => w.id === def("job").id), "job");
+  await until(
+    () =>
+      def("job") &&
+      ww().model.workspaces.some((/** @type {WorkspaceState} */ w) => w.id === def("job").id),
+    "job",
+  );
   const job = def("job");
   ww().switchTo({ id: job.id });
   await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?job`);
@@ -381,8 +405,12 @@ add_task(async function moving_a_tab_reopens_it_in_the_target_container() {
   Assert.equal(after.index, at + 1, "before the tab that followed it");
   BrowserTestUtils.removeTab(after);
   const model = ww().model;
-  const inA = model.workspaces.find((w) => w.id === a.id).tabs;
-  const inB = model.workspaces.find((w) => w.id === b.id).tabs;
+  const inA = /** @type {WorkspaceState} */ (
+    model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === a.id)
+  ).tabs;
+  const inB = /** @type {WorkspaceState} */ (
+    model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === b.id)
+  ).tabs;
   Assert.ok(!inA.includes(oldId), "alpha no longer has it");
   Assert.ok(inB.includes(ww().idOf(moved)), "beta has it");
   Assert.equal(active(), a.id, "the window stays in alpha");
@@ -399,7 +427,11 @@ add_task(async function moving_a_tab_reopens_it_in_the_target_container() {
 add_task(async function moving_a_workspaces_last_tab_opens_its_home_tab() {
   const b = def("beta");
   const g = await create("gamma");
-  Assert.equal(ww().model.workspaces.find((w) => w.id === g.id).tabs.length, 1, "one tab");
+  Assert.equal(
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id).tabs.length,
+    1,
+    "one tab",
+  );
   const only = gBrowser.selectedTab;
   BrowserTestUtils.startLoadingURIString(only.linkedBrowser, `${PAGE}?last`);
   await BrowserTestUtils.browserLoaded(only.linkedBrowser);
@@ -408,7 +440,7 @@ add_task(async function moving_a_workspaces_last_tab_opens_its_home_tab() {
   await until(() => !only.isConnected, "the tab moves");
   await reopened(b.userContextId, `${PAGE}?last`);
   Assert.equal(active(), g.id, "the window stays in gamma");
-  const left = ww().model.workspaces.find((w) => w.id === g.id).tabs;
+  const left = ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id).tabs;
   Assert.equal(left.length, 1, "gamma has a tab again");
   const home = ww().tabOf(left[0]);
   Assert.equal(home.userContextId, g.userContextId, "in gamma's container");
@@ -426,7 +458,10 @@ add_task(async function a_split_member_leaves_its_split_before_it_moves() {
   await until(() => right.splitview && left.splitview, "laid out on Firefox's split view");
   BrowserTestUtils.startLoadingURIString(right.linkedBrowser, `${PAGE}?right`);
   await BrowserTestUtils.browserLoaded(right.linkedBrowser);
-  const number = WorkspaceStore.definitions.workspaces.findIndex((w) => w.id === b.id) + 1;
+  const number =
+    WorkspaceStore.definitions.workspaces.findIndex(
+      (/** @type {WorkspaceDefinition} */ w) => w.id === b.id,
+    ) + 1;
 
   // A move refused for want of a principal (a lazy tab whose saved state does not read) leaves
   // the split as it was.
@@ -440,7 +475,8 @@ add_task(async function a_split_member_leaves_its_split_before_it_moves() {
     );
   } finally {
     stub.restore();
-    delete right.linkedPanel;
+    // The own property defined above, over the tab's getter.
+    delete (/** @type {{ linkedPanel?: string }} */ (right).linkedPanel);
   }
   Assert.ok(view.panes, "the split stays");
   Assert.ok(right.splitview && right.isConnected, "with the tab in it");

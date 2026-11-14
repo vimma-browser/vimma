@@ -7,24 +7,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CHALLENGE_CONTEXT } from "../../../packages/vimma-core/src/control.mjs";
-import { ControlClient, ControlSessions } from "../control-client.mjs";
-import { findVimmaCtl } from "../driver.mjs";
+import { ControlClient, ControlSessions } from "../control-client.ts";
+import { findVimmaCtl } from "../driver.ts";
+import type { AddressInfo } from "node:net";
 
 const TOKEN = "ab".repeat(32);
 
-/** @type {Array<() => void>} */
-const cleanups = [];
+const cleanups: Array<() => void> = [];
 afterEach(() => {
   for (const c of cleanups.splice(0)) c();
 });
 
-/**
- * A server that proves the token, welcomes, and answers each request with `answer(request)`.
- * @param {(m: any) => object} answer
- */
-async function server(answer, { proof = TOKEN } = {}) {
-  /** @type {any[]} */
-  const seen = [];
+/** A server that proves the token, welcomes, and answers each request with `answer(request)`. */
+async function server(answer: (m: any) => object, { proof = TOKEN } = {}) {
+  const seen: any[] = [];
   const srv = createServer((socket) => {
     let buf = "";
     socket.on("data", (d) => {
@@ -34,7 +30,7 @@ async function server(answer, { proof = TOKEN } = {}) {
         const m = JSON.parse(buf.slice(0, nl));
         buf = buf.slice(nl + 1);
         seen.push(m);
-        const send = (/** @type {object} */ o) => socket.write(`${JSON.stringify(o)}\n`);
+        const send = (o: object) => socket.write(`${JSON.stringify(o)}\n`);
         if (m.type === "hello") {
           const p = createHmac("sha256", proof)
             .update(CHALLENGE_CONTEXT + m.nonce)
@@ -50,7 +46,7 @@ async function server(answer, { proof = TOKEN } = {}) {
   });
   await new Promise((r) => srv.listen(0, "127.0.0.1", () => r(undefined)));
   cleanups.push(() => srv.close());
-  const port = /** @type {import("node:net").AddressInfo} */ (srv.address()).port;
+  const port = (srv.address() as AddressInfo).port;
   return { port, seen };
 }
 
@@ -105,8 +101,7 @@ describe("ControlSessions", () => {
   });
 });
 
-/** @type {string | null} */
-let bin = null;
+let bin: string | null = null;
 try {
   bin = findVimmaCtl({ env: process.env });
 } catch (e) {
@@ -127,7 +122,7 @@ describe.skipIf(!bin)(`ControlSessions' mcp${bin ? "" : " (skipped: no vimma-ctl
       JSON.stringify({ protocol: 2, port, token: TOKEN, pid: process.pid, roles: ["agent"] }),
       { mode: 0o600 },
     );
-    const sessions = new ControlSessions({ profile, bin: /** @type {string} */ (bin) });
+    const sessions = new ControlSessions({ profile, bin: bin as string });
     cleanups.push(() => sessions.close());
     sessions.mcpSend({
       method: "initialize",
@@ -140,7 +135,7 @@ describe.skipIf(!bin)(`ControlSessions' mcp${bin ? "" : " (skipped: no vimma-ctl
     });
     sessions.mcpSend({ method: "notifications/initialized" });
     sessions.mcpSend({ method: "tools/call", params: { name: "vimma_tabs" }, as: "tabs" });
-    const tabs = /** @type {any} */ (await sessions.mcpResult("tabs"));
+    const tabs = (await sessions.mcpResult("tabs")) as any;
     expect(tabs.result.content[0].text).toMatch(/no tabs/);
     const requests = seen.filter((m) => m.type === "request").map((m) => m.command);
     expect(requests).toEqual(["agent-hello", "agent-tabs"]);

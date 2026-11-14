@@ -84,13 +84,16 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -330,7 +333,7 @@ addTidyTask(async function test_agent_labels_leave_the_users_hint_mode_alone() {
     agent: true,
     elements: true,
   });
-  const plans = users.find((t) => t.href === `${PAGE}?plans`);
+  const plans = users.find((/** @type {{ href: string }} */ t) => t.href === `${PAGE}?plans`);
   VimmaActors.activateHint(plans);
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?plans`);
   Assert.ok(true, "the user's target still follows after an agent's list there");
@@ -373,7 +376,7 @@ addTidyTask(async function test_labels_of_a_gone_element_are_refused() {
   const plans = one(items, (e) => e.kind === "link", "link");
   // The page replaces the link after it was listed, at the same URL and in the same document.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    const old = content.document.getElementById("plans");
+    const old = /** @type {HTMLElement} */ (content.document.getElementById("plans"));
     old.replaceWith(old.cloneNode(true));
   });
   const r = await keys(c, tab, `f${plans.label}`);
@@ -645,7 +648,7 @@ function readList(known, result) {
   for (const label of repeated) {
     Assert.ok(known.has(label), `the repeated label ${label} was in the last list of the site`);
   }
-  const all = [...items, ...repeated.map((l) => known.get(l))];
+  const all = [...items, ...repeated.map((/** @type {string} */ l) => known.get(l))];
   known.clear();
   for (const e of all) known.set(e.label, e);
   return all;
@@ -681,7 +684,8 @@ addTidyTask(async function test_repeated_list_leaves_out_unchanged_lines() {
   Assert.ok((await c.response(click)).ok, "a repeated label clicks");
   // What changed on the page is written again; the rest is not.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.getElementById("bio").value = "Changed bio";
+    /** @type {HTMLTextAreaElement} */ (content.document.getElementById("bio")).value =
+      "Changed bio";
   });
   const changed = await elements(c, tab, null);
   const shown = parsed(changed.result.elements).filter((e) => "label" in e);
@@ -726,8 +730,9 @@ addTidyTask(async function test_compact_list_keeps_delimiters_and_sensitive_rule
   readList(known, (await elements(c, tab, { kind: "grant", minutes: 12 })).result);
   // The page types into its sensitive fields: their lines carry no value, so they stay the same.
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.getElementById("pw").value = "another-secret";
-    content.document.getElementById("cvc").value = "999";
+    /** @type {HTMLInputElement} */ (content.document.getElementById("pw")).value =
+      "another-secret";
+    /** @type {HTMLInputElement} */ (content.document.getElementById("cvc")).value = "999";
   });
   const r = await elements(c, tab, null);
   const text = JSON.stringify(r.result);

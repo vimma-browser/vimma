@@ -32,7 +32,7 @@ import {
   startUpdateHost,
   updateEnv,
   updaterError,
-} from "../update-host.mjs";
+} from "../update-host.ts";
 import {
   judgeManifest,
   parseManifest,
@@ -40,15 +40,13 @@ import {
 } from "../../../packages/vimma-core/src/updates.mjs";
 import { addSignaturePlaceholder, readMar, verifyMar } from "../../update/mar.mjs";
 
-/** @type {string[]} */
-const dirs = [];
+const dirs: string[] = [];
 const tmp = () => {
   const d = mkdtempSync(join(tmpdir(), "vimma-update-host-test-"));
   dirs.push(d);
   return d;
 };
-/** @type {Array<() => Promise<void>>} */
-const closers = [];
+const closers: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const c of closers.splice(0)) await c();
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
@@ -113,17 +111,16 @@ describe("the test-signed manifest", () => {
   };
   const offer = { appVersion: "159.0.1", buildId: "20261106090100", displayVersion: "0.4.3" };
   const mar = { size: 1234, sha512: "a".repeat(128), url: "https://127.0.0.1:4430/n1.mar" };
-  const compare = (/** @type {string} */ a, /** @type {string} */ b) =>
-    a.localeCompare(b, "en", { numeric: true });
+  const compare = (a: string, b: string) => a.localeCompare(b, "en", { numeric: true });
 
   it("offers the local MAR, signed by a key the build pins only in automation", async () => {
     const key = await makeManifestKey();
     const text = signManifest(localManifest({ serial: "20261106110000", offer, mar }), key);
     const verified = await verifyManifest(text, [key], globalThis.crypto.subtle);
     expect(verified.ok).toBe(true);
-    const parsed = parseManifest(/** @type {any} */ (verified).body);
+    const parsed = parseManifest((verified as any).body);
     expect(parsed.ok).toBe(true);
-    const manifest = /** @type {any} */ (parsed).manifest;
+    const manifest = (parsed as any).manifest;
     expect(manifest.update.marUrl).toBe(mar.url);
     expect(manifest.update.buildId).toBe(offer.buildId);
     const judged = judgeManifest(manifest, running, compare);
@@ -142,10 +139,8 @@ describe("the test-signed manifest", () => {
     const key = await makeManifestKey();
     const same = { ...offer, buildId: running.buildId, displayVersion: "0.4.4" };
     const text = signManifest(localManifest({ serial: "20261106110000", offer: same, mar }), key);
-    const verified = /** @type {any} */ (
-      await verifyManifest(text, [key], globalThis.crypto.subtle)
-    );
-    const manifest = /** @type {any} */ (parseManifest(verified.body)).manifest;
+    const verified = (await verifyManifest(text, [key], globalThis.crypto.subtle)) as any;
+    const manifest = (parseManifest(verified.body) as any).manifest;
     expect(judgeManifest(manifest, running, compare)).toMatchObject({ ok: true, offer: null });
   });
 
@@ -179,8 +174,7 @@ describe("the test-signed MAR", () => {
     header.writeUInt32BE(0, 16);
     return Buffer.concat([header, extra, content, index]);
   }
-  /** @param {number} n */
-  function u32(n) {
+  function u32(n: number) {
     const b = Buffer.alloc(4);
     b.writeUInt32BE(n);
     return b;
@@ -202,7 +196,7 @@ describe("the test-signed MAR", () => {
 });
 
 describe("the updater's log", () => {
-  const LOG = (/** @type {string} */ status) =>
+  const LOG = (status: string) =>
     "2026-11-06 03:15:15+0000: gInvocation=UpdaterInvocation::First\n" +
     "2026-11-06 03:15:15+0000: Writing status to file: applying\n" +
     "2026-11-06 03:15:15+0000: Performing a staged update\n" +
@@ -222,8 +216,7 @@ describe("the updater's log", () => {
 });
 
 describe("the installs", () => {
-  /** @param {string} root */
-  function fakeInstall(root) {
+  function fakeInstall(root: string) {
     const dir = join(root, "vimma");
     mkdirSync(join(dir, "browser"), { recursive: true });
     writeFileSync(join(dir, "application.ini"), INI);
@@ -288,10 +281,10 @@ describe("what wait-for-install reads", () => {
     mkdirSync(install);
     mkdirSync(profile);
     let mars = 3;
-    const run = /** @type {any} */ ({
+    const run = {
       buildIds: { n: "20261106090000", n1: "20261106090100", older: "20261106090200" },
       host: { marRequests: () => mars },
-    });
+    } as any;
     writeFileSync(join(install, "application.ini"), INI);
     writeFileSync(
       join(profile, "compatibility.ini"),
@@ -330,16 +323,14 @@ describe("what wait-for-install reads", () => {
 });
 
 describe("the local update host", () => {
-  /**
-   * @param {string} url @param {string} ca
-   * @param {Record<string, string>} [headers]
-   * @returns {Promise<{ status: number, headers: any, body: Buffer }>}
-   */
-  const get = (url, ca, headers = {}) =>
+  const get = (
+    url: string,
+    ca: string,
+    headers: Record<string, string> = {},
+  ): Promise<{ status: number; headers: any; body: Buffer }> =>
     new Promise((resolve, reject) => {
       const req = request(url, { ca, headers }, (res) => {
-        /** @type {Buffer[]} */
-        const parts = [];
+        const parts: Buffer[] = [];
         res.on("data", (d) => parts.push(d));
         res.on("end", () =>
           resolve({

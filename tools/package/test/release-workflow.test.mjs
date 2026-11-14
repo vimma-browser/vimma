@@ -366,7 +366,7 @@ esac
       expect(block).toMatch(/- name: The e2e smoke scenarios\n {8}timeout-minutes: 10\n/);
       const run = runOf(block, "The e2e smoke scenarios");
       expect(run).toContain("for scenario in m0-happy-path m0-content-actor; do");
-      expect(run).toContain('node tools/e2e/e2e.mjs --headless --build "$APP"');
+      expect(run).toContain('node tools/e2e/e2e.ts --headless --build "$APP"');
       expect(run).toContain('--vimma-ctl "$APP/Contents/MacOS/vimma-ctl"');
       expect(run).toContain('--filter "$scenario"');
       expect(block.indexOf("- name: The e2e smoke scenarios")).toBeGreaterThan(

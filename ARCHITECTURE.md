@@ -188,7 +188,8 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 ### `tests/`
 
 - `tests/browser/`: mochitests (`browser_vimma_*.js`), Firefox's browser test framework, run on a
-  real build.
+  real build. `npm run typecheck` checks them too (`tests/tsconfig.json`, the harness's globals
+  in `types/mochitest/`), except the files `tools/test/mochitest-allowlist.txt` still lists.
 - `tests/e2e/`: scenarios driven through the control socket, with screenshot baselines.
 - `tests/contract/`: fixtures for each version of the control protocol, the config, the state
   file and the workspace file, and sample Omarchy themes; vimma-core's tests read them all, and
@@ -231,7 +232,7 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 | `tools/safebrowsing-smoke/` | A manual check that a build's Safe Browsing key fetches lists.                                              |
 | `tools/claude-plugin/`      | The Claude Code plugin whose hooks enforce the repository's contributor rules.                              |
 
-The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.mjs`,
+The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.ts`,
 `mochitest.mjs`, `sync-core.mjs`, `gen-docs.ts` and others).
 
 ## Dependency direction

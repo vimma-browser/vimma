@@ -316,7 +316,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      # The actual and diff screenshots of a failed comparison (tools/e2e/screenshot.mjs), for
+      # The actual and diff screenshots of a failed comparison (tools/e2e/screenshot.ts), for
       # judging a regression or taking a new baseline from the runner's fonts (runbook).
       - name: Upload e2e-output/ (screenshots of failed comparisons)
         if: failure() || (steps.mode.outputs.beta == 'true' && steps.e2e.outcome == 'failure')

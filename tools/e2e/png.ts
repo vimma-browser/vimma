@@ -3,11 +3,12 @@
 // harness needs no image dependency.
 import { deflateSync, inflateSync } from "node:zlib";
 
-/** @typedef {{ width: number, height: number, data: Uint8Array }} Image RGBA, 4 bytes a pixel */
+/** RGBA, 4 bytes a pixel */
+export type Image = { width: number; height: number; data: Uint8Array };
 
 const SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** Bytes per pixel by colour type (8-bit samples). */
-const CHANNELS = /** @type {Record<number, number>} */ ({ 0: 1, 2: 3, 4: 2, 6: 4 });
+const CHANNELS = { 0: 1, 2: 3, 4: 2, 6: 4 } as Record<number, number>;
 
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   let c = n;
@@ -15,15 +16,13 @@ const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
   return c >>> 0;
 });
 
-/** @param {Uint8Array} buf */
-function crc32(buf) {
+function crc32(buf: Uint8Array) {
   let c = 0xffffffff;
-  for (const byte of buf) c = /** @type {number} */ (CRC_TABLE[(c ^ byte) & 0xff]) ^ (c >>> 8);
+  for (const byte of buf) c = (CRC_TABLE[(c ^ byte) & 0xff] as number) ^ (c >>> 8);
   return (c ^ 0xffffffff) >>> 0;
 }
 
-/** @param {number} a @param {number} b @param {number} c */
-function paeth(a, b, c) {
+function paeth(a: number, b: number, c: number) {
   const p = a + b - c;
   const pa = Math.abs(p - a);
   const pb = Math.abs(p - b);
@@ -31,18 +30,12 @@ function paeth(a, b, c) {
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 }
 
-/**
- * @param {Uint8Array} png
- * @returns {Image}
- */
-export function decodePng(png) {
+export function decodePng(png: Uint8Array): Image {
   const buf = Buffer.from(png.buffer, png.byteOffset, png.byteLength);
   if (buf.length < 8 || !buf.subarray(0, 8).equals(SIGNATURE)) throw new Error("not a PNG file");
   let pos = 8;
-  /** @type {Buffer | null} */
-  let ihdr = null;
-  /** @type {Buffer[]} */
-  const idat = [];
+  let ihdr: Buffer | null = null;
+  const idat: Buffer[] = [];
   while (pos + 12 <= buf.length) {
     const length = buf.readUInt32BE(pos);
     const type = buf.toString("latin1", pos + 4, pos + 8);
@@ -61,7 +54,7 @@ export function decodePng(png) {
   const height = ihdr.readUInt32BE(4);
   const [depth, colourType, , , interlace] = ihdr.subarray(8, 13);
   if (depth !== 8) throw new Error(`PNG bit depth ${depth} is not supported (8 only)`);
-  const channels = CHANNELS[/** @type {number} */ (colourType)];
+  const channels = CHANNELS[colourType as number];
   if (!channels) throw new Error(`PNG colour type ${colourType} is not supported`);
   if (interlace !== 0) throw new Error("interlaced PNG is not supported");
 
@@ -75,9 +68,9 @@ export function decodePng(png) {
     const filter = raw[start];
     const row = new Uint8Array(raw.subarray(start + 1, start + 1 + stride));
     for (let i = 0; i < stride; i++) {
-      const a = i >= channels ? /** @type {number} */ (row[i - channels]) : 0;
-      const b = /** @type {number} */ (prev[i]);
-      const c = i >= channels ? /** @type {number} */ (prev[i - channels]) : 0;
+      const a = i >= channels ? (row[i - channels] as number) : 0;
+      const b = prev[i] as number;
+      const c = i >= channels ? (prev[i - channels] as number) : 0;
       let pred;
       switch (filter) {
         case 0:
@@ -104,14 +97,14 @@ export function decodePng(png) {
       const o = (y * width + x) * 4;
       const s = x * channels;
       if (channels <= 2) {
-        const g = /** @type {number} */ (row[s]);
+        const g = row[s] as number;
         out[o] = out[o + 1] = out[o + 2] = g;
-        out[o + 3] = channels === 2 ? /** @type {number} */ (row[s + 1]) : 255;
+        out[o + 3] = channels === 2 ? (row[s + 1] as number) : 255;
       } else {
-        out[o] = /** @type {number} */ (row[s]);
-        out[o + 1] = /** @type {number} */ (row[s + 1]);
-        out[o + 2] = /** @type {number} */ (row[s + 2]);
-        out[o + 3] = channels === 4 ? /** @type {number} */ (row[s + 3]) : 255;
+        out[o] = row[s] as number;
+        out[o + 1] = row[s + 1] as number;
+        out[o + 2] = row[s + 2] as number;
+        out[o + 3] = channels === 4 ? (row[s + 3] as number) : 255;
       }
     }
     prev = row;
@@ -119,11 +112,7 @@ export function decodePng(png) {
   return { width, height, data: out };
 }
 
-/**
- * @param {string} type
- * @param {Buffer} data
- */
-function chunk(type, data) {
+function chunk(type: string, data: Buffer) {
   const out = Buffer.alloc(12 + data.length);
   out.writeUInt32BE(data.length, 0);
   out.write(type, 4, "latin1");
@@ -135,10 +124,8 @@ function chunk(type, data) {
 /**
  * 8-bit RGBA PNG. Each row takes whichever of the None, Sub and Up filters gives the smallest
  * sum of absolute values (the usual heuristic), which keeps UI screenshots small.
- * @param {Image} image
- * @returns {Buffer}
  */
-export function encodePng({ width, height, data }) {
+export function encodePng({ width, height, data }: Image): Buffer {
   const stride = width * 4;
   const raw = Buffer.alloc(height * (stride + 1));
   const candidates = [0, 1, 2].map(() => new Uint8Array(stride));
@@ -148,17 +135,11 @@ export function encodePng({ width, height, data }) {
     let best = 0;
     let bestScore = Infinity;
     for (let f = 0; f < 3; f++) {
-      const cand = /** @type {Uint8Array} */ (candidates[f]);
+      const cand = candidates[f] as Uint8Array;
       let score = 0;
       for (let i = 0; i < stride; i++) {
         const pred =
-          f === 1
-            ? i >= 4
-              ? /** @type {number} */ (row[i - 4])
-              : 0
-            : f === 2
-              ? /** @type {number} */ (prev[i])
-              : 0;
+          f === 1 ? (i >= 4 ? (row[i - 4] as number) : 0) : f === 2 ? (prev[i] as number) : 0;
         const v = ((row[i] ?? 0) - pred) & 0xff;
         cand[i] = v;
         score += v < 128 ? v : 256 - v;
@@ -169,7 +150,7 @@ export function encodePng({ width, height, data }) {
       }
     }
     raw[y * (stride + 1)] = best;
-    raw.set(/** @type {Uint8Array} */ (candidates[best]), y * (stride + 1) + 1);
+    raw.set(candidates[best] as Uint8Array, y * (stride + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);

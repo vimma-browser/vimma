@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CORE_SCHEMA, load } from "js-yaml";
 import { installTypeFrom, updateSteps } from "../../../packages/vimma-core/src/updates.mjs";
-import { loadScenarios } from "../../e2e/scenario.mjs";
+import { loadScenarios } from "../../e2e/scenario.ts";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {

@@ -49,12 +49,16 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
-const lineOpen = () => !!line() && !line().hidden;
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
@@ -141,7 +145,8 @@ add_task(async function test_other_ui_opened_over_the_line_gets_the_keys() {
   await armed();
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("g");
-  const picker = () => document.getElementById("vimma-picker");
+  const picker = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"));
   await until(() => picker()?.open, "ctrl+b g opens the goto picker over the line");
   EventUtils.synthesizeKey("y");
   await new Promise((r) => setTimeout(r, 200));
@@ -213,9 +218,11 @@ add_task(async function test_names_titles_and_urls_are_bidi_isolates() {
   await calmPage();
   const id = c.request("agent-open", { url: "https://example.com/‮evil" });
   await armed();
-  const bdi = [...line().querySelectorAll("bdi")].map((b) => b.textContent);
+  const bdi = [.../** @type {HTMLElement} */ (line()).querySelectorAll("bdi")].map(
+    (b) => b.textContent,
+  );
   Assert.deepEqual(bdi, ["עברית agent"], "the client name is a <bdi>");
-  const ltr = [...line().querySelectorAll('[dir="ltr"]')];
+  const ltr = [.../** @type {HTMLElement} */ (line()).querySelectorAll('[dir="ltr"]')];
   Assert.ok(ltr.length > 0, "the URL is drawn left to right");
   for (const el of ltr) {
     Assert.equal(window.getComputedStyle(el).unicodeBidi, "isolate", "as an isolate");

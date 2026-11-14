@@ -3234,9 +3234,9 @@ of the same commit read it too, so a tree without it could not be released anywa
   `tests/e2e/fonts/README.md` records, so a changed file fails the tests rather than reaching a
   browser unreviewed. The harness lets the content sandbox read that one folder in the
   throwaway profile only.
-  [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.mjs),
-  [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.mjs),
-  [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.mjs)
+  [`lists every font file with the SHA-256 it has`](../tools/e2e/test/fonts.test.ts),
+  [`offers no font outside the vendored folder`](../tools/e2e/test/fonts.test.ts),
+  [`lets content processes read the pinned fonts' folder as well, when asked`](../tools/e2e/test/launcher.test.ts)
 - B17. D2 draws the two SVG pictures in `ARCHITECTURE.md` (issue #943). It is a build tool from
   outside the project (terrastruct/d2, MPL-2.0) that runs on a contributor's machine and is
   never shipped. `tools/diagrams/render.ts` **must** pin its release by version (v0.9.0) and by

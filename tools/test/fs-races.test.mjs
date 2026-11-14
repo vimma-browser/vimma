@@ -16,8 +16,8 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeUse, fired } from "./fs-race.mjs";
-import { prepareProfile } from "../start.mjs";
-import { waitForDiscovery } from "../e2e/launcher.mjs";
+import { prepareProfile } from "../start.ts";
+import { waitForDiscovery } from "../e2e/launcher.ts";
 import { relocate } from "../import/relocate-checkout.mjs";
 import { checkFile } from "../security/check-doc-links.ts";
 

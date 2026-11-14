@@ -6,11 +6,11 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { E2E_FONTCONFIG, E2E_FONTS } from "../launcher.mjs";
+import { E2E_FONTCONFIG, E2E_FONTS } from "../launcher.ts";
 import { defined } from "../../test/defined.ts";
 
-/** @returns {Map<string, string>} file name → SHA-256, from the README's table */
-const listedSums = () => {
+/** @returns file name → SHA-256, from the README's table */
+const listedSums = (): Map<string, string> => {
   const readme = readFileSync(join(E2E_FONTS, "README.md"), "utf8");
   const rows = [...readme.matchAll(/^\| `([^`]+\.ttf)` .*\| `([0-9a-f]{64})` \|$/gm)];
   return new Map(rows.map((m) => [defined(m[1]), defined(m[2])]));
@@ -38,8 +38,7 @@ describe("vendored e2e fonts", () => {
   });
 });
 
-/** @returns {boolean} */
-const haveFcMatch = () => {
+const haveFcMatch = (): boolean => {
   try {
     execFileSync("fc-match", ["--version"], { stdio: "ignore" });
     return true;
@@ -56,10 +55,10 @@ describe.skipIf(!fc)(
   () => {
     const home = mkdtempSync(join(tmpdir(), "vimma-fonts-test-"));
     afterAll(() => rmSync(home, { recursive: true, force: true }));
-    // The browser's env (launcher.mjs, browserEnv): HOME in a temp folder, so no user config.
+    // The browser's env (launcher.ts, browserEnv): HOME in a temp folder, so no user config.
     const env = { PATH: process.env.PATH ?? "", HOME: home, FONTCONFIG_FILE: E2E_FONTCONFIG };
-    /** @param {string} tool @param {string[]} args */
-    const run = (tool, args) => execFileSync(tool, args, { env, encoding: "utf8" });
+    const run = (tool: string, args: string[]) =>
+      execFileSync(tool, args, { env, encoding: "utf8" });
 
     it.each([
       ["monospace", "DejaVu Sans Mono", "DejaVuSansMono.ttf"],

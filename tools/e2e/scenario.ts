@@ -15,7 +15,7 @@
 // For app routes (docs/specs/app-routes.md, "Tests"): `external` runs the packaged vimma-open
 // with the given arguments, as another program does, against the browser under test.
 // For the updater (docs/specs/m6a-updater.md, "Tests", e2e): a scenario with `update` runs on
-// an install of a VIMMA_UPDATES=1 build with a local update host (update-host.mjs); `serve-update`
+// an install of a VIMMA_UPDATES=1 build with a local update host (update-host.ts); `serve-update`
 // sets the manifest that host serves and `wait-for-install` waits on the install itself (its
 // build ID, the MAR's marker file, the updater's error code) and the MAR requests the host saw.
 // Names carry the milestone (m<N>-…) or, for regression tests, the issue (issue-<N>-…).
@@ -23,57 +23,94 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
+export type Step = {
+  open?: string;
+  keys?: string;
+  "wait-for-state"?: Record<string, unknown>;
+  "assert-state"?: Record<string, unknown>;
+  screenshot?: string;
+  restart?: "quit" | "kill";
+  timeoutSeconds?: number;
+  hold?: true;
+  sleep?: number;
+  agent?: AgentSend;
+  "agent-result"?: { of: string; expect: unknown };
+  ctl?: { run: string[]; as: string };
+  "ctl-result"?: { of: string; expect: unknown };
+  mcp?: McpSend;
+  "mcp-result"?: { of: string; expect: unknown };
+  "wait-for-profile-file"?: string;
+  type?: string;
+  external?: string[];
+  "serve-update"?: UpdateServe;
+  "wait-for-install"?: Partial<InstallState>;
+};
+export type UpdateServe = {
+  offer: "n1" | "n" | "older-firefox" | "none";
+  key?: "test" | "unknown";
+};
 /**
- * @typedef {{
- *   open?: string, keys?: string, "wait-for-state"?: Record<string, unknown>,
- *   "assert-state"?: Record<string, unknown>, screenshot?: string, restart?: "quit" | "kill",
- *   timeoutSeconds?: number, hold?: true, sleep?: number, agent?: AgentSend,
- *   "agent-result"?: { of: string, expect: unknown }, ctl?: { run: string[], as: string },
- *   "ctl-result"?: { of: string, expect: unknown }, mcp?: McpSend,
- *   "mcp-result"?: { of: string, expect: unknown }, "wait-for-profile-file"?: string,
- *   type?: string, external?: string[], "serve-update"?: UpdateServe,
- *   "wait-for-install"?: Partial<InstallState>,
- * }} Step
- * @typedef {{ offer: "n1" | "n" | "older-firefox" | "none", key?: "test" | "unknown" }}
- *   UpdateServe
- * @typedef {{ buildId: "n" | "n1" | null, marker: boolean, updateError: number | null,
- *   marRequests: number }} InstallState  `buildId`: which build the install holds and the profile
- *   last ran, null when they differ or are neither
- * @typedef {{ serve: (spec: UpdateServe) => Promise<void>, install: () => Promise<InstallState> }}
- *   UpdateControl
- * @typedef {{ method: string, params?: Record<string, unknown>, as?: string }} McpSend
- * @typedef {{ send: string, args?: Record<string, unknown>, as: string, client?: string }}
- *   AgentSend
- * @typedef {{
- *   hold: () => Promise<void>,
- *   held: { state: () => Promise<any>, sendKeys: (keys: string) => Promise<void>,
- *     open: (url: string) => Promise<string> },
- *   agentSend: (spec: AgentSend) => void,
- *   agentResult: (name: string) => Promise<unknown>,
- *   ctlSpawn: (args: string[], as: string) => void,
- *   ctlResult: (name: string) => Promise<{ exitCode: number | null, stderr: string }>,
- *   mcpSend: (spec: McpSend) => void,
- *   mcpResult: (name: string) => Promise<unknown>,
- *   external?: (args: string[]) => Promise<void>,
- * }} Control
- * @typedef {{
- *   name: string, description: string, issue?: number, pending?: string,
- *   timeoutSeconds?: number, prefs?: Record<string, boolean | number | string | null>,
- *   programs?: Record<string, string>, update?: { updater: "test" | "shipped" }, steps: Step[],
- * }} Scenario
- * @typedef {{
- *   ctl: { state: () => Promise<any>, sendKeys: (keys: string) => Promise<void>,
- *     open: (url: string) => Promise<string> },
- *   screenshot: (name: string) => Promise<string | void>,
- *   restart?: (how: "quit" | "kill") => Promise<void>,
- *   control?: Control,
- *   profile?: string,
- *   pollMs?: number,
- *   signal?: AbortSignal,
- *   text?: (text: string) => string,
- *   update?: UpdateControl,
- * }} StepContext
+ * `buildId`: which build the install holds and the profile
+ * last ran, null when they differ or are neither
  */
+export type InstallState = {
+  buildId: "n" | "n1" | null;
+  marker: boolean;
+  updateError: number | null;
+  marRequests: number;
+};
+export type UpdateControl = {
+  serve: (spec: UpdateServe) => Promise<void>;
+  install: () => Promise<InstallState>;
+};
+export type McpSend = { method: string; params?: Record<string, unknown>; as?: string };
+export type AgentSend = {
+  send: string;
+  args?: Record<string, unknown>;
+  as: string;
+  client?: string;
+};
+export type Control = {
+  hold: () => Promise<void>;
+  held: {
+    state: () => Promise<any>;
+    sendKeys: (keys: string) => Promise<void>;
+    open: (url: string) => Promise<string>;
+  };
+  agentSend: (spec: AgentSend) => void;
+  agentResult: (name: string) => Promise<unknown>;
+  ctlSpawn: (args: string[], as: string) => void;
+  ctlResult: (name: string) => Promise<{ exitCode: number | null; stderr: string }>;
+  mcpSend: (spec: McpSend) => void;
+  mcpResult: (name: string) => Promise<unknown>;
+  external?: (args: string[]) => Promise<void>;
+};
+export type Scenario = {
+  name: string;
+  description: string;
+  issue?: number;
+  pending?: string;
+  timeoutSeconds?: number;
+  prefs?: Record<string, boolean | number | string | null>;
+  programs?: Record<string, string>;
+  update?: { updater: "test" | "shipped" };
+  steps: Step[];
+};
+export type StepContext = {
+  ctl: {
+    state: () => Promise<any>;
+    sendKeys: (keys: string) => Promise<void>;
+    open: (url: string) => Promise<string>;
+  };
+  screenshot: (name: string) => Promise<string | void>;
+  restart?: (how: "quit" | "kill") => Promise<void>;
+  control?: Control;
+  profile?: string;
+  pollMs?: number;
+  signal?: AbortSignal;
+  text?: (text: string) => string;
+  update?: UpdateControl;
+};
 
 export const STEP_KINDS = Object.freeze([
   "open",
@@ -134,8 +171,8 @@ const CHECKOUT = "checkout:";
 const VIMMA_CTL_PREF = "vimma.agent.cli.vimmaCtl";
 /** control.mjs's MAX_CHORDS: the most chords one send-keys takes. */
 const MAX_CHORDS = 256;
-/** Control characters cannot be typed as one chord each. @param {string} text */
-const hasControlChar = (text) =>
+/** Control characters cannot be typed as one chord each. */
+const hasControlChar = (text: string) =>
   [...text].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
 /**
  * How `restart` restarts: `quit` is ctrl+q, then a launch on the same profile; `kill` waits for
@@ -149,28 +186,22 @@ const SHOT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** Default wait for `wait-for-state` and `wait-for-profile-file`, seconds. */
 export const DEFAULT_WAIT_SECONDS = 10;
 
-/** @param {unknown} v @returns {v is Record<string, unknown>} */
-const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
-/**
- * A relative path inside the checkout: no absolute path, no `..` part.
- * @param {unknown} v
- */
-const checkoutPath = (v) =>
+const isObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+/** A relative path inside the checkout: no absolute path, no `..` part. */
+const checkoutPath = (v: unknown) =>
   typeof v === "string" &&
   v !== "" &&
   !v.startsWith("/") &&
   !v.split("/").some((part) => part === ".." || part === "");
-/** @param {unknown} v */
-const positive = (v) => typeof v === "number" && Number.isFinite(v) && v > 0;
+const positive = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0;
 
 /**
- * @param {unknown} s
- * @param {string | undefined} fileName checked against `name` when given
- * @returns {string[]} problems, empty when valid
+ * @param fileName checked against `name` when given
+ * @returns problems, empty when valid
  */
-export function validateScenario(s, fileName) {
-  /** @type {string[]} */
-  const errors = [];
+export function validateScenario(s: unknown, fileName: string | undefined): string[] {
+  const errors: string[] = [];
   if (!isObject(s)) return ["a scenario must be a JSON object"];
   for (const key of Object.keys(s)) {
     if (!FIELDS.has(key)) errors.push(`unknown field "${key}"`);
@@ -236,7 +267,7 @@ export function validateScenario(s, fileName) {
     else {
       const extra = Object.keys(s.update).filter((k) => k !== "updater");
       if (extra.length) errors.push(`update: unknown field ${extra.join(", ")}`);
-      if (!UPDATERS.includes(/** @type {string} */ (s.update.updater))) {
+      if (!UPDATERS.includes(s.update.updater as string)) {
         errors.push("update: updater is test or shipped");
       }
     }
@@ -245,14 +276,11 @@ export function validateScenario(s, fileName) {
     errors.push("steps must be an array with at least one step");
     return errors;
   }
-  /** @type {Set<string>} */
-  const agentNames = new Set();
-  /** @type {Set<string>} */
-  const ctlNames = new Set();
-  /** @type {Set<string>} */
-  const mcpNames = new Set();
-  /** Agent and mcp answers share one namespace for `$name.path`. @param {string} n */
-  const answerTaken = (n) => agentNames.has(n) || mcpNames.has(n);
+  const agentNames: Set<string> = new Set();
+  const ctlNames: Set<string> = new Set();
+  const mcpNames: Set<string> = new Set();
+  /** Agent and mcp answers share one namespace for `$name.path`. */
+  const answerTaken = (n: string) => agentNames.has(n) || mcpNames.has(n);
   s.steps.forEach((step, i) => {
     const at = `step ${i + 1}`;
     if (!isObject(step)) return void errors.push(`${at}: must be an object`);
@@ -293,14 +321,11 @@ export function validateScenario(s, fileName) {
     if (kind === "screenshot" && (typeof value !== "string" || !SHOT_NAME.test(value))) {
       errors.push(`${at}: screenshot needs a baseline name of [a-z0-9-]`);
     }
-    if (kind === "restart" && !RESTARTS.includes(/** @type {string} */ (value))) {
+    if (kind === "restart" && !RESTARTS.includes(value as string)) {
       errors.push(`${at}: restart is one of ${RESTARTS.join(", ")}`);
     }
     if (kind === "hold" && value !== true) errors.push(`${at}: hold is true`);
-    if (
-      kind === "sleep" &&
-      (!positive(value) || /** @type {number} */ (value) > MAX_SLEEP_SECONDS)
-    ) {
+    if (kind === "sleep" && (!positive(value) || (value as number) > MAX_SLEEP_SECONDS)) {
       errors.push(
         `${at}: sleep is a number of seconds, more than 0 and at most ${MAX_SLEEP_SECONDS}`,
       );
@@ -311,7 +336,7 @@ export function validateScenario(s, fileName) {
       } else {
         const extra = Object.keys(value).filter((k) => !AGENT_FIELDS.has(k));
         if (extra.length) errors.push(`${at}: agent: unknown field(s) ${extra.join(", ")}`);
-        if (!AGENT_SENDS.includes(/** @type {string} */ (value.send))) {
+        if (!AGENT_SENDS.includes(value.send as string)) {
           errors.push(`${at}: agent: send is an agent command (${AGENT_SENDS.join(", ")})`);
         }
         if ("args" in value && !isObject(value.args))
@@ -363,11 +388,11 @@ export function validateScenario(s, fileName) {
         ctlNames.add(value.as);
       }
     }
-    for (const [k, names, what] of /** @type {const} */ ([
+    for (const [k, names, what] of [
       ["agent-result", agentNames, "agent"],
       ["ctl-result", ctlNames, "ctl"],
       ["mcp-result", mcpNames, "mcp"],
-    ])) {
+    ] as const) {
       if (kind !== k) continue;
       if (!isObject(value) || typeof value.of !== "string" || !("expect" in value)) {
         errors.push(`${at}: ${k} needs { of, expect }`);
@@ -379,12 +404,12 @@ export function validateScenario(s, fileName) {
       errors.push(`${at}: ${kind} needs the scenario's "update" field`);
     }
     if (kind === "serve-update") {
-      if (!isObject(value) || !OFFERS.includes(/** @type {string} */ (value.offer))) {
+      if (!isObject(value) || !OFFERS.includes(value.offer as string)) {
         errors.push(`${at}: serve-update: offer is one of ${OFFERS.join(", ")}`);
       } else {
         const extra = Object.keys(value).filter((k) => k !== "offer" && k !== "key");
         if (extra.length) errors.push(`${at}: serve-update: unknown field(s) ${extra.join(", ")}`);
-        if ("key" in value && !SIGNERS.includes(/** @type {string} */ (value.key))) {
+        if ("key" in value && !SIGNERS.includes(value.key as string)) {
           errors.push(`${at}: serve-update: key is test or unknown`);
         }
       }
@@ -403,13 +428,13 @@ export function validateScenario(s, fileName) {
         if (
           "updateError" in value &&
           value.updateError !== null &&
-          !(Number.isInteger(value.updateError) && /** @type {number} */ (value.updateError) > 0)
+          !(Number.isInteger(value.updateError) && (value.updateError as number) > 0)
         ) {
           errors.push(`${at}: wait-for-install: updateError is an error code or null`);
         }
         if (
           "marRequests" in value &&
-          !(Number.isInteger(value.marRequests) && /** @type {number} */ (value.marRequests) >= 0)
+          !(Number.isInteger(value.marRequests) && (value.marRequests as number) >= 0)
         ) {
           errors.push(`${at}: wait-for-install: marRequests is a count`);
         }
@@ -425,22 +450,18 @@ export function validateScenario(s, fileName) {
 /**
  * Load every scenario in `dir` (sorted by name), optionally those whose name contains `filter`.
  * Any invalid file throws: a broken scenario must not silently drop out of the suite.
- * @param {string} dir
- * @param {{ filter?: string }} [options]
- * @returns {Scenario[]}
  */
-export function loadScenarios(dir, { filter } = {}) {
+export function loadScenarios(dir: string, { filter }: { filter?: string } = {}): Scenario[] {
   const files = readdirSync(dir)
     .filter((f) => f.endsWith(".json"))
     .sort();
-  /** @type {Scenario[]} */
-  const all = [];
+  const all: Scenario[] = [];
   for (const file of files) {
     let parsed;
     try {
       parsed = JSON.parse(readFileSync(join(dir, file), "utf8"));
     } catch (e) {
-      throw new Error(`${file}: ${/** @type {Error} */ (e).message}`, { cause: e });
+      throw new Error(`${file}: ${(e as Error).message}`, { cause: e });
     }
     const errors = validateScenario(parsed, file);
     if (errors.length) throw new Error(`${file}: ${errors.join("; ")}`);
@@ -455,13 +476,10 @@ export function loadScenarios(dir, { filter } = {}) {
  * Subset match of `expected` against `actual`: objects match when every expected key matches
  * (extra actual keys are ignored, as protocol v1 lets the server add fields); arrays need the
  * same length and element-wise matches; anything else must be equal.
- * @param {unknown} expected
- * @param {unknown} actual
- * @param {string} [path]
- * @returns {string[]} mismatches, empty when it matches
+ * @returns mismatches, empty when it matches
  */
-export function matchState(expected, actual, path = "state") {
-  const show = (/** @type {unknown} */ v) => (v === undefined ? "undefined" : JSON.stringify(v));
+export function matchState(expected: unknown, actual: unknown, path: string = "state"): string[] {
+  const show = (v: unknown) => (v === undefined ? "undefined" : JSON.stringify(v));
   if (Array.isArray(expected)) {
     if (!Array.isArray(actual)) return [`${path}: expected an array, got ${show(actual)}`];
     if (actual.length !== expected.length) {
@@ -483,14 +501,14 @@ export function matchState(expected, actual, path = "state") {
  * paths in the checkout `root`, and the vimma-ctl the agent CLI runs (the scenario's own pref
  * wins). The build has no vimma-ctl beside its binary in a checkout, so without the pref the
  * agent CLI could not start one.
- * @param {Scenario} scenario
- * @param {{ root: string, vimmaCtl: string | null }} o
- * @returns {{ programs: Record<string, string>,
- *   prefs: Record<string, boolean | number | string | null> }}
  */
-export function scenarioLaunch(scenario, { root, vimmaCtl }) {
-  /** @type {Record<string, boolean | number | string | null>} */
-  const prefs = vimmaCtl ? { [VIMMA_CTL_PREF]: vimmaCtl } : {};
+export function scenarioLaunch(
+  scenario: Scenario,
+  { root, vimmaCtl }: { root: string; vimmaCtl: string | null },
+): { programs: Record<string, string>; prefs: Record<string, boolean | number | string | null> } {
+  const prefs: Record<string, boolean | number | string | null> = vimmaCtl
+    ? { [VIMMA_CTL_PREF]: vimmaCtl }
+    : {};
   for (const [name, value] of Object.entries(scenario.prefs ?? {})) {
     prefs[name] =
       typeof value === "string" && value.startsWith(CHECKOUT)
@@ -506,15 +524,12 @@ export function scenarioLaunch(scenario, { root, vimmaCtl }) {
 /**
  * A text as send-keys chords, one per character: a space is `space`, any other character is
  * its own chord (an upper-case letter is shift and the letter).
- * @param {string} text
- * @returns {string[]}
  */
-function textChords(text) {
+function textChords(text: string): string[] {
   return [...text].map((c) => (c === " " ? "space" : c));
 }
 
-/** @param {AbortSignal | undefined} signal */
-function checkAborted(signal) {
+function checkAborted(signal: AbortSignal | undefined) {
   if (signal?.aborted) throw new Error("aborted (scenario timeout)");
 }
 
@@ -523,11 +538,9 @@ function checkAborted(signal) {
  * screenshot that differs from its baseline, or has none (`screenshot` returns why), lets the
  * steps go on, so that one run writes every image that differs, and the scenario fails at its end
  * (issue #953: a CI run then supplies every baseline of a re-record at once).
- * @param {Scenario} scenario
- * @param {StepContext} context
  */
 export async function runSteps(
-  scenario,
+  scenario: Scenario,
   {
     ctl: own,
     screenshot,
@@ -538,13 +551,12 @@ export async function runSteps(
     signal,
     text = (t) => t,
     update,
-  },
+  }: StepContext,
 ) {
-  /** Agent answers so far, for `$name.path` in later args. @type {Record<string, unknown>} */
-  const answers = {};
+  /** Agent answers so far, for `$name.path` in later args. */
+  const answers: Record<string, unknown> = {};
   let ctl = own;
-  /** @param {string} what */
-  const needControl = (what) => {
+  const needControl = (what: string) => {
     if (!control) throw new Error(`this session cannot run ${what} steps`);
     return control;
   };
@@ -552,10 +564,10 @@ export async function runSteps(
     if (!update) throw new Error("this session has no update host");
     return update;
   };
-  /** The screenshots that failed so far, each with its step. @type {string[]} */
-  const shots = [];
+  /** The screenshots that failed so far, each with its step. */
+  const shots: string[] = [];
   for (const [i, step] of scenario.steps.entries()) {
-    const kind = /** @type {string} */ (Object.keys(step).find((k) => k !== "timeoutSeconds"));
+    const kind = Object.keys(step).find((k) => k !== "timeoutSeconds") as string;
     const at = `step ${i + 1} (${kind})`;
     checkAborted(signal);
     try {
@@ -651,7 +663,7 @@ export async function runSteps(
         }
       }
     } catch (e) {
-      const message = [`${at}: ${/** @type {Error} */ (e).message}`, ...shots].join("\n");
+      const message = [`${at}: ${(e as Error).message}`, ...shots].join("\n");
       throw new Error(message, { cause: e });
     }
   }
@@ -661,23 +673,22 @@ export async function runSteps(
 /**
  * `args` with each string `$name.a.b`, at any depth, replaced by that path in the answer `name`
  * (an `agent-result` or `mcp-result` before it): `{ tab: "$open1.result.tab" }`.
- * @param {Record<string, unknown>} args @param {Record<string, unknown>} answers
- * @returns {Record<string, unknown>}
  */
-function substitute(args, answers) {
-  /** @param {unknown} v @returns {unknown} */
-  const one = (v) => {
+function substitute(
+  args: Record<string, unknown>,
+  answers: Record<string, unknown>,
+): Record<string, unknown> {
+  const one = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(one);
     if (isObject(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, one(x)]));
     if (typeof v !== "string" || !v.startsWith("$")) return v;
     const [name, ...path] = v.slice(1).split(".");
-    /** @type {any} */
-    let value = answers[/** @type {string} */ (name)];
+    let value: any = answers[name as string];
     if (value === undefined)
       throw new Error(`${v}: no agent-result or mcp-result named ${name} yet`);
     for (const p of path) value = value?.[p];
     if (value === undefined) throw new Error(`${v}: not in the answer`);
     return value;
   };
-  return /** @type {Record<string, unknown>} */ (one(args));
+  return one(args) as Record<string, unknown>;
 }
