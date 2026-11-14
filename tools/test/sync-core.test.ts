@@ -378,7 +378,12 @@ function packageDisagreements(src: string): {
   let imports = 0;
   const problems = modules.flatMap((file) => {
     const text = readFileSync(join(src, file), "utf8");
-    const parsed = parsedImportPositions(text);
+    let parsed: Position[];
+    try {
+      parsed = parsedImportPositions(text);
+    } catch (e) {
+      return [`${file}: espree cannot parse it: ${(e as Error).message}`];
+    }
     imports += parsed.length;
     return importDisagreements(text, file, parsed);
   });
@@ -447,7 +452,12 @@ describe("importPositions against a parser", () => {
   // than vitest's default five seconds under heavy load.
   it("finds no disagreement in the real package", { timeout: 60_000 }, () => {
     const { modules, imports, problems } = packageDisagreements(SRC);
-    expect(problems).toEqual([]);
+    expect(
+      problems,
+      "sync-core would change text that is not an import, or leave an import's folder path, in " +
+        "the browser's flat copy: keep a path after `from` or `import` only in a real import of " +
+        "a .mjs module (reword a comment, or a line of a multi-line string or template)",
+    ).toEqual([]);
     expect(modules).toBeGreaterThan(80);
     expect(imports).toBeGreaterThan(250);
   });
