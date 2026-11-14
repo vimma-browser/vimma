@@ -6,7 +6,7 @@ browser.jar:
         content/browser/vimma/vimma.js                    (vimma.js)
         content/browser/vimma/host/VimmaHost.sys.mjs      (host/VimmaHost.sys.mjs)
         content/browser/vimma/ctl/VimmaControl.sys.mjs    (ctl/VimmaControl.sys.mjs)
-        content/browser/vimma/ctl/AgentGate.sys.mjs       (ctl/AgentGate.sys.mjs)
+        content/browser/vimma/host/AgentGate.sys.mjs      (host/AgentGate.sys.mjs)
         content/browser/vimma/ctl/agent-commands.mjs      (ctl/agent-commands.mjs)
         content/browser/vimma/ctl/AgentPages.sys.mjs      (ctl/AgentPages.sys.mjs)
         content/browser/vimma/ctl/AgentDownloads.sys.mjs  (ctl/AgentDownloads.sys.mjs)

@@ -2,7 +2,7 @@
 
 Status: implemented · Area: `packages/vimma-core/src/`
 (`agent-checkpoint.mjs`, `agent.mjs`, `agent-prompt.mjs`); `src/browser/base/content/vimma/`
-(`ctl/agent-commands.mjs`, `ctl/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
+(`ctl/agent-commands.mjs`, `host/AgentGate.sys.mjs`, `actors/agent-fields.mjs`,
 `host/agent-ui.mjs`, `agent/AgentChat.sys.mjs`); `tools/vimma-ctl` (`src/mcp.rs`: the
 instructions and `vimma_activate`'s description); `tools/agent-bench/` (the two-shop scenario) ·
 Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged). No new

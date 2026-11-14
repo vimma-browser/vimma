@@ -14,7 +14,7 @@ the same registry; the keys only as `hint`, `set` and `delete`); `AgentCli.init(
 **May import (layer 5, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** everything below it:
 `core/`, the layer 1 and 2 folders, `host/`, `config/` and `ctl/`. Its tools act on pages
 through `ctl/agent-commands.mjs` (`runAgentCommand`), under the same rules as an MCP agent's.
-`AgentChat.sys.mjs` also calls `ctl/AgentGate.sys.mjs` directly: sending a task with `Enter`
+`AgentChat.sys.mjs` also calls `host/AgentGate.sys.mjs` directly: sending a task with `Enter`
 in the chat window grants that conversation's connection until the task ends, and it labels
 the connection; it uses `ctl/VimmaControl.sys.mjs` for the connection itself. `AgentCli.sys.mjs`
 uses `ctl/VimmaControl.sys.mjs` and `ctl/AgentDownloads.sys.mjs` for the CLIs it starts.

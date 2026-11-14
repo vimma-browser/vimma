@@ -552,7 +552,7 @@ interface LazyModules {
   AgentChat: typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs").AgentChat;
   AgentCli: typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs").AgentCli;
   AgentDownloads: typeof import("../src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs").AgentDownloads;
-  AgentGate: typeof import("../src/browser/base/content/vimma/ctl/AgentGate.sys.mjs").AgentGate;
+  AgentGate: typeof import("../src/browser/base/content/vimma/host/AgentGate.sys.mjs").AgentGate;
   AgentKeys: typeof import("../src/browser/base/content/vimma/agent/AgentKeys.sys.mjs").AgentKeys;
   ConfigHost: typeof import("../src/browser/base/content/vimma/config/ConfigHost.sys.mjs").ConfigHost;
   McpHost: typeof import("../src/browser/base/content/vimma/host/mcp-ops.mjs").McpHost;

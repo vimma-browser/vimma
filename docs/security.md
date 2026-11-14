@@ -996,11 +996,20 @@ Taskcluster index) and this repository. Nothing here runs code from a pull reque
 - **What you type.** Commands you type yourself (`:open`, `:source`, the control socket with your
   token) act with your authority; the rules above stop text from others from doing the same.
 
-## 12. Agents (MCP) (`ctl/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
+## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
 
 Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
 one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](specs/vimma-mcp.md), [ADR-019](adr/019-agents-over-mcp.md).
+
+Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
+`tools/layering/layers.ts`): `npm run layering` fails on any other module of `vimma/`, on a
+re-export of it and on a Firefox patch that names its URL, so a new caller, such as the parent
+actor, is reviewed against this section first. A gate object a listed module hands on at run time
+(a callback, an argument) is not seen by the check; a review of a listed module's change looks for
+it.
+[`a new importer of the agent gate fails, in host/ or a higher folder alike`](../tools/layering/test/layering.test.ts),
+[`an added line of a Firefox patch that names a restricted module fails`](../tools/layering/test/layering.test.ts)
 
 **Reach:** any local process that can read the token file, an agent's own shell included,
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with
@@ -1082,7 +1091,8 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`test_one_grant_covers_every_tool_of_its_connection`](../tests/browser/browser_vimma_mcp_agent.js),
   [`a grant covers every tool of its connection, not another connection's`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../packages/vimma-core/test/agent-gate.test.mjs),
-  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js)
+  [`test_queued_calls_a_grant_releases_show_as_granted`](../tests/browser/browser_vimma_mcp_agent.js),
+  [`an_agents_question_reaches_the_user_and_the_answer_reaches_the_agent`](../tests/browser/browser_vimma_security_invariants.js)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
   private window's.

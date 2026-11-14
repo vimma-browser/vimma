@@ -6,7 +6,7 @@ Status: implemented · Area: `.github/workflows/release.yml`, `tools/package/pac
 `src/version.rs`, `src/mcp.rs`, `src/mcp_serve.rs`), `packages/vimma-core/src/ctl-version.mjs`,
 `packages/vimma-core/src/control.mjs`, `src/browser/base/content/vimma/ctl/agent-commands.mjs`,
 `src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs`,
-`src/browser/base/content/vimma/ctl/AgentGate.sys.mjs`,
+`src/browser/base/content/vimma/host/AgentGate.sys.mjs`,
 `src/browser/base/content/vimma/host/agent-ui.mjs` · Upstream patches: none · ADR:
 [ADR-011](../adr/011-vimma-ctl-rust.md), [ADR-019](../adr/019-agents-over-mcp.md)
 

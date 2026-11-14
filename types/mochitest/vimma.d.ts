@@ -15,7 +15,7 @@ type WorkspaceDefinition =
   (typeof import("../../src/browser/base/content/vimma/workspaces/WorkspaceStore.sys.mjs"))["WorkspaceStore"]["definitions"]["workspaces"][number];
 
 type AgentGateApi =
-  (typeof import("../../src/browser/base/content/vimma/ctl/AgentGate.sys.mjs"))["AgentGate"];
+  (typeof import("../../src/browser/base/content/vimma/host/AgentGate.sys.mjs"))["AgentGate"];
 /** A row of `:mcp log` (AgentGate.log). */
 type GateLogRow = AgentGateApi["log"][number];
 /** A grant in force (AgentGate.grants()). */
