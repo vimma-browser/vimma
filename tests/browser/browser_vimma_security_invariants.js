@@ -318,8 +318,12 @@ add_task(async function an_agents_question_reaches_the_user_and_the_answer_reach
     "chrome://browser/content/vimma/host/mcp-ops.mjs",
   );
   const ARMING = "security.dialog_enable_delay";
-  // Cleared even when an assertion fails, so no later task inherits [mcp] or the arming delay.
+  /** @type {InstanceType<typeof Client> | null} */
+  let c = null;
+  // Also run when an assertion fails, so no later task inherits [mcp], the arming delay or the
+  // connection.
   registerCleanupFunction(async () => {
+    c?.close();
     Services.prefs.clearUserPref(ARMING);
     Services.prefs.clearUserPref(MCP_ENABLED_PREF);
     await VimmaControl.settled();
@@ -337,7 +341,7 @@ add_task(async function an_agents_question_reaches_the_user_and_the_answer_reach
   // Quiet keys and a focused page: the line opens by itself after 1,500 ms (vimma-mcp.md, 14).
   await focusContent(gBrowser.selectedBrowser);
   await new Promise((r) => setTimeout(r, 1600));
-  const c = new Client(/** @type {number} */ (VimmaControl.port));
+  c = new Client(/** @type {number} */ (VimmaControl.port));
   await c.handshake({ protocol: 2, role: "agent" });
   await c.call("agent-hello", { client: { name: "gate-check" }, via: "example" });
   const id = c.request("agent-tabs");
@@ -356,4 +360,8 @@ add_task(async function an_agents_question_reaches_the_user_and_the_answer_reach
   Assert.equal(AgentGate.waiting.length, 0, "nothing is left waiting");
   await until(() => !lineOpen(), "the line closes");
   c.close();
+  c = null;
+  Services.prefs.clearUserPref(ARMING);
+  Services.prefs.clearUserPref(MCP_ENABLED_PREF);
+  await VimmaControl.settled();
 });

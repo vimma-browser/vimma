@@ -54,14 +54,16 @@ file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Com
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/system-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/system-light.svg">
-  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and agent commands (ctl/) in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent runs the same commands, the commands ask the agent gate (host/AgentGate), the gate lets them drive the window modules, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
+  <img src="docs/assets/diagrams/system-light.svg" alt="Vimma's processes and how they talk. Local programs (vimma-ctl, the e2e harness, vimma-ctl mcp started by an AI agent host or by an agent CLI) reach the control server and agent commands (ctl/) in the parent process over TCP on 127.0.0.1. In the parent process the built-in agent runs the same agent commands in process, without the token. Every agent-role call asks the agent gate (host/AgentGate) before it drives the window modules; full-role commands reach the window modules on the token alone, after one question per connection while MCP is on, and the window modules exchange actor messages with VimmaChild in the sandboxed content processes. The window modules read config.toml and the Omarchy theme, take theme reloads from Omarchy's hook and talk to Hyprland; the built-in agent calls model providers and starts agent CLIs; the update check reads updates.vimma.dev, where the release pipeline publishes.">
 </picture>
 
 The picture is drawn from [docs/assets/diagrams/system.d2](docs/assets/diagrams/system.d2); the
 dashed boxes and the yellow content-process box are the trust boundaries, and the blue arrows
-cross a boundary in the parent: into `ctl/` past the control socket's token (the built-in
-agent's commands come from inside the process), and from `ctl/` past the agent gate,
-`host/AgentGate.sys.mjs`. In words:
+cross a boundary: into `ctl/` past the control socket's token, and, for every call of the agent
+role, from `ctl/` past the agent gate, `host/AgentGate.sys.mjs`. The built-in agent runs the
+same agent commands in process, without the token, so its calls cross only the gate. A full-role
+connection passes the gate once, at its handshake and only while MCP is on (`AgentGate.askFull`);
+after that, and always while MCP is off, its commands reach the host on the token alone. In words:
 
 - **Parent process.** Firefox runs every browser window in one privileged process. `vimma.js` runs
   in each window and starts Vimma's modules there; most of them are one per app (the module is

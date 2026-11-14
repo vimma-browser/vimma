@@ -9,7 +9,10 @@
 // one of its own layer or a higher one, eagerly or lazily, with no exception: layers.ts lists
 // none, and an entry there fails the check (ADR-026, decision 5). No two modules may import each
 // other eagerly, at any distance. A restricted module (the agent gate) may be imported only by
-// the modules layers.ts lists for it, whatever their layer, so a new caller is a reviewed change.
+// the modules layers.ts lists for it, whatever their layer; none may re-export it, and no
+// Firefox patch may name its URL, so a new caller is a reviewed change. A query, a fragment or
+// the case of a URL's scheme does not hide an import, and a string that names content/vimma/
+// without resolving is an error.
 //
 // eslint's no-restricted-imports cannot do this: it sees `import` declarations only, and most of
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
@@ -91,6 +94,12 @@ export interface Scan {
   edges: Edge[];
   /** `file:line: message`, for a specifier the check cannot resolve */
   problems: string[];
+  /**
+   * Where a module hands another on: an `export … from` or `export *` of it, or an export of a
+   * binding imported from it (as the binding itself, in an object literal, or as the default).
+   * `to` is the module handed on.
+   */
+  reexports?: Edge[];
 }
 
 interface AstNode {
@@ -107,8 +116,10 @@ const PREFIXES = [URL_PREFIX, "moz-src:///browser/base/content/vimma/"];
 
 const NOT_FIXED = "an import specifier is not a fixed string";
 const PARTIAL = "a string names part of a Vimma module URL, not a module or a folder";
+const UNRESOLVED =
+  "a string names content/vimma/ but no Vimma module or folder the check can resolve";
 
-type Resolved = { to: string } | "partial" | null;
+type Resolved = { to: string } | "partial" | "unresolved" | null;
 
 /**
  * What a specifier names: a Vimma module or folder (relative to vimma/), "partial" for a URL
@@ -118,16 +129,20 @@ type Resolved = { to: string } | "partial" | null;
  * imported; elsewhere a string like "./x.mjs" is just text.
  */
 function resolveSpec(spec: string, file: string, relativeAllowed: boolean): Resolved {
+  // A query or a fragment loads the same module; a URL's scheme and host have no case.
+  const bare = spec.replace(/[?#][\s\S]*$/, "");
   let path: string | null = null;
-  for (const prefix of PREFIXES) if (spec.startsWith(prefix)) path = spec.slice(prefix.length);
-  if (path === null && relativeAllowed && (spec.startsWith("./") || spec.startsWith("../")))
-    path = posix.normalize(posix.join(posix.dirname(file), spec));
-  if (path === null || path.startsWith("../")) return null;
+  for (const prefix of PREFIXES)
+    if (bare.slice(0, prefix.length).toLowerCase() === prefix) path = bare.slice(prefix.length);
+  if (path === null && relativeAllowed && (bare.startsWith("./") || bare.startsWith("../")))
+    path = posix.join(posix.dirname(file), bare);
+  if (path === null) return /content\/vimma\//i.test(spec) ? "unresolved" : null;
+  if (path !== "") path = posix.normalize(path);
+  if (path === ".." || path.startsWith("../")) return null;
   if (/\.m?js$/.test(path)) return { to: path };
   const slash = path.indexOf("/");
   if (slash < 0) return "partial";
-  const rest = path.slice(slash + 1).replace(/[?#].*$/, "");
-  if (/\.[a-z0-9]+$/i.test(rest)) return null;
+  if (/\.[a-z0-9]+$/i.test(path.slice(slash + 1))) return null;
   return { to: path.slice(0, slash + 1) };
 }
 
@@ -210,6 +225,7 @@ export function scanModule(source: string, file: string): Scan {
   const reference = (spec: string, node: AstNode) => {
     const r = resolveSpec(spec, file, false);
     if (r === "partial") problem(node, PARTIAL);
+    else if (r === "unresolved") problem(node, UNRESOLVED);
     else if (r && !isRootScript(r.to))
       edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
   };
@@ -223,6 +239,7 @@ export function scanModule(source: string, file: string): Scan {
     }
     const r = resolveSpec(spec, file, relative);
     if (r === "partial") problem(node, PARTIAL);
+    else if (r === "unresolved") problem(node, UNRESOLVED);
     else if (r) edges.push({ from: file, to: r.to, kind, line: lineOf(at) });
   };
 
@@ -267,7 +284,8 @@ export function scanModule(source: string, file: string): Scan {
       if (fixed !== null) reference(fixed, node);
       else {
         const r = resolveSpec(leadingText(node), file, false);
-        if (r === "partial" || (r && !r.to.endsWith("/"))) problem(node, PARTIAL);
+        if (r === "unresolved") problem(node, UNRESOLVED);
+        else if (r === "partial" || (r && !r.to.endsWith("/"))) problem(node, PARTIAL);
         else if (r) edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
       }
     } else if (node.type === "PropertyDefinition" && !node["static"]) {
@@ -283,7 +301,67 @@ export function scanModule(source: string, file: string): Scan {
     done.add(node);
   };
   walk(ast, false);
-  return { edges, problems };
+  return { edges, problems, reexports: reexportsOf(ast, file) };
+}
+
+/** The bindings a module imports from Vimma modules, by local name. */
+function importedBindings(ast: AstNode, file: string): Map<string, string> {
+  const bindings = new Map<string, string>();
+  for (const node of (ast["body"] as unknown[]) ?? []) {
+    if (!isNode(node) || node.type !== "ImportDeclaration" || !isNode(node["source"])) continue;
+    const spec = fixedString(node["source"]);
+    const r = spec === null ? null : resolveSpec(spec, file, true);
+    if (!r || typeof r === "string") continue;
+    for (const s of (node["specifiers"] as unknown[]) ?? []) {
+      const local = isNode(s) && isNode(s["local"]) ? s["local"]["name"] : undefined;
+      if (typeof local === "string") bindings.set(local, r.to);
+    }
+  }
+  return bindings;
+}
+
+/** See Scan.reexports. A function that uses the binding is a caller, not a hand-on. */
+function reexportsOf(ast: AstNode, file: string): Edge[] {
+  const bindings = importedBindings(ast, file);
+  const out: Edge[] = [];
+  const add = (to: string | undefined, node: AstNode) => {
+    if (to) out.push({ from: file, to, kind: "eager", line: node.loc?.start.line ?? 0 });
+  };
+  /** The modules a value hands on: a binding itself, or bindings held in an object literal. */
+  const held = (value: unknown): string[] => {
+    if (!isNode(value)) return [];
+    if (value.type === "Identifier") {
+      const to = bindings.get(String(value["name"]));
+      return to ? [to] : [];
+    }
+    if (value.type === "ObjectExpression")
+      return ((value["properties"] as unknown[]) ?? []).flatMap((p) =>
+        isNode(p) ? held(p.type === "SpreadElement" ? p["argument"] : p["value"]) : [],
+      );
+    return [];
+  };
+  for (const node of (ast["body"] as unknown[]) ?? []) {
+    if (!isNode(node)) continue;
+    const source = node["source"];
+    if (
+      (node.type === "ExportNamedDeclaration" || node.type === "ExportAllDeclaration") &&
+      isNode(source)
+    ) {
+      const spec = fixedString(source);
+      const r = spec === null ? null : resolveSpec(spec, file, true);
+      if (r && typeof r !== "string") add(r.to, node);
+    } else if (node.type === "ExportNamedDeclaration") {
+      for (const s of (node["specifiers"] as unknown[]) ?? [])
+        if (isNode(s)) for (const to of held(s["local"])) add(to, node);
+      const declaration = node["declaration"];
+      if (isNode(declaration) && declaration.type === "VariableDeclaration")
+        for (const d of (declaration["declarations"] as unknown[]) ?? [])
+          if (isNode(d)) for (const to of held(d["init"])) add(to, node);
+    } else if (node.type === "ExportDefaultDeclaration") {
+      for (const to of held(node["declaration"])) add(to, node);
+    }
+  }
+  return out;
 }
 
 /**
@@ -307,7 +385,7 @@ export function htmlImports(html: string, file: string): Scan {
   html.split("\n").forEach((text, i) => {
     for (const m of text.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
       const r = resolveSpec(m[1] ?? "", file, true);
-      if (r && r !== "partial" && !r.to.endsWith("/"))
+      if (r && r !== "partial" && r !== "unresolved" && !r.to.endsWith("/"))
         edges.push({ from: file, to: r.to, kind: "eager", line: i + 1 });
     }
   });
@@ -399,7 +477,11 @@ export function exceptionErrors(exceptions: Exception[]): string[] {
  * Imports of a restricted module by a module its list does not hold, eager or lazy, and listed
  * importers that no longer import it, so that the list stays exactly the callers reviewed.
  */
-export function restrictedErrors(edges: Edge[], restricted: Record<string, Restricted>): string[] {
+export function restrictedErrors(
+  edges: Edge[],
+  restricted: Record<string, Restricted>,
+  reexports: Edge[] = [],
+): string[] {
   const errors: string[] = [];
   for (const [module, { importers, review }] of Object.entries(restricted)) {
     const allowed = new Set(importers);
@@ -412,12 +494,42 @@ export function restrictedErrors(edges: Edge[], restricted: Record<string, Restr
           `${e.from}:${e.line}: imports ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import: ${review}, then a line there`,
         );
     }
+    for (const e of reexports)
+      if (e.to === module)
+        errors.push(
+          `${e.from}:${e.line}: re-exports ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may hold and none may hand on: ${review}`,
+        );
     for (const from of importers)
       if (!seen.has(from))
         errors.push(
           `stale importer: ${from} no longer imports ${module}; remove it from RESTRICTED in ${LAYERS_FILE}`,
         );
   }
+  return errors;
+}
+
+/**
+ * Firefox patches (the .patch files under src/) load Vimma modules by chrome:// URL from Firefox's own
+ * files, which the module scan does not read. An added line that names a restricted module
+ * fails: no patch is on a restricted module's list.
+ */
+export function patchErrors(
+  patches: { file: string; text: string }[],
+  restricted: Record<string, Restricted>,
+): string[] {
+  const errors: string[] = [];
+  for (const { file, text } of patches)
+    text.split("\n").forEach((line, i) => {
+      if (!line.startsWith("+") || line.startsWith("+++")) return;
+      for (const m of line.matchAll(/[a-z-]+:\/\/[^\s"'`]*content\/vimma\/[^\s"'`,)]*/gi)) {
+        const r = resolveSpec(m[0], "", false);
+        const rule = r && typeof r !== "string" ? restricted[r.to] : undefined;
+        if (r && typeof r !== "string" && rule)
+          errors.push(
+            `${file}:${i + 1}: names ${r.to}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import, and a Firefox patch is none of them: ${rule.review}`,
+          );
+      }
+    });
   return errors;
 }
 
@@ -574,7 +686,39 @@ export function treeScan(root: string): Scan {
   return {
     edges: scans.flatMap((s) => s.edges),
     problems: scans.flatMap((s) => s.problems),
+    reexports: scans.flatMap((s) => s.reexports ?? []),
   };
+}
+
+/** The Firefox patches git tracks under src/, with their text. */
+function trackedPatches(root: string): { file: string; text: string }[] {
+  return execFileSync("git", ["ls-files", "-z", "--", "src/**/*.patch"], {
+    cwd: root,
+    encoding: "utf8",
+  })
+    .split("\0")
+    .filter(Boolean)
+    .map((file) => ({ file, text: readFileSync(join(root, file), "utf8") }));
+}
+
+/** Everything `npm run layering` checks in the tree at `root`, and the edges it read. */
+export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
+  const { edges, problems, reexports = [] } = treeScan(root);
+  const jar = readFileSync(join(root, VIMMA, "jar.mn"), "utf8");
+  const errors = [
+    ...problems,
+    ...jarErrors(jar),
+    ...danglingEdges(edges, new Set(trackedFiles(root)), jarModules(jar)),
+    ...exceptionErrors(EXCEPTIONS),
+    ...layerErrors(edges, LAYERS, EXCEPTIONS),
+    ...restrictedErrors(edges, RESTRICTED, reexports),
+    ...patchErrors(trackedPatches(root), RESTRICTED),
+    ...eagerCycles(edges),
+    ...missingReadmes(root).map(
+      (d) => `vimma/${d}/ has no README.md: say what it owns and what it may import (${ADR})`,
+    ),
+  ];
+  return { edges, errors };
 }
 
 /** Folders of vimma/ that git tracks and that have no README.md. */
@@ -591,20 +735,7 @@ export function missingReadmes(root: string): string[] {
 }
 
 function main(): void {
-  const { edges, problems } = treeScan(ROOT);
-  const jar = readFileSync(join(ROOT, VIMMA, "jar.mn"), "utf8");
-  const errors = [
-    ...problems,
-    ...jarErrors(jar),
-    ...danglingEdges(edges, new Set(trackedFiles(ROOT)), jarModules(jar)),
-    ...exceptionErrors(EXCEPTIONS),
-    ...layerErrors(edges, LAYERS, EXCEPTIONS),
-    ...restrictedErrors(edges, RESTRICTED),
-    ...eagerCycles(edges),
-    ...missingReadmes(ROOT).map(
-      (d) => `vimma/${d}/ has no README.md: say what it owns and what it may import (${ADR})`,
-    ),
-  ];
+  const { edges, errors } = treeErrors(ROOT);
   if (errors.length) {
     for (const e of errors) console.error(e);
     console.error(

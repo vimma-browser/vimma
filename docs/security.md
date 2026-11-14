@@ -996,9 +996,13 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](specs/vimma-mcp.md), [ADR-019](adr/019-agents-over-mcp.md).
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
-`tools/layering/layers.ts`); `npm run layering` fails on any other, so a new caller, such as the
-parent actor, is reviewed against this section first.
-[`a new importer of the agent gate fails, in host/ or a lower folder alike`](../tools/layering/test/layering.test.ts)
+`tools/layering/layers.ts`): `npm run layering` fails on any other module of `vimma/`, on a
+re-export of it and on a Firefox patch that names its URL, so a new caller, such as the parent
+actor, is reviewed against this section first. A gate object a listed module hands on at run time
+(a callback, an argument) is not seen by the check; a review of a listed module's change looks for
+it.
+[`a new importer of the agent gate fails, in host/ or a higher folder alike`](../tools/layering/test/layering.test.ts),
+[`an added line of a Firefox patch that names a restricted module fails`](../tools/layering/test/layering.test.ts)
 
 **Reach:** any local process that can read the token file, an agent's own shell included,
 while MCP is on (`:mcp on`). Every check runs in the browser, never in the client: an agent with

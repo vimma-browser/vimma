@@ -133,14 +133,20 @@ each without a change in behaviour:
   live in `host/`; the gate imports only `core/` and `mcp-ops.mjs`, so `host/` already is that
   folder. `ctl/` and `agent/`, above it, import the gate downwards, and `mcp-ops.mjs` still loads
   it lazily, since the gate imports `mcp-ops.mjs` eagerly. Every caller reaches the same module
-  as before under its new URL; what each can call is unchanged, and so is who may call it: in
-  `host/`, every module of the host and every folder above it could import the gate by the
-  layers alone, so `RESTRICTED` in `tools/layering/layers.ts` lists its seven importers of today
-  (`host/VimmaHost.sys.mjs`, `host/agent-ui.mjs`, `host/mcp-ops.mjs`,
-  `ctl/VimmaControl.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/AgentDownloads.sys.mjs`,
-  `agent/AgentChat.sys.mjs`), and `npm run layering` fails on any other, eager or lazy, and on a
-  listed one that stops importing it. A new caller of the gate is a security review, then a line
-  there; it is a rule on importers, not a layering exception. The list is empty, and with it
+  as before under its new URL; what each can call is unchanged, and who may import it is narrower
+  than before. In `ctl/`, any `ctl/` module and anything in layers 5 and up could import the gate,
+  and three named `host/` modules through their exceptions; in `host/` the layers alone would let
+  every host module and every folder above import it, so `RESTRICTED` in
+  `tools/layering/layers.ts` lists exactly its seven importers of today (`host/VimmaHost.sys.mjs`,
+  `host/agent-ui.mjs`, `host/mcp-ops.mjs`, `ctl/VimmaControl.sys.mjs`, `ctl/agent-commands.mjs`,
+  `ctl/AgentDownloads.sys.mjs`, `agent/AgentChat.sys.mjs`). `npm run layering` fails on any other
+  importer, eager or lazy; on a listed one that stops importing it; on a module that re-exports
+  it (`export … from`, `export *`, or an imported binding exported again, in an object literal
+  or as the default); and on an added line of a Firefox patch that names its URL. A new caller of
+  the gate is a security review, then a line there; it is a rule on importers, not a layering
+  exception. What the check cannot see is a gate object a listed importer hands on at run time
+  (a callback, an argument, `host-services.mjs`): that is what the security review of a change
+  to a listed importer must look for. The list is empty, and with it
   the eager folder cycle: no two folders import each other eagerly.)
 - **Two modules live in the wrong folder.** `host/VimmaHost.sys.mjs` records each key in
   `about/key-log.mjs` for `about:vimma`; the log moves to `host/`, which writes it.

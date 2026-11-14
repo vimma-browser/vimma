@@ -126,8 +126,14 @@ app: "Vimma (one application)" {
     grid-columns: 1
     grid-gap: 40
     chrome: "vimma.js, host/, ui/,\nworkspaces/, split/,\nconfig/ … with core/" { class: module }
-    gate: "host/AgentGate:\nthe agent gate" { class: gate }
-    ctl: "ctl/: control server\nand agent commands" { class: gate }
+    front: {
+      class: wrap
+      grid-columns: 2
+      grid-rows: 1
+      horizontal-gap: 170
+      ctl: "ctl/: control server\nand agent commands" { class: gate }
+      gate: "host/AgentGate:\nthe agent gate" { class: gate }
+    }
     agent: "agent/: built-in agent" { class: module }
   }
 }
@@ -151,12 +157,13 @@ east: {
 
 west.local.hosts -> west.local.mcp: "stdio" { class: flow }
 west.local.clis -> west.local.mcp: "stdio" { class: flow }
-west.local.mcp -> app.parent.ctl { class: gated }
-west.local.scripts -> app.parent.ctl { class: gated }
+west.local.mcp -> app.parent.front.ctl { class: gated }
+west.local.scripts -> app.parent.front.ctl { class: gated }
 app.parent.agent -> west.local.clis { class: flow }
-app.parent.agent -> app.parent.ctl: "same commands" { class: gated }
-app.parent.ctl -> app.parent.gate { class: gated }
-app.parent.gate -> app.parent.chrome { class: flow }
+app.parent.agent -> app.parent.front.ctl: "the same agent commands,\nin process (no token)" { class: flow }
+app.parent.front.ctl -> app.parent.front.gate: "agent role:\nevery call" { class: gated }
+app.parent.front.gate -> app.parent.chrome { class: flow }
+app.parent.front.ctl -> app.parent.chrome: "full role: the token alone\n(one question per connection\nwhile MCP is on)" { class: flow }
 app.parent.chrome <-> app.content.child: "actor messages" { class: flow }
 app.parent.agent -> east.net.models { class: flow }
 app.parent.chrome -> east.net.updates { class: flow }
