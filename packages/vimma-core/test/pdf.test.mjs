@@ -20,7 +20,7 @@ import {
 
 // docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
 // `doc` counts the documents pdf.js has opened in this viewer (V11).
-// `drawn`, `ops`, `width`, `height` and `ratio` say what the viewer had drawn when it reported
+// `drawn`, `ops`, `width`, `height` and `zoom` say what the viewer had drawn when it reported
 // (#1006, #1040).
 const good = {
   page: 3,
@@ -32,8 +32,8 @@ const good = {
   ops: 0,
   width: 1040,
   height: 700,
-  // 60 app units per CSS pixel over 40 per device pixel: a 1.5 desktop scale at 100% zoom.
-  ratio: 1.5,
+  // The tab's full zoom as the viewer's browsing context had it (BrowsingContext.fullZoom).
+  zoom: 1,
 };
 
 describe("parsePdfState", () => {
@@ -82,22 +82,21 @@ describe("parsePdfState", () => {
       ["a fractional width", { ...good, width: 1040.5 }],
       ["a width beyond any screen", { ...good, width: 1e9 }],
       ["no height", { ...good, height: undefined }],
-      ["no pixel ratio", { ...good, ratio: undefined }],
-      ["a pixel ratio as a string", { ...good, ratio: "1.5" }],
-      ["a pixel ratio of NaN", { ...good, ratio: NaN }],
-      ["an infinite pixel ratio", { ...good, ratio: Infinity }],
-      ["a pixel ratio of 0", { ...good, ratio: 0 }],
-      ["a negative pixel ratio", { ...good, ratio: -1.5 }],
-      ["a pixel ratio above one app unit per device pixel", { ...good, ratio: 61 }],
-      ["a pixel ratio below 6000 app units per device pixel", { ...good, ratio: 0.009 }],
-      ["a pixel ratio of no whole app units per device pixel", { ...good, ratio: 1.6 }],
+      ["no zoom", { ...good, zoom: undefined }],
+      ["a zoom as a string", { ...good, zoom: "1" }],
+      ["a zoom as an object", { ...good, zoom: { valueOf: /** @returns {number} */ () => 1 } }],
+      ["a zoom of NaN", { ...good, zoom: NaN }],
+      ["an infinite zoom", { ...good, zoom: Infinity }],
+      ["a zoom of 0", { ...good, zoom: 0 }],
+      ["a zoom of -0", { ...good, zoom: -0 }],
+      ["a negative zoom", { ...good, zoom: -1 }],
+      ["a zoom past any Firefox allows", { ...good, zoom: 1e308 }],
+      ["a zoom below any Firefox allows", { ...good, zoom: 5e-324 }],
       ["none of them", { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 }],
     ])("%s", (_name, raw) => {
       const s = parsePdfState(raw);
       expect(s).toMatchObject({ page: 3, pages: 12, label: "", doc: 1, drawn: false });
-      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700, chromeRatio: 1.5, zoom: 1 })).toBe(
-        false,
-      );
+      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700, zoom: 1 })).toBe(false);
     });
   });
 
@@ -110,9 +109,9 @@ describe("parsePdfState", () => {
 });
 
 // `state.pdf` (#1006): the viewer's last report says every page in view was drawn, it came after
-// every operation Vimma sent it, and the viewer then had the size and the scale its tab has now.
+// every operation Vimma sent it, and the viewer then had the size and the zoom its tab has now.
 describe("pdfDrawn", () => {
-  const now = { sent: 2, width: 1040, height: 700, chromeRatio: 1.5, zoom: 1 };
+  const now = { sent: 2, width: 1040, height: 700, zoom: 1 };
   test("drawn once the report answers every operation sent, at the tab's size", () => {
     expect(pdfDrawn({ ...good, ops: 2 }, now)).toBe(true);
     expect(pdfDrawn({ ...good, ops: 3 }, now)).toBe(true);
@@ -131,39 +130,31 @@ describe("pdfDrawn", () => {
   });
 
   // #1040: a full-zoom change leaves the tab's size in device pixels as it was, so only the
-  // viewer's pixel ratio tells a report from before the zoom from one after it. The viewer's
-  // ratio is 60 app units over its whole app units per device pixel: the chrome's (60 / its
-  // ratio) divided by the zoom and rounded (nsDeviceContext::ApplyFullZoomToAPD).
-  describe("a report from before a full-zoom change", () => {
-    test.each([
-      ["100% to 110%", 1.5, 1.5, 1.1],
-      ["110% to 100%", 1.5, 60 / 36, 1],
-      ["110% to 120%", 1.5, 60 / 36, 1.2],
-      ["100% to 90% at scale 1", 1, 1, 0.9],
-      ["300% to 240% at scale 3", 3, 60 / 7, 2.4],
-      ["30% to 50% at scale 1", 1, 60 / 200, 0.5],
-    ])("is not drawn: %s", (_name, chromeRatio, ratio, zoom) => {
-      expect(pdfDrawn({ ...good, ops: 2, ratio }, { ...now, chromeRatio, zoom })).toBe(false);
-    });
+  // zoom tells a report from before it from one after it. Both sides read the same synced
+  // BrowsingContext.fullZoom, so the comparison is exact at every desktop scale and zoom, on or
+  // off Firefox's steps; a tolerance on the pixel ratio was not (scale 2: 170% then 160% round
+  // to 18 and 19 app units per device pixel, 0.75 from 30 / 1.6).
+  test.each([
+    ["170% to 160%", 1.7, 1.6],
+    ["111% to 110%", 1.11, 1.1],
+    ["110% to 100%", 1.1, 1],
+    ["100% to 110%", 1, 1.1],
+    ["30% to 50%", 0.3, 0.5],
+    ["the zoom as a double to the same as a float", 1.1, Math.fround(1.1)],
+  ])("a report from before a zoom change, %s, is not drawn", (_name, zoom, tabZoom) => {
+    expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom: tabZoom })).toBe(false);
   });
-  describe("a report at the tab's zoom", () => {
-    test.each([
-      ["100% at scale 1.5", 1.5, 1.5, 1],
-      ["110% at scale 1.5", 1.5, 60 / 36, 1.1],
-      ["133% at scale 1.5", 1.5, 2, 1.33],
-      ["30% at scale 1", 1, 60 / 200, 0.3],
-      ["240% at scale 3", 3, 60 / 8, 2.4],
-      // The desktop's text scale (browser.display.os-zoom-behavior) zooms the chrome and the
-      // page alike, each rounded on its own: 40 / 1.25 = 32 for the chrome, and
-      // 40 / (1.25 * 0.9) = 35.6, rounded to 36, for the page.
-      ["90% under a 1.25 text scale", 60 / 32, 60 / 36, 0.9],
-    ])("is drawn: %s", (_name, chromeRatio, ratio, zoom) => {
-      expect(pdfDrawn({ ...good, ops: 2, ratio }, { ...now, chromeRatio, zoom })).toBe(true);
-    });
+  test.each([1, 0.3, 1.6, Math.fround(1.1), 5])(
+    "a report at the tab's zoom %s is drawn",
+    (zoom) => {
+      expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom })).toBe(true);
+    },
+  );
+  test.each([0, -0, NaN, Infinity, -1])("never drawn when the tab's zoom is %s", (zoom) => {
+    expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom })).toBe(false);
   });
-  test("a report with no usable ratio is never drawn", () => {
-    const s = parsePdfState({ ...good, ops: 2, ratio: 1.6 });
-    expect(pdfDrawn(s, now)).toBe(false);
+  test("a report with no usable zoom is never drawn", () => {
+    expect(pdfDrawn(parsePdfState({ ...good, ops: 2, zoom: NaN }), now)).toBe(false);
   });
 });
 

@@ -213,6 +213,12 @@ export class PdfView {
   #themeUri = "";
   /** PDF_SHEET is loaded (once). */
   #sheetLoaded = false;
+  /**
+   * The window's size and pixel ratio as the last resize event left them (#scale). Until the
+   * resize event for a new size or zoom has run, pdf.js has not dropped the pages it drew at the
+   * old one, so no report then says drawn.
+   */
+  #seenScale = "";
 
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
@@ -254,7 +260,11 @@ export class PdfView {
     // A resize (the outline opening beside the document) redraws the pages at the new size: the
     // report says which size it was made at (`state.pdf`). The window's own event, in Vimma's
     // scope, so nothing of the viewer's script runs.
-    this.#onResize = () => this.schedule();
+    this.#seenScale = this.#scale();
+    this.#onResize = () => {
+      this.#seenScale = this.#scale();
+      this.schedule();
+    };
     win.addEventListener("resize", this.#onResize);
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
@@ -856,10 +866,25 @@ export class PdfView {
       label: str(() => app.pdfViewer.currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
       find: { current: this.#find.current, total: this.#find.total },
       doc: this.#generation,
-      drawn: this.#drawn(),
+      drawn: this.#drawn() && this.#scale() === this.#seenScale,
       ops: this.#ops(),
       ...this.#size(),
     };
+  }
+
+  /**
+   * The window's CSS size and pixel ratio, which a resize, a full-zoom change and a change of
+   * the desktop's scale or text scale all change. A full-zoom change reaches the viewer's window
+   * at once (BrowsingContext::DidSet recomputes its pres context), but pdf.js drops the pages
+   * it drew at the old one only in its `(resolution: …dppx)` media query listener (viewer.mjs,
+   * addWindowResolutionChange, then pdfViewer.refresh) and its resize handler, in the next
+   * refresh tick. That tick runs the resize steps, where this listener of Vimma's records the
+   * new scale, and then the media query changes, before any timer can run; a report timer that
+   * fired between the zoom and that tick would have read the old pages as drawn (#1040).
+   */
+  #scale() {
+    const win = this.#win;
+    return `${win.innerWidth} ${win.innerHeight} ${win.devicePixelRatio}`;
   }
 
   /**
@@ -867,16 +892,23 @@ export class PdfView {
    * system caller gets the unrounded CSS size (nsGlobalWindowOuter's GetInnerSize), fractional
    * at a fractional desktop scale or full zoom, and the content's scale is the desktop scale
    * times the full zoom snapped to whole app units per device pixel, which the parent does not
-   * see. The ratio goes too, so that the parent can tell a report from before a full-zoom
-   * change, which leaves the size in device pixels as it was (#1040).
+   * see. The full zoom goes too, so that the parent can tell a report from before a zoom
+   * change, which leaves the size in device pixels as it was (#1040): the browsing context's,
+   * the synced value the parent compares it with, exactly.
    */
   #size() {
     const win = this.#win;
     const ratio = win.devicePixelRatio;
+    let zoom = 0;
+    try {
+      zoom = win.browsingContext.fullZoom;
+    } catch {
+      // the browsing context went with the window: the parent reads the report as not drawn
+    }
     return {
       width: Math.round(win.innerWidth * ratio),
       height: Math.round(win.innerHeight * ratio),
-      ratio,
+      zoom,
     };
   }
 

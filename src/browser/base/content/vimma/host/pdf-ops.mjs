@@ -139,7 +139,7 @@ const sameView = (a, b) =>
   a.ops === b.ops &&
   a.width === b.width &&
   a.height === b.height &&
-  a.ratio === b.ratio;
+  a.zoom === b.zoom;
 
 export const PdfOps = {
   /**
@@ -227,7 +227,8 @@ export const PdfOps = {
    * `browser` shows the PDF viewer; else whether it has drawn every page in view as the tab
    * shows it now (core pdfDrawn): its last report says so, came after every operation sent to
    * it, and was made at the tab's present size and zoom, so neither a key just sent nor a
-   * resize or full-zoom change under way reads as drawn (#1040). One flag: never the page, the page count, the title or the outline.
+   * resize or full-zoom change under way reads as drawn (#1040). One flag: never the page, the
+   * page count, the title or the outline.
    * @param {MozBrowser} browser
    * @returns {{ drawn: boolean } | null}
    */
@@ -237,14 +238,15 @@ export const PdfOps = {
     const sent = sentOps.get(wg) ?? 0;
     // The tab's size in device pixels, as the viewer reports its own (pdf-view.mjs, #size):
     // device pixels are the same on both sides at any desktop scale and full zoom.
-    const chromeRatio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
+    const ratio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
     const box = browser.getBoundingClientRect();
-    const width = Math.round(box.width * chromeRatio);
-    const height = Math.round(box.height * chromeRatio);
-    // The zoom leaves that size as it was: the viewer's pixel ratio, checked against the
-    // chrome's and the zoom, tells a report from before a zoom change (core sameScale).
-    const zoom = browser.fullZoom;
-    const now = { sent, width, height, chromeRatio, zoom };
+    const width = Math.round(box.width * ratio);
+    const height = Math.round(box.height * ratio);
+    // A zoom change leaves that size as it was: the browsing context's zoom, the synced value
+    // the viewer reports, tells a report from before one. Not browser.fullZoom, which in
+    // Responsive Design Mode is the RDM pane's zoom while the page's own stays 1.
+    const zoom = browser.browsingContext?.fullZoom ?? 0;
+    const now = { sent, width, height, zoom };
     return { drawn: pdfDrawn(this.state(browser), now) };
   },
 
