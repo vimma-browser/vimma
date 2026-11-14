@@ -538,15 +538,26 @@ text that pages, add-ons and bookmarks choose.
   (`ipc:content-shutdown`): the parent checks every principal that process sends against the
   about: module's flags of that moment and kills the process on a mismatch (#950). Nothing else
   clears that: not the end of another content process, and not "no privilegedabout process is
-  alive", since a process still launching is not listed yet. The stand-in only ever falls back
-  to Firefox's own module, never the other way round while Firefox's page may live. **⚠ limit:**
-  a load of Firefox's page whose channel exists when the last privilegedabout process ends, and
-  whose process is picked after, reads the start page's flags then, so that one load can get a
-  process that does not match its page (not tested; the next load matches again). Firefox
-  keeps one privilegedabout process alive, so this needs that process to crash or the keep-alive
-  pref set to 0.
+  alive", since a process still launching is not listed yet. Nor does the end of the last one
+  while one of Firefox's channels it handed out is still loading (#984): the parent opens a
+  document channel as it creates it, keeps it suspended while it picks and launches the page's
+  process, and lets it finish only after that process is alive (`ipc:content-created` comes
+  first), so a page still on its way to a process holds the latch until a privilegedabout
+  process ends after it arrives. Finished channels hold nothing, so the start page still comes
+  back. Page loads that web content starts cannot reach these modules (no `MAKE_LINKABLE`), and
+  a channel only ever keeps the latch, never clears it. The stand-in only ever falls back to
+  Firefox's own module, never the other way round while Firefox's page may live. **⚠ limit:**
+  this rests on the channel staying pending until its process is noted, which is how
+  `DocumentLoadListener` and `ContentParent` work today (not tested with a real launch racing a
+  process's end; the test stands in a suspended channel). If that changed, both orderings it
+  covers would come back: a page in a new process without the latch, killed the next time the
+  pref is turned on, and a load picked after the last process ended reading the start page's
+  flags, which puts Firefox's page in the parent, where it does not work and the web cannot
+  reach it. Firefox keeps one privilegedabout process alive, so either needs that process to
+  crash or the keep-alive pref set to 0.
   [`typed_firefox_pages_open_the_start_page`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
   [`firefox_flags_stay_until_a_privilegedabout_process_ends`](../tests/browser/browser_vimma_firefox_page_process.js),
+  [`firefox_flags_stay_while_its_page_is_on_its_way`](../tests/browser/browser_vimma_firefox_page_process.js),
   [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_page_process.js)
 
 ## 7. Omarchy hook and the `vimma-open` launcher
