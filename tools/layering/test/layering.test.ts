@@ -1875,7 +1875,7 @@ describe("htmlImports: attributes as the parser keeps them, and the policy first
 
   test("the policy comes once, before the first script or link", () => {
     const ORDER =
-      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, before the first of them";
+      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, in its head, before the first of them";
     expect(problems(`${SCRIPT}\n${POLICY}`)).toContain(ORDER);
     expect(
       problems(
@@ -1942,5 +1942,54 @@ describe("patchErrors: today's build lines only in browser/base/moz.build", () =
         RESTRICTED,
       ).join("\n"),
     ).toContain("names Vimma's folder (content/vimma) in a build file");
+  });
+});
+
+describe("htmlImports: the policy sits in the head", () => {
+  test("a policy in the body is ignored by Firefox, so it fails", () => {
+    const POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'" />`;
+    const SCRIPT = `<script type="module" src="${V}start/start.mjs"></script>`;
+    const ORDER =
+      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, in its head, before the first of them";
+    expect(
+      htmlImports(
+        `<html><head></head><body>${POLICY}\n${SCRIPT}</body></html>`,
+        "start/x.html",
+      ).problems.join("\n"),
+    ).toContain(ORDER);
+    expect(
+      htmlImports(`<html><head>${POLICY}</head><body>\n${SCRIPT}</body></html>`, "start/x.html")
+        .problems,
+    ).toEqual([]);
+  });
+});
+
+describe("treeErrors: a module that is not UTF-8 reports its encoding, not a parse error", () => {
+  test.each([
+    [
+      "a UTF-16 module",
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("export const a = 1;\n", "utf16le")]),
+      "starts with a byte order mark",
+    ],
+    [
+      "a trailing NUL",
+      Buffer.concat([Buffer.from("export const a = 1;\n"), Buffer.from([0])]),
+      "holds a NUL byte",
+    ],
+    [
+      "trailing invalid bytes",
+      Buffer.concat([Buffer.from("export const a = 1;\n"), Buffer.from([0xc3, 0x28])]),
+      "is not valid UTF-8",
+    ],
+  ])("%s", (_, bytes, what) => {
+    const root = tempDir("vimma-layering-");
+    const vimma = join(root, "src/browser/base/content/vimma");
+    mkdirSync(join(vimma, "ui"), { recursive: true });
+    writeFileSync(join(vimma, "jar.mn"), "browser.jar:\n");
+    writeFileSync(join(vimma, "ui/README.md"), "");
+    writeFileSync(join(vimma, "ui/a.mjs"), bytes);
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "."], { cwd: root });
+    expect(treeErrors(root).errors.join("\n")).toContain(`vimma/ui/a.mjs: ${what}`);
   });
 });

@@ -324,15 +324,16 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   use today: the elements of today's pages; a script only `type="module"` with the `src` of a
   Vimma module and no inline code; a link only to one of today's stylesheets; a meta only
   `charset="utf-8"`, the colour scheme, or one of today's two Content-Security-Policy values
-  (`about.html`'s adds `connect-src chrome:`); exactly one such policy, before the first script
-  or stylesheet, in a page that has either, since a meta policy governs only what loads after
-  it; an `<a href>` only an about: page or a fragment; no other element with a URL attribute; no
+  (`about.html`'s adds `connect-src chrome:`); exactly one such policy, in the head and before the
+  first script or stylesheet, in a page that has either, since a meta policy governs only what
+  loads after it and Firefox applies one only in the head (`HTMLMetaElement`); an `<a href>` only an about: page or a fragment; no other element with a URL attribute; no
   `on…` attribute, `srcdoc` or `<base>`; and no named reference but `&amp;`, `&quot;`, `&apos;`,
   `&lt;`, `&gt;`.
 - Every file the check reads (modules, pages, `jar.mn`, `vimma/moz.build`, vimma-core's sources,
   the Firefox patches) goes through one read that refuses a byte order mark, a NUL byte or bytes
   that are not UTF-8: the check reads UTF-8, and a page saved as UTF-16 would show it no tags at
-  all while the parser, sniffing the mark, reads them.
+  all while the parser, sniffing the mark, reads them. Such a file is reported by name and not
+  parsed, so the reason shows instead of a parser error.
 - Theme files that `jar.mn` packages from outside `vimma/` (its `skin/classic/browser/vimma/`
   entries, stylesheets and images such as an `.svg`) are not read; an SVG opened as a document
   can run script, so a change to one is for review.

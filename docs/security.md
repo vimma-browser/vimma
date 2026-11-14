@@ -1048,19 +1048,22 @@ such a list is a change to `tools/layering/layering.ts` that needs a fresh secur
   only `type="module"` with the `src` of a Vimma module, with no inline code; a link only one of
   today's stylesheets; a meta only `charset="utf-8"`, the colour scheme, or one of today's two
   Content-Security-Policy values; a page with a script or a stylesheet carries exactly one such
-  policy, before the first of them, since a meta policy governs only what loads after it; an
+  policy, in its head and before the first of them, since a meta policy governs only what loads
+  after it and Firefox applies one only in the head; an
   `<a href>` only an about: page or a fragment; no other element with a URL attribute, no `on…`
   attribute, `srcdoc` or `<base>`, and no named reference but the five. An attribute given twice
   in one tag is refused, since the parser keeps the first copy and the check would otherwise
   read another.
   [`htmlImports: only the elements, URLs and policies the pages use today`](../tools/layering/test/layering.test.ts),
   [`htmlImports: a page is read whole, values across lines and references decoded`](../tools/layering/test/layering.test.ts),
-  [`htmlImports: attributes as the parser keeps them, and the policy first`](../tools/layering/test/layering.test.ts)
+  [`htmlImports: attributes as the parser keeps them, and the policy first`](../tools/layering/test/layering.test.ts),
+  [`htmlImports: the policy sits in the head`](../tools/layering/test/layering.test.ts)
 - **Encoding:** every file the check reads (modules, pages, `jar.mn`, `vimma/moz.build`,
   vimma-core's sources, the Firefox patches) goes through one read that refuses a byte order
   mark, a NUL byte or bytes that are not UTF-8, so that a page the parser would decode as
-  UTF-16 is not read as an empty UTF-8 one.
-  [`encodingErrors: every file the check reads is UTF-8, as the check reads it`](../tools/layering/test/layering.test.ts)
+  UTF-16 is not read as an empty UTF-8 one; such a file is reported by name and not parsed.
+  [`encodingErrors: every file the check reads is UTF-8, as the check reads it`](../tools/layering/test/layering.test.ts),
+  [`treeErrors: a module that is not UTF-8 reports its encoding, not a parse error`](../tools/layering/test/layering.test.ts)
 - **Packaging and file types:** `jar.mn` has only comments (`#` and a space, or `#` alone), one `browser.jar:` header,
   entries that package a script, a page or any file of `vimma/` under its own path (no `.` or
   `..` segment), and `.svg` overrides; `vimma/moz.build` has only its two manifest lists of plain

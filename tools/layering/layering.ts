@@ -1359,10 +1359,16 @@ export function htmlImports(
     lt = Math.max(lt, pos - 1);
   }
   // A meta policy governs only what loads after it.
-  if (firstLoad >= 0 && (policies.length !== 1 || (policies[0] ?? 0) > firstLoad))
+  // A meta policy governs only what loads after it, and Firefox applies one only in the head
+  // (HTMLMetaElement): before `</head>` and before `<body>`.
+  const lowered = html.toLowerCase();
+  const heads = [lowered.indexOf("</head"), lowered.indexOf("<body")].filter((i) => i >= 0);
+  const headEnd = heads.length ? Math.min(...heads) : html.length;
+  const policy = policies[0] ?? 0;
+  if (firstLoad >= 0 && (policies.length !== 1 || policy > firstLoad || policy > headEnd))
     page(
       0,
-      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, before the first of them",
+      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, in its head, before the first of them",
     );
 
   const lower = html.toLowerCase();
@@ -1869,8 +1875,11 @@ let encodingProblems: string[] = [];
 /** The one way the tree check reads a file: as UTF-8, with its encoding checked. */
 function readText(path: string, label: string): string {
   const bytes = readFileSync(path);
-  encodingProblems.push(...encodingErrors(bytes, label));
-  return bytes.toString("utf8");
+  const problems = encodingErrors(bytes, label);
+  encodingProblems.push(...problems);
+  // A file whose bytes are not what the check reads them as is reported, not parsed: the
+  // parser's own error would hide the reason.
+  return problems.length ? "" : bytes.toString("utf8");
 }
 
 /** Every edge of the tree, and every specifier in it that cannot be read. */
