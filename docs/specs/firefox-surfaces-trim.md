@@ -518,7 +518,10 @@ Written first and seen to fail, by step.
   `browser_vimma_firefox_settings_trim.js` and, for what it hides,
   `browser_vimma_firefox_settings_hidden.js`, #992) opens `about:preferences` and asserts
   the Labs, AI controls, Firefox Home and data collection groups and the connect.mozilla.org link
-  are not displayed, also with `prefers-contrast` forced; that a Settings card's computed
+  are not displayed, also with `prefers-contrast` forced (Since changed, issue
+  [#997](https://github.com/vimma-browser/vimma/issues/997): each in the pane Firefox shows it in,
+  and only once Firefox is seen to show it with `firefox-pages.css` taken off the page, so a
+  surface Firefox hides itself fails the test rather than passing it); that a Settings card's computed
   `border-radius` is `0px` and its `font-family` is the theme's; that the page, link and tab menus
   show no Send to Device item, Tools no Tab Overview, the menu bar's Help menu and the app menu's
   Help view no Switching to a New Device or Report Broken Site, and customize mode no Send to

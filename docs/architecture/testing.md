@@ -154,6 +154,14 @@ which takes seconds under load, so the Settings tests are in
 test opens each pane once (#992). `requestLongerTimeout(N)` is the last resort, with its reason
 in a comment; both files take `2` for their Settings tabs.
 
+**Hidden surfaces.** A test that Vimma hides one of Firefox's surfaces shows that Vimma's rule is
+what hides it: a bare `display: none` check passes whatever Vimma's rules say once Firefox hides
+the element itself (`hidden`, a group's `data-hidden-by-setting-group`, a pane not shown).
+`browser_vimma_firefox_settings_hidden.js` takes `firefox-pages.css` off the page, waits for
+Firefox to show the surface, then asserts `display: none` with the sheet back (#997);
+`browser_vimma_settings_managed.js` checks only an element with nothing on it or above it that
+Firefox hides.
+
 **Type checking.** `npm run typecheck` checks the mochitests and their helpers too, without a
 browser: `tests/tsconfig.json` with the harness's globals declared in `types/mochitest/`
 (`harness.d.ts` for `add_task`, `Assert`, `BrowserTestUtils`, `SpecialPowers` and the rest,
