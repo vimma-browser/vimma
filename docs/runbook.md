@@ -599,24 +599,24 @@ Limits:
 
 ## CI and automation (spec m0-pipeline)
 
-| Workflow                   | Trigger                                               | Runner                    | Needs from you                             |
-| -------------------------- | ----------------------------------------------------- | ------------------------- | ------------------------------------------ |
-| `ci.yml`                   | push to `main` (once per tree), PRs, manual           | `ubuntu-latest` + macOS   | nothing                                    |
-| `e2e.yml`                  | PRs, manual, upstream.yml                             | `ubuntu-24.04`            | nothing (ADR-010)                          |
-| `nightly.yml`              | nightly (about 00:30 UTC) when `main` changed, manual | `ubuntu-24.04`            | nothing (`NIGHTLY_ENABLED` is set)         |
-| `upstream.yml`             | every 4 h (`:17`), manual                             | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
-| `claude.yml`               | `@claude`, `spec`+`claude:go`                         | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
-| `release-please.yml`       | push to `main`, manual                                | `ubuntu-latest`           | Actions may open PRs; optional token       |
-| `release.yml`              | release published, manual                             | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `homebrew.yml`             | release published, `macos-tap`, manual (`main`)       | `ubuntu-24.04`            | see "Release packages" (gated off)         |
-| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree)    | `ubuntu-24.04` + macOS    | nothing (Arch Linux in docker; brew)       |
-| `mutation.yml`             | Sundays 04:23 UTC, manual                             | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
-| `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual      | `ubuntu-latest`           | nothing                                    |
-| `codeql.yml`               | push to `main`, PRs, Mon, manual                      | `ubuntu-latest`           | nothing; skipped while the repo is private |
-| `dependabot-automerge.yml` | Dependabot's PRs                                      | `ubuntu-latest`           | nothing (Dependabot, below)                |
-| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published     | `ubuntu-latest`           | an app's key, main only (vimma.dev, below) |
-| `spec-status.yml`          | daily, issue closed, specs, manual                    | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
-| `downloads.yml`            | daily, manual                                         | `ubuntu-latest`           | nothing (the `stats` branch, below)        |
+| Workflow                   | Trigger                                            | Runner                    | Needs from you                             |
+| -------------------------- | -------------------------------------------------- | ------------------------- | ------------------------------------------ |
+| `ci.yml`                   | push to `main` (once per tree), PRs, manual        | `ubuntu-latest` + macOS   | nothing                                    |
+| `e2e.yml`                  | PRs, manual, upstream.yml                          | `ubuntu-24.04`            | nothing (ADR-010)                          |
+| `nightly.yml`              | in the night when `main` changed, manual           | `ubuntu-24.04`            | nothing (`NIGHTLY_ENABLED` is set)         |
+| `upstream.yml`             | every 4 h (`:17`), manual                          | `ubuntu-latest` + e2e.yml | allow Actions to open PRs; optional token  |
+| `claude.yml`               | `@claude`, `spec`+`claude:go`                      | `ubuntu-latest`           | a secret, two labels, Actions may open PRs |
+| `release-please.yml`       | push to `main`, manual                             | `ubuntu-latest`           | Actions may open PRs; optional token       |
+| `release.yml`              | release published, manual                          | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `homebrew.yml`             | release published, `macos-tap`, manual (`main`)    | `ubuntu-24.04`            | see "Release packages" (gated off)         |
+| `pkgbuild.yml`             | `tools/package/` on PRs and `main` (once per tree) | `ubuntu-24.04` + macOS    | nothing (Arch Linux in docker; brew)       |
+| `mutation.yml`             | Sundays 04:23 UTC, manual                          | `ubuntu-latest`           | nothing (creates its `mutation` label)     |
+| `semgrep.yml`              | push to `main` (once per tree), PRs, Mon, manual   | `ubuntu-latest`           | nothing                                    |
+| `codeql.yml`               | push to `main`, PRs, Mon, manual                   | `ubuntu-latest`           | nothing; skipped while the repo is private |
+| `dependabot-automerge.yml` | Dependabot's PRs                                   | `ubuntu-latest`           | nothing (Dependabot, below)                |
+| `site-dispatch.yml`        | `docs/bindings.json` on `main`, release published  | `ubuntu-latest`           | an app's key, main only (vimma.dev, below) |
+| `spec-status.yml`          | daily, issue closed, specs, manual                 | `ubuntu-latest`           | nothing (creates its `spec-status` label)  |
+| `downloads.yml`            | daily, manual                                      | `ubuntu-latest`           | nothing (the `stats` branch, below)        |
 
 Locally, before pushing: `npm test`, `npm run typecheck`, `npm run lint`, `npm run test:py`,
 `npm run license-check`, `npx surfer license-check`, `npx commitlint --from main`.
@@ -1261,13 +1261,17 @@ self-hosted runner or a label that is not a standard GitHub-hosted image
 `surfer`.
 
 **When the nightly starts.** It should build in the night in Finland, after the day's merges, so
-a failure is known by morning. GitHub starts this repository's scheduled workflows about 7 hours
-after the cron's time (6 h 40 min to 7 h 34 min on 2026-11-08 to 2026-11-13, and much the same
-for every other scheduled workflow here), so `nightly.yml`'s cron is `23 17 * * *`: 17:23 UTC
-plus that delay is about 00:00 to 01:00 UTC, 02:00 to 03:00 in Helsinki in winter.
-`tools/test/nightly-workflow.test.mjs` holds the sum. Check the start times now and then
-(`gh run list --workflow nightly.yml --event schedule --json createdAt`); if the delay shrinks,
-the build moves into the evening, and the cron and the test's two numbers move with it.
+a failure is known by morning. GitHub starts this repository's scheduled workflows hours after
+the cron's time. For the nightly's old 03:00 UTC cron that was 6 h 40 min to 7 h 34 min on
+2026-11-08 to 2026-11-13; it was 4.5 to 5 h in mid-October and has grown since, and crons later
+in the UTC morning wait longer (about 8 h). No daily run was dropped in 30 days. So
+`nightly.yml`'s cron is `23 17 * * *`: 17:23 UTC plus the delay is about 00:00 to 02:00 UTC,
+02:00 to 04:00 in Helsinki in winter, and with any delay seen so far (4.5 to 10 h) the build
+still starts in the night. The delay of a cron in the afternoon was not measured: the first
+runs show it. `tools/test/nightly-workflow.test.mjs` holds the sum for that November week.
+Check the start times now and then
+(`gh run list --workflow nightly.yml --event schedule --json createdAt`); if the build starts
+outside the night, move the cron and the test's two numbers.
 
 Both build jobs run on `ubuntu-24.04` and start from nothing: a clean checkout, Node from
 `.nvmrc` with no npm cache, no Actions cache and no compiler cache (rule B2). The Firefox source

@@ -892,10 +892,12 @@ esac
   });
 });
 
-// GitHub starts this repository's scheduled workflows about 7 hours late, on every day measured
-// (2026-11-08 to 2026-11-13: 6 h 40 min to 7 h 34 min after the cron's time). A cron at 03:00 UTC
-// therefore built at midday in Finland. The schedule is set early by that delay, so the build
-// starts in the night there: main holds the whole day's merges, and a failure is found by morning.
+// GitHub starts this repository's scheduled workflows hours late: the nightly 6 h 40 min to
+// 7 h 34 min after its cron's time on 2026-11-08 to 2026-11-13 (4.5 to 5 h in mid-October, and
+// the delay has grown since). A cron at 03:00 UTC therefore built at midday in Finland. The
+// schedule is set early by that delay, so the build starts in the night there: main holds the
+// whole day's merges, and a failure is found by morning. The test holds the sum for that one
+// week's delay; it cannot know GitHub's delay next month (docs/runbook.md says what to check).
 describe("nightly.yml: the schedule starts the build in the night", () => {
   /** Minutes after midnight UTC of the one daily cron. */
   const minute = () => {
@@ -905,11 +907,10 @@ describe("nightly.yml: the schedule starts the build in the night", () => {
     return Number(crons[0]?.[2]) * 60 + Number(crons[0]?.[1]);
   };
 
-  it("with GitHub's measured delay of 6 h 40 min to 7 h 34 min, it starts between 00:00 and 01:30 UTC", () => {
+  it("with the delay of 6 h 40 min to 7 h 34 min measured that week, it starts between 00:00 and 02:00 UTC", () => {
     const earliest = (minute() + 400) % 1440;
     const latest = (minute() + 454) % 1440;
-    expect(earliest).toBeGreaterThanOrEqual(0);
-    expect(latest).toBeLessThanOrEqual(90);
+    expect(latest).toBeLessThanOrEqual(120);
     expect(earliest).toBeLessThanOrEqual(latest);
   });
 
