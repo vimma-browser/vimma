@@ -11,6 +11,9 @@
 // Issue #1005: a pick, a send or a key's store that waits (for a key hint, a local model's
 // preparation, login storage) and finds the user gone elsewhere switches no view and leaves the
 // key field as the user has it; every way out of the key field empties it (docs/security.md M46).
+// Issue #1010: a second Enter while a send reads its key sends nothing twice; a message that was
+// not sent stays with its own conversation and never over what the user typed since; opening on
+// first use takes focus only from a user who stayed.
 // The window is built with services of the test's own, whose answers the test gives when it
 // chooses, and is driven through its own entry points: open() and its keys.
 
@@ -120,25 +123,43 @@ const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
  * store, key deletion and local model preparation is a promise the test resolves; the host's
  * prompts, questions and notices, the models used and the messages sent are recorded. Every
  * question is answered y.
- * @param {{ providers: object[], notice?: boolean, sendWaits?: boolean,
- *   prompt?: (o: Prompt) => void, localOnly?: boolean }} opts  the [agent] providers the services report; `notice`:
+ * @param {{ providers: AgentProviderConfig[], notice?: boolean, sendWaits?: boolean,
+ *   prompt?: (o: Prompt) => void, localOnly?: boolean, second?: AgentProviderConfig,
+ *   unrestored?: boolean }} opts  the [agent] providers the services report; `notice`:
  *   the conversation's first send needs Behaviour 5's notice; `sendWaits`: each send's answer is
  *   a promise the test resolves (in `sendAnswers`); `prompt`: also hands each prompt to this;
- *   `localOnly`: config.toml's [agent] local_only
+ *   `localOnly`: config.toml's [agent] local_only; `second`: a second conversation, "second",
+ *   on this provider (the first is then "first"); `unrestored`: the stored conversations are
+ *   not read yet, and their read is a promise the test resolves (in `restores`)
  */
-function fakeWindow({ providers, notice = false, sendWaits = false, prompt, localOnly = false }) {
-  const conversation = {
-    id: 1,
-    conn: "fake",
-    title: "",
-    provider: providers[0],
+function fakeWindow({
+  providers,
+  notice = false,
+  sendWaits = false,
+  prompt,
+  localOnly = false,
+  second,
+  unrestored = false,
+}) {
+  /** @param {number} id @param {string} title @param {AgentProviderConfig} provider */
+  const make = (id, title, provider) => ({
+    id,
+    conn: `fake-${id}`,
+    title,
+    provider,
     cli: null,
     running: false,
     granted: false,
     asking: false,
     budget: null,
-    used: 0,
-  };
+    used: id,
+  });
+  const conversation = make(1, second ? "first" : "", providers[0]);
+  const conversations = second ? [conversation, make(2, "second", second)] : [conversation];
+  /** @param {number} id */
+  const byId = (id) => conversations.find((c) => c.id === id) ?? conversation;
+  /** @type {Deferred<void>[]} */
+  const restores = [];
   /** @type {Deferred<LocalServer[]>[]} */
   const probes = [];
   /** @type {Deferred<Map<string, string>>[]} */
@@ -157,6 +178,8 @@ function fakeWindow({ providers, notice = false, sendWaits = false, prompt, loca
   const places = [];
   /** @type {string[]} */
   const sends = [];
+  /** @type {number[]} the conversation each message of `sends` went to */
+  const sentTo = [];
   /** @type {Deferred<object>[]} */
   const sendAnswers = [];
   /** @type {object[]} */
@@ -164,24 +187,32 @@ function fakeWindow({ providers, notice = false, sendWaits = false, prompt, loca
   let confirmed = false;
   const services = {
     chat: {
-      restored: true,
+      restored: !unrestored,
       chosen: null,
-      restore: async () => {},
-      list: () => [conversation],
-      get: () => conversation,
+      restore() {
+        if (this.restored) return Promise.resolve();
+        const d = /** @type {Deferred<void>} */ (deferred());
+        restores.push(d);
+        return d.promise.then(() => {
+          this.restored = true;
+        });
+      },
+      list: () => conversations,
+      get: byId,
       create: () => conversation,
       addListener() {},
       removeListener() {},
       transcript: () => ({ version: 0, entries: [] }),
-      setProvider: (/** @type {number} */ _id, /** @type {any} */ p) => {
-        conversation.provider = p;
+      setProvider: (/** @type {number} */ id, /** @type {AgentProviderConfig} */ p) => {
+        byId(id).provider = p;
         return null;
       },
       choose: (/** @type {object} */ p) => chosen.push(p),
       needsNotice: () => notice && !confirmed,
       confirm: () => (confirmed = true),
-      send: (/** @type {number} */ _id, /** @type {string} */ text) => {
+      send: (/** @type {number} */ id, /** @type {string} */ text) => {
         sends.push(text);
+        sentTo.push(id);
         if (!sendWaits) return Promise.resolve({ started: true });
         const d = /** @type {Deferred<object>} */ (deferred());
         sendAnswers.push(d);
@@ -272,7 +303,9 @@ function fakeWindow({ providers, notice = false, sendWaits = false, prompt, loca
     prepares,
     places,
     sends,
+    sentTo,
     sendAnswers,
+    restores,
     prompts,
     said,
     asked,
@@ -757,8 +790,10 @@ add_task(async function test_a_key_stored_after_the_field_was_left_switches_noth
     await until(() => f.said.some((s) => s.startsWith("agent: anthropic:")), "it is said");
     Assert.equal(
       f.said.at(-1),
-      "agent: anthropic: key stored · ends …-one; not saved to config.toml (the test keeps config.toml)",
-      "with its end and its provider kept as a stored key's is",
+      "agent: anthropic: key stored · ends …-one; not saved to config.toml (the test keeps " +
+        "config.toml); the model was left as it was: add anthropic · claude-test in :agent " +
+        "model again to use it",
+      "with its end, its provider kept as a stored key's is, and the model unchanged (#1010)",
     );
     Assert.equal(f.chat.view, "key", "the other key field stays");
     Assert.equal(keyField(f.chat).value, "sk-other-half", "with what was typed");
@@ -1253,7 +1288,12 @@ add_task(async function test_a_key_stored_after_focus_left_the_window_takes_no_f
     await until(() => f.said.some((s) => s.startsWith("agent: anthropic:")), "it is said");
     assertFocusStaysElsewhere("a late store");
     Assert.deepEqual(f.chosen, [], "the conversation's model is left as it was");
-    Assert.notEqual(f.chat.view, "chat", "the transcript does not open");
+    // Issue #1010: the emptied key field, for no provider now, gives way to the transcript.
+    Assert.equal(f.chat.view, "chat", "the window shows the transcript, not a key field");
+    Assert.equal(f.chat.keyFor, null, "for no provider");
+    Assert.equal(keyField(f.chat).value, "", "the key field is empty");
+    Assert.ok(/** @type {HTMLElement} */ (keyField(f.chat).parentElement).hidden, "and hidden");
+    Assert.ok(!(/** @type {HTMLTextAreaElement} */ (f.chat.input).hidden), "the input shows");
     EventUtils.sendString("def");
     Assert.equal(addressBar(), "abcdef", "what is typed next stays in the address bar");
     Assert.ok(!f.said.some((s) => s.includes("sk-ant")), "no notice holds the key's text");
@@ -1280,6 +1320,251 @@ add_task(async function test_a_refused_add_provider_leaves_a_waiting_pick_alone(
     Assert.equal(f.chosen.length, 1, "the waiting pick is used");
     Assert.ok(!f.said.some((s) => s.includes("not used")), "with no notice that it was not");
   } finally {
+    f.chat.destroy();
+  }
+});
+
+// Issue #1010: the follow-ups of #1005's reviews.
+
+/** @param {ReturnType<typeof fakeWindow>} f */
+const inputOf = (f) => /** @type {HTMLTextAreaElement} */ (f.chat.input);
+const STILL_SENDING = "agent: the message is already being sent; its key is still being read";
+
+add_task(async function test_a_second_enter_while_a_send_reads_its_key_sends_nothing_twice() {
+  info("the second Enter comes before Behaviour 5's notice");
+  let f = fakeWindow({ providers: [HOSTED], notice: true });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    press(f.chat, "Enter");
+    Assert.equal(f.hints.length, 1, "the second Enter reads no second key hint");
+    Assert.equal(inputOf(f).value, "hello", "the message stays in the input while it waits");
+    Assert.equal(f.said.at(-1), STILL_SENDING, "and the user is told why nothing happened");
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    Assert.equal(f.asked.length, 1, "the notice is asked once");
+    Assert.deepEqual(f.sends, ["hello"], "the message is sent once");
+    Assert.equal(inputOf(f).value, "", "and leaves the input");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("a running task, where a second send would be steering");
+  f = fakeWindow({ providers: [HOSTED] });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    press(f.chat, "Enter");
+    press(f.chat, "Enter");
+    for (const hint of f.hints) hint.resolve("key stored · ends …abcd");
+    await afterWindow(f.hints.map((h) => h.promise));
+    Assert.deepEqual(f.sends, ["hello"], "the message is sent once, not again as steering");
+    Assert.equal(inputOf(f).value, "", "and nothing is put back in the input");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("a user who left and came back sends again; the send they left is not sent");
+  f = fakeWindow({ providers: [HOSTED] });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    press(f.chat, "Escape");
+    press(f.chat, "i");
+    Assert.equal(document.activeElement, f.chat.input, "back in the input");
+    press(f.chat, "Enter");
+    Assert.equal(f.hints.length, 2, "Enter after coming back reads the key hint again");
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    Assert.deepEqual(f.sends, [], "the send that was left is not sent");
+    Assert.equal(f.said.at(-1), NOT_SENT, "and says so");
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    Assert.deepEqual(f.sends, ["hello"], "the later one is sent, once");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+/**
+ * The list view, then the conversation `title` opened from it with Enter.
+ * @param {ReturnType<typeof fakeWindow>} f @param {string} title
+ */
+function openConversation(f, title) {
+  press(f.chat, "Escape");
+  press(f.chat, "c");
+  Assert.equal(f.chat.view, "list", "c lists the conversations");
+  selectRow(f.chat, (r) => r.label === title);
+  press(f.chat, "Enter");
+  Assert.equal(f.chat.view, "chat", `${title} opens`);
+  Assert.equal(document.activeElement, f.chat.input, "in its input");
+}
+
+add_task(async function test_a_message_kept_unsent_stays_with_its_own_conversation() {
+  info("a send whose key hint answers after the user opened another conversation");
+  let f = fakeWindow({ providers: [HOSTED], second: LOCAL, notice: true });
+  try {
+    f.chat.open({ conversation: 1 });
+    inputOf(f).value = "for the hosted model";
+    press(f.chat, "Enter");
+    openConversation(f, "second");
+    Assert.equal(inputOf(f).value, "", "the other conversation's input does not hold it");
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    Assert.deepEqual(f.sends, [], "nothing is sent");
+    Assert.deepEqual(f.asked, [], "nor asked");
+    Assert.equal(
+      f.said.at(-1),
+      'agent: not sent: the chat was left before its key was read; the message is kept in the input of "first"',
+      "the notice names the conversation that keeps it",
+    );
+    Assert.equal(inputOf(f).value, "", "the input shown stays empty");
+    press(f.chat, "Enter");
+    Assert.deepEqual(f.sentTo, [], "so Enter in the other conversation sends none of it");
+    openConversation(f, "first");
+    Assert.equal(inputOf(f).value, "for the hosted model", "its own conversation has it back");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("a refusal that answers after the user opened another conversation");
+  f = fakeWindow({ providers: [LOCAL], second: HOSTED, sendWaits: true });
+  try {
+    f.chat.open({ conversation: 1 });
+    inputOf(f).value = "for the local model";
+    press(f.chat, "Enter");
+    Assert.deepEqual(f.sentTo, [1], "the message goes to the first conversation");
+    openConversation(f, "second");
+    inputOf(f).value = "draft for second";
+    f.sendAnswers[0].resolve({ refused: "small is gone; pick another model", pick: true });
+    await afterWindow([f.sendAnswers[0].promise]);
+    Assert.equal(f.chat.view, "chat", "the picker does not open");
+    Assert.equal(inputOf(f).value, "draft for second", "the input shown keeps its own text");
+    Assert.equal(
+      f.said.at(-1),
+      'agent: small is gone; pick another model; the message is kept in the input of "first"',
+      "the notice names the conversation that keeps it",
+    );
+    openConversation(f, "first");
+    Assert.equal(inputOf(f).value, "for the local model", "its own conversation has it back");
+    openConversation(f, "second");
+    Assert.equal(inputOf(f).value, "draft for second", "and the other keeps its draft");
+    Assert.deepEqual(f.sentTo, [1], "nothing more was sent anywhere");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_key_stored_after_the_field_was_left_says_the_model_is_unchanged() {
+  const f = fakeWindow({ providers: [LOCAL] });
+  try {
+    f.chat.open();
+    f.chat.askKey(ANTHROPIC);
+    typeKey(f.chat, "sk-ant-secret-one");
+    press(f.chat, "Enter");
+    press(f.chat, "Escape");
+    f.sets[0].resolve();
+    await afterWindow([f.sets[0].promise]);
+    f.hints[0].resolve("key stored · ends …-one");
+    await until(() => f.said.some((s) => s.startsWith("agent: anthropic:")), "it is said");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: anthropic: key stored · ends …-one; not saved to config.toml (the test keeps " +
+        "config.toml); the model was left as it was: add anthropic · claude-test in :agent " +
+        "model again to use it",
+      "the notice says the model is unchanged and how to use the key",
+    );
+    Assert.deepEqual(f.chosen, [], "and the model is unchanged");
+    Assert.ok(!f.said.some((s) => s.includes("sk-ant")), "no notice holds the key's text");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_opening_on_first_use_takes_focus_only_from_a_user_who_stayed() {
+  info("the user waits while the stored conversations are read");
+  let f = fakeWindow({ providers: [LOCAL], unrestored: true });
+  try {
+    f.chat.open();
+    Assert.equal(f.restores.length, 1, "the stored conversations are read first");
+    Assert.ok(!f.chat.isOpen, "the window waits for them");
+    f.restores[0].resolve();
+    await until(() => f.chat.isOpen, "the window opens");
+    Assert.equal(document.activeElement, f.chat.input, "with focus in its input, as before");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("the user clicks into the address bar while they are read");
+  f = fakeWindow({ providers: [LOCAL], unrestored: true });
+  let given = false;
+  let notGiven = false;
+  try {
+    f.chat.open({
+      then: () => (given = true),
+      ifMoved: () => (notGiven = true),
+    });
+    Assert.equal(typeElsewhere("abc"), "abc", "the user types in the address bar");
+    f.restores[0].resolve();
+    await until(() => f.chat.isOpen, "the window opens");
+    assertFocusStaysElsewhere("opening after the user moved");
+    Assert.ok(!given, "what was to follow the opening, which takes focus, is not done");
+    Assert.ok(notGiven, "the caller is told instead");
+    EventUtils.sendString("def");
+    Assert.equal(addressBar(), "abcdef", "what is typed next stays in the address bar");
+    Assert.equal(inputOf(f).value, "", "none of it in the chat input");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_refused_send_keeps_both_its_message_and_what_was_typed_since() {
+  const REFUSED = { refused: "a task is starting; send it again in a moment" };
+  info("a refusal while the user stays and types the next message");
+  let f = fakeWindow({ providers: [LOCAL], sendWaits: true });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    Assert.equal(inputOf(f).value, "", "the sent message leaves the input");
+    EventUtils.sendString("next");
+    f.sendAnswers[0].resolve(REFUSED);
+    await afterWindow([f.sendAnswers[0].promise]);
+    Assert.equal(inputOf(f).value, "hello\nnext", "the refused message is back, before the next");
+    Assert.equal(inputOf(f).selectionStart, inputOf(f).value.length, "the caret stays put");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: a task is starting; send it again in a moment; the message is back in the input, before what was typed since",
+      "and the notice says where it is",
+    );
+    Assert.deepEqual(f.sends, ["hello"], "nothing more is sent");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("a refusal after the user typed the next message and left the window");
+  f = fakeWindow({ providers: [LOCAL], sendWaits: true });
+  try {
+    f.chat.open();
+    inputOf(f).value = "hello";
+    press(f.chat, "Enter");
+    EventUtils.sendString("next");
+    typeElsewhere("abc");
+    f.sendAnswers[0].resolve({ refused: "small is gone; pick another model", pick: true });
+    await afterWindow([f.sendAnswers[0].promise]);
+    assertFocusStaysElsewhere("a late refusal");
+    Assert.equal(inputOf(f).value, "hello\nnext", "both texts are in the input");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: small is gone; pick another model; the message is back in the input, before what was typed since",
+      "and the notice is true",
+    );
+  } finally {
+    revertAddressBar();
     f.chat.destroy();
   }
 });

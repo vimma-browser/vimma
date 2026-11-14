@@ -72,6 +72,8 @@ const NORMAL_HINT =
 const LIST_HINT = "j k move · Enter open · d delete · n new · / filter · Esc back";
 const MODELS_HINT = "j k move · Enter use · D default · x delete its key · Esc back";
 const SLOT_HINT = "a question waits: answer it here";
+/** Where a message that was not sent is when its conversation was deleted meanwhile. */
+const DROPPED = "its conversation was deleted, and the message with it";
 
 /**
  * @typedef {import("../core/config.mjs").AgentProviderConfig} AgentProviderConfig
@@ -268,6 +270,17 @@ export class AgentChatWindow {
     this.keyFor = null;
     /** A key is being stored. */
     this.storing = false;
+    /**
+     * The `listed` count of a send waiting for its provider's key hint, else -1: a second Enter in
+     * the same view finds its message still in the input, and is not sent again (issue #1010).
+     */
+    this.sendingAt = -1;
+    /**
+     * @type {Map<number, string>} the input of each conversation not shown: the text belongs to
+     *   the conversation it was typed in, so that none of it is sent to another's provider
+     *   (security.md M45, issue #1010)
+     */
+    this.drafts = new Map();
     /** @type {Row[]} the models or conversations listed */
     this.rows = [];
     /**
@@ -331,26 +344,36 @@ export class AgentChatWindow {
 
   /**
    * Opens the window on the last conversation shown, else a new one with the default provider.
-   * @param {{ conversation?: number, view?: "chat" | "models" | "list", then?: () => void }} [opts]
-   *   `then`: run once it is open, which waits for the stored conversations the first time
+   * @param {{ conversation?: number, view?: "chat" | "models" | "list", then?: () => void,
+   *   ifMoved?: () => void, focus?: boolean }} [opts]
+   *   `then`: run once it is open, which waits for the stored conversations the first time;
+   *   `ifMoved`: run instead of `then` when focus moved elsewhere during that wait, since the
+   *   window then opens without taking focus; `focus`: false opens it so (that wait's own use)
    * @returns {boolean} whether it opened
    */
-  open({ conversation, view = "chat", then } = {}) {
+  open({ conversation, view = "chat", then, ifMoved, focus = true } = {}) {
     if (lazy.PrivateBrowsingUtils.isWindowPrivate(this.win)) {
       this.host.say("the built-in agent works in a normal window");
       return false;
     }
     if (!this.services.chat.restored) {
       // The stored conversations are read (and decrypted) only when the window first opens,
-      // so a user who never opens it is never asked for the keyring (B15).
-      this.services.chat.restore().then(() => this.open({ conversation, view, then }));
+      // so a user who never opens it is never asked for the keyring (B15). The read can wait on
+      // the keyring: a user who clicked into a page or a field meanwhile keeps their focus
+      // (security.md M46), and what was to follow, which would take it, is not done. A keyring
+      // prompt taking OS focus leaves activeElement as it was, so it counts as staying.
+      const from = this.win.document.activeElement;
+      this.services.chat.restore().then(() => {
+        const stayed = this.win.document.activeElement === from || this.focused;
+        this.open({ conversation, view, then, ifMoved, focus: stayed });
+      });
       return true;
     }
     const known = new Set(this.services.chat.list().map((/** @type {any} */ c) => c.id));
-    if (conversation !== undefined) this.conversation = conversation;
+    if (conversation !== undefined) this.show(conversation);
     if (this.conversation === null || !known.has(this.conversation)) {
       const last = this.services.chat.list().at(-1);
-      this.conversation = last ? last.id : this.create();
+      this.show(last ? last.id : this.create());
     }
     const box = this.box ?? this.build();
     if (!this.opened) {
@@ -363,16 +386,78 @@ export class AgentChatWindow {
     this.view = view;
     this.drawn = -1;
     this.render();
-    if (view === "chat") this.insert();
-    else /** @type {HTMLElement} */ (this.log).focus();
+    if (view === "chat") this.toTranscript({ focus });
+    else if (focus) /** @type {HTMLElement} */ (this.log).focus();
     if (view === "models") this.loadModels();
     if (view === "list") {
       this.filter = "";
       this.loadList();
     }
     this.host.changed();
-    then?.();
+    if (focus) then?.();
+    else ifMoved?.();
     return true;
+  }
+
+  /**
+   * Shows conversation `id`: the input keeps the text typed for the conversation it shows, and
+   * the one left keeps its own, so a message typed for one provider is never sent to another's
+   * (security.md M45). From no conversation (no model yet), what was typed stays.
+   * @param {number | null} id
+   */
+  show(id) {
+    if (id === this.conversation) return;
+    const input = this.input;
+    if (input && this.conversation !== null) {
+      if (input.value) this.drafts.set(this.conversation, input.value);
+      else this.drafts.delete(this.conversation);
+      input.value = "";
+    }
+    this.conversation = id;
+    if (input && id !== null && this.drafts.has(id)) {
+      this.putBack(input, /** @type {string} */ (this.drafts.get(id)));
+      this.drafts.delete(id);
+    }
+  }
+
+  /**
+   * Text that was not sent goes back in the input, before anything typed there since.
+   * @param {HTMLTextAreaElement} input @param {string} text
+   * @returns {boolean} whether the input was empty
+   */
+  putBack(input, text) {
+    if (!input.value) {
+      input.value = text;
+      return true;
+    }
+    // "preserve" keeps the caret and selection where the user had them.
+    input.setRangeText(`${text}\n`, 0, 0, "preserve");
+    return false;
+  }
+
+  /**
+   * A message of conversation `id` that was not sent: back in its input, the shown one or the
+   * one kept for its conversation, never over what the user typed since (issue #1010).
+   * @param {number} id @param {string} text
+   * @returns {{ where: string, plain: boolean }} the notice's words for where it is; `plain`: in
+   *   the input shown, which was empty
+   */
+  keepUnsent(id, text) {
+    const input = /** @type {HTMLTextAreaElement} */ (this.input);
+    if (id === this.conversation) {
+      if (input.value === text) return { where: "the message is still in the input", plain: true };
+      return this.putBack(input, text)
+        ? { where: "the message is still in the input", plain: true }
+        : { where: "the message is back in the input, before what was typed since", plain: false };
+    }
+    const c = this.services.chat.list().find((/** @type {any} */ x) => x.id === id);
+    if (!c) return { where: DROPPED, plain: false };
+    const draft = this.drafts.get(id);
+    this.drafts.set(id, draft ? `${text}\n${draft}` : text);
+    return {
+      where: `the message is kept in the input of "${c.title || "New conversation"}"`,
+      plain: false,
+    };
   }
 
   /** A new conversation with the default provider, or null when none is set up. */
@@ -404,13 +489,21 @@ export class AgentChatWindow {
 
   /** The input, in insert mode. */
   insert() {
+    this.toTranscript({ focus: true });
+  }
+
+  /**
+   * The transcript and its input, with focus in the input only if `focus`.
+   * @param {{ focus: boolean }} opts
+   */
+  toTranscript({ focus }) {
     // Every way out of the key field empties it (security.md M46), a late pick's included.
     this.clearKey();
     this.view = "chat";
     this.listed++;
     // Drawn first: the input is hidden in the other views, and a hidden field takes no focus.
     this.render();
-    this.input?.focus();
+    if (focus) this.input?.focus();
   }
 
   /** Normal mode: the transcript has focus. */
@@ -461,6 +554,8 @@ export class AgentChatWindow {
     }
     this.host.ask(`Delete all ${n} agent conversation${n === 1 ? "" : "s"}? y/N`, () => {
       this.conversation = null;
+      this.drafts.clear();
+      if (this.input) this.input.value = "";
       if (this.opened) this.close();
       this.services.chat.forgetAll().then(
         () => this.host.say(`agent: deleted ${n} conversation${n === 1 ? "" : "s"}`),
@@ -610,6 +705,11 @@ export class AgentChatWindow {
       this.sayNoModel();
       return;
     }
+    if (this.sendingAt === this.listed) {
+      // Its message is still in the input, waiting for the key hint: sent once, not twice.
+      this.host.say("agent: the message is already being sent; its key is still being read");
+      return;
+    }
     const go = () => {
       // Emptied at once, so a second Enter while the send settles sends nothing twice.
       input.value = "";
@@ -619,18 +719,18 @@ export class AgentChatWindow {
       this.services.chat.send(id, text, { ask }).then(
         (/** @type {any} */ r) => {
           if ("refused" in r) {
-            if (!input.value) input.value = text;
+            const { where, plain } = this.keepUnsent(id, text);
             // The model is not there: another is picked, and the message waits for it.
             const stayed = this.focused && this.conversation === id && this.listed === sentAt;
             if (r.pick && stayed) this.open({ view: "models" });
-            const kept = r.pick && !stayed ? "; the message is still in the input" : "";
+            const kept = (r.pick && !stayed) || !plain ? `; ${where}` : "";
             this.host.say(`agent: ${r.refused}${kept}`, true);
           }
         },
         (/** @type {any} */ e) => {
           console.error("vimma agent: send failed", e);
-          if (!input.value) input.value = text;
-          this.host.say(`agent: ${e?.message ?? e}`, true);
+          const { where, plain } = this.keepUnsent(id, text);
+          this.host.say(`agent: ${e?.message ?? e}${plain ? "" : `; ${where}`}`, true);
         },
       );
     };
@@ -639,15 +739,22 @@ export class AgentChatWindow {
       // A hosted provider without a key for its endpoint: the key first, and the task stays in
       // the input to be sent once it is stored (Behaviour 3).
       const shownAt = this.listed;
+      this.sendingAt = shownAt;
       // The hint can wait on the keyring. A user who left the transcript meanwhile (another
       // list, the key field, another conversation, the window closed) gets neither the key
       // field nor Behaviour 5's notice over what they went to, and nothing is sent: the
-      // message stays in the input, to be sent with Enter again (issue #1005).
+      // message stays in its conversation's input, to be sent with Enter again (issue #1005).
       const left = () => {
+        if (this.sendingAt === shownAt) this.sendingAt = -1;
         if (this.listed === shownAt && this.focused) return false;
-        this.host.say(
-          "agent: not sent: the chat was left before its key was read; the message is still in the input",
-        );
+        const c = this.services.chat.list().find((/** @type {any} */ x) => x.id === id);
+        const where =
+          this.conversation === id
+            ? "the message is still in the input"
+            : c
+              ? `the message is kept in the input of "${c.title || "New conversation"}"`
+              : DROPPED;
+        this.host.say(`agent: not sent: the chat was left before its key was read; ${where}`);
         return true;
       };
       this.services.keys.hint(chosen.name, chosen.endpoint).then(
@@ -1288,14 +1395,26 @@ export class AgentChatWindow {
     } finally {
       this.storing = false;
     }
-    // A user who clicked away (a page, the address bar) keeps their focus, and the model too.
-    if (this.listed === shownAt && this.focused) {
+    // A user who clicked away (a page, the address bar) keeps their focus, and the model too;
+    // the emptied key field, for no provider now, gives way to the transcript, unfocused.
+    const stayed = this.listed === shownAt && this.focused;
+    if (stayed) {
       this.useProvider(provider);
       this.insert();
+    } else if (this.listed === shownAt) {
+      this.toTranscript({ focus: false });
     }
     // Its provider is kept either way, so that the stored key has one after a restart.
     const note = await this.remember(provider);
-    this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}`, note.startsWith(";"));
+    const failed = note.startsWith(";");
+    // The model and the key's end only, never the key (M46).
+    const what = `${provider.name} · ${provider.model}`;
+    const unchanged = stayed
+      ? ""
+      : failed
+        ? `; the model was left as it was: add ${what} in :agent model again to use it`
+        : `; the model was left as it was: pick ${what} in :agent model to use it`;
+    this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}${unchanged}`, failed);
     return undefined;
   }
 
@@ -1327,7 +1446,12 @@ export class AgentChatWindow {
     const id = row.id;
     this.host.ask(`Delete "${row.label}"? y/N`, () => {
       this.services.chat.delete(id);
-      if (this.conversation === id) this.conversation = null;
+      this.drafts.delete(id);
+      // Its unsent text goes with it: the input shows no other conversation's.
+      if (this.conversation === id) {
+        this.conversation = null;
+        if (this.input) this.input.value = "";
+      }
       this.loadList();
     });
   }
