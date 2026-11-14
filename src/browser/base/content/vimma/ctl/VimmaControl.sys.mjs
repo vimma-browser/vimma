@@ -407,6 +407,9 @@ const COMMANDS = {
       // The update check (docs/specs/m6a-updater.md, decision 41): the full role's only, as all
       // of `state`; the agent role never reaches `state` (security.md S12).
       update: controlUpdateState(VimmaUpdates.status(), VimmaUpdates.installType),
+      // What is on screen for a moment (a notice, the agent chat window's list and question),
+      // as flags and counts, so that a script waits for it rather than for a time (#981).
+      ...VimmaHost.screen(win),
     };
   },
 

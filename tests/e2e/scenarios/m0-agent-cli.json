@@ -1,6 +1,6 @@
 {
   "name": "m0-agent-cli",
-  "description": "docs/specs/builtin-agent-cli.md, e2e: the built-in agent's CLI mode in the chat window, with the fake Claude Code (tests/browser/fake_vimma_agent_cli.py) installed as claude, alone on PATH beside the system folders, and the real vimma-ctl mcp, under a fixture Omarchy theme. :agent model, then the add: agent CLI row (the third row: the add rows come before any local server setup finds), lists the CLI setup found on PATH, claude 2.1.303 and its path (m0-agent-cli-setup-list); Enter picks it and Enter keeps the suggested model, sonnet. A task of three items is typed and sent with Enter, and y answers the first task's notice: the fake runs its own Bash tool, then, under the grant, opens shop.html and lists its elements, and activates 'Vahvista tilaus' (s), which stops at the payment checkpoint even under a grant; the header lists the CLI's own tools from its init, the transcript has the own-tool line, and the payment question waits in the prompt slot (m0-agent-cli-question). n denies it; the task then waits, and Esc and s stop it, with the stopped line (m0-agent-cli-stopped). The transcript, header and status bar show the fixture server's fixed port (28471); setup's list shows a few characters of the profile's path, which vary between runs, well inside the 0.5 % screenshot tolerance.",
+  "description": "docs/specs/builtin-agent-cli.md, e2e: the built-in agent's CLI mode in the chat window, with the fake Claude Code (tests/browser/fake_vimma_agent_cli.py) installed as claude, alone on PATH beside the system folders, and the real vimma-ctl mcp, under a fixture Omarchy theme. :agent model, then the add: agent CLI row (the third row: the add rows come before any local server setup finds), lists the CLI setup found on PATH, claude 2.1.303 and its path (m0-agent-cli-setup-list); Enter picks it and Enter keeps the suggested model, sonnet. A task of three items is typed and sent with Enter, and y answers the first task's notice: the fake runs its own Bash tool, then, under the grant, opens shop.html and lists its elements, and activates 'Vahvista tilaus' (s), which stops at the payment checkpoint even under a grant; the header lists the CLI's own tools from its init, the transcript has the own-tool line, and the payment question waits in the prompt slot (m0-agent-cli-question). n denies it; the task then waits, and Esc and s stop it, with the stopped line (m0-agent-cli-stopped). Each step waits for what `state` reports of the screen (the prompt line, the chat window's view, rows, entries and question, the status bar's agent segment, and no notice), never for a time, so a slow PATH search or CLI start cannot leave the 'agent: found claude' notice or a half-drawn transcript in a screenshot (#981). The transcript, header and status bar show the fixture server's fixed port (28471); setup's list shows a few characters of the profile's path, which vary between runs, well inside the 0.5 % screenshot tolerance.",
   "timeoutSeconds": 120,
   "prefs": {
     "vimma.theme.source": "omarchy",
@@ -10,32 +10,55 @@
   "steps": [
     { "wait-for-state": { "workspace": "main" }, "timeoutSeconds": 20 },
     { "open": "fixture:long.html" },
-    {
-      "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] }
-    },
+    { "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] } },
     { "keys": ": a g e n t space m o d e l enter" },
-    { "sleep": 2 },
+    { "wait-for-state": { "chat": { "view": "models", "question": null } } },
     { "keys": "k k k j j enter" },
-    { "sleep": 2 },
+    {
+      "wait-for-state": { "chat": { "view": "models", "rows": 1 }, "notice": false },
+      "timeoutSeconds": 20
+    },
     { "screenshot": "m0-agent-cli-setup-list" },
     { "keys": "enter" },
-    { "sleep": 1 },
+    { "wait-for-state": { "prompt": true } },
     { "keys": "enter" },
-    { "sleep": 1.5 },
+    {
+      "wait-for-state": {
+        "prompt": false,
+        "mode": "insert",
+        "chat": { "view": "chat", "entries": 0 }
+      }
+    },
     {
       "type": "[[own Bash ls ~/Downloads]] [[open fixture:shop.html]] [[sleep 2]] [[elements]] [[activate s]] [[sleep 20]]"
     },
     { "keys": "enter" },
-    { "sleep": 1 },
+    { "wait-for-state": { "prompt": true } },
     { "keys": "y" },
-    { "sleep": 6 },
+    {
+      "wait-for-state": {
+        "mode": "insert",
+        "chat": { "entries": 8, "question": { "armed": true } },
+        "notice": false,
+        "agent": { "waiting": 1, "ran": false }
+      },
+      "timeoutSeconds": 30
+    },
     { "screenshot": "m0-agent-cli-question" },
     { "keys": "n" },
-    { "sleep": 1.5 },
+    { "wait-for-state": { "chat": { "question": null } } },
     { "keys": "esc" },
-    { "sleep": 0.5 },
+    { "wait-for-state": { "mode": "normal" } },
     { "keys": "s" },
-    { "sleep": 2 },
+    {
+      "wait-for-state": {
+        "mode": "normal",
+        "chat": { "entries": 10, "question": null },
+        "notice": false,
+        "agent": { "waiting": 0, "ran": false }
+      },
+      "timeoutSeconds": 20
+    },
     { "screenshot": "m0-agent-cli-stopped" }
   ]
 }

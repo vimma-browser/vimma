@@ -13,6 +13,7 @@ import {
   LineFramer,
   UPDATE_OUTCOMES,
   UPDATE_STAGES,
+  CHAT_VIEWS,
   controlUpdateState,
 } from "../src/control.mjs";
 
@@ -375,6 +376,65 @@ describe("validateMessage: state", () => {
     expect(
       errorsOf(ok({ ...state, update: { ...update, checkedAt: 1.5 } }), { command: "state" }),
     ).toEqual(["result.update.checkedAt must be a non-negative integer or null"]);
+  });
+
+  // #981: what is on screen for a moment, as flags and counts, so a script waits for it rather
+  // than for a time; never text (security.md S9).
+  test("notice, prompt, chat and agent, when present, are flags and counts only", () => {
+    const chat = { view: "models", rows: 1, entries: 0, question: null };
+    expect(errorsOf(ok({ ...state, notice: true, chat }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, notice: false, chat: null }), { command: "state" })).toEqual([]);
+    const asked = { ...chat, view: "chat", rows: 0, entries: 8, question: { armed: true } };
+    expect(errorsOf(ok({ ...state, chat: asked }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, notice: "agent: found claude", chat: [] }), { command: "state" }),
+    ).toEqual(["result.notice must be a boolean", "result.chat must be an object or null"]);
+    const broken = { view: "page", rows: -1, entries: 1.5, question: { armed: "yes", text: "" } };
+    expect(errorsOf(ok({ ...state, chat: broken }), { command: "state" })).toEqual([
+      `result.chat.view must be one of ${CHAT_VIEWS.join(", ")}`,
+      "result.chat.rows must be a non-negative integer",
+      "result.chat.entries must be a non-negative integer",
+      'unknown field "result.chat.question.text"',
+      "result.chat.question.armed must be a boolean",
+    ]);
+    // An allow-list: a field added later (a row's label, the question's text) reaches the socket
+    // only by a change here.
+    expect(
+      errorsOf(ok({ ...state, chat: { ...chat, title: "Ostoskori" } }), { command: "state" }),
+    ).toEqual(['unknown field "result.chat.title"']);
+    // The prompt line (a y/N question, a rename, a line of text): open or not, never its text.
+    expect(errorsOf(ok({ ...state, prompt: true }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, prompt: "y send · n cancel" }), { command: "state" })).toEqual([
+      "result.prompt must be a boolean",
+    ]);
+    // The status bar's agent segment: `◇ agent`, `◇ agent 2?`, `◇ agent ·` (vimma-mcp 24).
+    expect(errorsOf(ok({ ...state, agent: null }), { command: "state" })).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false } }), { command: "state" }),
+    ).toEqual([]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: "1?", ran: 1, conn: "claude" } }), {
+        command: "state",
+      }),
+    ).toEqual([
+      'unknown field "result.agent.conn"',
+      "result.agent.waiting must be a non-negative integer",
+      "result.agent.ran must be a boolean",
+    ]);
+    expect(errorsOf(ok({ ...state, agent: [] }), { command: "state" })).toEqual([
+      "result.agent must be an object or null",
+    ]);
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, notice: false, chat: null }), { command: "state" })).toEqual(
+      [],
+    );
+    expect(errorsOf(ok({ ...hidden, chat }), { command: "state" })).toEqual([
+      "result.chat must be null in a private window",
+    ]);
   });
 
   test("controlUpdateState keeps only the fields the protocol names (m6a-updater 41)", () => {
