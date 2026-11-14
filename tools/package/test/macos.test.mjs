@@ -301,7 +301,8 @@ describe("macos.yml", () => {
     expect(text).not.toContain("workflow_call");
   });
 
-  // Decision 14 and docs/security.md, B6: test builds are keyless; nothing here holds a secret.
+  // Decision 14 and docs/security/14-build-and-release-supply-chain.md, B6: test builds are
+  // keyless; nothing here holds a secret.
   it("reads no secret, deploys to no environment and only reads the repository", () => {
     expect(doc.permissions).toEqual({});
     expect(text).not.toMatch(/secrets\.|github\.token|GH_TOKEN/);
@@ -421,7 +422,8 @@ describe("macos.yml", () => {
     expect(run).toContain("node tools/package/macos-icons.mjs --check");
   });
 
-  // The first green cross build's job took 133 minutes (docs/runbook.md, "macOS build").
+  // The first green cross build's job took 133 minutes (docs/runbook/ci-macos-build.md, "macOS
+  // build").
   it("stops itself at about 1.5 times the measured build, before GitHub's 6-hour job limit", () => {
     expect(build["timeout-minutes"]).toBeGreaterThanOrEqual(133 * 1.4);
     expect(build["timeout-minutes"]).toBeLessThanOrEqual(133 * 1.6);

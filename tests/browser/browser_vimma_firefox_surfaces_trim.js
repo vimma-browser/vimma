@@ -319,7 +319,7 @@ async function shownWhileOpen(menu, open, ids) {
   await popupShown;
   // An item Firefox no longer has does not show either: each is in the open menu first.
   for (const id of ids) {
-    Assert.ok(document.getElementById(id), `${id} is an item Firefox has`);
+    Assert.ok(menu.contains(document.getElementById(id)), `${id} is an item of the open menu`);
   }
   const visible = ids.filter(shown);
   const popupHidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");

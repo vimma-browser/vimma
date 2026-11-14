@@ -45,6 +45,19 @@ const LINKS = ["home", "l1", "l2", "l3", "shadow", "framed"];
 const UNBOUND = "z";
 
 /**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** The window's mode, as the host's dispatcher state has it. */
+const windowMode = () => VimmaHost._mode(found(VimmaHost._state(window)));
+
+/**
  * Opens `url` in a new tab with content focus, records the page's keydowns and its DOM
  * mutations, waits for normal mode, then runs `fn`.
  * @param {string} url
@@ -92,7 +105,9 @@ async function recordMutations(browser) {
 function mutations(browser) {
   return SpecialPowers.spawn(browser, [], () => {
     const win = content.wrappedJSObject;
-    win.vimmaObserver.takeRecords().forEach((r) => win.vimmaMutations.push(r.type));
+    win.vimmaObserver
+      .takeRecords()
+      .forEach((/** @type {MutationRecord} */ r) => win.vimmaMutations.push(r.type));
     return [...win.vimmaMutations];
   });
 }
@@ -112,7 +127,10 @@ function waitForMode(browser, mode) {
 function drawnLabels() {
   const overlay = document.getElementById("vimma-hints");
   if (!overlay) return [];
-  return [...overlay.querySelectorAll(".vimma-hint:not([hidden])")].map((el) => el.dataset.label);
+  const shown = /** @type {HTMLElement[]} */ ([
+    ...overlay.querySelectorAll(".vimma-hint:not([hidden])"),
+  ]);
+  return shown.map((el) => el.dataset.label);
 }
 
 /** Presses `f` (or `gF`, or `F`) and waits for the labels. */
@@ -122,7 +140,8 @@ async function startHints(key = "f") {
     () => VimmaHost._hints(window)?.hints.length && drawnLabels().length,
     "hints are drawn",
   );
-  return VimmaHost._hints(window);
+  // The wait above read its labels.
+  return /** @type {HostHints} */ (VimmaHost._hints(window));
 }
 
 /** @param {string} label */
@@ -142,18 +161,22 @@ async function centres(browser, ids) {
     /** @type {Record<string, { x: number, y: number }>} */
     const out = {};
     for (const id of list) {
-      const el = doc.getElementById(id) ?? doc.getElementById("host").shadowRoot.getElementById(id);
+      // The fixture has #host with an open shadow root; a read through a missing one throws.
+      const host = /** @type {HTMLElement} */ (doc.getElementById("host"));
+      const el =
+        doc.getElementById(id) ?? /** @type {ShadowRoot} */ (host.shadowRoot).getElementById(id);
       if (!el) continue;
       const r = el.getBoundingClientRect();
       out[id] = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     }
-    const f = doc.getElementById("frame").getBoundingClientRect();
+    const f = /** @type {HTMLElement} */ (doc.getElementById("frame")).getBoundingClientRect();
     out.frame = { x: f.x, y: f.y };
     return out;
   });
   const frameBC = browser.browsingContext.children[0];
   const inner = await SpecialPowers.spawn(frameBC, [], () => {
-    const r = content.document.getElementById("framed").getBoundingClientRect();
+    const framed = /** @type {HTMLElement} */ (content.document.getElementById("framed"));
+    const r = framed.getBoundingClientRect();
     return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
   });
   top.framed = { x: top.frame.x + inner.x, y: top.frame.y + inner.y };
@@ -163,20 +186,21 @@ async function centres(browser, ids) {
 /**
  * The label of the innermost hint whose target rect holds the element's centre, or undefined.
  * Innermost: a control inside a clickable row is under both rects.
- * @param {any} hints VimmaHost._hints(window)
+ * @param {HostHints} hints VimmaHost._hints(window)
  * @param {{ x: number, y: number }} c
+ * @returns {string | undefined}
  */
 function labelAt(hints, c) {
-  const area = (/** @type {any} */ h) => h.target.rect.width * h.target.rect.height;
+  const area = (/** @type {HostHint} */ h) => h.target.rect.width * h.target.rect.height;
   return hints.hints
     .filter(
-      (/** @type {any} */ h) =>
+      (h) =>
         c.x >= h.target.rect.x &&
         c.x <= h.target.rect.x + h.target.rect.width &&
         c.y >= h.target.rect.y &&
         c.y <= h.target.rect.y + h.target.rect.height,
     )
-    .sort((/** @type {any} */ a, /** @type {any} */ b) => area(a) - area(b))[0]?.label;
+    .sort((a, b) => area(a) - area(b))[0]?.label;
 }
 
 /**
@@ -197,8 +221,8 @@ add_task(async function f_labels_every_visible_target_and_nothing_else() {
     const hints = await startHints();
     const all = [...TARGETS, "framed"];
     Assert.equal(hints.hints.length, all.length, `${all.length} targets on screen`);
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "hint", "hint mode");
-    const labels = hints.hints.map((/** @type {any} */ h) => h.label);
+    Assert.equal(windowMode(), "hint", "hint mode");
+    const labels = hints.hints.map((h) => h.label);
     Assert.deepEqual(drawnLabels().sort(), [...labels].sort(), "every label is drawn in chrome");
     for (const a of labels) {
       for (const b of labels) {
@@ -220,8 +244,8 @@ add_task(async function a_label_follows_the_link() {
     const loaded = BrowserTestUtils.browserLoaded(browser, false, (url) => url.endsWith("?to=2"));
     type(label);
     await loaded;
-    Assert.ok(browser.currentURI.spec.endsWith("?to=2"), "followed l2");
-    Assert.equal(VimmaHost._hints(window), null, "hints are gone");
+    Assert.ok(found(browser.currentURI).spec.endsWith("?to=2"), "followed l2");
+    Assert.strictEqual(VimmaHost._hints(window), null, "hints are gone");
   });
 });
 
@@ -238,7 +262,10 @@ add_task(async function a_label_in_a_shadow_root_and_in_a_cross_origin_frame() {
       frameBC.currentWindowGlobal.documentURI.spec.endsWith("?to=framed"),
       "the frame followed its link",
     );
-    Assert.ok(browser.currentURI.spec.endsWith("file_vimma_hints.html"), "the top page did not");
+    Assert.ok(
+      found(browser.currentURI).spec.endsWith("file_vimma_hints.html"),
+      "the top page did not",
+    );
 
     await focusContent(browser);
     const shadow = await labelFor(browser, "shadow");
@@ -269,13 +296,22 @@ add_task(async function a_label_on_an_input_focuses_it_and_enters_insert() {
     type(await labelFor(browser, "field"));
     await waitForMode(browser, "insert");
     Assert.equal(
-      await SpecialPowers.spawn(browser, [], () => content.document.activeElement.id),
+      await SpecialPowers.spawn(
+        browser,
+        [],
+        () => /** @type {Element} */ (content.document.activeElement).id,
+      ),
       "field",
       "the input has focus",
     );
     EventUtils.synthesizeKey("j");
     await TestUtils.waitForCondition(
-      () => SpecialPowers.spawn(browser, [], () => content.document.getElementById("field").value),
+      () =>
+        SpecialPowers.spawn(
+          browser,
+          [],
+          () => /** @type {HTMLInputElement} */ (content.document.getElementById("field")).value,
+        ),
       "j types into the field",
     );
   });
@@ -296,7 +332,7 @@ add_task(async function gF_opens_the_link_in_a_background_tab() {
     const tab = await opened;
     Assert.equal(gBrowser.selectedTab, selected, "the new tab opened in the background");
     Assert.equal(tab.userContextId, selected.userContextId, "in the same container");
-    Assert.ok(browser.currentURI.spec.endsWith("file_vimma_hints.html"), "this tab stayed");
+    Assert.ok(found(browser.currentURI).spec.endsWith("file_vimma_hints.html"), "this tab stayed");
     BrowserTestUtils.removeTab(tab);
   });
 });
@@ -330,9 +366,12 @@ add_task(async function gF_with_an_upper_case_last_key_opens_and_selects_the_tab
     await TestUtils.waitForCondition(() => gBrowser.selectedTab === tab, "the new tab is selected");
     Assert.equal(tab.userContextId, hinted.userContextId, "in the hinted tab's container");
     Assert.equal(tab.owner, hinted, "the hinted tab owns it");
-    const at = (/** @type {any} */ t) => gBrowser.tabs.indexOf(t);
+    const at = (/** @type {MozTabbrowserTab} */ t) => gBrowser.tabs.indexOf(t);
     Assert.greater(at(tab), at(hinted), "after the hinted tab in the strip");
-    Assert.ok(browser.currentURI.spec.endsWith("file_vimma_hints.html"), "the hinted tab stayed");
+    Assert.ok(
+      found(browser.currentURI).spec.endsWith("file_vimma_hints.html"),
+      "the hinted tab stayed",
+    );
     await focusContent(tab.linkedBrowser);
     await waitForMode(tab.linkedBrowser, "normal");
     const closed = BrowserTestUtils.waitForTabClosing(tab);
@@ -394,11 +433,11 @@ add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
       () => segment() === `${first} background · ${upper} go there`,
       "the bar names both outcomes",
     );
-    const long = hints.hints.find((/** @type {any} */ h) => h.label.length > 1);
+    const long = hints.hints.find((h) => h.label.length > 1);
     if (long) {
       const prefix = long.label[0];
       type(prefix);
-      const next = hints.hints.find((/** @type {any} */ h) => h.label.startsWith(prefix)).label;
+      const next = found(hints.hints.find((h) => h.label.startsWith(prefix))).label;
       await TestUtils.waitForCondition(
         () => segment()?.startsWith(`${next} background`),
         "it follows the typed prefix",
@@ -415,7 +454,7 @@ add_task(async function esc_cancels_and_backspace_restores_the_filter() {
   await withPage(PAGE, async (browser) => {
     const hints = await startHints();
     const all = hints.hints.length;
-    const long = hints.hints.filter((/** @type {any} */ h) => h.label.length > 1);
+    const long = hints.hints.filter((h) => h.label.length > 1);
     Assert.greater(long.length, 1, "some labels have two keys");
     const first = long[0].label[0];
     type(first);
@@ -423,15 +462,15 @@ add_task(async function esc_cancels_and_backspace_restores_the_filter() {
       () => drawnLabels().length === long.length,
       `typing ${first} leaves ${long.length} labels`,
     );
-    Assert.equal(VimmaHost._hints(window).typed, first, "the filter");
+    Assert.equal(found(VimmaHost._hints(window)).typed, first, "the filter");
     EventUtils.synthesizeKey("KEY_Backspace");
     await TestUtils.waitForCondition(() => drawnLabels().length === all, "backspace restores all");
-    Assert.equal(VimmaHost._hints(window).typed, "", "the filter is empty");
+    Assert.equal(found(VimmaHost._hints(window)).typed, "", "the filter is empty");
 
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "Esc leaves hint mode");
     Assert.deepEqual(drawnLabels(), [], "the labels are gone");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "normal", "back in normal");
+    Assert.equal(windowMode(), "normal", "back in normal");
     Assert.equal(VimmaHost._browserMode(browser), "normal", "the tab is normal");
     Assert.deepEqual(
       await (async () => {
@@ -465,7 +504,7 @@ add_task(async function the_status_bar_shows_hint_mode_while_labels_are_up() {
     );
     await SpecialPowers.spawn(browser, [frameUrl], async (url) => {
       const doc = content.document;
-      doc.getElementById("framed").remove();
+      /** @type {HTMLElement} */ (doc.getElementById("framed")).remove();
       const frame = doc.createElement("iframe");
       frame.src = url;
       const loaded = new Promise((r) => frame.addEventListener("load", r, { once: true }));
@@ -495,7 +534,7 @@ add_task(async function the_status_bar_shows_hint_mode_while_labels_are_up() {
 add_task(async function the_page_cannot_observe_the_hints() {
   await withPage(PAGE, async (browser) => {
     const hints = await startHints();
-    type(hints.hints.find((/** @type {any} */ h) => h.label.length > 1).label[0]);
+    type(found(hints.hints.find((h) => h.label.length > 1)).label[0]);
     await TestUtils.waitForCondition(() => VimmaHost._hints(window)?.typed, "filtered");
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => !VimmaHost._hints(window), "cancelled");
@@ -512,15 +551,15 @@ add_task(async function the_page_cannot_observe_the_hints() {
 add_task(async function no_targets_stays_in_normal() {
   await withPage(DIR + "file_vimma_hints_frame.html?empty", async (browser) => {
     await SpecialPowers.spawn(browser, [], () =>
-      content.document.getElementById("framed").remove(),
+      /** @type {HTMLElement} */ (content.document.getElementById("framed")).remove(),
     );
     const runs = VimmaHost._hintRuns;
     EventUtils.synthesizeKey("f");
     await TestUtils.waitForCondition(() => VimmaHost._hintRuns > runs, "the collection finished");
     EventUtils.synthesizeKey(UNBOUND);
     Assert.ok(await waitForPageKey(browser, [UNBOUND]), "the next key reaches the page");
-    Assert.equal(VimmaHost._hints(window), null, "no hint mode");
-    Assert.equal(VimmaHost._mode(VimmaHost._state(window)), "normal", "normal");
+    Assert.strictEqual(VimmaHost._hints(window), null, "no hint mode");
+    Assert.equal(windowMode(), "normal", "normal");
   });
 });
 
@@ -568,7 +607,8 @@ add_task(async function labels_sit_on_their_targets_at_150_percent_zoom() {
       const hints = await startHints();
       const at = await SpecialPowers.spawn(browser, [["l1", "button", "field"]], (ids) =>
         ids.map((id) => {
-          const r = content.document.getElementById(id).getBoundingClientRect();
+          const el = /** @type {HTMLElement} */ (content.document.getElementById(id));
+          const r = el.getBoundingClientRect();
           return { id, x: r.x, y: r.y, cx: r.x + r.width / 2, cy: r.y + r.height / 2 };
         }),
       );
@@ -576,7 +616,7 @@ add_task(async function labels_sit_on_their_targets_at_150_percent_zoom() {
       for (const t of at) {
         const label = labelAt(hints, { x: t.cx, y: t.cy });
         Assert.ok(label, `${t.id} has a label`);
-        const el = document.querySelector(`#vimma-hints .vimma-hint[data-label="${label}"]`);
+        const el = found(document.querySelector(`#vimma-hints .vimma-hint[data-label="${label}"]`));
         const r = el.getBoundingClientRect();
         Assert.lessOrEqual(Math.abs(r.left - (box.left + t.x * 1.5)), 1.5, `${t.id}: label left`);
         Assert.lessOrEqual(Math.abs(r.top - (box.top + t.y * 1.5)), 1.5, `${t.id}: label top`);
@@ -640,13 +680,13 @@ add_task(async function collection_of_2000_links_stays_within_budget() {
       const overlay = new HintOverlay(window);
       const t1 = performance.now();
       overlay.show(browser, hints.hints);
-      overlay.layer.getBoundingClientRect(); // flush style and layout of the labels
+      found(overlay.layer).getBoundingClientRect(); // flush style and layout of the labels
       const drawMs = performance.now() - t1;
       overlay.hide();
       info(`2000 links${variant}: drawing ${count} labels took ${drawMs.toFixed(1)} ms`);
       Assert.less(drawMs, 1000, "drawing under 1000 ms");
       Assert.ok(
-        hints.hints.every((/** @type {any} */ h) => h.label.length <= 4),
+        hints.hints.every((h) => h.label.length <= 4),
         "short labels",
       );
     });
@@ -668,7 +708,7 @@ const MENU_NONE = ["email", "hidden", "chats", "projects", "recent", "account"];
 function withMenu(fn) {
   return withPage(MENU, async (browser) => {
     await SpecialPowers.spawn(browser, [], async () => {
-      const menu = content.document.getElementById("menu");
+      const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
       await Promise.all(menu.getAnimations().map((a) => a.finished));
     });
     await fn(browser);
@@ -686,7 +726,8 @@ function pageCentres(browser, ids) {
     /** @type {Record<string, { x: number, y: number }>} */
     const out = {};
     for (const id of list) {
-      const r = content.document.getElementById(id).getBoundingClientRect();
+      const el = /** @type {HTMLElement} */ (content.document.getElementById(id));
+      const r = el.getBoundingClientRect();
       out[id] = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
     }
     return out;
@@ -729,7 +770,7 @@ add_task(async function a_menu_opened_in_a_tab_not_sized_yet_gets_its_labels() {
       "the page gets its size",
     );
     await SpecialPowers.spawn(browser, [], async () => {
-      const menu = content.document.getElementById("menu");
+      const menu = /** @type {HTMLElement} */ (content.document.getElementById("menu"));
       await Promise.all(menu.getAnimations().map((a) => a.finished));
     });
     await focusContent(browser);

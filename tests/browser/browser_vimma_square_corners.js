@@ -20,12 +20,22 @@ const XHTML = "http://www.w3.org/1999/xhtml";
 const SHEETS = ["picker", "grep", "help-overlay", "notice", "hints"].map(
   (name) => `chrome://browser/skin/vimma/${name}.css`,
 );
-const CORNERS = [
+const CORNERS = /** @type {const} */ ([
   "borderTopLeftRadius",
   "borderTopRightRadius",
   "borderBottomRightRadius",
   "borderBottomLeftRadius",
-];
+]);
+
+/**
+ * A node the test's own lookup found. It changes nothing at run time: assertSquare reads a
+ * missing one's document and throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} node
+ */
+function found(node) {
+  return /** @type {T} */ (node);
+}
 
 /**
  * @param {Element} el
@@ -34,14 +44,21 @@ const CORNERS = [
 function assertSquare(el, label) {
   const cs = /** @type {Window} */ (el.ownerDocument.defaultView).getComputedStyle(el);
   for (const corner of CORNERS) {
-    Assert.equal(cs[/** @type {any} */ (corner)], "0px", `${label}: ${corner} is square`);
+    Assert.equal(cs[corner], "0px", `${label}: ${corner} is square`);
   }
 }
 
+/**
+ * A <menupopup> or <panel> of browser.xhtml. A missing one throws where the test first uses it
+ * (BrowserTestUtils.waitForPopupEvent adds a listener to it), as it did before.
+ * @param {string} id
+ */
+const popupById = (id) =>
+  /** @type {XULPopupElement} */ (/** @type {Element} */ (document.getElementById(id)));
+
 /** A XUL popup's drawn box: the part its shadow root paints the border and background on. */
 function popupContent(/** @type {Element} */ popup) {
-  const root = /** @type {any} */ (popup).openOrClosedShadowRoot;
-  return root.querySelector('[part~="content"]');
+  return found(found(popup.openOrClosedShadowRoot).querySelector('[part~="content"]'));
 }
 
 add_task(async function vimma_surfaces_are_square() {
@@ -80,7 +97,8 @@ add_task(async function vimma_surfaces_are_square() {
   assertSquare(hint, "hint label");
   for (const node of [picker, grep, help, notice, hints]) node.remove();
 
-  const findbar = await win.gBrowser.getFindBar();
+  // Resolves with null only for a tab that closed meanwhile; the reads below throw on that.
+  const findbar = found(await win.gBrowser.getFindBar());
   openPrompt(findbar);
   await TestUtils.waitForCondition(() => !findbar.hidden, "the find prompt opens");
   assertSquare(findbar, "find prompt");
@@ -88,8 +106,8 @@ add_task(async function vimma_surfaces_are_square() {
 
 add_task(async function firefox_chrome_is_square() {
   // The URL bar, closed and open with its suggestions.
-  assertSquare(gURLBar.querySelector(".urlbar-background"), "URL bar");
-  assertSquare(document.getElementById("urlbar"), "URL bar frame");
+  assertSquare(found(gURLBar.querySelector(".urlbar-background")), "URL bar");
+  assertSquare(found(document.getElementById("urlbar")), "URL bar frame");
   // The workspace's container chip at the field's end: a label on a tint, not a round icon.
   const chip = /** @type {Element} */ (document.getElementById("userContext-icons"));
   Assert.greater(chip.getBoundingClientRect().width, 0, "the workspace chip shows");
@@ -97,24 +115,24 @@ add_task(async function firefox_chrome_is_square() {
   gURLBar.focus();
   gURLBar.search("corners");
   await TestUtils.waitForCondition(() => gURLBar.view.isOpen, "the suggestions open");
-  assertSquare(gURLBar.querySelector(".urlbar-background"), "URL bar with its suggestions");
+  assertSquare(found(gURLBar.querySelector(".urlbar-background")), "URL bar with its suggestions");
   gURLBar.view.close();
   gURLBar.blur();
 
   // Menus: a context menu and an item in it, and the app menu (an arrow panel) and a button in
   // it. Without a compositor (Xvfb) Firefox already draws every popup square (popup.css), so
   // the items are what tells the two looks apart there.
-  const menu = /** @type {any} */ (document.getElementById("tabContextMenu"));
+  const menu = popupById("tabContextMenu");
   const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
   menu.openPopupAtScreen(100, 100, true);
   await shown;
   assertSquare(popupContent(menu), "context menu");
-  assertSquare(menu.querySelector("menuitem:not([hidden])"), "context menu item");
+  assertSquare(found(menu.querySelector("menuitem:not([hidden])")), "context menu item");
   const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
   menu.hidePopup();
   await hidden;
 
-  const appMenu = /** @type {any} */ (document.getElementById("appMenu-popup"));
+  const appMenu = popupById("appMenu-popup");
   const panelShown = BrowserTestUtils.waitForPopupEvent(appMenu, "shown");
   PanelUI.show();
   await panelShown;
@@ -122,7 +140,7 @@ add_task(async function firefox_chrome_is_square() {
   const button = [...appMenu.querySelectorAll("#appMenu-mainView .subviewbutton")].find(
     (b) => b.getBoundingClientRect().height > 0,
   );
-  assertSquare(button, "app menu button");
+  assertSquare(found(button), "app menu button");
   const panelHidden = BrowserTestUtils.waitForPopupEvent(appMenu, "hidden");
   PanelUI.hide();
   await panelHidden;

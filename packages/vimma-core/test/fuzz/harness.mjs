@@ -14,7 +14,7 @@
  *   VIMMA_FUZZ_PATH      replay one failing case: the `path` a failure report printed
  *   VIMMA_FUZZ_OUT       folder to write one JSON file per failing property into
  *
- * Reproducing a failure: docs/runbook.md, "Fuzzing: reproducing a failing seed".
+ * Reproducing a failure: docs/runbook/ci-fuzzing.md, "Fuzzing: reproducing a failing seed".
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

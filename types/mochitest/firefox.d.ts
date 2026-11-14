@@ -241,12 +241,12 @@ interface MozBrowser {
 
 // engine/toolkit/modules/PopupNotifications.sys.mjs (Notification): a browser's notification.
 // `dismissed` is true once its panel closed without an answer; `timeShown` is the time
-// (ChromeUtils.now()) its buttons' security delay counts from, which an activation or a move of
-// the panel sets anew; remove() takes it off its browser.
+// (ChromeUtils.now()) its buttons' security delay counts from, null until the prompt shows,
+// which an activation or a move of the panel sets anew; remove() takes it off its browser.
 interface PopupNotification {
   readonly id: string;
   dismissed: boolean;
-  timeShown: number;
+  timeShown: number | null;
   remove(): void;
 }
 // engine/toolkit/modules/PopupNotifications.sys.mjs: a notification, or null when there is none.
@@ -376,6 +376,9 @@ interface UrlbarInputTestMembers {
   readonly inputField: HTMLInputElement;
   /** The field's text before trimming: the full address of a page. */
   readonly untrimmedValue: string;
+  /** The <input>'s selection, which the address bar forwards (READ_WRITE_PROPERTIES). */
+  selectionStart: number | null;
+  selectionEnd: number | null;
   handleRevert(): void;
   readonly view: {
     /** The selected row's result: a search suggestion's payload has its text. */
@@ -384,7 +387,14 @@ interface UrlbarInputTestMembers {
       readonly payload: { readonly suggestion?: string; readonly url?: string };
     } | null;
     readonly selectedElement: Element | null;
+    /** Closes the view (engine/browser/components/urlbar/content/UrlbarView.mjs). */
+    close(options?: { elementPicked?: boolean; showFocusBorder?: boolean }): void;
   };
+  /**
+   * Sets the field's text, starts a query for it and opens the view; focuses the field unless
+   * `focus` is false.
+   */
+  search(value: string, options?: { focus?: boolean; startQuery?: boolean }): void;
 }
 
 // engine/toolkit/components/windowwatcher/nsIPromptService.idl; Services.prompt is its service
@@ -726,9 +736,11 @@ interface nsIPersistentProperties {
 // engine/accessible/interfaces/nsIAccessible.idl: an element as assistive technology sees it.
 // `role` is an nsIAccessibleRole constant; getState fills `value` of its two out parameters with
 // nsIAccessibleStates bits; `attributes` are its object attributes (`live`, `level`, `xml-roles`).
+// `name` and `description` are null for an accessible without one (a void string,
+// engine/accessible/generic/LocalAccessible.cpp).
 interface nsIAccessible extends nsISupports {
-  readonly name: string;
-  readonly description: string;
+  readonly name: string | null;
+  readonly description: string | null;
   readonly role: number;
   readonly attributes: nsIPersistentProperties;
   getState(state: { value?: number }, extraState: { value?: number }): void;
@@ -762,8 +774,46 @@ interface Window {
 }
 
 // engine/browser/components/customizableui/CustomizableUI.sys.mjs: a customizable toolbar that
-// overflows has its OverflowableToolbar as `overflowable` (registerToolbarNode sets it);
-// isHandlingOverflow() is true while it moves items to or from the overflow menu.
+// overflows has its OverflowableToolbar as `overflowable` (registerToolbarNode sets it, and
+// unregistering the toolbar's window sets it back to null); isHandlingOverflow() is true while
+// it moves items to or from the overflow menu.
 interface OverflowableToolbarElement extends XULElement {
-  readonly overflowable: { isHandlingOverflow(): boolean };
+  readonly overflowable: { isHandlingOverflow(): boolean } | null;
+}
+
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl: a snapshot of `rect` of the global's
+// document (the whole viewport for null), at `scale`, over `backgroundColor`.
+interface WindowGlobalParent {
+  drawSnapshot(
+    rect: DOMRect | null,
+    scale: number,
+    backgroundColor: string,
+    options?: { resetScrollPosition?: boolean },
+  ): Promise<ImageBitmap>;
+}
+
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl: an alert for a browsing
+// context; `modalType` is a MODAL_TYPE_* constant. Spins a nested event loop until it closes.
+interface nsIPromptService {
+  alertBC(browsingContext: unknown, modalType: number, title: string, text: string): void;
+}
+
+// engine/toolkit/content/widgets/dialog.js (MozDialog): runs the accept button's command, as a
+// click on it does; false when a "dialogaccept" listener cancelled it.
+interface MozDialogElement {
+  acceptDialog(): boolean;
+}
+
+// engine/xpcom/threads/nsITimer.idl: `type` is a TYPE_* constant (TYPE_ONE_SHOT, the repeating
+// ones); `name` is the callback's name, for logs. nsITimerManager.getTimers(), in the same file,
+// lists the pending timers for tests.
+interface nsITimer {
+  readonly type: number;
+  readonly name: string;
+}
+
+// engine/browser/components/tabbrowser/content/tab.mjs: the tab that opened this one, which
+// closing this one selects again; null without one, or once the owner is closing.
+interface MozTabbrowserTab {
+  owner: MozTabbrowserTab | null;
 }

@@ -61,5 +61,5 @@ process of the user's.
   29), and `:control on <minutes>` gives it for a while. Pages in the agent workspace get no
   permission prompt and open no pop-up (decision 30), through Firefox's own
   `Integration.contentPermission`, browser-scoped permissions and sandbox flags, no patch.
-- Rules M1-M15 in [docs/security.md](../security.md) §12 and S13 in §1 hold this to its tests.
+- Rules M1-M15 in [docs/security/](../security/README.md) §12 and S13 in §1 hold this to its tests.
   Spec: [vimma-mcp](../specs/vimma-mcp.md).

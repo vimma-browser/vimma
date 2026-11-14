@@ -84,9 +84,9 @@
 
   /* Minimal: the URL field alone, to type an address. The site's identity, the prompts' icons,
    * page actions and the search and go buttons are left out (decision 7a); the status bar says
-   * which site the page is (docs/security.md C3). They go out of the field's layout, which
-   * keeps its own box, so the text starts at the field's edge. The search engine shows while
-   * one is chosen for the typed text (search mode), as part of what is typed. */
+   * which site the page is (docs/security/06-chrome-ui-rendering.md C3). They go out of the field's
+   * layout, which keeps its own box, so the text starts at the field's edge. The search engine
+   * shows while one is chosen for the typed text (search mode), as part of what is typed. */
   &[vimma-toolbar-minimal]:not([vimma-toolbar-prompt]) {
     #urlbar:not([searchmode])
       > .urlbar-input-container

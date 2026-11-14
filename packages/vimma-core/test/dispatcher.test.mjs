@@ -626,7 +626,8 @@ describe("workspace keys like Vim's buffer keys", () => {
   });
 });
 
-// Key-to-action is gated at 10 % against the bench baseline (docs/runbook.md "Bench baseline"):
+// Key-to-action is gated at 10 % against the bench baseline (docs/runbook/ci-bench-baseline.md
+// "Bench baseline"):
 // the trie and the mode and context checks are per mode and context, not per key.
 describe("dispatcher hot path", () => {
   test("the trie is looked up when the mode or context changes, not on every key", () => {

@@ -45,9 +45,9 @@
 //   node tools/layering/layering.ts
 //
 // This file runs the check and re-exports what the tests and tools/diagrams import. The checks
-// live beside it, one module each, along the list in docs/security.md section 12: urls.ts (load
-// positions and URL cleaning), loader.ts (the loader rule), scan.ts (the module scan),
-// restricted.ts (the gate's importers and file name), hand-ons.ts, pages.ts, packaging.ts
+// live beside it, one module each, along the list in docs/security/12-agents-mcp.md section 12:
+// urls.ts (load positions and URL cleaning), loader.ts (the loader rule), scan.ts (the module
+// scan), restricted.ts (the gate's importers and file name), hand-ons.ts, pages.ts, packaging.ts
 // (jar.mn, vimma/moz.build, file types), encoding.ts, patches.ts (Firefox patches) and
 // vimma-core.ts; layer-rules.ts holds the layers and cycles, tree.ts the walk over the tree, and
 // model.ts what they share.

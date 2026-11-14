@@ -7,8 +7,8 @@ generator, new), `packages/vimma-core/src/updates.mjs`,
 `src/browser/base/content/vimma/updates/VimmaUpdates.sys.mjs`, `vimma/about/`,
 `tools/update/manifest.mjs`, `.github/workflows/release.yml`, `update-publish.yml`,
 `homebrew.yml` (new), `macos.yml`; the
-`vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security.md`,
-`docs/runbook.md`, `README.md` · Upstream patches: none (decision 9) · ADR: none
+`vimma-browser/homebrew-tap` repository (new); `docs/guide.md`, `docs/security/`,
+`docs/runbook/`, `README.md` · Upstream patches: none (decision 9) · ADR: none
 
 Issues: [#393](https://github.com/vimma-browser/vimma/issues/393),
 [#408](https://github.com/vimma-browser/vimma/issues/408),
@@ -332,9 +332,9 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
 10. **The tap's credential is a deploy key held by a `homebrew` environment,** limited to `main`,
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts
-    moving a tag, not creating one (`docs/security.md`, B6). Rejected: a personal access token, because a
-    deploy key reaches only the one repository. The tap repository's branch rules allow pushes by
-    the deploy key and pull requests by others.
+    moving a tag, not creating one (`docs/security/14-build-and-release-supply-chain.md`, B6).
+    Rejected: a personal access token, because a deploy key reaches only the one repository. The tap
+    repository's branch rules allow pushes by the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
     this repository's review, and the tap cannot drift from the generator. The tap's own CI,
     `check.yml`, runs the same checks as `cask-check.sh`, `brew style` and an offline
@@ -497,7 +497,7 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
   `homebrew.yml` pushes it only after checking it against `SHA256SUMS-macos` and
   `SHA256SUMS-macos` against `release.yml`'s signature at `refs/heads/main`, so a tap commit
   cannot point at a file the release did not build.
-  `docs/security.md` gets a "Homebrew tap" entry covering this, the deploy key and its
+  `docs/security/` gets a "Homebrew tap" entry covering this, the deploy key and its
   environment, and a test link for each claim (`npm run security-links`).
 - **The tap's write credential** is a deploy key scoped to one repository, held by an environment
   restricted to `main`, and used only in `homebrew.yml`, whose permissions are
@@ -517,7 +517,7 @@ Submitting to Homebrew/homebrew-cask (open question 1); Developer ID signing and
   pushed with the same deploy key (decision 16); the client applies the same rules to it as to
   the Linux one. It names a `.dmg` only after the `.dmg` matched `SHA256SUMS-macos` and that
   file matched `release.yml`'s signature, so a manifest cannot point at a file the release did
-  not build. `docs/security.md`'s update manifest entries say so. The macOS `prepare` job holds
+  not build. `docs/security/`'s update manifest entries say so. The macOS `prepare` job holds
   no secret, as the Linux one, and mounts only a `.dmg` whose checksum it has verified.
 - **Uninstall.** `zap` removes the profile directory, which holds history, cookies and saved
   passwords; it runs only with `--zap`, which the user types, and the guide says so.
@@ -580,12 +580,13 @@ Homebrew; first open per the caveats; `brew upgrade` to the next release.
 - `docs/guide.md`, "Install": a macOS section with the one command, the first-open step while
   unsigned, `brew upgrade`, and what `--zap` deletes.
 - `README.md`: the install line for macOS, once the release gate opens.
-- `docs/runbook.md`, "Releases": the tap, `homebrew.yml`, retrying it with
+- `docs/runbook/ci-releases.md`, "Releases": the tap, `homebrew.yml`, retrying it with
   `gh workflow run homebrew.yml -f tag=vX.Y.Z`, and rotating the deploy key.
-- `docs/security.md`: "Homebrew tap" (above), and the update manifest entries for the macOS
+- `docs/security/`: "Homebrew tap" (above), and the update manifest entries for the macOS
   file (decision 16).
 - `docs/guide.md`, "Updates": macOS is checked; the rows for a Homebrew and a `.dmg` install.
-- `docs/runbook.md`, "Update signing keys and the update host": the `target` input.
+- `docs/runbook/ci-update-keys-and-update-host.md`, "Update signing keys and the update host": the
+  `target` input.
 - `CHANGELOG.md`: "Vimma on macOS shows its own icon" with the icon sub-PR; "Install on macOS
   with Homebrew" with the tap sub-PR.
 - `macos-build.md`: decision 17 and "Not in this spec" point here.
@@ -601,21 +602,21 @@ joins a release behind `MACOS_RELEASE_ENABLED` (macos-build, #397 and #398).
 2. **`feat(release): publish the homebrew cask to vimma-browser/homebrew-tap`** (#404). The cask
    generator `tools/package/cask.mjs` and its Vitest tests, `tools/package/cask-check.sh`, the
    cask in `release.yml`'s macOS jobs and the `macos-tap` job, `homebrew.yml`, the `cask` job in
-   `pkgbuild.yml`, and the guide, runbook and `docs/security.md`. The tap repository, its
+   `pkgbuild.yml`, and the guide, runbook and `docs/security/`. The tap repository, its
    ruleset, deploy key and the `homebrew` environment already exist and are documented in the
    runbook. Runs only while `MACOS_RELEASE_ENABLED` is `true`. Needs sub-PR 1 first, because the
    cask's `uninstall quit:` and `zap` name the bundle identifier it sets.
 3. **`feat(updates): update notices on macos`.** Decisions 8 and 16 to 21: the `homebrew` and
    `dmg` install types and their steps in `packages/vimma-core`, `<vimmaDmg>`, the host's
    Caskroom check, the macOS manifest in `tools/update/manifest.mjs` and `update-publish.yml`,
-   its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security.md`.
+   its start from `release.yml`'s `macos-tap`, and the guide, runbook and `docs/security/`.
    Closes the feature's issue; sub-PRs 4 and 5 then have issues of their own.
 4. **`build(macos): dmg window art`** (#408). Decision 14: `background.png`, `dsstore` and
    `disk.icns` in `configs/branding/vimma/`, their generators, the guard in `macos-dmg.sh`, and
    `macos-dmg-check.sh` in both smoke jobs.
 5. **The tap's own CI** (decision 11, #409), in `vimma-browser/homebrew-tap`: `check.yml`, with
    `brew style` and `brew audit --cask --strict` on its pull requests and pushes, and the runbook
-   and `docs/security.md`.
+   and `docs/security/`.
 
 ## Open questions
 

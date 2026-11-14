@@ -281,7 +281,8 @@ for (const key of ["j", "m"]) {
   }
 }
 
-// docs/security.md K5: a busy page's late reply must not press Enter in the tab focused since.
+// docs/security/13-page-modes.md K5: a busy page's late reply must not press Enter in the tab
+// focused since.
 add_task(async function a_late_reply_presses_no_enter_in_another_tab() {
   const other = ENTER_PAGE.replace("https://example.com", "https://example.org");
   const tabB = await BrowserTestUtils.openNewForegroundTab(gBrowser, other);

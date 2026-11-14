@@ -13,7 +13,7 @@ export const BUDGET_US = 50;
 export const THRESHOLD = 0.1;
 /**
  * One case alone fails only past 25 %: a single sub-microsecond case moves more than the suite's
- * mean of five, which averages the noise of its cases (docs/runbook.md).
+ * mean of five, which averages the noise of its cases (docs/runbook/).
  */
 export const CASE_THRESHOLD = 0.25;
 /** Floating-point slack, so a change of exactly the limit passes. */
@@ -35,7 +35,7 @@ export interface Result {
 /**
  * Costs the baseline accepts on top of the baseline commit, per case: a change meant to cost
  * time cannot name its own commit before it is merged, so it states the cost here and the next
- * move of the commit folds it in (docs/runbook.md, "Bench baseline")
+ * move of the commit folds it in (docs/runbook/ci-bench-baseline.md, "Bench baseline")
  */
 export type Accepted = Record<string, { change: number; why: string }>;
 export interface Row {
@@ -218,7 +218,7 @@ export function compare(
     if (!(name in result.cases)) {
       failures.push(
         `${name}: in the baseline commit but not measured; move the baseline to a commit ` +
-          `without it (docs/runbook.md, "Bench baseline")`,
+          `without it (docs/runbook/ci-bench-baseline.md, "Bench baseline")`,
       );
     }
   }

@@ -2,7 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The site permissions picker (`:site`, docs/specs/site-permissions.md; docs/security.md §19).
+// The site permissions picker (`:site`, docs/specs/site-permissions.md;
+// docs/security/19-site-permissions.md §19).
 // It reads and changes the selected tab's site permissions through Firefox's SitePermissions,
 // the module behind Page Info's Permissions tab and the identity panel, with Page Info's list and
 // Page Info's rules for what is locked; only a pop-up block, which SitePermissions cannot store,

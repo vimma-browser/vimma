@@ -1784,7 +1784,7 @@ export const VimmaHost = {
     // Esc while the page's reply or the frame's answer is on its way: nothing more happens.
     const sameMode = () => this._mode(state) === mode;
     // A late reply (a busy page) must not press a key in, or run the fallback for, the tab or
-    // pane focused since (docs/security.md K6).
+    // pane focused since (docs/security/13-page-modes.md K6).
     if (browser && target && target !== browser) return;
     if (browser && (await VimmaActors.suggestion(browser, action.id, sameMode))) return;
     if (browser && this._contentBrowser(state) !== browser) return;
@@ -2185,7 +2185,7 @@ export const VimmaHost = {
    */
   async _linkTarget(state, browser, target, action) {
     // From the content process (bounded by parseHintReply): shown and copied as text only, with
-    // no control or format characters (docs/security.md section 20, V8).
+    // no control or format characters (docs/security/20-pdf-viewer.md section 20, V8).
     // A URL as the URL parser writes it, so a content process cannot put free text there.
     const href = URL.parse(stripInvisible(target.href ?? ""))?.href ?? "";
     if (!href) return;

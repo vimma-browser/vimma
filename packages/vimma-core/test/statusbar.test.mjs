@@ -591,8 +591,8 @@ describe("status bar with the toolbar hidden", () => {
   });
 });
 
-// docs/security.md C3: with the toolbar hidden the status bar is the only origin
-// indicator, so the URL never loses its registrable domain to truncation.
+// docs/security/06-chrome-ui-rendering.md C3: with the toolbar hidden the status bar is the only
+// origin indicator, so the URL never loses its registrable domain to truncation.
 describe("the URL keeps its registrable domain while the toolbar is hidden", () => {
   const SPOOF =
     "https://accounts.google.com.secure-login-verification-session-0123456789.evil.example/signin/v2/identifier?continue=https%3A%2F%2Fmail.google.com%2Fmail%2F&service=mail&flowName=GlifWebSignIn";

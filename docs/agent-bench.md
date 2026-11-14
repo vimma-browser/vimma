@@ -2,7 +2,7 @@
 
 What the [built-in agent](specs/builtin-agent.md)'s model test bench measured. The guide's
 statements about which models can do the agent's tasks are limited to the results on this page.
-How to run the bench: [runbook](runbook.md), "The agent model bench".
+How to run the bench: [runbook](runbook/testing.md), "The agent model bench".
 
 ## What a run measures
 

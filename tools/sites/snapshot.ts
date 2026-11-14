@@ -4,7 +4,7 @@
 // The recorder (probes.ts, contentSnapshot) runs in the page; this module is pure: the check that a snapshot
 // holds nothing that runs or loads (verifySnapshot), the manifest (snapshots.json), and the gate
 // that fails a run when a check that passed on the recording does not pass now
-// (docs/security.md, SC5).
+// (docs/security/17-site-compatibility-workflow.md, SC5).
 import { md } from "./report.ts";
 import { CHECKS } from "./results.ts";
 import type { Run } from "./results.ts";

@@ -4,8 +4,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "./temp-dir.mjs";
 
-// Spec upstream-beta-canary, B8–B10 and "Security and privacy"; docs/security.md G9, G10. The
-// Beta canary's workflow shape. Text checks, like upstream-workflow.test.mjs: no YAML dependency.
+// Spec upstream-beta-canary, B8–B10 and "Security and privacy"; docs/security/10-firefox-updates.md
+// G9, G10. The Beta canary's workflow shape. Text checks, like upstream-workflow.test.mjs: no YAML
+// dependency.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const text = readFileSync(new URL("upstream-beta.yml", dir), "utf8");
 const e2e = readFileSync(new URL("e2e.yml", dir), "utf8");
