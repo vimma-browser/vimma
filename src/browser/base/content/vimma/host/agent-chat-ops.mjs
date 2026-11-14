@@ -40,7 +40,7 @@ export const CHAT_SERVICES = Object.freeze({
   agentConfig: () => McpHost.agentConfig,
 });
 
-/** What a tab is called in the transcript: its label, on one line, cut. @param {any} tab */
+/** What a tab is called in the transcript: its label, on one line, cut. @param {MozTabbrowserTab} tab */
 const tabTitle = (tab) =>
   [
     ...String(tab.label ?? "")
@@ -68,7 +68,7 @@ export function giveSelectedTab(win, id, ask, say) {
   const gBrowser = win.gBrowser;
   const tab = gBrowser.selectedTab;
   const title = tabTitle(tab);
-  if (tab.userContextId === /** @type {any} */ (agent).userContextId && !ww.isForeign(tab)) {
+  if (tab.userContextId === agent.userContextId && !ww.isForeign(tab)) {
     const owner = HostServices.agentChat.ownerOf(tab);
     if (owner === id) say("agent: that tab is this conversation's already");
     // Another conversation's tab stays its own: one model never reaches another's pages (B17).

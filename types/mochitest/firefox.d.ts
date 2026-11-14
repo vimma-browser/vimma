@@ -188,8 +188,6 @@ interface MozBrowser {
 
 // engine/dom/webidl/Document.webidl
 interface Document {
-  /** Its DocumentL10n; null for a document that does not support Fluent (DocumentSupportsL10n). */
-  readonly l10n: DocumentL10n | null;
   readonly hasValidTransientUserGestureActivation: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
@@ -314,10 +312,13 @@ interface nsIBrowserDOMWindow {
 }
 
 // engine/browser/base/content/browser.js and browser-commands.js: members of a browser window
-// only the tests use. BrowserCommands is a large set of menu commands, untyped here.
+// only the tests use.
 interface BrowserWindow {
   readonly browserDOMWindow: nsIBrowserDOMWindow;
-  readonly BrowserCommands: any;
+}
+interface BrowserCommandsApi {
+  /** Closes the window as its close button does, unless WindowIsClosing says not to. */
+  tryToCloseWindow(event?: Event): void;
 }
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (addTab's options)
@@ -809,11 +810,9 @@ interface nsIAccessibilityService {
 }
 
 // engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
-// notification panel. Its connectedCallback finds its two buttons, and PopupNotifications sets
-// `notification` when it shows one in it (PopupNotifications.sys.mjs, _refreshPanel).
-interface MozPopupNotification extends XULElement {
-  readonly button: XULElement;
-  readonly secondaryButton: XULElement;
+// notification panel; PopupNotifications sets `notification` when it shows one in it
+// (PopupNotifications.sys.mjs, _refreshPanel).
+interface MozPopupNotification {
   readonly notification: PopupNotification;
 }
 // engine/browser/base/content/browser-addons.js (MozAddonInstalledNotification): the app menu's
@@ -966,8 +965,6 @@ interface LoginDoorhangerUsernameField extends HTMLElement {
 // engine/dom/webidl/DOMLocalization.webidl, engine/dom/chrome-webidl/DocumentL10n.webidl,
 // engine/dom/chrome-webidl/L10nRegistry.webidl and engine/dom/chrome-webidl/Fluent.webidl.
 
-/** Fluent's arguments (Fluent.webidl, L10nArgs). */
-type L10nArgs = Record<string, string | number | null>;
 /** A resource's path, or the path and whether it may be missing (L10nRegistry.webidl). */
 type L10nResourceId = string | { path: string; _optional?: boolean };
 /** A message's id and arguments (Localization.webidl, L10nIdArgs); both are null by default. */
@@ -1052,25 +1049,6 @@ interface nsIStringBundleService {
 // (engine/browser/base/content/browser.js): removes the window's preloaded new-tab browser, if
 // it has one.
 declare var NewTabPagePreloading: { removePreloadedBrowser(window: Window): void };
-
-// engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
-// null for an id that has none. `extension` is the Extension that registered it
-// (engine/toolkit/components/extensions/Extension.sys.mjs sets it, an expando of the policy
-// object): promiseBackgroundStarted is set on an extension with a background
-// (parent/ext-backgroundPage.js); backgroundContext is undefined while it has no background page
-// (Extension.sys.mjs), and the page's xulBrowser undefined without a message manager proxy
-// (ExtensionParent.sys.mjs).
-interface WebExtensionPolicy {
-  readonly id: string;
-  readonly extension: {
-    promiseBackgroundStarted(): Promise<void>;
-    readonly backgroundContext: { readonly xulBrowser: MozBrowser | undefined } | undefined;
-  };
-}
-declare var WebExtensionPolicy: {
-  prototype: WebExtensionPolicy;
-  getByID(id: string): WebExtensionPolicy | null;
-};
 
 // engine/browser/components/sidebar/sidebar-history.mjs (SidebarHistory): the History sidebar's
 // <sidebar-history>. Its constructor makes `controller`, so it is undefined until the element is

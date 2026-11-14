@@ -8,7 +8,7 @@
 
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { classifyClipboard, urlRoot, urlUp } from "../core/pageurl.mjs";
-import { openUrl } from "./tab-ops.mjs";
+import { browserWindowOf, openUrl } from "./tab-ops.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
 
 /** @import { Action } from "../core/dispatcher.mjs" */
@@ -22,7 +22,7 @@ export const EMPTY_CLIPBOARD = "the clipboard is empty";
 
 /**
  * The system clipboard's plain text, "" without any. Read in the parent: the page never sees it.
- * @param {BrowserWindow} win
+ * @param {Window} win
  * @returns {string}
  */
 export function readClipboard(win) {
@@ -31,7 +31,8 @@ export function readClipboard(win) {
     trans.init(win.docShell.QueryInterface(Ci.nsILoadContext));
     trans.addDataFlavor("text/plain");
     Services.clipboard.getData(trans, Services.clipboard.kGlobalClipboard);
-    /** @type {{ value?: any }} */
+    // An nsISupportsString (engine/xpcom/ds/nsISupportsPrimitives.idl) once there is text.
+    /** @type {{ value?: { QueryInterface(iid: unknown): { readonly data: string } } }} */
     const data = {};
     trans.getTransferData("text/plain", data);
     return data.value?.QueryInterface(Ci.nsISupportsString).data ?? "";
@@ -42,7 +43,7 @@ export function readClipboard(win) {
 
 /**
  * Loads `url` in `browser` as a link on its page would (the page's principal triggers it).
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {string} url
  */
 function load(browser, url) {
@@ -52,14 +53,15 @@ function load(browser, url) {
 /**
  * The runners, given how the host enters explicit insert in a tab and shows a notice in its
  * window.
- * @param {(browser: any) => void} enterInsert
- * @param {(browser: any, text: string) => void} notify
- * @returns {Record<string, (browser: any, action: Action) => void>}
+ * @param {(browser: MozBrowser) => void} enterInsert
+ * @param {(browser: MozBrowser, text: string) => void} notify
+ * @returns {Record<string, (browser: MozBrowser, action: Action) => void>}
  */
 export function pageRunners(enterInsert, notify) {
   /** `p` / `P`: the clipboard as a URL or a search, through `:open`'s path; never a script. */
-  const openClipboard = (/** @type {any} */ b, /** @type {"current" | "tab"} */ where) => {
-    const win = b.ownerDocument.defaultView;
+  const openClipboard = (/** @type {MozBrowser} */ b, /** @type {"current" | "tab"} */ where) => {
+    const win = browserWindowOf(b);
+    if (!win) return undefined;
     const what = classifyClipboard(readClipboard(win));
     if (what.kind === "empty") return notify(b, EMPTY_CLIPBOARD);
     if (what.kind === "refused") return notify(b, `blocked: ${what.reason} from the clipboard`);
@@ -69,7 +71,7 @@ export function pageRunners(enterInsert, notify) {
     return undefined;
   };
   /** `gu` / `gU`. */
-  const goTo = (/** @type {any} */ b, /** @type {string | null} */ url) => {
+  const goTo = (/** @type {MozBrowser} */ b, /** @type {string | null} */ url) => {
     if (url) load(b, url);
     else notify(b, AT_TOP);
   };
@@ -90,7 +92,7 @@ export function pageRunners(enterInsert, notify) {
     "page.url_up": (b, a) => goTo(b, urlUp(b.currentURI?.spec ?? "", a.count)),
     "page.url_root": (b) => goTo(b, urlRoot(b.currentURI?.spec ?? "")),
     // Firefox's ctrl+u, on this pane's page.
-    "page.view_source": (b) => b.ownerDocument.defaultView.BrowserCommands.viewSource(b),
+    "page.view_source": (b) => browserWindowOf(b)?.BrowserCommands.viewSource(b),
   };
 }
 
@@ -99,7 +101,7 @@ export function pageRunners(enterInsert, notify) {
  * entry (`5H` on the third page lands on the first). One step goes through goBack/goForward,
  * which skip entries the user never interacted with, like the toolbar buttons; in the PDF viewer
  * a step to another jump inside the PDF goes there directly (PdfOps.jumpIndex).
- * @param {any} browser
+ * @param {MozBrowser} browser
  * @param {number} delta  negative goes back
  */
 export function goHistory(browser, delta) {

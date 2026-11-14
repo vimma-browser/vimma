@@ -20,6 +20,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
 });
+/** The modules as typed in types/firefox.d.ts: LazyModules leaves them untyped (setup/ reads more). */
+const addonManager = () => /** @type {AddonManagerApi} */ (lazy.AddonManager);
+const extensionPermissions = () =>
+  /** @type {ExtensionPermissionsApi} */ (lazy.ExtensionPermissions);
 
 /** about:addons' "Run in Private Windows" permission (components/addon-card.mjs). */
 const PRIVATE_BROWSING_PERM = "internal:privateBrowsingAllowed";
@@ -34,19 +38,17 @@ export const ADDON_GONE = "that add-on is gone";
 
 /**
  * Every installed extension, as core reads them.
- * @returns {Promise<{ records: AddonRecord[], byId: Map<string, any> }>}
+ * @returns {Promise<{ records: AddonRecord[], byId: Map<string, AddonWrapper> }>}
  */
 async function readAddons() {
-  const { AddonManager } = lazy;
+  const AddonManager = addonManager();
   const [addons, installs] = await Promise.all([
     AddonManager.getAddonsByTypes(["extension"]),
     AddonManager.getAllInstalls(),
   ]);
-  const updating = new Set(
-    installs.flatMap((/** @type {any} */ i) => (i.existingAddon ? [i.existingAddon.id] : [])),
-  );
+  const updating = new Set(installs.flatMap((i) => (i.existingAddon ? [i.existingAddon.id] : [])));
   const records = await Promise.all(
-    addons.map(async (/** @type {any} */ a) => {
+    addons.map(async (a) => {
       /** @type {AddonRecord} */
       const record = {
         id: a.id,
@@ -61,13 +63,13 @@ async function readAddons() {
         update: updating.has(a.id) || !!a.pendingUpgrade,
       };
       if (a.incognito !== "not_allowed" && !record.hidden && !record.isSystem) {
-        const perms = await lazy.ExtensionPermissions.get(a.id);
+        const perms = await extensionPermissions().get(a.id);
         record.privateAllowed = perms.permissions.includes(PRIVATE_BROWSING_PERM);
       }
       return record;
     }),
   );
-  return { records, byId: new Map(addons.map((/** @type {any} */ a) => [a.id, a])) };
+  return { records, byId: new Map(addons.map((a) => [a.id, a])) };
 }
 
 /**
@@ -82,20 +84,22 @@ export async function addonPickerItems() {
  * The listed add-on with `id`, as item and AddonManager wrapper, or null (gone, or never
  * listed: system, built-in, hidden).
  * @param {string} id
- * @returns {Promise<{ item: AddonItem, addon: any } | null>}
+ * @returns {Promise<{ item: AddonItem, addon: AddonWrapper } | null>}
  */
 async function listed(id) {
   const { records, byId } = await readAddons();
   const item = addonItems(records).find((i) => i.addonId === id);
-  return item ? { item, addon: byId.get(id) } : null;
+  const addon = byId.get(id);
+  return item && addon ? { item, addon } : null;
 }
 
 /**
- * @param {any} addon
- * @param {string} name  an AddonManager PERM_CAN_* constant's name
+ * @param {AddonWrapper} addon
+ * @param {"PERM_CAN_UNINSTALL" | "PERM_CAN_ENABLE" | "PERM_CAN_DISABLE" | "PERM_CAN_UPGRADE"
+ *   | "PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS"} name
  */
 function can(addon, name) {
-  return !!(addon.permissions & lazy.AddonManager[name]);
+  return !!(addon.permissions & addonManager()[name]);
 }
 
 /** Names of the listed add-ons, for `:addon` Tab completion; kept fresh by a listener. */
@@ -120,7 +124,7 @@ export function addonNames() {
   if (!watching) {
     watching = true;
     const refresh = () => void refreshNames();
-    lazy.AddonManager.addAddonListener({
+    addonManager().addAddonListener({
       onInstalled: refresh,
       onUninstalled: refresh,
       onEnabled: refresh,
@@ -143,7 +147,7 @@ export function addonNames() {
  */
 export function openAddonPopup(win, item) {
   if (!item.enabled) return `${item.display} is disabled (x in ctrl+b e enables it)`;
-  const policy = /** @type {any} */ (globalThis).WebExtensionPolicy.getByID(item.addonId);
+  const policy = globalThis.WebExtensionPolicy.getByID(item.addonId);
   const action = policy && win.gUnifiedExtensions?.browserActionFor(policy);
   if (!action) return `${item.display}: no popup or button`;
   // A hidden toolbar shows in full first, so the popup hangs from its own button or the
@@ -240,7 +244,8 @@ export async function removeAddon(id, ask, say) {
         say(`remove: "${asked.display}" changed since you were asked; nothing was removed`);
         return;
       }
-      await /** @type {{ addon: any }} */ (now).addon.uninstall();
+      if (!now) return; // addonChanged said gone: not reached
+      await now.addon.uninstall();
       say(`removed "${asked.display}"`);
     } catch (e) {
       say(`remove: ${/** @type {Error} */ (e)?.message ?? e}`);
@@ -261,7 +266,7 @@ export async function checkAddonUpdate(id) {
   if (!found) return ADDON_GONE;
   const { addon, item } = found;
   if (!can(addon, "PERM_CAN_UPGRADE")) return `${item.display}: updates are not checked`;
-  const { AddonManager } = lazy;
+  const AddonManager = addonManager();
   return new Promise((resolve) => {
     let done = false;
     const finish = (/** @type {string} */ text) => {
@@ -270,10 +275,10 @@ export async function checkAddonUpdate(id) {
     };
     addon.findUpdates(
       {
-        onUpdateAvailable: (/** @type {any} */ _a, /** @type {any} */ install) =>
+        onUpdateAvailable: (_a, install) =>
           finish(`${item.display}: update ${install.version} available (install: about:addons)`),
         onNoUpdateAvailable: () => finish(`${item.display}: no update`),
-        onUpdateFinished: (/** @type {any} */ _a, /** @type {number} */ error) =>
+        onUpdateFinished: (_a, error) =>
           finish(
             error === AddonManager.UPDATE_STATUS_NO_ERROR
               ? `${item.display}: no update`
@@ -298,8 +303,8 @@ export async function togglePrivateAccess(id) {
   if (!can(addon, "PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS")) {
     return `${item.display}: private-window access cannot be changed`;
   }
-  const extension = /** @type {any} */ (globalThis).WebExtensionPolicy.getByID(id)?.extension;
-  const { ExtensionPermissions } = lazy;
+  const extension = globalThis.WebExtensionPolicy.getByID(id)?.extension;
+  const ExtensionPermissions = extensionPermissions();
   if (item.privateAllowed) {
     await ExtensionPermissions.remove(id, privateBrowsingPerms(), extension);
   } else {

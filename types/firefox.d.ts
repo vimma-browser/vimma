@@ -343,9 +343,14 @@ interface Window {
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
 declare class JSWindowActorParent {
-  readonly browsingContext: any;
-  /** engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent) */
-  readonly manager: { readonly isInProcess: boolean; readonly innerWindowId: number };
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager, before it is set up and once it is cleared, rather than give null
+   * (engine/dom/ipc/jsactor/JSWindowActorParent.cpp, GetBrowsingContext).
+   */
+  readonly browsingContext: CanonicalBrowsingContext | null;
+  /** Its document's window global; null before the actor is set up and once it is cleared. */
+  readonly manager: WindowGlobalParent | null;
   sendAsyncMessage(name: string, data?: unknown): void;
   /** The child's answer, from a content process that may be compromised: checked by the caller. */
   sendQuery(name: string, data?: unknown): Promise<unknown>;
@@ -524,10 +529,16 @@ interface LazyModules {
     setCustomTabValue(tab: MozTabbrowserTab, key: string, value: string): void;
     getCustomWindowValue(win: Window, key: string): string;
     setCustomWindowValue(win: Window, key: string, value: string): void;
-    getClosedTabDataForWindow(win: Window): any[];
-    getClosedTabData(options?: { private?: boolean }): any[];
-    getClosedWindowData(): any[];
-    undoCloseById(closedId: number, includePrivate?: boolean, targetWindow?: Window): unknown;
+    getClosedTabDataForWindow(win: Window): SessionClosedTab[];
+    getClosedTabData(options?: { private?: boolean }): SessionClosedTab[];
+    getClosedWindowData(): SessionClosedWindow[];
+    /** The reopened tab (undoCloseTab) or window (undoCloseWindow); undefined for an id it no
+     * longer keeps. */
+    undoCloseById(
+      closedId: number,
+      includePrivate?: boolean,
+      targetWindow?: Window,
+    ): MozTabbrowserTab | ChromeWindow | undefined;
   };
   // engine/toolkit/modules/OSKeyStore.sys.mjs
   OSKeyStore: {
@@ -587,7 +598,7 @@ interface LazyModules {
   Integration: any;
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
-  PopupAndRedirectBlockerObserver: any;
+  PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
   SearchService: any;
   SitePermissions: any;
   Subprocess: any;
@@ -738,8 +749,8 @@ interface MozBrowser extends Element {
   /** Its context is active: shown, or kept rendering. */
   docShellIsActive: boolean;
   gotoIndex(index: number): void;
-  // engine/browser/modules/PopupAndRedirectBlocker.sys.mjs (untyped here)
-  readonly popupAndRedirectBlocker: any;
+  // engine/toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs, made on first read.
+  readonly popupAndRedirectBlocker: PopupAndRedirectBlocker;
   focus(): void;
   reload(): void;
   loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown; referrerInfo?: unknown }): void;
@@ -755,8 +766,10 @@ interface WindowGlobalParent {
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
-// createLazyBrowser's getters); a live one is remote or has a docshell. Either way currentURI
-// and finder are set.
+// createLazyBrowser's getters); a live one reads its webNavigation's. currentURI is assumed
+// non-null for a live tab, though the getter gives null without a webNavigation
+// (browser-custom-element.mjs, `get currentURI`); host/ reads it with `?.` all the same. The
+// finder is set either way.
 interface MozTabBrowser extends MozBrowser {
   readonly currentURI: nsIURI;
   readonly finder: MozFinder;
@@ -822,7 +835,8 @@ interface Tabbrowser {
   getCachedFindBar(tab?: MozTabbrowserTab): MozFindbar | undefined;
   /** Null when the window or the tab closes before the find bar is made. */
   getFindBar(tab?: MozTabbrowserTab): Promise<MozFindbar | null>;
-  readNotificationBox(browser?: MozBrowser): any;
+  /** The browser's notification box, null until a notification first needed one. */
+  readNotificationBox(browser?: MozBrowser): MozNotificationBox | null;
   moveTabForward(options?: { metricsContext?: unknown }): void;
   moveTabBackward(options?: { metricsContext?: unknown }): void;
   // engine/browser/components/tabbrowser/TabMetrics.sys.mjs
@@ -905,8 +919,8 @@ interface BrowserWindow extends ChromeWindow {
   // toolkit globalOverlay.js and contentAreaUtils.js
   goQuitApplication(event?: { ctrlKey?: boolean; metaKey?: boolean }): boolean;
   DownloadURL(url: string, fileName: string | null, initiatingDocument: Document): void;
-  // browser-addons.js: extension UI, untyped here (WebExtension internals)
-  readonly gUnifiedExtensions: any;
+  // browser-addons.js: the extensions button's code.
+  readonly gUnifiedExtensions: UnifiedExtensions;
   readonly BrowserAddonUI: { manageAddon(addonId: string, source?: string): Promise<void> };
 }
 
@@ -1127,7 +1141,7 @@ interface nsISHistory {
   readonly count: number;
   /** The current entry's index. */
   readonly index: number;
-  getEntryAtIndex(index: number): { readonly URI: nsIURI };
+  getEntryAtIndex(index: number): nsISHEntry;
 }
 
 // engine/toolkit/components/pageextractor/PageExtractorParent.sys.mjs. Both answers come from
@@ -1304,4 +1318,402 @@ interface JSONFileInstance {
 interface nsICommandLine {
   /** Null (a void string) when the flag is absent; throws when it has no parameter. */
   handleFlagWithParam(flag: string, caseSensitive: boolean): string | null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// The members host/ reads (#938). Kept together so the other slices' additions merge cleanly;
+// a member another slice declares too is declared with the same type.
+
+// engine/toolkit/content/widgets/browser-custom-element.mjs
+interface MozBrowser {
+  goBack(requireUserInteraction?: boolean): void;
+  goForward(requireUserInteraction?: boolean): void;
+}
+// engine/dom/chrome-webidl/BrowsingContext.webidl
+interface CanonicalBrowsingContext {
+  /** Its current document's WindowContext, null while it has none; in the parent, a
+   * WindowGlobalParent. */
+  readonly currentWindowContext: WindowGlobalParent | null;
+}
+// engine/netwerk/base/nsIURI.idl
+interface nsIURI {
+  /** The host as shown to people (IDN decoded); throws as `host` does. */
+  readonly displayHost: string;
+}
+// engine/docshell/shistory/nsISHEntry.idl
+interface nsISHEntry {
+  readonly URI: nsIURI;
+  /** Both entries show the same document (a same-document navigation between them). */
+  sharesDocumentWith(entry: nsISHEntry): boolean;
+}
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element, as a `<command>` or a `<key>`.
+interface XULElement extends Element {
+  hidden: boolean;
+  click(): void;
+  focus(): void;
+  /** Runs its command: a `<command>`'s oncommand, a `<key>`'s command event. */
+  doCommand(): void;
+}
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl (the members Vimma calls)
+interface nsIPromptService {
+  readonly STD_YES_NO_BUTTONS: number;
+  readonly BUTTON_POS_1_DEFAULT: number;
+  /** The index of the button pressed; `checkState.value` is the checkbox's state after. */
+  confirmEx(
+    parent: Window | null,
+    title: string | null,
+    text: string | null,
+    buttonFlags: number,
+    button0Title: string | null,
+    button1Title: string | null,
+    button2Title: string | null,
+    checkMsg: string | null,
+    checkState: { value: boolean },
+  ): number;
+}
+interface FirefoxServices {
+  prompt: nsIPromptService;
+}
+// engine/dom/webidl/Localization.webidl: a missing message formats as null.
+interface FirefoxLocalization {
+  formatValuesSync(keys: readonly string[]): (string | null)[];
+}
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
+interface Tabbrowser {
+  /** The tab strip's strings (browser/tabbrowser.ftl). */
+  readonly tabLocalization: FirefoxLocalization;
+}
+// engine/browser/base/content/browser-commands.js: the window's menu and key commands (the
+// ones Vimma runs; the browser tests' declarations add theirs).
+interface BrowserWindow {
+  readonly BrowserCommands: BrowserCommandsApi;
+}
+interface BrowserCommandsApi {
+  openTab(): void;
+  viewSource(browser: MozBrowser): void;
+}
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (removeTab's options): the
+// TabMetrics context of a user's close.
+interface TabbrowserRemoveOptions {
+  metricsContext?: unknown;
+}
+// engine/toolkit/actors/PopupAndRedirectBlockingParent.sys.mjs (PopupAndRedirectBlocker): a
+// <browser>'s blocked pop-ups and redirect. The URI specs and report indexes are the content
+// process's answers (its PopupAndRedirectBlockingChild), passed on unchecked.
+interface BlockedPopup {
+  readonly browsingContext: CanonicalBrowsingContext;
+  readonly innerWindowId: number;
+  readonly popupWindowURISpec: unknown;
+  readonly reportIndex: unknown;
+}
+interface BlockedRedirect {
+  readonly browsingContext: CanonicalBrowsingContext;
+  readonly innerWindowId: number;
+  readonly redirectURISpec: unknown;
+}
+interface PopupAndRedirectBlocker {
+  getBlockedPopups(): Promise<BlockedPopup[]>;
+  getBlockedRedirect(): Promise<BlockedRedirect | null>;
+  /** Nothing when the context shows another document than `innerWindowId` by now. */
+  unblockPopup(bc: CanonicalBrowsingContext, innerWindowId: number, reportIndex: unknown): void;
+  unblockRedirect(bc: CanonicalBrowsingContext, innerWindowId: number, spec: unknown): void;
+  unblockAllPopups(): Promise<void>;
+  unblockFirstRedirect(): Promise<void>;
+}
+// engine/browser/modules/PopupAndRedirectBlockerObserver.sys.mjs: the bar's menu commands. They
+// read only the event's window.
+interface PopupAndRedirectBlockerObserver {
+  toggleAllowPopupsForSite(event: { originalTarget: { documentGlobal: Window } }): Promise<void>;
+  dontShowMessage(event: { originalTarget: { documentGlobal: Window } }): void;
+  editPopupSettings(event: { originalTarget: { documentGlobal: Window } }): void;
+}
+// engine/toolkit/content/widgets/notificationbox.js (MozElements.NotificationBox)
+interface MozNotificationBox {
+  /** The last notification with that `value` attribute, or null. */
+  getNotificationWithValue(value: string): MozNotificationMessage | null;
+}
+// notificationbox.js (NotificationMessage): a notification bar.
+interface MozNotificationMessage extends HTMLElement {
+  /** Its buttons' container, made in connectedCallback: unset before. */
+  readonly buttonContainer?: HTMLElement;
+  dismiss(): void;
+}
+// engine/toolkit/content/widgets/popupnotification.js (MozPopupNotification): a prompt in the
+// doorhanger panel or the app menu's notice panel. connectedCallback finds its parts, from its
+// own markup: a prompt in a panel has them. The buttons are <moz-button>s.
+interface MozPopupNotification extends XULElement {
+  readonly button: HTMLElement;
+  readonly secondaryButton: HTMLElement;
+  readonly buttonGroup: Element;
+  /** The footer's buttons that take focus, in order (each <moz-button>'s inner <button>). */
+  readonly footerFocusableButtons: HTMLElement[];
+}
+// engine/dom/webidl/HTMLInputElement.webidl (ChromeOnly)
+interface HTMLInputElement {
+  mozIsTextField(excludePassword: boolean): boolean;
+}
+// An entry of a download list (engine/toolkit/components/downloads/DownloadList.sys.mjs): a
+// session download (DownloadCore.sys.mjs, Download), or in a normal window's list one from
+// history (DownloadHistory.sys.mjs, HistoryDownload), which has only the members marked optional
+// here, some of them unset, and `refresh`.
+interface DownloadListEntry {
+  readonly source: {
+    readonly url: string;
+    /** The container it came from; a history entry keeps none. */
+    readonly userContextId?: number;
+    readonly referrerInfo?: { readonly originalReferrer: nsIURI | null } | null;
+  };
+  readonly target: {
+    /** Unset for a history entry whose file Firefox does not know. */
+    readonly path?: string;
+    readonly exists?: boolean;
+    readonly partFileExists?: boolean;
+    readonly size?: number;
+  };
+  readonly stopped: boolean;
+  readonly succeeded?: boolean;
+  readonly canceled?: boolean;
+  readonly deleted?: boolean;
+  readonly hasProgress: boolean;
+  readonly hasPartialData: boolean;
+  readonly hasBlockedData?: boolean;
+  readonly currentBytes?: number;
+  readonly totalBytes?: number;
+  readonly speed?: number;
+  /** A session download's, null before it starts. */
+  readonly startTime?: Date | null;
+  /** A history entry's, in ms. */
+  readonly endTime?: number;
+  /** A history entry's Places node (`time` in microseconds). */
+  readonly placesNode?: { readonly time: number };
+  /** Downloads.sys.mjs's DownloadError, or a history entry's plain object like it. */
+  readonly error?: DownloadError | null;
+  /** Reads the disk again (the file's existence and size) and tells the list's views. */
+  refresh(): Promise<void>;
+}
+interface DownloadError {
+  readonly message?: string;
+  readonly becauseBlockedByParentalControls?: boolean;
+  readonly becauseBlockedByReputationCheck?: boolean;
+  readonly becauseBlockedByContentAnalysis?: boolean;
+  readonly reputationCheckVerdict?: string;
+}
+// DownloadCore.sys.mjs (Download): a session download, with the members a history entry lacks.
+interface SessionDownload extends DownloadListEntry {
+  readonly target: DownloadListEntry["target"] & { refresh(): Promise<void> };
+  launchWhenSucceeded: boolean;
+  start(): Promise<void>;
+  cancel(): Promise<void>;
+  removePartialData(): Promise<void>;
+  confirmBlock(): Promise<void>;
+  unblock(): Promise<void>;
+  showContainingDirectory(): Promise<void>;
+}
+// DownloadList.sys.mjs: a view hears of each entry, those already listed when it is added too.
+interface DownloadListView {
+  onDownloadAdded?(download: DownloadListEntry): void;
+  onDownloadChanged?(download: DownloadListEntry): void;
+  onDownloadRemoved?(download: DownloadListEntry): void;
+}
+interface DownloadList {
+  getAll(): Promise<DownloadListEntry[]>;
+  addView(view: DownloadListView): Promise<void>;
+  removeView(view: DownloadListView): Promise<void>;
+}
+// engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
+// null for an id that has none. `extension` is the Extension that registered it
+// (engine/toolkit/components/extensions/Extension.sys.mjs sets it, an expando of the policy
+// object): promiseBackgroundStarted is set on an extension with a background
+// (parent/ext-backgroundPage.js); backgroundContext is undefined while it has no background page
+// (Extension.sys.mjs), and the page's xulBrowser undefined without a message manager proxy
+// (ExtensionParent.sys.mjs).
+interface WebExtensionPolicy {
+  readonly id: string;
+  readonly extension: {
+    promiseBackgroundStarted(): Promise<void>;
+    readonly backgroundContext: { readonly xulBrowser: MozBrowser | undefined } | undefined;
+  };
+}
+declare var WebExtensionPolicy: {
+  prototype: WebExtensionPolicy;
+  getByID(id: string): WebExtensionPolicy | null;
+};
+// engine/browser/base/content/browser-addons.js (gUnifiedExtensions). browserActionFor gives the
+// extension's handler in engine/browser/components/extensions/parent/ext-browserAction.js:
+// undefined until an extension loaded that code, and for an extension without a button.
+interface UnifiedExtensions {
+  browserActionFor(policy: WebExtensionPolicy | null): ExtensionBrowserAction | null | undefined;
+}
+interface ExtensionBrowserAction {
+  /** engine/toolkit/components/extensions/ExtensionActions.sys.mjs: the popup's URL for the
+   * tab, empty or null without one. */
+  readonly action: { getPopupUrl(tab: MozTabbrowserTab | null, strict?: boolean): string | null };
+  /** As the button's click or its `_execute_action` shortcut. */
+  triggerAction(window: BrowserWindow): void;
+}
+// engine/toolkit/mozapps/extensions/AddonManager.sys.mjs: the members the add-on picker uses.
+// LazyModules leaves the module untyped (setup/ uses others); addon-ops.mjs reads it as this.
+interface AddonManagerApi {
+  getAddonsByTypes(types: readonly string[]): Promise<AddonWrapper[]>;
+  getAllInstalls(): Promise<AddonInstall[]>;
+  addAddonListener(listener: object): void;
+  readonly UPDATE_STATUS_NO_ERROR: number;
+  readonly UPDATE_WHEN_USER_REQUESTED: number;
+  // The bits of AddonWrapper.permissions the picker reads.
+  readonly PERM_CAN_UNINSTALL: number;
+  readonly PERM_CAN_ENABLE: number;
+  readonly PERM_CAN_DISABLE: number;
+  readonly PERM_CAN_UPGRADE: number;
+  readonly PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS: number;
+}
+// engine/toolkit/mozapps/extensions/internal/XPIDatabase.sys.mjs (AddonWrapper): an installed
+// add-on.
+interface AddonWrapper {
+  readonly id: string;
+  readonly name: string | null;
+  readonly version: string | null;
+  readonly type: string;
+  readonly userDisabled: boolean;
+  readonly isSystem: boolean;
+  readonly isBuiltin: boolean;
+  readonly hidden: boolean;
+  /** "spanning", "not_allowed" or "private" (the manifest's `incognito`). */
+  readonly incognito: string;
+  /** The update waiting for a restart, null without one. */
+  readonly pendingUpgrade: object | null;
+  /** AddonManager's PERM_CAN_* bits. */
+  readonly permissions: number;
+  readonly optionsURL: string | null;
+  readonly isActive: boolean;
+  enable(): Promise<void>;
+  disable(): Promise<void>;
+  uninstall(): Promise<void>;
+  reload(): Promise<void>;
+  findUpdates(listener: AddonUpdateListener, reason: number): void;
+}
+interface AddonUpdateListener {
+  onUpdateAvailable?(addon: AddonWrapper, install: AddonInstall): void;
+  onNoUpdateAvailable?(addon: AddonWrapper): void;
+  onUpdateFinished?(addon: AddonWrapper, error: number): void;
+}
+// AddonManager.sys.mjs (AddonInstall): an install or update; `existingAddon` is the add-on it
+// updates, null for a new one.
+interface AddonInstall {
+  readonly existingAddon: AddonWrapper | null;
+  readonly version: string | null;
+}
+// engine/toolkit/components/extensions/ExtensionPermissions.sys.mjs; `extension` is the running
+// Extension, which then hears of the change (undefined for one not running).
+interface ExtensionPermissionsApi {
+  get(id: string): Promise<{ permissions: string[]; origins: string[] }>;
+  add(
+    id: string,
+    perms: { permissions: string[]; origins: string[] },
+    extension?: unknown,
+  ): Promise<void>;
+  remove(
+    id: string,
+    perms: { permissions: string[]; origins: string[] },
+    extension?: unknown,
+  ): Promise<void>;
+}
+// engine/toolkit/content/widgets/dialog.js (MozDialog): a XUL <dialog>. getButton gives its
+// button of that type ("accept", "cancel", ...), undefined for a type it has none of.
+interface MozDialog extends XULElement {
+  getButton(type: string): MozDialogButton | undefined;
+}
+// engine/toolkit/content/widgets/button.js: a XUL <button>.
+interface MozDialogButton extends XULElement {
+  readonly label: string;
+  disabled: boolean;
+}
+// engine/browser/components/sessionstore/SessionStore.sys.mjs: a closed tab's record and a
+// closed window's, as SessionStore keeps them (and reads them back from the session file). The
+// fields Vimma reads; each is read with a fallback.
+interface SessionClosedTab {
+  readonly closedId: number;
+  readonly title?: string;
+  /** When it closed, in ms since the epoch. */
+  readonly closedAt?: number;
+  readonly state?: SessionTabState;
+}
+interface SessionClosedWindow {
+  readonly closedId: number;
+  readonly title?: string;
+  readonly closedAt?: number;
+  readonly tabs?: readonly SessionTabState[];
+}
+// A tab's saved state: its history entries and the current one's index, 1-based.
+interface SessionTabState {
+  readonly entries?: readonly { readonly url?: string; readonly title?: string }[];
+  readonly index?: number;
+  readonly userContextId?: number;
+}
+// engine/toolkit/components/places/PlacesUtils.sys.mjs: the members the bookmarks panel uses.
+interface PlacesUtilsApi {
+  /** The item and everything under it; null for a guid that names no item. */
+  promiseBookmarksTree(guid?: string): Promise<PlacesTreeItem | null>;
+  readonly bookmarks: PlacesBookmarksApi;
+  // engine/dom/base/PlacesObservers.cpp (PlacesObservers.webidl)
+  readonly observers: {
+    addListener(types: string[], listener: (events: unknown[]) => void): void;
+    removeListener(types: string[], listener: (events: unknown[]) => void): void;
+  };
+}
+// promiseBookmarksTree's items; `title` and `uri` are unset where the item has none.
+interface PlacesTreeItem {
+  readonly guid: string;
+  readonly typeCode?: number;
+  readonly title?: string;
+  readonly uri?: string;
+  readonly children?: PlacesTreeItem[];
+}
+// engine/toolkit/components/places/Bookmarks.sys.mjs: a bookmark's info, and the calls on it.
+interface PlacesBookmarkInfo {
+  readonly guid: string;
+  readonly parentGuid: string;
+  readonly title: string;
+}
+interface PlacesBookmarksApi {
+  readonly TYPE_FOLDER: number;
+  readonly DEFAULT_INDEX: number;
+  /** The first bookmark that matches, null for none. */
+  fetch(guidOrInfo: string | { url: string }): Promise<PlacesBookmarkInfo | null>;
+  insert(info: {
+    parentGuid: string;
+    type?: number;
+    url?: string;
+    title?: string;
+  }): Promise<PlacesBookmarkInfo>;
+  update(info: {
+    guid: string;
+    parentGuid?: string;
+    index?: number;
+    title?: string;
+  }): Promise<PlacesBookmarkInfo>;
+  remove(guid: string): Promise<unknown>;
+}
+// engine/toolkit/modules/FinderParent.sys.mjs: the frame of the last match, null before one and
+// after close() forgets it.
+interface MozFinder {
+  _lastFoundBrowsingContext: CanonicalBrowsingContext | null;
+}
+// engine/dom/webidl/Document.webidl and DocumentL10n.webidl: a document's Fluent localization,
+// null for a document that does not support Fluent (DocumentSupportsL10n). getAttributes reads
+// an element's data-l10n-id and data-l10n-args (DOMLocalization.webidl).
+interface Document {
+  readonly l10n: DocumentL10n | null;
+}
+interface DocumentL10n {
+  getAttributes(element: Element): { id: string | null; args: L10nArgs | null };
+}
+/** Fluent's arguments (Fluent.webidl, L10nArgs). */
+type L10nArgs = Record<string, string | number | null>;
+// engine/browser/base/content/browser.js: opens a browser window, and gives it.
+interface BrowserWindow {
+  OpenBrowserWindow(options?: {
+    private?: boolean;
+    features?: string;
+    args?: unknown;
+  }): BrowserWindow;
 }
