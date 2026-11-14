@@ -143,6 +143,17 @@ interface nsISupports {
   QueryInterface(iid: unknown): any;
 }
 
+// engine/dom/webidl/Event.webidl (chrome-only): the target inside a shadow tree or native anonymous
+// content, which `target` retargets to the host.
+interface Event {
+  readonly composedTarget: EventTarget | null;
+}
+
+// engine/caps/nsIPrincipal.idl
+interface nsIPrincipal {
+  readonly origin: string;
+}
+
 // engine/xpcom/ds/nsIObserver.idl and nsIObserverService.idl: the object form of an observer.
 interface nsIObserver {
   observe(subject: nsISupports, topic: string, data: string | null): void;
@@ -157,6 +168,11 @@ interface nsIObserverService {
     observer: nsIObserver | ((subject: nsISupports, topic: string, data: string | null) => void),
     topic: string,
   ): void;
+}
+// engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl: an nsIObserver as well.
+interface nsIWindowWatcher {
+  registerNotification(observer: nsIObserver): void;
+  unregisterNotification(observer: nsIObserver): void;
 }
 
 // engine/toolkit/content/widgets/browser-custom-element.mjs: a browser's document and window,
@@ -181,6 +197,8 @@ interface Window {
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
 interface Tabbrowser {
+  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
+  readonly _switcher: AsyncTabSwitcher | null;
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
@@ -213,6 +231,8 @@ interface nsIPermissionManager {
 // engine/toolkit/content/widgets/browser-custom-element.mjs, and its frame loader
 // (engine/dom/chrome-webidl/FrameLoader.webidl, engine/dom/interfaces/base/nsIRemoteTab.idl)
 interface MozBrowser {
+  /** Its current window global's outer window id, undefined while it has none. */
+  readonly outerWindowID: number | undefined;
   docShellIsActive: boolean;
   fullZoom: number;
   stop(): void;
@@ -228,6 +248,8 @@ interface PopupNotificationsApi {
 // value as the user's typing would, with input and change events.
 interface HTMLInputElement {
   setUserInput(value: string): void;
+  /** The field's editor (nsIEditor), null until it has one: its selection controller. */
+  readonly editor: { readonly selectionController: { getDisplaySelection(): number } } | null;
 }
 interface HTMLTextAreaElement {
   setUserInput(value: string): void;
@@ -275,6 +297,29 @@ interface XULPopupElement extends Element {
   activateItem(item: Element, options?: object): void;
   hidePopup(cancel?: boolean): void;
 }
+// engine/toolkit/content/widgets/autocomplete-popup.js: the form fields' suggestion popup
+// (#PopupAutoComplete), which a <datalist> opens.
+interface AutoCompletePopupElement extends XULPopupElement {
+  selectedIndex: number;
+  readonly popupOpen: boolean;
+}
+
+// engine/dom/chrome-webidl/BrowsingContext.webidl: a frame's browsing context, which a test passes
+// to SpecialPowers.spawn. Firefox's own types read it as `any` (a browser's `browsingContext`), so
+// this names it for a test's JSDoc; the members are the ones the tests read.
+interface BrowsingContext {
+  readonly id: number;
+  readonly children: BrowsingContext[];
+}
+// The same webidl's CanonicalBrowsingContext: a browsing context as the parent process sees it,
+// the only side that has its document's global (WindowGlobalActors.webidl), once it has one.
+interface CanonicalBrowsingContext extends BrowsingContext {
+  readonly children: CanonicalBrowsingContext[];
+  readonly currentWindowGlobal: {
+    readonly documentURI: { readonly spec: string } | null;
+    readonly isInitialDocument: boolean;
+  } | null;
+}
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
 interface nsIFile {
@@ -306,3 +351,86 @@ interface XPCComponentsUtils {
     enforceFilenameRestrictions?: boolean,
   ): unknown;
 }
+
+// engine/browser/components/urlbar/content/UrlbarInputBase.mjs (UrlbarInput extends it) and
+// content/UrlbarView.mjs: the address bar's members the tests use past those types/firefox.d.ts
+// gives the product (harness.d.ts adds them to the test window's gURLBar).
+interface UrlbarInputTestMembers {
+  /** The field's text; setting it sets the text the address bar shows. */
+  value: string;
+  /** The <input> the address bar edits. */
+  readonly inputField: HTMLInputElement;
+  /** The field's text before trimming: the full address of a page. */
+  readonly untrimmedValue: string;
+  handleRevert(): void;
+  readonly view: {
+    /** The selected row's result: a search suggestion's payload has its text. */
+    readonly selectedResult: { readonly payload: { readonly suggestion?: string } } | null;
+    readonly selectedElement: Element | null;
+  };
+}
+
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl; Services.prompt is its service
+// (engine/toolkit/components/prompts/src/components.conf, js_name "prompt").
+interface nsIPromptService {
+  /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
+  confirm(parent: Window | null, title: string, text: string): boolean;
+}
+interface FirefoxServices {
+  prompt: nsIPromptService;
+}
+
+// engine/toolkit/content/widgets/dialog.js (MozDialog): a chrome dialog's XUL <dialog>, whose
+// buttons are XUL buttons (engine/toolkit/content/widgets/button.js, MozButtonBase `disabled`).
+interface MozDialogElement extends Element {
+  getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
+    disabled: boolean;
+  };
+}
+
+// engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
+interface MozRadiogroupElement extends Element {
+  selectedItem: Element | null;
+}
+
+// engine/toolkit/modules/SubDialog.sys.mjs: a sub-dialog, as its "dialogopen" event's
+// `detail.dialog` gives it; the tests read two of its own fields.
+interface SubDialog {
+  /** The URL it opened, null once it closes. */
+  readonly _openedURL: string | null;
+  /** Its frame: a <browser class="dialogFrame"> in the parent process. */
+  readonly _frame: MozBrowser;
+}
+
+// engine/dom/webidl/Window.webidl (chrome-only): the window's WindowGlobalChild, which a content
+// task reaches the frame's actors through; null for a window without a global of its own.
+interface Window {
+  readonly windowGlobalChild: WindowGlobalChild | null;
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl
+interface WindowGlobalChild {
+  getActor(name: string): JSWindowActorChild;
+}
+
+// engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
+interface Document {
+  createXULElement(localName: string, options?: ElementCreationOptions | string): Element;
+}
+
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
+// command on doCommand.
+interface XULElement extends Element {
+  hidden: boolean;
+  doCommand(): void;
+}
+// engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
+// shows the requested tab once its layers are ready.
+interface AsyncTabSwitcher {
+  /** The tab whose layers it waits for, null while it waits for none. */
+  readonly loadingTab: MozTabbrowserTab | null;
+  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
+  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
+}
+// engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
+// (MozXULElement).
+interface MozTabSplitViewWrapper extends XULElement {}

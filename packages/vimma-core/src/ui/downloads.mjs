@@ -544,7 +544,10 @@ export function downloadSummary(records) {
 /**
  * The segment: its text, its accessible text (never only the arrow, m7-a11y) and whether it is a
  * problem (error colour, outlasts the title).
- * @typedef {{ text: string, label: string, problem: boolean }} DownloadSegment
+ * `kind`: which of the segments it is, one of the control protocol's DOWNLOAD_SEGMENTS, which
+ * the control socket's `state.downloads` reports as drawn (#1006) in place of the text.
+ * @typedef {{ text: string, label: string, problem: boolean,
+ *   kind: "progress" | "paused" | "done" | "failed" | "blocked" }} DownloadSegment
  */
 
 /**
@@ -563,24 +566,30 @@ export function downloadSegment(summary, end, now) {
         text: "↓ paused",
         label: count === 1 ? "download paused" : `${count} downloads paused`,
         problem: false,
+        kind: "paused",
       };
     }
     if (count === 1) {
       return p === null
-        ? { text: "↓ 1", label: "1 download", problem: false }
-        : { text: `↓ ${p}%`, label: `downloading ${p}%`, problem: false };
+        ? { text: "↓ 1", label: "1 download", problem: false, kind: "progress" }
+        : { text: `↓ ${p}%`, label: `downloading ${p}%`, problem: false, kind: "progress" };
     }
     return p === null
-      ? { text: `↓ ${count}`, label: `${count} downloads`, problem: false }
-      : { text: `↓ ${count} · ${p}%`, label: `${count} downloads, ${p}%`, problem: false };
+      ? { text: `↓ ${count}`, label: `${count} downloads`, problem: false, kind: "progress" }
+      : {
+          text: `↓ ${count} · ${p}%`,
+          label: `${count} downloads, ${p}%`,
+          problem: false,
+          kind: "progress",
+        };
   }
   if (!end) return null;
   if (end.state === "done") {
     return now - end.at < DONE_MS
-      ? { text: "↓ done", label: "download finished", problem: false }
+      ? { text: "↓ done", label: "download finished", problem: false, kind: "done" }
       : null;
   }
-  return { text: `↓ ${end.state}`, label: `download ${end.state}`, problem: true };
+  return { text: `↓ ${end.state}`, label: `download ${end.state}`, problem: true, kind: end.state };
 }
 
 /** @param {number} state @returns {DownloadEndState | null} */

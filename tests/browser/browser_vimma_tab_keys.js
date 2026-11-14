@@ -20,13 +20,18 @@ const PAGE = "https://example.com/";
 
 /** Every tab this file opened is closed again, even when a task fails half-way. */
 registerCleanupFunction(() => {
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 // Page keys: recordPageKeys and focusContent are awaited before any key is pressed (head.js,
 // issues #14, #18).
 
-/** Selects `tab`; BrowserTestUtils.switchTab never resolves for the tab already selected. */
+/**
+ * Selects `tab`; BrowserTestUtils.switchTab never resolves for the tab already selected.
+ * @param {MozTabbrowserTab} tab
+ */
 async function select(tab) {
   if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
 }
@@ -34,12 +39,13 @@ async function select(tab) {
 /**
  * The next TabOpen. Not BrowserTestUtils.waitForNewTab: it waits for a location other than
  * about:blank, which is what the new-tab page is under the test harness's prefs.
+ * @returns {Promise<MozTabbrowserTab | null>} the tab (a TabOpen's target), or null after 5 s
  */
 function tabOpened() {
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
   // Bounded, so a key that opens nothing fails an assertion instead of timing out the file.
   return Promise.race([
-    opened.then((e) => e.target),
+    opened.then((e) => /** @type {MozTabbrowserTab} */ (e.target)),
     new Promise((resolve) => setTimeout(() => resolve(null), 5000)),
   ]);
 }
@@ -48,6 +54,7 @@ function tabOpened() {
  * Selects `tab`, presses z (unbound, so never ours outside help; not j, which scrolls in normal
  * mode) in its page and returns every key the page saw, ending with "z". Content events arrive
  * in order, so a leaked chord key would be listed before the z.
+ * @param {MozTabbrowserTab} tab
  */
 async function pageKeysThenZ(tab) {
   await select(tab);
@@ -58,7 +65,10 @@ async function pageKeysThenZ(tab) {
   return pageKeys(browser);
 }
 
-/** Opens `n` example.com tabs, each recording its keys, and selects the first of them. */
+/**
+ * Opens `n` example.com tabs, each recording its keys, and selects the first of them.
+ * @param {number} n
+ */
 async function openTabs(n) {
   const tabs = [];
   for (let i = 0; i < n; i++) {
@@ -71,11 +81,15 @@ async function openTabs(n) {
   return tabs;
 }
 
-function closeTabs(tabs) {
+function closeTabs(/** @type {MozTabbrowserTab[]} */ tabs) {
   for (const tab of tabs) if (!tab.closing && tab.isConnected) BrowserTestUtils.removeTab(tab);
 }
 
-/** ctrl+b, then `key` with `mods`. */
+/**
+ * ctrl+b, then `key` with `mods`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -85,8 +99,9 @@ function visibleIndex(tab = gBrowser.selectedTab) {
   return gBrowser.visibleTabs.indexOf(tab);
 }
 
+/** The status bar's notice, which Vimma's chrome always has. */
 function notice() {
-  return document.getElementById(NOTICE_ID);
+  return /** @type {HTMLElement} */ (document.getElementById(NOTICE_ID));
 }
 
 function noticeShown() {
@@ -117,7 +132,7 @@ add_task(async function prefix_n_and_p_cycle_through_visible_tabs_and_wrap() {
   prefix("p");
   Assert.equal(visibleIndex(), start, "ctrl+b p selects the previous tab");
 
-  await select(gBrowser.visibleTabs.at(-1));
+  await select(/** @type {MozTabbrowserTab} */ (gBrowser.visibleTabs.at(-1)));
   prefix("n");
   Assert.equal(visibleIndex(), 0, "ctrl+b n on the last tab wraps to the first");
   prefix("p");
@@ -221,7 +236,7 @@ add_task(async function unimplemented_prefix_action_shows_a_notice_that_hides() 
   Assert.ok(noticeShown(), "ctrl+b o shows a notice");
   Assert.equal(notice().textContent, UNBUILT, "naming the action");
   // Through the notice's polite live region; the toast itself is aria-hidden (spec m7-a11y).
-  const live = document.getElementById("vimma-notice-live");
+  const live = /** @type {HTMLElement} */ (document.getElementById("vimma-notice-live"));
   Assert.equal(live?.getAttribute("role"), "status", "announced politely");
   await TestUtils.waitForCondition(() => live.textContent === UNBUILT, "the region says it");
   Assert.equal(document.activeElement, tabs[0].linkedBrowser, "the notice takes no focus");
@@ -272,7 +287,11 @@ add_task(async function no_notice_over_dom_fullscreen() {
   closeTabs(tabs);
 });
 
-/** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/**
+ * Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered.
+ * @param {MozTabBrowser} browser
+ * @param {string} url
+ */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -308,13 +327,17 @@ add_task(async function tab_keys_work_from_the_pdf_viewer() {
 add_task(async function pinned_tabs_count_first_and_are_not_closed() {
   const tabs = await openTabs(3);
   // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
-  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = false;
   gBrowser.pinTab(tabs[2]);
   Assert.equal(gBrowser.visibleTabs[0], tabs[2], "sanity: a pinned tab moves to the front");
   prefix("1");
   Assert.equal(gBrowser.selectedTab, tabs[2], "ctrl+b 1 selects the pinned tab");
   prefix("p");
-  Assert.equal(gBrowser.selectedTab, gBrowser.visibleTabs.at(-1), "ctrl+b p wraps to the last");
+  Assert.equal(
+    gBrowser.selectedTab,
+    /** @type {MozTabbrowserTab} */ (gBrowser.visibleTabs.at(-1)),
+    "ctrl+b p wraps to the last",
+  );
   prefix("n");
   Assert.equal(gBrowser.selectedTab, tabs[2], "ctrl+b n wraps back to the pinned tab");
 
@@ -333,7 +356,7 @@ add_task(async function pinned_tabs_count_first_and_are_not_closed() {
   Assert.equal(gBrowser.tabs.length, count, "x on a pinned tab closes nothing either");
   Assert.equal(gBrowser.selectedTab, gBrowser.tabs[gBrowser.pinnedTabCount], "it moves on");
   gBrowser.unpinTab(tabs[2]);
-  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = true;
   closeTabs(tabs);
 });
 
@@ -350,7 +373,7 @@ add_task(async function normal_mode_t_x_gt_gT() {
   // The new tab's URL bar has focus (insert): go back to a page in normal mode for bare keys.
   await select(tabs[1]);
   await focusContent(tabs[1].linkedBrowser);
-  const last = gBrowser.visibleTabs.at(-1);
+  const last = /** @type {MozTabbrowserTab} */ (gBrowser.visibleTabs.at(-1));
   Assert.equal(last, tab, "sanity: the new tab is last");
   EventUtils.synthesizeKey("g");
   EventUtils.synthesizeKey("t");

@@ -72,7 +72,7 @@ function catchKey(id) {
   const key = document.getElementById(id);
   Assert.ok(key, `#${id} exists`);
   const spy = { count: 0 };
-  const listener = (e) => {
+  const listener = (/** @type {Event} */ e) => {
     spy.count++;
     e.stopImmediatePropagation();
   };
@@ -84,7 +84,7 @@ function catchKey(id) {
 /** @param {XULBrowserElement} browser */
 const zoomOf = (browser) => ZoomManager.getZoomForBrowser(browser);
 
-/** @param {XULBrowserElement} browser */
+/** @param {MozTabBrowser} browser */
 const urlOf = (browser) => browser.currentURI.spec;
 
 add_task(async function setup() {
@@ -97,7 +97,9 @@ add_task(async function setup() {
     ],
   });
   registerCleanupFunction(() => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
   });
 });
 
@@ -176,15 +178,15 @@ add_task(async function on_macos_cmd_left_in_a_field_moves_to_the_line_start_and
       doc.getElementById("vimma-field")?.remove();
       const el = doc.createElement(k === "input" ? "input" : "div");
       el.id = "vimma-field";
-      if (k === "input") el.value = "hello world";
+      if (k === "input") /** @type {HTMLInputElement} */ (el).value = "hello world";
       else {
         el.contentEditable = "true";
         el.textContent = "hello world";
       }
       doc.body.append(el);
       el.focus();
-      if (k === "input") el.setSelectionRange(11, 11);
-      else content.getSelection().collapse(el.firstChild, 11);
+      if (k === "input") /** @type {HTMLInputElement} */ (el).setSelectionRange(11, 11);
+      else /** @type {Selection} */ (content.getSelection()).collapse(el.firstChild, 11);
     });
     await TestUtils.waitForCondition(
       () => VimmaHost._browserMode(browser) === "insert",
@@ -194,7 +196,9 @@ add_task(async function on_macos_cmd_left_in_a_field_moves_to_the_line_start_and
     const caret = () =>
       SpecialPowers.spawn(browser, [kind], (k) => {
         const el = content.document.getElementById("vimma-field");
-        return k === "input" ? el.selectionStart : content.getSelection().focusOffset;
+        return k === "input"
+          ? /** @type {HTMLInputElement} */ (el).selectionStart
+          : /** @type {Selection} */ (content.getSelection()).focusOffset;
       });
     await TestUtils.waitForCondition(async () => (await caret()) === 0, `${kind}: line start`);
     await new Promise((r) => setTimeout(r, 300));
@@ -238,7 +242,12 @@ add_task(async function a_reply_answers_its_own_press_not_one_the_page_took_earl
   await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "insert");
   EventUtils.synthesizeKey("KEY_ArrowLeft", NAV);
   const caret = () =>
-    SpecialPowers.spawn(browser, [], () => content.document.querySelector("input").selectionStart);
+    SpecialPowers.spawn(
+      browser,
+      [],
+      () =>
+        /** @type {HTMLInputElement} */ (content.document.querySelector("input")).selectionStart,
+    );
   await TestUtils.waitForCondition(async () => (await caret()) === 0, "the field: line start");
   await new Promise((r) => setTimeout(r, 300));
   Assert.equal(urlOf(browser), second, "cmd+left in the field did not go back");
@@ -247,10 +256,10 @@ add_task(async function a_reply_answers_its_own_press_not_one_the_page_took_earl
 
 add_task(async function the_address_bar_keys_focus_it() {
   // Firefox's second address bar key: alt+d on Linux, cmd+l on macOS (no alt+d there).
-  for (const [key, mods, name] of [
+  for (const [key, mods, name] of /** @type {[string, KeyEventOptions, string][]} */ ([
     ["l", { ctrlKey: true }, "ctrl+l"],
     MAC ? ["l", { metaKey: true }, "cmd+l"] : ["d", { altKey: true }, "alt+d"],
-  ]) {
+  ])) {
     const tab = await normalPage();
     EventUtils.synthesizeKey(key, mods);
     await TestUtils.waitForCondition(() => gURLBar.focused, `${name} focuses the address bar`);
@@ -289,6 +298,7 @@ add_task(async function ctrl_bracket_goes_back_in_normal_mode_only() {
 
 add_task(async function the_tab_keys_count_the_visible_tabs() {
   const first = gBrowser.selectedTab;
+  /** @type {MozTabbrowserTab[]} */
   const tabs = [];
   for (let i = 0; i < 3; i++) {
     tabs.push(await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN + `?tab${i}`));
@@ -357,7 +367,7 @@ add_task(async function zoom_keys_zoom_and_a_page_that_takes_one_keeps_it() {
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
   EventUtils.synthesizeKey("t", { ctrlKey: true });
   const { target: fresh } = await opened;
-  BrowserTestUtils.removeTab(fresh);
+  BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (fresh));
   BrowserTestUtils.removeTab(tab);
 });
 
@@ -418,7 +428,11 @@ add_task(async function redo_in_a_field_redoes_and_opens_no_debugger() {
   const debuggerKey = catchKey("key_jsdebugger");
   EventUtils.sendString("ab");
   const value = () =>
-    SpecialPowers.spawn(browser, [], () => content.document.getElementById("redo").value);
+    SpecialPowers.spawn(
+      browser,
+      [],
+      () => /** @type {HTMLInputElement} */ (content.document.getElementById("redo")).value,
+    );
   await TestUtils.waitForCondition(async () => (await value()) === "ab", "typed");
   // Undo and redo are ctrl+z and ctrl+shift+z on Linux, where ctrl+shift+z is also the
   // Debugger's key, and cmd+z and cmd+shift+z on macOS.
@@ -441,7 +455,7 @@ add_task(async function keys_without_a_command_run_their_own_listener() {
   EventUtils.synthesizeKey("KEY_Home", { altKey: true });
   await TestUtils.waitForCondition(() => home.count === 1, "alt+home reached goHome");
   Assert.equal(
-    document.getElementById("key_toggleToolbox").getAttribute("disabled"),
+    /** @type {Element} */ (document.getElementById("key_toggleToolbox")).getAttribute("disabled"),
     "true",
     "the key is off again after its one dispatch",
   );
@@ -450,8 +464,8 @@ add_task(async function keys_without_a_command_run_their_own_listener() {
 
 add_task(async function ctrl_q_asks_as_firefoxs_quit_shortcut() {
   const tab = await normalPage();
-  let source = null;
-  const observer = (subject) => {
+  let source = /** @type {string | null} */ (null);
+  const observer = (/** @type {nsISupports} */ subject) => {
     source = Cc["@mozilla.org/browser/browserglue;1"].getService(Ci.nsISupports).wrappedJSObject
       ._quitSource;
     subject.QueryInterface(Ci.nsISupportsPRBool).data = true; // cancel
@@ -479,7 +493,7 @@ add_task(async function ctrl_b_shift_c_opens_a_window_and_ctrl_n_does_not() {
   try {
     EventUtils.synthesizeKey("n", { ctrlKey: true });
     Assert.ok(await waitForPageKey(browser, ["n"]), "the page gets ctrl+n, not prevented");
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
     Assert.equal(windows, 0, "ctrl+n opens no window");
   } finally {
     Services.ww.unregisterNotification(observer);
@@ -516,7 +530,8 @@ add_task(async function esc_in_normal_mode_stops_a_load_after_the_page() {
   );
   await SimpleTest.promiseFocus(browser);
   await TestUtils.waitForCondition(
-    () => !document.getElementById("Browser:Stop").hasAttribute("disabled"),
+    () =>
+      !(/** @type {Element} */ (document.getElementById("Browser:Stop")).hasAttribute("disabled")),
     "Stop is on",
   );
   Assert.equal(browser.currentURI.spec, SLOW, "the slow page is shown");

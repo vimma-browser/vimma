@@ -14,6 +14,7 @@ import {
   UPDATE_OUTCOMES,
   UPDATE_STAGES,
   CHAT_VIEWS,
+  DOWNLOAD_SEGMENTS,
   controlUpdateState,
 } from "../src/control/control.mjs";
 
@@ -410,10 +411,12 @@ describe("validateMessage: state", () => {
     // The status bar's agent segment: `◇ agent`, `◇ agent 2?`, `◇ agent ·` (vimma-mcp 24).
     expect(errorsOf(ok({ ...state, agent: null }), { command: "state" })).toEqual([]);
     expect(
-      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false } }), { command: "state" }),
+      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false, armed: false } }), {
+        command: "state",
+      }),
     ).toEqual([]);
     expect(
-      errorsOf(ok({ ...state, agent: { waiting: "1?", ran: 1, conn: "claude" } }), {
+      errorsOf(ok({ ...state, agent: { waiting: "1?", ran: 1, armed: true, conn: "claude" } }), {
         command: "state",
       }),
     ).toEqual([
@@ -434,6 +437,39 @@ describe("validateMessage: state", () => {
     );
     expect(errorsOf(ok({ ...hidden, chat }), { command: "state" })).toEqual([
       "result.chat must be null in a private window",
+    ]);
+  });
+
+  // #1006: the agent question line's armed hint and the status bar's `↓` segment, as a flag and
+  // a word from a closed list, so a script waits for them rather than for a time; never the
+  // question, a file's name or its site (security.md S9).
+  test("agent.armed is a flag, and downloads a word from a closed list or null", () => {
+    const agent = (/** @type {unknown} */ armed) => ({ waiting: 1, ran: false, armed });
+    expect(errorsOf(ok({ ...state, agent: agent(true) }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...state, agent: agent("y allow") }), { command: "state" })).toEqual([
+      "result.agent.armed must be a boolean",
+    ]);
+    expect(
+      errorsOf(ok({ ...state, agent: { waiting: 1, ran: false } }), { command: "state" }),
+    ).toEqual(["result.agent.armed must be a boolean"]);
+
+    expect(DOWNLOAD_SEGMENTS).toEqual(["progress", "paused", "done", "failed", "blocked"]);
+    for (const downloads of [null, ...DOWNLOAD_SEGMENTS]) {
+      expect(errorsOf(ok({ ...state, downloads }), { command: "state" })).toEqual([]);
+    }
+    const word = `result.downloads must be null or one of ${DOWNLOAD_SEGMENTS.join(", ")}`;
+    for (const downloads of ["↓ done", "report.pdf", 1, true, { state: "done" }, []]) {
+      expect(errorsOf(ok({ ...state, downloads }), { command: "state" })).toEqual([word]);
+    }
+    // A private window's downloads are part of its browsing: withheld, as its URLs and titles.
+    const hidden = {
+      ...state,
+      private: true,
+      tabs: [{ id: "1", url: null, title: null, selected: true }],
+    };
+    expect(errorsOf(ok({ ...hidden, downloads: null }), { command: "state" })).toEqual([]);
+    expect(errorsOf(ok({ ...hidden, downloads: "done" }), { command: "state" })).toEqual([
+      "result.downloads must be null in a private window",
     ]);
   });
 

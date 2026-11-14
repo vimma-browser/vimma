@@ -32,6 +32,12 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
+const { VimmaControl } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
+);
+const { validateMessage } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/core/index.mjs",
+);
 
 const HIDDEN = "vimma-toolbar-hidden";
 const DIR = getRootDirectory(gTestPath).replace(
@@ -286,6 +292,79 @@ add_task(async function test_a_private_window_counts_only_its_private_downloads(
 
   await release();
   await Promise.all([done, normal.done]);
+  await BrowserTestUtils.closeWindow(priv);
+  await clean();
+});
+
+// #1006: the control socket's `state.downloads` says which segment the focused window draws,
+// as a word from a closed list, so that a script waits for `↓ done` rather than for a time;
+// never a file's name, size or site, and `null` in a private window (security.md S9).
+add_task(async function test_state_reports_the_segment_as_drawn() {
+  const state = () => {
+    const result = VimmaControl._commands.state();
+    const v = validateMessage(
+      { type: "response", id: 1, ok: true, result },
+      { kind: "response", command: "state" },
+    );
+    Assert.ok(v.valid, `the state follows the protocol: ${v.errors.join("; ")}`);
+    return result;
+  };
+  // The picker clears the last end, which an earlier task's `↓ done` may still show.
+  await clean();
+  await openPicker();
+  await closePicker();
+  await until(() => segment() === null, "no segment");
+  Assert.strictEqual(state().downloads, null, "none drawn: null");
+
+  const one = await held("state.bin");
+  await until(() => shown() === "↓ 50%", "one download at half way");
+  Assert.equal(state().downloads, "progress", "in progress, never its percentage");
+  await release();
+  await one.done;
+  await until(() => shown() === "↓ done", "then done");
+  Assert.equal(state().downloads, "done", "done, as drawn");
+
+  const list = await Downloads.getList(Downloads.PUBLIC);
+  const bad = await Downloads.createDownload({
+    source: `${SJS}?short&run=${RUN}&name=state-short.bin`,
+    target: PathUtils.join(saveDir, "state-short.bin"),
+  });
+  await list.add(bad);
+  await bad.start().catch(() => {});
+  await until(() => shown() === "↓ failed", "a failed download");
+  Assert.equal(state().downloads, "failed", "failed, as drawn");
+  await openPicker();
+  await closePicker();
+  await until(() => segment() === null, "the picker has shown it: the segment goes");
+  Assert.strictEqual(state().downloads, null, "and null again");
+
+  // A private window draws its own downloads; the socket never hears of them.
+  const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
+  const privList = await Downloads.getList(Downloads.PRIVATE);
+  const download = await Downloads.createDownload({
+    source: { url: `${SJS}?hold&name=state-private.bin`, isPrivate: true },
+    target: PathUtils.join(saveDir, "state-private.bin"),
+  });
+  await privList.add(download);
+  const done = download.start();
+  await until(
+    () =>
+      priv.document.querySelector('#vimma-statusbar [data-segment="downloads"] [aria-hidden]')
+        ?.textContent === "↓ 50%",
+    "the private window draws its download",
+  );
+  const hidden = state();
+  Assert.strictEqual(hidden.private, true, "sanity: state reads the private window");
+  Assert.strictEqual(hidden.downloads, null, "a private window's downloads stay out of state");
+  // Back in the normal window, with the private download still running: state reports what
+  // this window draws, never the private window's progress.
+  await SimpleTest.promiseFocus(window);
+  await until(() => !state().private, "state reads the normal window again");
+  Assert.notEqual(state().downloads, "progress", "the private download is not counted here");
+  Assert.strictEqual(state().downloads, null, "this window draws no segment");
+  Assert.strictEqual(segment(), null, "sanity: nor does its status bar");
+  await release();
+  await done;
   await BrowserTestUtils.closeWindow(priv);
   await clean();
 });

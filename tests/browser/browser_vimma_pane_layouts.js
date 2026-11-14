@@ -43,36 +43,69 @@ const created = [];
 /** @type {Window[]} */
 const windows = [];
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
 
+/** @param {Window} [win] */
 function nextFrame(win = window) {
-  return new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(r)));
+  return new Promise((r) =>
+    win.requestAnimationFrame(() => win.requestAnimationFrame(() => r(undefined))),
+  );
 }
 
+/**
+ * The window's split view, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} [win]
+ */
 function view(win = window) {
-  return PaneViews.get(win);
+  return /** @type {PaneView} */ (PaneViews.get(win));
 }
 
-/** ctrl+b, then `key` (a KEY_ name or a character). */
+/**
+ * The window's panes, which a test reads while they are split.
+ * @param {BrowserWindow} [win]
+ */
+function panes(win = window) {
+  return /** @type {Panes} */ (view(win).panes);
+}
+
+/**
+ * ctrl+b, then `key` (a KEY_ name or a character).
+ * @param {string} key
+ * @param {Window} [win]
+ */
 function prefix(key, win = window) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, {}, win);
 }
 
+/** @param {Window} [win] */
 function notice(win = window) {
   const n = win.document.getElementById(NOTICE_ID);
   return n && n.matches(":popover-open") ? n.textContent : null;
 }
 
+/**
+ * The tab of a pane's panel: every pane shows a tab of the window.
+ * @param {string} panel
+ * @param {BrowserWindow} [win]
+ */
 function tabOf(panel, win = window) {
-  return win.gBrowser.tabs.find((t) => t.linkedPanel === panel);
+  return /** @type {SplitTab} */ (win.gBrowser.tabs.find((t) => t.linkedPanel === panel));
 }
 
-/** Test names of tabs: set for new panes; an example.com page is named by its query. */
+/**
+ * Test names of tabs: set for new panes; an example.com page is named by its query.
+ * @type {WeakMap<MozTabbrowserTab, string>}
+ */
 const names = new WeakMap();
 
+/** @param {MozTabbrowserTab} tab */
 function nameOf(tab) {
   if (names.has(tab)) return names.get(tab);
   // A restored tab may not have loaded yet (about:blank): its session entry has the URL.
@@ -81,41 +114,68 @@ function nameOf(tab) {
   return url.startsWith(`${PAGE}?`) ? url.slice(PAGE.length + 1).replace(/2$/, "") : url;
 }
 
-/** The window's tree with each leaf named by its tab: `x[a,y[b,c]]`; one pane: "". */
+/**
+ * The window's tree with each leaf named by its tab: `x[a,y[b,c]]`; one pane: "".
+ * @param {BrowserWindow} [win]
+ */
 function shape(win = window) {
   const p = view(win).panes;
+  /** @type {(n: Panes["root"]) => string} */
   const walk = (n) =>
     n.type === "leaf" ? nameOf(tabOf(n.tab, win)) : `${n.axis}[${n.children.map(walk).join(",")}]`;
   return p ? walk(p.root) : "";
 }
 
+/** @param {BrowserWindow} [win] */
 function focusedLabel(win = window) {
-  const p = view(win).panes;
-  return nameOf(tabOf(Panes.leaves(p).find((l) => l.pane === p.focus).tab, win));
+  const p = panes(win);
+  // The focused pane is one of the tree's leaves.
+  const leaf = /** @type {{ tab: string }} */ (Panes.leaves(p).find((l) => l.pane === p.focus));
+  return nameOf(tabOf(leaf.tab, win));
 }
 
+/** @param {Window} [win] */
 function tabpanels(win = window) {
-  return win.document.getElementById("tabbrowser-tabpanels");
+  return /** @type {Element} */ (win.document.getElementById("tabbrowser-tabpanels"));
 }
 
+/** @param {Window} [win] */
 function area(win = window) {
   const r = tabpanels(win).getBoundingClientRect();
   return { x: 0, y: 0, width: Math.round(r.width), height: Math.round(r.height) };
 }
 
+/** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
+
+/**
+ * @param {Element} el
+ * @param {Window} [win]
+ * @returns {Rect}
+ */
 function relRect(el, win = window) {
   const o = tabpanels(win).getBoundingClientRect();
   const r = el.getBoundingClientRect();
   return { x: r.x - o.x, y: r.y - o.y, width: r.width, height: r.height };
 }
 
+/**
+ * @param {Rect} a
+ * @param {Rect} b
+ */
 function maxDelta(a, b) {
-  return Math.max(...["x", "y", "width", "height"].map((k) => Math.abs(a[k] - b[k])));
+  return Math.max(
+    .../** @type {(keyof Rect)[]} */ (["x", "y", "width", "height"]).map((k) =>
+      Math.abs(a[k] - b[k]),
+    ),
+  );
 }
 
 /**
  * Core's rect less half the pane gap on each interior edge, as split.css draws it (the gap goes
  * on interior edges only, half from each side; m4-split-panes sub-spec 2).
+ * @param {Rect} rect
+ * @param {Rect} a
+ * @param {Window} win
  */
 function drawn(rect, a, win) {
   const gap = parseFloat(win.getComputedStyle(tabpanels(win)).getPropertyValue("--vimma-pane-gap"));
@@ -132,14 +192,18 @@ function drawn(rect, a, win) {
   };
 }
 
-/** Every pane's panel and browser sit at core layout()'s rect for the tree, within ±1 px. */
+/**
+ * Every pane's panel and browser sit at core layout()'s rect for the tree, within ±1 px.
+ * @param {string} what
+ * @param {BrowserWindow} [win]
+ */
 async function assertRects(what, win = window) {
   await nextFrame(win);
-  const p = view(win).panes;
+  const p = panes(win);
   const a = area(win);
   for (const r of Panes.layout(p, a)) {
     const tab = tabOf(r.tab, win);
-    const panel = win.document.getElementById(tab.linkedPanel);
+    const panel = /** @type {Element} */ (win.document.getElementById(tab.linkedPanel));
     const want = drawn(r.rect, a, win);
     const dp = maxDelta(relRect(panel, win), want);
     const db = maxDelta(relRect(tab.linkedBrowser, win), want);
@@ -149,6 +213,7 @@ async function assertRects(what, win = window) {
   }
 }
 
+/** @param {Window} [win] */
 async function setWindowSize(win = window) {
   if (win.outerWidth !== WIDTH || win.outerHeight !== HEIGHT) {
     const resized = BrowserTestUtils.waitForEvent(win, "resize");
@@ -161,7 +226,10 @@ async function setWindowSize(win = window) {
   );
 }
 
-/** The window is wider than tall, and half of it taller than wide: dwindle's spiral below. */
+/**
+ * The window is wider than tall, and half of it taller than wide: dwindle's spiral below.
+ * @param {Window} [win]
+ */
 function assertSpiralArea(win = window) {
   const a = area(win);
   Assert.ok(a.width >= a.height && a.width / 2 < a.height, `content area ${a.width}×${a.height}`);
@@ -169,7 +237,9 @@ function assertSpiralArea(win = window) {
 
 /**
  * A page at ?<name>2 with two history entries and a marker in its window, named `name`.
- * @returns {Promise<Element>}
+ * @param {string} name
+ * @param {BrowserWindow} [win]
+ * @returns {Promise<SplitTab>} a loaded tab, which has its panel
  */
 async function page(name, win = window) {
   const tab = BrowserTestUtils.addTab(win.gBrowser, `${PAGE}?${name}`);
@@ -180,10 +250,13 @@ async function page(name, win = window) {
     content.wrappedJSObject.vimmaMarker = n;
   });
   names.set(tab, name);
-  return tab;
+  return /** @type {SplitTab} */ (tab);
 }
 
-/** What a reload or a recreated page would change, per tab. */
+/**
+ * What a reload or a recreated page would change, per tab.
+ * @param {MozTabbrowserTab[]} tabs
+ */
 function identity(tabs) {
   return tabs.map((t) => {
     const b = t.linkedBrowser;
@@ -197,7 +270,12 @@ function identity(tabs) {
   });
 }
 
-/** No page was reloaded or recreated: same browser, window ids, history and marker. */
+/**
+ * No page was reloaded or recreated: same browser, window ids, history and marker.
+ * @param {MozTabbrowserTab[]} tabs
+ * @param {ReturnType<typeof identity>} before
+ * @param {string} what
+ */
 async function assertNotReloaded(tabs, before, what) {
   const now = identity(tabs);
   for (const [i, tab] of tabs.entries()) {
@@ -217,15 +295,21 @@ async function assertNotReloaded(tabs, before, what) {
   }
 }
 
-/** ctrl+b space, and the preset it shows. */
+/**
+ * ctrl+b space, and the preset it shows.
+ * @param {string} want
+ * @param {BrowserWindow} [win]
+ */
 async function nextLayout(want, win = window) {
   prefix(" ", win);
   await until(() => notice(win) === `layout: ${want}`, `the notice says layout: ${want}`);
-  Assert.equal(view(win).panes.layout, want, `the tree remembers ${want}`);
+  Assert.equal(panes(win).layout, want, `the tree remembers ${want}`);
 }
 
+/** @type {MozTabbrowserTab[]} */
 const opened = [];
 
+/** @param {BrowserWindow} [win] */
 async function reset(win = window) {
   while (view(win).panes) view(win).close();
   for (const tab of opened.splice(0)) if (!tab.closing && tab.parentNode) gBrowser.removeTab(tab);
@@ -235,7 +319,7 @@ async function reset(win = window) {
   await nextFrame(win);
 }
 
-const startSize = [window.outerWidth, window.outerHeight];
+const startSize = /** @type {[number, number]} */ ([window.outerWidth, window.outerHeight]);
 registerCleanupFunction(async () => {
   await reset();
   window.resizeTo(...startSize);
@@ -250,7 +334,7 @@ async function newPane() {
   const before = gBrowser.selectedTab;
   prefix("KEY_Enter");
   await until(() => gBrowser.selectedTab !== before, "a new pane is focused");
-  const tab = gBrowser.selectedTab;
+  const tab = /** @type {SplitTab} */ (gBrowser.selectedTab);
   opened.push(tab);
   await until(
     () =>
@@ -282,7 +366,8 @@ add_task(async function ctrl_b_enter_splits_along_the_longer_side_up_to_the_max(
   names.set(d, "d");
   Assert.equal(shape(), "x[a,y[b,x[c,d]]]", "3 → 4: the wide quarter splits side by side");
   await assertRects("dwindle at 4");
-  const rect = (t) => relRect(document.getElementById(t.linkedPanel));
+  const rect = (/** @type {SplitTab} */ t) =>
+    relRect(/** @type {Element} */ (document.getElementById(t.linkedPanel)));
   Assert.ok(rect(b).x > rect(a).x && rect(b).y < rect(c).y, "b is above c, right of a");
   Assert.ok(rect(c).x < rect(d).x && Math.abs(rect(c).y - rect(d).y) <= 1, "c | d side by side");
 
@@ -307,27 +392,41 @@ add_task(async function manual_mode_makes_ctrl_b_enter_split_right() {
   await reset();
 });
 
-/** Three or four live example.com pages in panes, built with view.split; focus on the last. */
+/**
+ * Three or four live example.com pages in panes, built with view.split; focus on the last.
+ * @param {string[]} names
+ */
 async function panesOf(names) {
+  /** @type {SplitTab[]} */
   const tabs = [];
   for (const n of names) tabs.push(await page(n));
   opened.push(...tabs);
   await BrowserTestUtils.switchTab(gBrowser, tabs[0]);
   for (const t of tabs.slice(1)) Assert.ok(view().split("vertical", { tab: t }).ok, nameOf(t));
-  await focusContent(tabs.at(-1).linkedBrowser);
+  await focusContent(last(tabs).linkedBrowser);
   return tabs;
 }
 
-/** Cycles all six presets with ctrl+b space from even-horizontal, checking each. */
+/**
+ * The last of the tabs a test opened (it opens at least one).
+ * @param {SplitTab[]} tabs
+ */
+const last = (tabs) => /** @type {SplitTab} */ (tabs.at(-1));
+
+/**
+ * Cycles all six presets with ctrl+b space from even-horizontal, checking each.
+ * @param {SplitTab[]} tabs
+ * @param {[string, string][]} want
+ */
 async function cycle(tabs, want) {
   const before = identity(tabs);
   for (const [name, tree] of want) {
     await nextLayout(name);
     Assert.equal(shape(), tree, `${name}: the tree`);
-    Assert.equal(focusedLabel(), nameOf(tabs.at(-1)), `${name}: focus stays on its pane`);
-    Assert.equal(gBrowser.selectedTab, tabs.at(-1), `${name}: whose tab is selected`);
+    Assert.equal(focusedLabel(), nameOf(last(tabs)), `${name}: focus stays on its pane`);
+    Assert.equal(gBrowser.selectedTab, last(tabs), `${name}: whose tab is selected`);
     await until(
-      () => document.activeElement === tabs.at(-1).linkedBrowser,
+      () => document.activeElement === last(tabs).linkedBrowser,
       `${name}: and its page has keyboard focus`,
     );
     Assert.equal(tabs[0].splitview?.tabs.length, tabs.length, `${name}: one split of all`);
@@ -341,7 +440,7 @@ add_task(async function cycling_every_preset_with_three_panes_moves_pages_withou
   assertSpiralArea();
   const tabs = await panesOf(["a", "b", "c"]);
   view().zoom();
-  Assert.ok(view().panes.zoom, "zoomed before the first preset");
+  Assert.ok(panes().zoom, "zoomed before the first preset");
   await cycle(tabs, [
     ["even-horizontal", "x[a,b,c]"],
     ["even-vertical", "y[a,b,c]"],
@@ -350,7 +449,7 @@ add_task(async function cycling_every_preset_with_three_panes_moves_pages_withou
     ["tiled", "y[x[c,a],b]"],
     ["dwindle", "x[c,y[a,b]]"],
   ]);
-  Assert.equal(view().panes.zoom, null, "a preset ended the zoom");
+  Assert.equal(panes().zoom, null, "a preset ended the zoom");
   await nextLayout("even-horizontal");
   Assert.equal(shape(), "x[c,a,b]", "and the cycle wraps");
   await reset();
@@ -374,7 +473,9 @@ add_task(async function cycling_every_preset_with_four_panes_moves_pages_without
   await nextLayout("main-vertical");
   await nextLayout("main-horizontal");
   await nextLayout("tiled");
-  const r = tabs.map((t) => relRect(document.getElementById(t.linkedPanel)));
+  const r = tabs.map((t) =>
+    relRect(/** @type {Element} */ (document.getElementById(t.linkedPanel))),
+  );
   const [ra, rb, rc, rd] = r;
   Assert.ok(
     Math.abs(rd.y - ra.y) <= 1 && Math.abs(rb.y - rc.y) <= 1 && rb.y > rd.y + 100,
@@ -390,7 +491,8 @@ add_task(async function resize_mode_works_after_a_main_preset() {
   await nextLayout("even-horizontal");
   await nextLayout("even-vertical");
   await nextLayout("main-vertical");
-  const main = () => view().panes.root.ratios[0];
+  // main-vertical's root is a split: the main pane, then the others.
+  const main = () => /** @type {PaneSplit} */ (panes().root).ratios[0];
   Assert.less(Math.abs(main() - 0.6), 1e-9, "the main pane is 60 %");
   prefix("r");
   await until(() => VimmaHost.status(window).mode === "resize", "resize mode");
@@ -398,7 +500,7 @@ add_task(async function resize_mode_works_after_a_main_preset() {
   await until(() => Math.abs(main() - 0.65) < 1e-9, "l widens the main pane to 65 %");
   EventUtils.synthesizeKey("KEY_Escape");
   await assertRects("resized main-vertical");
-  Assert.equal(view().panes.layout, "main-vertical", "the preset name stays for cycling");
+  Assert.equal(panes().layout, "main-vertical", "the preset name stays for cycling");
   Assert.equal(tabs.length, 3);
   await reset();
 });
@@ -406,12 +508,12 @@ add_task(async function resize_mode_works_after_a_main_preset() {
 add_task(async function layout_command_picks_a_preset_by_name() {
   await setWindowSize();
   const tabs = await panesOf(["a", "b", "c", "d"]);
-  await focusContent(tabs.at(-1).linkedBrowser);
+  await focusContent(last(tabs).linkedBrowser);
   await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("layout tiled");
   EventUtils.synthesizeKey("KEY_Enter");
-  await until(() => view().panes.layout === "tiled", ":layout tiled applies it");
+  await until(() => panes().layout === "tiled", ":layout tiled applies it");
   Assert.equal(shape(), "y[x[a,b],x[c,d]]", "a 2×2 grid");
   await assertRects(":layout tiled");
   await reset();
@@ -420,6 +522,7 @@ add_task(async function layout_command_picks_a_preset_by_name() {
 // Per workspace (m4 sub-spec 6's trees): the arrangement and the preset name come back after a
 // switch and after a session restore; ctrl+b space then goes on from the remembered preset.
 
+/** @param {string} name */
 function workspace(name) {
   const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
   created.push(w.id);
@@ -429,20 +532,38 @@ function workspace(name) {
 async function openWindow() {
   const win = await BrowserTestUtils.openNewBrowserWindow();
   windows.push(win);
-  await WindowWorkspaces.get(win).ready;
-  await until(() => !!WindowWorkspaces.get(win).model, "the new window has its workspaces");
+  // VimmaHost starts every new browser window's workspaces.
+  const workspaces = () => /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win));
+  await workspaces().ready;
+  await until(() => !!workspaces().model, "the new window has its workspaces");
   await setWindowSize(win);
   return win;
 }
 
+/**
+ * A browser window's workspaces once they are built, which openWindow waits for.
+ * @param {BrowserWindow} win
+ */
+const live = (win) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+
+/**
+ * @param {BrowserWindow} win
+ * @param {WorkspaceDefinition} ws
+ */
 async function switchTo(win, ws) {
-  WindowWorkspaces.get(win).switchTo({ id: ws.id });
-  await until(() => WindowWorkspaces.get(win).model.active === ws.id, `${ws.name} shows`);
+  live(win).switchTo({ id: ws.id });
+  await until(() => live(win).model.active === ws.id, `${ws.name} shows`);
 }
 
-/** A: a | b | c arranged main-horizontal with ctrl+b space; B: one pane. */
+/**
+ * A: a | b | c arranged main-horizontal with ctrl+b space; B: one pane.
+ * @param {BrowserWindow} win
+ * @param {WorkspaceDefinition} A
+ * @param {WorkspaceDefinition} B
+ */
 async function arrangedA(win, A, B) {
   await switchTo(win, A);
+  /** @type {SplitTab[]} */
   const tabs = [];
   for (const n of ["a", "b", "c"]) tabs.push(await page(n, win));
   await BrowserTestUtils.switchTab(win.gBrowser, tabs[0]);
@@ -466,7 +587,7 @@ add_task(async function a_workspace_keeps_its_preset_across_a_switch() {
 
   await switchTo(win, A);
   Assert.equal(shape(win), "y[c,x[a,b]]", "A's arrangement is back");
-  Assert.equal(view(win).panes.layout, "main-horizontal", "with its preset name");
+  Assert.equal(panes(win).layout, "main-horizontal", "with its preset name");
   await assertRects("A after the switch", win);
   await nextLayout("tiled", win);
   Assert.equal(shape(win), "y[x[c,a],b]", "ctrl+b space goes on from main-horizontal");
@@ -482,6 +603,10 @@ add_task(async function a_session_restore_brings_back_the_preset() {
   await switchTo(w1, A);
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
+  /**
+   * As much of the session's state as the test reads.
+   * @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }}
+   */
   const state = JSON.parse(SessionStore.getBrowserState());
   const winState = state.windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?c2`)),
