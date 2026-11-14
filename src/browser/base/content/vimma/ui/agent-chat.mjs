@@ -270,6 +270,12 @@ export class AgentChatWindow {
     this.storing = false;
     /** @type {Row[]} the models or conversations listed */
     this.rows = [];
+    /**
+     * Which list the window shows, counted up each time it shows another: the model picker and
+     * setup's agent CLI list are both the `models` view, and a probe, a search or a key hint
+     * that answers late is drawn only into the list that asked for it (issue #1001).
+     */
+    this.listed = 0;
     /** The conversation list's filter by title (Behaviour 19), lower case. */
     this.filter = "";
     this.row = 0;
@@ -367,6 +373,7 @@ export class AgentChatWindow {
 
   close() {
     this.clearKey();
+    this.listed++;
     if (!this.opened) return;
     this.opened = false;
     this.services.chat.removeListener(this.onChange);
@@ -387,6 +394,7 @@ export class AgentChatWindow {
   /** The input, in insert mode. */
   insert() {
     this.view = "chat";
+    this.listed++;
     // Drawn first: the input is hidden in the other views, and a hidden field takes no focus.
     this.render();
     this.input?.focus();
@@ -686,6 +694,8 @@ export class AgentChatWindow {
    * conversation's model is selected, and one that is not there is shown as such.
    */
   loadModels() {
+    const listed = ++this.listed;
+    const shown = () => this.opened && this.view === "models" && this.listed === listed;
     const config = this.services.agentConfig();
     // An agent CLI only while that feature is on (builtin-agent-cli, Delivery).
     const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).filter(
@@ -778,12 +788,13 @@ export class AgentChatWindow {
       if (!needsKey(p)) continue;
       this.services.keys.hint(p.name, p.endpoint).then(
         (/** @type {string | null} */ hint) => {
+          if (!shown()) return;
           hints.set(`${p.name} · ${p.model}`, hint ?? "no key · Enter adds one");
           const row = this.rows.find((r) => r.provider === p);
           if (row && !row.unavailable) {
             row.detail = `${row.current ? "in use · " : ""}${hints.get(row.label)}`;
           }
-          if (this.view === "models") this.render();
+          this.render();
         },
         () => {},
       );
@@ -801,8 +812,7 @@ export class AgentChatWindow {
       this.services.chat.modelStates([...locals, ...clis]),
     ]).then(
       ([found, states]) => {
-        if (!this.opened || this.view !== "models") return;
-        draw(found, states);
+        if (shown()) draw(found, states);
       },
       (/** @type {any} */ e) => console.error("vimma agent: probe failed", e),
     );
@@ -813,6 +823,7 @@ export class AgentChatWindow {
    * first, by title, provider, model and last use, filtered by title after `/`.
    */
   loadList() {
+    this.listed++;
     const now = Date.now();
     this.rows = this.services.chat
       .list()
@@ -1019,6 +1030,7 @@ export class AgentChatWindow {
    * `--version`, only while setup is open on this row, each listed with its path to pick.
    */
   findClis() {
+    const listed = ++this.listed;
     this.rows = [];
     this.row = 0;
     this.render();
@@ -1027,7 +1039,7 @@ export class AgentChatWindow {
         /** @type {{ cli: string, path: string, label: string, shim: string | null,
          *   problem: string | null }[]} */ found,
       ) => {
-        if (!this.opened || this.view !== "models") return;
+        if (!this.opened || this.view !== "models" || this.listed !== listed) return;
         if (!found.length) {
           this.host.say(`agent: ${this.services.cli.noneFound()}`, true);
           this.loadModels();
@@ -1160,6 +1172,7 @@ export class AgentChatWindow {
     this.clearKey();
     this.keyFor = provider;
     this.view = "key";
+    this.listed++;
     this.render();
     /** @type {HTMLInputElement} */ (this.keyInput).focus();
   }
@@ -1216,12 +1229,13 @@ export class AgentChatWindow {
     const p = this.rows[this.row]?.provider;
     if (!p) return;
     this.host.ask(`Delete the API key of ${p.name}? y/N`, () => {
+      const listed = this.listed;
       this.services.keys.delete(p.name).then(
         (/** @type {boolean} */ had) => {
           this.host.say(
             had ? `agent: deleted the key of ${p.name}` : `agent: ${p.name} has no key`,
           );
-          if (this.opened && this.view === "models") this.loadModels();
+          if (this.opened && this.view === "models" && this.listed === listed) this.loadModels();
         },
         (/** @type {any} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
       );
