@@ -1106,7 +1106,9 @@ Not checked, and so left to the review of a change to a listed module or of a ne
 (ADR-026, "Limits of the check"): a function that calls the gate for someone else (an exported
 wrapper, a callback or a listener handed out); what a call or a getter of the gate returns (the check
 does not follow it; the gate's getters, `grants()` and listener events hand out only frozen
-copies, M62, so a holder can read them but change nothing of the gate's); code run
+values, M62, so a holder can read them but change nothing of the gate's; a call's result, such
+as `request()`'s outcome, is a new object the gate does not keep, and the cancel function
+`onCancel` is given withdraws its question); code run
 from a string (`eval`, `new Function`, or `Function` reached as `.constructor.constructor`);
 reflection that does not name `ChromeUtils` or a worker constructor (a built name such as
 `globalThis["Chrome" + "Worker"]`); theme files `jar.mn` packages from outside `vimma/` (its
