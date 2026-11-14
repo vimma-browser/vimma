@@ -257,7 +257,7 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
 passed in, as `host/runners.mjs` is passed the host. The commands of higher folders the host runs
 (`:route add`, `:agent give`, the agent line following the conversations, the downloads
-picker's agent mark) come from `host/host-services.mjs`, which only `vimma.js` fills, once,
+picker's agent mark) come from `host/host-services.mjs`, which `vimma.js` fills, once,
 before the first window's host starts. Ten older imports still point upwards: the host reading
 the agent gate; the parent actor reporting to the host; the agent chat window driving the
 agent. Each is listed with its reason in

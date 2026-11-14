@@ -4369,13 +4369,16 @@ referring pages are chosen by the sites the files came from.
   download's own container (the window's non-agent one for a history entry), **never** the agent
   workspace's, even with that workspace on screen: the full referrer may carry a token. The
   picker asks M11's test through `host/host-services.mjs`, because `ctl/` sits above the host
-  (ADR-026): only `vimma.js` may provide it there, before the first window's host starts, and
-  nothing can replace it afterwards; asked before it is provided, every download counts as an
-  agent's. The registry has no observer topic, control-socket command or agent command, and pages
-  cannot load chrome modules.
+  (ADR-026): `vimma.js` provides it there before the first window's host starts, and once it is
+  provided nothing can replace it, because the registry is frozen and refuses a second value. Its
+  check that the caller is `vimma.js` only catches mistakes: code that already runs with the
+  system principal can run under that file name. Asked before it is provided, every download
+  counts as an agent's. The registry has no observer topic, control-socket command or agent
+  command, and pages cannot load chrome modules.
   [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
   [`test_vimma_js_provided_every_service_before_the_window_started`](../tests/browser/browser_vimma_host_services.js),
   [`test_only_vimma_js_provides_and_nothing_swaps_a_service`](../tests/browser/browser_vimma_host_services.js),
+  [`test_code_named_vimma_js_still_cannot_replace_a_service`](../tests/browser/browser_vimma_host_services.js),
   [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js),
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),

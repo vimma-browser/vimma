@@ -59,31 +59,34 @@ add_task(async function test_give_hands_over_an_agent_tab_but_never_anothers() {
   const ww = WindowWorkspaces.get(window);
   const home = ww.model.active;
   ww.switchTo({ id: agent.id });
-  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
-  Assert.equal(tab.userContextId, agent.userContextId, "a tab of the agent workspace");
-  /** @type {string[]} */
-  const said = [];
-  const give = (/** @type {number} */ to) =>
-    giveSelectedTab(
-      window,
-      to,
-      () => Assert.ok(false, "a tab already in the agent workspace is given without a question"),
-      (text) => said.push(text),
-    );
-  give(id);
-  Assert.equal(AgentChat.ownerOf(tab), id, "it is the conversation's (Behaviour 17)");
-  Assert.deepEqual(said, [], "with nothing to say");
-  give(id);
-  Assert.deepEqual(said, ["agent: that tab is this conversation's already"], "given twice");
-  give(other);
-  Assert.equal(said[1], "agent: that tab is another conversation's", "never another's (B17)");
-  Assert.equal(AgentChat.ownerOf(tab), id, "it stays the first conversation's");
-  ww.switchTo({ id: home });
-  // The agent workspace opened its own first tab too.
-  for (const t of gBrowser.tabs.filter((x) => x.userContextId === agent.userContextId)) {
-    BrowserTestUtils.removeTab(t);
+  try {
+    const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+    Assert.equal(tab.userContextId, agent.userContextId, "a tab of the agent workspace");
+    /** @type {string[]} */
+    const said = [];
+    const give = (/** @type {number} */ to) =>
+      giveSelectedTab(
+        window,
+        to,
+        () => Assert.ok(false, "a tab already in the agent workspace is given without a question"),
+        (text) => said.push(text),
+      );
+    give(id);
+    Assert.equal(AgentChat.ownerOf(tab), id, "it is the conversation's (Behaviour 17)");
+    Assert.deepEqual(said, [], "with nothing to say");
+    give(id);
+    Assert.deepEqual(said, ["agent: that tab is this conversation's already"], "given twice");
+    give(other);
+    Assert.equal(said[1], "agent: that tab is another conversation's", "never another's (B17)");
+    Assert.equal(AgentChat.ownerOf(tab), id, "it stays the first conversation's");
+  } finally {
+    ww.switchTo({ id: home });
+    // The agent workspace opened its own first tab too.
+    for (const t of gBrowser.tabs.filter((x) => x.userContextId === agent.userContextId)) {
+      BrowserTestUtils.removeTab(t);
+    }
+    for (const c of AgentChat.list()) AgentChat.delete(c.id);
   }
-  for (const c of AgentChat.list()) AgentChat.delete(c.id);
 });
 
 add_task(async function test_each_windows_status_bar_follows_the_conversations_until_it_closes() {

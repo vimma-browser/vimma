@@ -4,9 +4,11 @@
 
 // The commands of higher folders that the host runs (ADR-026, decision 4): the built-in agent's
 // conversations (agent/), the agent-download test (ctl/) and `:route add`'s write to config.toml
-// (config/). The host may not import those folders, so vimma.js, which imports every folder,
-// hands them over here before the first window's host starts, and the host calls them through
-// here. Nothing else may provide them, each is provided once, and none is swapped afterwards.
+// (config/). The host may not import those folders, so vimma.js, the window script, which imports
+// every folder, hands them over here before the first window's host starts, and the host calls
+// them through here. Each is provided once and never replaced, and the registry is frozen: that
+// is the guarantee. The check that the caller is vimma.js only catches mistakes, since code that
+// already runs with the system principal can run under that file name.
 
 /** @import { BudgetStatus } from "../core/agent-chat.mjs" */
 
@@ -34,7 +36,10 @@
 
 /** @typedef {keyof Services} ServiceName */
 
-/** The one caller that may provide the services: the window script, at startup. */
+/**
+ * The one caller expected to provide the services: the window script, at startup. A guard
+ * against a mistaken caller, not a boundary (see the header).
+ */
 const PROVIDER = "chrome://browser/content/vimma/vimma.js";
 
 /** @type {readonly ServiceName[]} */

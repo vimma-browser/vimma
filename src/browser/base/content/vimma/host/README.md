@@ -9,9 +9,9 @@ test and `:route add`'s write to `config.toml`.
 
 **Entry points:** `VimmaHost.init(win)` and `VimmaHost.uninit(win)`, called by `vimma.js`;
 `runners.mjs`, which takes the host as an argument instead of importing it;
-`HostServices.provide`, which only `vimma.js` may call, before the first window's host starts.
-Each service is provided once and never replaced; one asked for before that gives the answer
-that does the least (every download counts as an agent's, nothing is written).
+`HostServices.provide`, which `vimma.js`, the window script, calls before the first window's
+host starts. Each service is provided once and never replaced; one asked for before that gives
+the answer that does the least (every download counts as an agent's, nothing is written).
 
 **May import (layer 3, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/`, `services/`,
 `search/`, `updates/`, `split/`, `ui/`, `workspaces/` and `actors/`. Not `config/`, `ctl/`,

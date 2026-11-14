@@ -126,6 +126,26 @@ describe("importsOf: every way a module reaches another", () => {
     ).toEqual([]);
   });
 
+  test("a string naming the root window script is not an edge; one naming a module still is", () => {
+    // vimma.js is a classic script that browser.xhtml loads: no module can import it, so its URL
+    // in a string (host/host-services.mjs names the one caller that may provide its services) is
+    // text, as a page's URL is. A higher layer's module named the same way stays an edge.
+    expect(
+      found(
+        [
+          `const PROVIDER = "${V}vimma.js";`,
+          `const AGENT = "${V}agent/AgentChat.sys.mjs";`,
+          `const CHAT = \`${V}agent/agent-ui.mjs\`;`,
+        ].join("\n"),
+        "host/host-services.mjs",
+      ),
+    ).toEqual(["agent/AgentChat.sys.mjs (lazy)", "agent/agent-ui.mjs (lazy)"]);
+  });
+
+  test("loading the root window script as a module is still an edge", () => {
+    expect(found(`ChromeUtils.importESModule("${V}vimma.js");`)).toEqual(["vimma.js (eager)"]);
+  });
+
   test("a classic script (vimma.js) is read too", () => {
     expect(
       found(

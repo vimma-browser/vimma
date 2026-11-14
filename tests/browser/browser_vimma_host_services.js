@@ -66,6 +66,29 @@ add_task(function test_only_vimma_js_provides_and_nothing_swaps_a_service() {
   );
 });
 
+add_task(function test_code_named_vimma_js_still_cannot_replace_a_service() {
+  // The caller check reads a file name, which code already running with the system principal can
+  // choose: it catches mistakes. What holds against such code is that a service, once provided,
+  // is never replaced.
+  const sandbox = Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal());
+  sandbox.HostServices = HostServices;
+  sandbox.same = AgentDownloads.isAgentDownload;
+  const run = (/** @type {string} */ code) =>
+    Cu.evalInSandbox(code, sandbox, "latest", "chrome://browser/content/vimma/vimma.js", 1);
+  run("HostServices.provide({ isAgentDownload: same });");
+  Assert.ok(true, "code named vimma.js passes the caller check");
+  Assert.throws(
+    () => run("HostServices.provide({ isAgentDownload: () => false });"),
+    /isAgentDownload is already provided/,
+    "but cannot hand over another agent-download test",
+  );
+  Assert.equal(
+    HostServices.isAgentDownload,
+    AgentDownloads.isAgentDownload,
+    "the picker's test is still AgentDownloads'",
+  );
+});
+
 add_task(async function test_before_it_is_provided_each_service_does_the_least() {
   const services = createHostServices(HERE);
   Assert.deepEqual(services.missing(), ALL, "a new registry holds nothing");
