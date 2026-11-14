@@ -919,6 +919,7 @@ describe("the PDF viewer's page (docs/specs/pdf-mode.md)", () => {
     ops: 0,
     width: 1280,
     height: 760,
+    zoom: 1,
   };
   test("page 3/12 and page iv (4/120) beside the tab, nothing outside a PDF", () => {
     expect(
