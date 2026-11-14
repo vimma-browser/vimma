@@ -124,6 +124,17 @@ two-shop scenario.
    something malformed, the form sends more fields than the question can list, or a value is
    longer than the child reads of it, the submission asks, because a missed question can send a message or an order while a wrong one
    costs one key.
+   (Since changed: the child also reads what the form sends from the entry list the submission
+   builds (HTMLFormElement::ConstructEntryList), made with its own FormData, and an entry none
+   of the form's HTML fields accounts for, such as a form-associated custom element's, whose
+   name and value the page's script holds and an Xray hides, counts as not known whole: it is
+   named, its value never read, and the submission asks and offers no `a`. Building that list
+   fires `formdata` at the form, so the child builds it only when no `formdata` listener is on
+   the event's path (no page script runs, so the page can neither lie about the list nor change
+   it); a form whose page handles `formdata` may have entries added as it is sent, and it asks
+   too, as does a list the child fails to build. A component's text an agent typed was
+   otherwise sent unasked under a grant;
+   [#1053](https://github.com/vimma-browser/vimma/issues/1053).)
 4. **A fill that submits always asks (K4),** because it sends the values the agent has just
    typed, which is the content the user is asked to judge; a search goes by URL instead
    (agent-speed S2), so a fill that submits is rare in a granted task.
@@ -188,6 +199,9 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
   `test_a_is_not_offered_on_a_pay_step`.
 - `browser_vimma_mcp_submit.js`: the existing tests that a submission asks without a grant stay
   green.
+- `browser_vimma_mcp_face.js` (Since changed, #1053): a form-associated custom element's entry
+  asks and is named unread, one with no name sends nothing, a file or FormData value asks, and so
+  does a form whose page handles `formdata`, whose listener the check does not run.
 
 ### Bench (`tools/agent-bench`)
 
