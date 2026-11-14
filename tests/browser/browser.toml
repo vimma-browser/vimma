@@ -256,6 +256,13 @@ support-files = [
 ["browser_vimma_mcp_activate_changes.js"]
 support-files = ["file_vimma_agent_basket.html", "head_vimma_control.js"]
 
+["browser_vimma_agent_click_race.js"]
+support-files = [
+  "file_vimma_agent_click_race.html",
+  "file_vimma_agent_click_race_frame.html",
+  "head_vimma_control.js",
+]
+
 ["browser_vimma_mcp_waits.js"]
 support-files = [
   "file_vimma_agent_page.html",

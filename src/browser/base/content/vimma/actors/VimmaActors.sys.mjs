@@ -178,6 +178,49 @@ const submitMarks = new Map();
 /** @type {((subject: any) => void) | null} */
 let submitObserver = null;
 
+/** The number of the agent's last click or submission sent to a child (`nextStep`). */
+let stepCount = 0;
+/**
+ * The agent's last click or submission sent to each frame's document, by its window global:
+ * its element and its number, which the child says back if it skips it (issue #1028).
+ * @type {WeakMap<object, { gen: number, id: number, step: number }>}
+ */
+const sentSteps = new WeakMap();
+/**
+ * The number of the last step each frame's document said it skipped (`Vimma:AgentSkipped`), by
+ * its window global: once the page has gone, its child can no longer be asked how the step went
+ * (issue #1028).
+ * @type {WeakMap<object, number>}
+ */
+const skippedSteps = new WeakMap();
+
+/**
+ * A new number for the agent's click or submission on `target`, kept as that document's last
+ * step: a skip said for an earlier one, however late, is not this one's.
+ * @param {HintTarget} target
+ */
+function nextStep(target) {
+  const step = ++stepCount;
+  sentSteps.set(target.wg, { gen: target.gen, id: target.id, step });
+  return step;
+}
+
+/**
+ * Whether the child of `target`'s document said it skipped the last step sent there, and that
+ * step was on `target`. Read at the moment of asking: the message can arrive while the parent
+ * waits on the child (agentClickOutcome).
+ * @param {HintTarget} target
+ */
+function saidSkipped(target) {
+  const sent = sentSteps.get(target.wg);
+  return (
+    !!sent &&
+    sent.gen === target.gen &&
+    sent.id === target.id &&
+    skippedSteps.get(target.wg) === sent.step
+  );
+}
+
 /** A URI's destination as a submission is compared: scheme, host, port and path. @param {any} uri */
 const whereOf = (uri) => `${uri.prePath}${uri.filePath}`;
 
@@ -276,6 +319,10 @@ export const VimmaActors = {
           // sends. The first lets the viewer take the theme before its pages are drawn.
           documentloaded: {},
           pagesloaded: {},
+          // An agent's step still to run when its page is hidden is skipped then, while the
+          // child can still tell the parent (issue #1028). The system group: the page cannot
+          // stop it.
+          pagehide: { mozSystemGroup: true, createActor: false },
         },
       },
       allFrames: true,
@@ -646,6 +693,7 @@ export const VimmaActors = {
         op: "activate",
         gen: target.gen,
         id: target.id,
+        step: nextStep(target),
         submit,
         href,
         until,
@@ -733,13 +781,21 @@ export const VimmaActors = {
   /**
    * The child skipped the agent's click or submission (VimmaParent, `Vimma:AgentSkipped`): the
    * submission the question allowed is withdrawn at once, before the call ends, so the page cannot
-   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays.
+   * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays. The number
+   * of the step it names is kept for that document alone (agentClickOutcome), only when it is the
+   * last step sent there: a frame that sends a forged one can only make its own click read as
+   * skipped, as its outcome reply already could.
    * @param {any} bc  the frame that skipped it (BrowsingContext)
+   * @param {object} wg  its window global (WindowGlobalParent), the sender's own
+   * @param {unknown} data  `{ gen, id, step }`: `step` is the number the parent sent it with
    */
-  agentSkipped(bc) {
+  agentSkipped(bc, wg, data) {
     const id = bc?.top?.browserId;
     const mark = id ? submitMarks.get(id) : undefined;
     if (mark) mark.allowed = null;
+    // Kept only for the last step sent there: a late skip of an earlier one changes nothing.
+    const step = /** @type {{ step?: unknown }} */ (data ?? {}).step;
+    if (wg && step === sentSteps.get(wg)?.step) skippedSteps.set(wg, /** @type {number} */ (step));
   },
 
   /**
@@ -858,13 +914,16 @@ export const VimmaActors = {
 
   /**
    * Whether the agent's last click on `target` ran, or was skipped because the page changed
-   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away
-   * (the click loaded a page) ran it.
+   * the element under the mouse events (docs/specs/mcp-forms.md F8). A frame that went away ran
+   * it (the click loaded a page), unless its child said it skipped it: the child skips a step
+   * whose page is hidden before it runs, and says so as the page is hidden, ahead of the next
+   * document over the same IPC channel (issue #1028).
    * @param {HintTarget} target
    * @returns {Promise<"clicked" | "skipped" | "pending">}
    */
   async agentClickOutcome(target) {
-    if (target.bc.currentWindowGlobal !== target.wg) return "clicked";
+    const gone = () => (saidSkipped(target) ? "skipped" : "clicked");
+    if (target.bc.currentWindowGlobal !== target.wg) return gone();
     try {
       const reply = await actorFor(target.bc)?.sendQuery("Vimma:AgentElement", {
         op: "outcome",
@@ -873,7 +932,8 @@ export const VimmaActors = {
       });
       return reply === "skipped" || reply === "pending" ? reply : "clicked";
     } catch {
-      return "clicked";
+      // The frame went away mid-question: its skip, if it said one, arrived before this.
+      return gone();
     }
   },
 
@@ -1025,6 +1085,7 @@ export const VimmaActors = {
         op: "submit",
         gen: target.gen,
         id: target.id,
+        step: nextStep(target),
         submit,
         until,
       });

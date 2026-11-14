@@ -52,8 +52,8 @@ export class VimmaParent extends JSWindowActorParent {
     if (msg.name === "Vimma:AgentSkipped") {
       // An agent's click or submit was skipped in this frame (docs/specs/mcp-forms.md F16;
       // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,
-      // a forged one can only take an allowance away.
-      VimmaActors.agentSkipped(this.browsingContext);
+      // a forged one can only take an allowance away, and say its own frame's click was skipped.
+      VimmaActors.agentSkipped(this.browsingContext, this.manager, msg.data);
       return;
     }
     if (!MESSAGES.has(msg.name)) return;
