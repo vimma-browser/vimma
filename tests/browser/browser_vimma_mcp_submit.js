@@ -63,11 +63,13 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -192,7 +194,7 @@ addTidyTask(async function test_submit_asks_under_a_grant() {
   Assert.equal(r.result.url, `${PAGE}?q=cats&from=fixture`, "to its destination");
   Assert.ok(!("blocked" in r.result), "the submission the user allowed was not stopped");
   Assert.ok(
-    AgentGate.grants().every((g) => g.until < Date.now() + 13 * 60_000),
+    AgentGate.grants().every((/** @type {GateGrant} */ g) => g.until < Date.now() + 13 * 60_000),
     "the yes to a submit made no grant of 60 min",
   );
   Assert.ok(
@@ -389,7 +391,7 @@ addTidyTask(async function test_a_page_submitting_with_no_agent_step_is_untouche
   const tab = await openAgentTab();
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?draft`);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("draft").submit(),
+    /** @type {HTMLFormElement} */ (content.document.getElementById("draft")).submit(),
   );
   await loaded;
   Assert.ok(true, "a page's own submission, with no agent step, went through");

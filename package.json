@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "typecheck": "npm run sync-core && tsc -p tsconfig.json && tsc -p tools/tsconfig.json && tsc -p packages/vimma-core/test/tsconfig.json",
+    "typecheck": "npm run sync-core && tsc -p tsconfig.json && tsc -p tools/tsconfig.json && tsc -p packages/vimma-core/test/tsconfig.json && node tools/mochitest-typecheck.ts",
     "lint": "eslint . && prettier --check . && npm run md-wording && npm run comment-wording && npm run spec-lint && npm run arch-lint && npm run layering && npm run diagrams:check && npm run changelog-lint",
     "md-wording": "node tools/md-wording/process-wording.ts",
     "comment-wording": "node tools/md-wording/comment-wording.ts",
@@ -44,6 +44,7 @@
     "agent-bench": "node tools/agent-bench/agent-bench.ts",
     "mutation": "stryker run",
     "gen-agent-tools": "node tools/gen-agent-tools.ts",
+    "gen-mochitest-head": "node tools/gen-mochitest-head.ts",
     "gen-brandings": "node tools/branding/brandings.ts",
     "gen-update-keys": "node tools/update/gen-update-keys.mjs"
   },

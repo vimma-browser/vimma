@@ -27,3 +27,8 @@ JSDoc is more verbose than TS syntax; tsc strictness must be enforced in CI.
 Amended by [ADR-025](025-typescript-for-tools.md): this decision still covers the code Firefox
 loads and `packages/vimma-core`; `tools/`, which only Node runs, moves to TypeScript with no build
 step, since Node 22.18 erases the types itself.
+
+Since changed: the JavaScript under `tests/` (the mochitests in `tests/browser/` and the scripts
+in `tests/e2e/`) is checked the same way (issue #959), with the harness's globals declared in
+`types/mochitest/`; the files not fixed yet are listed in
+`tools/test/mochitest-allowlist.txt`, which only shrinks.

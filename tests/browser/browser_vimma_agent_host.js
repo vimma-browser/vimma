@@ -69,7 +69,7 @@ add_task(async function test_give_hands_over_an_agent_tab_but_never_anothers() {
         window,
         to,
         () => Assert.ok(false, "a tab already in the agent workspace is given without a question"),
-        (text) => said.push(text),
+        (/** @type {string} */ text) => said.push(text),
       );
     give(id);
     Assert.equal(AgentChat.ownerOf(tab), id, "it is the conversation's (Behaviour 17)");

@@ -59,12 +59,14 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -254,7 +256,7 @@ addTidyTask(async function test_a_pay_button_in_a_cross_site_frame_names_the_fra
   );
   Assert.equal(
     questionLine(q, { grantMinutes: 10 })
-      .parts.map((p) => p.text)
+      .parts.map((/** @type {{ text: string }} */ p) => p.text)
       .join(""),
     '▲ claude-code wants to pay: "Pay 42.90 EUR" on example.org (in example.com) · the page says "Total 42.90 EUR"',
     "as the question shows it",
@@ -293,7 +295,9 @@ addTidyTask(async function test_a_followed_pay_link_in_a_cross_site_frame_names_
   await grantedLabels(c, tab);
   const list = await c.call("agent-keys", { tab: idOf(tab), keys: "f" });
   Assert.ok(list.ok, "f lists the links under the grant");
-  const line = list.result.links.split("\n").find((l) => l.includes('"Pay by bank"'));
+  const line = list.result.links
+    .split("\n")
+    .find((/** @type {string} */ l) => l.includes('"Pay by bank"'));
   Assert.ok(line, "the frame's link is listed");
   const id = c.request("agent-keys", { tab: idOf(tab), keys: `f${line.split(" ")[0]}` });
   const q = await question();
@@ -448,7 +452,7 @@ async function backToBasket(c, tab) {
   return grantedLabels(c, tab);
 }
 
-/** The labels of the basket page's buttons, in order. @param {Record<string, string>} by */
+/** The labels of the basket page's buttons, in order. */
 const basketButtons = async (/** @type {any} */ c, /** @type {any} */ tab) => {
   const id = c.request("agent-elements", { tab: idOf(tab), full: true });
   const r = await c.response(id);
@@ -627,8 +631,9 @@ addTidyTask(async function test_a_long_button_value_or_chosen_option_asks() {
          <button type="submit">Valitse</button>
        </form>`,
     );
-    doc.querySelector('button[name="next"]').value = long;
-    doc.querySelectorAll('select[name="pick"] option')[1].value = long;
+    /** @type {HTMLButtonElement} */ (doc.querySelector('button[name="next"]')).value = long;
+    /** @type {HTMLOptionElement} */ (doc.querySelectorAll('select[name="pick"] option')[1]).value =
+      long;
   });
   const c = await agentClient();
   const by = await grantedLabels(c, tab);

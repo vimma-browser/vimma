@@ -1,35 +1,11 @@
 // The slice of Firefox chrome globals our code uses. Extend as needed; the engine tree is the
 // source of truth (e.g. engine/xpcom/base/nsIPrefBranch.idl).
 
-declare const Services: {
-  prefs: {
-    getBoolPref(name: string, defaultValue?: boolean): boolean;
-    getIntPref(name: string, defaultValue?: number): number;
-    getStringPref(name: string, defaultValue?: string): string;
-    setBoolPref(name: string, value: boolean): void;
-    setIntPref(name: string, value: number): void;
-    setStringPref(name: string, value: string): void;
-    prefHasUserValue(name: string): boolean;
-    prefIsLocked(name: string): boolean;
-    clearUserPref(name: string): void;
-    savePrefFile(file: null): void;
-    getDefaultBranch(root: string): {
-      setBoolPref(name: string, value: boolean): void;
-    };
-    addObserver(
-      name: string,
-      observer: (subject: unknown, topic: string, data: string) => void,
-    ): void;
-    removeObserver(
-      name: string,
-      observer: (subject: unknown, topic: string, data: string) => void,
-    ): void;
-  };
-  // engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
-  // for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
-  console: {
-    getMessageArray(): any[] | null;
-  };
+// Services and its members are interfaces, so that the browser tests' declarations
+// (types/mochitest/) can add the members only the tests use.
+interface FirefoxServices {
+  prefs: nsIPrefBranch;
+  console: nsIConsoleService;
   // engine/netwerk/base/nsIIOService.idl
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
@@ -40,13 +16,7 @@ declare const Services: {
   eTLD: {
     getBaseDomain(uri: unknown, additionalParts?: number): string;
   };
-  // engine/dom/interfaces/base/nsIFocusManager.idl
-  focus: {
-    readonly focusedElement: Element | null;
-    readonly focusedContentBrowsingContext: any;
-    readonly activeWindow: Window | null;
-    clearFocus(window: Window): void;
-  };
+  focus: nsIFocusManager;
   // engine/caps/nsIScriptSecurityManager.idl
   scriptSecurityManager: {
     getSystemPrincipal(): unknown;
@@ -55,11 +25,7 @@ declare const Services: {
     principalWithOA(principal: unknown, originAttributes: object): unknown;
     checkLoadURIWithPrincipal(principal: unknown, uri: unknown, flags?: number): void;
   };
-  // engine/widget/nsIClipboard.idl
-  clipboard: {
-    readonly kGlobalClipboard: number;
-    getData(transferable: unknown, whichClipboard: number): void;
-  };
+  clipboard: nsIClipboard;
   // engine/dom/events/nsIEventListenerService.idl
   els: {
     hasListenersFor(target: EventTarget, type: string): boolean;
@@ -73,38 +39,8 @@ declare const Services: {
       flags: number,
     ): { readonly preferredURI: { spec: string } | null };
   };
-  // engine/xpcom/system/nsIXULRuntime.idl
-  appinfo: {
-    readonly processID: number;
-    readonly version: string;
-    readonly appBuildID: string;
-    readonly OS: string;
-    readonly XPCOMABI: string;
-    readonly isWayland: boolean;
-    readonly inSafeMode: boolean;
-  };
-  // engine/netwerk/base/nsIPermissionManager.idl
-  perms: {
-    readonly UNKNOWN_ACTION: number;
-    readonly ALLOW_ACTION: number;
-    readonly DENY_ACTION: number;
-    testPermissionFromPrincipal(principal: unknown, type: string): number;
-    testExactPermissionFromPrincipal(principal: unknown, type: string): number;
-    addFromPrincipal(
-      principal: unknown,
-      type: string,
-      permission: number,
-      expireType?: number,
-      expireTime?: number,
-    ): void;
-    addFromPrincipalForBrowser(
-      principal: unknown,
-      type: string,
-      permission: number,
-      browserId: number,
-      expireTimeMS?: number,
-    ): void;
-  };
+  appinfo: nsIXULRuntime;
+  perms: nsIPermissionManager;
   // engine/toolkit/components/startup/public/nsIAppStartup.idl
   startup: {
     readonly shuttingDown: boolean;
@@ -112,42 +48,17 @@ declare const Services: {
     quit(mode: number): void;
     restartInSafeMode(mode: number): void;
   };
-  // engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl
-  ww: {
-    registerNotification(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-    ): void;
-    unregisterNotification(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-    ): void;
-  };
+  ww: nsIWindowWatcher;
   // engine/toolkit/components/cleardata/nsIClearDataService.idl
   clearData: {
     deleteDataFromOriginAttributesPattern(pattern: { userContextId?: number }): void;
   };
   // engine/toolkit/components/enterprisepolicies/nsIEnterprisePolicies.idl
   policies: { isAllowed(feature: string): boolean };
-  // engine/toolkit/components/passwordmgr/nsILoginManager.idl
-  logins: {
-    searchLoginsAsync(matchData: object): Promise<nsILoginInfo[]>;
-    addLoginAsync(login: nsILoginInfo): Promise<nsILoginInfo>;
-    modifyLoginAsync(oldLogin: nsILoginInfo, newLogin: nsILoginInfo): Promise<nsILoginInfo>;
-    removeLoginAsync(login: nsILoginInfo): Promise<void>;
-  };
+  logins: nsILoginManager;
   // engine/xpcom/base/nsIVersionComparator.idl
   vc: { compare(a: string, b: string): number };
-  // engine/xpcom/ds/nsIObserverService.idl
-  obs: {
-    addObserver(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-      topic: string,
-    ): void;
-    removeObserver(
-      observer: (subject: unknown, topic: string, data: string | null) => void,
-      topic: string,
-    ): void;
-    notifyObservers(subject: unknown, topic: string, data?: string): void;
-  };
+  obs: nsIObserverService;
   // engine/xpcom/base/nsIUUIDGenerator.idl
   uuid: { generateUUID(): { toString(): string } };
   // engine/xpcom/io/nsIDirectoryService.idl (nsIProperties)
@@ -175,7 +86,121 @@ declare const Services: {
       replace: boolean,
     ): string;
   };
-};
+}
+declare const Services: FirefoxServices;
+
+// The members Vimma's code calls on a default branch.
+interface nsIPrefDefaultBranch {
+  setBoolPref(name: string, value: boolean): void;
+}
+
+// engine/modules/libpref/nsIPrefBranch.idl; a default branch has the same interface.
+interface nsIPrefBranch {
+  getBoolPref(name: string, defaultValue?: boolean): boolean;
+  getIntPref(name: string, defaultValue?: number): number;
+  getStringPref(name: string, defaultValue?: string): string;
+  setBoolPref(name: string, value: boolean): void;
+  setIntPref(name: string, value: number): void;
+  setStringPref(name: string, value: string): void;
+  prefHasUserValue(name: string): boolean;
+  prefIsLocked(name: string): boolean;
+  clearUserPref(name: string): void;
+  savePrefFile(file: null): void;
+  getDefaultBranch(root: string): nsIPrefDefaultBranch;
+  addObserver(
+    name: string,
+    observer: (subject: unknown, topic: string, data: string) => void,
+  ): void;
+  removeObserver(
+    name: string,
+    observer: (subject: unknown, topic: string, data: string) => void,
+  ): void;
+}
+
+// engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
+// for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
+interface nsIConsoleService {
+  getMessageArray(): any[] | null;
+}
+
+// engine/dom/interfaces/base/nsIFocusManager.idl
+interface nsIFocusManager {
+  readonly focusedElement: Element | null;
+  readonly focusedContentBrowsingContext: any;
+  readonly activeWindow: Window | null;
+  clearFocus(window: Window): void;
+}
+
+// engine/widget/nsIClipboard.idl
+interface nsIClipboard {
+  readonly kGlobalClipboard: number;
+  getData(transferable: unknown, whichClipboard: number): void;
+}
+
+// engine/xpcom/system/nsIXULRuntime.idl
+interface nsIXULRuntime {
+  readonly processID: number;
+  readonly version: string;
+  readonly appBuildID: string;
+  readonly OS: string;
+  readonly XPCOMABI: string;
+  readonly isWayland: boolean;
+  readonly inSafeMode: boolean;
+}
+
+// engine/netwerk/base/nsIPermissionManager.idl
+interface nsIPermissionManager {
+  readonly UNKNOWN_ACTION: number;
+  readonly ALLOW_ACTION: number;
+  readonly DENY_ACTION: number;
+  testPermissionFromPrincipal(principal: unknown, type: string): number;
+  testExactPermissionFromPrincipal(principal: unknown, type: string): number;
+  addFromPrincipal(
+    principal: unknown,
+    type: string,
+    permission: number,
+    expireType?: number,
+    expireTime?: number,
+  ): void;
+  addFromPrincipalForBrowser(
+    principal: unknown,
+    type: string,
+    permission: number,
+    browserId: number,
+    expireTimeMS?: number,
+  ): void;
+}
+
+// engine/xpcom/ds/nsIObserverService.idl
+interface nsIObserverService {
+  addObserver(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+    topic: string,
+  ): void;
+  removeObserver(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+    topic: string,
+  ): void;
+  notifyObservers(subject: unknown, topic: string, data?: string): void;
+}
+
+// engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl
+interface nsIWindowWatcher {
+  registerNotification(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+  ): void;
+  unregisterNotification(
+    observer: (subject: unknown, topic: string, data: string | null) => void,
+  ): void;
+}
+
+// engine/toolkit/components/passwordmgr/nsILoginManager.idl
+interface nsILoginManager {
+  searchLoginsAsync(matchData: object): Promise<nsILoginInfo[]>;
+  addLoginAsync(login: nsILoginInfo): Promise<nsILoginInfo>;
+  modifyLoginAsync(oldLogin: nsILoginInfo, newLogin: nsILoginInfo): Promise<nsILoginInfo>;
+  removeLoginAsync(login: nsILoginInfo): Promise<void>;
+}
 
 // XPCOM component classes and results (engine/js/xpconnect). Untyped on purpose: each use
 // names its interface, and the IDL in the engine tree is the reference.
@@ -194,7 +219,7 @@ declare const PathUtils: {
 };
 
 // engine/dom/chrome-webidl/IOUtils.webidl
-declare const IOUtils: {
+interface IOUtilsNamespace {
   createUniqueFile(parent: string, prefix: string, permissions?: number): Promise<string>;
   createUniqueDirectory(parent: string, prefix: string, permissions?: number): Promise<string>;
   writeUTF8(
@@ -226,11 +251,12 @@ declare const IOUtils: {
   copy(from: string, to: string): Promise<void>;
   move(from: string, to: string): Promise<void>;
   remove(path: string, options?: { ignoreAbsent?: boolean; recursive?: boolean }): Promise<void>;
-};
+}
+declare const IOUtils: IOUtilsNamespace;
 
 // engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils); the encoder is
 // engine/dom/serializers/nsIDocumentEncoder.idl.
-declare const Cu: {
+interface XPCComponentsUtils {
   readonly isInAutomation: boolean;
   createDocumentEncoder(type: string): {
     init(doc: Document, type: string, flags: number): void;
@@ -243,7 +269,8 @@ declare const Cu: {
   unwaiveXrays<T>(obj: T): any;
   exportFunction(fn: Function, target: object): Function;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
-};
+}
+declare const Cu: XPCComponentsUtils;
 
 // XPCOM in system modules: interface constants and component constructors.
 declare const Ci: any;
@@ -343,28 +370,29 @@ interface Selection {
 
 // engine/dom/interfaces/base/nsIDOMWindowUtils.idl
 interface Window {
-  readonly windowUtils: {
-    readonly AGENT_SHEET: number;
-    readonly AUTHOR_SHEET: number;
-    loadSheetUsingURIString(sheetURI: string, type: number): void;
-    removeSheetUsingURIString(sheetURI: string, type: number): void;
-    suppressAnimation(suppress: boolean): void;
-    flushLayoutWithoutThrottledAnimations(): void;
-    /** True while an event the user caused (a key, a click) is being handled. */
-    readonly isHandlingUserInput: boolean;
-    nodesFromRect(
-      x: number,
-      y: number,
-      top: number,
-      right: number,
-      bottom: number,
-      left: number,
-      ignoreRootScrollFrame: boolean,
-      flushLayout: boolean,
-      onlyVisible: boolean,
-      transparencyThreshold?: number,
-    ): NodeList;
-  };
+  readonly windowUtils: nsIDOMWindowUtils;
+}
+interface nsIDOMWindowUtils {
+  readonly AGENT_SHEET: number;
+  readonly AUTHOR_SHEET: number;
+  loadSheetUsingURIString(sheetURI: string, type: number): void;
+  removeSheetUsingURIString(sheetURI: string, type: number): void;
+  suppressAnimation(suppress: boolean): void;
+  flushLayoutWithoutThrottledAnimations(): void;
+  /** True while an event the user caused (a key, a click) is being handled. */
+  readonly isHandlingUserInput: boolean;
+  nodesFromRect(
+    x: number,
+    y: number,
+    top: number,
+    right: number,
+    bottom: number,
+    left: number,
+    ignoreRootScrollFrame: boolean,
+    flushLayout: boolean,
+    onlyVisible: boolean,
+    transparencyThreshold?: number,
+  ): NodeList;
 }
 
 // engine/dom/webidl/Element.webidl, Node.webidl and Event.webidl (chrome-only members)
@@ -691,7 +719,7 @@ interface BrowserWindow extends ChromeWindow {
   // tab-bar-visibility.js
   readonly TabBarVisibility: { update(force?: boolean): void };
   // browser.js (a lazy getter: PopupNotifications.sys.mjs)
-  readonly PopupNotifications: { readonly panel: Element & { readonly state: string } };
+  readonly PopupNotifications: PopupNotificationsApi;
   UpdatePopupNotificationsVisibility(): void;
   isInitialPage(url: nsIURI | string): boolean;
   switchToTabHavingURI(
@@ -711,6 +739,11 @@ interface BrowserWindow extends ChromeWindow {
   // browser-addons.js: extension UI, untyped here (WebExtension internals)
   readonly gUnifiedExtensions: any;
   readonly BrowserAddonUI: { manageAddon(addonId: string, source?: string): Promise<void> };
+}
+
+// engine/toolkit/modules/PopupNotifications.sys.mjs (the members Vimma reads)
+interface PopupNotificationsApi {
+  readonly panel: Element & { readonly state: string };
 }
 
 // A browser window from its first script, before its body exists: browser-main.js creates

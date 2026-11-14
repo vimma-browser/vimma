@@ -44,9 +44,10 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
 /** @param {boolean} on */
