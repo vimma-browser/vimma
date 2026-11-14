@@ -1739,6 +1739,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_a_click_a_navigation_overtakes_is_skipped_and_said`](../tests/browser/browser_vimma_agent_click_race.js),
   [`test_a_click_on_a_page_going_into_the_bfcache_is_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
   [`test_a_hint_click_after_the_page_was_replaced_clicks_nothing`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_page_that_stops_its_pagehide_still_has_the_click_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_an_outcome_asked_as_the_page_goes_away_reads_the_skip`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_late_skip_of_an_earlier_step_is_not_the_next_ones`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_late_skip_after_the_current_ones_leaves_it_skipped`](../tests/browser/browser_vimma_agent_click_race.js),
   [`agent-activate: the page after the click, a dialog, a stopped submission`](../packages/vimma-core/test/control-v2.test.mjs),
   [`activate_says_what_the_click_did`](../tools/vimma-ctl/src/mcp/render.rs)
 - M27. `agent-fill` (mcp-forms F12, F13) **must never** set a sensitive field: one that is or
@@ -1765,11 +1769,14 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   shows every name and value whole. `:mcp log` keeps the values of the calls asked or run in
   full, in memory; a call refused before its question is logged with its labels. A child
   request that runs after the parent stopped waiting sets nothing, nor does one whose page is
-  hidden before it runs (a navigation in the page's process, or the back-forward cache): the
-  call stops there and tells the agent that field "changed since the user was asked".
+  hidden before it runs (a navigation in the page's process, or the back-forward cache). The
+  call stops there and tells the agent that field "is gone: its page went away" when the
+  navigation replaced the page, or "changed since the user was asked" when the page went into
+  the back-forward cache.
   [`test_fill_refuses_password_card_otp_and_file_fields`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_fill_stops_when_a_field_turns_sensitive`](../tests/browser/browser_vimma_mcp_fill.js),
   [`test_a_fill_on_a_page_going_into_the_bfcache_sets_nothing`](../tests/browser/browser_vimma_agent_click_race.js),
+  [`test_a_fill_a_navigation_overtakes_is_said_gone`](../tests/browser/browser_vimma_agent_click_race.js),
   [`test_fill_sets_values_and_fires_input_and_change`](../tests/browser/browser_vimma_mcp_fill.js),
   [`agent_fills_never_set_a_file`](../tests/browser/browser_vimma_security_invariants.js),
   [`password, payment card and one-time-code fields are never filled`](../packages/vimma-core/test/agent-act.test.mjs),

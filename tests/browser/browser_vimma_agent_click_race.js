@@ -28,7 +28,10 @@
 //   reach (system group).
 // - test_an_outcome_asked_as_the_page_goes_away_reads_the_skip: (c), the skip read when the
 //   question fails, not when it was sent.
-// - test_a_late_skip_of_an_earlier_step_is_not_the_next_ones: (c), by the step's number.
+// - test_a_late_skip_of_an_earlier_step_is_not_the_next_ones and
+//   test_a_late_skip_after_the_current_ones_leaves_it_skipped: (c), by the step's number.
+// - test_a_fill_a_navigation_overtakes_is_said_gone: what the agent is told for a fill, with
+//   test_a_fill_on_a_page_going_into_the_bfcache_sets_nothing.
 
 "use strict";
 
@@ -37,7 +40,7 @@
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
-// Seven agent steps, each with its question and a page load, and a hint click.
+// Nine agent steps, each with its question and a page load, and a hint click.
 requestLongerTimeout(2);
 
 const { VimmaControl } = ChromeUtils.importESModule(
@@ -362,8 +365,45 @@ addTidyTask(async function test_a_fill_on_a_page_going_into_the_bfcache_sets_not
       "the child answered before the navigation",
     );
     Assert.ok(!r.ok, "the agent is not told the field was filled");
+    Assert.ok(
+      r.error?.message.startsWith(`field "${by.Name}" changed since the user was asked;`),
+      `the agent is told the field changed (${r.error?.message})`,
+    );
     await goBack(browser);
     Assert.equal((await pageState(browser)).name, "", "the hidden page's field was not set");
+    Assert.deepEqual(errors.errors, [], "and the child threw nothing");
+  } finally {
+    errors.stop();
+  }
+});
+
+addTidyTask(async function test_a_fill_a_navigation_overtakes_is_said_gone() {
+  Services.prefs.setIntPref(NO_BFCACHE, 0);
+  await mcp(true);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const errors = childErrors();
+  try {
+    await holdInChild(browser.browsingContext, "Vimma:AgentElement", "fill", NEXT, false);
+    const probe = probed();
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
+    const r = await askedOnce(c, "agent-fill", {
+      tab: idOf(tab),
+      fields: [{ label: by.Name, value: "Ada" }],
+    });
+    await loaded;
+    Assert.deepEqual(
+      await probe,
+      { current: true, threw: "", answer: '"ok"' },
+      "the child answered before the navigation",
+    );
+    Assert.ok(
+      r.error?.message.startsWith(`field "${by.Name}" is gone: its page went away;`),
+      `the agent is told the field's page went away (${r.error?.message})`,
+    );
+    Assert.equal((await pageState(browser)).name, "", "the next page's field was not set");
     Assert.deepEqual(errors.errors, [], "and the child threw nothing");
   } finally {
     errors.stop();
@@ -543,6 +583,48 @@ addTidyTask(async function test_a_late_skip_of_an_earlier_step_is_not_the_next_o
   await loaded;
   Assert.ok(r.ok, `the agent is told its click ran (${r.error?.message ?? "ok"})`);
   Assert.equal(await storedClicks(browser), "1", "the page got the click");
+});
+
+addTidyTask(async function test_a_late_skip_after_the_current_ones_leaves_it_skipped() {
+  // The current step is skipped and says so; an earlier step's skip arrives after it. The click
+  // did not happen: the agent is still told nothing was clicked. The child here only answers
+  // "ok" and says both skips, then the page navigates by itself.
+  Services.prefs.setIntPref(NO_BFCACHE, 0);
+  await mcp(true);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
+    const win = /** @type {any} */ (content);
+    const actor = win.windowGlobalChild.getActor("Vimma");
+    const receive = actor.receiveMessage;
+    /** @type {any} */
+    let first = null;
+    /** @param {any} msg */
+    actor.receiveMessage = (msg) => {
+      if (msg.name !== "Vimma:AgentElement" || msg.data?.op !== "activate") {
+        return receive.call(actor, msg);
+      }
+      if (!first) {
+        first = msg.data;
+        return "changed";
+      }
+      actor.receiveMessage = receive;
+      const { gen, id, step } = msg.data;
+      actor.sendAsyncMessage("Vimma:AgentSkipped", { gen, id, step });
+      actor.sendAsyncMessage("Vimma:AgentSkipped", { gen, id, step: first.step });
+      Services.tm.dispatchToMainThread(() => (win.location.href = next));
+      return "ok";
+    };
+  });
+  const refused = await askedOnce(c, "agent-activate", { tab: idOf(tab), label: by.Go });
+  Assert.ok(!refused.ok, "the first step was refused");
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
+  const r = await askedOnce(c, "agent-activate", { tab: idOf(tab), label: by.Go });
+  await loaded;
+  Assert.equal(r.error?.message, SKIPPED, "the agent is still told nothing was clicked");
+  Assert.equal(await storedClicks(browser), null, "the page never got the click");
 });
 
 /**

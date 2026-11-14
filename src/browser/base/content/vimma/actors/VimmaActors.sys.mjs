@@ -782,9 +782,9 @@ export const VimmaActors = {
    * The child skipped the agent's click or submission (VimmaParent, `Vimma:AgentSkipped`): the
    * submission the question allowed is withdrawn at once, before the call ends, so the page cannot
    * send it by itself (docs/specs/mcp-forms.md F16; security.md M28). The mark stays. The number
-   * of the step it names is kept for that document alone (agentClickOutcome) and counts only
-   * while it is the last step sent there: a frame that sends a forged one can only make its own
-   * click read as skipped, as its outcome reply already could.
+   * of the step it names is kept for that document alone (agentClickOutcome), only when it is the
+   * last step sent there: a frame that sends a forged one can only make its own click read as
+   * skipped, as its outcome reply already could.
    * @param {any} bc  the frame that skipped it (BrowsingContext)
    * @param {object} wg  its window global (WindowGlobalParent), the sender's own
    * @param {unknown} data  `{ gen, id, step }`: `step` is the number the parent sent it with
@@ -793,8 +793,9 @@ export const VimmaActors = {
     const id = bc?.top?.browserId;
     const mark = id ? submitMarks.get(id) : undefined;
     if (mark) mark.allowed = null;
+    // Kept only for the last step sent there: a late skip of an earlier one changes nothing.
     const step = /** @type {{ step?: unknown }} */ (data ?? {}).step;
-    if (wg && Number.isSafeInteger(step)) skippedSteps.set(wg, /** @type {number} */ (step));
+    if (wg && step === sentSteps.get(wg)?.step) skippedSteps.set(wg, /** @type {number} */ (step));
   },
 
   /**
