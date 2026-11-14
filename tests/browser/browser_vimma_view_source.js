@@ -29,7 +29,7 @@ const UNBOUND = "z";
 /**
  * Opens the fixture's source in a new tab with content focus, records the page's keydowns and
  * waits for normal mode, then runs `fn`.
- * @param {(browser: XULBrowserElement) => Promise<void>} fn
+ * @param {(browser: MozTabBrowser) => Promise<void>} fn
  */
 async function withSource(fn) {
   await SpecialPowers.pushPrefEnv({ set: [["general.smoothScroll", false]] });
@@ -78,11 +78,15 @@ async function pageKeysThenUnbound(browser) {
   return pageKeys(browser);
 }
 
-/** The hint labels drawn in chrome, as their text. */
+/** The hint labels drawn in chrome, as their text ("" for one drawn without its label). */
 function drawnLabels() {
   const overlay = document.getElementById("vimma-hints");
   if (!overlay) return [];
-  return [...overlay.querySelectorAll(".vimma-hint:not([hidden])")].map((el) => el.dataset.label);
+  return [
+    .../** @type {NodeListOf<HTMLElement>} */ (
+      overlay.querySelectorAll(".vimma-hint:not([hidden])")
+    ),
+  ].map((el) => el.dataset.label ?? "");
 }
 
 add_task(async function j_k_G_and_gg_scroll_the_source() {
@@ -133,6 +137,7 @@ add_task(async function f_labels_the_link_in_the_source_and_follows_it() {
     );
     const labels = drawnLabels();
     Assert.equal(labels.length, 1, "the source's one link gets the one label");
+    Assert.ok(labels[0], "and the label has its text");
     const loaded = BrowserTestUtils.browserLoaded(browser, false, (url) =>
       url.endsWith("?to=target"),
     );
