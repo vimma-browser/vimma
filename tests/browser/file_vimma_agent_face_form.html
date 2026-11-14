@@ -7,7 +7,13 @@
    - the input in its shadow root into its form value: as text, as a file (`kind="file"`) or as
    - entries of a FormData (`kind="entries"`). Its `name` getter is the page's and says nothing,
    - and the page replaces FormData and its iterators, so that only what the form really sends
-   - tells. The "Update" form's own `formdata` listener adds an entry. Every form is a GET to
+   - tells (that alone does not tell Vimma's own FormData from one built through an Xray of the
+   - page's, which would ignore the page's replacements too; it shows that neither is the page's).
+   - The "Update" form's own `formdata` listener adds an entry. The "Keep" form hides a component's
+   - entry behind a hidden field of the same name. With `?listen=slot`, `root`, `document` or
+   - `window`, the "Refresh" form is slotted into a closed shadow root, and a `formdata` listener
+   - on its slot, on that shadow root, as the document's `onformdata` or on the window adds an
+   - entry. Every listener counts its runs on the body. Every form is a GET to
    - file_vimma_agent_page.html, so the address after a submission says what was sent. -->
 <html lang="en">
   <head>
@@ -39,6 +45,17 @@
       <vimma-note kind="entries" label="Entry text" value="typed by the agent"></vimma-note>
       <button type="submit">Continue</button>
     </form>
+    <form id="hidden" method="get" action="file_vimma_agent_page.html">
+      <input type="hidden" name="note" value="" />
+      <vimma-note name="note" label="Kept text" value="typed by the agent"></vimma-note>
+      <button type="submit">Keep</button>
+    </form>
+    <div id="host">
+      <form id="slotted" method="get" action="file_vimma_agent_page.html">
+        <input type="number" name="qty" value="4" aria-label="Units" />
+        <button type="submit">Refresh</button>
+      </form>
+    </div>
     <form id="listener" method="get" action="file_vimma_agent_page.html">
       <input type="number" name="qty" value="3" aria-label="Count" />
       <button type="submit">Update</button>
@@ -82,10 +99,22 @@
       };
       PageFormData.prototype.entries = function* () {};
       PageFormData.prototype[Symbol.iterator] = function* () {};
-      document.getElementById("listener").addEventListener("formdata", (e) => {
+      /** A page listener that adds an entry, counting its runs on the body. */
+      const adds = (e) => {
         document.body.dataset.formdata = String(Number(document.body.dataset.formdata ?? 0) + 1);
         e.formData.append("extra", "typed by the agent");
-      });
+      };
+      document.getElementById("listener").addEventListener("formdata", adds);
+      const listen = new URLSearchParams(location.search).get("listen");
+      if (listen) {
+        const root = document.getElementById("host").attachShadow({ mode: "closed" });
+        const slot = document.createElement("slot");
+        root.append(slot);
+        if (listen === "slot") slot.addEventListener("formdata", adds);
+        if (listen === "root") root.addEventListener("formdata", adds);
+        if (listen === "document") document.onformdata = adds;
+        if (listen === "window") window.addEventListener("formdata", adds);
+      }
     </script>
   </body>
 </html>

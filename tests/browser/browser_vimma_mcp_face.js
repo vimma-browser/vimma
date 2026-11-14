@@ -264,3 +264,67 @@ addTidyTask(async function test_a_form_whose_page_handles_formdata_asks() {
   Assert.equal((await response()).error?.reason, "user", "a no");
   Assert.equal(tab.linkedBrowser.currentURI.spec, FACE, "sends nothing");
 });
+
+/**
+ * The "Refresh" form, slotted into a closed shadow root, with a page `formdata` listener at
+ * `listen` on the event's path (the slot, that root, the document, the window), asks.
+ * @param {string} listen
+ */
+async function listenerOnThePathAsks(listen) {
+  await mcp(true);
+  const tab = await openAgentTab(`${FACE}?listen=${listen}`);
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  const { q, response } = await press(c, tab, by.Refresh);
+  Assert.ok(q, `${listen}: the form asks under the grant (K3)`);
+  if (!q) {
+    info(`${listen}: it ran unasked: ${(await response()).result?.url}`);
+    return;
+  }
+  Assert.equal(q.what.sent?.unread, true, `${listen}: the page's script adds to it`);
+  Assert.ok(
+    questionLine(q, { grantMinutes: 15 }).label.includes("+ what the page adds"),
+    `${listen}: and the line says so`,
+  );
+  const fired = await SpecialPowers.spawn(
+    tab.linkedBrowser,
+    [],
+    () => content.document.body.dataset.formdata ?? "0",
+  );
+  Assert.equal(fired, "0", `${listen}: judging it ran no listener of the page`);
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await response()).error?.reason, "user", `${listen}: a no`);
+}
+
+addTidyTask(async function test_a_formdata_listener_on_the_slot_asks() {
+  await listenerOnThePathAsks("slot");
+});
+
+addTidyTask(async function test_a_formdata_listener_on_the_closed_shadow_root_asks() {
+  await listenerOnThePathAsks("root");
+});
+
+addTidyTask(async function test_the_documents_onformdata_asks() {
+  await listenerOnThePathAsks("document");
+});
+
+addTidyTask(async function test_a_formdata_listener_on_the_window_asks() {
+  await listenerOnThePathAsks("window");
+});
+
+addTidyTask(async function test_a_component_behind_a_hidden_field_of_its_name_asks() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await grantedLabels(c, tab);
+  const { q, response } = await press(c, tab, by.Keep);
+  Assert.ok(q, "a hidden field of the same name does not hide the component's entry");
+  if (!q) {
+    info(`it ran unasked: ${(await response()).result?.url}`);
+    return;
+  }
+  Assert.deepEqual(q.what.sent?.fields, [{ name: "note", opaque: true }], "one entry, unread");
+  Assert.equal(q.what.sent?.hidden, 1, "and the hidden field counted");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await response()).error?.reason, "user", "a no");
+});
