@@ -4,8 +4,9 @@
 asked ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** `ConfigHost.init(window)`, called by `vimma.js`; a reload is announced with
-`CONFIG_RELOAD_TOPIC`; `ConfigHost.addRoute`, which `vimma.js` hands the host through
-`host/host-services.mjs` for `:route add`.
+`CONFIG_RELOAD_TOPIC`; `ConfigHost.addRoute`, `ConfigHost.addAgentProvider` and
+`ConfigHost.refused()`, which `vimma.js` hands the host through `host/host-services.mjs` for
+`:route add` and for the agent chat window's setup and its "no model" text.
 
 **May import (layer 4, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/`, the layer 1
 and 2 folders, and `host/`. Not `ctl/` (same layer) or above.

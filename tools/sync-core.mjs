@@ -56,6 +56,35 @@ const DYNAMIC_IMPORT = /\bimport\s*\(/g;
 const PLAIN_ARGUMENT = /^\s*(["'])[^"'`\n]*\1\s*\)/;
 
 /**
+ * True when `at` sits inside a string opened earlier on its line.
+ * @param {string} text
+ * @param {number} at
+ */
+function inStringOnLine(text, at) {
+  const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+  return [...line.matchAll(STRING_ON_LINE)].some((q) => q[2] === "");
+}
+
+/**
+ * The relative module paths rewriteSpecifiers would rewrite in `text`, in order: the offset of
+ * each path's opening quote and the path. Pure and never throws; the rewrite edits exactly these
+ * positions and no others, so test/sync-core.test.ts can hold them against a parser's view
+ * of where the module's imports are.
+ * @param {string} text
+ * @returns {{ offset: number, spec: string }[]}
+ */
+export function importPositions(text) {
+  /** @type {{ offset: number, spec: string }[]} */
+  const positions = [];
+  for (const m of text.matchAll(IMPORT_SPECIFIER)) {
+    if (!inStringOnLine(text, m.index)) {
+      positions.push({ offset: m.index + (m[1] ?? "").length, spec: m[3] ?? "" });
+    }
+  }
+  return positions;
+}
+
+/**
  * A module's text with each relative import pointed at the file's place in core/. Only import
  * positions are rewritten, so text that merely looks like a path, in a string or a comment, is
  * never changed: an import's words inside a string opened earlier on the same line are text too.
@@ -67,7 +96,8 @@ const PLAIN_ARGUMENT = /^\s*(["'])[^"'`\n]*\1\s*\)/;
  * Limits: a string is read on its own line, so an apostrophe earlier on an import's line (a
  * comment saying "don't") makes the import look like text and the sync fails, loudly; and a
  * string or template literal that spans lines is not seen from its later lines, so an import's
- * words on such a later line would be taken for an import. No module has either today.
+ * words on such a later line would be taken for an import. No module has either today, and the
+ * parser check in test/sync-core.test.ts fails on the second if one ever does.
  * @param {string} text
  * @param {string} file  the module's path relative to packages/vimma-core/src
  * @param {Map<string, string>} layout  from coreLayout
@@ -84,16 +114,8 @@ export function rewriteSpecifiers(text, file, layout) {
       );
     }
   }
-  /** @param {number} at  true when `at` sits inside a string opened earlier on its line */
-  const inString = (at) => {
-    const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
-    return [...line.matchAll(STRING_ON_LINE)].some((q) => q[2] === "");
-  };
   /** Offsets of the quotes that open an import's path. */
-  const imports = new Set();
-  for (const m of text.matchAll(IMPORT_SPECIFIER)) {
-    if (!inString(m.index)) imports.add(m.index + (m[1] ?? "").length);
-  }
+  const imports = new Set(importPositions(text).map((p) => p.offset));
   for (const m of text.matchAll(QUOTED_PATH)) {
     if (!imports.has(m.index)) {
       throw new Error(
