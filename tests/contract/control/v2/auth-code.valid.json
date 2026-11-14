@@ -1,5 +1,5 @@
 {
-  "description": "While MCP is on, a full client sends a code it also prints, so the user can tell its question from another's (docs/security.md S13)",
+  "description": "While MCP is on, a full client sends a code it also prints, so the user can tell its question from another's (docs/security/01-control-socket.md S13)",
   "kind": "auth",
   "message": {
     "type": "auth",

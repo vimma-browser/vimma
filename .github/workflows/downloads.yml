@@ -1,4 +1,4 @@
-# Release download counts over time (issue #647, docs/runbook.md "Release download counts").
+# Release download counts over time (issue #647, docs/runbook/ci-release-download-counts-downloads-yml.md "Release download counts").
 # GitHub keeps one running download_count per release asset and no history, so a jump cannot be
 # told apart from our own automation fetching an asset. This records every asset's count once a
 # day into downloads.csv on the `stats` branch, an orphan branch that holds only that file, so

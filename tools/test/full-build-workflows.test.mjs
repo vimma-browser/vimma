@@ -104,9 +104,9 @@ describe("full builds (nightly.yml, release.yml, macos.yml)", () => {
     },
   );
 
-  // Measured on ubuntu-24.04 (docs/runbook.md, "Full builds"): the Rust stage peaks at 15.3 GB
-  // of the runner's 16 GB of memory plus 10.4 GB of swap; without the swap file the first
-  // measured build was killed after 38 minutes.
+  // Measured on ubuntu-24.04 (docs/runbook/ci-full-builds.md, "Full builds"): the Rust stage peaks
+  // at 15.3 GB of the runner's 16 GB of memory plus 10.4 GB of swap; without the swap file the
+  // first measured build was killed after 38 minutes.
   it.each(BUILDS)("$name adds a 16 GB swap file before building", ({ block }) => {
     const swap = at(block, "- name: Swap file");
     const step = block.slice(swap, block.indexOf("\n      - ", swap + 1));

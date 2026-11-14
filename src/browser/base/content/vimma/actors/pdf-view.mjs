@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The one module that touches Firefox's pdf.js viewer (docs/specs/pdf-mode.md decisions 2 and 3;
-// docs/security.md section 20). It runs in the viewer's content process, waives Xrays only after
-// the principal check (V1), passes pdf.js only exported functions (V3), keeps only primitives from
-// it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member it uses is in
-// PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
+// docs/security/20-pdf-viewer.md section 20). It runs in the viewer's content process, waives Xrays
+// only after the principal check (V1), passes pdf.js only exported functions (V3), keeps only
+// primitives from it (V4) and sends at most one state message per 100 ms (V5). Every pdf.js member
+// it uses is in PDFJS_CONTRACT, which a mochitest holds to the pdf.js this build ships.
 
 import {
   PDF_MAX_LABEL,

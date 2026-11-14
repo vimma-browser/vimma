@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { jobs, parseWorkflow, triggers } from "./workflow-runners.mjs";
 
-// Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security.md G13 and G14: the
-// bump PR is set to auto-merge only once every check on its head is green.
+// Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md
+// G13 and G14: the bump PR is set to auto-merge only once every check on its head is green.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 /** @param {string} name */
 const read = (name) => readFileSync(new URL(name, dir), "utf8");

@@ -34,7 +34,8 @@ About dialog, about:support, Settings), I still see Vimma's own version, `0.1.0`
   - `src/toolkit/components/messaging-system/targeting/Targeting-sys-mjs.patch`:
     `TargetingEnvironment.version` (Nimbus and ASRouter targeting `version`, which overrides
     any custom context).
-- ADR-003 patch register: both patches. `docs/runbook.md`: the smoke check shows both versions.
+- ADR-003 patch register: both patches. `docs/runbook/smoke-check.md`: the smoke check shows both
+  versions.
 - **Nightly**: the `--version` check is unchanged by this spec (it printed `Vimma Vimma 0.1.0`;
   spec firefox-versions later made it `Vimma 0.1.0 · Firefox <version>`); a second check reads
   `application.ini` and requires `Version=` to be `surfer.json` `version.version`.

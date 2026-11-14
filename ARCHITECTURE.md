@@ -47,7 +47,7 @@ what releases, the nightly and macOS ship. An **artifact build** puts Vimma's fr
 Mozilla's own compiled binaries for the same release, takes under a minute when warm, and is what
 pull requests test ([ADR-010](docs/adr/010-pr-artifact-builds.md)). A change to a `.patch`
 file, C++, `moz.build`, `configs/` or branding needs a full build to verify. Commands:
-[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/runbook.md](docs/runbook.md).
+[CONTRIBUTING.md](CONTRIBUTING.md) and [docs/runbook/](docs/runbook/README.md).
 
 ## The running system
 
@@ -228,7 +228,7 @@ they test.
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
 | `tools/layering/`           | Checks the import layering of the `vimma/` folders ([ADR-026](docs/adr/026-module-layering.md)).            |
 | `tools/diagrams/`           | The two pictures on this page: the module graph read from the imports, and the D2 render of both.           |
-| `tools/security/`           | Checks that every test link in [docs/security.md](docs/security.md) resolves.                               |
+| `tools/security/`           | Checks that every test link in [docs/security/](docs/security/README.md) resolves.                          |
 | `tools/license-check/`      | Licence checks of npm packages and Rust crates.                                                             |
 | `tools/deps/`               | Which npm packages the release build runs, so their updates wait for a person.                              |
 | `tools/commitlint/`         | The commitlint rule that a feature or fix commit has a body.                                                |
@@ -319,8 +319,8 @@ are read and applied: [Config and theme](docs/architecture/config-and-theme.md).
 
 ## Trust boundaries
 
-[docs/security.md](docs/security.md) is the contract: one rule per risky component, each with the
-tests that enforce it. In short:
+[docs/security/](docs/security/README.md) is the contract: one rule per risky component, each with
+the tests that enforce it. In short:
 
 - **Pages** are untrusted. Vimma reaches them only through the actor pair, and what it takes from
   a page (a link, a title, text) is shown or opened under the rules of security.md §4, §6 and
@@ -354,15 +354,15 @@ tests that enforce it. In short:
 
 Tests are written before the code they test, and a baseline or snapshot changes only with a
 reason in the commit body ([CONTRIBUTING.md](CONTRIBUTING.md), "Workflow"). CI never retries a
-test: a flaky one gets an issue and a fix for its cause ([docs/runbook.md](docs/runbook.md),
-"Testing"). Each layer, where it runs and what no layer covers:
-[Testing](docs/architecture/testing.md).
+test: a flaky one gets an issue and a fix for its cause
+([docs/runbook/testing.md](docs/runbook/testing.md), "Testing"). Each layer, where it runs and what
+no layer covers: [Testing](docs/architecture/testing.md).
 
 ## Automation and release infrastructure
 
 Every workflow in `.github/workflows/`. Setup, secrets and recovery for each are in
-[docs/runbook.md](docs/runbook.md), "CI and automation"; the security rules for those that hold
-secrets are in security.md §10 and §14.
+[docs/runbook/ci.md](docs/runbook/ci.md), "CI and automation"; the security rules for those that
+hold secrets are in security.md §10 and §14.
 
 | Workflow                   | Runs on                     | What it does                                                                                                                          |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
@@ -419,4 +419,6 @@ and downloads it into `~/.cache/vimma/` on first use). Each SVG records a hash o
 was drawn from and one of itself, so `npm run diagrams:check` (part of `npm run lint`, and a step of its own in
 `ci.yml`) fails without D2 when an import or a `.d2` file changed and the pictures were not
 rendered again, when an SVG was edited by hand, and when one holds a script or an outside
-address ([docs/security.md](docs/security.md), B17).
+address
+([docs/security/14-build-and-release-supply-chain.md](docs/security/14-build-and-release-supply-chain.md),
+B17).

@@ -14,7 +14,7 @@ sniff for `Firefox/` work, and nothing in the UA reveals or depends on the Vimma
   `imply_option("MOZ_APP_UA_NAME", "Firefox")`. With it `nsHttpHandler` treats the app as
   Firefox: it appends `Firefox/<major>.0` and no `<AppName>/<version>` token.
 - ADR-003's patch register: the `moz-configure.patch` row names both lines.
-- `docs/runbook.md`: the expected UA in the smoke check.
+- `docs/runbook/`: the expected UA in the smoke check.
 - **Version gating**: researched below (Settled). Nothing changes in this spec; the findings are
   recorded as open issues for the versioning work (plan §7, M6).
 

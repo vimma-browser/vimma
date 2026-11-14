@@ -11,7 +11,7 @@
 # Needs macOS with a logged-in Finder; a Mac asks once to let the terminal control Finder, a
 # GitHub-hosted macos-15 runner does not. Not reproducible byte for byte, since Finder records
 # dates, the image's location and the machine's volume UUIDs, so the committed file is made on a
-# hosted runner (docs/runbook.md) and tools/package/test/macos.test.mjs checks what it says.
+# hosted runner (docs/runbook/) and tools/package/test/macos.test.mjs checks what it says.
 #
 #   tools/package/macos-dsstore.sh            write configs/branding/vimma/dsstore
 #   tools/package/macos-dsstore.sh --out FILE write FILE instead

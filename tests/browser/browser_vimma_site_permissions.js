@@ -6,7 +6,7 @@
 // permissions, as Firefox's Page Info lists them, with each one's real state; `a` / `b` / `r`
 // allow, block or reset the selected one and Enter steps through Firefox's states for it, all
 // through SitePermissions. It acts only on the page it was opened for, and refuses in the agent
-// workspace (docs/security.md SP1-SP3).
+// workspace (docs/security/19-site-permissions.md SP1-SP3).
 
 "use strict";
 

@@ -134,4 +134,6 @@ downloads are already seconds, the build is CPU.
 ## Out of scope
 
 Socket-driven e2e and screenshot diffs (they join this job when `tools/e2e` exists), the
-self-hosted runner itself (nightly.yml, docs/runbook.md), aarch64/macOS. (Since changed: no self-hosted runner is used or planned; full builds move to GitHub-hosted runners with [#224](https://github.com/vimma-browser/vimma/issues/224), spec build-supply-chain decision 6.)
+self-hosted runner itself (nightly.yml, docs/runbook/), aarch64/macOS. (Since changed: no
+self-hosted runner is used or planned; full builds move to GitHub-hosted runners with
+[#224](https://github.com/vimma-browser/vimma/issues/224), spec build-supply-chain decision 6.)

@@ -14,4 +14,4 @@ saves.
 folders (`split/` for the pane trees). Changes go up as the `CHANGED_TOPIC` observer topic.
 
 **Read more:** [Workspaces and panes](../../../../../../docs/architecture/workspaces-and-panes.md); routing and
-deletion rules in [docs/security.md](../../../../../../docs/security.md) sections 2 and 3.
+deletion rules in [docs/security/](../../../../../../docs/security/README.md) sections 2 and 3.

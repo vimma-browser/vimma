@@ -297,7 +297,7 @@ describe("the Node a workflow job runs its tools on", () => {
     expect(Object.keys(faults).sort()).toEqual(BASE_GUARDS);
     expect(
       Object.fromEntries(Object.entries(faults).filter(([, f]) => f.length)),
-      "docs/security.md B18: only actions/checkout, pinned by commit, with fetch-depth and " +
+      "docs/security/14-build-and-release-supply-chain.md B18: only actions/checkout, pinned by commit, with fetch-depth and " +
         "persist-credentials, may come before the guard, and the guard step keeps its pinned " +
         "text and env; move any other step after it",
     ).toEqual({});

@@ -4,7 +4,7 @@ Status: implemented · Area: `.github/workflows/upstream.yml`, `.github/workflow
 `tools/upstream/source-check.sh`,
 `tools/upstream/patch-check.py`, `tools/upstream/upstream-prefs.mjs`,
 `tools/upstream/autopilot-body.mjs`, `tools/upstream/bump-diff.mjs` (new),
-`tools/upstream/reexport.py` (new), `docs/rebase.md`, `docs/runbook.md`, `docs/security.md`,
+`tools/upstream/reexport.py` (new), `docs/rebase.md`, `docs/runbook/`, `docs/security/`,
 `docs/limits.md` · Upstream patches: none · ADR: ADR-022 (new, "A green Firefox bump merges
 itself"), which amends [ADR-015](../adr/015-upstream-autopilot.md)
 
@@ -44,7 +44,7 @@ zero manual steps". Today, for Firefox 158.0 (the version `surfer.json` pins on 
   run at all.
 
 A Firefox security dot release therefore reaches `main` only when the maintainer acts, and the
-drift check (docs/security.md, G2) fails the scheduled run after 3 days.
+drift check (docs/security/10-firefox-updates.md, G2) fails the scheduled run after 3 days.
 
 ## Behaviour
 
@@ -74,7 +74,7 @@ drift check (docs/security.md, G2) fails the scheduled run after 3 days.
    hidden marker in the PR body, and `upstream-merge.yml` sets auto-merge once every workflow run
    the PR started on that head is green and no check failed, because the ruleset does not require
    the macOS mochitests, vimma-ctl on macOS or the package checks, and a bump should not merge
-   past a red one; docs/security.md, G13.)
+   past a red one; docs/security/10-firefox-updates.md, G13.)
 6. **No auto-merge with changed patches.** A bump with re-exported (3) or failing (4) patches is
    never set to auto-merge; it is marked ready for review and mentions the owner.
 7. **Explained outcome.** The PR body's table gains a row "Auto-merge" that says "on" or names the
@@ -190,7 +190,11 @@ of Behaviour 5 hold, the step runs `gh pr merge --auto --squash --match-head-com
    dispatching `ci.yml`, `e2e.yml`, `semgrep.yml` and `codeql.yml` with `workflow_dispatch` on the
    branch, because whether those runs satisfy the ruleset's code-scanning gate for a PR is not
    documented, and the merge would still not start `push` workflows.
-   (Since changed: the org's GitHub App `vimma-upstream-autopilot` replaces the token. Its key, `UPSTREAM_APP_KEY`, is a secret of the `upstream-autopilot` environment, which only `main` may deploy to, and each run mints a one-hour token for this repository with Contents, Pull requests and Issues write, because an App's token needs no renewal and a pushed branch's copy of the workflow cannot read the key; docs/security.md, G14.)
+   (Since changed: the org's GitHub App `vimma-upstream-autopilot` replaces the token. Its key,
+   `UPSTREAM_APP_KEY`, is a secret of the `upstream-autopilot` environment, which only `main` may
+   deploy to, and each run mints a one-hour token for this repository with Contents, Pull requests
+   and Issues write, because an App's token needs no renewal and a pushed branch's copy of the
+   workflow cannot read the key; docs/security/10-firefox-updates.md, G14.)
 
 8. **A diff allowlist, checked line by line**, so that a defect in the autopilot (a wrong file in
    the commit, a stray edit from the pref refresh) cannot merge without a person. It is checked
@@ -270,8 +274,8 @@ artifact (the same conflicts list the PR body carries), finds an open issue with
 
 ## Security and privacy
 
-The change adds write paths, so `docs/security.md` section 10 gains guarantees (numbered after
-the existing G1 to G10) with their tests:
+The change adds write paths, so `docs/security/10-firefox-updates.md` section 10 gains guarantees
+(numbered after the existing G1 to G10) with their tests:
 
 - Auto-merge is enabled only by `publish` on `main`'s code, only for a non-draft PR whose diff
   passes `bump-diff.mjs`, only with `--match-head-commit`, and only when `AUTO_MERGE_UPSTREAM`
@@ -281,7 +285,7 @@ the existing G1 to G10) with their tests:
   leaked token could open and merge PRs that pass the required checks, the same reach as the
   maintainer's own account minus workflows; it is revoked in the token settings. (Since changed:
   the upstream App's key replaces the token, in an environment only `main` may deploy to;
-  docs/security.md, G14.)
+  docs/security/10-firefox-updates.md, G14.)
 - The failing-patches issue is written by `patch-issue` with `GITHUB_TOKEN` and `issues: write`
   only; no secret reaches it, and no model runs in any job.
 - No job runs on `pull_request_target` or `workflow_run`. Every action stays pinned by a full commit SHA.
@@ -328,8 +332,8 @@ prefs`.
 
 - `docs/rebase.md`: section 1 (the new commits and the auto-merge step), the "Decide" list, and the
   "At a glance" table, where step 8 becomes automatic for an allowlisted bump.
-- `docs/runbook.md`: owner setup (the token's exact permissions, `AUTO_MERGE_UPSTREAM`), and how to turn auto-merge off (unset the variable, or `gh pr merge --disable-auto`).
-- `docs/security.md` section 10: the guarantees above.
+- `docs/runbook/`: owner setup (the token's exact permissions, `AUTO_MERGE_UPSTREAM`), and how to turn auto-merge off (unset the variable, or `gh pr merge --disable-auto`).
+- `docs/security/10-firefox-updates.md` section 10: the guarantees above.
 - `docs/limits.md` ("Build and CI"): the gaps this closes come out; what remains (patch changes wait
   for a person until #224) stays.
 - `plan.md` §6, M7 status: updated when the last sub-PR merges.
@@ -341,10 +345,10 @@ prefs`.
 1. **Pref refresh** (Behaviour 1, 2): `patch-check.py --extract`, `upstream-prefs.mjs
 --write-diff`, `source-check.sh`, the `e2e.yml` input, `publish`, PR body.
 2. **Auto-merge** (Behaviour 5, 7, 8): `bump-diff.mjs`, the `publish` step, ADR-022,
-   `docs/security.md`, runbook setup. Needs `UPSTREAM_PR_TOKEN` for its dry run.
+   `docs/security/`, runbook setup. Needs `UPSTREAM_PR_TOKEN` for its dry run.
 3. **Fuzz re-export** (Behaviour 3, 6): `reexport.py`, `source-check.sh`, `publish`.
 4. **Issue for failing patches** (Behaviour 4): the `patch-issue` job, its texts and tests,
-   `docs/security.md`.
+   `docs/security/`.
 
 Each sub-PR is merged before the next starts. Sub-PRs 1, 2 and 4 change workflows that hold write
 tokens or secrets and get a fresh security review.

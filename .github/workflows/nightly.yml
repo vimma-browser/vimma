@@ -3,11 +3,11 @@
 # `vimma-nightly`, kept 7 days. The repository is public, so any signed-in GitHub user can
 # download it from the run while it is kept.
 # Spec build-supply-chain: it runs on the standard GitHub-hosted runner, never a self-hosted one
-# (docs/security.md, B5), from Firefox source that tools/upstream/firefox-source.sh verifies and
+# (docs/security/14-build-and-release-supply-chain.md, B5), from Firefox source that tools/upstream/firefox-source.sh verifies and
 # extracts in this job, and restores nothing from the Actions cache (B1, B2). Nothing runs,
 # scheduled or manual, until the repository variable NIGHTLY_ENABLED is `true`; a manual run
 # (workflow_dispatch) must also start from main. Measured time and disk, and how to switch it
-# on: docs/runbook.md, "Full builds".
+# on: docs/runbook/ci-full-builds.md, "Full builds".
 # Spec m6a-updater: the build has Firefox's updater (VIMMA_UPDATES=1), and the package is set to
 # the nightly update channel, vimma-nightly, and checked with tools/update/check-build.mjs. The
 # MAR step runs on every nightly as a check of the release's.
@@ -39,7 +39,7 @@ on:
     # hours late: the nightly 6 h 40 min to 7 h 34 min on 2026-11-08 to 2026-11-13, and 4.5 to
     # 5 h in mid-October. So 17:23 UTC starts the build at about 00:00 to 02:00 UTC, and still
     # in the night with any delay seen so far; tools/test/nightly-workflow.test.mjs holds the
-    # sum. docs/runbook.md, "When the nightly starts", says what to check and move.
+    # sum. docs/runbook/ci-full-builds.md, "When the nightly starts", says what to check and move.
     - cron: "23 17 * * *"
   workflow_dispatch:
 
@@ -109,10 +109,10 @@ jobs:
       (github.event_name == 'workflow_dispatch' || needs.changes.result != 'success' ||
       needs.changes.outputs.build == 'true')
     # The Safe Browsing key is a secret of the `build` environment, which only main may deploy
-    # from (docs/security.md, B6): GitHub enforces that outside this file.
+    # from (docs/security/14-build-and-release-supply-chain.md, B6): GitHub enforces that outside this file.
     environment: build
     runs-on: ubuntu-24.04
-    # About 1.5 times the measured job, 124 min (docs/runbook.md, "Full builds"), well under
+    # About 1.5 times the measured job, 124 min (docs/runbook/ci-full-builds.md, "Full builds"), well under
     # GitHub's 6 hours, so a hung build fails here with its own log and failure handling.
     timeout-minutes: 190
     # No write token here: npm, Surfer, mach and the mochitests run in this job. The failure
@@ -155,7 +155,7 @@ jobs:
 
       # The Rust stage of the build peaks at 15.3 GB of the runner's 16 GB of memory plus 10.4 GB
       # of swap; without this file the first measured build was killed after 38 minutes
-      # (docs/runbook.md, "Full builds").
+      # (docs/runbook/ci-full-builds.md, "Full builds").
       - name: Swap file (16 GB)
         run: |
           sudo fallocate -l 16G /vimma-swapfile
@@ -357,7 +357,7 @@ jobs:
 
   # The update key signs the MAR in update-publish.yml's mar-sign job, called here as release.yml
   # calls it: its token names update-publish.yml at refs/heads/main, the one workflow Google
-  # Cloud admits for the key (docs/runbook.md, "Update signing keys and the update host", step
+  # Cloud admits for the key (docs/runbook/ci-update-keys-and-update-host.md, "Update signing keys and the update host", step
   # 7b), and the caller, nightly.yml on main, fixes the channel to vimma-nightly. These
   # permissions are a ceiling, not a grant (release.yml's mar-sign says why): the one job that
   # runs in the call asks only for its OIDC token.

@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-// #647, docs/runbook.md "Release download counts": the daily snapshot workflow's shape. Text
-// checks, like spec-status-workflow.test.mjs: no YAML dependency.
+// #647, docs/runbook/ci-release-download-counts-downloads-yml.md "Release download counts": the
+// daily snapshot workflow's shape. Text checks, like spec-status-workflow.test.mjs: no YAML
+// dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/downloads.yml", import.meta.url),
   "utf8",
