@@ -19,9 +19,9 @@ import {
   resolveTheme,
   themeStylesheet,
   tokensToCss,
-} from "../src/theme.mjs";
-import { mergeWithDefaults } from "../src/config.mjs";
-import { MODES } from "../src/modes.mjs";
+} from "../src/config/theme.mjs";
+import { mergeWithDefaults } from "../src/config/config.mjs";
+import { MODES } from "../src/keys/modes.mjs";
 
 /** @param {string} name */
 const fixture = (name) =>

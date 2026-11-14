@@ -16,10 +16,10 @@ import {
   downloadSegment,
   downloadEnds,
   nameFromUrl,
-} from "../src/downloads.mjs";
-import { statusSegments } from "../src/statusbar.mjs";
+} from "../src/ui/downloads.mjs";
+import { statusSegments } from "../src/ui/statusbar.mjs";
 
-/** @import { DownloadRecord } from "../src/downloads.mjs" */
+/** @import { DownloadRecord } from "../src/ui/downloads.mjs" */
 
 const MB = 1024 * 1024;
 

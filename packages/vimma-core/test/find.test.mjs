@@ -1,7 +1,7 @@
 import { describe, test, expect } from "vitest";
 import fc from "fast-check";
-import { findCountText, findStatusText, isCaseSensitive } from "../src/find.mjs";
-import { statusSegments } from "../src/statusbar.mjs";
+import { findCountText, findStatusText, isCaseSensitive } from "../src/page/find.mjs";
+import { statusSegments } from "../src/ui/statusbar.mjs";
 
 describe("smartcase", () => {
   test.each([

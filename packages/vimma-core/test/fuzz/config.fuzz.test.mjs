@@ -10,16 +10,16 @@ import {
   migrate,
   parseConfig,
   reloadConfig,
-} from "../../src/config.mjs";
-import { formatPath, parsePath, parseToml } from "../../src/toml.mjs";
-import { PALETTE_KEYS } from "../../src/theme.mjs";
-import { INSERT_SITE_MODES } from "../../src/editable.mjs";
-import { PANES_MAX_LIMIT } from "../../src/panes.mjs";
-import { resolveDownloadDir } from "../../src/agent-downloads.mjs";
+} from "../../src/config/config.mjs";
+import { formatPath, parsePath, parseToml } from "../../src/config/toml.mjs";
+import { PALETTE_KEYS } from "../../src/config/theme.mjs";
+import { INSERT_SITE_MODES } from "../../src/keys/editable.mjs";
+import { PANES_MAX_LIMIT } from "../../src/panes/panes.mjs";
+import { resolveDownloadDir } from "../../src/agent/agent-downloads.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 import { configText } from "./toml-arb.mjs";
 
-/** @param {import("../../src/config.mjs").ParseResult} r */
+/** @param {import("../../src/config/config.mjs").ParseResult} r */
 function expectWellFormed(r) {
   expect(Array.isArray(r.errors)).toBe(true);
   expect(r.config === null).toBe(r.errors.length > 0);
@@ -36,7 +36,7 @@ const HEX6 = /^#[0-9a-f]{6}$/;
 /**
  * Everything an accepted config may contain, checked independently of config.mjs: what the
  * schema allows and nothing else (no function, no prototype object, no stray type).
- * @param {import("../../src/config.mjs").ResolvedConfig} c
+ * @param {import("../../src/config/config.mjs").ResolvedConfig} c
  */
 function expectInSchema(c) {
   for (const w of c.workspaces) {

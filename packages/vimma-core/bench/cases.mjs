@@ -8,10 +8,10 @@
  * the action the host would apply, so the dispatcher ends idle and every run does the same work.
  * Names key the baseline: renaming a case means re-recording it (docs/runbook.md).
  */
-import { createDispatcher } from "../src/dispatcher.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { parseKey } from "../src/keys.mjs";
-import { focus } from "../src/panes.mjs";
+import { createDispatcher } from "../src/keys/dispatcher.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { parseKey } from "../src/keys/keys.mjs";
+import { focus } from "../src/panes/panes.mjs";
 import {
   activeWorkspace,
   createWorkspaces,
@@ -19,7 +19,7 @@ import {
   selectTab,
   splitPane,
   withPanes,
-} from "../src/workspaces.mjs";
+} from "../src/workspaces/workspaces.mjs";
 
 /** @typedef {{ name: string, run: () => unknown, expected: unknown }} BenchCase */
 

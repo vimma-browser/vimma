@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 """Prints the East Asian Wide (W) and Fullwidth (F) code point ranges table for
-packages/vimma-core/src/textwidth.mjs from Python's bundled Unicode Character Database
+packages/vimma-core/src/text/textwidth.mjs from Python's bundled Unicode Character Database
 (`unicodedata`; its UCD version goes into the header). Paste the output over the table.
 
     python3 tools/unicode/gen_wide_ranges.py

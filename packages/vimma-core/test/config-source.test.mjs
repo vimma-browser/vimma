@@ -1,9 +1,9 @@
 // `:source <path>` and `:config` (spec m5-config-load, § `:source <path>` and `:config`).
 import { describe, test, expect } from "vitest";
-import { parseConfig, resolveSourcePath } from "../src/config.mjs";
-import { formatConfigTemplate } from "../src/defaults.mjs";
-import { bindingTable } from "../src/help.mjs";
-import { MODES } from "../src/modes.mjs";
+import { parseConfig, resolveSourcePath } from "../src/config/config.mjs";
+import { formatConfigTemplate } from "../src/config/defaults.mjs";
+import { bindingTable } from "../src/ui/help.mjs";
+import { MODES } from "../src/keys/modes.mjs";
 
 const env = {
   home: "/home/u",
@@ -53,8 +53,8 @@ describe("formatConfigTemplate", () => {
     const r = parseConfig(text);
     const none = parseConfig("");
     expect(r.errors).toEqual([]);
-    const km = /** @type {import("../src/keymap.mjs").Keymap} */ (r.keymap);
-    const kmNone = /** @type {import("../src/keymap.mjs").Keymap} */ (none.keymap);
+    const km = /** @type {import("../src/keys/keymap.mjs").Keymap} */ (r.keymap);
+    const kmNone = /** @type {import("../src/keys/keymap.mjs").Keymap} */ (none.keymap);
     expect(bindingTable(km)).toEqual(bindingTable(kmNone));
     for (const mode of MODES) expect(km.sequences(mode)).toEqual(kmNone.sequences(mode));
     expect([km.prefix, km.leader, km.timeoutMs]).toEqual([

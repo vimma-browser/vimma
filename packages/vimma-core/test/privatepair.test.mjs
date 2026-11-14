@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { pairStep, parkedWindow } from "../src/privatepair.mjs";
+import { pairStep, parkedWindow } from "../src/workspaces/privatepair.mjs";
 
 // docs/specs/private-swap.md decisions 6 and 7; docs/specs/private-swap-macos.md decision 3:
 // the pair's state machine knows nothing of a backend, so its window identifiers are opaque.

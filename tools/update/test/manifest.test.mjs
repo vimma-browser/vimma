@@ -1,6 +1,6 @@
 // docs/specs/m6a-updater.md §2 and §7: the update manifest a published release gets, built by
 // tools/update/manifest.mjs, signed in update-publish.yml's `sign` job and checked before the
-// push with the verifier the browser runs (packages/vimma-core/src/updates.mjs). Keys are
+// push with the verifier the browser runs (packages/vimma-core/src/updates/updates.mjs). Keys are
 // generated here; nothing is fetched. A run with VIMMA_UPDATE_ASSETS=<dir> (a release's
 // tarball, AppImage, .deb and SHA256SUMS, downloaded by hand) also builds, signs and verifies a
 // manifest for those real files.
@@ -18,7 +18,7 @@ import {
   signedBytes,
   spkiKeyId,
   verifyManifest,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import {
   CHANNEL,
   MANIFEST_PATH,

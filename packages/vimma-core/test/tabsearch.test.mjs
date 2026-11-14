@@ -1,5 +1,5 @@
 import { describe, test, expect } from "vitest";
-import { pickerItems } from "../src/picker.mjs";
+import { pickerItems } from "../src/ui/picker.mjs";
 import {
   CLOSED_TAB_CAP,
   CLOSED_WINDOW_CAP,
@@ -12,10 +12,10 @@ import {
   sectionHeading,
   sectionOf,
   tabSearchItems,
-} from "../src/tabsearch.mjs";
+} from "../src/ui/tabsearch.mjs";
 
-/** @import { PickerItem } from "../src/picker.mjs" */
-/** @import { Workspaces } from "../src/workspaces.mjs" */
+/** @import { PickerItem } from "../src/ui/picker.mjs" */
+/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
 
 /**
  * A workspaces model from what the pickers read of each workspace: its id, name, tabs and active

@@ -14,7 +14,7 @@ import {
   stoppedAtCheckpoint,
   storedRecord,
   taskSummary,
-} from "../src/agent-store.mjs";
+} from "../src/agent/agent-store.mjs";
 
 const provider = {
   name: "ollama",
@@ -24,7 +24,7 @@ const provider = {
   vision: false,
 };
 
-/** @type {import("../src/agent-store.mjs").StoredEntry[]} */
+/** @type {import("../src/agent/agent-store.mjs").StoredEntry[]} */
 const stored = [
   { kind: "user", text: "buy milk" },
   { kind: "agent", text: "I'll open the shop." },

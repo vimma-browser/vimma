@@ -98,7 +98,7 @@ nothing:
 2. The server (`Connection.handshake` in `VimmaControl.sys.mjs`) validates it with core's
    `validateMessage`, refuses a role that is off (`role-off`), and answers with a `challenge`:
    HMAC-SHA256 of the token over `vimma-server` NUL and the nonce (`CHALLENGE_CONTEXT` in
-   `packages/vimma-core/src/control.mjs`).
+   `packages/vimma-core/src/control/control.mjs`).
 3. The client computes the same value (`protocol::challenge_proof`, with the std-only HMAC in
    `hmac.rs`) and compares in constant time. A mismatch ends the attempt as an impostor, with the
    token unsent.
@@ -147,7 +147,7 @@ priority until the reply.
   is taken after the click, and only when the click navigated (M3).
 - `AgentAct.payment` and `AgentAct.sent` read whether the click may pay and what a submission
   would send. Core's `isConsequential`, `mayAllowHere` and `allowanceKey`
-  (`packages/vimma-core/src/agent-checkpoint.mjs`) decide whether a grant covers the form, and
+  (`packages/vimma-core/src/agent/agent-checkpoint.mjs`) decide whether a grant covers the form, and
   whether `a` may allow that button on that site.
 
 Every refusal outside the gate is written to `:mcp log` through `AgentGate.note` (M23).
@@ -157,7 +157,7 @@ Every refusal outside the gate is written to `:mcp log` through `AgentGate.note`
 `ask` in `agent-commands.mjs` calls `AgentGate.request` with the tool name, a plain-data
 description of what the call touches, and `always` set for a submission or a payment. The gate
 (`ctl/AgentGate.sys.mjs`) puts the rules in core's `AgentQueue`
-(`packages/vimma-core/src/agent.mjs`) and adds the clock:
+(`packages/vimma-core/src/agent/agent.mjs`) and adds the clock:
 
 - `queue.ask` answers `run` when the connection's grant covers the call: it runs at once, with a
   notice and a log row. A harmless form is covered (`covered`); one that sends text, personal

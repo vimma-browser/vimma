@@ -14,7 +14,7 @@ import {
   ROLES,
   TICKET_CONTEXT,
   validateMessage,
-} from "../src/control.mjs";
+} from "../src/control/control.mjs";
 import { createHmac } from "node:crypto";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v2/", import.meta.url));
@@ -40,7 +40,7 @@ const req = (command, args = {}, id = 1) => ({ type: "request", id, command, arg
 const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
 /**
  * @param {unknown} message
- * @param {import("../src/control.mjs").ValidateOptions} [options]
+ * @param {import("../src/control/control.mjs").ValidateOptions} [options]
  */
 const errorsOf = (message, options) => validateMessage(message, options).errors;
 

@@ -9,7 +9,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { installTypeFrom } from "../../packages/vimma-core/src/updates.mjs";
+import { installTypeFrom } from "../../packages/vimma-core/src/updates/updates.mjs";
 import { PACKAGED_APP_FILE } from "./package.mjs";
 
 const dir = process.argv[2];

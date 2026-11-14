@@ -15,9 +15,9 @@ import {
   parsePayInfo,
   parseSentFields,
   statedTotal,
-} from "../src/agent-checkpoint.mjs";
-import { textWidth } from "../src/textwidth.mjs";
-/** @import { SentField, SentFields } from "../src/agent-checkpoint.mjs" */
+} from "../src/agent/agent-checkpoint.mjs";
+import { textWidth } from "../src/text/textwidth.mjs";
+/** @import { SentField, SentFields } from "../src/agent/agent-checkpoint.mjs" */
 
 describe("a payment step (C5, C6)", () => {
   test("card fields alone, and a pay phrase alone, make a payment step; neither makes none", () => {

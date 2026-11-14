@@ -13,12 +13,12 @@ import {
   setPickerItems,
   unitsBuilt,
   workspaceItems,
-} from "../src/picker.mjs";
-import { downloadSections } from "../src/downloads.mjs";
-import { createSplits, newSplit, splitPickerItems } from "../src/splits.mjs";
+} from "../src/ui/picker.mjs";
+import { downloadSections } from "../src/ui/downloads.mjs";
+import { createSplits, newSplit, splitPickerItems } from "../src/panes/splits.mjs";
 
-/** @import { AnyItem, Field, PickerState, PickerItem } from "../src/picker.mjs" */
-/** @import { Workspaces } from "../src/workspaces.mjs" */
+/** @import { AnyItem, Field, PickerState, PickerItem } from "../src/ui/picker.mjs" */
+/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
 
 /**
  * A workspaces model from what the pickers read of each workspace: its id, name, tabs and active
@@ -646,8 +646,8 @@ describe("tab search (docs/specs/tab-search.md)", () => {
 describe("downloads picker (docs/specs/downloads.md)", () => {
   /**
    * @param {number} id
-   * @param {Partial<import("../src/downloads.mjs").DownloadRecord>} [over]
-   * @returns {import("../src/downloads.mjs").DownloadRecord}
+   * @param {Partial<import("../src/ui/downloads.mjs").DownloadRecord>} [over]
+   * @returns {import("../src/ui/downloads.mjs").DownloadRecord}
    */
   const record = (id, over = {}) => ({
     id,

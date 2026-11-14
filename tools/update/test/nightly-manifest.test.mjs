@@ -16,7 +16,7 @@ import {
   signatureComment,
   spkiKeyId,
   staleDays,
-} from "../../../packages/vimma-core/src/updates.mjs";
+} from "../../../packages/vimma-core/src/updates/updates.mjs";
 import {
   CHANNEL,
   NIGHTLY_CHANNEL,

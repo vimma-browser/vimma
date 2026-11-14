@@ -19,8 +19,8 @@ import {
   parseAgentCommand,
   providerWhere,
   sendNotice,
-} from "../src/agent-chat.mjs";
-import { reloadConfig } from "../src/config.mjs";
+} from "../src/agent/agent-chat.mjs";
+import { reloadConfig } from "../src/config/config.mjs";
 
 const call = (/** @type {string} */ name, args = {}, id = "c1") => ({ id, name, args });
 const ok = { id: "c1", name: "vimma_activate", isError: false, content: [] };

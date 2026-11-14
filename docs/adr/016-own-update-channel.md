@@ -39,7 +39,8 @@ Mozilla's test-signing keys, whose private halves anyone can find in Mozilla's s
   channel, because every other channel embeds Mozilla's keys. The primary is the Cloud KMS key
   that also signs the manifest (spec decisions 12 and 16); until the offline ceremony makes the
   recovery key, the secondary slot holds the primary's certificate again (decision 39).
-- **One source for both verifiers.** `packages/vimma-core/src/update-keys.mjs`, the keys the
+- **One source for both verifiers.** `packages/vimma-core/src/update-keys.mjs` (Since changed:
+  `packages/vimma-core/src/updates/update-keys.mjs`, #937), the keys the
   manifest check pins, is generated from those certificates (`npm run gen-update-keys`), and a
   test fails when the two disagree, so the manifest check and the updater cannot drift apart.
 - **The updater is built only for releases and nightlies.** `configs/common/mozconfig` passes

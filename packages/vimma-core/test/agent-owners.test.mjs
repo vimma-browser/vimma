@@ -1,7 +1,7 @@
 // docs/specs/builtin-agent.md B17, Behaviour 30: each conversation has its own tabs of the
 // agent workspace; MCP agents see only the tabs no conversation owns.
 import { describe, expect, test } from "vitest";
-import { TabOwners } from "../src/agent-owners.mjs";
+import { TabOwners } from "../src/agent/agent-owners.mjs";
 
 describe("TabOwners", () => {
   test("a tab belongs to the conversation that opened it", () => {

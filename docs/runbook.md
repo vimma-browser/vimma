@@ -439,8 +439,8 @@ npm run sites -- --pref name=value             # an extra profile pref (repeatab
 
 `npm run agent-bench` measures which models can do the built-in agent's tasks
 ([builtin-agent](specs/builtin-agent.md) B14). It runs vimma-core's model loop
-(`packages/vimma-core/src/agent-loop.mjs`) in Node against `vimma-ctl mcp` on a real build under
-its own Xvfb, and shops the ten fixed lists of `tests/e2e/fixtures/bench-shop/lists.json` in a
+(`packages/vimma-core/src/agent/agent-loop.mjs`) in Node against `vimma-ctl mcp` on a real build
+under its own Xvfb, and shops the ten fixed lists of `tests/e2e/fixtures/bench-shop/lists.json` in a
 local shop (`tools/agent-bench/shop.ts`, about 60 products, with injected instructions in some
 descriptions and reviews). Each run is one `vimma-ctl mcp` connection: the harness answers its
 first question with `a`, as sending a task with `Enter` will grant it, and every later
@@ -1021,7 +1021,7 @@ Reading the issue and the report:
 
 Locally: `npm run mutation` (full run the first time, about 20 min on 12 cores; later runs reuse
 `reports/mutation/stryker-incremental.json` and re-test only changed files, `npx stryker run --force`
-to redo everything); `npx stryker run --mutate packages/vimma-core/src/keys.mjs` for one file.
+to redo everything); `npx stryker run --mutate packages/vimma-core/src/keys/keys.mjs` for one file.
 
 How it runs, and why: Stryker's `command` runner runs `vitest run` on the core's tests once per
 mutant (`packages/vimma-core/vitest.config.mjs`, one worker, `--bail 1`). The dedicated
@@ -2582,7 +2582,7 @@ can serve as research), and does steps 3 and 4 by hand.
 
 Vimma checks `https://updates.vimma.dev/updates/browser/<target>/<channel>/update.xml`
 (`Linux_x86_64-gcc3`, or `Darwin_aarch64-gcc3` on Apple Silicon) every 12 hours and accepts only a manifest signed by a key pinned in
-`packages/vimma-core/src/update-keys.mjs` (step 5; a build with no pinned key refuses every
+`packages/vimma-core/src/updates/update-keys.mjs` (step 5; a build with no pinned key refuses every
 manifest and shows nothing). These steps need the maintainer's accounts; do them once, in order.
 All steps but 4 (the offline secondary key) are done. Step 7 sets up `update-publish.yml`, which
 signs and publishes a manifest for every published release; nothing is published while the
@@ -2730,8 +2730,8 @@ done
 ```
 
 Add `{ id, slot: "primary" | "secondary", spki }` for each to `UPDATE_KEYS` in
-`packages/vimma-core/src/update-keys.mjs`; `npm test` checks that each is an RSA-4096 key whose
-id matches, and that the primary's SHA-256 is the one recorded here. Record each SHA-256 here
+`packages/vimma-core/src/updates/update-keys.mjs`; `npm test` checks that each is an RSA-4096 key
+whose id matches, and that the primary's SHA-256 is the one recorded here. Record each SHA-256 here
 when it is pinned.
 
 The primary is pinned on its own; the secondary is added in a later release. The secondary comes

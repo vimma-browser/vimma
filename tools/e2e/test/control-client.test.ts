@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { CHALLENGE_CONTEXT } from "../../../packages/vimma-core/src/control.mjs";
+import { CHALLENGE_CONTEXT } from "../../../packages/vimma-core/src/control/control.mjs";
 import { ControlClient, ControlSessions } from "../control-client.ts";
 import { findVimmaCtl } from "../driver.ts";
 import type { AddressInfo } from "node:net";

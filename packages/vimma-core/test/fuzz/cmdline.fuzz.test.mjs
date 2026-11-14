@@ -10,8 +10,8 @@ import {
   historyPrevious,
   parseCommandLine,
   pushHistory,
-} from "../../src/cmdline.mjs";
-import { ACTIONS } from "../../src/actions.mjs";
+} from "../../src/keys/cmdline.mjs";
+import { ACTIONS } from "../../src/keys/actions.mjs";
 import { FUZZ_TIMEOUT, PROTO_NAMES, fuzz, nastyString, within } from "./harness.mjs";
 
 const IDS = new Set([

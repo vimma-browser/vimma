@@ -1,9 +1,9 @@
 import { describe, test, expect } from "vitest";
-import { compileKeymap, KeymapError } from "../src/keymap.mjs";
-import { parsePath } from "../src/toml.mjs";
+import { compileKeymap, KeymapError } from "../src/keys/keymap.mjs";
+import { parsePath } from "../src/config/toml.mjs";
 
-/** @import { Mode } from "../src/modes.mjs" */
-/** @import { TrieNode } from "../src/keymap.mjs" */
+/** @import { Mode } from "../src/keys/modes.mjs" */
+/** @import { TrieNode } from "../src/keys/keymap.mjs" */
 
 describe("compileKeymap", () => {
   test("compiles defaults without errors", () => {

@@ -7,10 +7,10 @@ import {
   migrate,
   parseConfig,
   reloadConfig,
-} from "../src/config.mjs";
-import { compileKeymap } from "../src/keymap.mjs";
-import { formatDefaultsToml } from "../src/defaults.mjs";
-import { MODES } from "../src/modes.mjs";
+} from "../src/config/config.mjs";
+import { compileKeymap } from "../src/keys/keymap.mjs";
+import { formatDefaultsToml } from "../src/config/defaults.mjs";
+import { MODES } from "../src/keys/modes.mjs";
 
 /** @param {string[]} lines */
 const toml = (...lines) => lines.join("\n") + "\n";
@@ -27,7 +27,7 @@ function errorsOf(text) {
 function oneError(text) {
   const errors = errorsOf(text);
   expect(errors).toHaveLength(1);
-  return /** @type {import("../src/config.mjs").ConfigError} */ (errors[0]);
+  return /** @type {import("../src/config/config.mjs").ConfigError} */ (errors[0]);
 }
 
 describe("parseConfig: valid input", () => {

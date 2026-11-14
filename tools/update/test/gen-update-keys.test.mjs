@@ -1,6 +1,6 @@
 // docs/specs/m6a-updater.md "Delivery" (sub-PR 2) and decision 39: the manifest check's pinned
-// keys (packages/vimma-core/src/update-keys.mjs) are generated from the certificates Firefox's
-// updater embeds (configs/updater/*.der), so the two verifiers trust
+// keys (packages/vimma-core/src/updates/update-keys.mjs) are generated from the certificates
+// Firefox's updater embeds (configs/updater/*.der), so the two verifiers trust
 // the same keys from one source. Keys and certificates are generated in the test.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
@@ -14,7 +14,7 @@ import {
   readCertificates,
   renderUpdateKeys,
 } from "../gen-update-keys.mjs";
-import { spkiKeyId } from "../../../packages/vimma-core/src/updates.mjs";
+import { spkiKeyId } from "../../../packages/vimma-core/src/updates/updates.mjs";
 
 const SCRIPT = new URL("../gen-update-keys.mjs", import.meta.url).pathname;
 const ROOT = new URL("../../../", import.meta.url).pathname;

@@ -89,8 +89,8 @@ app/org.mozilla.firefox.BaseApp/x86_64/25.08`, commit `7d5a63c8…`).
 - **Updates.** Firefox's updater stands aside in a Flatpak, since `isPackagedApp` is true there
   (spec [m6a-updater](m6a-updater.md), section 3). Vimma's update check reads the marker:
   `vimma-package=flatpak` is not a type it knows, so it gives `packaged`
-  (`packages/vimma-core/src/updates.mjs`, `installTypeFrom`), whose hint names the tool the user
-  installed with and never runs a command. (Since changed: it gives `flatpak`, decision 10.)
+  (`packages/vimma-core/src/updates/updates.mjs`, `installTypeFrom`), whose hint names the tool the
+  user installed with and never runs a command. (Since changed: it gives `flatpak`, decision 10.)
 
 ## Design
 
