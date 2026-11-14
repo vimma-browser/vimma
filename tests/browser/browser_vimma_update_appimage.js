@@ -201,9 +201,10 @@ add_task(async function a_replaced_security_update_asks_to_restart() {
   };
   Restart._reset();
   Restart._setStartup(startup, () => {});
-  /** The update question; a use before it exists throws, which fails the test. */
-  const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-update-prompt"));
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   try {
@@ -279,9 +280,10 @@ add_task(async function the_restart_question_says_what_a_restart_loses() {
     },
     () => {},
   );
-  /** The update question; a use before it exists throws, which fails the test. */
-  const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-update-prompt"));
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   const yN = () => document.getElementById("vimma-rename");

@@ -73,9 +73,10 @@ const mainId = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = (/** @type {BrowserWindow} */ win = window) =>
   win.document.getElementById(NOTICE_ID)?.textContent ?? "";
-/** The line; a use before it exists throws, which fails the test. */
-const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
-const lineOpen = () => !!line() && !line().hidden;
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 
 /** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
@@ -265,8 +266,17 @@ add_task(async function test_show_waits_while_the_user_types() {
   await until(lineOpen, "ctrl+b shift+a opens the question");
   // The hint is set when the line opens and shown once it is armed; a key before that only
   // arms it again (security.md M4).
-  await until(() => !!line().querySelector(".vimma-agent-prompt-hint:not([hidden])"), "armed");
-  Assert.ok(line().textContent.includes("y show it · n deny"), "the question offers y and n only");
+  await until(
+    () =>
+      !!(
+        /** @type {HTMLElement} */ (line()).querySelector(".vimma-agent-prompt-hint:not([hidden])")
+      ),
+    "armed",
+  );
+  Assert.ok(
+    /** @type {HTMLElement} */ (line()).textContent.includes("y show it · n deny"),
+    "the question offers y and n only",
+  );
   EventUtils.synthesizeKey("y");
   Assert.ok((await c.response(id)).ok, "y shows it");
   Assert.equal(activeName(), agent().name, "now the agent workspace is in front");

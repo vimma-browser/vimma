@@ -474,9 +474,10 @@ add_task(async function a_staged_update_shows_on_restart() {
 add_task(async function a_staged_security_update_asks_to_restart() {
   await freshTarball();
   await serve(await manifest({ update: { vimmaUrgency: "security" } }));
-  /** The update question; a use before it exists throws, which fails the test. */
-  const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-update-prompt"));
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   try {

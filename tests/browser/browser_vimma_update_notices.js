@@ -122,13 +122,14 @@ function saved({ okAt = null, checkedAt = okAt, outcome = "current", offer = nul
   });
 }
 
-/** The notice; a use before it exists throws, which fails the test. */
-const notice = () => /** @type {HTMLElement} */ (document.getElementById("vimma-notice"));
+/** The notice, or null while there is none. */
+const notice = () => /** @type {HTMLElement | null} */ (document.getElementById("vimma-notice"));
 const noticeShown = () => !!notice()?.matches(":popover-open");
-/** The update question in `win`; a use before it exists throws, which fails the test. */
+/** The update question in `win`, or null while there is none. */
 const line = (/** @type {BrowserWindow} */ win = window) =>
-  /** @type {HTMLElement} */ (win.document.getElementById("vimma-update-prompt"));
-const lineShown = (/** @type {BrowserWindow} */ win = window) => !!line(win) && !line(win).hidden;
+  /** @type {HTMLElement | null} */ (win.document.getElementById("vimma-update-prompt"));
+const lineShown = (/** @type {BrowserWindow} */ win = window) =>
+  !!line(win) && !(/** @type {HTMLElement} */ (line(win)).hidden);
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
 
@@ -211,7 +212,10 @@ add_task(async function a_new_version_is_announced_once() {
     await serve(await manifest());
     Assert.equal((await VimmaUpdates.check()).outcome, "offer");
     await until(noticeShown, "the message shows");
-    Assert.equal(notice().textContent, "Vimma 9.9.9 is available · :update shows the command");
+    Assert.equal(
+      /** @type {HTMLElement} */ (notice()).textContent,
+      "Vimma 9.9.9 is available · :update shows the command",
+    );
     Assert.equal(Services.prefs.getStringPref(ANNOUNCED, ""), "9.9.9", "remembered");
     Assert.ok(!lineShown(), "an ordinary release asks nothing");
     // It takes no focus: keys still reach the page and the bindings.
@@ -233,7 +237,10 @@ add_task(async function a_new_version_is_announced_once() {
     await serve(await manifest({ version: "9.9.10" }));
     Assert.equal((await VimmaUpdates.check()).outcome, "offer");
     await until(noticeShown, "the newer version is announced");
-    Assert.equal(notice().textContent, "Vimma 9.9.10 is available · :update shows the command");
+    Assert.equal(
+      /** @type {HTMLElement} */ (notice()).textContent,
+      "Vimma 9.9.10 is available · :update shows the command",
+    );
   });
   freshSession();
 });
@@ -246,16 +253,16 @@ add_task(async function a_security_update_asks_once_per_session() {
     Assert.equal((await VimmaUpdates.check()).outcome, "offer");
     await until(noticeShown, "the message shows");
     Assert.equal(
-      notice().textContent,
+      /** @type {HTMLElement} */ (notice()).textContent,
       "Vimma 9.9.9 fixes security issues · :update shows the command",
     );
     await until(lineShown, "the question shows once no key came for a moment");
     Assert.equal(lineText(), "Vimma 9.9.9 fixes security issues. Show the update command? (y/N)");
-    Assert.equal(line().getAttribute("role"), "alertdialog");
+    Assert.equal(/** @type {HTMLElement} */ (line()).getAttribute("role"), "alertdialog");
     Assert.ok(!noticeShown(), "the question replaces the message, which said the same");
     // Drawn as the command line is: just above the status bar, over the page's foot.
     const panel = /** @type {Element} */ (
-      line().querySelector(".vimma-cmdline-panel")
+      /** @type {HTMLElement} */ (line()).querySelector(".vimma-cmdline-panel")
     ).getBoundingClientRect();
     const bar = /** @type {HTMLElement} */ (
       document.getElementById("vimma-statusbar")
@@ -333,7 +340,7 @@ add_task(async function a_flatpak_is_told_to_run_flatpak_update() {
     Assert.equal((await VimmaUpdates.check()).outcome, "offer");
     await until(noticeShown, "the message shows");
     Assert.equal(
-      notice().textContent,
+      /** @type {HTMLElement} */ (notice()).textContent,
       "Vimma 9.9.9 fixes security issues · run flatpak update dev.vimma.browser",
     );
     Assert.equal(VimmaUpdates.status().stage, "none", "nothing downloaded or replaced");

@@ -90,12 +90,19 @@ add_task(async function page_titles_with_html_stay_text() {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("ls");
   EventUtils.synthesizeKey("KEY_Enter");
-  /** The picker; a use before it opens throws, which fails the test. */
-  const picker = () => /** @type {HTMLDialogElement} */ (document.getElementById("vimma-picker"));
+  /** The picker, or null while there is none. */
+  const picker = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"));
   await until(() => !!picker()?.open, ":ls opens the tab picker");
-  const rowTitles = [...picker().querySelectorAll(".vimma-picker-title")].map((e) => e.textContent);
+  const rowTitles = [
+    .../** @type {HTMLDialogElement} */ (picker()).querySelectorAll(".vimma-picker-title"),
+  ].map((e) => e.textContent);
   Assert.ok(rowTitles.includes(HOSTILE_TITLE), "the picker shows the title as written");
-  Assert.equal(picker().querySelector("img, b"), null, "the picker parsed no markup");
+  Assert.equal(
+    /** @type {HTMLDialogElement} */ (picker()).querySelector("img, b"),
+    null,
+    "the picker parsed no markup",
+  );
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !picker()?.open, "closed");
   BrowserTestUtils.removeTab(tab);

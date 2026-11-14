@@ -51,9 +51,10 @@ registerCleanupFunction(async () => {
 
 /** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-/** The line; a use before it exists throws, which fails the test. */
-const line = () => /** @type {HTMLElement} */ (document.getElementById("vimma-agent-prompt"));
-const lineOpen = () => !!line() && !line().hidden;
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const hintShown = () => {
   const hint = /** @type {HTMLElement | null | undefined} */ (
@@ -64,9 +65,10 @@ const hintShown = () => {
 const segment = () =>
   document.querySelector('#vimma-statusbar [data-segment="agent"]')?.textContent ?? null;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
-/** The rename prompt; a use before it exists throws, which fails the test. */
+/** The rename prompt, or null while there is none. */
 /** @typedef {NonNullable<Document["commandDispatcher"]>} CommandDispatcher */
-const renamePrompt = () => /** @type {HTMLElement} */ (document.getElementById("vimma-rename"));
+const renamePrompt = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-rename"));
 
 async function setSwitches({ control = false, mcp = false }) {
   Services.prefs.setBoolPref(CONTROL, control);
@@ -116,18 +118,30 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
     "◇ example-agent wants vimma_tabs: the list of agent tabs (0)",
     "it says who wants what",
   );
-  Assert.equal(line().getAttribute("role"), "alertdialog", "an alertdialog");
+  Assert.equal(
+    /** @type {HTMLElement} */ (line()).getAttribute("role"),
+    "alertdialog",
+    "an alertdialog",
+  );
   // Drawn at the window's foot over the page, like the command line: seen, and no reflow.
   const panel = /** @type {Element} */ (
-    line().querySelector(".vimma-cmdline-panel")
+    /** @type {HTMLElement} */ (line()).querySelector(".vimma-cmdline-panel")
   ).getBoundingClientRect();
   const bar = /** @type {HTMLElement} */ (
     document.getElementById("vimma-statusbar")
   ).getBoundingClientRect();
   Assert.greater(panel.height, 0, "the line is drawn");
   Assert.ok(Math.abs(panel.bottom - bar.top) < 1, "just above the status bar");
-  Assert.equal(line().getBoundingClientRect().height, 0, "a zero-height row");
-  Assert.equal(line().getAttribute("aria-label"), lineText(), "named by its question");
+  Assert.equal(
+    /** @type {HTMLElement} */ (line()).getBoundingClientRect().height,
+    0,
+    "a zero-height row",
+  );
+  Assert.equal(
+    /** @type {HTMLElement} */ (line()).getAttribute("aria-label"),
+    lineText(),
+    "named by its question",
+  );
   Assert.ok(!hintShown(), "the hint waits for the arming delay");
   Assert.equal(
     /** @type {CommandDispatcher} */ (document.commandDispatcher).focusedElement ??
@@ -142,7 +156,9 @@ add_task(async function test_the_line_opens_arms_and_ignores_stray_keys() {
 
   await until(hintShown, "armed after the delay");
   Assert.equal(
-    /** @type {Element} */ (line().querySelector(".vimma-agent-prompt-hint")).textContent,
+    /** @type {Element} */ (
+      /** @type {HTMLElement} */ (line()).querySelector(".vimma-agent-prompt-hint")
+    ).textContent,
     "y once · a until it quits · n deny · x mute",
     "the hint names the keys; the grant's notice says what still asks",
   );
@@ -231,7 +247,10 @@ add_task(async function test_a_count_and_a_grant_minutes_shown_in_the_status_bar
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("A", { shiftKey: true });
   await until(() => AgentGate.grants().length === 0, "ctrl+b shift+a ends the grant");
-  Assert.ok(!renamePrompt() || renamePrompt().hidden, "without a second question");
+  Assert.ok(
+    !renamePrompt() || /** @type {HTMLElement} */ (renamePrompt()).hidden,
+    "without a second question",
+  );
   await until(() => noticeText() === "mcp: ended 1 agent grant", "and says so");
   await until(() => segment() === "◇ agent", "and the segment drops the minutes");
   EventUtils.synthesizeKey("b", { ctrlKey: true });
