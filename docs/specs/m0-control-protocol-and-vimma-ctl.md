@@ -280,6 +280,17 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   checks their types and refuses any other field in `chat` and `agent`. `chat` and `agent` exist
   for test harnesses and scripts that wait on what is on screen: they may change shape without a
   protocol bump, so a script matches only the keys it needs.
+- `agent.armed` and `downloads` (since #1006, for the same waits). `agent.armed`: `true` while
+  the agent question line at the window's foot ([vimma-mcp](vimma-mcp.md), decision 13) is open
+  and shows its keys hint, which it draws once armed (its keys count); `false` otherwise, and
+  for a question in the chat window's slot, which `chat.question.armed` reports. Read from the
+  hint as drawn. `downloads`: which `↓` segment the status bar draws
+  ([downloads](downloads.md), decision 9), `null` while none is drawn, else one word of
+  `progress` (downloads under way: `↓ 42%`, `↓ 3`), `paused`, `done`, `failed` or `blocked`;
+  never the segment's text, a file's name, size or site. It is `null` in a private window,
+  because a private window's downloads are part of its browsing, withheld as its URLs and titles
+  are. Added without a version bump; vimma-core's validator checks `armed`'s type and refuses
+  any other word in `downloads`, or any word at all in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

@@ -48,6 +48,14 @@ export class AgentPrompt {
   }
 
   /**
+   * Whether the line is open with its keys hint drawn, which it shows once armed: the control
+   * socket's `state.agent.armed` (#1006) reads what is on screen, not the `armed` flag.
+   */
+  get hintShown() {
+    return this.isOpen && !!this.hint && !this.hint.hidden;
+  }
+
+  /**
    * Show a question; keys count only after `armMs`, and the hint appears then.
    * @param {{ parts: Part[], hint: string, label: string }} line
    * @param {number} armMs

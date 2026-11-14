@@ -100,6 +100,12 @@ export class StatusBar {
      * @type {{ waiting: number, ran: boolean } | null}
      */
     this.drawnAgent = null;
+    /**
+     * Which `↓` segment was last drawn, for the control socket's `state.downloads` (#1006): its
+     * kind, never its text; null when none is drawn, as when the bar is too narrow for it.
+     * @type {import("../core/downloads.mjs").DownloadSegment["kind"] | null}
+     */
+    this.drawnDownloads = null;
     /** @type {Announced} what the live region last said */
     this.announced = { mode: null, notFound: null };
     /** @type {ResizeObserver | null} */
@@ -326,6 +332,9 @@ export class StatusBar {
     // change without changing what state.agent.ran reports.
     this.drawnAgent = agent
       ? { waiting: input.agent?.waiting ?? 0, ran: agent.dot === true }
+      : null;
+    this.drawnDownloads = fitted.some((s) => s.id === "downloads")
+      ? (input.downloads?.kind ?? null)
       : null;
     const key = JSON.stringify(fitted.map((s) => [s.id, s.text, s.fg, s.bg]));
     if (key !== this.lastBar) {

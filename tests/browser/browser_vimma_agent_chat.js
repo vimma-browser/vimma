@@ -335,9 +335,17 @@ addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn
   Assert.strictEqual(AgentUi.status(), null, "sanity: no agent connection, no segment to draw");
   bar.renderBar({ ...bar.input(), agent: { waiting: 0, minutes: null, ran: true, builtin: null } });
   Assert.equal(statusText("agent"), "◇ agent ·", "sanity: the bar draws the ran dot");
-  Assert.deepEqual(state().agent, { waiting: 0, ran: true }, "state reports the dot drawn");
+  Assert.deepEqual(
+    state().agent,
+    { waiting: 0, ran: true, armed: false },
+    "state reports the dot drawn",
+  );
   bar.renderBar({ ...bar.input(), agent: { waiting: 2, minutes: null, ran: true, builtin: null } });
-  Assert.deepEqual(state().agent, { waiting: 2, ran: false }, "a question hides the dot");
+  Assert.deepEqual(
+    state().agent,
+    { waiting: 2, ran: false, armed: false },
+    "a question hides the dot; it asks in the slot, not on the line",
+  );
   bar.renderBar(bar.input());
   Assert.strictEqual(state().agent, null, "and no segment drawn: null");
 
@@ -387,7 +395,8 @@ addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn
   const { agent } = state();
   Assert.equal(agent?.waiting, AgentGate.waiting.length, "the status bar counts it waiting");
   Assert.ok(agent.waiting >= 1, "as the status bar's ◇ agent 1? does");
-  Assert.deepEqual(Object.keys(agent).sort(), ["ran", "waiting"], "a count and a flag");
+  Assert.deepEqual(Object.keys(agent).sort(), ["armed", "ran", "waiting"], "a count and flags");
+  Assert.strictEqual(agent.armed, false, "the slot's question is chat.question, not the line's");
 });
 
 addTidyTask(async function test_slot_arms_again_when_focus_comes_back_into_the_window() {

@@ -97,7 +97,7 @@
         "as": "pay"
       }
     },
-    { "sleep": 1.5 },
+    { "wait-for-state": { "agent": { "waiting": 1, "armed": true } } },
     { "screenshot": "m0-mcp-checkpoints-pay-question" },
     { "keys": "y" },
     {
@@ -149,7 +149,7 @@
         "as": "coupon"
       }
     },
-    { "sleep": 1.5 },
+    { "wait-for-state": { "agent": { "waiting": 1, "armed": true } } },
     { "screenshot": "m0-mcp-checkpoints-card-question" },
     { "keys": "n" },
     {
@@ -201,7 +201,7 @@
         "as": "hostedpay"
       }
     },
-    { "sleep": 1.5 },
+    { "wait-for-state": { "agent": { "waiting": 1, "armed": true } } },
     { "screenshot": "m0-mcp-checkpoints-hosted-question" },
     { "keys": "y" },
     { "wait-for-state": { "notice": true, "agent": { "ran": true } } },

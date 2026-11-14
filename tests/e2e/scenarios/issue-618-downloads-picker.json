@@ -29,7 +29,9 @@
       }
     },
     {
-      "sleep": 1.5
+      "wait-for-state": {
+        "downloads": "done"
+      }
     },
     {
       "screenshot": "downloads-done"

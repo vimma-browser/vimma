@@ -200,7 +200,12 @@
       }
     },
     {
-      "sleep": 1.5
+      "wait-for-state": {
+        "agent": {
+          "waiting": 1,
+          "armed": true
+        }
+      }
     },
     {
       "screenshot": "m0-mcp-forms-fill-question"
@@ -285,7 +290,12 @@
       }
     },
     {
-      "sleep": 1.5
+      "wait-for-state": {
+        "agent": {
+          "waiting": 1,
+          "armed": true
+        }
+      }
     },
     {
       "screenshot": "m0-mcp-forms-submit-question"
