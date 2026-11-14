@@ -316,13 +316,9 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
   // photographs instead (`wait-for-state` on `notice`, `chat`, `agent`). These still sleep, each
   // judged in #981's pull request; a fixed one comes off the list, and none is added.
   const LEFT = [
-    "issue-216-toolbar-hidden: toolbar-minimal",
-    "issue-241-live-grep: live-grep",
     "issue-241-live-grep: live-grep-jump",
     "issue-487-pdf-mode: pdf-outline",
     "issue-618-downloads-picker: downloads-picker",
-    "issue-682-multiple-splits: multiple-splits-panel",
-    "m0-mcp-drive: m0-mcp-drive-shown",
   ];
   const all = loadScenarios(SCENARIOS, {});
 
@@ -381,6 +377,22 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     ]),
     // The page's download has ended: the status bar says `↓ done`.
     ["issue-618-downloads-picker", "downloads-done", { downloads: "done" }],
+    // The minimal bar's suggestion list draws the results of the address typed in full.
+    ["issue-216-toolbar-hidden", "toolbar-minimal", { mode: "insert", urlbar: { settled: true } }],
+    // Live grep has heard from every tab and drawn the best result's preview.
+    ["issue-241-live-grep", "live-grep", { mode: "help", grep: { busy: false } }],
+    // The side panel is open, and the split's two pages have taken the narrower width it leaves
+    // them: each page's title says its width, and the panel lists the titles.
+    [
+      "issue-682-multiple-splits",
+      "multiple-splits-panel",
+      {
+        mode: "panel",
+        tabs: [{}, {}, {}, { title: "c 519" }, { title: "d 519", selected: true }],
+      },
+    ],
+    // Right after `y` to vimma_show: its notice and the ran dot, both still shown.
+    ["m0-mcp-drive", "m0-mcp-drive-shown", { notice: true, agent: { ran: true } }],
   ])("%s photographs %s once the screen it shows is drawn", (name, shot, expected) => {
     const steps = all.find((s) => s.name === name)?.steps ?? [];
     const i = steps.findIndex((step) => step.screenshot === shot);

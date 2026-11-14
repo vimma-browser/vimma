@@ -89,7 +89,9 @@
       "keys": "ctrl+b b"
     },
     {
-      "sleep": 0.5
+      "wait-for-state": {
+        "mode": "panel"
+      }
     },
     {
       "keys": "4 G space j space enter"
@@ -113,7 +115,21 @@
       "keys": "ctrl+b b"
     },
     {
-      "sleep": 1
+      "wait-for-state": {
+        "mode": "panel",
+        "tabs": [
+          {},
+          {},
+          {},
+          {
+            "title": "c 519"
+          },
+          {
+            "title": "d 519",
+            "selected": true
+          }
+        ]
+      }
     },
     {
       "screenshot": "multiple-splits-panel"
@@ -122,7 +138,9 @@
       "keys": "esc"
     },
     {
-      "sleep": 0.5
+      "wait-for-state": {
+        "mode": "normal"
+      }
     },
     {
       "keys": "] s"

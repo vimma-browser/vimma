@@ -726,11 +726,37 @@ interface TabbrowserAddOptions {
   relatedToCurrent?: boolean;
 }
 
+/** One of the address bar controller's query notifications: the query's context, by its id. */
+interface UrlbarQueryListener {
+  onQueryStarted?(context: { id: unknown }): void;
+  onQueryFinished?(context: { id: unknown }): void;
+  onQueryCancelled?(context: { id: unknown }): void;
+}
+
+// The address bar, as `gURLBar` or `#urlbar`: engine/browser/components/urlbar/content/
+// UrlbarInputBase.mjs. `controller` is its UrlbarChildController (UrlbarChildController.mjs,
+// addListener and removeListener), one per element: connectedCallback makes it only when
+// there is none. `view` is its UrlbarView (UrlbarView.mjs: `isOpen`, and `queryContext`, the
+// context of the results it last drew). `lastSearchString` is set by startQuery as a query
+// starts; `lastQueryContextPromise` is the last query's, resolved when it ends (a resolved one
+// before any query).
+type UrlbarInput = HTMLElement & {
+  focused: boolean;
+  view: { isOpen: boolean; queryContext: { searchString: string } | null };
+  select(): void;
+  controller?: {
+    addListener(listener: UrlbarQueryListener): void;
+    removeListener(listener: UrlbarQueryListener): void;
+  };
+  readonly lastSearchString: string;
+  lastQueryContextPromise: Promise<unknown>;
+};
+
 // engine/browser/base/content/browser.js and the scripts browser.xhtml loads: a browser window.
 interface BrowserWindow extends ChromeWindow {
   readonly gBrowser: Tabbrowser;
   // engine/browser/components/urlbar/content/UrlbarInput.mjs
-  readonly gURLBar: HTMLElement & { focused: boolean; view: { isOpen: boolean }; select(): void };
+  readonly gURLBar: UrlbarInput;
   readonly gNavToolbox: Element;
   readonly BROWSER_NEW_TAB_URL: string;
   // browser-init.js

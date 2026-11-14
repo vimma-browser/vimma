@@ -292,6 +292,22 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   because a private window's downloads are part of its browsing, withheld as its URLs and titles
   are. Added without a version bump; vimma-core's validator checks `armed`'s type and refuses
   any other word in `downloads`, or any word at all in a private window.
+- `grep` and `urlbar` (since #1006, for the same waits). `grep`: `null` while live grep
+  ([live-grep](live-grep.md)) is closed, else `{ "busy": true | false }`: `true` while its search
+  has not heard from every tab (the rows on screen may still be an earlier query's) or the
+  selected result's preview is asked for and not yet drawn. A key that leaves a query to search
+  turns it `true` as the key is handled, so a read right after `send-keys` never sees the
+  previous query's `false`; a key that empties the query leaves nothing to search, and it is
+  `false` at once. `urlbar`: `null` while the address bar's suggestion list is closed, else
+  `{ "settled": true | false }`: `true` once no query of the field is under way and the list
+  draws the results of the text last searched. The queries are followed through Firefox's own
+  query notifications from the window's start, or from the first focus or `state` read when the
+  field did not exist yet; a query begun before that counts as under way until it ends. One
+  flag each, never the
+  query, the typed text, a count of matches or results, or a row; both are `null` in a private
+  window, because its searches and typing are part of its browsing. Added without a version
+  bump; vimma-core's validator checks each flag's type, refuses any other field in either, and
+  refuses either object in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

@@ -99,7 +99,10 @@ only the agent workspace, and every request asks you first (§12).
   question line shows its keys hint (reported only while the bar draws the agent segment), and
   its `downloads` field only which `↓` segment the status bar draws, as one word of a fixed list
   (`progress`, `paused`, `done`, `failed`, `blocked`) or `null`; it **never** carries a file's
-  name, size, URL or site, and is `null` in a private window.
+  name, size, URL or site, and is `null` in a private window. Its `grep` and `urlbar` fields
+  are one flag each (live grep's search or preview still to come; the address bar's suggestion
+  list drawn for the text last searched) and **never** carry the query, the typed text, a count
+  of matches or results, or a row; both are `null` in a private window.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
@@ -113,7 +116,11 @@ only the agent workspace, and every request asks you first (§12).
   [`test_state_names_each_top_level_field`](../tests/browser/browser_vimma_control.js),
   [`agent.armed is a flag, and downloads a word from a closed list or null`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_the_line_armed_as_drawn`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
-  [`test_state_reports_the_segment_as_drawn`](../tests/browser/browser_vimma_downloads.js)
+  [`test_state_reports_the_segment_as_drawn`](../tests/browser/browser_vimma_downloads.js),
+  [`grep and urlbar are one flag each, or null`](../packages/vimma-core/test/control.test.mjs),
+  [`test_state_reports_live_grep_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
+  [`test_state_reports_the_suggestion_list_as_drawn`](../tests/browser/browser_vimma_state_waits.js),
+  [`test_a_query_under_way_is_not_settled_even_heard_late`](../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

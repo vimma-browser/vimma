@@ -1000,6 +1000,29 @@ function checkStateResult(result, errors) {
   if ("agent" in result) checkAgentSegment(result.agent, errors);
   // The status bar's `↓` segment (#1006): optional, as `agent`; a word, never a file's name.
   if ("downloads" in result) checkDownloads(result.downloads, hidden, errors);
+  // Whether live grep and the address bar's suggestion list have drawn all they will (#1006):
+  // optional, as `downloads`; one flag each, never the query, a count or a row.
+  if ("grep" in result) checkFlagObject(result.grep, "grep", "busy", hidden, errors);
+  if ("urlbar" in result) checkFlagObject(result.urlbar, "urlbar", "settled", hidden, errors);
+}
+
+/**
+ * `state.grep` (`{ busy }`: live grep's search or the selected result's preview is still to
+ * come) and `state.urlbar` (`{ settled }`: the address bar's suggestion list draws all it will
+ * for the text last searched): null while closed, else an object with that one boolean. Null
+ * in a private window, whose search and typing are part of its browsing (security.md S9).
+ * @param {unknown} value @param {string} name @param {string} flag
+ * @param {boolean} hidden  a private window's @param {string[]} errors
+ */
+function checkFlagObject(value, name, flag, hidden, errors) {
+  if (value === null) return;
+  if (!isObject(value)) {
+    errors.push(`result.${name} must be an object or null`);
+    return;
+  }
+  noExtraFields(value, [flag], errors, `result.${name}.`);
+  if (typeof value[flag] !== "boolean") errors.push(`result.${name}.${flag} must be a boolean`);
+  if (hidden) errors.push(`result.${name} must be null in a private window`);
 }
 
 /**

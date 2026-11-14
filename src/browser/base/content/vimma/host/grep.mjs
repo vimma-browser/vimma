@@ -219,6 +219,8 @@ export class GrepSession {
     this.timer = undefined;
     /** @type {number | undefined} */
     this.previewTimer = undefined;
+    /** @type {string | null} the selected row whose preview is asked for and not yet drawn */
+    this.previewing = null;
     /** @type {Map<string, { bc: any, wg: any }>} each searched frame, by `${tabId}:${key}` */
     this.frames = new Map();
     /** @type {Map<string, BrowserWindow>} the window of each tab in the last scope, by tab id */
@@ -314,6 +316,16 @@ export class GrepSession {
 
   get isOpen() {
     return this.ui.isOpen;
+  }
+
+  /**
+   * Whether the open picker has more to draw for what was typed: a search whose rows are still
+   * to come, or the selected result's preview (`state.grep`, docs/specs/m0-control-protocol-and-
+   * vimma-ctl.md; #1006). A key that leaves a query to search sets it as the key is handled, so
+   * a reader right after the key sees it; one that empties the query leaves nothing to come.
+   */
+  get busy() {
+    return this.info.busy || this.previewing !== null;
   }
 
   /**
@@ -419,8 +431,13 @@ export class GrepSession {
     this.ui.render(this.state, this.info);
     const row = this.state.rows[this.state.selected] ?? null;
     const id = row && row.kind !== "unloaded" ? row.id : null;
-    if (id === this.ui.previewOf) return;
+    if (id === this.ui.previewOf) {
+      // Back on the row the preview shows: a preview asked for meanwhile no longer will be.
+      this.previewing = null;
+      return;
+    }
     clearTimeout(this.previewTimer);
+    this.previewing = null;
     this.ui.setPreviewTitle(row);
     if (row?.kind === "closed") {
       this.ui.setPreview(row.id, closedPreview(row));
@@ -430,17 +447,23 @@ export class GrepSession {
       this.ui.setPreview(null, null);
       return;
     }
+    this.previewing = row.id;
     this.previewTimer = setTimeout(() => this.preview(row), PREVIEW_DEBOUNCE_MS);
   }
 
   /** @param {GrepMatchRow} row */
   async preview(row) {
-    const frame = this.frames.get(`${row.tabId}:${row.frameKey}`);
-    if (!frame || frame.bc.currentWindowGlobal !== frame.wg) return;
-    const raw = await this.ask(frame.bc, { start: row.start, end: row.end }, "Vimma:GrepPreview");
-    const current = this.state?.rows[this.state.selected];
-    if (!this.isOpen || current?.id !== row.id) return;
-    this.ui.setPreview(row.id, parsePreviewReply(raw));
+    try {
+      const frame = this.frames.get(`${row.tabId}:${row.frameKey}`);
+      if (!frame || frame.bc.currentWindowGlobal !== frame.wg) return;
+      const raw = await this.ask(frame.bc, { start: row.start, end: row.end }, "Vimma:GrepPreview");
+      const current = this.state?.rows[this.state.selected];
+      if (!this.isOpen || current?.id !== row.id) return;
+      this.ui.setPreview(row.id, parsePreviewReply(raw));
+    } finally {
+      // Drawn, or never to be (the frame has gone): either way nothing more is coming for it.
+      if (this.previewing === row.id) this.previewing = null;
+    }
   }
 
   /**
@@ -762,6 +785,7 @@ export class GrepSession {
     if (!this.isOpen) return;
     clearTimeout(this.timer);
     clearTimeout(this.previewTimer);
+    this.previewing = null;
     this.gen++;
     this.ui.close();
     this.state = null;
