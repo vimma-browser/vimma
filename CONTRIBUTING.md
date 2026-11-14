@@ -505,7 +505,7 @@ its Rust toolchain and the GitHub Actions current:
   tokens) get a comment and wait for a person to read the changelog, fix what breaks and merge.
 - **The release path is always reviewed.** The release build runs `@zen-browser/surfer` and
   `ajv`, and with them every package they depend on (about 220, listed by
-  `node tools/deps/release-path.mjs`). Surfer is pinned to an exact version, and no change to any
+  `node tools/deps/release-path.ts`). Surfer is pinned to an exact version, and no change to any
   release-path package auto-merges, security updates and transitive bumps in grouped updates
   included: the workflow's `classify` job compares the two lockfiles and holds the PR. Surfer and
   `ajv` come in their own `release-path` group, so a held update does not hold the others.

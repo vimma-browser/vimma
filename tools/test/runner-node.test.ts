@@ -17,7 +17,6 @@ import { describe, expect, it } from "vitest";
 const WORKFLOWS = fileURLToPath(new URL("../../.github/workflows/", import.meta.url));
 
 const RUNNER_NODE = [
-  "dependabot-automerge.yml classify",
   "upstream-beta.yml detect",
   "upstream-beta.yml render",
   "upstream-merge.yml merge",
@@ -31,14 +30,17 @@ const RUNNER_NODE = [
 // Steps that print a command for a person to run rather than run it.
 const PRINTS_ONLY = ["fuzz.yml report"];
 
-// Jobs whose setup-node runs before a guard (the docs-only classifier, tree-covered) or before a
-// tool that holds a write token, with no npm install after it. actions/setup-node caches
-// automatically when package.json names npm in packageManager or devEngines.packageManager
-// (package-manager-cache, true by default), which would read the checkout's package.json and
-// .npmrc before the guard, restore ~/.npm and save a cache in the post step. Each says
-// package-manager-cache: false, so that a field added to package.json later changes nothing here.
+// Jobs whose setup-node runs before a guard (the docs-only classifier, tree-covered), before a
+// tool that holds a write token, or before a tool whose answer a job with a write token acts on
+// (dependabot-automerge classify, run from the base commit), with no npm install after it.
+// actions/setup-node caches automatically when package.json names npm in packageManager or
+// devEngines.packageManager (package-manager-cache, true by default), which would read the
+// checkout's package.json and .npmrc before the guard, restore ~/.npm and save a cache in the
+// post step. Each says package-manager-cache: false, so that a field added to package.json later
+// changes nothing here.
 const NO_AUTO_CACHE = [
   "ci.yml covered",
+  "dependabot-automerge.yml classify",
   "downloads.yml collect",
   "mutation.yml report",
   "pkgbuild.yml covered",

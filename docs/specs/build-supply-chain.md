@@ -7,7 +7,7 @@ Status: implemented · Area: `package.json`, `package-lock.json`, `.npmrc` (new)
 `tools/upstream/verify-sha512.py`, `tools/upstream/source-check.sh`,
 `tools/upstream/firefox-source.sh` (new), `tools/upstream/verify-source.sh` (new),
 `tools/upstream/mozilla-release-key.asc` (new),
-`tools/upstream/mozilla-key-check.py` (new), `tools/deps/release-path.mjs` (new),
+`tools/upstream/mozilla-key-check.py` (new), `tools/deps/release-path.ts` (new),
 `docs/security.md`, `docs/runbook.md`, `docs/rebase.md`, `docs/review-checklist.md`,
 `CONTRIBUTING.md` · Upstream patches:
 none · ADR: ADR-021 (new, "Mozilla's release key is the trust anchor for the Firefox source");
@@ -587,7 +587,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
     option for when Surfer stalls. With the source fetched and verified by Vimma (decision 3),
     Surfer no longer decides which Firefox bytes are built, only how they are extracted,
     patched and configured. ADR-001's consequences paragraph records this.
-13. **The release path is computed, not listed by hand.** `tools/deps/release-path.mjs` reads
+13. **The release path is computed, not listed by hand.** `tools/deps/release-path.ts` reads
     `package-lock.json` and returns the dependency closure (non-optional and optional) of the
     release-path roots, `@zen-browser/surfer` and `ajv` (R5). A test checks the roots against the
     imports of the tools `release.yml`'s build job runs, so adding a package to that job without
@@ -596,7 +596,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
 14. **Dependabot never auto-merges a release-path change, security updates included.**
     `dependabot-automerge.yml` gets a `classify` job (`contents: read`, no secrets) that checks
     out the pull request's **base** commit, reads the head commit's `package-lock.json` with
-    `git show` as data, and runs `release-path.mjs --diff <base lockfile> <head lockfile>`: if any
+    `git show` as data, and runs `release-path.ts --diff <base lockfile> <head lockfile>`: if any
     package whose version, `resolved` or `integrity` changed is in the release path of either
     lockfile, the decision is `review`. The existing `automerge` job reads that decision; it
     keeps its own rules for majors and GitHub Actions. Reason: classifying by the lockfile
@@ -850,7 +850,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `a report on a tarball that failed verification is never uploaded`
 - `npm run import refuses an engine/ whose source was never verified`
 
-**vitest, `tools/deps/test/release-path.test.mjs`** (fixture lockfiles):
+**vitest, `tools/deps/test/release-path.test.ts`** (fixture lockfiles):
 
 - `the release path is Surfer, ajv and everything they depend on`
 - `the roots cover every package the release build job imports`
@@ -966,7 +966,7 @@ protects something that runs today.
    which run today, and the autopilot opens pull requests that may merge without a person
    (ADR-020).
 3. **`ci(deps): hold every release-path change for review, with the package diff`.**
-   `release-path.mjs`, the `classify` job and the `npm diff` summary. Completes B3.
+   `release-path.ts`, the `classify` job and the `npm diff` summary. Completes B3.
 4. **`ci(release): full builds on hosted runners, from verified, freshly extracted source`.**
    `firefox-source.sh`; `nightly.yml`, `release.yml`, `e2e.yml` and `sites.yml` use it; the
    builds run on `ubuntu-24.04` with `clean: true`, the disk guard, the swap file and no Actions
