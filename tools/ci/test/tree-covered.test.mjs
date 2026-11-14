@@ -6,7 +6,7 @@
 // already checked (the usual squash merge) skips that workflow's checks once more.
 // tools/ci/tree-covered.mjs answers; ci.yml, semgrep.yml and pkgbuild.yml gate their jobs on it.
 // codeql.yml stays ungated: code scanning's default-branch alerts come only from analyses of
-// main (docs/runbook.md, "CI and automation").
+// main (docs/runbook/ci.md, "CI and automation").
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { execFile } from "node:child_process";

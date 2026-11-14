@@ -8,9 +8,9 @@ import type { Entry } from "../release-path.ts";
 import { defined } from "../../test/defined.ts";
 import { jobs } from "../../test/workflow-runners.mjs";
 
-// docs/specs/build-supply-chain.md, decisions 13 to 15; docs/security.md, B3. Every package the
-// release build runs is computed from package-lock.json, and a Dependabot change to any of them
-// waits for a person.
+// docs/specs/build-supply-chain.md, decisions 13 to 15;
+// docs/security/14-build-and-release-supply-chain.md, B3. Every package the release build runs is
+// computed from package-lock.json, and a Dependabot change to any of them waits for a person.
 const root = new URL("../../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
 const cli = new URL("../release-path.ts", import.meta.url).pathname;

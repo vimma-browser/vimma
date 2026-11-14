@@ -897,7 +897,7 @@ esac
 // the delay has grown since). A cron at 03:00 UTC therefore built at midday in Finland. The
 // schedule is set early by that delay, so the build starts in the night there: main holds the
 // whole day's merges, and a failure is found by morning. The test holds the sum for that one
-// week's delay; it cannot know GitHub's delay next month (docs/runbook.md says what to check).
+// week's delay; it cannot know GitHub's delay next month (docs/runbook/ says what to check).
 describe("nightly.yml: the schedule starts the build in the night", () => {
   /** Minutes after midnight UTC of the one daily cron. */
   const minute = () => {

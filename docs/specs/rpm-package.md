@@ -109,7 +109,8 @@ whose libraries they install by hand.
    `sha512sum -c` and installing it. Reason: there is no Vimma repository for dnf or zypper, as
    there is none for apt (m6a-updater, decision 20). The manifest lists the `.rpm` as a
    required asset, so every release from this one on carries it; a release before it cannot be
-   re-published from `main` (docs/runbook.md, "Re-run, pull an update, and serials").
+   re-published from `main` (docs/runbook/ci-update-keys-and-update-host.md, "Re-run, pull an
+   update, and serials").
 9. **Smoke-tested on Fedora 44 and openSUSE Leap 16.0, pinned by digest.** Reason: those are
    the current releases of each, and each run installs the release's current packages, so a
    digest only fixes the base image. Tumbleweed was not chosen, because its rolling repository
@@ -117,7 +118,8 @@ whose libraries they install by hand.
 
 ## Security and privacy
 
-The `.rpm` is a new release asset under the same rules as the others (docs/security.md, B9):
+The `.rpm` is a new release asset under the same rules as the others
+(docs/security/14-build-and-release-supply-chain.md, B9):
 listed in `SHA256SUMS`, signed by the `sign` job, built and installed before anything is signed.
 The spec generator places the staged root's path in a shell command and two values in rpm
 macros unquoted, so it accepts only an absolute path of `[A-Za-z0-9._/-]` and library names of
@@ -149,8 +151,8 @@ install it with dnf or zypper`.
 ## Docs and changelog
 
 `README.md` (Install, Status), `docs/guide.md` ("Installing", "Fedora and openSUSE", "Updates"),
-`docs/runbook.md` (release assets, jobs, local packaging, manifests), `docs/limits.md`,
-`docs/security.md` (B9, UP6, UP8). Changelog: "packaging: an .rpm for Fedora and openSUSE".
+`docs/runbook/` (release assets, jobs, local packaging, manifests), `docs/limits.md`,
+`docs/security/` (B9, UP6, UP8). Changelog: "packaging: an .rpm for Fedora and openSUSE".
 
 ## Delivery
 

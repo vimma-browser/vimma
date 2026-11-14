@@ -3,7 +3,7 @@
 Status: implemented · Area: `tools/release/` (new: `version-line.mjs`, `firefox-notes.mjs`,
 `security-release.mjs`), `.github/workflows/release-please.yml`, `nightly.yml`, `release.yml`,
 `tools/upstream/autopilot-body.mjs`, `src/browser/branding/vimma/pref/firefox-branding.js`,
-`docs/runbook.md`, `docs/security.md`, `docs/review-checklist.md`, `CONTRIBUTING.md` · Upstream
+`docs/runbook/`, `docs/security/`, `docs/review-checklist.md`, `CONTRIBUTING.md` · Upstream
 patches: `src/toolkit/xre/nsAppRunner-cpp.patch` (new; ADR-003 register line: "1 hunk, 11 lines:
 `DumpVersion` prints `Vimma <version> · Firefox <version>` instead of `<vendor> <name> <version>`
 (firefox-versions)") · ADR: ADR-020 (new, "A security release needs no person"), ADR-015 and
@@ -30,9 +30,9 @@ automatic security release ships whatever else is on `main`.
   vendor and name both `Vimma` (m0-branding, Settled; `docs/limits.md`). It names no Firefox
   version, and the doubled name reads as a bug.
 - A Firefox security release stops twice for a person: once to merge the bump PR and once to
-  merge the release PR. `docs/security.md` G2 gives three days from Mozilla's release to a
-  security dot release on `main`, but nothing gets it from `main` to users. The second stop adds
-  delay and nothing a person can check that CI has not.
+  merge the release PR. `docs/security/10-firefox-updates.md` G2 gives three days from Mozilla's
+  release to a security dot release on `main`, but nothing gets it from `main` to users. The second
+  stop adds delay and nothing a person can check that CI has not.
 - A release cut from `main` while a feature is half-merged ships the half feature. With releases
   cut by hand this is avoided by timing; an automatic security release cannot wait.
 
@@ -89,8 +89,8 @@ settings and the `main` ruleset read through the GitHub API.
 | GitHub Release title     | `v0.1.1`                                   | release-please `BaseStrategy.buildRelease`              | none                                                                                                 |
 
 `tools/package/test/package.test.mjs` uses `Vimma Vimma 0.1.0` only as the output of a fake
-binary. `docs/rebase.md` §4, `docs/runbook.md` "Smoke check", `docs/limits.md` and ADR-010's table
-quote the same string.
+binary. `docs/rebase.md` §4, `docs/runbook/smoke-check.md` "Smoke check", `docs/limits.md` and
+ADR-010's table quote the same string.
 
 ### `--version` in Firefox 157.0.1
 
@@ -167,9 +167,9 @@ typecheck, test, commitlint, licences`, `semgrep (…)`, `CodeQL (javascript-typ
   also has `require_extra_approval_for_unattributed_changes: true`, whose effect on an
   auto-merged PR was not verified; sub-PR 4 checks it in its dry run.
 - Events caused by `GITHUB_TOKEN` start no workflow runs (GitHub Actions documentation, "Triggering
-  a workflow from a workflow"; `docs/runbook.md` "Releases" relies on it today). So a release PR
-  merged with `GITHUB_TOKEN` would not start `release-please.yml` on `main`, no release would be
-  created, and a commit pushed to the release branch with it would get no required checks.
+  a workflow from a workflow"; `docs/runbook/ci-releases.md` "Releases" relies on it today). So a
+  release PR merged with `GITHUB_TOKEN` would not start `release-please.yml` on `main`, no release
+  would be created, and a commit pushed to the release branch with it would get no required checks.
 - `gh pr merge --auto --squash --match-head-commit <sha>` (GitHub CLI 2.102.0) enables auto-merge
   only if the PR's head is that commit.
 - The repository already enables auto-merge for some Dependabot PRs
@@ -261,7 +261,7 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
       author that `RELEASE_PLEASE_TOKEN` authenticates as;
     - that PR's head contains the pushed commit (the compare API reports `ahead` or `identical`);
     - at least one GitHub Release already exists, draft or published, so the first release, which
-      `docs/runbook.md` has a person edit before merging, is never merged automatically.
+      `docs/runbook/` has a person edit before merging, is never merged automatically.
 13. **What it does.** `gh pr merge <n> --auto --squash --match-head-commit <head>` with
     `RELEASE_PLEASE_TOKEN`, then a comment on the bump PR linking the release PR. The merge is made
     as the token's user, so the push to `main` starts `release-please.yml`, which tags and creates
@@ -342,8 +342,8 @@ MOZ_APP_VERSION)` and keeps the copyright suffix. Both macros are already define
   unchanged.
 - **Privacy.** No new data leaves anyone's machine. `--version` reads compiled-in constants.
 
-New guarantees for `docs/security.md` §10 (Since changed: numbered G11 and G12 there, because
-G9 and G10 were taken by the Beta canary before this spec's sub-PR 4 merged):
+New guarantees for `docs/security/10-firefox-updates.md` §10 (Since changed: numbered G11 and G12
+there, because G9 and G10 were taken by the Beta canary before this spec's sub-PR 4 merged):
 
 - G9. A merged `upstream` PR labelled `security` **must** set the release PR to auto-merge in the
   same `release-please.yml` run when `AUTO_SECURITY_RELEASE` is on, and **never** any other PR.
@@ -421,14 +421,15 @@ appears. The draft and its tag are deleted afterwards, and the version moves on.
 
 - `docs/guide.md` "Privacy defaults": `vimma --version` prints `Vimma 0.5.2 · Firefox 158.0`;
   "Installing": release titles name both versions.
-- `docs/runbook.md`: "Smoke check" (the new line); "Releases" (the `firefox-notes` and
+- `docs/runbook/`: "Smoke check" (the new line); "Releases" (the `firefox-notes` and
   `release-title` jobs, `AUTO_SECURITY_RELEASE`, when to turn it on and off, and that
   `RELEASE_PLEASE_TOKEN` is required for it); "Upstream bumps" (the bump title with advisories).
 - `docs/rebase.md` §4: the expected `--version` output.
 - `docs/limits.md`: drop the `Vimma Vimma` line; add that `--full-version` keeps Firefox's
   `<vendor> <name> <version>` format.
-- `docs/security.md` §10: G9 and G10 with their tests; the "a person reviews and merges" paragraph
-  says a person still merges every bump, and a security bump's release follows on its own.
+- `docs/security/10-firefox-updates.md` §10: G9 and G10 with their tests; the "a person reviews and
+  merges" paragraph says a person still merges every bump, and a security bump's release follows on
+  its own.
 - `docs/adr/020-security-release-without-a-person.md` (decisions 11 to 15, 17 and 18) and
   ADR-015's Consequences pointing to it; ADR-003 register: the new patch's line.
 - `docs/review-checklist.md`, `CONTRIBUTING.md`: the `vimma.feature.*` rule.

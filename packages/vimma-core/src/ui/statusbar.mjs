@@ -264,10 +264,11 @@ function findHost(text, host) {
 
 /**
  * The URL cut to `width` columns without ever cutting its registrable domain, since with the
- * toolbar hidden it is the only origin indicator (docs/security.md C3): the path and query go first, then the scheme with the leftmost labels of
- * the host, whole labels at a time, as Firefox's address bar keeps the base domain in view. Only
- * when even `…<base domain>…` does not fit is the domain's end cut. Without an origin (about:,
- * file:, a URL with no host) the end is cut, never the middle.
+ * toolbar hidden it is the only origin indicator (docs/security/06-chrome-ui-rendering.md C3): the
+ * path and query go first, then the scheme with the leftmost labels of the host, whole labels at a
+ * time, as Firefox's address bar keeps the base domain in view. Only when even `…<base domain>…`
+ * does not fit is the domain's end cut. Without an origin (about:, file:, a URL with no host) the
+ * end is cut, never the middle.
  * @param {string} text
  * @param {number} width
  * @param {UrlOrigin | null | undefined} origin
@@ -291,7 +292,7 @@ export function truncateUrl(text, width, origin) {
     last = candidate;
   }
   // Narrower than the registrable domain itself: its end is cut as the last resort, rather
-  // than the address going missing (docs/security.md C3).
+  // than the address going missing (docs/security/06-chrome-ui-rendering.md C3).
   return width > 0 ? truncate(last + tail, width, "end") : null;
 }
 
@@ -617,7 +618,8 @@ export function statusSegments(input) {
     );
   }
   if (toolbarHidden && sharing.length) {
-    // The address bar's and the tab's "in use" icons, both hidden here (docs/security.md C3).
+    // The address bar's and the tab's "in use" icons, both hidden here
+    // (docs/security/06-chrome-ui-rendering.md C3).
     right.push(
       seg({
         id: "sharing",
@@ -807,7 +809,8 @@ function shortenModes(out, excess) {
 /**
  * Segments whose priority is below this (more important) outrank a kept segment: the mode's
  * one-column short form (0), and the error, security, in-use and private cues (2). The mode's
- * full word does not: it gives way first. docs/security.md C3 orders them so.
+ * full word does not: it gives way first. docs/security/06-chrome-ui-rendering.md C3 orders them
+ * so.
  */
 const KEEP_YIELDS_BELOW = 2.5;
 

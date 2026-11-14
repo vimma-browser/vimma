@@ -11,7 +11,7 @@ in [m5-config-load](../specs/m5-config-load.md),
 and [content-color-scheme](../specs/content-color-scheme.md), the decisions in
 [ADR-008](../adr/008-config-toml.md) (one `config.toml`) and
 [ADR-012](../adr/012-toml-parser-smol-toml.md) (the TOML parser), the rules with their tests in
-[docs/security.md](../security.md) §7 (the Omarchy hook) and §8 (`config.toml`), and how Omarchy
+[docs/security/](../security/README.md) §7 (the Omarchy hook) and §8 (`config.toml`), and how Omarchy
 keeps its theme in [docs/notes/omarchy-theming.md](../notes/omarchy-theming.md). What each key
 of the file means is in [docs/guide.md, "config.toml"](../guide.md#configtoml).
 

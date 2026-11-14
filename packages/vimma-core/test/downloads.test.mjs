@@ -416,7 +416,7 @@ describe("downloadKey", () => {
     expect(long).toBe(`delete "${"x".repeat(79)}…" from disk? (y/N)`);
   });
 
-  test("a yes stands only for the download asked about (docs/security.md D5)", () => {
+  test("a yes stands only for the download asked about (docs/security/21-downloads-picker.md D5)", () => {
     // Unchanged, or only its bytes moved on: the answer stands.
     expect(downloadChanged(running(), running({ currentBytes: 4 * MB }), "cancel")).toBe(false);
     expect(downloadChanged(rec(), rec(), "delete")).toBe(false);

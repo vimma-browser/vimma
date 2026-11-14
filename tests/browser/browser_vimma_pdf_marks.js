@@ -2,10 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 5, decisions 9, 11 and 16), docs/security.md
-// section 20 (V7, V11): marks with m and ', and the link keys F and c in the PDF viewer.
-// file_vimma_pdf_links.pdf has 4 pages; page 1 has three links: https://example.org/vimma-pdf,
-// an explicit destination on page 3, and the named destination chapter-two on page 4.
+// Spec: docs/specs/pdf-mode.md (delivery PR 5, decisions 9, 11 and 16),
+// docs/security/20-pdf-viewer.md section 20 (V7, V11): marks with m and ', and the link keys F and
+// c in the PDF viewer. file_vimma_pdf_links.pdf has 4 pages; page 1 has three links:
+// https://example.org/vimma-pdf, an explicit destination on page 3, and the named destination
+// chapter-two on page 4.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 

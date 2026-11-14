@@ -6,8 +6,9 @@
 // decision 9) and the `ctrl+b d` picker (decisions 3, 5 and 12), each a view on the window's
 // Firefox download list, read into core DownloadRecords. A picker key runs through Firefox's own
 // download code only: `DownloadsCommon.openDownload` and `Download.showContainingDirectory` are
-// the only calls here that hand a file to the OS (docs/security.md C2). Cancel and delete ask
-// `y/N` first, with the picker closed (decision 6, docs/security.md D5).
+// the only calls here that hand a file to the OS (docs/security/06-chrome-ui-rendering.md C2).
+// Cancel and delete ask `y/N` first, with the picker closed (decision 6,
+// docs/security/21-downloads-picker.md D5).
 
 import {
   DONE_MS,
@@ -139,8 +140,8 @@ function aboutOf(win, d) {
   const about = {
     key,
     // The test AgentDownloads applies to every download: its container, its tab's, or the
-    // quarantine folder (docs/security.md M11). Asked before vimma.js provides it, it calls
-    // every download an agent's, which the picker refuses to open.
+    // quarantine folder (docs/security/12-agents-mcp.md M11). Asked before vimma.js provides it, it
+    // calls every download an agent's, which the picker refuses to open.
     agent: !!HostServices.isAgentDownload(d),
     workspace: workspaceOf(win, d),
     viewsInternally: viewsInternally(d),
@@ -475,7 +476,8 @@ async function current(win, d) {
 /**
  * Cancel and delete, after `y/N`, through Firefox's own commands (decision 6): the picker has
  * closed, so the answer goes to the question. The yes stands only for the download asked about:
- * if it changed before the answer, nothing is done and the notice says so (docs/security.md D5).
+ * if it changed before the answer, nothing is done and the notice says so
+ * (docs/security/21-downloads-picker.md D5).
  * @param {BrowserWindow} win
  * @param {any} d
  * @param {DownloadRecord} asked  the download as it was when the question showed
@@ -497,7 +499,8 @@ async function answered(win, d, asked, op, say) {
   }
   if (d.hasBlockedData) {
     // Blocked data is removed as Firefox's blocked view removes it (downloadsCmd_confirmBlock):
-    // `deleteDownloadFiles` would leave it marked as blocked (decision 7, docs/security.md D3).
+    // `deleteDownloadFiles` would leave it marked as blocked (decision 7,
+    // docs/security/21-downloads-picker.md D3).
     await d.confirmBlock();
     say(`deleted "${asked.name}"`);
     return;
@@ -552,7 +555,7 @@ function runState(win, d, r, op, say) {
  * `u`: the page a download came from, in a new tab of the download's own container, or of the
  * window's non-agent one for a history entry, which keeps none. Never the agent workspace's, even
  * with it on screen: the full referrer may carry a token, and an agent can read that workspace's
- * pages (docs/security.md D4). A private window opens it as any private tab.
+ * pages (docs/security/21-downloads-picker.md D4). A private window opens it as any private tab.
  * @param {BrowserWindow} win
  * @param {any} d
  * @param {string} referrer  core allows an http: or https: page only
@@ -580,9 +583,9 @@ const allowOverride = () => Services.prefs.getBoolPref("browser.safebrowsing.all
  * `!`: Firefox's own dialog decides, in Firefox's wording, and its answer runs as Firefox's
  * Library runs it (DownloadsViewUI.sys.mjs, confirmUnblock). Always `chooseUnblock`, whose default
  * button removes the file, never `chooseOpen`, whose default opens it: a habitual Enter cannot run
- * a blocked file, and opening is a separate `o` (decision 7, docs/security.md D3). The answer
- * stands only for the download asked about, as in D5: the dialog is modal, but the list, the file
- * and the pref can change under it.
+ * a blocked file, and opening is a separate `o` (decision 7, docs/security/21-downloads-picker.md
+ * D3). The answer stands only for the download asked about, as in D5: the dialog is modal, but the
+ * list, the file and the pref can change under it.
  * @param {BrowserWindow} win
  * @param {any} d
  * @param {DownloadRecord} asked
@@ -645,7 +648,8 @@ export function downloadPickerKey(win, rows, key, id, { say, close, ask }) {
   if (downloadAsks(result.op)) {
     const op = /** @type {"cancel" | "delete"} */ (result.op);
     // An open picker takes every key first: it closes, so the `y` reaches the question
-    // (decision 6, docs/security.md D5). Closing detaches the rows; `d` and `r` are kept.
+    // (decision 6, docs/security/21-downloads-picker.md D5). Closing detaches the rows; `d` and `r`
+    // are kept.
     close();
     const asked = ask(downloadQuestion(r, op), () =>
       answered(win, d, r, op, say).catch((/** @type {any} */ e) => {

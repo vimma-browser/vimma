@@ -310,7 +310,7 @@ needs no dependency.
     job's `results.json`, downloads the previous run's files and writes the diff and the issue
     text, with read permissions only (`actions` for the artifacts, `issues` to find the open
     issue). `issues: write` belongs to a third job that checks out nothing and runs only `gh` on
-    that text (docs/security.md, "Site compatibility workflow").
+    that text (docs/security/17-site-compatibility-workflow.md, "Site compatibility workflow").
 
 13. **Shortcut conflicts are reported, not acted on.** The `shortcuts` check stays `info`. A
     per-site pass-through list would be a user-facing configuration feature with its own design
@@ -420,10 +420,10 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 
 ## Docs to update
 
-- `docs/runbook.md`, "Actions minutes budget": one paragraph for `sites.yml` (≈ 15-20 min a
-  night, free, never on PRs).
+- `docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget": one paragraph for
+  `sites.yml` (≈ 15-20 min a night, free, never on PRs).
 - `CONTRIBUTING.md`: `npm run sites` under the test commands.
-- `docs/security.md`: the site workflow's issue writes and how untrusted page text is written
+- `docs/security/`: the site workflow's issue writes and how untrusted page text is written
   into the issue (sub-PR 2).
 - No guide, README or changelog change: nothing user-visible changes.
 

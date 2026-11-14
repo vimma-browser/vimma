@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security.md M24). A tab you did not open
-// inside the agent workspace never takes its container: a link from another app (the remote
-// command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
-// control socket, a new window's first tab, and the container cached for the next start. Such
-// a link opens in the last workspace you used that is not the agent's, and a foreground open
-// switches to it. What you open yourself inside the agent workspace (ctrl+t) stays there.
+// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security/12-agents-mcp.md M24). A tab you did
+// not open inside the agent workspace never takes its container: a link from another app (the
+// remote command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
+// control socket, a new window's first tab, and the container cached for the next start. Such a
+// link opens in the last workspace you used that is not the agent's, and a foreground open switches
+// to it. What you open yourself inside the agent workspace (ctrl+t) stays there.
 
 "use strict";
 
@@ -312,8 +312,9 @@ add_task(async function a_default_workspace_naming_the_agent_workspace_is_passed
   }
 });
 
-// docs/specs/app-routes.md, decision 14 (docs/security.md R10): a tab's recorded names never
-// pick a rule naming the agent workspace, for the hint, :route move or about:vimma.
+// docs/specs/app-routes.md, decision 14 (docs/security/02-workspace-routing.md R10): a tab's
+// recorded names never pick a rule naming the agent workspace, for the hint, :route move or
+// about:vimma.
 add_task(async function an_app_routed_tabs_names_never_pick_the_agent_workspace() {
   WorkspaceRouter.setRoutes(
     resolveRoutes([{ app: "testapp", domain: "example.com", workspace: "oo-home" }]),

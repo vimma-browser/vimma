@@ -49,10 +49,10 @@ export const EXCEPTIONS: Exception[] = [];
 
 /**
  * Modules only the listed modules may import, eagerly or lazily, whatever their layer. The agent
- * gate decides what an agent may do and asks the user (docs/security.md section 12); with it in
- * host/ (layer 3), every host/ module, VimmaParent.sys.mjs among them, and every folder above
- * could import it by the layers alone. These are today's callers, each reviewed; a new one needs
- * a security review first, then a line here and in the test. A listed module that stops
+ * gate decides what an agent may do and asks the user (docs/security/12-agents-mcp.md section 12);
+ * with it in host/ (layer 3), every host/ module, VimmaParent.sys.mjs among them, and every folder
+ * above could import it by the layers alone. These are today's callers, each reviewed; a new one
+ * needs a security review first, then a line here and in the test. A listed module that stops
  * importing it fails too.
  */
 export const RESTRICTED: Record<string, Restricted> = {
@@ -66,6 +66,7 @@ export const RESTRICTED: Record<string, Restricted> = {
       "host/agent-ui.mjs",
       "host/mcp-ops.mjs",
     ],
-    review: "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    review:
+      "a new caller of the agent gate needs a security review (docs/security/12-agents-mcp.md section 12)",
   },
 };

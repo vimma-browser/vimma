@@ -1,7 +1,7 @@
 # Spec m0-pipeline. Follows anthropics/claude-code-action v1
-# (docs/setup.md, docs/security.md, examples/claude.yml).
+# (docs/setup.md, docs/security/, examples/claude.yml).
 #
-# Security model (see the spec's Settled section and docs/runbook.md):
+# Security model (see the spec's Settled section and docs/runbook/):
 # - Every job passes `github_token: github.token`, so the job's `permissions:` block is the
 #   token Claude gets (without it the action uses the Claude app's installation token, which has
 #   contents/pull-requests/issues write whatever this file says).
@@ -55,7 +55,7 @@ jobs:
         if: env.HAS_CLAUDE_AUTH != 'true'
         run: >-
           echo "::notice::claude.yml skipped: add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN
-          (docs/runbook.md)."
+          (docs/runbook/)."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.HAS_CLAUDE_AUTH == 'true'
@@ -92,7 +92,7 @@ jobs:
         if: env.HAS_CLAUDE_AUTH != 'true'
         run: >-
           echo "::notice::claude.yml skipped: add ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN
-          (docs/runbook.md)."
+          (docs/runbook/)."
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: env.HAS_CLAUDE_AUTH == 'true'
@@ -103,7 +103,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: env.HAS_CLAUDE_AUTH == 'true'
         with:
-          node-version-file: .nvmrc # exact Node pin (docs/runbook.md, "Bench baseline")
+          node-version-file: .nvmrc # exact Node pin (docs/runbook/ci-bench-baseline.md, "Bench baseline")
           cache: npm
 
       - name: Install and branch

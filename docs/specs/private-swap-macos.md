@@ -412,7 +412,7 @@ of it. What a hidden window hides is only its pixels: its pages keep running, th
 shared as before, and `vimma-ctl state` reports both windows as today (`"private": true` with
 `null` URLs and titles for the private one). Nothing new is written to disk: the pair is in
 memory, SessionStore never sees a hidden flag, and private windows stay out of macOS window
-restoration (Research). `docs/security.md` needs no change, since no security-sensitive
+restoration (Research). `docs/security/` needs no change, since no security-sensitive
 component (the control socket, MCP, the agent gate, content actors) is touched.
 
 ## Tests
