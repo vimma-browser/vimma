@@ -322,19 +322,22 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   [#1040](https://github.com/vimma-browser/vimma/issues/1040), the report must also have been
   made at the tab's present full zoom. The viewer reports its browsing context's `fullZoom`, and
   the parent takes the report as drawn only when it equals the tab's, exactly: both read the same
-  synced value. So a default, per-site or extension zoom just applied reads as not drawn until
-  the viewer has drawn at it. The viewer also counts no page as drawn until its own resize
-  listener has seen its present size and pixel ratio, since pdf.js drops the pages drawn at the
-  old zoom only in that refresh tick. A change of the desktop's text scale is not compared: the
-  report from before one can read as drawn until the viewer's next report, at most one refresh
-  tick and 100 ms later.) Scroll keys (`j`, `k` and the like, and the page turns they make in
-  presentation mode) are not operations: right after one, `drawn` can still show the report from
-  before it, until the viewer reports the pages it starts drawing. The viewer reports at most
-  once per 100 ms (security.md section 20, V5), so `true` comes up to that long after the
+  synced value. On each zoom change the parent marks the kept report not drawn and asks the
+  viewer for a new one, since a zoom that keeps the page's app units per device pixel brings no
+  resize and no report of the viewer's own; so a default, per-site or extension zoom just
+  applied, or a zoom and back, reads as not drawn until the viewer has reported at it. The
+  viewer counts no page as drawn until its resize listener has seen its present CSS size, since
+  pdf.js drops the pages drawn at the old zoom only in that refresh tick. A change of the
+  desktop's text scale is not compared: the report from before one can read as drawn until the
+  viewer's next report, which comes once the content process has the new text scale, one
+  refresh tick and up to 100 ms later.) Scroll keys (`j`, `k` and the like, and the page turns
+  they make in presentation mode) are not operations: right after one, `drawn` can still show the
+  report from before it, until the viewer reports the pages it starts drawing. The viewer reports
+  at most once per 100 ms (security.md section 20, V5), so `true` comes up to that long after the
   drawing ends. One flag: never the page, the page count, the document's title or URL, or the
-  outline. It is `null` in a private window, because its documents are part of its browsing.
-  Added without a version bump; vimma-core's validator checks the flag's type, refuses any other
-  field in `pdf`, and refuses the object in a private window.
+  outline. It is `null` in a private window, because its documents are part of its browsing. Added
+  without a version bump; vimma-core's validator checks the flag's type, refuses any other field
+  in `pdf`, and refuses the object in a private window.
 
 **`open`.** `url` is an absolute URL whose scheme is `http`, `https`, `file` or `about`; anything
 else (notably `javascript:` and `data:`) is `invalid-args`. At most 65536 characters. `where`

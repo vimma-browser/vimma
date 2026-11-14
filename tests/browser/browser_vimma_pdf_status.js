@@ -530,3 +530,52 @@ add_task(async function a_full_zoom_change_is_not_drawn_until_the_viewer_redraws
     await SpecialPowers.popPrefEnv();
   }
 });
+
+// A zoom change that keeps the page's app units per device pixel changes neither its size nor
+// its pixel ratio, so the viewer gets no resize or resolution event and sends no report of its
+// own (PresShell::ResizeReflow returns early on an unchanged size). At scale 1, 100% has
+// 60 app units per device pixel and 100.8% has round(60 / 1.008) = round(59.52) = 60 too
+// (nsDeviceContext::ApplyFullZoomToAPD); the browser's fullZoom setter ignores a change that
+// agrees to two decimals, so 100.5% would not apply. `drawn` still turns true at the new zoom:
+// the parent asks the viewer for a report when the zoom changes.
+add_task(async function a_zoom_change_that_keeps_the_layout_still_turns_drawn() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.ui.pdf_outline.hidden", true],
+      ["layout.css.devPixelsPerPx", "1"],
+    ],
+  });
+  try {
+    await withPdf(async (browser) => {
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      const ratio = () => SpecialPowers.spawn(browser, [], () => content.devicePixelRatio);
+      const before = await ratio();
+      browser.fullZoom = 1.008;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn at the new zoom yet");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn at 100.8%",
+      );
+      Assert.equal(await ratio(), before, "the page's pixel ratio did not change");
+      browser.fullZoom = 1;
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn at 100% again",
+      );
+      // A zoom and back before any report: the report from before them is not taken for one
+      // at the zoom the tab is back to, which the viewer may not have drawn at yet.
+      browser.fullZoom = 1.1;
+      browser.fullZoom = 1;
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "not drawn after a zoom and back");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "drawn once the viewer reports again",
+      );
+    });
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+});

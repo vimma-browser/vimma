@@ -44,6 +44,42 @@ const listeners = new Set();
 const sentOps = new WeakMap();
 
 /**
+ * The chrome windows whose tabs' zoom changes are watched (watchZoom).
+ * @type {WeakSet<object>}
+ */
+const zoomWatched = new WeakSet();
+
+/**
+ * A tab's full zoom changed (#1040): the report kept from before reads as not drawn, so a zoom
+ * and back before the viewer's next report is not taken for the old zoom, and the viewer is
+ * asked for a report. A zoom that keeps the page's app units per device pixel changes neither
+ * its size nor its pixel ratio, so the viewer would get no resize or resolution event and send
+ * none of its own. The message goes after the zoom's own sync to the content process, so the
+ * report carries the new zoom. FullZoomChange is chrome-only, dispatched on the tab's browser
+ * by BrowsingContext::DidSet (or by the browser itself in Responsive Design Mode).
+ * @param {Event} event
+ */
+function onZoomChange(event) {
+  const browser = /** @type {MozBrowser} */ (event.target);
+  const kept = states.get(browser);
+  const wg = viewerGlobal(browser);
+  if (!kept || !wg) return;
+  states.set(browser, { ...kept, state: Object.freeze({ ...kept.state, drawn: false }) });
+  wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfZoom");
+}
+
+/**
+ * Watches the zoom of the tabs of `browser`'s window, once per window.
+ * @param {MozBrowser} browser
+ */
+function watchZoom(browser) {
+  const win = browser.ownerDocument?.defaultView;
+  if (!win || zoomWatched.has(win)) return;
+  zoomWatched.add(win);
+  win.addEventListener("FullZoomChange", onZoomChange);
+}
+
+/**
  * Sends the viewer's actor one operation, and counts it.
  * @param {WindowGlobalParent} wg  the viewer's window global (viewerGlobal)
  * @param {object} msg  a parsed operation (parsePdfOp)
@@ -190,8 +226,10 @@ export const PdfOps = {
       !!state && !!old && old.windowId === wg.innerWindowId && sameState(old.state, state);
     if (same && old && sameView(old.state, state)) return;
     if (!state && !old) return;
-    if (state) states.set(browser, { windowId: wg.innerWindowId, state });
-    else states.delete(browser);
+    if (state) {
+      states.set(browser, { windowId: wg.innerWindowId, state });
+      watchZoom(browser);
+    } else states.delete(browser);
     if (same) return;
     for (const fn of listeners) {
       try {

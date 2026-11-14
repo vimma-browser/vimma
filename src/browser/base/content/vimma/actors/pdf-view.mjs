@@ -214,9 +214,9 @@ export class PdfView {
   /** PDF_SHEET is loaded (once). */
   #sheetLoaded = false;
   /**
-   * The window's size and pixel ratio as the last resize event left them (#scale). Until the
-   * resize event for a new size or zoom has run, pdf.js has not dropped the pages it drew at the
-   * old one, so no report then says drawn.
+   * The window's CSS size as the last resize event left it (#scale). Until the resize event for
+   * a new size or zoom has run, pdf.js has not dropped the pages it drew at the old one, so no
+   * report then says drawn.
    */
   #seenScale = "";
 
@@ -873,18 +873,20 @@ export class PdfView {
   }
 
   /**
-   * The window's CSS size and pixel ratio, which a resize, a full-zoom change and a change of
-   * the desktop's scale or text scale all change. A full-zoom change reaches the viewer's window
-   * at once (BrowsingContext::DidSet recomputes its pres context), but pdf.js drops the pages
-   * it drew at the old one only in its `(resolution: …dppx)` media query listener (viewer.mjs,
+   * The window's CSS size, which a resize and a full-zoom change that changes the page's layout
+   * both change. Such a zoom change reaches the viewer's window at once
+   * (BrowsingContext::DidSet recomputes its pres context), but pdf.js drops the pages it drew at
+   * the old zoom only in its `(resolution: …dppx)` media query listener (viewer.mjs,
    * addWindowResolutionChange, then pdfViewer.refresh) and its resize handler, in the next
    * refresh tick. That tick runs the resize steps, where this listener of Vimma's records the
-   * new scale, and then the media query changes, before any timer can run; a report timer that
-   * fired between the zoom and that tick would have read the old pages as drawn (#1040).
+   * new size, and then the media query changes, before any timer can run; a report timer that
+   * fired between the zoom and that tick would have read the old pages as drawn (#1040). Not the
+   * pixel ratio: moving the window to a screen of another scale changes it with no resize event,
+   * and the parent compares the zoom itself.
    */
   #scale() {
     const win = this.#win;
-    return `${win.innerWidth} ${win.innerHeight} ${win.devicePixelRatio}`;
+    return `${win.innerWidth} ${win.innerHeight}`;
   }
 
   /**
