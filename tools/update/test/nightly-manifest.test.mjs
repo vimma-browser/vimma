@@ -356,7 +356,7 @@ describe("prepareNightly and checkSignedNightly (the nightly jobs' checks)", () 
   }, 30_000);
 });
 
-describe("the two channels never cross (docs/security.md UP2, UP14)", () => {
+describe("the two channels never cross (docs/security/16-update-check.md UP2, UP14)", () => {
   const now = new Date(Date.UTC(2026, 10, 12, 4, 12, 7));
 
   it("checkSigned, the release's check, refuses a nightly manifest", async () => {

@@ -25,7 +25,7 @@ half a day (plan §6), so the monthly rebase stops being the project's biggest r
 - `tools/upstream/patch-audit.py`: plan §4's Sunday patch-size review. Shows each patch's files,
   hunks and changed lines, flags a patch missing from the ADR-003 register and a register line
   without a patch.
-- `docs/runbook.md` points to the playbook; `docs/limits.md` gets what we learned.
+- `docs/runbook/` points to the playbook; `docs/limits.md` gets what we learned.
 
 ## Tests (written first)
 

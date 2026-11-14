@@ -7,8 +7,8 @@ they run, and what can stop the release at each step.
 [m6-packaging](../specs/m6-packaging.md), [release-versioning](../specs/release-versioning.md),
 [m6a-updater](../specs/m6a-updater.md) and [update-notices](../specs/update-notices.md), the
 decision in [ADR-016](../adr/016-own-update-channel.md), the rules with their tests in
-[docs/security.md](../security.md) §14 (build and release) and §16 (update check), and setup,
-switches and recovery in [docs/runbook.md](../runbook.md), "Releases", "Release packages" and
+[docs/security/](../security/README.md) §14 (build and release) and §16 (update check), and setup,
+switches and recovery in [docs/runbook/](../runbook/README.md), "Releases", "Release packages" and
 "Update signing keys and the update host".
 
 ```mermaid

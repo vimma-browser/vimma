@@ -1,4 +1,4 @@
-# The quarterly patch audit (milestone M7, docs/security.md G8, docs/rebase.md "Patch-size audit").
+# The quarterly patch audit (milestone M7, docs/security/10-firefox-updates.md G8, docs/rebase.md "Patch-size audit").
 # tools/upstream/patch-audit.py checks every src/**/*.patch against the ADR-003 register: each
 # patch has a register line and each line a patch, each stays within its hunk and line budget,
 # and each review is at most 92 days old. The report becomes a tracking issue labelled

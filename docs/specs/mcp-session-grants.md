@@ -175,8 +175,8 @@ dropped link of the same process for two minutes.
   §11), so the id adds no new reach. Vimma rejects ids shorter than 128 bits and gives a waiting
   grant back once.
 
-`docs/security.md` §12: the reach paragraph says what a session grant allows and how it ends;
-M5 adds the session id rules.
+`docs/security/12-agents-mcp.md` §12: the reach paragraph says what a session grant allows and how
+it ends; M5 adds the session id rules.
 
 ## Tests
 
@@ -218,7 +218,7 @@ for the whole connection names no time left`.
 
 - `docs/guide.md` "Agents (MCP)": the keys table, "Grants are wide", the status bar and `:mcp`
   lines, and the `[mcp]` config comment.
-- `docs/security.md` §12 as above.
+- `docs/security/12-agents-mcp.md` §12 as above.
 - Notes in the implemented specs [vimma-mcp](vimma-mcp.md) (decisions 20-22, 40) and
   [mcp-grants](mcp-grants.md) (behaviour 1, 2, 4) say `(Since changed: …; mcp-session-grants.md.)`.
 - `CHANGELOG.md`: written by release-please from the commit.

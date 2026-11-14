@@ -19,7 +19,8 @@ import {
 } from "../downloads.ts";
 
 // #647: a daily snapshot of every release asset's download count, kept on the `stats` branch
-// (docs/runbook.md, "Release download counts"), and a summary of the daily deltas.
+// (docs/runbook/ci-release-download-counts-downloads-yml.md, "Release download counts"), and a
+// summary of the daily deltas.
 
 const SCRIPT = fileURLToPath(new URL("../downloads.ts", import.meta.url));
 const execFileAsync = promisify(execFile);

@@ -5,7 +5,7 @@
 //! Property tests of what `vimma-ctl` reads from the socket and the discovery file: the JSON
 //! parser and the protocol decoders (docs/specs/m7-fuzzing.md). `cargo test` runs a fixed
 //! seed; the nightly fuzz workflow sets `PROPTEST_RNG_SEED` (random) and `PROPTEST_CASES` for
-//! many more cases. Reproducing: docs/runbook.md, "Fuzzing: reproducing a failing seed".
+//! many more cases. Reproducing: docs/runbook/ci-fuzzing.md, "Fuzzing: reproducing a failing seed".
 
 use proptest::prelude::*;
 use proptest::test_runner::RngSeed;

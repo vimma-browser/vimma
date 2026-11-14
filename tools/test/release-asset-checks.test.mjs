@@ -4,9 +4,9 @@
 
 // The steps that only need to know whether a file is on a published release. GitHub counts every
 // request for a release asset as a download, a HEAD, a redirect not followed and the API's asset
-// endpoint alike (docs/runbook.md, "Release download counts"), so these read the release's
-// metadata instead, which counts nothing. Steps that need a file's bytes still download it and
-// check its hash and signature; those are tested with each workflow.
+// endpoint alike (docs/runbook/ci-release-download-counts.md, "Release download counts"), so these
+// read the release's metadata instead, which counts nothing. Steps that need a file's bytes still
+// download it and check its hash and signature; those are tested with each workflow.
 import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";

@@ -5,9 +5,10 @@ import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 // Issue #443: release-please opens its release pull request as a draft, and the heavy required
 // checks (the artifact build with the mochitests, Semgrep, CodeQL) skip a draft pull request, so
 // the rebuilds after each merge to main cost minutes instead of a full run each. Marking the pull
-// request ready for review runs them once (docs/runbook.md, "Draft pull requests"). Every required
-// check still reports on a draft, and CodeQL uploads no results for one, so the ruleset's code
-// scanning rule keeps the pull request blocked until the run after "ready for review".
+// request ready for review runs them once (docs/runbook/ci-draft-pull-requests.md, "Draft pull
+// requests"). Every required check still reports on a draft, and CodeQL uploads no results for one,
+// so the ruleset's code scanning rule keeps the pull request blocked until the run after "ready for
+// review".
 const ROOT = new URL("../../", import.meta.url);
 const dir = new URL(".github/workflows/", ROOT);
 /** @param {string} name */

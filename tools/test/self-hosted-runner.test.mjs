@@ -10,9 +10,10 @@ import {
 
 // js-yaml 5 loads `<<:` as a plain key, as GitHub does: a runs-on that only a merge key supplies
 // is no runs-on, and fails here.
-// docs/specs/build-supply-chain.md, decision 7; docs/security.md, B5. On a public repository a
-// self-hosted runner that pull request code can reach is a machine anyone can run code on, and
-// Vimma registers no self-hosted runner at all, so no workflow may target one.
+// docs/specs/build-supply-chain.md, decision 7; docs/security/14-build-and-release-supply-chain.md,
+// B5. On a public repository a self-hosted runner that pull request code can reach is a machine
+// anyone can run code on, and Vimma registers no self-hosted runner at all, so no workflow may
+// target one.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const workflows = readdirSync(dir)
   .filter((f) => /\.ya?ml$/.test(f))

@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 3, decision 21), docs/security.md section 20 (V7, V9): zathura's
-// page, zoom and layout keys in the PDF viewer, presentation mode, and jumps.
+// Spec: docs/specs/pdf-mode.md (delivery PR 3, decision 21), docs/security/20-pdf-viewer.md section
+// 20 (V7, V9): zathura's page, zoom and layout keys in the PDF viewer, presentation mode, and
+// jumps.
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 

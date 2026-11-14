@@ -115,8 +115,8 @@ One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has 
 
 About 3 releases a month (one major, one or two dot releases): ≈ 180 + 3 × 30 = **≈ 270 a
 month**, 14 % of the budget (was ≈ 130). Once the repo is public, hosted minutes are free.
-(Since changed: the repository is public, so these minutes cost nothing; `docs/runbook.md`,
-"Actions minutes budget".)
+(Since changed: the repository is public, so these minutes cost nothing;
+`docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget".)
 
 ## Tests (written first)
 
@@ -147,7 +147,8 @@ days). The artifact preflight finds Mozilla's build of 157.0.1 indexed until 202
    approve pull requests". Without it the autopilot comments a compare link on the tracking issue.
 2. Optional: `UPSTREAM_PR_TOKEN` (fine-grained, this repo, Contents + Pull requests read/write),
    so the PR's CI runs and an all-green bump opens ready for review. (Since changed: the GitHub
-   App `vimma-upstream-autopilot` replaces the token; docs/runbook.md, "Upstream App".)
+   App `vimma-upstream-autopilot` replaces the token; docs/runbook/ci-upstream-bumps.md, "Upstream
+   App".)
 
 ## Dependencies
 

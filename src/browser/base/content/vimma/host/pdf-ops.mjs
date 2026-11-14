@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The parent's side of the PDF viewer (docs/specs/pdf-mode.md, "The layers"; docs/security.md
-// section 20): which tabs are the viewer, decided from the parent's own view of the top document
-// (V2), and the state their adapter reports, parsed before anything shows it (V6).
+// The parent's side of the PDF viewer (docs/specs/pdf-mode.md, "The layers";
+// docs/security/20-pdf-viewer.md section 20): which tabs are the viewer, decided from the parent's
+// own view of the top document (V2), and the state their adapter reports, parsed before anything
+// shows it (V6).
 
 import {
   isPdfMarkChar,
@@ -425,10 +426,10 @@ export const PdfOps = {
 
   /**
    * Opens an outline entry's URL in `browser` as the viewer's own link would load it
-   * (docs/security.md section 20, V8): http and https only, checked against the viewer's
-   * principal, which triggers the load, with no referrer and no fixup. A load with the system
-   * principal would look typed (no Sec-Fetch-Site, SameSite=Strict cookies sent) and could be
-   * routed to another workspace.
+   * (docs/security/20-pdf-viewer.md section 20, V8): http and https only, checked against the
+   * viewer's principal, which triggers the load, with no referrer and no fixup. A load with the
+   * system principal would look typed (no Sec-Fetch-Site, SameSite=Strict cookies sent) and could
+   * be routed to another workspace.
    * @param {any} browser
    * @param {string} url
    * @returns {boolean} false when refused

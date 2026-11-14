@@ -18,7 +18,7 @@ import {
   stripInvisible,
 } from "../src/page/pdf.mjs";
 
-// docs/specs/pdf-mode.md, docs/security.md section 18 (V6).
+// docs/specs/pdf-mode.md, docs/security/ section 18 (V6).
 // `doc` counts the documents pdf.js has opened in this viewer (V11).
 // `drawn`, `ops`, `width`, `height` and `zoom` say what the viewer had drawn when it reported
 // (#1006, #1040).

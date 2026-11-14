@@ -2,8 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The loader rule (docs/security.md section 12): ChromeUtils only as ChromeUtils.<name>, and either
-// loader only called directly, since only that form shows the check which function loads what.
+// The loader rule (docs/security/12-agents-mcp.md section 12): ChromeUtils only as
+// ChromeUtils.<name>, and either loader only called directly, since only that form shows the check
+// which function loads what.
 
 import { type AstNode, isNode } from "./model.ts";
 

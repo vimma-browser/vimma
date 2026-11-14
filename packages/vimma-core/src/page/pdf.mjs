@@ -5,7 +5,7 @@
 /**
  * The PDF viewer's state as Vimma's content actor reports it (docs/specs/pdf-mode.md), checked
  * before the host believes it: the viewer parses untrusted files, and a pdf.js bug can let a
- * PDF run script there (docs/security.md section 20, V6).
+ * PDF run script there (docs/security/20-pdf-viewer.md section 20, V6).
  */
 
 /** pdf.js shows at most this many pages in practice; more is not a real document. */

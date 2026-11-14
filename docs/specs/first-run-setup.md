@@ -106,9 +106,11 @@ All Firefox paths are in Vimma's engine tree at Firefox 158.0 (`surfer.json`,
 - **Curated candidates.** Checked on AMO's `api/v5/addons/addon/<slug>/`: uBlock Origin
   (`uBlock0@raymondhill.net`), AdGuard AdBlocker (`adguardadblocker@adguard.com`) and Privacy
   Badger (`jid1-MnnxcxisBPnSXQ@jetpack`) are all "Recommended" for Firefox.
-- **Vimma's network stance.** Vimma uploads no telemetry (`docs/security.md` P1). Requests to
-  AMO for add-ons and their updates are kept as in Firefox (`docs/guide.md`, privacy table).
-- **Vimma never installs add-ons today.** `docs/security.md` A1, enforced by `never installs an
+- **Vimma's network stance.** Vimma uploads no telemetry (`docs/security/09-privacy-defaults.md`
+  P1). Requests to AMO for add-ons and their updates are kept as in Firefox (`docs/guide.md`,
+  privacy table).
+- **Vimma never installs add-ons today.**
+  `docs/security/05-add-ons.md` A1, enforced by `never installs an
 add-on` in `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`,
   ADR-025), which fails on any `getInstallForURL` or `installAddonFromAOM` in Vimma's chrome code.
 
@@ -253,13 +255,13 @@ search engine is likewise one default for the profile.
 - **No agent or socket reach.** The control socket gets no command for the setup, the agent
   role's `open` **must** refuse `about:vimma-setup`, and the page acts only on trusted key and
   click events, so that no agent can install an add-on.
-- **A1 changes.** `docs/security.md` A1 ("Vimma never installs an add-on") becomes: Vimma
-  installs an add-on only from the setup page, from AMO, after the summary and Firefox's
+- **A1 changes.** `docs/security/05-add-ons.md` A1 ("Vimma never installs an add-on") becomes:
+  Vimma installs an add-on only from the setup page, from AMO, after the summary and Firefox's
   permission prompt. The `never installs an add-on` source test gets one allowed file,
-  `setup/SetupHost.sys.mjs`. The implementing PR for installs updates `docs/security.md` and
+  `setup/SetupHost.sys.mjs`. The implementing PR for installs updates `docs/security/` and
   gets a review by a fresh agent before merging.
-- **Writing a user file.** `docs/security.md` F1 ("an existing file is never overwritten")
-  becomes: Vimma changes an existing config.toml only from `:route add` (append) and the setup
+- **Writing a user file.** `docs/security/08-config-toml.md` F1 ("an existing file is never
+  overwritten") becomes: Vimma changes an existing config.toml only from `:route add` (append) and the setup
   summary (decisions 10 and 11), never on a parse error, atomically and keeping the file's
   mode. The implementing PR for the config write updates F1 with links to its tests and gets a
   review by a fresh agent before merging.
@@ -314,7 +316,7 @@ the fade.
 ## Docs and changelog
 
 - `docs/guide.md`: a "First run" section, `:setup` in the command list, the add-on section.
-- `docs/security.md`: A1 and F1 as above.
+- `docs/security/`: A1 and F1 as above.
 - `CHANGELOG.md`: "Added: a skippable first-run setup for add-ons and the default search engine
   (`:setup`)".
 
@@ -323,8 +325,8 @@ the fade.
 1. `setTomlKeys` in `toml.mjs` with its vitest tests (decision 10); no user-visible change.
 2. The page with the welcome screen, `vimma.setup.offered`, the search step, the summary with
    the atomic `config.toml` write (decision 11), `:setup` and the about:vimma link; step 1
-   absent; `docs/security.md` F1; security review.
-3. Step 1 with the curated list and installs; `docs/security.md` A1; security review.
+   absent; `docs/security/08-config-toml.md` F1; security review.
+3. Step 1 with the curated list and installs; `docs/security/05-add-ons.md` A1; security review.
 4. AMO search in step 1 (decision 6).
 
 ## Open questions

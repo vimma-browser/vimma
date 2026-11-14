@@ -243,7 +243,7 @@ No new surface. The switching open runs the same checks as `gF`'s background ope
 page's principal, the page as triggering principal, and the hinted tab's container. Selecting the
 tab changes only which tab is shown, in the window and workspace already shown. An agent cannot
 reach it: the new action is refused in `vimma_keys`, and agent labels stay lower case (decision 7).
-`docs/security.md` needs no change, because no control-socket, MCP or content-actor message
+`docs/security/` needs no change, because no control-socket, MCP or content-actor message
 changes.
 
 ## Tests

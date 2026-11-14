@@ -50,7 +50,7 @@ off instead of showing it ticked.
 - **Smoke script** `tools/safebrowsing-smoke/safebrowsing-smoke.sh`: launches the real build
   headless on a temp profile and waits for Google's lists to land on disk.
 - Docs: `docs/guide.md` (what it does, how to opt out; uBlock Origin with its malware and
-  phishing lists), `docs/limits.md`, `docs/runbook.md` (providing, rotating and debugging the
+  phishing lists), `docs/limits.md`, `docs/runbook/` (providing, rotating and debugging the
   key; refreshing the list prefs on upstream bumps), README status, m0-mozilla-services.
 - No upstream patch, no new dependency.
 
