@@ -15,7 +15,7 @@
 /* global noticeText, scopeTitle, scopeLines, closedTitle -- from head_vimma_grep.js */
 /* global closeTitled, closeWindowTitled, ctrlS, until, openFixture -- from head_vimma_grep.js */
 /* global reset, openGrep, type, clearQuery, resultsSettle -- from head_vimma_grep.js */
-/* global setupSecondWorkspace -- from head_vimma_grep.js */
+/* global setupSecondWorkspace, shownDialog -- from head_vimma_grep.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_grep.js", this);
 
@@ -117,6 +117,7 @@ add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
   await reset();
   const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   const titles = ["Private one", "Private two", "Private three"];
+  /** @type {MozTabbrowserTab[]} */
   const tabs = [];
   for (const title of titles) {
     const url = `${PAGE}?${new URLSearchParams({ title, t: `${title} lazyneedle` })}`;
@@ -158,12 +159,14 @@ add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
 
 add_task(async function the_scope_box_lists_the_windows_and_tabs_searched() {
   await reset();
-  ww().switchTo({ id: def(OTHER_WS).id });
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def(OTHER_WS)).id });
   await openFixture({ title: "Delta", t: "delta scopeneedle" });
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def("main")).id });
   await openFixture({ title: "Alpha", t: "alpha scopeneedle" });
   await openGrep();
-  const mainTabs = ww().model.workspaces.find((w) => w.name === "main").tabs.length;
+  const mainTabs = /** @type {WorkspaceState} */ (
+    ww().model.workspaces.find((w) => w.name === "main")
+  ).tabs.length;
   Assert.deepEqual(
     scopeLines(),
     [`w1 this window: main · ${mainTabs} tabs`],
@@ -176,8 +179,8 @@ add_task(async function the_scope_box_lists_the_windows_and_tabs_searched() {
   const [line] = scopeLines();
   Assert.ok(line.startsWith("w1 this window: main "), "this window's workspaces by name");
   Assert.ok(new RegExp(`${OTHER_WS} \\d+`).test(line), "with their tab counts");
-  const scope = dialog().querySelector(".vimma-grep-scope");
-  const results = dialog().querySelector(".vimma-grep-results");
+  const scope = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-scope"));
+  const results = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-results"));
   Assert.ok(
     scope.getBoundingClientRect().bottom <= results.getBoundingClientRect().top + 1,
     "the scope box sits above the results",
@@ -194,9 +197,14 @@ add_task(async function rows_name_their_window_tab_and_host() {
   await resultsSettle(1);
   const row = rows()[0];
   Assert.equal(row.querySelector(".vimma-grep-win")?.textContent, "w1", "its window");
-  Assert.ok(row.querySelector(".vimma-grep-tab").textContent.includes("Hosted"), "its tab");
+  Assert.ok(
+    /** @type {Element} */ (row.querySelector(".vimma-grep-tab")).textContent.includes("Hosted"),
+    "its tab",
+  );
   Assert.equal(row.querySelector(".vimma-grep-host")?.textContent, "example.com", "its host");
-  const where = dialog().querySelector(".vimma-grep-preview .vimma-grep-title");
+  const where = /** @type {Element} */ (
+    shownDialog().querySelector(".vimma-grep-preview .vimma-grep-title")
+  );
   await until(() => where.textContent.includes("Hosted"), "the preview names the result's tab");
   Assert.equal(where.textContent.split(" · ").at(-1), "example.com", "and its host, last");
   Assert.ok(where.textContent.includes("w1"), "and its window");
@@ -221,7 +229,11 @@ add_task(async function all_windows_searches_the_other_windows_and_enter_goes_th
   await until(() => scopeTitle() === "Scope: all windows · ctrl+s", "all windows");
   await resultsSettle(2);
   Assert.deepEqual(texts(), ["farneedle here", "farneedle over there"], "this window first");
-  Assert.equal(rows()[1].querySelector(".vimma-grep-win").textContent, "w2", "marked w2");
+  Assert.equal(
+    /** @type {Element} */ (rows()[1].querySelector(".vimma-grep-win")).textContent,
+    "w2",
+    "marked w2",
+  );
   Assert.ok(
     scopeLines().some((l) => l.startsWith("w2: ")),
     "the scope box lists the window",
@@ -260,10 +272,10 @@ add_task(async function closed_tabs_and_windows_match_on_title_and_url_and_enter
   await SimpleTest.promiseFocus(window);
   await openGrep();
   type("closedneedle");
-  await until(() => !dialog().hasAttribute("busy"), "settled");
+  await until(() => !shownDialog().hasAttribute("busy"), "settled");
   Assert.equal(rows().length, 0, "open tabs only, until the closed scope");
   type("|gone");
-  await until(() => !dialog().hasAttribute("busy"), "settled");
+  await until(() => !shownDialog().hasAttribute("busy"), "settled");
   Assert.equal(rows().length, 0, "a closed tab's page text is not searched");
   for (let i = 0; i < 5; i++) EventUtils.synthesizeKey("KEY_Backspace");
   ctrlS(window, 3);
@@ -277,9 +289,13 @@ add_task(async function closed_tabs_and_windows_match_on_title_and_url_and_enter
   Assert.equal(countText(), "2 / 2", "closed rows count as matches");
   Assert.ok(textOf(rows()[0]).includes("Zulu closedneedle"), "matched on its title");
   Assert.equal(rows()[0].querySelector("mark")?.textContent, "closedneedle", "marked");
-  Assert.equal(rows()[0].querySelector(".vimma-grep-tab").textContent, "closed", "labelled");
   Assert.equal(
-    rows()[1].querySelector(".vimma-grep-tab").textContent,
+    /** @type {Element} */ (rows()[0].querySelector(".vimma-grep-tab")).textContent,
+    "closed",
+    "labelled",
+  );
+  Assert.equal(
+    /** @type {Element} */ (rows()[1].querySelector(".vimma-grep-tab")).textContent,
     "closed window",
     "the window labelled",
   );
@@ -287,7 +303,7 @@ add_task(async function closed_tabs_and_windows_match_on_title_and_url_and_enter
     scopeLines().some((l) => l.startsWith("recently closed: ")),
     "the scope box says what recently closed holds",
   );
-  const body = dialog().querySelector(".vimma-grep-preview-body");
+  const body = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview-body"));
   await until(() => body.textContent.includes("Recently closed tab"), "the closed preview");
 
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen");
@@ -296,7 +312,7 @@ add_task(async function closed_tabs_and_windows_match_on_title_and_url_and_enter
   // focus check) aborts. Wait for the restore itself, listened for before it can happen.
   const restored = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored");
   EventUtils.synthesizeKey("KEY_Enter");
-  const reopened = (await opened).target;
+  const reopened = /** @type {MozTabbrowserTab} */ ((await opened).target);
   Assert.equal((await restored).target, reopened, "the reopened tab is restored");
   await until(() => gBrowser.selectedTab === reopened, "Enter reopens it and goes there");
   await until(() => reopened.label === "Zulu closedneedle", "the closed tab is back");
@@ -367,7 +383,7 @@ add_task(async function enter_on_a_closed_row_already_gone_says_so() {
   await until(() => scopeTitle().includes("closed"), "closed scope");
   type("staleneedle");
   await resultsSettle(1);
-  const closedId = Number(rows()[0].dataset.tabId.split(":")[1]);
+  const closedId = Number(/** @type {string} */ (rows()[0].dataset.tabId).split(":")[1]);
   SessionStore.forgetClosedTabById(closedId);
   const tabs = gBrowser.tabs.length;
   EventUtils.synthesizeKey("KEY_Enter");
@@ -390,11 +406,19 @@ add_task(async function the_grep_list_drops_a_closed_windows_lines() {
   await resultsSettle(2);
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !isOpen(), "jumped");
-  const session = VimmaHost._grep(window);
-  Assert.equal(session.list.rows.length, 2, "the list reaches both windows");
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
+  Assert.equal(
+    /** @type {NonNullable<GrepSession["list"]>} */ (session.list).rows.length,
+    2,
+    "the list reaches both windows",
+  );
   await BrowserTestUtils.closeWindow(other);
   await SimpleTest.promiseFocus(window);
-  Assert.equal(session.list.rows.length, 1, "the closed window's lines are gone");
+  Assert.equal(
+    /** @type {NonNullable<GrepSession["list"]>} */ (session.list).rows.length,
+    1,
+    "the closed window's lines are gone",
+  );
   Assert.equal(session.watched.size, 1, "and the closed window is no longer watched");
   await focusContent(gBrowser.selectedBrowser);
   type("]q");
@@ -428,13 +452,17 @@ add_task(async function the_panel_starts_at_the_page_top_and_follows_the_toolbar
   await reset();
   const content = () => gBrowser.tabbox.getBoundingClientRect();
   await openGrep();
-  const top = () => dialog().getBoundingClientRect().top;
+  const top = () => shownDialog().getBoundingClientRect().top;
   Assert.lessOrEqual(Math.abs(top() - content().top), 1, "the panel starts where the page does");
-  Assert.lessOrEqual(dialog().getBoundingClientRect().bottom, content().bottom + 1, "and ends");
+  Assert.lessOrEqual(
+    shownDialog().getBoundingClientRect().bottom,
+    content().bottom + 1,
+    "and ends",
+  );
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
 
-  const navBar = document.getElementById("nav-bar");
+  const navBar = /** @type {HTMLElement} */ (document.getElementById("nav-bar"));
   navBar.setAttribute("collapsed", "true");
   try {
     await until(() => content().top < 10, "without the toolbar the page starts at the top");
@@ -449,7 +477,7 @@ add_task(async function the_panel_starts_at_the_page_top_and_follows_the_toolbar
 
 add_task(async function agent_tabs_only_in_window_scope_marked_and_last() {
   await reset();
-  const agent = WorkspaceStore.agent;
+  const agent = /** @type {ContainedWorkspace | null} */ (WorkspaceStore.agent);
   Assert.ok(agent, "the profile has the agent workspace");
   const url = `${PAGE}?t=${encodeURIComponent("agentneedle from an agent")}`;
   const agentTab = gBrowser.addTab(url, {

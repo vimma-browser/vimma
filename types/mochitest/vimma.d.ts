@@ -132,3 +132,10 @@ type HostHints = NonNullable<ReturnType<VimmaHostApi["_hints"]>>;
 type HostHint = HostHints["hints"][number];
 /** A split's tree of panes (core/panes.mjs Panes); PaneView.panes is null with one pane. */
 type Panes = NonNullable<PaneView["panes"]>;
+
+/** A window's live grep (host/grep.mjs); VimmaHost._grep(win) is undefined before VimmaHost starts the window. */
+type GrepSession = import("../../src/browser/base/content/vimma/host/grep.mjs").GrepSession;
+
+/** A group of the address bar's results, as search/UrlbarRows.sys.mjs reads Firefox's. */
+type UrlbarResultGroup =
+  import("../../src/browser/base/content/vimma/search/UrlbarRows.sys.mjs").ResultGroup;

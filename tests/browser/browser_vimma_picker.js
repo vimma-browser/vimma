@@ -21,24 +21,32 @@ const PICKER_ID = "vimma-picker";
 const TITLES = ["Asetukset", "Kalenteri", "Käyttäjät"];
 
 registerCleanupFunction(() => {
-  const picker = document.getElementById(PICKER_ID);
+  const picker = /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
   if (picker?.open) EventUtils.synthesizeKey("KEY_Escape");
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-const picker = () => document.getElementById(PICKER_ID);
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
+/** The picker, which a test reads once it opened it (a missing one fails the read). */
+const shown = () => /** @type {HTMLDialogElement} */ (picker());
 const isOpen = () => !!picker()?.open;
 const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
-const rowTitle = (row) => row.querySelector(".vimma-picker-title").textContent;
+const rowTitle = (/** @type {Element} */ row) =>
+  /** @type {Element} */ (row.querySelector(".vimma-picker-title")).textContent;
 const titles = () => rows().map(rowTitle);
-const selected = () => picker().querySelector("[role=option][aria-selected=true]");
+const selected = () =>
+  /** @type {Element} */ (shown().querySelector("[role=option][aria-selected=true]"));
 
 /** @param {() => boolean} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** Selects `tab`; BrowserTestUtils.switchTab never resolves for the tab already selected. */
+/**
+ * Selects `tab`; BrowserTestUtils.switchTab never resolves for the tab already selected.
+ * @param {MozTabbrowserTab} tab
+ */
 async function select(tab) {
   if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
 }
@@ -46,8 +54,10 @@ async function select(tab) {
 /**
  * One example.org tab per title, each recording its keys; the first focused, normal mode. The
  * tabs earlier tasks closed are forgotten first: tab search lists recently closed tabs too.
+ * @param {string[]} [list]
  */
 async function openTitled(list = TITLES) {
+  /** @type {MozTabbrowserTab[]} */
   const tabs = [];
   for (const [i, title] of list.entries()) {
     const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?tab=${i}`);
@@ -68,6 +78,7 @@ async function openTitled(list = TITLES) {
   return tabs;
 }
 
+/** @param {MozTabbrowserTab[]} tabs */
 function closeTabs(tabs) {
   for (const tab of tabs) if (!tab.closing && tab.isConnected) BrowserTestUtils.removeTab(tab);
 }
@@ -77,7 +88,7 @@ function openPicker() {
   EventUtils.synthesizeKey("g");
 }
 
-/** Keys as formatKey writes them: "/" and letters, one synthesizeKey each. */
+/** Keys as formatKey writes them: "/" and letters, one synthesizeKey each. @param {string} text */
 function type(text) {
   for (const ch of text) EventUtils.synthesizeKey(ch);
 }
@@ -93,11 +104,15 @@ add_task(async function prefix_g_lists_every_tab_with_number_label_and_host() {
   const row = rows()[visible.indexOf(tabs[2])];
   Assert.equal(rowTitle(row), "Käyttäjät", "the row shows the title");
   Assert.equal(
-    row.querySelector(".vimma-picker-index").textContent,
+    /** @type {Element} */ (row.querySelector(".vimma-picker-index")).textContent,
     String(visible.indexOf(tabs[2]) + 1),
     "and the tab number",
   );
-  Assert.equal(row.querySelector(".vimma-picker-host").textContent, "example.org", "and host");
+  Assert.equal(
+    /** @type {Element} */ (row.querySelector(".vimma-picker-host")).textContent,
+    "example.org",
+    "and host",
+  );
   Assert.equal(selected(), rows()[visible.indexOf(tabs[0])], "the current tab is selected");
   EventUtils.synthesizeKey("KEY_Escape");
   Assert.ok(!isOpen(), "Esc closes it");
@@ -119,7 +134,7 @@ add_task(async function arrows_and_ctrl_n_p_move_the_selection_and_j_types() {
   Assert.equal(at(), start, "ctrl+p moves up");
   EventUtils.synthesizeKey("j");
   Assert.equal(
-    picker().querySelector(".vimma-picker-query").textContent,
+    /** @type {Element} */ (shown().querySelector(".vimma-picker-query")).textContent,
     "/j",
     "j types: the picker opens typing (tab-search decision 2)",
   );
@@ -132,7 +147,11 @@ add_task(async function finnish_letters_rank_exact_first_and_enter_selects() {
   const pageBrowser = tabs[0].linkedBrowser;
   openPicker();
   type("kä");
-  Assert.equal(picker().querySelector(".vimma-picker-query").textContent, "/kä", "the query shows");
+  Assert.equal(
+    /** @type {Element} */ (shown().querySelector(".vimma-picker-query")).textContent,
+    "/kä",
+    "the query shows",
+  );
   Assert.equal(titles()[0], "Käyttäjät", "kä ranks Käyttäjät first");
   Assert.equal(
     rows()[0].querySelector(".vimma-picker-title mark")?.textContent,
@@ -168,7 +187,11 @@ add_task(async function esc_closes_and_restores_focus_without_page_keys() {
   const browser = tabs[0].linkedBrowser;
   openPicker();
   type("jk/xq"); // every letter types, q too
-  Assert.equal(picker().querySelector(".vimma-picker-query").textContent, "/jk/xq", "typed");
+  Assert.equal(
+    /** @type {Element} */ (shown().querySelector(".vimma-picker-query")).textContent,
+    "/jk/xq",
+    "typed",
+  );
   EventUtils.synthesizeKey("w", { ctrlKey: true });
   Assert.equal(gBrowser.tabs.includes(tabs[0]), true, "ctrl+w closed no tab");
   EventUtils.synthesizeKey("KEY_Escape");

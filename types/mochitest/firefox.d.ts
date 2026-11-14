@@ -143,6 +143,17 @@ interface nsISupports {
   QueryInterface(iid: unknown): any;
 }
 
+// engine/dom/webidl/Event.webidl (chrome-only): the target inside a shadow tree or native anonymous
+// content, which `target` retargets to the host.
+interface Event {
+  readonly composedTarget: EventTarget | null;
+}
+
+// engine/caps/nsIPrincipal.idl
+interface nsIPrincipal {
+  readonly origin: string;
+}
+
 // engine/xpcom/ds/nsIObserver.idl and nsIObserverService.idl: the object form of an observer.
 interface nsIObserver {
   observe(subject: nsISupports, topic: string, data: string | null): void;
@@ -157,6 +168,11 @@ interface nsIObserverService {
     observer: nsIObserver | ((subject: nsISupports, topic: string, data: string | null) => void),
     topic: string,
   ): void;
+}
+// engine/toolkit/components/windowwatcher/nsIWindowWatcher.idl: an nsIObserver as well.
+interface nsIWindowWatcher {
+  registerNotification(observer: nsIObserver): void;
+  unregisterNotification(observer: nsIObserver): void;
 }
 
 // engine/toolkit/content/widgets/browser-custom-element.mjs: a browser's document and window,
@@ -228,6 +244,8 @@ interface PopupNotificationsApi {
 // value as the user's typing would, with input and change events.
 interface HTMLInputElement {
   setUserInput(value: string): void;
+  /** The field's editor (nsIEditor), null until it has one: its selection controller. */
+  readonly editor: { readonly selectionController: { getDisplaySelection(): number } } | null;
 }
 interface HTMLTextAreaElement {
   setUserInput(value: string): void;
@@ -275,6 +293,25 @@ interface XULPopupElement extends Element {
   activateItem(item: Element, options?: object): void;
   hidePopup(cancel?: boolean): void;
 }
+// engine/toolkit/content/widgets/autocomplete-popup.js: the form fields' suggestion popup
+// (#PopupAutoComplete), which a <datalist> opens.
+interface AutoCompletePopupElement extends XULPopupElement {
+  selectedIndex: number;
+  readonly popupOpen: boolean;
+}
+
+// engine/dom/chrome-webidl/BrowsingContext.webidl: a frame's browsing context, which a test passes
+// to SpecialPowers.spawn. Firefox's own types read it as `any` (a browser's `browsingContext`), so
+// this names it for a test's JSDoc; the members are the ones the tests read.
+interface BrowsingContext {
+  readonly id: number;
+  readonly children: BrowsingContext[];
+  /** engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one. */
+  readonly currentWindowGlobal: {
+    readonly documentURI: { readonly spec: string } | null;
+    readonly isInitialDocument: boolean;
+  } | null;
+}
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
 interface nsIFile {
@@ -305,4 +342,16 @@ interface XPCComponentsUtils {
     lineNo?: number,
     enforceFilenameRestrictions?: boolean,
   ): unknown;
+}
+
+// engine/browser/components/urlbar/content/UrlbarInput.mjs and UrlbarView.sys.mjs: the address
+// bar's members the tests use past those types/firefox.d.ts gives the product (harness.d.ts adds
+// them to the test window's gURLBar).
+interface UrlbarInputTestMembers {
+  handleRevert(): void;
+  readonly view: {
+    /** The selected row's result: a search suggestion's payload has its text. */
+    readonly selectedResult: { readonly payload: { readonly suggestion?: string } } | null;
+    readonly selectedElement: Element | null;
+  };
 }

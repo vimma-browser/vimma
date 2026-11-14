@@ -45,7 +45,7 @@ async function withPage(fn, page = PAGE) {
   });
 }
 
-/** Types `text`, a key per character, as fast as the harness can. */
+/** Types `text`, a key per character, as fast as the harness can. @param {string} text */
 function type(text) {
   for (const ch of text) EventUtils.synthesizeKey(ch);
 }
@@ -63,7 +63,7 @@ function pageScrollY(browser) {
  */
 function scrollToElement(browser, id, offset) {
   return SpecialPowers.spawn(browser, [id, offset], (eid, off) => {
-    const el = content.document.getElementById(eid);
+    const el = /** @type {HTMLElement} */ (content.document.getElementById(eid));
     content.scrollTo(0, el.getBoundingClientRect().top + content.scrollY - off);
     return content.scrollY;
   });
@@ -77,7 +77,7 @@ function selection(target) {
   return SpecialPowers.spawn(target, [], () => {
     const sel = content.getSelection();
     if (!sel || sel.isCollapsed) return "";
-    return `${sel.anchorNode.parentElement?.id}:${sel.toString()}`;
+    return `${/** @type {Node} */ (sel.anchorNode).parentElement?.id}:${sel.toString()}`;
   });
 }
 
@@ -107,7 +107,7 @@ function findBarHidden() {
   return gBrowser.getCachedFindBar()?.hidden ?? true;
 }
 
-/** @param {XULBrowserElement} browser */
+/** @param {XULBrowserElement} browser @param {string} what */
 async function assertBackInNormal(browser, what) {
   await TestUtils.waitForCondition(
     () => gBrowser.getCachedFindBar()?.hidden,
@@ -214,7 +214,7 @@ async function dumpFindState(browser, events, msg) {
  * @param {string} marker
  */
 function frameWith(browser, marker) {
-  return browser.browsingContext.children.find((bc) =>
+  return browser.browsingContext.children.find((/** @type {BrowsingContext} */ bc) =>
     bc.currentWindowGlobal?.documentURI?.spec.includes(marker),
   );
 }
@@ -320,7 +320,7 @@ add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
       () => document.activeElement === gBrowser.getCachedFindBar()?._findField,
       "/ focuses the find field",
     );
-    const findbar = gBrowser.getCachedFindBar();
+    const findbar = /** @type {MozFindbar} */ (gBrowser.getCachedFindBar());
     await TestUtils.waitForCondition(
       async () => (await pageScrollY(browser)) > 1000,
       "the incremental find scrolls to the match",
@@ -365,7 +365,10 @@ add_task(async function a_click_outside_the_prompt_closes_it_as_esc_does() {
       () => document.activeElement === findbar._findField,
       "/ opens the prompt again",
     );
-    EventUtils.synthesizeMouseAtCenter(document.getElementById("vimma-statusbar"), {});
+    EventUtils.synthesizeMouseAtCenter(
+      /** @type {HTMLElement} */ (document.getElementById("vimma-statusbar")),
+      {},
+    );
     await TestUtils.waitForCondition(findBarHidden, "a click on the status bar closes the prompt");
     Assert.equal(findStatus(), null, "and cancels the search");
   });
@@ -378,7 +381,7 @@ add_task(async function slash_when_the_focus_left_the_open_search_goes_back_into
       () => document.activeElement === gBrowser.getCachedFindBar()?._findField,
       "/ focuses the find field",
     );
-    const findbar = gBrowser.getCachedFindBar();
+    const findbar = /** @type {MozFindbar} */ (gBrowser.getCachedFindBar());
     const field = findbar._findField;
     // The focus leaves the field without a click (a page or Firefox moving it): the prompt
     // stays open.
@@ -466,6 +469,7 @@ add_task(async function not_found_shows_and_n_N_are_harmless() {
 });
 
 /** Like pdfjs/test/head.js waitForPdfJS: resolves once the text layer has rendered. */
+/** @param {XULBrowserElement} browser @param {string} url */
 function loadPdf(browser, url) {
   const rendered = BrowserTestUtils.waitForContentEvent(
     browser,
@@ -529,11 +533,15 @@ add_task(async function slash_and_n_in_the_pdf_viewer() {
  */
 function box(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const el = content.document.getElementById("box");
+    const el = /** @type {HTMLInputElement} */ (content.document.getElementById("box"));
     return {
       value: el.value,
       focused: content.document.activeElement === el,
-      selected: el.value.slice(el.selectionStart, el.selectionEnd),
+      // A text field has a selection: its ends are null only for a type without one.
+      selected: el.value.slice(
+        /** @type {number} */ (el.selectionStart),
+        /** @type {number} */ (el.selectionEnd),
+      ),
       display: el.editor?.selectionController.getDisplaySelection(),
       blurs: Number(el.dataset.blurs ?? 0),
     };
@@ -550,7 +558,7 @@ function box(browser) {
  */
 function countBoxBlurs(browser) {
   return SpecialPowers.spawn(browser, [], () => {
-    const el = content.document.getElementById("box");
+    const el = /** @type {HTMLInputElement} */ (content.document.getElementById("box"));
     if (el.dataset.blurs === undefined) {
       el.addEventListener("blur", () => {
         el.dataset.blurs = String(Number(el.dataset.blurs) + 1);
@@ -665,10 +673,13 @@ const SITE_FIELDS_PAGE = ROOT + "file_vimma_find_site_fields.html";
 function siteField(browser, id, { count = false, focus = false } = {}) {
   return SpecialPowers.spawn(browser, [id, count, focus], (fid, start, doFocus) => {
     const doc = content.document;
-    const el =
+    const el = /** @type {HTMLElement} */ (
       fid === "inner"
-        ? doc.getElementById("host").shadowRoot.getElementById(fid)
-        : doc.getElementById(fid);
+        ? /** @type {ShadowRoot} */ (
+            /** @type {HTMLElement} */ (doc.getElementById("host")).shadowRoot
+          ).getElementById(fid)
+        : doc.getElementById(fid)
+    );
     if (start) {
       if (el.dataset.blurs === undefined) {
         el.addEventListener("blur", () => {
@@ -678,7 +689,7 @@ function siteField(browser, id, { count = false, focus = false } = {}) {
       el.dataset.blurs = "0";
     }
     if (doFocus) el.focus();
-    const root = el.getRootNode();
+    const root = /** @type {Document | ShadowRoot} */ (el.getRootNode());
     return { focused: root.activeElement === el, blurs: Number(el.dataset.blurs ?? 0) };
   });
 }

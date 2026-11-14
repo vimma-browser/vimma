@@ -295,6 +295,8 @@ declare const content: Window &
     /** The page's own objects, past the Xray wrapper: untyped by nature. */
     readonly wrappedJSObject: any;
   };
+/** The frame's nsIDocShell, a global of the task's scope: typed as a window's own `docShell`. */
+declare const docShell: Window["docShell"];
 declare const ContentTaskUtils: {
   waitForCondition<T>(
     condition: () => T | Promise<T>,
@@ -313,7 +315,7 @@ type XULBrowserElement = MozBrowser;
 // of `typeof globalThis` too, so `window` has them and passes where a BrowserWindow is wanted
 // (`/** @param {BrowserWindow} [win] */ (win = window) => ...`).
 declare var gBrowser: BrowserWindow["gBrowser"];
-declare var gURLBar: BrowserWindow["gURLBar"];
+declare var gURLBar: BrowserWindow["gURLBar"] & UrlbarInputTestMembers;
 declare var gNavToolbox: BrowserWindow["gNavToolbox"];
 declare var BROWSER_NEW_TAB_URL: BrowserWindow["BROWSER_NEW_TAB_URL"];
 declare var gBrowserInit: BrowserWindow["gBrowserInit"];

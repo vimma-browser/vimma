@@ -62,7 +62,9 @@ const arrows = (log) => log.filter((e) => /:Arrow(Down|Up):/.test(e));
  * @param {string} id
  */
 async function focusField(browser, target, id) {
-  await SpecialPowers.spawn(target, [id], (i) => content.document.getElementById(i).focus());
+  await SpecialPowers.spawn(target, [id], (i) =>
+    /** @type {HTMLElement} */ (content.document.getElementById(i)).focus(),
+  );
   await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "insert");
 }
 
@@ -75,8 +77,11 @@ async function focusField(browser, target, id) {
 function waitForValue(target, id, want, msg) {
   return TestUtils.waitForCondition(
     async () =>
-      (await SpecialPowers.spawn(target, [id], (i) => content.document.getElementById(i).value)) ===
-      want,
+      (await SpecialPowers.spawn(
+        target,
+        [id],
+        (i) => /** @type {HTMLInputElement} */ (content.document.getElementById(i)).value,
+      )) === want,
     msg,
   );
 }
@@ -117,7 +122,7 @@ async function ctrlNOpensNoWindow(browser, id) {
     // The page's reply reaches the parent before this answer from the same process, so a
     // fallback would have run by the next main-thread turn.
     await pageLog(browser);
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await /** @type {Promise<void>} */ (new Promise((r) => Services.tm.dispatchToMainThread(r)));
   });
   Assert.equal(opened, 0, "ctrl+n with no list open opens no window");
   Assert.equal(BrowserWindowTracker.orderedWindows.length, 1, "one window");
@@ -134,7 +139,10 @@ add_task(async function ctrl_n_and_ctrl_p_move_an_aria_combobox() {
           SpecialPowers.spawn(
             browser,
             [],
-            () => content.document.getElementById("combo").getAttribute("aria-expanded") === "true",
+            () =>
+              /** @type {HTMLElement} */ (content.document.getElementById("combo")).getAttribute(
+                "aria-expanded",
+              ) === "true",
           ),
         "the list opens on input",
       );
@@ -222,7 +230,7 @@ add_task(async function a_page_that_takes_ctrl_n_keeps_it() {
     );
     EventUtils.sendString("x");
     await waitForValue(browser, "takes", "x", "the next key types");
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await /** @type {Promise<void>} */ (new Promise((r) => Services.tm.dispatchToMainThread(r)));
     Assert.deepEqual(arrows(await pageLog(browser)), [], "no ArrowDown after the page took ctrl+n");
     Assert.equal(BrowserWindowTracker.orderedWindows.length, 1, "and no window opened");
   });
@@ -237,14 +245,17 @@ add_task(async function a_late_reply_presses_no_arrow_key_in_another_tab() {
   );
   await BrowserTestUtils.withNewTab(COMBO, async (browser) => {
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("plain").addEventListener("keydown", (e) => {
-        if (!e.ctrlKey || e.key !== "n") return;
-        const end = Date.now() + 1500;
-        while (Date.now() < end) {
-          // Holds the reply back, as a busy page does.
-        }
-        content.wrappedJSObject.log.push("busy-done");
-      });
+      /** @type {HTMLElement} */ (content.document.getElementById("plain")).addEventListener(
+        "keydown",
+        (e) => {
+          if (!e.ctrlKey || e.key !== "n") return;
+          const end = Date.now() + 1500;
+          while (Date.now() < end) {
+            // Holds the reply back, as a busy page does.
+          }
+          content.wrappedJSObject.log.push("busy-done");
+        },
+      );
     });
     await focusContent(browser);
     await focusField(browser, browser, "plain");
@@ -262,9 +273,9 @@ add_task(async function a_late_reply_presses_no_arrow_key_in_another_tab() {
     // A's reply reaches the parent before this answer from A's process; a query and a press in
     // B would come before this answer from B.
     await pageLog(browser);
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await /** @type {Promise<void>} */ (new Promise((r) => Services.tm.dispatchToMainThread(r)));
     await pageLog(b);
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await /** @type {Promise<void>} */ (new Promise((r) => Services.tm.dispatchToMainThread(r)));
     Assert.deepEqual(arrows(await pageLog(b)), [], "tab B got no arrow key");
     Assert.equal(BrowserWindowTracker.orderedWindows.length, 1, "and no window opened");
   });
@@ -301,7 +312,10 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
   await BrowserTestUtils.withNewTab(DATALIST, async (browser) => {
     await focusContent(browser);
     await focusField(browser, browser, "dl");
-    const popup = document.getElementById("PopupAutoComplete");
+    // A XUL autocomplete popup, which getElementById types as an HTML element.
+    const popup = /** @type {AutoCompletePopupElement} */ (
+      /** @type {Element} */ (document.getElementById("PopupAutoComplete"))
+    );
     const shown = BrowserTestUtils.waitForPopupEvent(popup, "shown");
     EventUtils.synthesizeKey("KEY_ArrowDown");
     await shown;
@@ -317,7 +331,7 @@ add_task(async function ctrl_n_and_ctrl_p_move_firefoxs_datalist_popup() {
     await waitForValue(browser, "dl", "banana", "Enter fills the field");
     // With the popup closed ctrl+n opens neither the popup nor a window.
     await SpecialPowers.spawn(browser, [], () => {
-      content.document.getElementById("dl").value = "";
+      /** @type {HTMLInputElement} */ (content.document.getElementById("dl")).value = "";
     });
     await focusField(browser, browser, "dl");
     await ctrlNOpensNoWindow(browser, "dl");
@@ -336,7 +350,9 @@ add_task(async function the_address_bar_keeps_ctrl_n_and_ctrl_p() {
       gURLBar.focus();
       const opened = await windowsOpenedBy(async () => {
         ctrl("n");
-        await new Promise((r) => Services.tm.dispatchToMainThread(r));
+        await /** @type {Promise<void>} */ (
+          new Promise((r) => Services.tm.dispatchToMainThread(r))
+        );
       });
       Assert.equal(opened, 0, "ctrl+n in the address bar opens no window");
     });
