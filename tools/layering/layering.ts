@@ -11,10 +11,12 @@
 // other eagerly, at any distance. A restricted module (the agent gate) may be imported only by
 // the modules layers.ts lists for it, whatever their layer; no module may hand it on (export it,
 // return it, pass it, store it, take a method of it uncalled: handOnsOf), and no Firefox patch
-// may name it or build a Vimma URL from parts, so a new caller is a reviewed change. A query, a
-// fragment, `.` or `..` segments, `%` escapes or the case of a URL's scheme and host do not hide
-// an import; a string that names content/vimma/ without resolving is an error, and so is one
-// that reaches a Vimma file through resource:// (ALIAS_ROOTS), which loads a second copy.
+// may name it or build a Vimma URL from parts, so a new caller is a reviewed change. No other
+// module or page may name its file in any string, a listed one names it only by its exact URL,
+// and jar.mn may not override a script or re-root Vimma's files. Tabs and line breaks, a query,
+// a fragment, `.` or `..` segments, `%` escapes or the case of a URL's scheme and host do not
+// hide an import; a string that names content/vimma/ without resolving is an error, and so is
+// one that reaches a Vimma file through resource:// (ALIAS_ROOTS), which loads a second copy.
 //
 // eslint's no-restricted-imports cannot do this: it sees `import` declarations only, and most of
 // these edges are chrome:// URLs passed to ChromeUtils.importESModule or to a lazy getter map.
@@ -98,6 +100,19 @@ export interface Scan {
   problems: string[];
   /** Where a module hands a restricted one on (handOnsOf). */
   handOns?: HandOn[];
+  /**
+   * Strings that name a restricted module's file (escapes decoded, control characters
+   * dropped): restrictedErrors fails them in a module the list does not hold, so that a URL
+   * built in a way the check cannot read still shows.
+   */
+  names?: Mention[];
+}
+
+/** A string in a module or a page that names a restricted module's file. */
+export interface Mention {
+  from: string;
+  to: string;
+  line: number;
 }
 
 /**
@@ -113,8 +128,9 @@ export interface HandOn {
   /** what it does, as the error says it: "re-exports", "hands on", … */
   how: string;
   /**
-   * For a member read without a call: the member's name ("" when computed). A getter of the
-   * restricted module's exported object is data, and restrictedErrors lets it pass.
+   * For a member read without a call: the member's name ("" when computed). restrictedErrors
+   * lets a getter of the restricted module's exported object pass; what it returns is left to
+   * review, as what a call returns is.
    */
   member?: string;
 }
@@ -144,7 +160,6 @@ const ALIAS_ROOTS = [
   "resource://app/chrome/browser/content/browser/vimma/",
   "resource://gre/browser/chrome/browser/content/browser/vimma/",
 ];
-const ALIAS_PATH = "/content/browser/vimma";
 
 const NOT_FIXED = "an import specifier is not a fixed string";
 const PARTIAL = "a string names part of a Vimma module URL, not a module or a folder";
@@ -152,6 +167,16 @@ const UNRESOLVED =
   "a string names content/vimma/ but no Vimma module or folder the check can resolve";
 const ALIAS =
   "names a Vimma module through a resource:// URL, which loads a second copy of it with its own state; name it by its chrome:// URL";
+const LOADER =
+  "the module loader is named other than in a direct ChromeUtils.importESModule(…) or defineESModuleGetters(…) call, so the check cannot read what it loads";
+const MAP =
+  'a getters map must be an object literal of key: "URL" entries with fixed keys, so that the check can read each one';
+const SECOND =
+  "names a restricted module by another URL than its own chrome:// URL or a plain relative path, which loads a second copy of it with its own state";
+const OPTIONS =
+  "loads a restricted module with an options argument, which can load a second copy of it in another global";
+/** The two loader functions whose specifiers the check reads, only where called directly. */
+const LOADERS = new Set(["importESModule", "defineESModuleGetters"]);
 
 type Resolved = { to: string } | "partial" | "unresolved" | "alias" | null;
 
@@ -160,12 +185,60 @@ const unescape = (text: string) =>
   text.replace(/%([0-9a-f]{2})/gi, (_, hex: string) => String.fromCharCode(parseInt(hex, 16)));
 
 /**
+ * A URL as Firefox reads it (net_FilterURIString, by way of nsStandardURL::SetSpecWithEncoding):
+ * tab, CR and LF dropped anywhere, and bytes up to 0x20 dropped at either end.
+ */
+const clean = (spec: string) => {
+  const text = spec.replace(/[\t\r\n]/g, "");
+  let start = 0;
+  let end = text.length;
+  while (start < end && isControl(text, start)) start++;
+  while (end > start && isControl(text, end - 1)) end--;
+  return text.slice(start, end);
+};
+
+/** Whether the character at `i` is a control character or a space (code 0x20 or below). */
+const isControl = (text: string, i: number) => text.charCodeAt(i) <= 0x20;
+
+/** Text without its control characters and spaces, for a search that they must not split. */
+const dropControls = (text: string) => [...text].filter((c) => !isControl(c, 0)).join("");
+
+/** A path's `.` and `..` segments resolved, as a URL parser does; `//` stays. */
+function removeDots(path: string): string {
+  const out: string[] = [];
+  const segments = path.split("/");
+  segments.forEach((seg, i) => {
+    const last = i === segments.length - 1;
+    if (seg === "." || seg === "..") {
+      if (seg === ".." && out.length > 1) out.pop();
+      if (last) out.push("");
+    } else out.push(seg);
+  });
+  return out.join("/");
+}
+
+/**
+ * The URL a specifier loads, as Firefox keys the module (scheme and host in lower case, dot
+ * segments resolved, nothing decoded, query and fragment kept). A relative specifier is
+ * resolved against the importer's chrome:// URL; anything else that is no URL gives null.
+ */
+function loadedUrl(spec: string, file: string, relative: boolean): string | null {
+  let url = clean(spec);
+  if (relative && (url.startsWith("./") || url.startsWith("../")))
+    url = `${URL_PREFIX}${posix.dirname(file) === "." ? "" : `${posix.dirname(file)}/`}${url}`;
+  const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)([^?#]*)([\s\S]*)$/i.exec(url);
+  if (!m) return null;
+  const [, scheme = "", host = "", path = "", rest = ""] = m;
+  return `${scheme.toLowerCase()}${host.toLowerCase()}${removeDots(path)}${rest}`;
+}
+
+/**
  * A specifier as the module loader keys it, near enough to compare: without a query or a
  * fragment (the same file), the scheme and host in lower case, escapes decoded and `.` and `..`
  * segments resolved. A string that is no URL keeps its dots, for posix.join to resolve.
  */
 function canonical(spec: string): string {
-  const bare = unescape(spec.replace(/[?#][\s\S]*$/, ""));
+  const bare = unescape(clean(spec).replace(/[?#][\s\S]*$/, ""));
   const m = /^([a-z][a-z0-9+.-]*:\/\/)([^/]*)(\/.*)?$/i.exec(bare);
   if (!m) return bare;
   const [, scheme = "", host = "", path = ""] = m;
@@ -179,10 +252,10 @@ function canonical(spec: string): string {
 function vimmaPath(canon: string): { path: string; alias: boolean } | null {
   for (const prefix of PREFIXES)
     if (canon.startsWith(prefix)) return { path: canon.slice(prefix.length), alias: false };
-  const at = /^[a-z][a-z0-9+.-]*:\/\//.test(canon) ? canon.indexOf(ALIAS_PATH) : -1;
-  const rest = at < 0 ? null : canon.slice(at + ALIAS_PATH.length);
-  if (rest === null || (rest !== "" && !rest.startsWith("/"))) return null;
-  return { path: rest.slice(1), alias: true };
+  // Any string, with a scheme or not: a root can be joined to such a tail at run time.
+  const m = /(?:^|\/)content\/browser\/vimma(\/|$)/i.exec(canon);
+  if (!m) return null;
+  return { path: canon.slice(m.index + m[0].length), alias: true };
 }
 
 /**
@@ -251,16 +324,6 @@ function leadingText(node: AstNode): string {
   return "";
 }
 
-/** True when a computed specifier may name a Vimma module: it does not start with another URL. */
-function mayBeVimma(node: AstNode): boolean {
-  const text = leadingText(node);
-  const lower = text.toLowerCase();
-  if (ROOTS.some((p) => lower.startsWith(p) || (text.length > 0 && p.startsWith(lower))))
-    return true;
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text) && vimmaPath(canonical(text))) return true;
-  return !/^[a-z-]+:\/\//.test(text);
-}
-
 const isFunction = (n: AstNode) =>
   n.type === "FunctionExpression" ||
   n.type === "ArrowFunctionExpression" ||
@@ -287,11 +350,15 @@ export function scanModule(
   }) as unknown as AstNode;
   const edges: Edge[] = [];
   const problems: string[] = [];
+  const names: Mention[] = [];
+  const bases = [...watched].map((m) => [m, posix.basename(m).toLowerCase()] as const);
   /** Nodes already read by the form that holds them. */
   const done = new Set<AstNode>();
   const lineOf = (node: AstNode) => node.loc?.start.line ?? 0;
-  const problem = (node: AstNode, message: string) =>
-    problems.push(`${file}:${lineOf(node)}: ${message}`);
+  const problem = (node: AstNode, message: string) => {
+    const text = `${file}:${lineOf(node)}: ${message}`;
+    if (!problems.includes(text)) problems.push(text);
+  };
   /**
    * A string in any position: a module URL in it is a lazy reference. The root window script's
    * URL is not: it is text, as a page's URL is (isRootScript).
@@ -301,22 +368,47 @@ export function scanModule(
     if (r === "partial") problem(node, PARTIAL);
     else if (r === "unresolved") problem(node, UNRESOLVED);
     else if (r === "alias") problem(node, ALIAS);
-    else if (r && !isRootScript(r.to))
+    else if (r && !isRootScript(r.to)) {
+      exact(spec, r.to, false, node);
       edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
+    }
+  };
+  /** A restricted module must be named by the URL that loads the one copy of it. */
+  const exact = (spec: string, to: string, relative: boolean, node: AstNode) => {
+    if (watched.has(to) && loadedUrl(spec, file, relative) !== URL_PREFIX + to)
+      problem(node, SECOND);
   };
   /** A specifier where a module is loaded: it must be a fixed string. */
-  const specifier = (node: AstNode, kind: Edge["kind"], relative: boolean, at: AstNode) => {
+  const specifier = (
+    node: AstNode,
+    kind: Edge["kind"],
+    relative: boolean,
+    at: AstNode,
+  ): string | null => {
     done.add(node);
     const spec = fixedString(node);
     if (spec === null) {
-      if (mayBeVimma(node)) problem(node, NOT_FIXED);
-      return;
+      // Whatever it starts with: resource://gre/modules/../ reaches Vimma's files too.
+      problem(node, NOT_FIXED);
+      return null;
     }
+    mention(spec, node);
     const r = resolveSpec(spec, file, relative);
     if (r === "partial") problem(node, PARTIAL);
     else if (r === "unresolved") problem(node, UNRESOLVED);
     else if (r === "alias") problem(node, ALIAS);
-    else if (r) edges.push({ from: file, to: r.to, kind, line: lineOf(at) });
+    else if (r) {
+      exact(spec, r.to, relative, node);
+      edges.push({ from: file, to: r.to, kind, line: lineOf(at) });
+      return r.to;
+    }
+    return null;
+  };
+  /** A string that names a restricted module's file, for restrictedErrors (Scan.names). */
+  const mention = (text: string, node: AstNode) => {
+    const lower = dropControls(unescape(text)).toLowerCase();
+    for (const [to, base] of bases)
+      if (lower.includes(base)) names.push({ from: file, to, line: lineOf(node) });
   };
 
   const walk = (node: AstNode, lazy: boolean, invoked = false): void => {
@@ -340,23 +432,57 @@ export function scanModule(
           ? callee["property"]["name"]
           : null;
       const [first, second] = args;
-      if (method === "importESModule" && isNode(first)) {
-        specifier(first, lazy ? "lazy" : "eager", false, first);
-      } else if (method === "defineESModuleGetters" && isNode(second)) {
+      // The direct call is the one place the loader's name is read; see the Identifier branch.
+      const direct =
+        typeof method === "string" &&
+        LOADERS.has(method) &&
+        isNode(callee) &&
+        !callee["computed"] &&
+        isNode(callee["property"]);
+      if (direct && isNode(callee) && isNode(callee["property"])) done.add(callee["property"]);
+      if (direct && method === "importESModule" && isNode(first)) {
+        const to = specifier(first, lazy ? "lazy" : "eager", false, first);
+        if (to && watched.has(to) && args.length > 1) problem(first, OPTIONS);
+      } else if (direct && method === "defineESModuleGetters" && isNode(second)) {
+        const loaded: string[] = [];
         if (second.type !== "ObjectExpression") specifier(second, "lazy", false, second);
         else
-          for (const prop of (second["properties"] as unknown[]) ?? [])
-            if (isNode(prop) && isNode(prop["value"]))
-              specifier(prop["value"], "lazy", false, prop["value"]);
+          for (const prop of (second["properties"] as unknown[]) ?? []) {
+            const plain =
+              isNode(prop) &&
+              prop.type === "Property" &&
+              prop["kind"] === "init" &&
+              !prop["method"] &&
+              isNode(prop["key"]) &&
+              keyName(prop["key"], Boolean(prop["computed"])) !== null;
+            if (!plain) problem(isNode(prop) ? prop : second, MAP);
+            if (isNode(prop) && isNode(prop["value"])) {
+              const to = specifier(prop["value"], "lazy", false, prop["value"]);
+              if (to) loaded.push(to);
+            }
+          }
+        if (args.length > 2 && loaded.some((to) => watched.has(to))) problem(second, OPTIONS);
       }
       // A function called on the spot runs now, as its caller does.
       if (isNode(callee) && isFunction(callee)) {
         walk(callee, lazy, true);
       }
+    } else if (node.type === "Identifier" && LOADERS.has(String(node["name"]))) {
+      // Aliased, bound, called through .call or a comma, or destructured: not a load the check
+      // can read.
+      problem(node, LOADER);
     } else if (node.type === "Literal" && typeof node["value"] === "string") {
+      if (LOADERS.has(node["value"])) problem(node, LOADER);
+      mention(node["value"], node);
       reference(node["value"], node);
     } else if (node.type === "TemplateLiteral") {
       const fixed = fixedString(node);
+      for (const q of (node["quasis"] as unknown[]) ?? []) {
+        const cooked = isNode(q) ? (q["value"] as { cooked?: string }).cooked : undefined;
+        if (typeof cooked !== "string") continue;
+        mention(cooked, node);
+        if (fixed === null && resolveSpec(cooked, file, false) === "alias") problem(node, ALIAS);
+      }
       if (fixed !== null) reference(fixed, node);
       else {
         const r = resolveSpec(leadingText(node), file, false);
@@ -378,7 +504,7 @@ export function scanModule(
     done.add(node);
   };
   walk(ast, false);
-  return { edges, problems, handOns: handOnsOf(ast, file, watched) };
+  return { edges, problems, handOns: handOnsOf(ast, file, watched), names };
 }
 
 /** The restricted modules, whose hand-ons a scan looks for. */
@@ -418,9 +544,11 @@ const BINDING_KEYS: Record<string, string[]> = {
  * namespace, or a lazy getter object that loads it, is followed through local aliases (by name,
  * across the whole module: a shadowing name only adds errors, it never hides one). Each read of
  * such a name must be a call of one of its members (`AgentGate.request(…)`), a member read
- * (`AgentGate.waiting`: data when it is a getter, restrictedErrors decides), a local alias, or
- * the lazy object passed to a ChromeUtils or XPCOMUtils `define…` call. Anything else lets it
- * out: an export, a return, an argument, an element, a field, a property, a store. A function
+ * (`AgentGate.waiting`: allowed when it is a getter, restrictedErrors decides), a local alias
+ * (a declaration, or an assignment to a declared name), or the lazy object passed to Firefox's
+ * own ChromeUtils.defineESModuleGetters or defineLazyGetter. Anything else lets it out: an
+ * export, a return, an argument, an element, a field, a property, a store, also on an
+ * undeclared name; and so does one name given two different holds. A function
  * that calls the module is a caller, not a hand-on: what it does for its own caller is the
  * security review's to judge.
  */
@@ -446,13 +574,19 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
   const parents = new Map<AstNode, AstNode>();
   const reads = new Set<AstNode>();
   const nodes: AstNode[] = [];
-  const visit = (node: AstNode, parent: AstNode | null, binding: boolean): void => {
+  /** The names the module declares: variables, functions, classes, parameters, imports. */
+  const declared = new Set<string>();
+  type Binding = false | "declare" | "assign";
+  const visit = (node: AstNode, parent: AstNode | null, binding: Binding): void => {
     if (parent) parents.set(node, parent);
     nodes.push(node);
     if (node.type === "Identifier") {
       if (!binding) reads.add(node);
+      else if (binding === "declare") declared.add(String(node["name"]));
       return;
     }
+    if (node.type.startsWith("Import") && node.type.endsWith("Specifier") && isNode(node["local"]))
+      declared.add(String(node["local"]["name"]));
     for (const [k, value] of Object.entries(node)) {
       if (k === "loc" || k === "range") continue;
       // Names that are not references: a member's or a key's name, an import's or an export's
@@ -471,8 +605,9 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       // `export { X } from "…"` names the other module's X, not a local one.
       if (node.type === "ExportNamedDeclaration" && k === "specifiers" && node["source"]) continue;
       // A member on the left of an assignment is read, not bound: `AgentGate.request = f`.
-      let bind = binding && node.type !== "MemberExpression";
-      if (BINDING_KEYS[node.type]?.includes(k)) bind = true;
+      let bind: Binding = node.type === "MemberExpression" ? false : binding;
+      if (BINDING_KEYS[node.type]?.includes(k))
+        bind = node.type === "AssignmentExpression" ? "assign" : "declare";
       // A default value or a computed key inside a pattern is an expression again.
       if (node.type === "AssignmentPattern" && k === "right") bind = false;
       if (node.type === "Property" && k === "key") bind = false;
@@ -503,42 +638,46 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       callee["property"]["name"] === "importESModule"
     );
   };
-  /** A ChromeUtils or XPCOMUtils call that defines getters on its first argument. */
+  /** Firefox's ChromeUtils call that defines getters on its first argument. */
   const isDefine = (node: AstNode | undefined) => {
     const callee = node?.["callee"];
     if (node?.type !== "CallExpression" || !isNode(callee) || callee.type !== "MemberExpression")
       return false;
     const object = callee["object"];
     const property = callee["property"];
+    // Firefox's own ChromeUtils only: a module may not declare one of its own.
     return (
       isNode(object) &&
-      ["ChromeUtils", "XPCOMUtils"].includes(String(object["name"])) &&
+      object.type === "Identifier" &&
+      object["name"] === "ChromeUtils" &&
+      !declared.has("ChromeUtils") &&
+      !callee["computed"] &&
       isNode(property) &&
-      /^define/.test(String(property["name"]))
+      ["defineESModuleGetters", "defineLazyGetter"].includes(String(property["name"]))
     );
   };
 
-  // The names the module declares itself: a lazy getter object must be one of them, since
-  // globalThis and other outside objects are shared with every system module.
-  const declared = new Set<string>();
-  for (const node of nodes)
-    if (
-      node.type === "VariableDeclarator" &&
-      isNode(node["id"]) &&
-      node["id"].type === "Identifier"
-    )
-      declared.add(String(node["id"]["name"]));
+  // A lazy getter object must be a name the module declares, since globalThis and other
+  // outside objects are shared with every system module.
 
   // The names that hold a restricted module, then their aliases until nothing changes.
   const holders = new Map<string, Hold>();
-  const hold = (name: string, h: Hold) => {
+  /** Names given a second, different hold, with where: a use cannot be read against both. */
+  const conflicts = new Map<string, { at: AstNode; to: string }>();
+  const hold = (name: string, h: Hold, at: AstNode) => {
     const had = holders.get(name);
     if (h.kind === "lazy" && had?.kind === "lazy") {
       const before = had.keys.size;
       for (const [k, v] of h.keys) had.keys.set(k, v);
       return had.keys.size !== before;
     }
-    if (had) return false;
+    if (had) {
+      const same =
+        had.kind !== "lazy" && h.kind !== "lazy" && had.kind === h.kind && had.to === h.to;
+      if (!same && !conflicts.has(name))
+        conflicts.set(name, { at, to: h.kind === "lazy" ? ([...h.keys.values()][0] ?? "") : h.to });
+      return false;
+    }
     holders.set(name, h);
     return true;
   };
@@ -548,10 +687,14 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       if (to)
         for (const sp of (node["specifiers"] as unknown[]) ?? [])
           if (isNode(sp) && isNode(sp["local"]))
-            hold(String(sp["local"]["name"]), {
-              kind: sp.type === "ImportNamespaceSpecifier" ? "ns" : "value",
-              to,
-            });
+            hold(
+              String(sp["local"]["name"]),
+              {
+                kind: sp.type === "ImportNamespaceSpecifier" ? "ns" : "value",
+                to,
+              },
+              sp,
+            );
     } else if (
       node.type === "CallExpression" &&
       isNode(node["callee"]) &&
@@ -571,7 +714,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       }
       if (!keys.size) continue;
       if (isNode(on) && on.type === "Identifier" && declared.has(String(on["name"])))
-        hold(String(on["name"]), { kind: "lazy", keys });
+        hold(String(on["name"]), { kind: "lazy", keys }, node);
       else
         for (const to of new Set(keys.values()))
           add(node, to, "defines a getter outside a local object for");
@@ -604,14 +747,14 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
     return null;
   };
   /** The names a pattern binds from a value that holds `h`. */
-  const bindPattern = (pattern: AstNode, h: Hold): boolean => {
-    if (pattern.type === "Identifier") return hold(String(pattern["name"]), h);
+  const bindPattern = (pattern: AstNode, h: Hold, at: AstNode): boolean => {
+    if (pattern.type === "Identifier") return hold(String(pattern["name"]), h, at);
     if (pattern.type !== "ObjectPattern" || h.kind === "value") return false;
     let changed = false;
     for (const prop of (pattern["properties"] as unknown[]) ?? []) {
       if (!isNode(prop)) continue;
       if (prop.type === "RestElement" && isNode(prop["argument"])) {
-        changed = bindPattern(prop["argument"], h) || changed;
+        changed = bindPattern(prop["argument"], h, at) || changed;
         continue;
       }
       const value = prop["value"];
@@ -619,7 +762,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       const key = keyName(prop["key"], Boolean(prop["computed"]));
       const to = h.kind === "ns" ? h.to : key === null ? undefined : h.keys.get(key);
       const inner = value.type === "AssignmentPattern" ? value["left"] : value;
-      if (to && isNode(inner)) changed = bindPattern(inner, { kind: "value", to }) || changed;
+      if (to && isNode(inner)) changed = bindPattern(inner, { kind: "value", to }, at) || changed;
     }
     return changed;
   };
@@ -633,11 +776,18 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
         isNode(init) &&
         isNode(id)
       ) {
-        const h = holdOf(init);
-        if (h) changed = bindPattern(id, h) || changed;
+        // An assignment makes an alias only of a name the module declares; any other is a
+        // store on the shared global (`vimmaLeak = AgentGate`), which check() reports.
+        const alias =
+          node.type === "VariableDeclarator" ||
+          (id.type === "Identifier" && declared.has(String(id["name"])));
+        const h = alias ? holdOf(init) : null;
+        if (h) changed = bindPattern(id, h, node) || changed;
       }
     }
   }
+  for (const { at, to } of conflicts.values())
+    add(at, to, "gives a name a second, different hold of");
 
   const toOf = (h: Hold) => (h.kind === "lazy" ? [...new Set(h.keys.values())] : [h.to]);
   /** Checks where an expression that holds `h` goes (see the function's comment). */
@@ -700,7 +850,8 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       parent.type === "AssignmentExpression" &&
       parent["right"] === expr &&
       isNode(parent["left"]) &&
-      parent["left"].type === "Identifier"
+      parent["left"].type === "Identifier" &&
+      declared.has(String(parent["left"]["name"]))
     )
       return;
     if (
@@ -768,7 +919,8 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
 
 /**
  * The getters of a module's exported object literals (`export const G = { get waiting() … }`):
- * reading one of them is reading data, which restrictedErrors lets a holder of the module do.
+ * restrictedErrors lets a holder of the module read one of them without a call. What a getter
+ * returns is not followed (ADR-026, "Limits of the check").
  * @param source  the restricted module's text
  * @param file  its path relative to vimma/
  */
@@ -804,18 +956,40 @@ export function importsOf(source: string, file: string): Edge[] {
   return scanModule(source, file).edges;
 }
 
+/** A page's character references decoded: `vimm&#97;` is `vimma` to the parser. */
+const decodeEntities = (text: string) =>
+  text.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);?/gi, (_, ref: string) => {
+    const r = ref.toLowerCase();
+    if (r.startsWith("#x")) return String.fromCodePoint(parseInt(r.slice(2), 16) || 0xfffd);
+    if (r.startsWith("#")) return String.fromCodePoint(parseInt(r.slice(1), 10) || 0xfffd);
+    return { amp: "&", quot: '"', apos: "'", lt: "<", gt: ">" }[r] ?? "";
+  });
+
 /**
- * The modules a page under vimma/ loads (`<script src>`, `<link href>`), as eager edges. An
- * inline `<script>` is a problem: its imports would go unread.
+ * The modules a page under vimma/ loads (`<script src>`, `<link href>`, quoted or not, with
+ * character references decoded), as eager edges, and the lines that name a restricted module's
+ * file (Scan.names). An inline `<script>` is a problem: its imports would go unread.
  * @param html  the page's text
  * @param file  its path relative to vimma/
  */
-export function htmlImports(html: string, file: string): Scan {
+export function htmlImports(
+  html: string,
+  file: string,
+  watched: ReadonlySet<string> = WATCHED,
+): Scan {
   const edges: Edge[] = [];
   const problems: string[] = [];
-  html.split("\n").forEach((text, i) => {
-    for (const m of text.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
-      const r = resolveSpec(m[1] ?? "", file, true);
+  const names: Mention[] = [];
+  const bases = [...watched].map((m) => [m, posix.basename(m).toLowerCase()] as const);
+  html.split("\n").forEach((raw, i) => {
+    const text = decodeEntities(raw);
+    const lower = dropControls(text).toLowerCase();
+    for (const [to, base] of bases)
+      if (lower.includes(base)) names.push({ from: file, to, line: i + 1 });
+    for (const m of text.matchAll(
+      /\b(?:src|href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi,
+    )) {
+      const r = resolveSpec(m[1] ?? m[2] ?? m[3] ?? "", file, true);
       if (r === "alias") problems.push(`${file}:${i + 1}: ${ALIAS}`);
       else if (typeof r === "object" && r !== null && !r.to.endsWith("/"))
         edges.push({ from: file, to: r.to, kind: "eager", line: i + 1 });
@@ -828,7 +1002,7 @@ export function htmlImports(html: string, file: string): Scan {
       `${file}:${line}: an inline <script> is not read; load the code from a module file`,
     );
   }
-  return { edges, problems };
+  return { edges, problems, names };
 }
 
 /**
@@ -839,6 +1013,25 @@ export function htmlImports(html: string, file: string): Scan {
 export function jarErrors(jar: string): string[] {
   const errors: string[] = [];
   jar.split("\n").forEach((text, i) => {
+    // A manifest line could override a module's URL with another file, or map a new chrome
+    // or resource root onto Vimma's files: either loads code the check never reads, or a second
+    // copy. Only overrides of non-script files outside Vimma's content may stand.
+    const manifest = /^\s*%\s*(\S+)\s*(.*)$/.exec(text);
+    if (manifest) {
+      const [, directive = "", rest = ""] = manifest;
+      const urls = rest.split(/\s+/).filter(Boolean);
+      const unsafe = (url: string) => {
+        const canon = canonical(url);
+        return (
+          /\.m?js$/i.test(canon) || vimmaPath(canon) !== null || /content\/vimma(\/|$)/i.test(canon)
+        );
+      };
+      if (directive !== "override" || urls.length < 2 || urls.some(unsafe))
+        errors.push(
+          `jar.mn:${i + 1}: a manifest line here may only override a file that is no script, outside content/vimma/: no line may swap, re-root or register a Vimma module`,
+        );
+      return;
+    }
     const m = /^\s*content\/browser\/vimma\/(\S+)\s+\((\S+)\)/.exec(text);
     if (!m) return;
     const [, url = "", from = ""] = m;
@@ -909,13 +1102,17 @@ export function exceptionErrors(exceptions: Exception[]): string[] {
  * Imports of a restricted module by a module its list does not hold, eager or lazy; listed
  * importers that no longer import it, so that the list stays exactly the callers reviewed; and
  * every place a module hands it on (Scan.handOns), but for reading a getter of it.
- * @param data  each restricted module's getters (getterNames): reading one is reading data
+ * A module or page the list does not hold may not name the module's file in any string either
+ * (Scan.names), once per line that is not already an import of it.
+ * @param data  each restricted module's getters (getterNames), which a holder may read
+ * @param names  the strings that name a restricted module's file (Scan.names)
  */
 export function restrictedErrors(
   edges: Edge[],
   restricted: Record<string, Restricted>,
   handOns: HandOn[] = [],
   data: Record<string, ReadonlySet<string>> = {},
+  names: Mention[] = [],
 ): string[] {
   const errors: string[] = [];
   for (const [module, { importers, review }] of Object.entries(restricted)) {
@@ -936,6 +1133,19 @@ export function restrictedErrors(
         `${h.from}:${h.line}: ${h.how} ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may hold and none may hand on: ${review}`,
       );
     }
+    const imported = new Set(
+      edges.filter((e) => e.to === module).map((e) => `${e.from}:${e.line}`),
+    );
+    const named = new Set<string>();
+    for (const n of names) {
+      const at = `${n.from}:${n.line}`;
+      if (n.to !== module || allowed.has(n.from) || n.from === module) continue;
+      if (imported.has(at) || named.has(at)) continue;
+      named.add(at);
+      errors.push(
+        `${at}: names the file of ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import: ${review}, then a line there`,
+      );
+    }
     for (const from of importers)
       if (!seen.has(from))
         errors.push(
@@ -943,6 +1153,19 @@ export function restrictedErrors(
         );
   }
   return errors;
+}
+
+/**
+ * A patch line as the code in it reads: JavaScript escapes (`\x47`, `\u0047`, `\u{47}`) and
+ * character references decoded, and tabs and line breaks, escaped or not, dropped, as a URL
+ * parser drops them.
+ */
+function decodeEscapes(line: string): string {
+  return decodeEntities(line)
+    .replace(/\\u\{([0-9a-f]{1,6})\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi, (_, a, b, c) =>
+      String.fromCodePoint(Math.min(parseInt(String(a ?? b ?? c), 16), 0x10ffff)),
+    )
+    .replace(/\\[tnr]|[\t\r\n]/g, "");
 }
 
 /**
@@ -966,7 +1189,12 @@ export function patchErrors(
       if (!line.startsWith("+") || line.startsWith("+++")) return;
       const named = new Set<string>();
       const pieces: string[] = [];
-      for (const [url] of line.matchAll(/[a-z][a-z0-9+.-]*:\/\/[^\s"'`$,);]*/gi)) {
+      const decoded = decodeEscapes(line);
+      // The lookbehind starts a scheme only at its first letter, so a long run of letters is
+      // read once, not once per letter.
+      for (const [url] of decoded.matchAll(
+        /(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s"'`$,);]*/gi,
+      )) {
         const canon = canonical(url);
         const v = vimmaPath(canon);
         const path = v && v.path !== "" ? posix.normalize(v.path) : (v?.path ?? null);
@@ -976,8 +1204,12 @@ export function patchErrors(
         )
           pieces.push(url);
       }
-      const lower = unescape(line).toLowerCase();
+      const lower = unescape(decoded).toLowerCase();
       for (const [module, base] of files) if (lower.includes(base)) named.add(module);
+      if (/content\/browser\/vimma/i.test(lower))
+        errors.push(
+          `${file}:${i + 1}: maps or names Vimma's packaged files by their path (content/browser/vimma); only vimma/jar.mn packages them`,
+        );
       for (const module of named)
         errors.push(
           `${file}:${i + 1}: names ${module}, which only the modules RESTRICTED lists in ${LAYERS_FILE} may import, and a Firefox patch is none of them: ${restricted[module]?.review ?? ""}`,
@@ -1144,6 +1376,7 @@ export function treeScan(root: string): Scan {
     edges: scans.flatMap((s) => s.edges),
     problems: scans.flatMap((s) => s.problems),
     handOns: scans.flatMap((s) => s.handOns ?? []),
+    names: scans.flatMap((s) => s.names ?? []),
   };
 }
 
@@ -1160,7 +1393,7 @@ function trackedPatches(root: string): { file: string; text: string }[] {
 
 /** Everything `npm run layering` checks in the tree at `root`, and the edges it read. */
 export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
-  const { edges, problems, handOns = [] } = treeScan(root);
+  const { edges, problems, handOns = [], names = [] } = treeScan(root);
   const data = Object.fromEntries(
     Object.keys(RESTRICTED).map((m) => {
       const path = join(root, VIMMA, m);
@@ -1174,7 +1407,7 @@ export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
     ...danglingEdges(edges, new Set(trackedFiles(root)), jarModules(jar)),
     ...exceptionErrors(EXCEPTIONS),
     ...layerErrors(edges, LAYERS, EXCEPTIONS),
-    ...restrictedErrors(edges, RESTRICTED, handOns, data),
+    ...restrictedErrors(edges, RESTRICTED, handOns, data, names),
     ...patchErrors(trackedPatches(root), RESTRICTED),
     ...eagerCycles(edges),
     ...missingReadmes(root).map(

@@ -149,17 +149,25 @@ each without a change in behaviour:
   the eager folder cycle: no two folders import each other eagerly.) (Since changed, issue
   #1012: "hands on" is followed through names. A module holds the gate by an `import`, by a
   binding of `ChromeUtils.importESModule` or of an awaited `import()`, or by a lazy getter
-  object that `defineESModuleGetters` fills, and through any local alias of these. Each use
-  must call a member of it, read one of its getters (its read-only views, read from the gate's
-  own source: `waiting`, `log`, `ranAt`, `connections`), keep a local alias, or pass the lazy
-  object to a ChromeUtils or XPCOMUtils `define…` call; anything else fails: an export of it
+  object that `defineESModuleGetters` fills, and through its local aliases: a declaration, or an
+  assignment to a name the module declares. One name given two different holds fails. Each use
+  must call a member of the gate, read one of its getters (`waiting`, `log`, `ranAt`,
+  `connections`, read from the gate's own source; what a getter returns, like what a call
+  returns, is left to review), keep a local alias, or pass the lazy object to Firefox's own
+  `ChromeUtils.defineESModuleGetters` or `defineLazyGetter`; anything else fails: an export of it
   (`export … from`, `export *`, or any exported name that holds it), a return, an argument, an
-  array or object holding it, a class field, a store on an object or on `globalThis`, a method
-  taken without a call (bound or not), a member replaced or deleted, a getter defined on an
-  object the module does not declare, an `import()` not awaited. An import is seen whatever
-  its URL's query, fragment, `.` or `..` segments, `%` escapes or case of scheme and host; one
-  through `resource://` to the packaged file is refused (see "Limits of the check"). A patch
-  line fails when it names the gate's file at all, or holds a Vimma URL that names no file.)
+  array or object holding it, a class field, a store on an object, on `globalThis` or on an
+  undeclared name, a method taken without a call (bound or not), a member replaced or deleted,
+  a getter defined on an object the module does not declare, an `import()` not awaited. An
+  import is seen whatever its URL's tabs and line breaks, spaces at either end, query,
+  fragment, `.` or `..` segments, `%` escapes or case of scheme and host; the gate itself must
+  be named by its exact `chrome://` URL or a plain relative path, with no options argument,
+  since any other form loads a second copy; and a module the list does not hold may not name
+  the gate's file in any string. The loader is read only where `ChromeUtils.importESModule` or
+  `defineESModuleGetters` is called directly, and a getters map must be plain `key: "URL"`
+  entries. `jar.mn` may only override non-script files outside Vimma's content. A patch line
+  fails when it names the gate's file at all, or holds a Vimma URL that names no file. See
+  "Limits of the check" for what each rule leaves to review.)
 - **Two modules live in the wrong folder.** `host/VimmaHost.sys.mjs` records each key in
   `about/key-log.mjs` for `about:vimma`; the log moves to `host/`, which writes it.
   `workspaces/WindowWorkspaces.sys.mjs` saves and restores tab labels from `host/tab-labels.mjs`;
@@ -261,27 +269,54 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   imported by any module, so its URL is text, as a page's is. Passed to `importESModule` or
   `import()`, it is still an edge.
 - Strings built at run time from parts the check cannot see (a value read from a pref or a
-  file) are not import specifiers it can read; it refuses non-fixed specifiers where modules
-  are loaded, and ignores other computed strings.
+  file) are not import specifiers it can read; it refuses every non-fixed specifier where a
+  module is loaded, whatever it starts with, and ignores other computed strings. A load
+  position is a direct `ChromeUtils.importESModule(…)` or `….defineESModuleGetters(…)` call:
+  any other mention of either name (aliased, bound, called through `.call` or a comma,
+  destructured, or as a string such as `ChromeUtils["importESModule"]`) is refused, since the
+  check could not read what it loads.
+- Code run from a string (`eval`, `new Function`) is not read. Firefox refuses `eval` in
+  system-principal code by default; a module the list does not hold still fails if such a
+  string names the gate's file, and a change to a listed importer that adds either is for its
+  review.
 - A Vimma module's file is reachable by more than its `chrome://` URL: `browser.manifest` maps
   `chrome://browser/content/` to `chrome/browser/content/browser/` of the app's `omni.ja`,
   which `resource:///` and `resource://app/` name too (and `resource://gre/` in an unpackaged
   build). The module loader accepts `resource://` and keys each module by its URL, so such a
   URL would load a second copy of the module with its own state; for the agent gate, its own
   questions and grants. The check refuses any string whose path holds
-  `content/browser/vimma`, and a computed specifier that starts like one.
+  `content/browser/vimma`, with a scheme or without one (a tail a root is joined to). A
+  `%` line in `jar.mn` could do the same, or swap a module for another file: one may only
+  override a file that is no script and lies outside `content/vimma/`, as today's image
+  overrides do. A `chrome://` or relative URL of the gate with a query, a fragment, an escape
+  or a `//` loads a second copy too, and so does an options argument such as
+  `{ global: "current" }`: the gate is named only by its exact URL or a plain relative path,
+  with none. `moz-src:///` maps only the files a `moz.build` lists in `MOZ_SRC_FILES`, which
+  Vimma's are not, so it does not reach the gate; the exact-URL rule refuses it all the same.
 - The hand-on rule for a restricted module follows names, not scopes: a local name that
   shadows one holding the gate is treated as the gate, which can only add errors. What a call
-  of the gate returns, and what a function that calls the gate does for its own caller, are
-  not followed; the security review of a listed importer judges those.
+  of the gate returns, what one of its getters returns (some are shared objects: a waiting
+  question's `label`, the connections' labels, the log's rows), and what a function that calls
+  the gate does for its own caller, are not followed; the security review of a listed importer
+  judges those.
+- A string that names the gate's file (`AgentGate.sys.mjs`, after escapes are decoded and
+  control characters dropped) fails in a module or page the list does not hold, so that a URL
+  joined in a way the check cannot read still shows; one built from smaller pieces
+  (`"Agent" + "Gate.sys.mjs"`) does not, and needs a load position the check refuses, or
+  `eval`.
+- A page is read line by line for `src` and `href` attributes, quoted or not, with character
+  references decoded.
 - A Firefox patch is text in many languages, so its added lines are read as text, one at a
-  time. A line fails on the gate's file name (`AgentGate.sys.mjs`, in any case, escaped or
-  not), on a URL that reaches the gate, and on a URL that stops before it names a file inside
+  time, with JavaScript escapes (`\x47`, `\u0047`, `\u{47}`), `%` escapes and character
+  references decoded and tabs and line breaks dropped. A line fails on the gate's file name
+  (`AgentGate.sys.mjs`, in any case), on a path holding `content/browser/vimma` (a manifest
+  line that maps a new root onto Vimma's files), on a URL that reaches the gate, and on a URL that stops before it names a file inside
   a Vimma root: a Vimma folder's URL, or a cut-off start of `chrome://browser/content/vimma/` or
   of a `resource://` root, such as `"chrome://browser/content/" + …` or
   `` `chrome://browser/content/vimma/${dir}/…` ``. A URL assembled from pieces that are none of
-  these (a file name split in two, a value read at run time) is left to the review every new
-  patch gets with its line in ADR-003's register.
+  these (a file name split across two lines, a URL rewritten with `.replace`, a scheme split
+  as `chrome:/` + `/…`, a value read at run time) is left to the review every new patch gets
+  with its line in ADR-003's register.
 - An edge must name a module that exists: one git tracks and `jar.mn` packages by name, so a
   mistyped `chrome://` URL (such as the parent actor's, which `vimma.js` passes to
   `VimmaActors.register`) fails the check rather than the run. `core/` is not checked (a
