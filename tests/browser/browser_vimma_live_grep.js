@@ -12,12 +12,12 @@
 /* global focusContent -- from head.js */
 /* global docShell -- in SpecialPowers.spawn's content task scope */
 /* global VimmaHost, PaneViews, leaves, PAGE -- from head_vimma_grep.js */
-/* global OTHER_SITE, OTHER_WS, def, ww, dialog, isOpen, rows -- from head_vimma_grep.js */
+/* global OTHER_SITE, OTHER_WS, def, ww, isOpen, rows -- from head_vimma_grep.js */
 /* global textOf, texts, selectedRow, countText, flagsText -- from head_vimma_grep.js */
 /* global noticeText, scopeTitle, closedTitle, closeTitled -- from head_vimma_grep.js */
 /* global closeWindowTitled, ctrlS, until, openFixture, reset -- from head_vimma_grep.js */
 /* global openGrep, type, clearQuery, resultsSettle -- from head_vimma_grep.js */
-/* global setupSecondWorkspace -- from head_vimma_grep.js */
+/* global setupSecondWorkspace, shownDialog -- from head_vimma_grep.js */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_grep.js", this);
 
@@ -25,9 +25,9 @@ add_task(setupSecondWorkspace);
 
 add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles_scope() {
   await reset();
-  ww().switchTo({ id: def(OTHER_WS).id });
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def(OTHER_WS)).id });
   await openFixture({ title: "Delta", t: "delta needle" });
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def("main")).id });
   const a = await openFixture({ title: "Alpha", t: "alpha needle" });
   await openFixture({ title: "Bravo", t: "bravo needle|bravo second needle" });
   await openFixture({ title: "Charlie", t: "charlie needle" });
@@ -35,8 +35,8 @@ add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles
 
   await openGrep();
   Assert.equal(VimmaHost.status(window).mode, "help", "a modal picker owns the keys");
-  const prompt = dialog().querySelector(".vimma-grep-prompt");
-  const results = dialog().querySelector(".vimma-grep-results");
+  const prompt = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-prompt"));
+  const results = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-results"));
   type("needle");
   await resultsSettle(4);
   Assert.deepEqual(
@@ -44,9 +44,16 @@ add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles
     ["alpha needle", "bravo needle", "bravo second needle", "charlie needle"],
     "the workspace's matches, in tab order, best first",
   );
-  Assert.equal(selectedRow(), rows()[0], "the best result is selected");
-  Assert.ok(selectedRow().classList.contains("vimma-grep-selected"), "and marked");
-  Assert.equal(selectedRow().querySelector("mark")?.textContent, "needle", "match highlighted");
+  Assert.strictEqual(selectedRow(), rows()[0], "the best result is selected");
+  Assert.ok(
+    /** @type {Element} */ (selectedRow()).classList.contains("vimma-grep-selected"),
+    "and marked",
+  );
+  Assert.equal(
+    /** @type {Element} */ (selectedRow()).querySelector("mark")?.textContent,
+    "needle",
+    "match highlighted",
+  );
   Assert.ok(
     rows()[0].getBoundingClientRect().top > rows()[3].getBoundingClientRect().top,
     "the best result is at the bottom of the list",
@@ -55,10 +62,23 @@ add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles
     prompt.getBoundingClientRect().top >= results.getBoundingClientRect().bottom - 1,
     "the prompt is below the results",
   );
-  Assert.ok(rows()[0].querySelector(".vimma-grep-tab").textContent.includes("Alpha"), "its tab");
-  Assert.equal(rows()[2].querySelector(".vimma-grep-line").textContent, ":2:", "its line");
+  Assert.ok(
+    /** @type {Element} */ (rows()[0].querySelector(".vimma-grep-tab")).textContent.includes(
+      "Alpha",
+    ),
+    "its tab",
+  );
+  Assert.equal(
+    /** @type {Element} */ (rows()[2].querySelector(".vimma-grep-line")).textContent,
+    ":2:",
+    "its line",
+  );
   Assert.equal(countText(), "4 / 4", "the count");
-  Assert.equal(dialog().querySelector(".vimma-grep-query").textContent, "needle", "the query");
+  Assert.equal(
+    /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-query")).textContent,
+    "needle",
+    "the query",
+  );
 
   Assert.equal(scopeTitle(), "Scope: this workspace · ctrl+s", "the scope box names the scope");
 
@@ -73,7 +93,7 @@ add_task(async function lists_matches_in_tab_order_best_at_the_prompt_and_cycles
 
   EventUtils.synthesizeKey("s", { ctrlKey: true });
   await until(() => scopeTitle() === "Scope: all windows + closed · ctrl+s", "and closed");
-  await until(() => !dialog().hasAttribute("busy"), "settled");
+  await until(() => !shownDialog().hasAttribute("busy"), "settled");
 
   EventUtils.synthesizeKey("s", { ctrlKey: true });
   await resultsSettle(4);
@@ -94,7 +114,11 @@ add_task(async function enter_selects_the_tab_and_the_match_in_the_middle_in_nor
   await resultsSettle(3);
   EventUtils.synthesizeKey("KEY_ArrowUp");
   EventUtils.synthesizeKey("p", { ctrlKey: true });
-  Assert.equal(textOf(selectedRow()), "bravo second needle", "up moves away from the best");
+  Assert.equal(
+    textOf(/** @type {Element} */ (selectedRow())),
+    "bravo second needle",
+    "up moves away from the best",
+  );
   EventUtils.synthesizeKey("n", { ctrlKey: true });
   EventUtils.synthesizeKey("KEY_ArrowDown");
   EventUtils.synthesizeKey("KEY_ArrowUp");
@@ -104,10 +128,10 @@ add_task(async function enter_selects_the_tab_and_the_match_in_the_middle_in_nor
   await until(() => gBrowser.selectedTab === b, "and selects the tab");
   const where = await SpecialPowers.spawn(b.linkedBrowser, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().toString() === "needle",
+      () => /** @type {Selection} */ (content.getSelection()).toString() === "needle",
       "the match is selected",
     );
-    const sel = content.getSelection();
+    const sel = /** @type {Selection} */ (content.getSelection());
     const middle = () => {
       const { top } = sel.getRangeAt(0).getBoundingClientRect();
       return top > content.innerHeight / 3 && top < (content.innerHeight * 2) / 3;
@@ -120,7 +144,7 @@ add_task(async function enter_selects_the_tab_and_the_match_in_the_middle_in_nor
       .getInterface(Ci.nsISelectionDisplay)
       .QueryInterface(Ci.nsISelectionController);
     return {
-      line: sel.anchorNode.textContent,
+      line: /** @type {Node} */ (sel.anchorNode).textContent,
       attention: controller.getDisplaySelection() === Ci.nsISelectionController.SELECTION_ATTENTION,
       top: r.top,
       height: content.innerHeight,
@@ -136,7 +160,7 @@ add_task(async function enter_selects_the_tab_and_the_match_in_the_middle_in_nor
   EventUtils.synthesizeKey("v");
   await until(() => VimmaHost.status(window).mode === "visual", "v enters copy mode");
   const kept = await SpecialPowers.spawn(b.linkedBrowser, [], () =>
-    content.getSelection().toString(),
+    /** @type {Selection} */ (content.getSelection()).toString(),
   );
   Assert.equal(kept, "needle", "with the match selected");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -165,10 +189,12 @@ add_task(async function the_grep_list_steps_with_bracket_q_and_grep_resumes() {
   await until(() => noticeText() === "grep 3/4", "the next one, in the same tab");
   const second = await SpecialPowers.spawn(b.linkedBrowser, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().anchorNode?.textContent === "bravo second needle",
+      () =>
+        /** @type {Selection} */ (content.getSelection()).anchorNode?.textContent ===
+        "bravo second needle",
       "the second line's match",
     );
-    return content.getSelection().toString();
+    return /** @type {Selection} */ (content.getSelection()).toString();
   });
   Assert.equal(second, "needle", "the match is selected");
   type("]q");
@@ -183,7 +209,9 @@ add_task(async function the_grep_list_steps_with_bracket_q_and_grep_resumes() {
   const closed = b.linkedPanel;
   BrowserTestUtils.removeTab(b);
   Assert.ok(
-    VimmaHost._grep(window).list.rows.every((r) => r.tabId !== closed),
+    /** @type {NonNullable<GrepSession["list"]>} */ (
+      /** @type {GrepSession} */ (VimmaHost._grep(window)).list
+    ).rows.every((r) => r.tabId !== closed),
     "a closed tab's lines leave the grep list",
   );
   await focusContent(c.linkedBrowser);
@@ -194,7 +222,11 @@ add_task(async function the_grep_list_steps_with_bracket_q_and_grep_resumes() {
   type(":grep");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => isOpen(), ":grep alone reopens live grep");
-  Assert.equal(dialog().querySelector(".vimma-grep-query").textContent, "needle", "last query");
+  Assert.equal(
+    /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-query")).textContent,
+    "needle",
+    "last query",
+  );
   await resultsSettle(2);
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -232,7 +264,7 @@ add_task(async function a_cross_site_frame_and_shadow_roots_are_searched() {
   const frame = tab.linkedBrowser.browsingContext.children[0];
   const inFrame = await SpecialPowers.spawn(frame, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().toString() === "needle in",
+      () => /** @type {Selection} */ (content.getSelection()).toString() === "needle in",
       "the frame's match is selected",
     );
     return content.document.hasFocus();
@@ -247,11 +279,14 @@ add_task(async function a_cross_site_frame_and_shadow_roots_are_searched() {
   await until(() => !isOpen(), "jumped into the closed shadow root");
   const inShadow = await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().rangeCount > 0,
+      () => /** @type {Selection} */ (content.getSelection()).rangeCount > 0,
       "a selection",
     );
-    const range = content.getSelection().getRangeAt(0);
-    return range.startContainer.textContent.slice(range.startOffset, range.endOffset);
+    const range = /** @type {Selection} */ (content.getSelection()).getRangeAt(0);
+    return /** @type {string} */ (range.startContainer.textContent).slice(
+      range.startOffset,
+      range.endOffset,
+    );
   });
   Assert.equal(inShadow, "closed shadow", "the match in the closed shadow root is selected");
 });
@@ -294,13 +329,16 @@ add_task(async function a_lazy_tab_is_listed_not_loaded_and_enter_selects_it() {
   await openGrep();
   type("needle");
   await resultsSettle(2);
-  const last = rows().at(-1);
+  const last = /** @type {Element} */ (rows().at(-1));
   Assert.ok(textOf(last).includes("not loaded"), "listed as not loaded, at the far end");
-  Assert.ok(last.querySelector(".vimma-grep-tab").textContent.includes("Lazy one"), "by title");
+  Assert.ok(
+    /** @type {Element} */ (last.querySelector(".vimma-grep-tab")).textContent.includes("Lazy one"),
+    "by title",
+  );
   Assert.ok(!lazy.linkedPanel, "the search did not load it");
   EventUtils.synthesizeKey("KEY_Escape");
   type("gg");
-  Assert.equal(selectedRow()?.id, rows().at(-1).id, "gg goes to the top");
+  Assert.equal(selectedRow()?.id, /** @type {Element} */ (rows().at(-1)).id, "gg goes to the top");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => gBrowser.selectedTab === lazy, "Enter selects it");
 });
@@ -312,16 +350,17 @@ add_task(async function a_changed_page_takes_the_remaining_match_or_says_it_is_g
   type("needle");
   await resultsSettle(2);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.querySelector("p").remove();
+    /** @type {HTMLElement} */ (content.document.querySelector("p")).remove();
   });
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => !isOpen(), "jumped");
   const line = await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().toString() === "needle",
+      () => /** @type {Selection} */ (content.getSelection()).toString() === "needle",
       "a match is selected",
     );
-    return content.getSelection().anchorNode.textContent;
+    return /** @type {Node} */ (/** @type {Selection} */ (content.getSelection()).anchorNode)
+      .textContent;
   });
   Assert.equal(line, "second needle", "the remaining match");
 
@@ -329,7 +368,7 @@ add_task(async function a_changed_page_takes_the_remaining_match_or_says_it_is_g
   type("second");
   await resultsSettle(1);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
-    content.document.querySelector("p").textContent = "gone";
+    /** @type {HTMLElement} */ (content.document.querySelector("p")).textContent = "gone";
   });
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => noticeText() === "match no longer on the page", "the notice says so");
@@ -338,9 +377,9 @@ add_task(async function a_changed_page_takes_the_remaining_match_or_says_it_is_g
 add_task(async function enter_on_a_tab_in_a_split_focuses_its_pane() {
   await reset();
   const a = await openFixture({ title: "Left", t: "left text" });
-  const b = await openFixture({ title: "Right", t: "right needle" });
+  const b = /** @type {PaneTab} */ (await openFixture({ title: "Right", t: "right needle" }));
   await BrowserTestUtils.switchTab(gBrowser, a);
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   Assert.ok(view.split("vertical", { tab: b }).ok, "split a | b");
   view.focus("left");
   await until(() => gBrowser.selectedTab === a, "the left pane has focus");
@@ -349,7 +388,9 @@ add_task(async function enter_on_a_tab_in_a_split_focuses_its_pane() {
   await resultsSettle(1);
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => gBrowser.selectedTab === b, "the right tab is selected");
-  const focused = leaves(view.panes).find((l) => l.pane === view.panes.focus)?.tab;
+  const focused = leaves(/** @type {Panes} */ (view.panes)).find(
+    (l) => l.pane === /** @type {Panes} */ (view.panes).focus,
+  )?.tab;
   Assert.equal(focused, b.linkedPanel, "and its pane has focus");
   view.close();
 });
@@ -361,7 +402,7 @@ add_task(async function the_preview_shows_the_lines_around_and_hides_when_narrow
   await openGrep();
   type("needle");
   await resultsSettle(1);
-  const preview = dialog().querySelector(".vimma-grep-preview");
+  const preview = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview"));
   Assert.equal(preview.getAttribute("role"), "region", "the preview is a region");
   Assert.equal(preview.getAttribute("aria-label"), "Grep Preview", "named Grep Preview");
   await until(
@@ -378,14 +419,15 @@ add_task(async function the_preview_shows_the_lines_around_and_hides_when_narrow
   );
   Assert.ok(BrowserTestUtils.isVisible(preview), "shown in a wide window");
 
-  dialog().style.width = "800px";
+  shownDialog().style.width = "800px";
   await until(() => !BrowserTestUtils.isVisible(preview), "hidden below 900 pixels");
   EventUtils.synthesizeKey("u", { ctrlKey: true });
   await until(
-    () => dialog().querySelector(".vimma-grep-query").textContent === "",
+    () =>
+      /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-query")).textContent === "",
     "ctrl+u clears",
   );
-  dialog().style.width = "";
+  shownDialog().style.width = "";
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
 });
@@ -395,21 +437,21 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
   await openFixture({ title: "Other", t: "second line" });
   await openFixture({ title: "Jump", t: "first needle" });
   await openGrep();
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const { ask, preview: show } = session;
   /** @type {(() => void)[]} */
   const held = [];
   let jumped = false;
   // The jump's frame answers only after grep is open again on the other tab's results, and
   // that search's preview waits for the jump to end: the order a slow content process gives.
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     const reply = ask.apply(session, args);
     if (args[2] !== "Vimma:GrepJump") return reply;
     return new Promise((resolve) => held.push(() => resolve(reply.finally(() => (jumped = true)))));
   };
   type("needle");
   await resultsSettle(1);
-  session.preview = async (/** @type {any} */ row) => {
+  session.preview = async (/** @type {Parameters<GrepSession["preview"]>[0]} */ row) => {
     await TestUtils.waitForCondition(() => jumped, "the jump ends", 10, 500);
     await new Promise((r) => setTimeout(r, 0));
     return show.call(session, row);
@@ -421,7 +463,7 @@ add_task(async function a_jump_that_ends_after_grep_reopens_keeps_the_new_search
   type("second");
   await resultsSettle(1);
   for (const release of held) release();
-  const preview = dialog().querySelector(".vimma-grep-preview");
+  const preview = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview"));
   await until(
     () => preview.querySelector(".vimma-grep-preview-match")?.textContent === "second line",
     "the reopened grep's match is previewed",
@@ -462,7 +504,7 @@ add_task(async function a_step_that_ends_after_grep_reopens_leaves_the_new_searc
   await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
   await focusContent(a.linkedBrowser);
 
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const { ask } = session;
   /** @type {(() => void)[]} */
   const held = [];
@@ -471,7 +513,7 @@ add_task(async function a_step_that_ends_after_grep_reopens_leaves_the_new_searc
   const endedWhileOpen = [];
   // Charlie's frame answers the step's jump only once grep is open again: the order a slow
   // content process gives.
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     const reply = ask.apply(session, args);
     if (args[2] === "Vimma:GrepEnd" && session.isOpen) endedWhileOpen.push(reply);
     if (args[2] !== "Vimma:GrepJump") return reply;
@@ -524,17 +566,17 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
   await until(() => VimmaHost.status(window).mode === "normal", "normal mode");
   await focusContent(a.linkedBrowser);
 
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const { ask, jump } = session;
   /** @type {string[]} */
   const sentWhileOpen = [];
   let jumped = false;
-  session.ask = (/** @type {any[]} */ ...args) => {
-    const name = args[2];
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
+    const name = args[2] ?? "Vimma:Grep";
     if (session.isOpen && /^Vimma:Grep(Jump|End)$/.test(name)) sentWhileOpen.push(name);
     return ask.apply(session, args);
   };
-  session.jump = async (/** @type {any[]} */ ...args) => {
+  session.jump = async (/** @type {Parameters<GrepSession["jump"]>} */ ...args) => {
     try {
       return await jump.apply(session, args);
     } finally {
@@ -563,7 +605,7 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
     await new Promise((r) => setTimeout(r, 0));
     Assert.deepEqual(sentWhileOpen, [], "it asks the frame nothing while the search is open");
     Assert.equal(focusedWhileOpen, 0, "nor focuses Charlie's browser while it is open");
-    Assert.ok(dialog().contains(document.activeElement), "and the keyboard stays in grep");
+    Assert.ok(shownDialog().contains(document.activeElement), "and the keyboard stays in grep");
     const frames = await SpecialPowers.spawn(c.linkedBrowser, [], () => {
       const { GrepMatcher } = ChromeUtils.importESModule(
         "chrome://browser/content/vimma/actors/grep-matcher.mjs",
@@ -575,7 +617,7 @@ add_task(async function a_step_whose_tab_switch_ends_after_grep_reopens_stops_th
     window.removeEventListener("TabSwitchDone", hold, true);
     session.ask = ask;
     session.jump = jump;
-    delete browser.focus;
+    delete (/** @type {{ focus?: unknown }} */ (browser).focus);
   }
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -587,14 +629,14 @@ add_task(async function replies_to_an_older_query_never_replace_newer_results() 
   await reset();
   await openFixture({ title: "Gen", t: "older match|newer match" });
   await openGrep();
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const ask = session.ask;
   /** @type {(() => void)[]} */
   const held = [];
   // The first query's frames answer only after the second query's.
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     const reply = ask.apply(session, args);
-    if (args[1]?.query !== "older") return reply;
+    if (/** @type {{ query?: string }} */ (args[1])?.query !== "older") return reply;
     return new Promise((resolve) => held.push(() => resolve(reply)));
   };
   type("older");
@@ -617,10 +659,12 @@ add_task(async function a_long_tab_title_is_cut_to_300_characters() {
   await openGrep();
   type("longtitleneedle");
   await resultsSettle(1);
-  const row = VimmaHost._grep(window).state.rows[0];
+  const row = /** @type {NonNullable<GrepSession["state"]>} */ (
+    /** @type {GrepSession} */ (VimmaHost._grep(window)).state
+  ).rows[0];
   Assert.equal(row.title, title.slice(0, 300), "the row holds the first 300 characters");
   Assert.ok(
-    rows()[0].getAttribute("aria-label").length < 400,
+    /** @type {string} */ (rows()[0].getAttribute("aria-label")).length < 400,
     "and the option's name is bounded by it",
   );
   EventUtils.synthesizeKey("KEY_Escape");
@@ -631,7 +675,7 @@ add_task(async function results_name_their_tab_and_the_count_is_announced() {
   await reset();
   await openFixture({ title: "Spoken", t: "retry budget is 3" });
   await openGrep();
-  const status = dialog().querySelector("[role=status]");
+  const status = /** @type {Element} */ (shownDialog().querySelector("[role=status]"));
   Assert.equal(status?.getAttribute("aria-live"), "polite", "a polite live region");
   type("zzzz");
   await until(() => status.textContent === "no matches", "no matches is announced");
@@ -644,7 +688,7 @@ add_task(async function results_name_their_tab_and_the_count_is_announced() {
     "retry budget is 3, Spoken, example.com, main",
     "the option names the line, its tab, its host and its workspace",
   );
-  const list = dialog().querySelector("[role=listbox]");
+  const list = /** @type {Element} */ (shownDialog().querySelector("[role=listbox]"));
   Assert.equal(list.getAttribute("aria-activedescendant"), rows()[0].id, "the active option");
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -658,13 +702,21 @@ add_task(async function page_text_with_markup_stays_text() {
   type("needle");
   await resultsSettle(1);
   Assert.equal(textOf(rows()[0]), line, "the line shows as text");
-  Assert.ok(rows()[0].querySelector(".vimma-grep-tab").textContent.includes("<i>Markup</i>"));
-  Assert.equal(dialog().querySelectorAll("img, b, i").length, 0, "no page markup in the picker");
+  Assert.ok(
+    /** @type {Element} */ (rows()[0].querySelector(".vimma-grep-tab")).textContent.includes(
+      "<i>Markup</i>",
+    ),
+  );
+  Assert.equal(
+    shownDialog().querySelectorAll("img, b, i").length,
+    0,
+    "no page markup in the picker",
+  );
   await until(
-    () => !!dialog().querySelector(".vimma-grep-preview-match"),
+    () => !!shownDialog().querySelector(".vimma-grep-preview-match"),
     "the preview shows the line",
   );
-  Assert.equal(dialog().querySelectorAll("img, b, i").length, 0, "nor in the preview");
+  Assert.equal(shownDialog().querySelectorAll("img, b, i").length, 0, "nor in the preview");
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
 
@@ -678,12 +730,16 @@ add_task(async function page_text_with_markup_stays_text() {
   await until(() => scopeTitle().includes("closed"), "closed scope");
   await resultsSettle(2);
   Assert.equal(closedTitle(rows()[0]), markup, "a closed title shows as text");
-  const body = dialog().querySelector(".vimma-grep-preview-body");
+  const body = /** @type {Element} */ (shownDialog().querySelector(".vimma-grep-preview-body"));
   await until(() => body.textContent.includes(markup), "the closed tab's preview");
-  Assert.equal(dialog().querySelectorAll("img, b, i").length, 0, "no markup from a closed tab");
+  Assert.equal(
+    shownDialog().querySelectorAll("img, b, i").length,
+    0,
+    "no markup from a closed tab",
+  );
   EventUtils.synthesizeKey("KEY_ArrowUp");
   await until(() => body.textContent.includes("Recently closed window"), "the window's preview");
-  Assert.equal(dialog().querySelectorAll("img, b, i").length, 0, "nor from a closed window");
+  Assert.equal(shownDialog().querySelectorAll("img, b, i").length, 0, "nor from a closed window");
   EventUtils.synthesizeKey("KEY_Escape");
   EventUtils.synthesizeKey("KEY_Escape");
 });
@@ -692,11 +748,11 @@ add_task(async function closing_tells_every_searched_frame_to_drop_its_text() {
   await reset();
   await openFixture({ title: "Ends", t: "needle top", frame: 1 });
   await openGrep();
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const ask = session.ask;
   const asked = new Set();
   const ended = new Set();
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     const [bc, , name = "Vimma:Grep"] = args;
     if (name === "Vimma:Grep") asked.add(bc.id);
     if (name === "Vimma:GrepEnd") ended.add(bc.id);
@@ -727,11 +783,16 @@ add_task(async function white_space_the_markup_wraps_matches_one_space() {
   await until(() => !isOpen(), "jumped");
   const selected = await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     await ContentTaskUtils.waitForCondition(
-      () => content.getSelection().rangeCount > 0 && !content.getSelection().isCollapsed,
+      () =>
+        /** @type {Selection} */ (content.getSelection()).rangeCount > 0 &&
+        !(/** @type {Selection} */ (content.getSelection()).isCollapsed),
       "a selection",
     );
-    const range = content.getSelection().getRangeAt(0);
-    return range.startContainer.textContent.slice(range.startOffset, range.endOffset);
+    const range = /** @type {Selection} */ (content.getSelection()).getRangeAt(0);
+    return /** @type {string} */ (range.startContainer.textContent).slice(
+      range.startOffset,
+      range.endOffset,
+    );
   });
   Assert.equal(selected, "wrapped\n      across   lines", "the selection covers the source text");
 });
@@ -740,13 +801,13 @@ add_task(async function a_reply_held_past_close_still_gets_grep_end() {
   await reset();
   await openFixture({ title: "Slow", t: "needle slow" });
   await openGrep();
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const ask = session.ask;
   /** @type {(() => void)[]} */
   const held = [];
   const asked = new Set();
   const ended = new Set();
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     const [bc, , name = "Vimma:Grep"] = args;
     if (name === "Vimma:GrepEnd") ended.add(bc.id);
     const reply = ask.apply(session, args);
@@ -775,12 +836,14 @@ add_task(async function frames_past_the_cap_are_not_searched() {
   await until(
     () =>
       tab.linkedBrowser.browsingContext.children.length === 150 &&
-      tab.linkedBrowser.browsingContext.children.every((c) => c.currentWindowGlobal),
+      tab.linkedBrowser.browsingContext.children.every(
+        (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
+      ),
     "150 frames",
   );
   await openGrep();
   type("needle frame");
-  await until(() => rows().length > 0 && !dialog().hasAttribute("busy"), "results");
+  await until(() => rows().length > 0 && !shownDialog().hasAttribute("busy"), "results");
   Assert.equal(rows().length, 99, "the page and 99 frames: 100 frames a tab");
   Assert.ok(flagsText().includes("cut"), "the prompt says the search was cut");
   EventUtils.synthesizeKey("KEY_Escape");
@@ -799,7 +862,7 @@ add_task(async function a_jump_never_reaches_a_document_the_frame_navigated_to()
   const before = frame.currentWindowGlobal;
   const next = `${OTHER_SITE}?t=${encodeURIComponent("needle in frame")}&v=2`;
   await SpecialPowers.spawn(tab.linkedBrowser, [next], (url) => {
-    content.document.querySelector("iframe").src = url;
+    /** @type {HTMLIFrameElement} */ (content.document.querySelector("iframe")).src = url;
   });
   await until(
     () => frame.currentWindowGlobal && frame.currentWindowGlobal !== before,
@@ -809,7 +872,9 @@ add_task(async function a_jump_never_reaches_a_document_the_frame_navigated_to()
   await focusContent(tab.linkedBrowser);
   type("]q");
   await until(() => noticeText() === "match no longer on the page", "the jump is refused");
-  const selected = await SpecialPowers.spawn(frame, [], () => content.getSelection().toString());
+  const selected = await SpecialPowers.spawn(frame, [], () =>
+    /** @type {Selection} */ (content.getSelection()).toString(),
+  );
   Assert.equal(selected, "", "nothing is selected in the new document");
 });
 
@@ -817,10 +882,10 @@ add_task(async function an_over_long_query_says_so_and_is_not_sent() {
   await reset();
   await openFixture({ title: "Long query", t: "needle" });
   await focusContent(gBrowser.selectedBrowser);
-  const session = VimmaHost._grep(window);
+  const session = /** @type {GrepSession} */ (VimmaHost._grep(window));
   const ask = session.ask;
   let sent = 0;
-  session.ask = (/** @type {any[]} */ ...args) => {
+  session.ask = (/** @type {Parameters<GrepSession["ask"]>} */ ...args) => {
     if ((args[2] ?? "Vimma:Grep") === "Vimma:Grep") sent++;
     return ask.apply(session, args);
   };
@@ -835,13 +900,18 @@ add_task(async function an_over_long_query_says_so_and_is_not_sent() {
 });
 
 /** The Vimma actor of `tab`'s top frame, after it dropped any earlier search. */
+/** @param {MozTabbrowserTab} tab */
 async function freshActor(tab) {
   const actor = tab.linkedBrowser.browsingContext.currentWindowGlobal.getActor("Vimma");
   await actor.sendQuery("Vimma:GrepEnd", {});
   return actor;
 }
 
-/** A reply, or "no answer" after `ms`. */
+/**
+ * A reply, or "no answer" after `ms`.
+ * @param {Promise<unknown>} promise
+ * @param {number} ms
+ */
 function within(promise, ms) {
   return Promise.race([promise, new Promise((r) => setTimeout(() => r("no answer"), ms))]);
 }
@@ -886,7 +956,9 @@ add_task(async function one_worker_a_process_and_none_for_a_blank_frame() {
   await until(
     () =>
       tab.linkedBrowser.browsingContext.children.length === 4 &&
-      tab.linkedBrowser.browsingContext.children.every((c) => c.currentWindowGlobal),
+      tab.linkedBrowser.browsingContext.children.every(
+        (/** @type {CanonicalBrowsingContext} */ c) => c.currentWindowGlobal,
+      ),
     "4 frames",
   );
   await openGrep();

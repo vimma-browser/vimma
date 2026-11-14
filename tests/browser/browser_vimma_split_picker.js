@@ -24,11 +24,12 @@ const NOTICE_ID = "vimma-notice";
 const CMDLINE_ERROR = ".vimma-cmdline-error";
 const HELP_ID = "vimma-help";
 
-const view = () => PaneViews.get(window);
-const picker = () => document.getElementById(PICKER_ID);
+const view = () => /** @type {PaneView} */ (PaneViews.get(window));
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const isOpen = () => !!picker()?.open;
-const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
-const cells = (row) =>
+const rows = () =>
+  /** @type {HTMLElement[]} */ ([...(picker()?.querySelectorAll("[role=option]") ?? [])]);
+const cells = (/** @type {Element} */ row) =>
   [".vimma-picker-index", ".vimma-picker-title", ".vimma-picker-host"].map(
     (c) => row.querySelector(c)?.textContent ?? "",
   );
@@ -39,6 +40,7 @@ function notice() {
   return n && n.matches(":popover-open") ? n.textContent : null;
 }
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
@@ -47,12 +49,17 @@ function nextFrame() {
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
-/** @type {Map<string, Element>} */
+/**
+ * A tab as the test and PaneView both use it: a real tab, with its panel.
+ * @typedef {MozTabbrowserTab & PaneTab} SplitTab
+ */
+
+/** @type {Map<string, SplitTab>} */
 const byName = new Map();
-const tab = (name) => /** @type {Element} */ (byName.get(name));
+const tab = (/** @type {string} */ name) => /** @type {SplitTab} */ (byName.get(name));
 const shown = () => view().splits.shown;
 
-/** A loaded page titled `name`. */
+/** A loaded page titled `name`. @param {string} name */
 async function page(name) {
   const t = BrowserTestUtils.addTab(gBrowser, `${PAGE}?${name}`);
   await BrowserTestUtils.browserLoaded(t.linkedBrowser);
@@ -60,17 +67,18 @@ async function page(name) {
     content.document.title = n;
   });
   await until(() => t.linkedBrowser.contentTitle === name, `${name} has its title`);
-  byName.set(name, t);
+  // Loaded, it has its panel.
+  byName.set(name, /** @type {SplitTab} */ (t));
   return t;
 }
 
-/** Selects `t` and waits for its split to settle. */
+/** Selects `t` and waits for its split to settle. @param {MozTabbrowserTab} t */
 async function pick(t) {
   gBrowser.selectedTab = t;
   await nextFrame();
 }
 
-/** `:line` on the command line, from the page. */
+/** `:line` on the command line, from the page. @param {string} line */
 async function runCommand(line) {
   const browser = gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
@@ -80,7 +88,7 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** @type {Element[]} */
+/** @type {MozTabbrowserTab[]} */
 const opened = [];
 
 registerCleanupFunction(async () => {
@@ -90,7 +98,7 @@ registerCleanupFunction(async () => {
   Services.prefs.clearUserPref("sidebar.verticalTabs.dragToPinPromo.dismissed");
 });
 
-/** `keys` typed on the page in normal mode. */
+/** `keys` typed on the page in normal mode. @param {string} keys */
 async function normal(keys) {
   const browser = gBrowser.selectedBrowser;
   // A split just shown may still have its panels suspended; focusing an inactive browser never
@@ -105,7 +113,7 @@ async function normal(keys) {
 }
 
 add_task(async function without_splits_the_picker_and_steps_say_so() {
-  await WindowWorkspaces.get(window).ready;
+  await /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).ready;
   for (const n of ["a", "b", "c", "d", "e", "f"]) opened.push(await page(n));
   await pick(tab("f"));
   await runCommand("split_picker");
@@ -135,7 +143,11 @@ add_task(async function the_picker_lists_the_splits_and_a_digit_shows_one() {
     ],
     "one row per split: label, the panes' titles, the pane count",
   );
-  Assert.equal(cells(selectedRow())[0], "S2", "the shown split is selected");
+  Assert.equal(
+    cells(/** @type {Element} */ (selectedRow()))[0],
+    "S2",
+    "the shown split is selected",
+  );
   Assert.equal(
     rows()[0].style.getPropertyValue("--vimma-picker-swatch"),
     "var(--vimma-split-1)",
@@ -195,10 +207,10 @@ add_task(async function the_help_overlay_lists_the_split_keys() {
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("?", { shiftKey: true });
-  const help = () => document.getElementById(HELP_ID);
+  const help = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(HELP_ID));
   await until(() => !!help()?.open, "ctrl+b ? opens the help overlay");
   for (const name of ["split_picker", "next_split", "previous_split"]) {
-    const row = help().querySelector(`[data-action="${name}"]`);
+    const row = /** @type {HTMLDialogElement} */ (help()).querySelector(`[data-action="${name}"]`);
     Assert.ok(row && BrowserTestUtils.isVisible(row), `the overlay lists ${name}`);
   }
   EventUtils.synthesizeKey("KEY_Escape", {});

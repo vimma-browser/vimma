@@ -13,30 +13,36 @@
 /* exported GrepMatcher, PAGE, OTHER_SITE, OTHER_WS, def, ww, dialog, isOpen, rows, textOf */
 /* exported texts, selectedRow, countText, flagsText, noticeText, scopeTitle, scopeLines */
 /* exported closedTitle, closeTitled, closeWindowTitled, ctrlS, until, openFixture, reset */
-/* exported openGrep, type, clearQuery, resultsSettle, setupSecondWorkspace */
+/* exported openGrep, type, clearQuery, resultsSettle, setupSecondWorkspace, shownDialog */
 
-const { VimmaHost } = ChromeUtils.importESModule(
+/** @type {VimmaModules["chrome://browser/content/vimma/host/VimmaHost.sys.mjs"]["VimmaHost"]} */
+const VimmaHost = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
-);
-const { WorkspaceStore } = ChromeUtils.importESModule(
+).VimmaHost;
+/** @type {VimmaModules["chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"]["WorkspaceStore"]} */
+const WorkspaceStore = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs",
-);
-const { WindowWorkspaces } = ChromeUtils.importESModule(
+).WorkspaceStore;
+/** @type {VimmaModules["chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs"]["WindowWorkspaces"]} */
+const WindowWorkspaces = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
-);
-const { PaneViews } = ChromeUtils.importESModule(
+).WindowWorkspaces;
+/** @type {VimmaModules["chrome://browser/content/vimma/split/PaneView.mjs"]["PaneViews"]} */
+const PaneViews = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/split/PaneView.mjs",
-);
-const { leaves } = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs");
+).PaneViews;
+/** @type {VimmaModules["chrome://browser/content/vimma/core/panes.mjs"]["leaves"]} */
+const leaves = ChromeUtils.importESModule("chrome://browser/content/vimma/core/panes.mjs").leaves;
 const { SessionStore } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 );
 const { TabStateFlusher } = ChromeUtils.importESModule(
   "moz-src:///browser/components/sessionstore/TabStateFlusher.sys.mjs",
 );
-const { GrepMatcher } = ChromeUtils.importESModule(
+/** @type {VimmaModules["chrome://browser/content/vimma/actors/grep-matcher.mjs"]["GrepMatcher"]} */
+const GrepMatcher = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/actors/grep-matcher.mjs",
-);
+).GrepMatcher;
 
 const DIR = getRootDirectory(gTestPath).replace("chrome://mochitests/content", "");
 const PAGE = `https://example.com${DIR}file_vimma_grep.html`;
@@ -47,17 +53,26 @@ const GREP_ID = "vimma-grep";
 const NOTICE_ID = "vimma-notice";
 const OTHER_WS = "grepother";
 
+/** @returns {WorkspaceDefinition | undefined} */
 const def = (/** @type {string} */ name) =>
   WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 
 /** @param {Window} [win] */
-const dialog = (win = window) => win.document.getElementById(GREP_ID);
+const dialog = (win = window) =>
+  /** @type {HTMLDialogElement | null} */ (win.document.getElementById(GREP_ID));
+/**
+ * The dialog, which a test reads once openGrep has opened it (were it missing, the read would
+ * throw and fail the test).
+ * @param {Window} [win]
+ */
+const shownDialog = (win = window) => /** @type {HTMLDialogElement} */ (dialog(win));
 /** @param {Window} [win] */
 const isOpen = (win = window) => !!dialog(win)?.open;
 /** The result rows, best first (the DOM lists them best first; CSS shows them bottom up). */
 /** @param {Window} [win] */
-const rows = (win = window) => [...(dialog(win)?.querySelectorAll("[role=option]") ?? [])];
+const rows = (win = window) =>
+  /** @type {HTMLElement[]} */ ([...(dialog(win)?.querySelectorAll("[role=option]") ?? [])]);
 const textOf = (/** @type {Element} */ row) =>
   row.querySelector(".vimma-grep-text")?.textContent ?? "";
 /** @param {Window} [win] */
@@ -142,12 +157,13 @@ async function openFixture(params, base = PAGE) {
 /** Back to one tab in `main`, the picker closed. */
 async function reset() {
   for (let i = 0; i < 3 && isOpen(); i++) EventUtils.synthesizeKey("KEY_Escape");
-  while (PaneViews.get(window)?.panes) PaneViews.get(window).close();
-  ww().switchTo({ id: def("main").id });
+  while (PaneViews.get(window)?.panes) /** @type {PaneView} */ (PaneViews.get(window)).close();
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def("main")).id });
   for (const tab of gBrowser.tabs.slice(1)) {
     if (tab !== gBrowser.selectedTab) gBrowser.removeTab(tab);
   }
-  if (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  if (gBrowser.tabs.length > 1)
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 }
 
 registerCleanupFunction(async () => {
@@ -156,7 +172,7 @@ registerCleanupFunction(async () => {
   if (other) await WorkspaceStore.deleteWorkspace(other.id, { confirmed: true });
 });
 
-/** ctrl+b f g from the selected page; waits for the dialog. */
+/** ctrl+b f g from the selected page; waits for the dialog. @param {BrowserWindow} [win] */
 async function openGrep(win = window) {
   const browser = win.gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the page has loaded");
@@ -178,7 +194,11 @@ function clearQuery() {
   for (let i = 0; i < 6; i++) EventUtils.synthesizeKey("w", { ctrlKey: true });
 }
 
-/** Waits until the list shows `n` rows and the search has settled. */
+/**
+ * Waits until the list shows `n` rows and the search has settled.
+ * @param {number} n
+ * @param {BrowserWindow} [win]
+ */
 async function resultsSettle(n, win = window) {
   await until(() => rows(win).length === n && !dialog(win)?.hasAttribute("busy"), `${n} rows`);
 }
@@ -188,5 +208,5 @@ async function setupSecondWorkspace() {
   await ww().ready;
   if (!def(OTHER_WS)) WorkspaceStore.newWorkspace(OTHER_WS);
   await until(() => !!ww().model.workspaces.find((w) => w.name === OTHER_WS), "grepother");
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: /** @type {WorkspaceDefinition} */ (def("main")).id });
 }

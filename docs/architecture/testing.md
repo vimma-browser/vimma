@@ -178,7 +178,12 @@ the wrong kind of thing, or asserts on a promise it forgot to await, fails the c
 type of the module that URL serves (`modules.d.ts` maps each one to its source), so a call into
 one of Vimma's modules, the members a test reads from it and the JSDoc types a test gives those
 values are checked against the product's own JSDoc; a literal Vimma URL that `modules.d.ts`
-does not have (a typo) is an error. The declarations themselves are checked too:
+does not have (a typo) is an error. A head file's own imports reach the tests through
+`head.d.ts`, whose generator emits a destructured `importESModule` as `any`; a head file that
+shares a Vimma module with its tests types it by name instead (`/** @type
+{VimmaModules["<url>"]["<export>"]} */ const X = ChromeUtils.importESModule("<url>").X;`, as
+`head_vimma_grep.js` does), and `head.d.ts` keeps that type. The declarations themselves are
+checked too:
 `tests/tsconfig.json` turns off the root's `skipLibCheck`, because an error in a
 `types/mochitest/*.d.ts` file (a wrong import path, a member read off a type that may be null)
 would make the type it declares `any`, and every annotation naming that type would check

@@ -440,8 +440,11 @@ interface Document {
   consumeTransientUserGestureActivation(): boolean;
 }
 interface Node {
-  // engine/caps/nsIPrincipal.idl
-  readonly nodePrincipal: { readonly isSystemPrincipal: boolean };
+  readonly nodePrincipal: nsIPrincipal;
+}
+// engine/caps/nsIPrincipal.idl
+interface nsIPrincipal {
+  readonly isSystemPrincipal: boolean;
 }
 
 // The exports Vimma's modules read through ChromeUtils.defineESModuleGetters, by export name (each

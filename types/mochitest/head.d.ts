@@ -202,14 +202,20 @@ declare class Client {
 
 // tests/browser/head_vimma_grep.js
 
-declare const VimmaHost: any;
-declare const WorkspaceStore: any;
-declare const WindowWorkspaces: any;
-declare const PaneViews: any;
-declare const leaves: any;
+/** @type {VimmaModules["chrome://browser/content/vimma/host/VimmaHost.sys.mjs"]["VimmaHost"]} */
+declare const VimmaHost: VimmaModules["chrome://browser/content/vimma/host/VimmaHost.sys.mjs"]["VimmaHost"];
+/** @type {VimmaModules["chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"]["WorkspaceStore"]} */
+declare const WorkspaceStore: VimmaModules["chrome://browser/content/vimma/workspaces/WorkspaceStore.sys.mjs"]["WorkspaceStore"];
+/** @type {VimmaModules["chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs"]["WindowWorkspaces"]} */
+declare const WindowWorkspaces: VimmaModules["chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs"]["WindowWorkspaces"];
+/** @type {VimmaModules["chrome://browser/content/vimma/split/PaneView.mjs"]["PaneViews"]} */
+declare const PaneViews: VimmaModules["chrome://browser/content/vimma/split/PaneView.mjs"]["PaneViews"];
+/** @type {VimmaModules["chrome://browser/content/vimma/core/panes.mjs"]["leaves"]} */
+declare const leaves: VimmaModules["chrome://browser/content/vimma/core/panes.mjs"]["leaves"];
 declare const SessionStore: any;
 declare const TabStateFlusher: any;
-declare const GrepMatcher: any;
+/** @type {VimmaModules["chrome://browser/content/vimma/actors/grep-matcher.mjs"]["GrepMatcher"]} */
+declare const GrepMatcher: VimmaModules["chrome://browser/content/vimma/actors/grep-matcher.mjs"]["GrepMatcher"];
 declare const DIR: string;
 declare const PAGE: string;
 declare const OTHER_SITE: string;
@@ -218,15 +224,22 @@ declare const FRAME_URL: string;
 declare const GREP_ID = "vimma-grep";
 declare const NOTICE_ID = "vimma-notice";
 declare const OTHER_WS = "grepother";
-declare const def: (/** @type {string} */ name: string) => any;
-declare const ww: () => any;
+/** @returns {WorkspaceDefinition | undefined} */
+declare const def: (/** @type {string} */ name: string) => WorkspaceDefinition | undefined;
+declare const ww: () => LiveWorkspaces;
 /** @param {Window} [win] */
-declare const dialog: (win?: Window) => HTMLElement | null;
+declare const dialog: (win?: Window) => HTMLDialogElement | null;
+/**
+ * The dialog, which a test reads once openGrep has opened it (were it missing, the read would
+ * throw and fail the test).
+ * @param {Window} [win]
+ */
+declare const shownDialog: (win?: Window) => HTMLDialogElement;
 /** @param {Window} [win] */
 declare const isOpen: (win?: Window) => boolean;
 /** The result rows, best first (the DOM lists them best first; CSS shows them bottom up). */
 /** @param {Window} [win] */
-declare const rows: (win?: Window) => Element[];
+declare const rows: (win?: Window) => HTMLElement[];
 declare const textOf: (/** @type {Element} */ row: Element) => string;
 /** @param {Window} [win] */
 declare const texts: (win?: Window) => string[];
@@ -266,13 +279,17 @@ declare function openFixture(
 ): Promise<MozTabbrowserTab>;
 /** Back to one tab in `main`, the picker closed. */
 declare function reset(): Promise<void>;
-/** ctrl+b f g from the selected page; waits for the dialog. */
-declare function openGrep(win?: Window & typeof globalThis): Promise<void>;
+/** ctrl+b f g from the selected page; waits for the dialog. @param {BrowserWindow} [win] */
+declare function openGrep(win?: BrowserWindow): Promise<void>;
 /** @param {string} text @param {Window} [win] */
 declare function type(text: string, win?: Window): void;
 /** Clears the query word by word (ctrl+u scrolls the preview while it is shown). */
 declare function clearQuery(): void;
-/** Waits until the list shows `n` rows and the search has settled. */
-declare function resultsSettle(n: any, win?: Window & typeof globalThis): Promise<void>;
+/**
+ * Waits until the list shows `n` rows and the search has settled.
+ * @param {number} n
+ * @param {BrowserWindow} [win]
+ */
+declare function resultsSettle(n: number, win?: BrowserWindow): Promise<void>;
 /** A second workspace, for the scopes past `workspace`; the cleanup deletes it. */
 declare function setupSecondWorkspace(): Promise<void>;
