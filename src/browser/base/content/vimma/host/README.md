@@ -6,9 +6,9 @@ action tables in `runners.mjs`, one area's actions per `*-ops.mjs` module
 key events the host dispatched, which `about:vimma` shows. `host-services.mjs` holds the
 commands of higher folders the host runs: the built-in agent's conversations, the agent-download
 test and `:route add`'s write to `config.toml`; and what the agent chat window it builds uses of
-them (the agent CLIs, the API keys narrowed to `hint`, `set` and `delete`, `config.toml`'s
-refusal and setup's write to it), which `agent-chat-ops.mjs` hands the window as
-`CHAT_SERVICES`. Only `host/` imports the registry.
+them (the agent CLIs, the API keys, `config.toml`'s refusal and setup's write to it), which `agent-chat-ops.mjs` hands the window as
+`CHAT_SERVICES`. Only `host/` imports the registry, which serves the agent's objects narrowed
+to the members used (no key, no CLI start, no ticket).
 
 **Entry points:** `VimmaHost.init(win)` and `VimmaHost.uninit(win)`, called by `vimma.js`;
 `runners.mjs`, which takes the host as an argument instead of importing it;

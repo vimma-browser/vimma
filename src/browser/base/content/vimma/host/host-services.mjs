@@ -11,9 +11,11 @@
 // hands them to the window (host/agent-chat-ops.mjs). Only host/ imports this registry. Each
 // service is provided once and never replaced, and the registry is frozen: that is the
 // guarantee. The check that the caller is vimma.js only catches mistakes, since code that
-// already runs with the system principal can run under that file name. The keys' service is
-// AgentKeys narrowed to what the window does with a key (hint, set, delete): the registry never
-// hands out AgentKeys.get, which returns the key itself, and holds no key.
+// already runs with the system principal can run under that file name. The object services
+// (AgentChat, AgentCli, AgentKeys) are served narrowed to the members the host and the chat
+// window use: the registry never hands out AgentKeys.get, which returns a key, AgentCli.start,
+// which runs a CLI, or AgentChat.issueTicket, which lets a process act as a conversation; and it
+// holds no key.
 
 /** @import { BudgetStatus } from "../core/agent-chat.mjs" */
 /** @import { ChatConversations, ChatClis, ChatKeys, AgentChatServices } from "../ui/agent-chat.mjs" */
@@ -34,13 +36,15 @@
 
 /**
  * @typedef {object} Services
- * @property {AgentChatService} agentChat  agent/AgentChat.sys.mjs's `AgentChat`
+ * @property {AgentChatService} agentChat  agent/AgentChat.sys.mjs's `AgentChat`, served as the
+ *   members the host and the chat window use only
  * @property {(download: any) => boolean} isAgentDownload  ctl/AgentDownloads.sys.mjs's test
  *   (docs/security.md M11): the downloads picker opens, retries, unblocks and follows none
  * @property {(rule: { domain: string, workspace: string }) => Promise<string | null>} addRoute
  *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule and reads the file again; why not,
  *   or null
- * @property {ChatClis} agentCli  agent/AgentCli.sys.mjs's `AgentCli`, for the chat window
+ * @property {ChatClis} agentCli  agent/AgentCli.sys.mjs's `AgentCli`, served as its `enabled`,
+ *   `find`, `noneFound` and `use` only, for the chat window
  * @property {ChatKeys} agentKeys  agent/AgentKeys.sys.mjs's `AgentKeys`, served as its `hint`,
  *   `set` and `delete` only, for the chat window (docs/security.md M40, M46)
  * @property {AgentChatServices["configRefused"]} configRefused  config/ConfigHost.sys.mjs's
@@ -68,53 +72,6 @@ const NAMES = Object.freeze([
   "configRefused",
   "addAgentProvider",
 ]);
-
-/**
- * The services that are objects, by the members their users call: methods, then the properties
- * they read. The others are functions.
- * @type {Readonly<Partial<Record<ServiceName, { methods: readonly string[],
- *   properties: readonly string[] }>>>}
- */
-const SHAPES = Object.freeze({
-  agentChat: Object.freeze({
-    methods: Object.freeze([
-      // The host's.
-      "addListener",
-      "removeListener",
-      "stopAll",
-      "list",
-      "ownerOf",
-      "give",
-      // The chat window's.
-      "restore",
-      "get",
-      "create",
-      "send",
-      "stop",
-      "clear",
-      "delete",
-      "forgetAll",
-      "transcript",
-      "setProvider",
-      "choose",
-      "needsNotice",
-      "confirm",
-      "probe",
-      "modelStates",
-      "prepareLocal",
-      "placeLocal",
-    ]),
-    properties: Object.freeze(["restored", "chosen"]),
-  }),
-  agentCli: Object.freeze({
-    methods: Object.freeze(["find", "noneFound", "use"]),
-    properties: Object.freeze(["enabled"]),
-  }),
-  agentKeys: Object.freeze({
-    methods: Object.freeze(["hint", "set", "delete"]),
-    properties: Object.freeze([]),
-  }),
-});
 
 const NOT_STARTED = "the built-in agent is not started";
 const notStarted = () => {
@@ -188,13 +145,46 @@ const UNPROVIDED = Object.freeze({
   }),
 });
 
+/** @typedef {"agentChat" | "agentCli" | "agentKeys"} ObjectServiceName */
+
+/**
+ * The services that are objects, by the members their users call: each member of the unprovided
+ * one that is a function is a method a provided one must have, the rest are properties it must
+ * have. The types fix UNPROVIDED's members, so the type, the default, this check and what the
+ * registry serves (`narrow`) are one list.
+ * @type {Readonly<Record<ObjectServiceName, { methods: readonly string[],
+ *   properties: readonly string[] }>>}
+ */
+const SHAPES = Object.freeze(
+  /** @type {Record<ObjectServiceName, { methods: readonly string[], properties: readonly string[] }>} */ (
+    Object.fromEntries(
+      /** @type {ObjectServiceName[]} */ (["agentChat", "agentCli", "agentKeys"]).map((name) => {
+        const members = Object.entries(UNPROVIDED[name]);
+        return [
+          name,
+          Object.freeze({
+            methods: Object.freeze(
+              members.filter(([, v]) => typeof v === "function").map(([m]) => m),
+            ),
+            properties: Object.freeze(
+              members.filter(([, v]) => typeof v !== "function").map(([m]) => m),
+            ),
+          }),
+        ];
+      }),
+    )
+  ),
+);
+
 /**
  * Why `value` cannot be service `name`, or null.
  * @param {string} name @param {unknown} value
  */
 function refusal(name, value) {
   if (!NAMES.includes(/** @type {ServiceName} */ (name))) return `there is no service ${name}`;
-  const shape = SHAPES[/** @type {ServiceName} */ (name)];
+  const shape = Object.hasOwn(SHAPES, name)
+    ? SHAPES[/** @type {ObjectServiceName} */ (name)]
+    : null;
   if (!shape) return typeof value === "function" ? null : `${name} must be a function`;
   const service = /** @type {Record<string, unknown> | null} */ (value);
   const missing = [
@@ -205,23 +195,27 @@ function refusal(name, value) {
 }
 
 /**
- * AgentKeys as the registry serves it: the three calls the chat window makes, each passed
- * straight through, so no key is held here and AgentKeys.get, which returns one, is not
- * reachable through the registry.
- * @param {ChatKeys} keys
- * @returns {ChatKeys}
+ * An object service as the registry serves it: a frozen object with only the members its shape
+ * names, each passed straight through to the provided object when called or read, so that what
+ * the host and the chat window do not use is not reachable through the registry (AgentChat's
+ * tickets, AgentCli's start, AgentKeys.get, which returns a key) and nothing is kept here.
+ * Properties are read when asked (`AgentCli.enabled` follows its pref).
+ * @param {ObjectServiceName} name @param {Record<string, unknown>} service
  */
-const narrowKeys = (keys) =>
-  Object.freeze({
-    hint: (/** @type {string} */ provider, /** @type {string} */ endpoint) =>
-      keys.hint(provider, endpoint),
-    set: (
-      /** @type {string} */ provider,
-      /** @type {string} */ key,
-      /** @type {string} */ endpoint,
-    ) => keys.set(provider, key, endpoint),
-    delete: (/** @type {string} */ provider) => keys.delete(provider),
-  });
+function narrow(name, service) {
+  const { methods, properties } = SHAPES[name];
+  /** @type {PropertyDescriptorMap} */
+  const members = {};
+  for (const m of methods) {
+    members[m] = {
+      value: (/** @type {unknown[]} */ ...args) =>
+        /** @type {(...a: unknown[]) => unknown} */ (service[m])(...args),
+      enumerable: true,
+    };
+  }
+  for (const p of properties) members[p] = { get: () => service[p], enumerable: true };
+  return Object.freeze(Object.defineProperties({}, members));
+}
 
 /**
  * A registry of the host's services. The app has one, `HostServices`; a test makes its own,
@@ -231,7 +225,7 @@ const narrowKeys = (keys) =>
 export function createHostServices(provider = PROVIDER) {
   /** @type {Partial<Services>} what vimma.js handed over, to tell a second value from the same */
   const provided = {};
-  /** @type {Partial<Services>} what the host gets: the same, but the keys narrowed */
+  /** @type {Partial<Services>} what the host gets: the same, the objects narrowed (`narrow`) */
   const served = {};
   /** @type {Set<ServiceName>} */
   const reported = new Set();
@@ -275,8 +269,12 @@ export function createHostServices(provider = PROVIDER) {
         const key = /** @type {ServiceName} */ (name);
         if (provided[key]) continue;
         /** @type {Record<string, unknown>} */ (provided)[key] = value;
-        /** @type {Record<string, unknown>} */ (served)[key] =
-          key === "agentKeys" ? narrowKeys(/** @type {ChatKeys} */ (value)) : value;
+        /** @type {Record<string, unknown>} */ (served)[key] = Object.hasOwn(SHAPES, key)
+          ? narrow(
+              /** @type {ObjectServiceName} */ (key),
+              /** @type {Record<string, unknown>} */ (value),
+            )
+          : value;
       }
     },
 

@@ -153,8 +153,9 @@ each without a change in behaviour:
   when the window calls: `[agent]` from `host/mcp-ops.mjs`, the rest from `HostServices`, which
   gained `agentCli`, `agentKeys`, `configRefused` and `addAgentProvider` beside `agentChat`, on
   the same terms. Only `host/` imports the registry, so it does not become a lookup for every
-  folder. The keys' service is `AgentKeys` narrowed to `hint`, `set` and `delete`: the registry
-  never hands out the call that returns a key. Asked for before it is provided, no agent CLI is
+  folder. The object services are served narrowed to the members the host and the window use
+  (`AgentKeys` to `hint`, `set` and `delete`, `AgentCli` to setup's four): the registry never
+  hands out the call that returns a key, starts a CLI or issues a conversation's ticket. Asked for before it is provided, no agent CLI is
   offered, no key is known or stored, `config.toml` counts as refused and is not written.
   `ui/agent-chat.mjs` imports nothing from `agent/`, `config/` or `host/`.)
 

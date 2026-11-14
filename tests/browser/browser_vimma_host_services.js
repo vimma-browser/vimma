@@ -61,16 +61,29 @@ const FAKES = {
   addAgentProvider: async () => ({ name: "fake" }),
 };
 
+/**
+ * Whether `served` is `original` narrowed: a frozen object whose every member is one of the
+ * original's, read through (a property) or called through (a method).
+ * @param {object} served @param {object} original
+ */
+function servesThrough(served, original) {
+  return (
+    served !== original &&
+    Object.isFrozen(served) &&
+    Object.keys(served).every((name) => name in original)
+  );
+}
+
 add_task(async function test_vimma_js_provided_every_service_before_the_window_started() {
   Assert.deepEqual(HostServices.missing(), [], "every service is provided");
-  Assert.equal(HostServices.agentChat, AgentChat, "the conversations are AgentChat's");
+  Assert.ok(servesThrough(HostServices.agentChat, AgentChat), "the conversations are AgentChat's");
   Assert.equal(
     HostServices.isAgentDownload,
     AgentDownloads.isAgentDownload,
     "the agent-download test is AgentDownloads'",
   );
   Assert.equal(HostServices.addRoute, ConfigHost.addRoute, ":route add writes through ConfigHost");
-  Assert.equal(HostServices.agentCli, AgentCli, "the chat window's agent CLIs are AgentCli");
+  Assert.ok(servesThrough(HostServices.agentCli, AgentCli), "the window's agent CLIs are AgentCli");
   Assert.equal(
     HostServices.configRefused,
     ConfigHost.refused,
@@ -84,7 +97,7 @@ add_task(async function test_vimma_js_provided_every_service_before_the_window_s
   // Each window runs vimma.js, which hands over the same services again.
   const second = await BrowserTestUtils.openNewBrowserWindow();
   Assert.deepEqual(HostServices.missing(), [], "a second window changes nothing");
-  Assert.equal(HostServices.agentChat, AgentChat, "the same conversations");
+  Assert.ok(servesThrough(HostServices.agentChat, AgentChat), "the same conversations");
   await BrowserTestUtils.closeWindow(second);
 });
 
@@ -163,6 +176,55 @@ add_task(async function test_the_keys_service_is_agentkeys_without_a_way_to_read
   }
 });
 
+add_task(async function test_the_cli_service_is_agentcli_without_a_way_to_start_one() {
+  const cli = HostServices.agentCli;
+  Assert.deepEqual(
+    Object.keys(cli).sort(),
+    ["enabled", "find", "noneFound", "use"],
+    "setup's four: whether CLIs are on, the PATH search, why none, the picked path",
+  );
+  for (const name of ["start", "init", "sweepGemini", "version", "check", "availability"]) {
+    Assert.ok(!(name in cli), `never AgentCli.${name}`);
+  }
+  Assert.ok(Object.isFrozen(cli), "and nothing can add one");
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.agent.cli.enabled", false]] });
+  try {
+    Assert.equal(cli.enabled, false, "enabled follows the pref");
+    Assert.deepEqual(await cli.find(), [], "find runs AgentCli's, which looks for none when off");
+    Assert.throws(
+      () => cli.use("claude", "/usr/bin/claude"),
+      /agent CLIs are turned off/,
+      "use runs AgentCli's",
+    );
+    await SpecialPowers.pushPrefEnv({ set: [["vimma.agent.cli.enabled", true]] });
+    Assert.equal(cli.enabled, true, "read when asked, not when provided");
+    await SpecialPowers.popPrefEnv();
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
+  Assert.equal(cli.noneFound(), AgentCli.noneFound(), "noneFound is AgentCli's");
+});
+
+add_task(function test_the_conversations_service_is_agentchat_without_tickets_or_reset() {
+  const chat = HostServices.agentChat;
+  Assert.ok(Object.isFrozen(chat), "frozen");
+  for (const name of ["issueTicket", "reset", "prune", "flush", "done", "running", "choices"]) {
+    Assert.ok(
+      !(name in chat),
+      `never AgentChat.${name}, which neither the host nor the window uses`,
+    );
+  }
+  const provider = { name: "host-services-chosen", kind: "openai", endpoint: "", vision: false };
+  try {
+    AgentChat.choose(provider);
+    Assert.equal(chat.chosen, provider, "chosen is read when asked");
+    Assert.equal(chat.restored, AgentChat.restored, "and so is restored");
+  } finally {
+    AgentChat.choose(null);
+  }
+  Assert.equal(chat.chosen, null, "it follows AgentChat");
+});
+
 add_task(function test_code_named_vimma_js_cannot_replace_the_chat_windows_services() {
   const sandbox = Cu.Sandbox(Services.scriptSecurityManager.getSystemPrincipal());
   sandbox.HostServices = HostServices;
@@ -181,7 +243,7 @@ add_task(function test_code_named_vimma_js_cannot_replace_the_chat_windows_servi
       `code named vimma.js cannot hand over another ${name}`,
     );
   }
-  Assert.equal(HostServices.agentCli, AgentCli, "the agent CLIs are still AgentCli");
+  Assert.ok(servesThrough(HostServices.agentCli, AgentCli), "the agent CLIs are still AgentCli");
   Assert.equal(HostServices.configRefused, ConfigHost.refused, "the refusal still ConfigHost's");
   Assert.equal(
     HostServices.addAgentProvider,
@@ -354,6 +416,20 @@ add_task(function test_each_service_is_provided_once() {
     ALL.filter((name) => name !== "isAgentDownload"),
     "and none of them is provided",
   );
+  // Each member the unprovided services have is one a provided service must have: the two are
+  // one list, so a member added to the type and its default is asked for at provide.
+  for (const name of /** @type {const} */ (["agentChat", "agentCli", "agentKeys"])) {
+    const whole = /** @type {Record<string, unknown>} */ ({ ...services[name] });
+    for (const member of Object.keys(whole)) {
+      const rest = { ...whole };
+      delete rest[member];
+      Assert.throws(
+        () => services.provide(/** @type {any} */ ({ [name]: rest })),
+        new RegExp(`${name} must have ${member}$`),
+        `${name} without ${member} is refused`,
+      );
+    }
+  }
   services.provide({ agentKeys: FAKES.agentKeys });
   services.provide({ agentKeys: FAKES.agentKeys });
   Assert.notEqual(services.agentKeys, FAKES.agentKeys, "the keys come out narrowed");
