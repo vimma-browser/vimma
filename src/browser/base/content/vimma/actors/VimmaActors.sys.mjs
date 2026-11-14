@@ -986,7 +986,7 @@ export const VimmaActors = {
    * #579; docs/specs/mcp-forms.md F11): `ready`, from its DOMContentLoaded; `net`, until no
    * request the step started is open; then a quiet period, bounded (core AGENT_WAITS). The
    * answer is checked like any reply from a content process.
-   * @param {CanonicalBrowsingContext} bc
+   * @param {CanonicalBrowsingContext | null} bc  none (a browser without a frame loader): null
    * @param {{ ready?: boolean, net?: boolean, quiet: number, still: number, max: number,
    *   until: number }} ask  `until`: ms since the epoch, past which the child stops waiting
    * @returns {Promise<{ settled: "quiet" | "busy", state: string } | null>} null: the frame

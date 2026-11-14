@@ -126,7 +126,10 @@ add_task(async function test_builtin_agent_opens_coop_pages() {
       Assert.ok(tab, `${policy}: the tab exists`);
       await assertLoaded(tab, policy);
       // A list of the page, not of an error page: a label listed by an earlier open of this
-      // connection comes back as `repeated` (issue #621).
+      // connection comes back as `repeated` (issue #621). An open without a page in its result
+      // fails here, as the read of its title would.
+      if (!("title" in r))
+        throw new Error(`${policy}: the open names no page: ${JSON.stringify(r)}`);
       Assert.equal(r.title, "COOP page", `${policy}: the open names the page`);
       Assert.ok(!("unlisted" in r), `${policy}: and lists it: ${JSON.stringify(r)}`);
       BrowserTestUtils.removeTab(tab);

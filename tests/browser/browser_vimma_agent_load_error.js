@@ -80,6 +80,8 @@ add_task(async function test_builtin_open_names_the_error_page() {
       shown.startsWith("about:neterror?e=deniedPortAccess"),
       `the load ended on Firefox's error page: ${shown}`,
     );
+    // An open that listed its page, or names none, fails here, as the reads below would.
+    if (!("unlisted" in r)) throw new Error(`the open lists a page: ${JSON.stringify(r)}`);
     Assert.equal(r.unlisted, "error", `the open says the page did not load: ${JSON.stringify(r)}`);
     Assert.equal(r.loadError, "deniedPortAccess", "and names Firefox's error");
     Assert.equal(r.url, FAILING, "with the address it tried");

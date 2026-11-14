@@ -111,14 +111,20 @@ only the agent workspace, and every request asks you first (§12).
   [`test_open`](../../tests/browser/browser_vimma_control.js)
 - S11. Whatever bytes a client sends, the server's framing and validator **never** throw, hang
   or change a built-in prototype; the framing gives back exactly the lines sent and refuses a
-  line over 1 MiB, and a message outside the protocol is refused.
+  line over 1 MiB, and a message outside the protocol is refused. An agent command's handler
+  reads only what core `parseAgentRequest` gives back: the arguments the validator accepts,
+  copied into the shape that command takes, whichever way the command came (a socket, the
+  built-in agent's tool calls); any other arguments are refused (`invalid-args`) before the
+  command runs.
   [`LineFramer gives back the lines sent, however the bytes are chunked`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`send-keys passes only keys the server can parse; open only short http(s), file and about URLs`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`a type that is not a string is an error, never a throw`](../../packages/vimma-core/test/control.test.mjs),
   [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
-  [`test_handshake`](../../tests/browser/browser_vimma_control.js)
+  [`test_handshake`](../../tests/browser/browser_vimma_control.js),
+  [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.mjs),
+  [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.mjs)
 - S12. The `full` role **must** run only with `vimma.control.enabled`, and the `agent` role only
   with MCP on; a hello for a role that is off is refused (`role-off`) and closed, and turning a
   switch off closes that role's connections. An agent connection **never** reaches `send-keys`,

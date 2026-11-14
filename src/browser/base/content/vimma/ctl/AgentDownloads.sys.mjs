@@ -53,9 +53,9 @@ import { AgentGate } from "../host/AgentGate.sys.mjs";
 
 /** @import { Refusal, Danger } from "../core/agent-downloads.mjs" */
 
-// Untyped (Lazy<…> would name each module again): tools/security/test/chrome-source.test.ts
+// Typed in types/firefox.d.ts, which names the modules: tools/security/test/chrome-source.test.ts
 // pins every mention of the process module in this file.
-const lazy = /** @type {any} */ ({});
+const lazy = /** @type {AgentDownloadsLazy} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   DownloadPaths: "resource://gre/modules/DownloadPaths.sys.mjs",
   Downloads: "resource://gre/modules/Downloads.sys.mjs",
@@ -92,13 +92,13 @@ const CLAMD_CONF = "/etc/clamav/clamd.conf";
 const OPENER_MS = 60_000;
 
 /**
- * @typedef {{ conn: string | number | null, name: string, what: Record<string, any>,
+ * @typedef {{ conn: string | number | null, name: string, what: Record<string, unknown>,
  *   allowedKind: string | null, scan: "none" | "clean" | "stale" | "partial" | "error",
  *   refused: boolean }} Tracked
  */
 
 /** The agent downloads let through the question, until they are done. */
-/** @type {WeakMap<any, Tracked>} */
+/** @type {WeakMap<FirefoxDownload, Tracked>} */
 const tracked = new WeakMap();
 /**
  * The load an agent connection started in a tab (agent-open): a download is that connection's
@@ -214,19 +214,25 @@ function isExecutable(/** @type {string} */ name) {
   }
 }
 
-/** Whether a path is in the quarantine folder or the refusal folder. @param {string} [path] */
+/**
+ * Whether a path is in the quarantine folder or the refusal folder.
+ * @param {string | null} [path] @returns {path is string}
+ */
 const inOurFolders = (path) =>
   !!path && [quarantineDir(), refusedDir()].includes(PathUtils.parent(path) ?? "");
 
 /**
  * Whether a download is an agent download (security.md M11): its container,
  * its tab's container, or being written to the quarantine (or refusal) folder.
- * @param {any} download
+ * @param {{ source: { userContextId?: number, browsingContextId?: number },
+ *   target: { path: string, partFilePath?: string | null } }} download  the members of a
+ *   FirefoxDownload it reads
  */
 function isAgentDownload(download) {
   if (isAgentContainer(download?.source?.userContextId)) return true;
   try {
-    const bc = BrowsingContext.get(download?.source?.browsingContextId);
+    // No id is 0, as the webidl's unsigned long long reads undefined: no context.
+    const bc = BrowsingContext.get(download?.source?.browsingContextId ?? 0);
     if (isAgentContainer(bc?.top?.originAttributes?.userContextId)) return true;
   } catch {
     // No such browsing context any more.
@@ -234,17 +240,17 @@ function isAgentDownload(download) {
   return inOurFolders(download?.target?.path) || inOurFolders(download?.target?.partFilePath);
 }
 
-/** @param {any} download  the download's name, as saved */
+/** @param {FirefoxDownload} download  the download's name, as saved */
 const nameOf = (download) => PathUtils.filename(download.target.path);
 
 /**
  * The agent connection a download belongs to: the one whose agent-open started this very load
  * (its URL before redirects, within OPENER_MS), if still connected. Used once.
- * @param {any} download
+ * @param {FirefoxDownload} download
  */
 function connOf(download) {
   try {
-    const bc = BrowsingContext.get(download.source.browsingContextId);
+    const bc = BrowsingContext.get(download.source.browsingContextId ?? 0);
     const browser = bc?.top?.embedderElement;
     const opened = browser ? openers.get(browser) : undefined;
     if (!browser || !opened) return null;
@@ -259,24 +265,24 @@ function connOf(download) {
 
 /**
  * What is known of a download's size before its body: -1 when unknown.
- * @param {any} download @param {boolean} [take]  forget the launcher's length once read
+ * @param {FirefoxDownload} download @param {boolean} [take]  forget the launcher's length once read
  */
 function knownSize(download, take = true) {
-  const saver = download.saver ?? {};
+  const saver = download.saver;
   const fromLauncher = lengths.get(download.target.path);
   if (take) lengths.delete(download.target.path);
   for (const n of [
     fromLauncher,
     download.totalBytes,
-    saver.totalBytes,
-    saver.request?.contentLength,
+    saver?.totalBytes,
+    saver?.request?.contentLength,
   ]) {
     if (typeof n === "number" && n > 0) return n;
   }
   return -1;
 }
 
-/** The part file's size now, or 0. @param {any} download */
+/** The part file's size now, or 0. @param {FirefoxDownload} download */
 async function partSize(download) {
   const path = download.target.partFilePath ?? download.target.path;
   try {
@@ -287,7 +293,7 @@ async function partSize(download) {
 }
 
 /** Never launch, never "open with", never shown in Firefox's viewer (decision 31 c). */
-function neutralise(/** @type {any} */ download) {
+function neutralise(/** @type {FirefoxDownload} */ download) {
   download.launchWhenSucceeded = false;
   download.launcherPath = null;
   download.launcherId = null;
@@ -307,7 +313,7 @@ const isEmpty = (path) =>
 /**
  * A refused download: its channel stopped, its part and placeholder deleted, and taken off the
  * downloads list (the notice says why, not Firefox's "blocked by parental controls").
- * @param {any} download
+ * @param {FirefoxDownload} download
  */
 async function discard(download) {
   for (let i = 0; i < 400 && !download.stopped; i++) {
@@ -338,7 +344,7 @@ async function discard(download) {
 /**
  * The question, before the saver runs (DownloadCore's Download.start awaits this hook):
  * true refuses the download.
- * @param {any} download
+ * @param {FirefoxDownload} download
  * @returns {Promise<boolean>}
  */
 async function admit(download) {
@@ -433,7 +439,7 @@ async function admit(download) {
  * placeholder Firefox made at its name are deleted before the verdict returns, so nothing of it
  * is left once the download has stopped. Firefox itself keeps the placeholder (its
  * shouldKeepBlockedData is true for Firefox's app ID and takes no download to answer per file).
- * @param {any} download @param {Refusal} why
+ * @param {FirefoxDownload} download @param {Refusal} why
  */
 async function block(download, why) {
   const t = tracked.get(download);
@@ -725,9 +731,9 @@ async function findClamd() {
  *   could not run
  */
 async function runProgram(program, args) {
-  /** @type {any} */
+  /** @type {ChildProcess} */
   let proc;
-  /** @type {any} */
+  /** @type {number | undefined} */
   let timer;
   try {
     proc = await lazy.Subprocess.call({ command: program, arguments: args, stderr: "pipe" });
@@ -810,7 +816,7 @@ async function scan(path) {
 /**
  * The finished `.part`, before it gets its name (_checkReputationAndMove): the bytes, a second
  * question if they are dangerous and the first was not a `!`, then ClamAV.
- * @param {any} download @param {any} base
+ * @param {FirefoxDownload} download @param {DownloadIntegrationBase} base
  */
 async function check(download, base) {
   const t = /** @type {Tracked} */ (tracked.get(download));
@@ -874,7 +880,7 @@ async function check(download, base) {
 
 /** Over the cap while it streams (decision 31 f): cancelled, its part removed. */
 const capView = {
-  /** @param {any} download */
+  /** @param {FirefoxDownload} download */
   onDownloadChanged(download) {
     const t = tracked.get(download);
     if (!t || t.refused || download.stopped) return;
@@ -886,10 +892,10 @@ const capView = {
   },
 };
 
-/** @param {any} base  DownloadIntegration */
+/** @param {DownloadIntegrationBase} base */
 const downloadOverride = (base) => ({
   __proto__: base,
-  /** @param {any} download */
+  /** @param {FirefoxDownload} download */
   shouldBlockForParentalControls(download) {
     if (!isAgentDownload(download)) return base.shouldBlockForParentalControls(download);
     return admit(download).catch((e) => {
@@ -898,7 +904,7 @@ const downloadOverride = (base) => ({
       return true;
     });
   },
-  /** @param {any} download */
+  /** @param {FirefoxDownload} download */
   shouldBlockForReputationCheck(download) {
     if (!tracked.has(download)) return base.shouldBlockForReputationCheck(download);
     return check(download, base).catch((e) => {
@@ -906,7 +912,7 @@ const downloadOverride = (base) => ({
       return block(download, { kind: "danger", text: "a file Vimma could not check" });
     });
   },
-  /** @param {any} download */
+  /** @param {FirefoxDownload} download */
   async downloadDone(download) {
     if (!isAgentDownload(download)) return base.downloadDone(download);
     // No exec bit, no one else (decision 31 c); and no desktop "recent files" entry.
@@ -922,7 +928,7 @@ const downloadOverride = (base) => ({
     );
     return undefined;
   },
-  /** @param {any} download @param {any} options */
+  /** @param {FirefoxDownload} download @param {unknown} options */
   launchDownload(download, options) {
     const dir = quarantineDir();
     if (isAgentDownload(download)) {
@@ -940,7 +946,10 @@ const downloadOverride = (base) => ({
 const DIALOG_CONTRACT = "@mozilla.org/helperapplauncherdialog;1";
 const DIALOG_CID = Components.ID("{6b1a3f3c-6c1e-4d73-9a4f-5f5a1e2b9c41}");
 
-/** Whether a helper-app launcher's download comes from an agent tab. @param {any} launcher */
+/**
+ * Whether a helper-app launcher's download comes from an agent tab.
+ * @param {nsIHelperAppLauncher} launcher
+ */
 function fromAgentTab(launcher) {
   try {
     const bc = BrowsingContext.get(launcher.browsingContextId);
@@ -953,7 +962,7 @@ function fromAgentTab(launcher) {
 /**
  * An agent tab's download is saved into the quarantine under its suggested name, without a
  * dialog (no "open with").
- * @param {any} launcher @param {string} name @param {string} ext
+ * @param {nsIHelperAppLauncher} launcher @param {string} name @param {string} ext
  */
 async function saveToQuarantine(launcher, name, ext) {
   try {
@@ -983,17 +992,18 @@ function wrapDialog() {
   const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   const factory = {
     QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
-    /** @param {any} iid */
+    /** @param {unknown} iid */
     createInstance(iid) {
       const inner = new lazy.nsUnknownContentTypeDialog();
       const dialog = {
         QueryInterface: ChromeUtils.generateQI(["nsIHelperAppLauncherDialog"]),
-        /** @param {any} launcher @param {any} context @param {number} reason */
+        /** @param {nsIHelperAppLauncher} launcher @param {unknown} context @param {number} reason */
         show(launcher, context, reason) {
           if (!fromAgentTab(launcher)) return inner.show(launcher, context, reason);
           return launcher.promptForSaveDestination();
         },
-        /** @param {any} launcher @param {any} context @param {string} name @param {string} ext
+        /** @param {nsIHelperAppLauncher} launcher @param {unknown} context @param {string} name
+         *  @param {string} ext
          *  @param {boolean} force */
         promptForSaveToFileAsync(launcher, context, name, ext, force) {
           if (!fromAgentTab(launcher)) {
@@ -1058,7 +1068,7 @@ export const AgentDownloads = {
       console.error("vimma agent downloads: the download dialog is not wrapped", e);
     }
     lazy.Downloads.getList(lazy.Downloads.ALL)
-      .then((/** @type {any} */ list) => list.addView(capView))
+      .then((/** @type {{ addView(view: object): unknown }} */ list) => list.addView(capView))
       .catch(console.error);
   },
 

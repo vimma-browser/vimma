@@ -165,6 +165,14 @@ async function hmacHex(key, message) {
 /** @param {unknown} v @returns {v is Record<string, unknown>} */
 const isObject = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 
+/**
+ * An XPCOM exception's result code (`Components.Exception`'s `result`), or undefined for
+ * anything else thrown.
+ * @param {unknown} e
+ */
+const resultOf = (e) =>
+  typeof e === "object" && e !== null && "result" in e ? e.result : undefined;
+
 /** The browser window keys and state are for: the most recently focused one. */
 function topWindow() {
   const win =
@@ -294,8 +302,8 @@ function pressChords(win, chords) {
  * `state.panes`: the window's pane tree with state's tab ids, or null with one pane (protocol
  * spec, "state"). The tree names tabs by panel; a leaf also gets its place in `tabs` (-1 when
  * its tab is not visible), so a scenario can match a layout without knowing the ids.
- * @param {any} win
- * @param {any[]} visible gBrowser.visibleTabs
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab[]} visible gBrowser.visibleTabs
  */
 function paneState(win, visible) {
   const panes = PaneViews.get(win)?.panes;
@@ -310,8 +318,8 @@ function paneState(win, visible) {
  * `panes` and `number` and `shown` in place of `hidden` (docs/specs/multiple-splits.md, "Control
  * protocol"), as `{ splits }` to spread into the result; `{}` without a PaneView, so the key is
  * absent. Tab ids and places only: a private window's entry names no URL or title.
- * @param {any} win
- * @param {any[]} visible gBrowser.visibleTabs
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab[]} visible gBrowser.visibleTabs
  */
 function splitsState(win, visible) {
   const view = PaneViews.get(win);
@@ -327,23 +335,28 @@ function splitsState(win, visible) {
 
 /**
  * One pane tree with state's tab ids (see paneState).
- * @param {any} win
- * @param {any[]} visible
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab[]} visible
  * @param {import("../core/panes.mjs").Panes} panes
  */
 function treeState(win, visible, panes) {
-  const tabOf = (/** @type {string} */ panel) =>
-    win.gBrowser.tabs.find((/** @type {any} */ t) => t.linkedPanel === panel);
-  const idOf = (/** @type {any} */ tab) => (tab ? String(tab.linkedBrowser.browserId) : null);
-  /** @param {any} n @returns {object} */
+  const tabOf = (/** @type {string | undefined} */ panel) =>
+    win.gBrowser.tabs.find((t) => t.linkedPanel === panel);
+  const idOf = (/** @type {MozTabbrowserTab | undefined} */ tab) =>
+    tab ? String(tab.linkedBrowser.browserId) : null;
+  /** @param {import("../core/panes.mjs").PaneNode} n @returns {object} */
   const node = (n) => {
     if (n.type === "leaf") {
       const tab = tabOf(n.tab);
-      return { tab: idOf(tab), index: visible.indexOf(tab) };
+      // indexOf(undefined) is -1, a tab that is not visible.
+      return { tab: idOf(tab), index: tab ? visible.indexOf(tab) : -1 };
     }
     return { axis: n.axis, ratios: [...n.ratios], children: n.children.map(node) };
   };
-  /** @param {any} n @returns {any} */
+  /**
+   * @param {import("../core/panes.mjs").PaneNode} n
+   * @returns {import("../core/panes.mjs").Leaf | null | undefined}
+   */
   const focused = (n) =>
     n.type === "leaf" ? (n.pane === panes.focus ? n : null) : n.children.map(focused).find(Boolean);
   return {
@@ -358,7 +371,7 @@ function treeState(win, visible, panes) {
  * private window keeps it, where it is the only sign of a loaded page (#567). A new window is
  * listed before it starts to load its first page, which it does in delayed startup
  * (browser-init.js): until then its tabs are on their initial about:blank and not busy yet.
- * @param {any} win @param {any} tab
+ * @param {BrowserWindow} win @param {MozTabbrowserTab} tab
  */
 function tabLoading(win, tab) {
   if (tab.hasAttribute("busy")) return true;
@@ -374,11 +387,14 @@ function tabLoading(win, tab) {
 /**
  * Each command's own return type is kept (`_commands` exposes them to the tests); `run` looks a
  * command up by name through the Record type.
- * @typedef {Record<string, (args: any) => object>} Commands
+ * The arguments are the request's, checked by the validator; each command narrows what it
+ * reads again.
+ * @typedef {Record<string, (args: Record<string, unknown>) => object>} Commands
  */
 /** @satisfies {Commands} */
 const COMMANDS = {
   "send-keys"({ keys }) {
+    if (typeof keys !== "string") throw new ControlError("invalid-args", "keys must be a string");
     // The validator has already parsed every chord; parse again for the values.
     const chords = keys.split(/\s+/).filter(Boolean).map(parseKey);
     pressChords(topWindow(), chords);
@@ -401,7 +417,7 @@ const COMMANDS = {
       pending: host.pending.length ? host.pending.join(" ") : null,
       workspace: host.workspace?.name ?? null,
       ...(hidden ? { private: true } : {}),
-      tabs: visible.map((/** @type {any} */ tab, /** @type {number} */ index) => ({
+      tabs: visible.map((tab, index) => ({
         id: String(tab.linkedBrowser.browserId),
         index,
         url: hidden ? null : tab.linkedBrowser.currentURI.spec,
@@ -435,6 +451,7 @@ const COMMANDS = {
   },
 
   open({ url, where = "tab" }) {
+    if (typeof url !== "string") throw new ControlError("invalid-args", "url must be a string");
     let uri;
     try {
       uri = Services.io.newURI(url);
@@ -483,7 +500,7 @@ const COMMANDS = {
 class Connection {
   /**
    * @param {Server} server
-   * @param {any} transport nsISocketTransport
+   * @param {ControlTransport} transport  an nsISocketTransport
    */
   constructor(server, transport) {
     this.server = server;
@@ -515,7 +532,10 @@ class Connection {
     /** Fixed by the hello: protocol 1 is `full`. @type {Role | null} */
     this.role = null;
     this.protocol = CONTROL_PROTOCOL;
-    /** An agent connection's labels, once its agent-hello is in. @type {{ agent?: any }} */
+    /**
+     * An agent connection's labels, once its agent-hello is in.
+     * @type {import("./agent-commands.mjs").AgentConn}
+     */
     this.agentState = {};
     /** Agent requests waiting for an answer or running: they do not wait for each other. */
     this.inflight = 0;
@@ -573,7 +593,7 @@ class Connection {
       const buffer = new ArrayBuffer(size);
       bytes = new Uint8Array(buffer, 0, this.binary.readArrayBuffer(size, buffer));
     } catch (e) {
-      if (/** @type {any} */ (e).result === Cr.NS_BASE_STREAM_WOULD_BLOCK) this.waitForInput();
+      if (resultOf(e) === Cr.NS_BASE_STREAM_WOULD_BLOCK) this.waitForInput();
       else this.close(); // the peer closed or reset
       return;
     }
@@ -814,7 +834,7 @@ class Connection {
    * A command of a ticket's connection, run as its conversation (builtin-agent-cli C1): on the
    * conversation's connection and state, so its tabs, grant, rates and budget are the
    * conversation's. Its agent-hello labels nothing: the conversation keeps its own label.
-   * @param {string} command @param {any} args @param {number} id
+   * @param {string} command @param {Record<string, unknown>} args @param {number} id
    */
   async ticketCommand(command, args, id) {
     const ticket = /** @type {Ticket} */ (this.ticket);
@@ -829,7 +849,8 @@ class Connection {
       throw new AgentError("bad-request", "agent-hello must be the connection's first command");
     }
     if (command === "agent-cancel") {
-      const rid = this.rids.get(args.id);
+      // The validator took an integer id.
+      const rid = typeof args.id === "number" ? this.rids.get(args.id) : undefined;
       const cancel = rid === undefined ? undefined : ticket.state.cancels?.get(rid);
       if (!cancel) return { cancelled: false };
       ticket.state.cancels?.delete(/** @type {number} */ (rid));
@@ -934,7 +955,8 @@ class Connection {
       return;
     }
     const command = /** @type {string} */ (m.command);
-    const args = /** @type {any} */ (m.args);
+    // An object: the validator refuses a request whose args are not.
+    const args = isObject(m.args) ? m.args : {};
     // A ticket's later connection must be the same vimma-ctl process: its session id says so.
     if (this.ticket && this.reconnect && !this.helloed) {
       const session = typeof args.session === "string" ? args.session : "";
@@ -1028,7 +1050,7 @@ class Connection {
       try {
         n = this.output.write(this.pendingOut, this.pendingOut.length);
       } catch (e) {
-        if (/** @type {any} */ (e).result === Cr.NS_BASE_STREAM_WOULD_BLOCK) {
+        if (resultOf(e) === Cr.NS_BASE_STREAM_WOULD_BLOCK) {
           this.output.asyncWait(
             { onOutputStreamReady: () => this.flush() },
             0,
@@ -1095,7 +1117,7 @@ class Server {
     this.port = /** @type {number} */ (this.socket.port);
   }
 
-  /** nsIServerSocketListener @param {any} _socket @param {any} transport */
+  /** nsIServerSocketListener @param {unknown} _socket @param {ControlTransport} transport */
   onSocketAccepted(_socket, transport) {
     const connection = new Connection(this, transport);
     if (this.waiting.size >= MAX_WAITING) {
@@ -1179,7 +1201,7 @@ function removeDiscoveryFile() {
   try {
     link = file.isSymlink();
   } catch (e) {
-    if (/** @type {any} */ (e).result === Cr.NS_ERROR_FILE_NOT_FOUND) return true;
+    if (resultOf(e) === Cr.NS_ERROR_FILE_NOT_FOUND) return true;
     throw e;
   }
   if (link) {
@@ -1422,7 +1444,7 @@ export const VimmaControl = {
   /**
    * Test-only: shut down, run `before` (e.g. leave a stale file), then start over as at app
    * startup with `win` as the first window.
-   * @param {any} win
+   * @param {BrowserWindow | { gBrowserInit?: { delayedStartupFinished?: boolean } }} win
    * @param {() => Promise<unknown> | unknown} [before]
    */
   async _restartForTests(win, before) {
