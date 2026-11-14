@@ -557,11 +557,12 @@ function listedControl(el) {
 
 /**
  * How many fields a submission by `submitter` sends (F15): the form's enabled, named controls,
- * checkboxes and radios only when checked, and of the buttons only the submitter.
+ * checkboxes and radios only when checked, and of the buttons only the submitter, and the entries
+ * none of them accounts for (a form-associated custom element's: unlistedEntriesOf).
  * @param {HTMLFormElement} form @param {Submitter | null} submitter
  */
 function fieldCount(form, submitter) {
-  let n = 0;
+  let n = unlistedEntriesOf(form).entries.length;
   for (const listed of form.elements) {
     const el = listedControl(listed);
     if (!el?.name || el.matches(":disabled") || el.closest("datalist")) continue;
@@ -577,6 +578,132 @@ function fieldCount(form, submitter) {
     }
   }
   return n;
+}
+
+/** Input types whose `dirname` attribute sends one more entry (Gecko's
+ * HTMLInputElement::IsAutoDirectionalityAssociated). */
+const DIRNAME_TYPES = new Set([
+  "hidden",
+  "text",
+  "search",
+  "tel",
+  "url",
+  "email",
+  "password",
+  "submit",
+  "reset",
+  "button",
+]);
+
+/**
+ * The names of the entries the form's own HTML fields (inputs, selects, text areas) send when no
+ * button submits it, each as often as it is sent, as Gecko builds them (SubmitNamesValues in
+ * engine/dom/html/HTMLInputElement.cpp, HTMLSelectElement.cpp, HTMLTextAreaElement.cpp, and
+ * SubmitDirnameDir). Never more than Gecko sends: a name counted here hides an entry of that
+ * name from unlistedEntriesOf. A field in a `datalist`, which Gecko sends, is left out, so that
+ * its entry is left over and asks.
+ * @param {HTMLFormElement} form
+ * @returns {Map<string, number>}
+ */
+function fieldEntryNames(form) {
+  /** @type {Map<string, number>} */
+  const names = new Map();
+  /** @param {string} name */
+  const add = (name) => names.set(name, (names.get(name) ?? 0) + 1);
+  for (const listed of form.elements) {
+    const c = fieldElementOf(listed);
+    if (!c || c.matches(":disabled") || c.closest("datalist")) continue;
+    // Gecko reads the attribute, as the walk's `name` reflects it.
+    const name = c.getAttribute("name") ?? "";
+    if (!name) continue;
+    if (isHTML(c, "select")) {
+      for (const o of c.selectedOptions) if (!o.matches(":disabled")) add(name);
+      continue;
+    }
+    if (isHTML(c, "input")) {
+      // Without a submitter Gecko sends no button, and an image input is no listed element.
+      if (BUTTON_TYPES.has(c.type)) continue;
+      if ((c.type === "checkbox" || c.type === "radio") && !c.checked) continue;
+      if (c.type === "file") {
+        // An empty file field sends one empty file.
+        for (let i = Math.max(1, c.files?.length ?? 0); i > 0; i--) add(name);
+        continue;
+      }
+    }
+    add(name);
+    const dirname = c.getAttribute("dirname") ?? "";
+    if (dirname && (isHTML(c, "textarea") || DIRNAME_TYPES.has(c.type))) add(dirname);
+  }
+  return names;
+}
+
+/**
+ * Whether a script may run while the entries of `form` are built: a `formdata` listener or
+ * handler on a node the event passes, which may add to, change or delete what the form sends
+ * (HTMLFormElement::ConstructEntryList fires the event after the controls added theirs). The
+ * path is taken generously: the form, its ancestors with the slots it and they are assigned to,
+ * each shadow root and its host, the document and its window. A check that fails counts as one.
+ * @param {HTMLFormElement} form
+ */
+function scriptBuildsEntries(form) {
+  /** @type {EventTarget[]} */
+  const path = [];
+  /** @type {Node | null} */
+  let node = form;
+  while (node) {
+    path.push(node);
+    /** @type {Node | null} the slot replaces the parent on an event's path */
+    const slot = isElement(node) || isText(node) ? node.openOrClosedAssignedSlot : null;
+    node = slot ?? node.parentNode ?? (isShadowRoot(node) ? node.host : null);
+  }
+  const win = form.ownerDocument?.defaultView;
+  if (win) path.push(win);
+  try {
+    return path.some((t) => Services.els.hasListenersFor(t, "formdata"));
+  } catch {
+    return true;
+  }
+}
+
+/** @param {Node} n @returns {n is ShadowRoot} */
+const isShadowRoot = (n) =>
+  n.nodeType === 11 /* Node.DOCUMENT_FRAGMENT_NODE */ && "host" in n && !!n.host;
+
+/**
+ * What a submission of `form` sends that none of its HTML fields accounts for (docs/specs/
+ * mcp-consequence.md K2, K3; issue #1053): the entries of form-associated custom elements, whose
+ * name and value their page script holds (`ElementInternals.setFormValue`); an Xray shows
+ * neither, and a FormData value sends entries under names of its own, whatever the element's.
+ * Read from the entry list the submission builds (HTMLFormElement::ConstructEntryList, which
+ * runs each control's SubmitNamesValues in C++: a custom element's entry is its stored value
+ * under its `name` attribute, ElementInternals::SubmitNamesValues), made with this module's own
+ * FormData, so that a page that replaces FormData or its iterators changes nothing here. Only
+ * the names of those entries are kept, and whether each is a file: their values are never read
+ * into a reply. Building the list fires `formdata` at the form, so it is built only when no
+ * listener could run (scriptBuildsEntries); otherwise, or when building it fails, `unread` says
+ * that what the form sends is not known whole, which asks.
+ * @param {HTMLFormElement} form
+ * @returns {{ entries: { name: string, file?: true }[], unread: boolean }}
+ */
+function unlistedEntriesOf(form) {
+  if (scriptBuildsEntries(form)) return { entries: [], unread: true };
+  /** @type {[string, FormDataEntryValue][]} */
+  let built;
+  try {
+    built = [...new FormData(form)];
+  } catch (e) {
+    console.error("vimma agent-checkpoint: the form's entries", e);
+    return { entries: [], unread: true };
+  }
+  const left = fieldEntryNames(form);
+  /** @type {{ name: string, file?: true }[]} */
+  const entries = [];
+  for (const [name, value] of built) {
+    const n = left.get(name) ?? 0;
+    if (n > 0) left.set(name, n - 1);
+    else entries.push(typeof value === "string" ? { name } : { name, file: true });
+  }
+  return { entries, unread: false };
 }
 
 /**
@@ -1126,31 +1253,31 @@ function identityFields(form) {
  * only, never its value; a file field by its name; hidden fields counted, not listed. A field
  * someone types into is marked `text`, one of a person's identity `identity`, so that the parent
  * can tell a form that sends them from one that sends only the page's own values
- * (docs/specs/mcp-consequence.md K2).
+ * (docs/specs/mcp-consequence.md K2). An entry none of the form's HTML fields accounts for (a
+ * form-associated custom element's) is named and marked `opaque`, its value never read, and
+ * `unread` says that the page's script may add to what is sent (unlistedEntriesOf).
  * @param {Element | null | undefined} el @param {"click" | "form"} by @param {Set<Element>} skip
- * @returns {{ fields: { name: string, value?: string, secret?: true, file?: true, text?: true,
- *   identity?: true, cut?: true }[], hidden: number, more: number } | null} null: it submits no form
+ * @returns {{ fields: SentEntry[], hidden: number, more: number, unread?: true } | null} null: it
+ *   submits no form
  */
 export function sentFieldsOf(el, by, skip) {
   if (!el?.isConnected) return null;
   const form = by === "form" ? formOf(el) : submitOf(el)?.form;
   const submit = form ? (by === "form" ? defaultSubmitOf(form) : submitOf(el)) : null;
   if (!form || !submit) return null;
-  /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
-   *   identity?: true, cut?: true }[]} */
+  /** @type {SentEntry[]} */
   const fields = [];
   let hidden = 0;
   let more = 0;
   const identity = identityFields(form);
   /**
    * One field sent; `f.value` is the whole value, cut here.
-   * @param {{ name: string, value?: string, secret?: true, file?: true }} f
+   * @param {{ name: string, value?: string, secret?: true, file?: true, opaque?: true }} f
    * @param {SentControl} [c] the field, for its marks
    */
   const add = (f, c) => {
     if (fields.length >= SENT_MAX) return more++;
-    /** @type {{ name: string, value?: string, secret?: true, file?: true, text?: true,
-     *   identity?: true, cut?: true }} */
+    /** @type {SentEntry} */
     const out = { ...f };
     if (c && (c.localName === "textarea" || TEXT_TYPES.has(c.type))) out.text = true;
     if (c && identity.has(c)) out.identity = true;
@@ -1189,5 +1316,23 @@ export function sentFieldsOf(el, by, skip) {
       add({ name, value: c.value }, c);
     }
   }
-  return { fields, hidden, more };
+  const unlisted = unlistedEntriesOf(form);
+  for (const e of unlisted.entries) {
+    add({
+      name: cap(e.name, TEXT),
+      opaque: true,
+      ...(e.file ? { file: /** @type {const} */ (true) } : {}),
+    });
+  }
+  return {
+    fields,
+    hidden,
+    more,
+    ...(unlisted.unread ? { unread: /** @type {const} */ (true) } : {}),
+  };
 }
+
+/**
+ * @typedef {{ name: string, value?: string, secret?: true, file?: true, opaque?: true,
+ *   text?: true, identity?: true, cut?: true }} SentEntry
+ */

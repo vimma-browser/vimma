@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!-- Fixture for browser_vimma_mcp_face.js (docs/specs/mcp-consequence.md K2, K3): forms that send
+   - what a form-associated custom element (`<vimma-note>`) holds. The element copies the text of
+   - the input in its shadow root into its form value: as text, as a file (`kind="file"`) or as
+   - entries of a FormData (`kind="entries"`). Its `name` getter is the page's and says nothing,
+   - and the page replaces FormData and its iterators, so that only what the form really sends
+   - tells. The "Update" form's own `formdata` listener adds an entry. Every form is a GET to
+   - file_vimma_agent_page.html, so the address after a submission says what was sent. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Notes</title>
+  </head>
+  <body>
+    <h1>Notes</h1>
+    <form id="face" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="1" aria-label="Quantity" />
+      <vimma-note name="note" label="Note text"></vimma-note>
+      <button type="submit">Send note</button>
+    </form>
+    <form id="noname" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="2" aria-label="Amount" />
+      <vimma-note label="Draft text" value="typed by the agent"></vimma-note>
+      <button type="submit">Save</button>
+    </form>
+    <form id="file" method="get" action="file_vimma_agent_page.html">
+      <vimma-note
+        name="doc"
+        kind="file"
+        label="Attachment text"
+        value="typed by the agent"
+      ></vimma-note>
+      <button type="submit">Attach</button>
+    </form>
+    <form id="entries" method="get" action="file_vimma_agent_page.html">
+      <vimma-note kind="entries" label="Entry text" value="typed by the agent"></vimma-note>
+      <button type="submit">Continue</button>
+    </form>
+    <form id="listener" method="get" action="file_vimma_agent_page.html">
+      <input type="number" name="qty" value="3" aria-label="Count" />
+      <button type="submit">Update</button>
+    </form>
+    <script>
+      const PageFormData = FormData;
+      class VimmaNote extends HTMLElement {
+        static formAssociated = true;
+        constructor() {
+          super();
+          this.internals = this.attachInternals();
+          const root = this.attachShadow({ mode: "open" });
+          this.field = document.createElement("input");
+          this.field.setAttribute("aria-label", this.getAttribute("label") ?? "");
+          this.field.value = this.getAttribute("value") ?? "";
+          root.append(this.field);
+          this.field.addEventListener("input", () => this.sync());
+          this.sync();
+        }
+        sync() {
+          const text = this.field.value;
+          const kind = this.getAttribute("kind");
+          if (kind === "file") {
+            this.internals.setFormValue(new File([text], "note.txt"));
+          } else if (kind === "entries") {
+            const entries = new PageFormData();
+            entries.append("entry", text);
+            this.internals.setFormValue(entries);
+          } else {
+            this.internals.setFormValue(text);
+          }
+        }
+        get name() {
+          return "";
+        }
+      }
+      customElements.define("vimma-note", VimmaNote);
+      // A page that lies to anything reading its forms with its own FormData.
+      window.FormData = function () {
+        return new PageFormData();
+      };
+      PageFormData.prototype.entries = function* () {};
+      PageFormData.prototype[Symbol.iterator] = function* () {};
+      document.getElementById("listener").addEventListener("formdata", (e) => {
+        document.body.dataset.formdata = String(Number(document.body.dataset.formdata ?? 0) + 1);
+        e.formData.append("extra", "typed by the agent");
+      });
+    </script>
+  </body>
+</html>

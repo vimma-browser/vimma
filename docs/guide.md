@@ -3155,6 +3155,9 @@ grant it had:
   as an `Add to basket` button with a quantity, runs under the grant and shows a notice that
   names where it went (`… and sent the form to POST shop.example (grant)`). A fill that sends a
   form always asks, since it sends what the agent typed. Without a grant every form asks.
+  A value a page's own component sends (a web component that takes part in the form) is shown as
+  its name and `(not read)`, because Vimma does not read what the page keeps in it, and that form
+  asks; so does a form whose page script adds to what it sends (`+ what the page adds`).
 - **`a` for a button that keeps asking.** Under a grant, a form question that is not a payment,
   sends no password, card, one-time-code or file field and that Vimma read whole ends its hint
   with `a always here` (`y send it · a always here · n stop`). `a` sends this form and lets the same
@@ -3162,7 +3165,7 @@ grant it had:
   until the grant ends, for example a basket button whose form also sends a delivery postcode. The
   notice says `allowed "Lisää" on shop.example for this grant`, and `:mcp log` marks the row
   `allowed (checkpoint, for the grant)`. A payment never offers `a`, nor does a form with a value
-  too long for Vimma to read whole (over 1024 characters).
+  too long for Vimma to read whole (over 1024 characters) or one it did not read.
 
 - **It stands out.** A checkpoint starts with `▲` instead of `◇`, and its `▲` and verb are in
   your theme's warning colour, so it is not taken for a routine question.
