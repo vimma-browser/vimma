@@ -322,8 +322,11 @@ export class StatusBar {
     const badges = all.filter((s) => s.bg).length;
     const fitted = fitStatus(all, columns - badges);
     const agent = fitted.find((s) => s.id === "agent");
-    // The segment's badge is the ran dot (core statusSegments); a waiting count wins over it.
-    this.drawnAgent = agent ? { waiting: input.agent?.waiting ?? 0, ran: !!agent.bg } : null;
+    // Core marks the ran dot on the segment (a waiting count wins over it): its colours may
+    // change without changing what state.agent.ran reports.
+    this.drawnAgent = agent
+      ? { waiting: input.agent?.waiting ?? 0, ran: agent.dot === true }
+      : null;
     const key = JSON.stringify(fitted.map((s) => [s.id, s.text, s.fg, s.bg]));
     if (key !== this.lastBar) {
       this.lastBar = key;
