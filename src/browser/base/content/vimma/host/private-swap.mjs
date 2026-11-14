@@ -170,7 +170,8 @@ function detect() {
       wm = { state: "ok", dialect: found.dialect, version: found.version };
       return true;
     } catch (e) {
-      const timeout = /** @type {any} */ (e)?.message === "no reply";
+      const timeout =
+        e !== null && typeof e === "object" && "message" in e && e.message === "no reply";
       return none(
         timeout ? "Hyprland did not reply" : "Hyprland's socket is not reachable",
         timeout,

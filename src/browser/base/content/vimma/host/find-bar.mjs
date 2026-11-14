@@ -45,11 +45,15 @@ export function openPrompt(findbar) {
  * @returns {{ current?: number, total?: number, limit?: number }}
  */
 function labelCount(label) {
-  if (/** @type {any} */ (label).hidden) return {};
-  const doc = /** @type {any} */ (label.ownerDocument);
-  const { id, args } = doc.l10n.getAttributes(label);
-  if (id === "findbar-found-matches") return { current: args?.current, total: args?.total };
-  if (id === "findbar-found-matches-count-limit") return { total: -1, limit: args?.limit };
+  if (/** @type {Partial<XULElement>} */ (label).hidden) return {};
+  const attributes = label.ownerDocument.l10n?.getAttributes(label);
+  if (!attributes) return {};
+  const { id, args } = attributes;
+  // Numbers, as findbar.js sets them.
+  const num = (/** @type {unknown} */ v) => (typeof v === "number" ? v : undefined);
+  if (id === "findbar-found-matches")
+    return { current: num(args?.current), total: num(args?.total) };
+  if (id === "findbar-found-matches-count-limit") return { total: -1, limit: num(args?.limit) };
   return {};
 }
 
@@ -65,7 +69,8 @@ function decorate(findbar) {
   const wrapper = findbar.querySelector(".findbar-textbox")?.parentElement;
   if (!label || !wrapper || wrapper.querySelector(".vimma-find-count")) return;
   const doc = /** @type {Document} */ (findbar.ownerDocument);
-  const win = /** @type {any} */ (doc.defaultView);
+  const win = doc.defaultView;
+  if (!win) return;
   const count = doc.createElementNS(XUL, "label");
   count.className = "vimma-find-count";
   // Screen readers have Firefox's label, in the user's language.

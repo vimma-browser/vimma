@@ -225,8 +225,8 @@ const inOurFolders = (path) =>
  * Whether a download is an agent download (security.md M11): its container,
  * its tab's container, or being written to the quarantine (or refusal) folder.
  * @param {{ source: { userContextId?: number, browsingContextId?: number },
- *   target: { path: string, partFilePath?: string | null } }} download  the members of a
- *   FirefoxDownload it reads
+ *   target: { path?: string, partFilePath?: string | null } }} download  the members of a
+ *   FirefoxDownload it reads; a history entry's path may be unset
  */
 function isAgentDownload(download) {
   if (isAgentContainer(download?.source?.userContextId)) return true;

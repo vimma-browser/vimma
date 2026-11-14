@@ -27,8 +27,9 @@
 import { AgentLog, AgentQueue, frozenCopy, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "./mcp-ops.mjs";
+import { fieldsOf } from "./browser-ops.mjs";
 
-/** @import { Answer, ConnId } from "../core/agent.mjs" */
+/** @import { Answer, ConnId, Resolution } from "../core/agent.mjs" */
 
 const lazy = /** @type {Lazy<"clearTimeout" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -62,7 +63,7 @@ const queue = new AgentQueue();
 /** @type {Map<ConnId, AgentLabel>} */
 const labels = new Map();
 /** Waiting requests: what is asked, and how to answer the agent. */
-/** @type {Map<number, Question & { resolve: (o: Outcome) => void, timer: any }>} */
+/** @type {Map<number, Question & { resolve: (o: Outcome) => void, timer: number }>} */
 const pending = new Map();
 /** @type {Set<(event?: GateEvent) => void>} */
 const listeners = new Set();
@@ -81,13 +82,13 @@ const log = new AgentLog();
 /**
  * One call into the log: who, what it touched as its question showed it, and the outcome.
  * Full control's questions are not an agent's calls (it has `:control` and its own notices).
- * @param {ConnId} conn @param {string} tool @param {any} what
+ * @param {ConnId} conn @param {string} tool @param {unknown} what  the question's `what`
  * @param {import("../core/agent.mjs").LogOutcome} outcome
  * @param {string} [why]  what stopped a call that ran (`stopped`)
  */
 function record(conn, tool, what, outcome, why) {
   if (conn === FULL_CONN) return;
-  const w = what ?? {};
+  const w = fieldsOf(what);
   const detail =
     typeof w.detail === "string"
       ? w.detail
@@ -177,7 +178,7 @@ function askTimeoutMs() {
 
 /**
  * Answer the agents of the requests `resolved` names.
- * @param {{ id: number, allow: boolean, reason?: string }[]} resolved
+ * @param {readonly Resolution[]} resolved
  * @param {{ until: number }} [grant]
  * @param {number} [answered]  the question the user answered: the others a grant released ran
  *   under it unseen, so each is logged as a call under a grant, and the grant's notice counts
@@ -197,7 +198,7 @@ function settle(resolved, grant, answered, here = false) {
     const unseen = r.allow && (grant || here) && r.id !== answered;
     if (unseen) released++;
     // mcp-checkpoints Behaviour 6: the user's yes or no to a payment or a form is told apart.
-    const checkpoint = isCheckpoint(/** @type {any} */ (p));
+    const checkpoint = isCheckpoint(p);
     record(
       p.conn,
       p.tool,
@@ -212,7 +213,7 @@ function settle(resolved, grant, answered, here = false) {
             : "yes"
           : r.reason === "user" && checkpoint
             ? "checkpoint-no"
-            : /** @type {any} */ (r.reason === "muted" ? "muted" : r.reason),
+            : r.reason,
     );
     if (r.allow) ranAt = Date.now();
     p.resolve(
@@ -400,8 +401,8 @@ export const AgentGate = {
       if (answer.kind === "mute") final = { kind: "deny" };
     }
     // A dangerous download is allowed for that one file only (decision 31 d): no grant.
-    const asked = /** @type {any} */ (question?.what);
-    if (answer.kind === "grant" && (asked?.danger || asked?.unscanned)) return null;
+    const asked = fieldsOf(question?.what);
+    if (answer.kind === "grant" && (asked.danger || asked.unscanned)) return null;
     // A checkpoint is one yes or no (mcp-checkpoints Behaviour 1, 2): a grant answer allows that
     // step once and makes no grant, and its `x` is a plain no, so the agent goes on under the
     // grant it had.
@@ -411,8 +412,8 @@ export const AgentGate = {
       // mcp-consequence K5: `a` on a form checkpoint that offers it allows that button on that
       // site for the rest of the grant; anywhere else it is no answer.
       if (answer.kind === "here") {
-        const key = /** @type {any} */ (question.what)?.here?.key;
-        if (typeof key !== "string" || /** @type {any} */ (question.what)?.pay) return null;
+        const key = fieldsOf(fieldsOf(question.what).here).key;
+        if (typeof key !== "string" || fieldsOf(question.what).pay) return null;
         // The grant ended while the question waited: nothing for the allowance to last with.
         const granted = queue.grants(Date.now()).some((g) => g.conn === question.conn);
         final = granted ? { kind: "here", key } : { kind: "once" };

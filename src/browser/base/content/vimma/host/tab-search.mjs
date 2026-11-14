@@ -22,7 +22,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   SessionStore: "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs",
 });
 
-/** @param {any} w */
+/** @param {EarlyBrowserWindow} w */
 const isBrowserWindow = (w) => !w.closed && w.toolbar?.visible !== false && !!w.gBrowser;
 
 /**
@@ -32,7 +32,7 @@ const isBrowserWindow = (w) => !w.closed && w.toolbar?.visible !== false && !!w.
  * @returns {BrowserWindow[]}
  */
 export function windowsFrom(win) {
-  const others = /** @type {BrowserWindow[]} */ (lazy.BrowserWindowTracker.orderedWindows).filter(
+  const others = lazy.BrowserWindowTracker.orderedWindows.filter(
     (w) => w !== win && isBrowserWindow(w),
   );
   return [win, ...others];
@@ -40,7 +40,7 @@ export function windowsFrom(win) {
 
 /**
  * The URL of a closed tab's saved state: its current history entry.
- * @param {any} state
+ * @param {SessionTabState | undefined} state
  */
 function closedUrl(state) {
   const entries = state?.entries ?? [];
@@ -57,7 +57,6 @@ function closedUrl(state) {
 function closedTabs(inPrivate) {
   const defs = WorkspaceStore.definitions.workspaces;
   const agentId = WorkspaceStore.agent?.id ?? null;
-  /** @type {any[]} */
   const data = lazy.SessionStore.getClosedTabData({ private: inPrivate });
   return data.map((c) => {
     const ucid = c.state?.userContextId ?? 0;
@@ -79,7 +78,6 @@ function closedTabs(inPrivate) {
  * @returns {ClosedWindow[]}
  */
 function closedWindows() {
-  /** @type {any[]} */
   const data = lazy.SessionStore.getClosedWindowData();
   return data.map((w) => ({
     closedId: w.closedId,
@@ -126,7 +124,7 @@ export function goToTab(win, target, tabId) {
   const tab = tabById(into, tabId);
   if (!tab) return;
   if (into !== win) into.focus();
-  /** @type {any} */ (into).gBrowser.selectedTab = tab;
+  into.gBrowser.selectedTab = tab;
 }
 
 /**
@@ -135,7 +133,8 @@ export function goToTab(win, target, tabId) {
  * closed rows reopen the same way (host/grep.mjs).
  * @param {BrowserWindow} win
  * @param {string} id  `closed:<closedId>` or `closedwin:<closedId>`
- * @returns {any} the reopened tab or window; undefined when the entry is gone (restored or
+ * @returns {MozTabbrowserTab | ChromeWindow | undefined} the reopened tab or window; undefined
+ *   when the entry is gone (restored or
  *   forgotten since it was listed)
  */
 export function reopenClosed(win, id) {
