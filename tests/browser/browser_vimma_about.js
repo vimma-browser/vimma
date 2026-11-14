@@ -28,19 +28,47 @@ const DISCOVERY = PathUtils.join(PathUtils.profileDir, "vimma-control.json");
 const dir = PathUtils.join(PathUtils.tempDir, `vimma-about-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
 
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
+ * Resolves with the first truthy value of `cond`.
+ * @template T
+ * @param {() => T} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
+/**
+ * about:vimma's document. The page loads in the parent process (AboutVimma.sys.mjs's
+ * getURIFlags has no URI_MUST_LOAD_IN_CHILD), so the browser has it; contentDocument is null only
+ * for a remote page, where a read through it throws.
+ * @param {XULBrowserElement} browser
+ */
+const docOf = (browser) => found(browser.contentDocument);
+
 /** The repository, found through `surfer import`'s symlink to this test file. */
 function repoDir() {
   const self = getChromeDir(getResolvedURI(gTestPath));
-  self.append(gTestPath.split("/").pop());
+  self.append(gTestPath.split("/").at(-1) ?? "");
   self.normalize();
   return self.parent.parent.parent; // tests/browser/<file>
 }
 
-/** Every *.patch under `path`, recursively. */
+/**
+ * Every *.patch under `path`, recursively.
+ * @param {string} path
+ * @returns {Promise<number>}
+ */
 async function countPatches(path) {
   let n = 0;
   for (const child of await IOUtils.getChildren(path)) {
@@ -68,10 +96,13 @@ async function ready(browser) {
 
 /** @param {XULBrowserElement} browser @param {string} id */
 function section(browser, id) {
-  return browser.contentDocument.getElementById(id)?.textContent ?? "";
+  return docOf(browser).getElementById(id)?.textContent ?? "";
 }
 
-/** `:`, the line, Enter. */
+/**
+ * `:`, the line, Enter.
+ * @param {string} line
+ */
 function runCommand(line) {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString(line);
@@ -81,7 +112,9 @@ function runCommand(line) {
 add_task(async function setup() {
   await IOUtils.makeDirectory(dir, { createAncestors: true });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   });
 });
@@ -90,7 +123,7 @@ add_task(async function the_url_opens_the_page_with_versions_and_patches() {
   const tab = await openAbout();
   const browser = tab.linkedBrowser;
   Assert.equal(browser.currentURI.spec, ABOUT, "the URL stays about:vimma");
-  Assert.equal(browser.contentDocument.title, "about:vimma", "the page's title");
+  Assert.equal(docOf(browser).title, "about:vimma", "the page's title");
   const version = section(browser, "version");
   Assert.stringContains(version, Services.appinfo.version, "the Firefox version");
   Assert.stringContains(version, Services.appinfo.appBuildID, "the build ID");
@@ -102,9 +135,9 @@ add_task(async function the_url_opens_the_page_with_versions_and_patches() {
 
   const expected = await countPatches(PathUtils.join(repoDir().path, "src"));
   Assert.greater(expected, 0, "sanity: the repository carries patches");
-  const count = browser.contentDocument.getElementById("patch-count")?.textContent;
+  const count = docOf(browser).getElementById("patch-count")?.textContent;
   Assert.equal(count, String(expected), "the patch count is the number of src/**/*.patch");
-  const rows = browser.contentDocument.querySelectorAll("#patches tbody tr");
+  const rows = docOf(browser).querySelectorAll("#patches tbody tr");
   Assert.equal(rows.length, expected, "one row per patch");
   Assert.stringContains(section(browser, "patches"), "browser-xhtml.patch", "patches by name");
   BrowserTestUtils.removeTab(tab);
@@ -138,7 +171,7 @@ add_task(async function config_errors_show_with_file_and_line() {
   await IOUtils.writeUTF8(file, `schema = 2\n[keys]\nnew_tab = "prefix+y"\n`);
   await ConfigHost.reload();
   const again = await openAbout();
-  const doc = again.linkedBrowser.contentDocument;
+  const doc = docOf(again.linkedBrowser);
   Assert.stringContains(section(again.linkedBrowser, "config"), "loaded", "the file is loaded");
   Assert.equal(doc.getElementById("config-schema")?.textContent, "2", "the schema version");
   const overridden = [...doc.querySelectorAll("#bindings tr.overridden")].map((r) => r.textContent);
@@ -177,13 +210,11 @@ add_task(async function workspaces_and_the_last_keys() {
   const browser = tab.linkedBrowser;
   const n = WorkspaceStore.definitions.workspaces.length;
   Assert.equal(
-    browser.contentDocument.getElementById("workspace-count")?.textContent,
+    docOf(browser).getElementById("workspace-count")?.textContent,
     String(n),
     "the workspace count",
   );
-  const keys = [...browser.contentDocument.querySelectorAll("#keys li")].map(
-    (li) => li.textContent,
-  );
+  const keys = [...docOf(browser).querySelectorAll("#keys li")].map((li) => li.textContent);
   Assert.lessOrEqual(keys.length, 20, "at most the last 20 key events");
   Assert.deepEqual(
     keys.slice(-3),
@@ -201,7 +232,7 @@ add_task(async function the_control_token_never_appears() {
   const { token, port } = JSON.parse(await IOUtils.readUTF8(DISCOVERY));
   Assert.ok(token, "sanity: the server has a token");
   const tab = await openAbout();
-  const html = tab.linkedBrowser.contentDocument.documentElement.outerHTML;
+  const html = docOf(tab.linkedBrowser).documentElement.outerHTML;
   Assert.stringContains(section(tab.linkedBrowser, "control"), "enabled", "the socket is on");
   Assert.stringContains(section(tab.linkedBrowser, "control"), String(port), "its port");
   Assert.ok(!html.includes(token), "the token is nowhere in the page");
@@ -222,7 +253,9 @@ add_task(async function bug_copies_a_redacted_report() {
   Assert.stringContains(text, Services.appinfo.version, "the report has the versions");
   Assert.ok(!text.includes(home + "/"), "no path under $HOME");
   Assert.ok(!text.includes("secret-page") && !/https?:\/\//.test(text), "no URLs");
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 add_task(async function the_report_counts_open_tabs_beside_the_workspace_model() {
@@ -236,7 +269,8 @@ add_task(async function the_report_counts_open_tabs_beside_the_workspace_model()
   );
   await WorkspaceStore.init();
   const page = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?count`);
-  const ww = WindowWorkspaces.get(window);
+  // Vimma made the window's workspaces when it started this window.
+  const ww = found(WindowWorkspaces.get(window));
   await until(
     () => ww.idOf(page) && ww.model?.workspaces.some((w) => w.tabs.includes(ww.idOf(page))),
     "the tab is in the model",
@@ -266,7 +300,7 @@ add_task(async function vim_keys_scroll_it() {
   const browser = tab.linkedBrowser;
   await focusContent(browser);
   await until(() => VimmaHost.status(window).mode === "normal", "about:vimma is in normal mode");
-  const win = browser.contentWindow;
+  const win = found(browser.contentWindow);
   Assert.equal(win.scrollY, 0, "starts at the top");
   EventUtils.synthesizeKey("j");
   await until(() => win.scrollY > 0, "j scrolls down");

@@ -45,8 +45,21 @@ const BUDGETS = {
   "workspace-200-out": { action: 25, paint: 115 },
 };
 
-const ww = () => WindowWorkspaces.get(window);
-const view = () => PaneViews.get(window);
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+// The window's workspaces and pane view, which Vimma made when it started this window.
+const ww = () => found(WindowWorkspaces.get(window));
+const view = () => found(PaneViews.get(window));
+/** The window's workspace model, which it has once its workspaces are set up. */
+const workspaceModel = () => found(ww().model);
 /** @type {string[]} */
 const created = [];
 
@@ -55,7 +68,9 @@ registerCleanupFunction(async () => {
   const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
   if (main) ww().switchTo({ id: main.id });
   for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
@@ -147,6 +162,11 @@ function report(name, samples) {
   return result;
 }
 
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -199,7 +219,9 @@ add_task(async function key_floor_prefix_then_escape() {
 
 add_task(async function key_to_paint_pane_focus_across_two_live_panes() {
   const a = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?a`);
-  const b = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?b`);
+  const b = /** @type {SplitTab} */ (
+    await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?b`)
+  );
   await BrowserTestUtils.switchTab(gBrowser, a);
   Assert.ok(view().split("vertical", { tab: b }).ok, "split a | b");
   view().focus("left");
@@ -228,21 +250,25 @@ add_task(async function key_to_paint_workspace_switch_with_200_tabs() {
   created.push(big.id);
   const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
   ww().switchTo({ id: big.id });
-  await until(() => ww().model.active === big.id, "sanity: in perf-200");
+  await until(() => workspaceModel().active === big.id, "sanity: in perf-200");
+  const userContextId = big.userContextId;
+  Assert.ok(userContextId, "sanity: perf-200 has a container of its own");
   const principal = Services.scriptSecurityManager.getSystemPrincipal();
   // Lazy tabs, as most of a large restored workspace is: hidden and shown like any other.
   while (gBrowser.visibleTabs.length < TABS) {
     gBrowser.addTab("about:blank", {
       createLazyBrowser: true,
       skipAnimation: true,
-      userContextId: big.userContextId,
+      userContextId,
       triggeringPrincipal: principal,
     });
   }
-  const bigTabs = ww().model.workspaces.find((w) => w.id === big.id)?.tabs.length;
+  const bigTabs = workspaceModel().workspaces.find((w) => w.id === big.id)?.tabs.length;
   Assert.equal(bigTabs, TABS, `perf-200 holds ${TABS} tabs`);
-  ww().switchTo({ id: main.id });
-  await until(() => ww().model.active === main.id, "sanity: back in main");
+  // The profile's own workspace, which every profile has.
+  const mainId = found(main).id;
+  ww().switchTo({ id: mainId });
+  await until(() => workspaceModel().active === mainId, "sanity: back in main");
   // Two workspaces only (main and perf-200, plus any the profile has): ) and ( alternate
   // between main and perf-200 when they are neighbours; switch by name otherwise.
   // The agent workspace (docs/specs/vimma-mcp.md decision 9) sorts last and is not cycled.
@@ -258,13 +284,13 @@ add_task(async function key_to_paint_workspace_switch_with_200_tabs() {
     into.push(
       await timePress(
         () => prefix(")", { shiftKey: true }),
-        () => ww().model.active === big.id && gBrowser.visibleTabs.length === TABS,
+        () => workspaceModel().active === big.id && gBrowser.visibleTabs.length === TABS,
       ),
     );
     outOf.push(
       await timePress(
         () => prefix("(", { shiftKey: true }),
-        () => ww().model.active === main.id && gBrowser.visibleTabs.length < TABS,
+        () => workspaceModel().active === mainId && gBrowser.visibleTabs.length < TABS,
       ),
     );
   }

@@ -122,6 +122,8 @@ interface FirefoxServices {
   // engine/intl/locale/mozILocaleService.idl
   locale: { appLocaleAsBCP47: string };
   scriptloader: mozIJSSubScriptLoader;
+  // engine/intl/build/components.conf (js_name "strings")
+  strings: nsIStringBundleService;
 }
 
 // engine/dom/chrome-webidl/IOUtils.webidl
@@ -186,6 +188,8 @@ interface MozBrowser {
 
 // engine/dom/webidl/Document.webidl
 interface Document {
+  /** Its DocumentL10n; null for a document that does not support Fluent (DocumentSupportsL10n). */
+  readonly l10n: DocumentL10n | null;
   readonly hasValidTransientUserGestureActivation: boolean;
   notifyUserGestureActivation(): void;
   /** Chrome-only: the document's sandbox flags, or null when it has none. */
@@ -841,10 +845,10 @@ interface PdfJsViewer {
   pagesRotation: number;
   /** 14611 */
   readonly isInPresentationMode: boolean;
-  /** 14754: ScrollMode (VERTICAL 0, PAGE 3). */
-  readonly scrollMode: number;
-  /** 14797: SpreadMode (NONE 0, ODD 1, EVEN 2). */
-  readonly spreadMode: number;
+  /** 14754 and 14757: ScrollMode (VERTICAL 0, PAGE 3). */
+  scrollMode: number;
+  /** 14797 and 14800: SpreadMode (NONE 0, ODD 1, EVEN 2). */
+  spreadMode: number;
 }
 /**
  * `class PDFDocumentProxy` (engine/toolkit/components/pdfjs/content/build/pdf.mjs, line 15353):
@@ -881,9 +885,11 @@ type PdfJsWindow = typeof globalThis & { readonly PDFViewerApplication: PdfJsApp
 
 // engine/js/xpconnect/idl/xpccomponents.idl: exportFunction returns a forwarder in the target's
 // compartment that calls `fn` with the same arguments (cloned) and hands back its result, so a
-// test that gives it to the page keeps the function's own signature.
+// test that gives it to the page keeps the function's own signature. The forwarder leaves `this`
+// unbound: `fn` must not use it, which `F` cannot say. `defineAs` also sets the forwarder on
+// `target` under that name.
 interface XPCComponentsUtils {
-  exportFunction<F extends Function>(fn: F, target: object): F;
+  exportFunction<F extends Function>(fn: F, target: object, options?: { defineAs?: string }): F;
 }
 
 // Firefox's import wizard, as Settings shows it in its <dialog id="migrationWizardDialog">
@@ -932,4 +938,142 @@ type PreferencesWindow = Window &
 // text (MozBaseInputElement's property, engine/toolkit/content/widgets/lit-utils.mjs).
 interface LoginDoorhangerUsernameField extends HTMLElement {
   value: string;
+}
+
+// Fluent, as chrome code formats strings with it: engine/dom/webidl/Localization.webidl,
+// engine/dom/webidl/DOMLocalization.webidl, engine/dom/chrome-webidl/DocumentL10n.webidl,
+// engine/dom/chrome-webidl/L10nRegistry.webidl and engine/dom/chrome-webidl/Fluent.webidl.
+
+/** Fluent's arguments (Fluent.webidl, L10nArgs). */
+type L10nArgs = Record<string, string | number | null>;
+/** A resource's path, or the path and whether it may be missing (L10nRegistry.webidl). */
+type L10nResourceId = string | { path: string; _optional?: boolean };
+/** A message's id and arguments (Localization.webidl, L10nIdArgs); both are null by default. */
+interface L10nIdArgs {
+  id?: string | null;
+  args?: L10nArgs | null;
+}
+/** Localization.webidl (L10nMessage): `value` and `attributes` are null for a message without. */
+interface L10nMessage {
+  readonly value: string | null;
+  readonly attributes: { readonly name: string; readonly value: string }[] | null;
+}
+/**
+ * Localization.webidl: formats messages from `resourceIds`; `sync` true allows the *Sync
+ * methods. A message it cannot find is null in the lists it returns.
+ */
+interface Localization {
+  formatValue(id: string, args?: L10nArgs): Promise<string | null>;
+  formatMessages(keys: (string | L10nIdArgs)[]): Promise<(L10nMessage | null)[]>;
+  formatMessagesSync(keys: (string | L10nIdArgs)[]): (L10nMessage | null)[];
+}
+declare var Localization: {
+  prototype: Localization;
+  new (
+    resourceIds: L10nResourceId[],
+    sync?: boolean,
+    registry?: L10nRegistry,
+    locales?: string[],
+  ): Localization;
+};
+/** DOMLocalization.webidl: a Localization that translates elements by their data-l10n-id. */
+interface DOMLocalization extends Localization {
+  /** An element's data-l10n-id and data-l10n-args (L10nIdArgs). */
+  getAttributes(element: Element): { id: string | null; args: L10nArgs | null };
+  translateElements(elements: Element[]): Promise<void>;
+}
+/** DocumentL10n.webidl: a document's DOMLocalization (`document.l10n`). */
+interface DocumentL10n extends DOMLocalization {}
+/** Fluent.webidl: a message's pattern, which only FluentBundle.formatPattern reads. */
+interface FluentPattern {}
+/** Fluent.webidl (FluentMessage): `value` is null for a message with attributes only. */
+interface FluentMessage {
+  readonly value: FluentPattern | null;
+  readonly attributes: Record<string, FluentPattern>;
+}
+/** Fluent.webidl: a parsed .ftl source. */
+interface FluentResource {}
+declare var FluentResource: { prototype: FluentResource; new (source: string): FluentResource };
+/** Fluent.webidl: getMessage is null for an id the bundle does not have. */
+interface FluentBundle {
+  addResource(resource: FluentResource, options?: { allowOverrides?: boolean }): void;
+  getMessage(id: string): FluentMessage | null;
+  formatPattern(pattern: FluentPattern, args?: L10nArgs | null, errors?: object): string;
+}
+/** L10nRegistry.webidl (FluentBundleIterator): `value` is null once `done`. */
+interface FluentBundleIterator {
+  next(): { value: FluentBundle | null; done: boolean };
+}
+/** L10nRegistry.webidl */
+interface L10nRegistry {
+  generateBundlesSync(locales: string[], resourceIds: L10nResourceId[]): FluentBundleIterator;
+}
+declare var L10nRegistry: { getInstance(): L10nRegistry };
+
+// engine/intl/strres/nsIStringBundle.idl: a .properties bundle. GetStringFromName throws for a
+// name the bundle does not have; getSimpleEnumeration lists its strings as nsIPropertyElement
+// (engine/xpcom/ds/nsIPersistentProperties2.idl), iterable in JS
+// (engine/xpcom/ds/nsISimpleEnumerator.idl).
+interface nsIPropertyElement {
+  readonly key: string;
+  readonly value: string;
+}
+interface nsIStringBundle {
+  GetStringFromName(name: string): string;
+  getSimpleEnumeration(): Iterable<nsIPropertyElement>;
+}
+interface nsIStringBundleService {
+  createBundle(urlSpec: string): nsIStringBundle;
+}
+
+// engine/browser/components/tabbrowser/NewTabPagePreloading.sys.mjs, a browser window global
+// (engine/browser/base/content/browser.js): removes the window's preloaded new-tab browser, if
+// it has one.
+declare var NewTabPagePreloading: { removePreloadedBrowser(window: Window): void };
+
+// engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
+// null for an id that has none. `extension` is the Extension that registered it
+// (engine/toolkit/components/extensions/Extension.sys.mjs sets it, an expando of the policy
+// object): promiseBackgroundStarted is set on an extension with a background
+// (parent/ext-backgroundPage.js); backgroundContext is undefined while it has no background page
+// (Extension.sys.mjs), and the page's xulBrowser undefined without a message manager proxy
+// (ExtensionParent.sys.mjs).
+interface WebExtensionPolicy {
+  readonly id: string;
+  readonly extension: {
+    promiseBackgroundStarted(): Promise<void>;
+    readonly backgroundContext: { readonly xulBrowser: MozBrowser | undefined } | undefined;
+  };
+}
+declare var WebExtensionPolicy: {
+  prototype: WebExtensionPolicy;
+  getByID(id: string): WebExtensionPolicy | null;
+};
+
+// engine/browser/components/sidebar/sidebar-history.mjs (SidebarHistory): the History sidebar's
+// <sidebar-history>. Its constructor makes `controller`, so it is undefined until the element is
+// upgraded. engine/browser/components/firefoxview/HistoryController.sys.mjs: isHistoryPending is
+// true until the history has loaded; profileAge, in days, decides the import promo.
+interface SidebarHistoryElement extends HTMLElement {
+  readonly controller?: { readonly isHistoryPending: boolean; profileAge: number };
+}
+
+// engine/toolkit/components/extensions/ExtensionXPCShellUtils.sys.mjs (ExtensionWrapper): what
+// ExtensionTestUtils.loadExtension returns, a test extension. startup() and unload() reject when
+// the extension is not in the state they start from; awaitMessage resolves with the first
+// argument the extension sent with `msg` (browser.test.sendMessage), undefined without one.
+interface ExtensionWrapper {
+  startup(): Promise<unknown>;
+  unload(): Promise<void>;
+  awaitMessage(msg: string): Promise<unknown>;
+}
+// The WebExtension API a test extension's own scripts see as their global `browser`: the members
+// they call. runtime.getBrowserInfo resolves with a BrowserInfo
+// (engine/toolkit/components/extensions/schemas/runtime.json); test.sendMessage is
+// engine/toolkit/components/extensions/schemas/test.json's, which awaitMessage receives.
+interface WebExtensionApi {
+  readonly runtime: {
+    getBrowserInfo(): Promise<{ name: string; vendor: string; version: string; buildID: string }>;
+  };
+  readonly test: { sendMessage(msg: string, ...args: unknown[]): void };
 }
