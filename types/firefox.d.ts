@@ -426,6 +426,8 @@ interface nsIDOMWindowUtils {
 // engine/dom/webidl/Element.webidl, Node.webidl and Event.webidl (chrome-only members)
 interface Element {
   readonly openOrClosedShadowRoot: ShadowRoot | null;
+  /** The slot it is assigned to, in an open or a closed shadow tree. */
+  readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
   readonly scrollTopMax: number;
   readonly scrollLeftMax: number;
 }
@@ -433,6 +435,10 @@ interface Node {
   readonly ownerGlobal: Window;
   /** The global of the document the node lives in (Node.webidl, ChromeOnly). */
   readonly documentGlobal: Window | null;
+}
+interface Text {
+  /** The slot it is assigned to, in an open or a closed shadow tree. */
+  readonly openOrClosedAssignedSlot: HTMLSlotElement | null;
 }
 interface Event {
   readonly originalTarget: EventTarget | null;

@@ -32,11 +32,24 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 
 const FAILING = "http://127.0.0.1:9/";
 
-const agent = () => /** @type {any} */ (WorkspaceStore.agent);
+/** The agent workspace, with its container (containers are on in the browser tests). */
+const agent = () => /** @type {ContainedWorkspace} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
+
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** The tab an open just named. */
 const tabById = (/** @type {string} */ id) =>
-  gBrowser.tabs.find((t) => String(t.linkedBrowser.browserId) === id);
+  found(gBrowser.tabs.find((t) => String(t.linkedBrowser.browserId) === id));
 
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
@@ -53,7 +66,7 @@ add_task(async function setup() {
 
 add_task(async function test_builtin_open_names_the_error_page() {
   const conn = "builtin:load-error-test";
-  /** @type {any} */
+  /** @type {Parameters<typeof builtinHello>[1]} */
   const state = {};
   builtinHello(conn, state, { client: "load error test" });
   AgentGate.grantConnection(conn);
@@ -61,9 +74,11 @@ add_task(async function test_builtin_open_names_the_error_page() {
     const r = await runAgentCommand(conn, state, "agent-open", { url: FAILING, elements: true });
     const tab = tabById(r.tab);
     Assert.ok(tab, "the tab stays open");
+    // The page it shows: a loaded tab's browser has its document.
+    const shown = found(tab.linkedBrowser.documentURI).spec;
     Assert.ok(
-      tab.linkedBrowser.documentURI.spec.startsWith("about:neterror?e=deniedPortAccess"),
-      `the load ended on Firefox's error page: ${tab.linkedBrowser.documentURI.spec}`,
+      shown.startsWith("about:neterror?e=deniedPortAccess"),
+      `the load ended on Firefox's error page: ${shown}`,
     );
     Assert.equal(r.unlisted, "error", `the open says the page did not load: ${JSON.stringify(r)}`);
     Assert.equal(r.loadError, "deniedPortAccess", "and names Firefox's error");
@@ -72,7 +87,7 @@ add_task(async function test_builtin_open_names_the_error_page() {
     // vimma_elements on the same tab: a refusal in the same words.
     await Assert.rejects(
       runAgentCommand(conn, state, "agent-elements", { tab: r.tab }),
-      (/** @type {any} */ e) =>
+      (/** @type {{ code?: string, message?: string }} */ e) =>
         e.code === "failed" &&
         e.message ===
           "the page did not load: Firefox showed its error page, the address uses a port the " +
@@ -92,7 +107,7 @@ add_task(async function test_mcp_open_names_the_error_page() {
   await c.call("agent-hello", { client: { name: "load-error-agent" }, via: "example" });
   const id = c.request("agent-open", { url: FAILING, elements: true });
   await until(() => AgentGate.waiting.length > 0, "the open asks");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant" });
+  AgentGate.answer(AgentGate.waiting[0].id, { kind: "grant", minutes: null });
   const r = await c.response(id);
   Assert.ok(r.result, `the open answers: ${JSON.stringify(r.error)}`);
   Assert.equal(r.result.unlisted, "error", JSON.stringify(r.result));

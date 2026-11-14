@@ -104,22 +104,53 @@ declare function historyOf(browser: MozBrowser): nsISHistory;
 // tests/browser/head_vimma_agent_model.js
 
 declare const HttpServer: any;
-/** What the scripted model was sent: path, the headers that matter, and the body. */
+type ModelMessage = {
+  role: string;
+  content?: unknown;
+};
+type ModelRequestBody = {
+  model?: string;
+  messages: ModelMessage[];
+};
+type ScriptStep = {
+  call?: string;
+  args?: Record<string, unknown>;
+  say?: string;
+  reply?: string;
+  hold?: boolean;
+};
 /**
- * @type {{ path: string, cookie: string | null, authorization: string | null, body: any,
- *   apiKey?: string | null }[]}
+ * A message of a request to the model, in OpenAI's shape; an Anthropic request's `content` is a
+ * string or a list of blocks.
+ * @typedef {{ role: string, content?: unknown }} ModelMessage
+ */
+/**
+ * A request's JSON body: the model it asks for and the conversation so far.
+ * @typedef {{ model?: string, messages: ModelMessage[] }} ModelRequestBody
+ */
+/**
+ * A step of a script (see chatCompletions).
+ * @typedef {{ call?: string, args?: Record<string, unknown>, say?: string, reply?: string,
+ *   hold?: boolean }} ScriptStep
+ */
+/**
+ * What the scripted model was sent: path, the headers that matter, and the body (null for the
+ * paths that only record that they were asked).
+ * @type {{ path: string, cookie: string | null, authorization: string | null,
+ *   body: ModelRequestBody | null, apiKey?: string | null }[]}
  */
 declare const requests: {
   path: string;
   cookie: string | null;
   authorization: string | null;
-  body: any;
+  body: ModelRequestBody | null;
   apiKey?: string | null;
 }[];
 /** Replies held back until the test releases them, by the task text that asked. */
 /** @type {Map<string, () => void>} */
 declare const held: Map<string, () => void>;
-declare const server: any;
+/** @type {nsIHttpServer} */
+declare const server: nsIHttpServer;
 /**
  * The scripted model. A task is `SCRIPT:` and a JSON list of steps: `{ call, args }` for a tool
  * call (with `say`, the text that comes with it), `{ reply }` for a reply, `{ hold: true }` to
@@ -129,20 +160,31 @@ declare const server: any;
  * completions format, or in Anthropic's Messages format (`anthropic`), whose requests it reads
  * into the same shape first.
  */
-declare function chatCompletions(/** @type {any} */ req: any, /** @type {any} */ res: any): void;
+declare function chatCompletions(
+  /** @type {nsIHttpRequest} */ req: nsIHttpRequest,
+  /** @type {nsIHttpResponse} */ res: nsIHttpResponse,
+): void;
 /** Anthropic's Messages API, as the scripted model. */
-declare function anthropicMessages(/** @type {any} */ req: any, /** @type {any} */ res: any): void;
+declare function anthropicMessages(
+  /** @type {nsIHttpRequest} */ req: nsIHttpRequest,
+  /** @type {nsIHttpResponse} */ res: nsIHttpResponse,
+): void;
 /**
  * An Anthropic request's messages in OpenAI's shape: a tool result block becomes a `tool`
  * message with its text.
- * @param {any[]} messages
+ * @param {ModelMessage[]} messages
+ * @returns {ModelMessage[]}
  */
-declare const fromAnthropic: (messages: any[]) => any[];
+declare const fromAnthropic: (messages: ModelMessage[]) => ModelMessage[];
 /**
- * @param {any} req @param {any} res @param {"openai" | "anthropic"} format
+ * @param {nsIHttpRequest} req @param {nsIHttpResponse} res @param {"openai" | "anthropic"} format
  */
-declare function scripted(req: any, res: any, format: "openai" | "anthropic"): void;
-declare const PORT: any;
+declare function scripted(
+  req: nsIHttpRequest,
+  res: nsIHttpResponse,
+  format: "openai" | "anthropic",
+): void;
+declare const PORT: number;
 declare const PROVIDER: {
   name: string;
   kind: "openai";
@@ -150,8 +192,8 @@ declare const PROVIDER: {
   model: string;
   vision: boolean;
 };
-/** @param {any[]} steps */
-declare const script: (steps: any[]) => string;
+/** @param {ScriptStep[]} steps */
+declare const script: (steps: ScriptStep[]) => string;
 declare const openStep: (url: string) => {
   call: string;
   args: {

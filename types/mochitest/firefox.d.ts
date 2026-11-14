@@ -223,6 +223,22 @@ interface Tabbrowser {
     tab: MozTabbrowserTab,
     options?: { elementIndex?: number; tabIndex?: number; selectTab?: boolean },
   ): MozTabbrowserTab | null;
+  /**
+   * Opens a tab for each URI (or loads the first into `targetTab` or the selected tab with
+   * `replace`); the tabs opened or reused, in the order of `uris`.
+   */
+  loadTabs(
+    uris: string[],
+    options?: {
+      inBackground?: boolean;
+      replace?: boolean;
+      targetTab?: MozTabbrowserTab;
+      // An nsIPrincipal, as Services.scriptSecurityManager gives one (unknown in types/firefox.d.ts).
+      triggeringPrincipal?: unknown;
+      userContextId?: number;
+      fromExternal?: boolean;
+    },
+  ): MozTabbrowserTab[];
   // A browser's TabDialogBox (engine/browser/base/content/browser-tabdialogs.js), untyped here:
   // one test counts its content dialogs.
   getTabDialogBox(browser: MozBrowser): any;
@@ -259,9 +275,11 @@ interface PopupNotificationsApi {
 }
 
 // engine/dom/webidl/HTMLInputElement.webidl and HTMLTextAreaElement.webidl (chrome-only): set the
-// value as the user's typing would, with input and change events.
+// value as the user's typing would, with input and change events. revealPassword is a password
+// field's reveal state.
 interface HTMLInputElement {
   setUserInput(value: string): void;
+  revealPassword: boolean;
 }
 interface HTMLTextAreaElement {
   setUserInput(value: string): void;
@@ -726,8 +744,10 @@ interface nsITransport {
 }
 // engine/netwerk/base/nsISocketTransport.idl
 interface nsISocketTransport extends nsITransport {}
-// engine/xpcom/io/nsIInputStream.idl
-interface nsIInputStream extends nsISupports {}
+// engine/xpcom/io/nsIInputStream.idl: available() is the number of bytes that can be read now.
+interface nsIInputStream extends nsISupports {
+  available(): number;
+}
 // engine/xpcom/io/nsIAsyncInputStream.idl: `callback` (nsIInputStreamCallback) is called once,
 // on `target`, when the stream has data or is closed.
 interface nsIAsyncInputStream extends nsIInputStream {
@@ -1078,4 +1098,73 @@ interface WebExtensionApi {
     getBrowserInfo(): Promise<{ name: string; vendor: string; version: string; buildID: string }>;
   };
   readonly test: { sendMessage(msg: string, ...args: unknown[]): void };
+}
+
+// engine/netwerk/test/httpserver/nsIHttpServer.idl, as httpd.sys.mjs implements it (HttpServer of
+// resource://testing-common/httpd.sys.mjs): a test's HTTP server, a request it is handed and the
+// response a handler writes. httpd takes a plain function as the handler (it wraps one as
+// nsIHttpRequestHandler).
+interface nsIHttpRequest {
+  readonly method: string;
+  readonly path: string;
+  readonly queryString: string;
+  readonly httpVersion: string;
+  /** Throws NS_ERROR_NOT_AVAILABLE for a header the request does not have. */
+  getHeader(fieldName: string): string;
+  hasHeader(fieldName: string): boolean;
+  readonly bodyInputStream: nsIInputStream;
+}
+interface nsIHttpResponse {
+  setStatusLine(httpVersion: string, statusCode: number, description: string): void;
+  setHeader(name: string, value: string, merge?: boolean): void;
+  write(data: string): void;
+  /** The response is sent when the handler calls finish(), not when it returns. */
+  processAsync(): void;
+  finish(): void;
+}
+interface nsIHttpServerIdentity {
+  // Each throws NS_ERROR_NOT_INITIALIZED until the server is started.
+  readonly primaryScheme: string;
+  readonly primaryHost: string;
+  readonly primaryPort: number;
+}
+interface nsIHttpServer {
+  /** -1 picks a free port. */
+  start(port: number): void;
+  stop(callback: () => void): void;
+  registerPathHandler(
+    path: string,
+    handler: ((request: nsIHttpRequest, response: nsIHttpResponse) => void) | null,
+  ): void;
+  readonly identity: nsIHttpServerIdentity;
+}
+
+// engine/dom/chrome-webidl/InspectorUtils.webidl: a node's children, with its anonymous content
+// (a password field's reveal button) when `showingAnonymousContent` is true.
+declare var InspectorUtils: {
+  getChildrenForNode(
+    node: Node,
+    showingAnonymousContent: boolean,
+    includeAssignedNodes: boolean,
+  ): Node[];
+};
+
+// engine/toolkit/content/globalOverlay.js, loaded in the browser window: runs `command` on the
+// focused element's controller, if it has one that is enabled.
+declare function goDoCommand(command: string): void;
+
+// engine/dom/webidl/ServiceWorkerGlobalScope.webidl, Clients.webidl, ExtendableEvent.webidl and
+// FetchEvent.webidl: what a test's service worker uses of its global and of the events it gets
+// (TypeScript's DOM library has none of them). respondWith takes a Response or a promise of one:
+// WebIDL resolves a plain value.
+interface ServiceWorkerGlobalScope {
+  readonly clients: { claim(): Promise<void> };
+  skipWaiting(): Promise<void>;
+}
+interface ExtendableEvent extends Event {
+  waitUntil(promise: Promise<unknown>): void;
+}
+interface FetchEvent extends ExtendableEvent {
+  readonly request: Request;
+  respondWith(response: Response | Promise<Response>): void;
 }

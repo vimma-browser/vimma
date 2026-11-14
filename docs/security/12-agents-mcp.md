@@ -791,10 +791,23 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
   value so digits of other scripts or forms never pass); or a form whose fields the page did not say
   in time, that sends more than the 64 fields besides hidden ones the child reads, or one of whose
-  values is longer than the child reads of it. It asks with only `y` and `n`, naming the form's
-  method, destination and each field it sends by name and value (hidden fields counted, a file field
+  values is longer than the child reads of it; or a form that sends an entry none of its HTML
+  fields accounts for (a form-associated custom element's, whose name and value the page's script
+  holds and an Xray hides, issue [#1053](https://github.com/vimma-browser/vimma/issues/1053)), or
+  whose page handles `formdata`. The child reads those entries from the entry list the submission
+  builds (HTMLFormElement::ConstructEntryList), made with its own FormData so that a page's
+  FormData or iterators change nothing, and keeps only each entry's name and whether it is a file,
+  **never** its value. Building it fires `formdata` at the form, so it is built only when no
+  `formdata` listener or handler is on the event's path (the form, its ancestors and the slots
+  they are assigned to, each shadow root and its host, the document and the window): no page script
+  runs during the check, so the page can neither lie about the list nor change what is sent. With
+  such a listener, or when the list cannot be built, the form is not known whole and asks.
+  It asks with only `y` and `n`, naming the form's method, destination and each field it sends
+  by name and value (hidden fields counted, a file field
   by its name), **never** a password, payment card or one-time-code field's value, only its name and
-  `•••`, or the number of fields when the page did not say in time; its yes **never** makes or ends
+  `•••`, nor the value of an entry no HTML field accounts for, only its name and `(not read)` (and
+  `+ what the page adds` for a page that handles `formdata`), or the number of fields when the page
+  did not say in time; its yes **never** makes or ends
   a grant, and its `x` is a plain no. Under a grant, a submission that is none of the above runs
   unasked, with the grant's notice and a `:mcp log` row naming its method and destination (M23), and
   the guard below lets that one submission through as after a yes. Because another call (a fill) may
@@ -814,7 +827,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   on a payment's question, or without a grant, allows nothing beyond that step. An allowance covers
   later submissions whatever text or personal details they send, which no question shows. Not
   covered: a page's own script that copies typed text into hidden fields before a harmless-looking
-  submission, as a page's own `fetch` is not (mcp-forms F17);
+  submission, as a page's own `fetch` is not (mcp-forms F17), and of the same class a page that
+  adds a `formdata` listener, or sets a custom element's value (a component that calls
+  `setFormValue` only then), in its own listeners of the press (`pointerdown`, `mousedown`,
+  `click` or `submit`), after the check just before the press;
   a form that sends only the page's own values runs unasked under a grant whatever it does on
   the server (deleting, unsubscribing, confirming a step whose text an earlier step sent), and
   only the payment signals of M33 add a question there; a short number typed into a plain text
@@ -911,6 +927,18 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`a form checkpoint lists the fields it sends, sensitive ones as •••`](../../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a form checkpoint cleans the page's names and values and cuts them to fit`](../../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a malformed fields reply is refused, and a secret never carries a value`](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`test_a_component_holding_typed_text_asks_under_a_grant`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_component_without_a_name_sends_nothing_and_runs`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_component_sending_a_file_or_entries_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_form_whose_page_handles_formdata_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_formdata_listener_on_the_slot_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_formdata_listener_on_the_closed_shadow_root_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_the_documents_onformdata_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_formdata_listener_on_the_window_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`test_a_component_behind_a_hidden_field_of_its_name_asks`](../../tests/browser/browser_vimma_mcp_face.js),
+  [`an entry whose value is not read, or a list the page's script adds to, asks (K3)`](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`an entry not read is named without a value, and the page's additions are said`](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
+  [`a form checkpoint names an entry it did not read, and says when the page adds`](../../packages/vimma-core/test/agent-prompt.test.mjs),
   [`a click grant covers fills; a fill that submits asks under it`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`a plain button, a reset, one outside a form or one closing a dialog is not`](../../packages/vimma-core/test/agent-act.test.mjs)
 - M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
