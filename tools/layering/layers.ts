@@ -41,9 +41,9 @@ export const LAYERS: Record<string, number> = {
 
 /**
  * Imports that break the layers: none. The last three (the host reading the agent gate) went
- * when the gate moved to host/ (#936), and ADR-026, decision 5, admits no new one: layering.ts
- * fails on any entry here, whatever its reason. Reach a higher folder through a topic, a
- * callback or an interface object (decision 4).
+ * when the gate moved to host/ (#936), and ADR-026, decision 5, admits no new one:
+ * layer-rules.ts fails on any entry here, whatever its reason. Reach a higher folder through a
+ * topic, a callback or an interface object (decision 4).
  */
 export const EXCEPTIONS: Exception[] = [];
 

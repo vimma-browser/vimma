@@ -291,7 +291,8 @@ declare const Components: {
 // engine/dom/chrome-webidl/BrowsingContext.webidl
 declare const BrowsingContext: {
   get(id: number): any;
-  getCurrentTopByBrowserId(id: number): any;
+  /** Called in the parent process, where a context is canonical. */
+  getCurrentTopByBrowserId(id: number): CanonicalBrowsingContext | null;
 };
 
 // engine/dom/webidl/URL.webidl (chrome-only)
@@ -350,6 +351,9 @@ declare class JSWindowActorChild {
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
   readonly manager: {
+    // engine/toolkit/actors/FinderChild.sys.mjs, registered for every frame
+    // (engine/toolkit/modules/ActorManagerParent.sys.mjs)
+    getActor(name: "Finder"): FinderChildActor;
     getActor(name: string): any;
     readonly innerWindowId: number;
     readonly isCurrentGlobal: boolean;
@@ -446,6 +450,8 @@ interface Node {
 // engine/caps/nsIPrincipal.idl
 interface nsIPrincipal {
   readonly isSystemPrincipal: boolean;
+  readonly isNullPrincipal: boolean;
+  readonly isContentPrincipal: boolean;
 }
 
 // The exports Vimma's modules read through ChromeUtils.defineESModuleGetters, by export name (each
@@ -522,7 +528,9 @@ interface LazyModules {
     profileBeforeChange: { addBlocker(name: string, condition: () => unknown): void };
   };
   // engine/toolkit/modules/E10SUtils.sys.mjs
-  E10SUtils: { deserializePrincipal(base64: string): unknown };
+  // deserializePrincipal: null for a missing or empty one, else the principal (JSONToPrincipal
+  // may give null too).
+  E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
   // Untyped: wide Firefox APIs Vimma drives in depth (downloads, add-ons, permissions, form
   // autofill, search, containers, js-ctypes and subprocesses).
@@ -539,7 +547,8 @@ interface LazyModules {
   FormAutofillHeuristics: any;
   FormAutofillUtils: any;
   Integration: any;
-  JSONFile: any;
+  // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
+  JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
   PopupAndRedirectBlockerObserver: any;
   SearchService: any;
   SitePermissions: any;
@@ -823,4 +832,118 @@ interface MozFinder {
   findAgain(query: string, backward: boolean, linksOnly: boolean, outline: boolean): void;
   requestMatchesCount(query: string, args: object): void;
   removeSelection(keepHighlight?: boolean): void;
+}
+
+// engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup>, <panel> or <tooltip>
+// (engine/dom/xul/nsXULElement.cpp; XULTooltipElement extends it), the target of popupshowing
+// and popuphidden. `state` is one of the four the webidl's comment lists.
+interface XULPopupElement extends Element {
+  readonly state: "closed" | "showing" | "open" | "hiding";
+  readonly triggerNode: Node | null;
+  readonly anchorNode: Element | null;
+}
+
+// engine/dom/chrome-webidl/XULFrameElement.webidl: a XUL <browser>, <iframe> or <editor>
+// (nsXULElement.cpp). The members Vimma reads.
+interface XULFrameElement extends Element {
+  readonly contentDocument: Document | null;
+}
+
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's and a
+// browser's `browsingContext` are still `any`).
+interface BrowsingContext {
+  // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
+  // (engine/dom/chrome-webidl/OriginAttributes.webidl).
+  readonly originAttributes: { readonly userContextId: number; readonly privateBrowsingId: number };
+}
+// The parent process's context (BrowsingContext.webidl).
+interface CanonicalBrowsingContext extends BrowsingContext {
+  readonly currentWindowGlobal: WindowGlobalParent | null;
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's member)
+interface WindowGlobalParent {
+  readonly innerWindowId: number;
+}
+
+// engine/dom/webidl/Node.webidl (ChromeOnly): a slotted node's slot, a shadow root's host, else
+// the parent node.
+interface Node {
+  readonly flattenedTreeParentNode: Node | null;
+}
+
+// engine/dom/webidl/HTMLInputElement.webidl, the MozEditableElement mixin (ChromeOnly), which
+// HTMLTextAreaElement includes too. Reading it makes the editor if the element can have one.
+interface HTMLInputElement {
+  readonly editor: nsIEditor | null;
+}
+interface HTMLTextAreaElement {
+  readonly editor: nsIEditor | null;
+}
+// engine/editor/nsIEditor.idl. EditorBase::GetSelectionController fails (the getter throws)
+// rather than give null.
+interface nsIEditor {
+  readonly selectionController: nsISelectionController;
+}
+// engine/dom/base/nsISelectionController.idl
+interface nsISelectionController {
+  repaintSelection(type: number): void;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs (updateBrowserSharing and
+// resetBrowserSharing): a tab browser's sharing state, unset until a page first shares; webRTC
+// is WebRTCParent.sys.mjs's state (null once sharing stops), the others what PermissionUI and
+// SerialDeviceSharingHelper pass.
+interface MozTabBrowser {
+  readonly _sharingState?: {
+    webRTC?: { camera?: unknown; microphone?: unknown; screen?: unknown } | null;
+    geo?: unknown;
+    xr?: unknown;
+    serial?: unknown;
+  } | null;
+}
+
+// engine/toolkit/actors/FinderChild.sys.mjs: `finder` makes the frame's Finder on first read,
+// `_finder` is unset until then. engine/toolkit/modules/Finder.sys.mjs nulls `_fastFind` in
+// destroy().
+interface FinderChildActor {
+  readonly finder: FinderModule;
+  readonly _finder?: FinderModule | null;
+}
+interface FinderModule {
+  readonly _fastFind: nsITypeAheadFind | null;
+}
+// engine/toolkit/components/typeaheadfind/nsITypeAheadFind.idl
+interface nsITypeAheadFind {
+  readonly foundEditable: Element | null;
+  find(searchString: string, linksOnly: boolean, mode: number, dontIterateFrames: boolean): number;
+}
+
+// engine/uriloader/base/nsIWebProgress.idl (the members Vimma reads)
+interface nsIWebProgress {
+  readonly isTopLevel: boolean;
+}
+
+// engine/toolkit/modules/JSONFile.sys.mjs: a JSON file kept in memory, saved after a delay.
+// Reading `data` throws until it is ready (load, ensureDataReady or a set); a missing file
+// reads as {}. finalize() rejects when called a second time.
+interface JSONFileConfig {
+  path: string;
+  backupTo?: string;
+  saveDelayMs?: number;
+  beforeSave?: () => unknown;
+}
+interface JSONFileInstance {
+  readonly path: string;
+  readonly dataReady: boolean;
+  data: unknown;
+  load(): Promise<void>;
+  ensureDataReady(): void;
+  saveSoon(): void;
+  finalize(): Promise<void>;
+}
+
+// engine/toolkit/components/commandlines/nsICommandLine.idl
+interface nsICommandLine {
+  /** Null (a void string) when the flag is absent; throws when it has no parameter. */
+  handleFlagWithParam(flag: string, caseSensitive: boolean): string | null;
 }

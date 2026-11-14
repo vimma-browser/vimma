@@ -1146,6 +1146,37 @@ describe("the gate's copies (security.md M62)", () => {
     expect(() => frozenCopy({ ok })).toThrow(/deeper than 32 levels/);
   });
 
+  test("frozenCopy passes its own copy through, so an event around a request at the limit copies", () => {
+    /** @type {any} */
+    let asked = { url: "https://a.example/" };
+    for (let i = 1; i < FROZEN_COPY_DEPTH; i++) asked = { asked };
+    const what = frozenCopy(asked);
+    // The gate's events hold the request two and three levels down (issue #1027).
+    const ran = /** @type {any} */ (frozenCopy({ kind: "ran", what }));
+    expect(ran.what).toBe(what);
+    const question = Object.freeze({ id: 1, what });
+    const event = /** @type {any} */ (frozenCopy({ kind: "asked", question }));
+    expect(event.question).not.toBe(question);
+    expect(event.question.what).toBe(what);
+    expect(Object.isFrozen(event) && Object.isFrozen(event.question)).toBe(true);
+  });
+
+  test("frozenCopy still copies an object someone else froze", () => {
+    const inner = Object.freeze({ key: "k" });
+    const live = { here: inner, list: Object.freeze([inner]) };
+    Object.freeze(live);
+    const copy = /** @type {any} */ (frozenCopy(live));
+    expect(copy).not.toBe(live);
+    expect(copy.here).not.toBe(inner);
+    expect(copy.list).not.toBe(live.list);
+    expect(copy).toEqual(live);
+    // A frozen caller's object still counts toward the depth limit.
+    /** @type {any} */
+    let deep = Object.freeze({ url: "x" });
+    for (let i = 0; i < FROZEN_COPY_DEPTH; i++) deep = Object.freeze({ deep });
+    expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
+  });
+
   test("frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null", () => {
     /** @type {any} */
     let shared = { leaf: 1 };

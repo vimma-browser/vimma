@@ -130,10 +130,24 @@ function cancel(id) {
   changed();
 }
 
-/** @param {GateEvent} [event] */
+/**
+ * Tell every listener. Never throws: it runs after the gate changed (a call logged as run, a
+ * question queued with its timer), so a throw here would leave the gate half-updated (#1027).
+ * @param {GateEvent} [event]
+ */
 function changed(event) {
-  // One frozen copy for every listener: none can change what the next one hears (M62).
-  const told = event === undefined ? undefined : frozenCopy(event);
+  // One frozen copy for every listener: none can change what the next one hears (M62). The
+  // gate's own copies inside it (a request's `what`, a label) are passed through as they are.
+  /** @type {Readonly<GateEvent> | undefined} */
+  let told;
+  try {
+    told = event === undefined ? undefined : frozenCopy(event);
+  } catch (e) {
+    // Cannot happen: every event is built from primitives and the gate's own copies (announce
+    // and notify copy what they are handed first). Kept so a throw here never leaves the gate
+    // half-updated; the listeners would hear a plain change, without the event.
+    console.error("vimma agent gate:", e);
+  }
   for (const listener of listeners) {
     try {
       listener(told);
@@ -219,8 +233,10 @@ export const AgentGate = {
    *   that process's dropped link (docs/specs/mcp-session-grants.md S3)
    */
   connect(conn, label, session) {
+    // Copied first: a label that cannot be copied throws before the queue knows the connection.
+    const kept = frozenCopy({ ...label, since: Date.now() });
     queue.connect(conn, { ...(session ? { session } : {}), now: Date.now() });
-    labels.set(conn, frozenCopy({ ...label, since: Date.now() }));
+    labels.set(conn, kept);
     changed();
   },
 
@@ -297,7 +313,15 @@ export const AgentGate = {
         resolve,
         timer,
       });
-      onCancel?.(() => cancel(id));
+      try {
+        onCancel?.(() => cancel(id));
+      } catch (e) {
+        // The caller could not keep its way to withdraw the question: withdraw it now, so no
+        // question waits with its timer behind a promise that never settles (#1027).
+        console.error("vimma agent gate:", e);
+        cancel(id);
+        return;
+      }
       changed({ kind: "asked", question: /** @type {Question} */ (questionOf(id)) });
     });
   },
@@ -328,7 +352,8 @@ export const AgentGate = {
    * @param {{ hold?: boolean }} [options]  hold: until no question waits (spec ship-vimma-ctl)
    */
   notify(text, options) {
-    changed({ kind: "notice", text, ...options });
+    // Copied here: a value that cannot be copied throws to this caller, before anyone is told.
+    changed(frozenCopy({ kind: "notice", text, ...options }));
   },
 
   /**
@@ -348,10 +373,8 @@ export const AgentGate = {
     if (AgentGate.waiting.some((q) => q.conn === FULL_CONN)) {
       return Promise.resolve({ allow: false, reason: "busy" });
     }
-    const outcome = this.request(FULL_CONN, FULL_CONTROL, code ? { code } : {});
-    const mine = [...pending.values()].find((p) => p.conn === FULL_CONN);
-    if (mine) onCancel?.(() => cancel(mine.id));
-    return outcome;
+    // onCancel goes through request(), which withdraws the question if it throws (#1027).
+    return this.request(FULL_CONN, FULL_CONTROL, code ? { code } : {}, { onCancel });
   },
 
   /**
@@ -480,11 +503,13 @@ export const AgentGate = {
    * @param {ConnId} conn @param {string} tool @param {object} what @param {number} until
    */
   announce(conn, tool, what, until) {
+    // Copied here: a value that cannot be copied throws to this caller, before anyone is told.
+    const kept = frozenCopy(what);
     const label = labels.get(conn);
     // A grant revoked while the call ran shows no "(grant, …left)".
     const grant = queue.grants(Date.now()).find((g) => g.conn === conn);
     if (!label || !grant) return;
-    changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
+    changed({ kind: "ran", conn, tool, what: kept, label, until: Math.min(until, grant.until) });
   },
 
   /** `:mcp log`'s rows, newest first (mcp-drive D14): frozen, the log's own (M62). */

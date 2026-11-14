@@ -376,7 +376,7 @@ export class AgentChatWindow {
       });
       return true;
     }
-    const known = new Set(this.services.chat.list().map((/** @type {any} */ c) => c.id));
+    const known = new Set(this.services.chat.list().map((c) => c.id));
     if (conversation !== undefined) this.show(conversation);
     if (this.conversation === null || !known.has(this.conversation)) {
       const last = this.services.chat.list().at(-1);
@@ -738,7 +738,7 @@ export class AgentChatWindow {
       // transcript meanwhile (a list, the key field) is not pulled into the picker (#1005).
       const sentAt = this.listed;
       this.services.chat.send(id, text, { ask }).then(
-        (/** @type {any} */ r) => {
+        (r) => {
           if ("refused" in r) {
             const { where, plain } = this.keepUnsent(id, text);
             // The model is not there: another is picked, and the message waits for it.
@@ -990,11 +990,9 @@ export class AgentChatWindow {
     const now = Date.now();
     this.rows = this.services.chat
       .list()
-      .filter((/** @type {any} */ c) =>
-        (c.title || "New conversation").toLowerCase().includes(this.filter),
-      )
-      .sort((/** @type {any} */ a, /** @type {any} */ b) => b.used - a.used || b.id - a.id)
-      .map((/** @type {any} */ c) => ({
+      .filter((c) => (c.title || "New conversation").toLowerCase().includes(this.filter))
+      .sort((a, b) => b.used - a.used || b.id - a.id)
+      .map((c) => ({
         label: `${c.running ? "▶ " : ""}${c.title || "New conversation"}`,
         detail: `${c.provider.name} · ${c.provider.model || c.provider.cli} · ${lastUseText(c.used, now)}`,
         id: c.id,
@@ -1493,7 +1491,7 @@ export class AgentChatWindow {
     const c =
       this.conversation === null
         ? null
-        : this.services.chat.list().find((/** @type {any} */ x) => x.id === this.conversation);
+        : this.services.chat.list().find((x) => x.id === this.conversation);
     const config = this.services.agentConfig();
     const lines = chatHeader({
       provider: c?.provider ?? null,
@@ -1561,7 +1559,7 @@ export class AgentChatWindow {
         const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
         const selected = this.focusedLog() ? this.entry : -2;
         log.replaceChildren(
-          ...t.entries.map((/** @type {any} */ entry, /** @type {number} */ i) =>
+          ...t.entries.map((entry, i) =>
             this.entryNode(
               doc,
               entry,

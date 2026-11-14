@@ -342,3 +342,182 @@ add_task(async function test_a_request_too_deep_to_copy_is_never_queued() {
     AgentGate.disconnect(CONN);
   }
 });
+
+/**
+ * A request nested exactly `levels` objects deep, the URL at the bottom.
+ * @param {number} levels
+ */
+const nested = (levels) => {
+  /** @type {any} */
+  let what = { url: ASKED, title: "Deep" };
+  for (let i = 1; i < levels; i++) what = { what };
+  return what;
+};
+
+// Issue #1027: a request at the copy limit (32 levels) is asked, shown, answered and logged, and
+// every listener hears its events: the gate's events hold the gate's own copy as it is, so the
+// event copy never counts the request's levels again.
+add_task(async function test_a_request_at_the_copy_limit_asks_and_is_heard() {
+  AgentGate.connect(CONN, { client: "agent-a" });
+  /** @type {any[]} */
+  const first = [];
+  /** @type {any[]} */
+  const second = [];
+  const one = (/** @type {any} */ e) => e?.question?.conn === CONN && first.push(e);
+  const two = (/** @type {any} */ e) => e?.question?.conn === CONN && second.push(e);
+  AgentGate.addListener(one);
+  AgentGate.addListener(two);
+  try {
+    const outcome = AgentGate.request(CONN, "vimma_read_page", nested(32));
+    const q = questionOf(CONN);
+    Assert.ok(q, "the request at the limit asks");
+    Assert.deepEqual(
+      first.map((e) => e.kind),
+      ["asked"],
+      "the first listener hears it asked",
+    );
+    Assert.deepEqual(
+      second.map((e) => e.kind),
+      ["asked"],
+      "and so does the next",
+    );
+    Assert.equal(first[0].question.what, q?.what, "the event holds the gate's own copy");
+    AgentUi.answer(window);
+    await until(() => lineText().includes("agent-a"), "the question line shows it");
+    AgentGate.answer(/** @type {NonNullable<typeof q>} */ (q).id, { kind: "once" });
+    Assert.ok((await outcome).allow, "the yes allows it");
+    Assert.deepEqual(
+      second.map((e) => e.kind),
+      ["asked", "answered"],
+      "every listener hears the answer",
+    );
+    Assert.equal(AgentGate.waiting.length, 0, "nothing still waits");
+    Assert.equal(AgentGate.log[0]?.outcome, "yes", "the call is logged as allowed");
+    Assert.equal(AgentGate.log[0]?.client, "agent-a", "under its agent");
+  } finally {
+    AgentGate.removeListener(one);
+    AgentGate.removeListener(two);
+    for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
+    AgentGate.disconnect(CONN);
+  }
+});
+
+// The same request under a grant runs with no throw, is logged as run under the grant, and every
+// listener hears it ran; one level deeper is still refused before anything is logged.
+add_task(async function test_a_request_at_the_copy_limit_runs_under_a_grant() {
+  AgentGate.connect(OTHER, { client: "agent-b" });
+  /** @type {any[]} */
+  const seen = [];
+  const listener = (/** @type {any} */ e) => e?.kind === "ran" && e.conn === OTHER && seen.push(e);
+  try {
+    const read = AgentGate.request(OTHER, "vimma_read_page", { url: ASKED });
+    AgentGate.answer(/** @type {any} */ (questionOf(OTHER)).id, { kind: "grant", minutes: 5 });
+    Assert.ok((await read).allow, "granted");
+    AgentGate.addListener(listener);
+    /** @type {Promise<any> | null} */
+    let ran = null;
+    try {
+      ran = AgentGate.request(OTHER, "vimma_read_page", nested(32));
+    } catch (e) {
+      Assert.ok(false, `the request at the limit does not throw: ${e}`);
+    }
+    Assert.ok(ran && (await ran).allow, "it runs under the grant");
+    Assert.equal(seen.length, 1, "the listener hears it ran");
+    Assert.equal(seen[0]?.label.client, "agent-b", "under its agent's name");
+    Assert.equal(AgentGate.log[0]?.outcome, "grant", "the log has it run under the grant");
+
+    const top = AgentGate.log[0];
+    Assert.throws(
+      () => AgentGate.request(OTHER, "vimma_read_page", nested(33)),
+      /deeper than 32 levels/,
+      "one level deeper throws",
+    );
+    Assert.equal(AgentGate.log[0], top, "before anything is logged");
+    Assert.equal(seen.length, 1, "or heard");
+  } finally {
+    AgentGate.removeListener(listener);
+    AgentGate.revoke();
+    AgentGate.disconnect(OTHER);
+  }
+});
+
+// Issue #1027, the waiting path: a caller's `onCancel` that throws once the question is queued
+// leaves no question pending with its timer behind a rejected promise. The question is withdrawn
+// and the caller is denied, so it fails closed.
+add_task(async function test_a_throwing_on_cancel_leaves_nothing_waiting() {
+  AgentGate.connect(CONN, { client: "agent-a" });
+  try {
+    const outcome = AgentGate.request(
+      CONN,
+      "vimma_read_page",
+      { url: ASKED },
+      {
+        onCancel: () => {
+          throw new Error("the caller's own bug");
+        },
+      },
+    );
+    Assert.equal(questionOf(CONN), undefined, "no question waits");
+    const settled = await outcome.then(
+      (o) => o,
+      (e) => ({ rejected: String(e) }),
+    );
+    Assert.deepEqual(settled, { allow: false, reason: "cancelled" }, "the caller is denied");
+    Assert.equal(AgentGate.log[0]?.outcome, "cancelled", "and the log says so");
+  } finally {
+    for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
+    AgentGate.disconnect(CONN);
+  }
+});
+
+// A label that cannot be copied throws before the queue knows its connection, so it never takes
+// the grant a dropped session left behind (mcp-session-grants S3); the next connection of that
+// session still gets it.
+add_task(async function test_a_label_that_cannot_be_copied_takes_no_session_grant() {
+  const THIRD = 1018003;
+  const SESSION = "gate-copies-1027";
+  // A session's grant is parked only while MCP is on (mcp-session-grants S5).
+  AgentGate.on();
+  AgentGate.connect(CONN, { client: "agent-a" }, SESSION);
+  try {
+    const read = AgentGate.request(CONN, "vimma_read_page", { url: ASKED });
+    AgentGate.answer(/** @type {any} */ (questionOf(CONN)).id, { kind: "grant", minutes: 5 });
+    Assert.ok((await read).allow, "granted");
+    AgentGate.disconnect(CONN);
+    Assert.equal(AgentGate.grants().length, 0, "the grant is parked, not in force");
+
+    Assert.throws(
+      () => AgentGate.connect(OTHER, { client: nested(32) }, SESSION),
+      /deeper than 32 levels/,
+      "a label too deep to copy throws",
+    );
+    Assert.equal(AgentGate.grants().length, 0, "and took no grant");
+
+    AgentGate.connect(THIRD, { client: "agent-c" }, SESSION);
+    Assert.equal(labelOf(THIRD)?.client, "agent-c", "the session's next connection keeps it");
+  } finally {
+    AgentGate.revoke();
+    AgentGate.disconnect(CONN);
+    AgentGate.disconnect(OTHER);
+    AgentGate.disconnect(THIRD);
+    // Back to MCP off, as the file found it: no session parks a grant.
+    AgentGate.off();
+  }
+});
+
+// The same for a full-control question (decision 29 C): an `onCancel` that throws leaves no
+// question waiting, and the caller is denied.
+add_task(async function test_a_throwing_on_cancel_leaves_no_full_control_question() {
+  /** @type {Promise<any> | null} */
+  let outcome = null;
+  try {
+    outcome = AgentGate.askFull(null, () => {
+      throw new Error("the caller's own bug");
+    });
+  } catch (e) {
+    Assert.ok(false, `askFull does not throw: ${e}`);
+  }
+  Assert.equal(AgentGate.waiting.length, 0, "no question waits");
+  Assert.deepEqual(await outcome, { allow: false, reason: "cancelled" }, "the caller is denied");
+  for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
+});

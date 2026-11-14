@@ -586,7 +586,7 @@ export const ConfigHost = {
     const path = configPath();
     /** @type {string | null} */
     let text = null;
-    /** @type {any} */
+    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
     let before = null;
     let target = path;
     try {
