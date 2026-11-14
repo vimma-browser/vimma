@@ -1,5 +1,5 @@
 // Checks the concurrency of the workflows that pull requests trigger, for
-// workflow-concurrency.test.mjs. A new push to a pull request makes its running checks
+// workflow-concurrency.test.ts. A new push to a pull request makes its running checks
 // worthless, so each such workflow cancels the superseded run of the same pull request. Required
 // checks belong to a commit, so the run of the newest head still reports every one of them. A
 // push to main, a schedule, a manual run or a workflow_call never cancels a run in progress: those
@@ -22,29 +22,29 @@ const PER_PR_KEY = /\$\{\{\s*github\.(?:ref|event\.pull_request\.number)\s*\}\}/
 /** On pull_request_target github.ref is the base branch, so only the number tells PRs apart. */
 const PR_NUMBER_KEY = /\$\{\{\s*github\.event\.pull_request\.number\s*\}\}/;
 
-/**
- * @param {unknown} v
- * @returns {v is Record<string, unknown>}
- */
-const isMap = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const isMap = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
- * @param {string} text a workflow file
- * @returns {string | null} the workflow-level concurrency group, or null when there is none
+ * @param text a workflow file
+ * @returns the workflow-level concurrency group, or null when there is none
  */
-export function concurrencyGroup(text) {
+export function concurrencyGroup(text: string): string | null {
   const c = parseWorkflow(text).concurrency;
   if (typeof c === "string") return c;
   return isMap(c) && typeof c.group === "string" ? c.group : null;
 }
 
 /**
- * @param {string} text a workflow file
- * @param {{ keepsRuns?: boolean }} [options] keepsRuns: the workflow may let a superseded pull
+ * @param text a workflow file
+ * @param options keepsRuns: the workflow may let a superseded pull
  *   request run finish (an allowlisted exception with its reason in the test)
- * @returns {string | null} why the workflow's concurrency breaks the rule, or null
+ * @returns why the workflow's concurrency breaks the rule, or null
  */
-export function prConcurrencyProblem(text, { keepsRuns = false } = {}) {
+export function prConcurrencyProblem(
+  text: string,
+  { keepsRuns = false }: { keepsRuns?: boolean } = {},
+): string | null {
   const events = triggers(text);
   if (!events.some((e) => PR_TRIGGERS.has(e))) return null;
   const c = parseWorkflow(text).concurrency;

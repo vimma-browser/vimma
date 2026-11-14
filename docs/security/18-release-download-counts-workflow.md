@@ -17,8 +17,8 @@ can write any branch but `main`, which its ruleset refuses, and create, move or 
 This is the same reach as pushing a branch (B11, B15, UP7), and nothing in this file can narrow
 it: the mitigations sit outside it, as rulesets for tags and for `stats`, or a GitHub App or
 deploy key that may write `stats` alone in place of the job token.
-[`runs once a day and by hand, never on a pull request or a push`](../../tools/test/downloads-workflow.test.mjs),
-[`both jobs run only in this repository from main; record only after collect succeeded`](../../tools/test/downloads-workflow.test.mjs)
+[`runs once a day and by hand, never on a pull request or a push`](../../tools/test/downloads-workflow.test.ts),
+[`both jobs run only in this repository from main; record only after collect succeeded`](../../tools/test/downloads-workflow.test.ts)
 
 - DC1. The workflow holds **no** secret: only the job token, with nothing granted at the top
   level. The `collect` job, which runs repository code, holds **only** `contents: read` and does
@@ -30,11 +30,11 @@ deploy key that may write `stats` alone in place of the job token.
   would turn on caching by itself), so the script never runs on the runner image's own Node,
   whose version this repository does not choose (ADR-025); the action runs with the same
   read-only token.
-  [`grants nothing by default; reads in collect, writes contents only in record`](../../tools/test/downloads-workflow.test.mjs),
+  [`grants nothing by default; reads in collect, writes contents only in record`](../../tools/test/downloads-workflow.test.ts),
   [`every job sets up Node before it runs node, npm or npx, but the listed ones`](../../tools/test/runner-node.test.ts),
   [`a setup-node before a guard or a token-holding tool never caches by itself`](../../tools/test/runner-node.test.ts),
-  [`collect runs the script without a stored credential`](../../tools/test/downloads-workflow.test.mjs),
-  [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../../tools/test/downloads-workflow.test.mjs)
+  [`collect runs the script without a stored credential`](../../tools/test/downloads-workflow.test.ts),
+  [`stays tiny: no npm install, short timeouts, no secret, runs in order`](../../tools/test/downloads-workflow.test.ts)
 - DC2. `contents: write` is **only** in the `record` job, which checks out the `stats` branch,
   runs no repository code (no `node`, no `npm`), and pushes **only** the fixed refspec
   `HEAD:stats`: the workflow has one `git push`. The token itself could write any branch and
@@ -43,10 +43,10 @@ deploy key that may write `stats` alone in place of the job token.
   its ruleset: it requires a pull request and has no bypass actor, so a push by the job token is
   refused. Tags and the `stats` branch have no ruleset unless the
   maintainer adds one (runbook, "Where it can push").
-  [`record runs no repository code and pushes only to the stats branch`](../../tools/test/downloads-workflow.test.mjs)
+  [`record runs no repository code and pushes only to the stats branch`](../../tools/test/downloads-workflow.test.ts)
 - DC3. The history is **append-only**: `record` refuses a new `downloads.csv` that does not begin
   byte for byte with the one on `stats`, and runs only after `collect` succeeded, from that run's
   own artifact. A failed fetch of the history fails the run rather than starting a new one.
-  [`record only appends: the new file must begin with the recorded history`](../../tools/test/downloads-workflow.test.mjs)
+  [`record only appends: the new file must begin with the recorded history`](../../tools/test/downloads-workflow.test.ts)
 - DC4. Every action is pinned by a full commit SHA.
-  [`every action it uses is pinned by a full commit SHA`](../../tools/test/downloads-workflow.test.mjs)
+  [`every action it uses is pinned by a full commit SHA`](../../tools/test/downloads-workflow.test.ts)

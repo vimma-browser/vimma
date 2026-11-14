@@ -4,12 +4,12 @@ import { STEPS } from "../upstream/suite-results.mjs";
 
 // docs/specs/site-compat.md, decision 1: the live site suite's workflow. It must never run on a
 // pull request or gate a merge, must stay on a free standard runner, and holds no secret. Text
-// checks, like patch-audit-workflow.test.mjs: no YAML dependency.
+// checks, like patch-audit-workflow.test.ts: no YAML dependency.
 const text = readFileSync(new URL("../../.github/workflows/sites.yml", import.meta.url), "utf8");
 const on = text.slice(text.indexOf("\non:\n"), text.indexOf("\npermissions:"));
 
-/** The text of one job under `jobs:`, up to the next job. @param {string} name */
-function job(name) {
+/** The text of one job under `jobs:`, up to the next job. */
+function job(name: string) {
   const start = text.indexOf(`\n  ${name}:\n`);
   if (start < 0) throw new Error(`no job ${name}`);
   const rest = text.slice(start + 1);
@@ -17,8 +17,8 @@ function job(name) {
   return next < 0 ? rest : rest.slice(0, next + 1);
 }
 
-/** A job's `permissions:` block as name → level. @param {string} jobText */
-function permissionsOf(jobText) {
+/** A job's `permissions:` block as name → level. */
+function permissionsOf(jobText: string) {
   const block = /\n {4}permissions:\n((?: {6}[\w-]+: \w+.*\n)+)/.exec(jobText)?.[1] ?? "";
   return Object.fromEntries([...block.matchAll(/^ {6}([\w-]+): (\w+)/gm)].map((m) => [m[1], m[2]]));
 }
@@ -134,8 +134,8 @@ describe("site-compat workflow (sites.yml)", () => {
 // every pull request, offline. A live site is never loaded from a pull request's run.
 describe("the snapshot gate in e2e.yml", () => {
   const e2e = readFileSync(new URL("../../.github/workflows/e2e.yml", import.meta.url), "utf8");
-  /** The step with `id`, up to the next step. @param {string} id */
-  const step = (id) => {
+  /** The step with `id`, up to the next step. */
+  const step = (id: string) => {
     const at = e2e.indexOf(`id: ${id}\n`);
     if (at < 0) throw new Error(`no step ${id}`);
     const start = e2e.lastIndexOf("\n      - ", at);

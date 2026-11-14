@@ -19,20 +19,19 @@ const workflows = readdirSync(dir)
   .filter((f) => /\.ya?ml$/.test(f))
   .map((name) => ({ name, text: readFileSync(new URL(name, dir), "utf8") }));
 
-/** @param {string} name */
-const workflow = (name) => workflows.find((w) => w.name === name)?.text ?? "";
+const workflow = (name: string) => workflows.find((w) => w.name === name)?.text ?? "";
 
 /**
- * @param {string} on the `on:` block
- * @param {string} runner the `runs-on:` value
- * @param {string} [extra] more lines of the job
+ * @param on the `on:` block
+ * @param runner the `runs-on:` value
+ * @param extra more lines of the job
  */
-const synthetic = (on, runner, extra = "") =>
+const synthetic = (on: string, runner: string, extra: string = "") =>
   `name: t\non:\n${on}\npermissions: {}\njobs:\n  a:\n    runs-on: ${runner}\n${extra}` +
   "    steps:\n      - run: true\n";
 
-/** @param {string} jobsBlock the lines under `jobs:` */
-const onPullRequest = (jobsBlock) =>
+/** @param jobsBlock the lines under `jobs:` */
+const onPullRequest = (jobsBlock: string) =>
   `name: t\non:\n  pull_request:\npermissions: {}\njobs:\n${jobsBlock}`;
 const good = "  a:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: true\n";
 
@@ -176,8 +175,7 @@ describe("self-hosted runners", () => {
   });
 
   it("a runs-on expression in such a workflow fails unless it resolves to a hosted image", () => {
-    const matrix = (/** @type {string} */ list) =>
-      `    strategy:\n      matrix:\n        os: ${list}\n`;
+    const matrix = (list: string) => `    strategy:\n      matrix:\n        os: ${list}\n`;
     const hosted = synthetic(
       "  pull_request:",
       "${{ matrix.os }}",

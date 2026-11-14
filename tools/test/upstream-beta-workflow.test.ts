@@ -5,23 +5,23 @@ import { join } from "node:path";
 import { tempDir } from "./temp-dir.mjs";
 
 // Spec upstream-beta-canary, B8–B10 and "Security and privacy"; docs/security/10-firefox-updates.md
-// G9, G10. The Beta canary's workflow shape. Text checks, like upstream-workflow.test.mjs: no YAML
+// G9, G10. The Beta canary's workflow shape. Text checks, like upstream-workflow.test.ts: no YAML
 // dependency.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 const text = readFileSync(new URL("upstream-beta.yml", dir), "utf8");
 const e2e = readFileSync(new URL("e2e.yml", dir), "utf8");
 const JOBS = ["detect", "source-check", "test", "render", "report"];
 
-/** @param {string} id a job id @returns {string} that job's YAML block */
-function job(id) {
+/** @param id a job id @returns that job's YAML block */
+function job(id: string): string {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
   throw new Error(`no job ${id}`);
 }
 
-/** @param {string} block @returns {string[]} the job's `permissions:` lines, comments dropped */
-function permissions(block) {
+/** @returns the job's `permissions:` lines, comments dropped */
+function permissions(block: string): string[] {
   const m = /^ {4}permissions:\n((?: {6}[a-z-]+: [a-z]+.*\n)+)/m.exec(block);
   if (!m?.[1]) return [];
   return m[1]
@@ -30,8 +30,8 @@ function permissions(block) {
     .map((l) => l.replace(/#.*/, "").trim());
 }
 
-/** @param {string} block a job @param {string} id a step's `id:` @returns {string} its script */
-function script(block, id) {
+/** @param block a job @param id a step's `id:` @returns its script */
+function script(block: string, id: string): string {
   const steps = block.split(/^(?= {6}- )/m);
   const found = steps.find((s) => new RegExp(`^ {8}id: ${id}$`, "m").test(s));
   if (!found) throw new Error(`no step with id ${id}`);
@@ -139,13 +139,17 @@ describe("upstream-beta.yml (the Beta canary)", () => {
 // The report job's scripts, run in bash against a fake `gh` that records every call and answers
 // `gh issue list` from a file: what the canary does to issues, without GitHub.
 describe("upstream-beta.yml report job", () => {
-  /**
-   * @param {{ issue?: object | null, open?: Array<{ number: number, title: string }>,
-   *   tracking?: Array<{ number: number, title: string }>, released?: string }} o
-   * @returns {{ status: number | null, calls: string[], files: Record<string, string>,
-   *   stderr: string }}
-   */
-  const report = ({ issue = null, open = [], tracking = [], released = "158" }) => {
+  const report = ({
+    issue = null,
+    open = [],
+    tracking = [],
+    released = "158",
+  }: {
+    issue?: object | null;
+    open?: Array<{ number: number; title: string }>;
+    tracking?: Array<{ number: number; title: string }>;
+    released?: string;
+  }): { status: number | null; calls: string[]; files: Record<string, string>; stderr: string } => {
     const tmp = tempDir("canary-report-");
     const bin = join(tmp, "bin");
     mkdirSync(bin);
@@ -193,8 +197,7 @@ esac
     }
     const callsFile = join(tmp, "calls");
     const calls = existsSync(callsFile) ? readFileSync(callsFile, "utf8").trim().split("\n") : [];
-    /** @type {Record<string, string>} */
-    const files = {};
+    const files: Record<string, string> = {};
     calls.forEach((_, i) => {
       const f = join(tmp, `body-${i + 1}`);
       if (existsSync(f)) files[String(i + 1)] = readFileSync(f, "utf8");
@@ -214,8 +217,7 @@ esac
     comment: "COMMENT\n",
     closeComment: "CLOSED\n",
   };
-  /** @param {string[]} calls */
-  const writes = (calls) => calls.filter((c) => !/^(issue list|label create)/.test(c));
+  const writes = (calls: string[]) => calls.filter((c) => !/^(issue list|label create)/.test(c));
 
   it("opens the issue with the owner mention when none is open", () => {
     const r = report({ issue });

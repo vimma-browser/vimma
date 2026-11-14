@@ -42,7 +42,7 @@ off instead of showing it ticked.
   missing secret fails the nightly. PR builds (`e2e.yml`) get no secret and build keyless.
   `release.yml`'s `build` job (merged from PR #23 during this spec) does the same, and its smoke
   check fails a build whose `AppConstants` still has the placeholder (it runs no mochitests).
-  `tools/test/safebrowsing-workflows.test.mjs` checks the steps in both and that no other release
+  `tools/test/safebrowsing-workflows.test.ts` checks the steps in both and that no other release
   job and no PR workflow mentions the secret.
 - **Test expectation.** `tools/mochitest.mjs` passes `--setenv=VIMMA_EXPECT_SAFEBROWSING_KEY=1|0`
   to the browser: `VIMMA_EXPECT_SAFEBROWSING_KEY` from the environment if set (the nightly sets
@@ -124,7 +124,7 @@ booleans, lengths, URL hosts.
 
 `tools/test/mochitest.test.mjs`: the expectation is passed as `--setenv`, from the key file's
 presence or an explicit environment value.
-`tools/test/safebrowsing-workflows.test.mjs`: the nightly and release `build` jobs write the key
+`tools/test/safebrowsing-workflows.test.ts`: the nightly and release `build` jobs write the key
 file with a builtin, never echo the secret, delete the file `if: always()`, and check the result
 (nightly: `VIMMA_EXPECT_SAFEBROWSING_KEY=1`; release: the placeholder grep); no other release job
 and not `e2e.yml` mention the secret.

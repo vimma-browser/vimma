@@ -8,7 +8,7 @@ a schedule, a manual run or `workflow_call` sets `cancel-in-progress: ${{ github
 'pull_request' }}`, so none of those runs is cut short once it runs (GitHub still keeps only
 the newest queued run of a group). In a called workflow `github.event_name`
 is the caller's event, so the upstream autopilot's and the Beta canary's calls of `e2e.yml` are
-never cancelled while they run. `tools/test/workflow-concurrency.test.mjs` holds every workflow with a
+never cancelled while they run. `tools/test/workflow-concurrency.test.ts` holds every workflow with a
 `pull_request` trigger to this, and keeps concurrency groups distinct across workflows.
 `dependabot-automerge.yml` is the one exception: its runs take seconds and act on the pull
 request's merge state, so they keep their order.

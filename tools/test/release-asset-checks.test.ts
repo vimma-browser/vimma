@@ -16,27 +16,21 @@ import { tempDir } from "./temp-dir.mjs";
 
 const WORKFLOWS = new URL("../../.github/workflows/", import.meta.url);
 
-/** @param {string} name */
-const workflow = (name) =>
-  /** @type {any} */ (
-    load(readFileSync(new URL(name, WORKFLOWS), "utf8"), { schema: CORE_SCHEMA })
-  );
+type Step = { name?: string; run?: string };
+type Workflow = { jobs: Record<string, { steps?: Step[] }> };
 
-/**
- * @param {string} file
- * @param {string} job
- * @param {string} step
- * @returns {string}
- */
-const runOf = (file, job, step) => {
-  const found = workflow(file).jobs[job].steps.find((/** @type {any} */ s) => s.name === step);
+const workflow = (name: string) =>
+  load(readFileSync(new URL(name, WORKFLOWS), "utf8"), { schema: CORE_SCHEMA }) as Workflow;
+
+const runOf = (file: string, job: string, step: string): string => {
+  const found = workflow(file).jobs[job]!.steps!.find((s) => s.name === step);
   return found?.run ?? "";
 };
 
 const DMG = "vimma-0.1.11-macos-aarch64.dmg";
 
 // [workflow, job, step, the file it looks for, what it runs when the file is there]
-const CHECKS = /** @type {const} */ ([
+const CHECKS = [
   [
     "homebrew.yml",
     "start",
@@ -65,16 +59,14 @@ const CHECKS = /** @type {const} */ ([
     DMG,
     "gh workflow run update-publish.yml --repo vimma-browser/vimma --ref main -f tag=v0.1.11 -f target=macos",
   ],
-]);
+] as const;
 
 /**
  * Runs a step with a stub `curl` that answers the release API with `code` and `body` (a string
  * is served as it is), and a stub `gh` that logs its arguments. Code 0 is a network error: curl
  * prints 000 and exits 7.
- * @param {string} run
- * @param {{ code?: number, body?: unknown }} api
  */
-const runWith = (run, { code = 200, body }) => {
+const runWith = (run: string, { code = 200, body }: { code?: number; body?: unknown }) => {
   const dir = tempDir("release-asset-check-");
   const bin = join(dir, "bin");
   mkdirSync(bin);
@@ -133,8 +125,7 @@ cat "${join(dir, "body.json")}" > "$out"
   };
 };
 
-/** @param {string[]} names */
-const release = (names, draft = false) => ({
+const release = (names: string[], draft = false) => ({
   tag_name: "v0.1.11",
   draft,
   assets: names.map((name) => ({ name, state: "uploaded" })),

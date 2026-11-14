@@ -9,14 +9,21 @@
 // Semantics follow GitHub's documentation: `&&` and `||` return an operand, strings compare
 // without case, and operands of different types compare as numbers.
 //
-//   import { evaluate, runJobs } from "./workflow-if.mjs";
+//   import { evaluate, runJobs } from "./workflow-if.ts";
 
-/** @typedef {string | number | boolean | null} Value */
+export type Value = string | number | boolean | null;
 
-/** @param {string} text */
-function tokenize(text) {
-  /** @type {string[]} */
-  const tokens = [];
+/**
+ * What an expression reads: `github`, `vars`, `needs`, `inputs`, and `status`, the values of the
+ * status functions. A path an expression names ends at a Value the test put there.
+ */
+export interface Context {
+  status?: { success: boolean; failure: boolean; cancelled: boolean };
+  [key: string]: unknown;
+}
+
+function tokenize(text: string) {
+  const tokens: string[] = [];
   const re =
     /\s*(?:('(?:[^']|'')*')|(==|!=|&&|\|\||[!()])|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*)|(-?\d+(?:\.\d+)?))/y;
   let at = 0;
@@ -25,47 +32,42 @@ function tokenize(text) {
     re.lastIndex = at;
     const m = re.exec(text);
     if (!m) throw new Error(`cannot read the expression at: ${text.slice(at)}`);
-    tokens.push(/** @type {string} */ (m[1] ?? m[2] ?? m[3] ?? m[4]));
+    tokens.push((m[1] ?? m[2] ?? m[3] ?? m[4]) as string);
     at = re.lastIndex;
   }
   return tokens;
 }
 
-/** @param {Value} v */
-const truthy = (v) => !(v === false || v === null || v === "" || v === 0 || Number.isNaN(v));
+const truthy = (v: Value) => !(v === false || v === null || v === "" || v === 0 || Number.isNaN(v));
 
-/** @param {Value} v */
-function toNumber(v) {
+function toNumber(v: Value) {
   if (v === null) return 0;
   if (typeof v === "boolean") return v ? 1 : 0;
   if (typeof v === "string") return v.trim() === "" ? 0 : Number(v);
   return v;
 }
 
-/** @param {Value} a @param {Value} b */
-function equal(a, b) {
+function equal(a: Value, b: Value) {
   if (typeof a === "string" && typeof b === "string") return a.toLowerCase() === b.toLowerCase();
   if (typeof a === typeof b) return a === b;
   return toNumber(a) === toNumber(b);
 }
 
 /**
- * @param {string} expression  with or without `${{ }}`
- * @param {Record<string, any>} context  `github`, `vars`, `needs`, `inputs`, and `status`, the
- *   values of the status functions: `{ success, failure, cancelled }`
- * @returns {Value}
+ * @param expression  with or without `${{ }}`
+ * @param context  `github`, `vars`, `needs`, `inputs`, and `status`, the values of the status
+ *   functions: `{ success, failure, cancelled }`
  */
-export function evaluate(expression, context) {
+export function evaluate(expression: string, context: Context): Value {
   const text = expression.trim().replace(/^\$\{\{([\s\S]*)\}\}$/, "$1");
   const tokens = tokenize(text);
   let i = 0;
   const peek = () => tokens[i];
-  const take = (/** @type {string} */ want) => {
+  const take = (want: string) => {
     if (tokens[i] !== want) throw new Error(`expected ${want} at token ${i}: ${text}`);
     i += 1;
   };
-  /** @returns {Value} */
-  const or = () => {
+  const or = (): Value => {
     let v = and();
     while (peek() === "||") {
       i += 1;
@@ -74,8 +76,7 @@ export function evaluate(expression, context) {
     }
     return v;
   };
-  /** @returns {Value} */
-  const and = () => {
+  const and = (): Value => {
     let v = unary();
     while (peek() === "&&") {
       i += 1;
@@ -84,8 +85,7 @@ export function evaluate(expression, context) {
     }
     return v;
   };
-  /** @returns {Value} */
-  const unary = () => {
+  const unary = (): Value => {
     if (peek() === "!") {
       i += 1;
       return !truthy(unary());
@@ -99,8 +99,7 @@ export function evaluate(expression, context) {
     }
     return left;
   };
-  /** @returns {Value} */
-  const primary = () => {
+  const primary = (): Value => {
     const t = tokens[i];
     if (t === undefined) throw new Error(`the expression ends early: ${text}`);
     i += 1;
@@ -120,37 +119,39 @@ export function evaluate(expression, context) {
       if (t === "success" || t === "failure" || t === "cancelled") return !!context.status?.[t];
       throw new Error(`function ${t}() is not supported here`);
     }
-    /** @type {any} */
-    let v = context;
-    for (const key of t.split(".")) v = v == null ? null : v[key];
-    return v === undefined ? null : v;
+    let v: unknown = context;
+    for (const key of t.split(".")) v = v == null ? null : (v as Record<string, unknown>)[key];
+    return v === undefined ? null : (v as Value);
   };
   const value = or();
   if (i !== tokens.length) throw new Error(`unexpected ${tokens[i]} in: ${text}`);
   return value;
 }
 
-/** @typedef {"success" | "failure" | "cancelled" | "skipped"} Result */
+export type Result = "success" | "failure" | "cancelled" | "skipped";
 
 /**
  * Runs a workflow's jobs in file order, as GitHub would for one event. A job that starts
  * succeeds unless `results` names another end for it; once one is cancelled, the run is. A job
  * whose `if:` names no status function gets GitHub's implicit `success() &&`.
- * @param {Map<string, Record<string, any>>} jobs  from workflow-runners.mjs's `jobs`
- * @param {{ github: Record<string, string>, vars: Record<string, string>,
- *   outputs?: Record<string, Record<string, string>>,
- *   results?: Record<string, "failure" | "cancelled"> }} run  outputs: what each job sets
- *   (also when it fails); results: how a job that starts ends, when not in success
- * @returns {Map<string, { result: Result, with: Record<string, Value> }>}
+ * @param jobs  from workflow-runners.mjs's `jobs`
+ * @param run  outputs: what each job sets (also when it fails); results: how a job that starts
+ *   ends, when not in success
  */
-export function runJobs(jobs, run) {
-  /** @type {Map<string, { result: Result, with: Record<string, Value> }>} */
-  const done = new Map();
+export function runJobs(
+  jobs: Map<string, Record<string, unknown>>,
+  run: {
+    github: Record<string, string>;
+    vars: Record<string, string>;
+    outputs?: Record<string, Record<string, string>>;
+    results?: Record<string, "failure" | "cancelled">;
+  },
+): Map<string, { result: Result; with: Record<string, Value> }> {
+  const done = new Map<string, { result: Result; with: Record<string, Value> }>();
   let cancelled = false;
   for (const [id, job] of jobs) {
     const needs = [job.needs ?? []].flat().map(String);
-    /** @type {Record<string, any>} */
-    const needsContext = {};
+    const needsContext: Record<string, { result: Result; outputs: Record<string, string> }> = {};
     for (const n of needs) {
       const d = done.get(n);
       if (!d) throw new Error(`${id} needs ${n}, which is not an earlier job`);
@@ -159,7 +160,7 @@ export function runJobs(jobs, run) {
         outputs: d.result === "skipped" ? {} : (run.outputs?.[n] ?? {}),
       };
     }
-    const results = needs.map((n) => needsContext[n].result);
+    const results = needs.map((n) => needsContext[n]!.result);
     const context = {
       github: run.github,
       vars: run.vars,
@@ -176,15 +177,13 @@ export function runJobs(jobs, run) {
     const starts =
       (explicit || context.status.success) &&
       (condition === "" || truthy(evaluate(condition, context)));
-    /** @type {Record<string, Value>} */
-    const withValues = {};
+    const withValues: Record<string, Value> = {};
     if (starts) {
       for (const [k, v] of Object.entries(job.with ?? {})) {
         withValues[k] = typeof v === "string" && v.includes("${{") ? evaluate(v, context) : v;
       }
     }
-    /** @type {Result} */
-    const result = starts ? (run.results?.[id] ?? "success") : "skipped";
+    const result: Result = starts ? (run.results?.[id] ?? "success") : "skipped";
     if (result === "cancelled") cancelled = true;
     done.set(id, { result, with: withValues });
   }

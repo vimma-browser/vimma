@@ -495,7 +495,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
    The change is inert until `NIGHTLY_ENABLED` or `RELEASE_ENABLED` is set.
 
 7. **Nothing an outsider can trigger runs on a self-hosted runner.** A test
-   (`tools/test/self-hosted-runner.test.mjs`) reads every workflow and fails when a job of a
+   (`tools/test/self-hosted-runner.test.ts`) reads every workflow and fails when a job of a
    workflow triggered by `pull_request`, `pull_request_target`, `pull_request_review`,
    `pull_request_review_comment`, `issue_comment`, `issues`, `discussion`,
    `discussion_comment`, `workflow_run` or `workflow_call` has a `runs-on` that names
@@ -845,7 +845,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `--require refuses an engine/ never verified, or verified for another version`
 - `--require refuses when there is no engine/`
 
-**vitest, `tools/test/upstream-workflow.test.mjs`** (sub-PR 2, extends the existing file):
+**vitest, `tools/test/upstream-workflow.test.ts`** (sub-PR 2, extends the existing file):
 
 - `every verify-sha512.py call passes a signature`
 - `a report on a tarball that failed verification is never uploaded`
@@ -859,7 +859,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `a change only outside the release path may auto-merge`
 - `a transitive release-path package bumped in a grouped update needs review`
 
-**vitest, `tools/test/build-supply-chain.test.mjs`** (reads the workflow and config files):
+**vitest, `tools/test/build-supply-chain.test.ts`** (reads the workflow and config files):
 
 - `the full builds install with npm ci --ignore-scripts and run Surfer with npx --no`
 - `.npmrc turns install scripts off for every install`
@@ -869,7 +869,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `dependabot-automerge classifies on base-branch code with a read-only token`
 - `the release-path group comes before the minor and patch group`
 
-**vitest, `tools/test/full-build-workflows.test.mjs`** (sub-PR 4, the two build jobs):
+**vitest, `tools/test/full-build-workflows.test.ts`** (sub-PR 4, the two build jobs):
 
 - `<workflow> gets Firefox source only through firefox-source.sh`
 - `no workflow runs surfer download itself`
@@ -883,7 +883,7 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `only the nightly's failure-issue step gets GH_TOKEN` (the token that can write issues never
   reaches npm, Surfer, mach or the mochitests)
 
-**vitest, `tools/test/nightly-workflow.test.mjs`** (decision 23):
+**vitest, `tools/test/nightly-workflow.test.ts`** (decision 23):
 
 - `the workflow and its build job can only read the repository`
 - `the build job keeps the package as a workflow artifact for 7 days`
@@ -891,20 +891,20 @@ the cryptography is tested by `test_verify_sha512.py` alone.
 - `a failure is reported by its own job, from the redacted log artifact`
 - `the report job names the repository, since it checks nothing out`
 
-**vitest, `tools/test/self-hosted-runner.test.mjs`:**
+**vitest, `tools/test/self-hosted-runner.test.ts`:**
 
 - `no workflow an outsider can trigger runs a job on a self-hosted runner`
 - `a runs-on expression in such a workflow fails unless it resolves to a hosted image`
 - `no workflow names a self-hosted runner, and both build jobs run on ubuntu-24.04`
 - `each build job runs only from main or for a release`
 
-**Existing tests that change:** `tools/test/safebrowsing-workflows.test.mjs` (the key comes from
-the `build` environment instead of a repository secret), `tools/test/upstream-workflow.test.mjs`
+**Existing tests that change:** `tools/test/safebrowsing-workflows.test.ts` (the key comes from
+the `build` environment instead of a repository secret), `tools/test/upstream-workflow.test.ts`
 (G4 cites the signed check; the `detect` job runs the key check),
-`tools/test/upstream-beta-workflow.test.mjs` (`e2e.yml` checks its download through
-`firefox-source.sh`), `tools/test/sites-workflow.test.mjs` (the SHA512SUMS check is
+`tools/test/upstream-beta-workflow.test.ts` (`e2e.yml` checks its download through
+`firefox-source.sh`), `tools/test/sites-workflow.test.ts` (the SHA512SUMS check is
 `firefox-source.sh`; its
-hosted-runner assertion moves into `self-hosted-runner.test.mjs`),
+hosted-runner assertion moves into `self-hosted-runner.test.ts`),
 `tools/package/test/release-workflow.test.mjs` (the release build job's runner and checkout).
 
 No mochitest or e2e scenario: nothing in the browser changes.
@@ -948,7 +948,7 @@ protects something that runs today.
    Surfer pin; `.npmrc`; `npm ci --ignore-scripts` and `npx --no` in `release.yml` and
    `nightly.yml`; the `release-path` Dependabot group; `dependabot-automerge.yml` also holds
    Surfer's security updates (the name check it has today, extended);
-   `self-hosted-runner.test.mjs` with all four tests and both build jobs on `ubuntu-24.04`
+   `self-hosted-runner.test.ts` with all four tests and both build jobs on `ubuntu-24.04`
    (decision 7); the `surfer.json` add-on test; the ADR-001 paragraph; the runbook's
    `sha_pinning_required` step. Rules B4, B5 and the Surfer half of B3. The Surfer check
    matches `@zen-browser/surfer` as a substring of the dependency names and the title, in any
