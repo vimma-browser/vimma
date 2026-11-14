@@ -93,6 +93,13 @@ export class StatusBar {
     this.column = 0;
     this.frame = 0;
     this.lastBar = "";
+    /**
+     * The agent segment as last drawn, for the control socket's `state.agent`: what is on
+     * screen, which lags the gate's own state until the next redraw (the ran dot goes at
+     * RAN_MS + 50 ms, later under load). Null when none is drawn.
+     * @type {{ waiting: number, ran: boolean } | null}
+     */
+    this.drawnAgent = null;
     /** @type {Announced} what the live region last said */
     this.announced = { mode: null, notFound: null };
     /** @type {ResizeObserver | null} */
@@ -314,6 +321,9 @@ export class StatusBar {
     // A badge (a segment with a background) has half a column of padding on each side.
     const badges = all.filter((s) => s.bg).length;
     const fitted = fitStatus(all, columns - badges);
+    const agent = fitted.find((s) => s.id === "agent");
+    // The segment's badge is the ran dot (core statusSegments); a waiting count wins over it.
+    this.drawnAgent = agent ? { waiting: input.agent?.waiting ?? 0, ran: !!agent.bg } : null;
     const key = JSON.stringify(fitted.map((s) => [s.id, s.text, s.fg, s.bg]));
     if (key !== this.lastBar) {
       this.lastBar = key;

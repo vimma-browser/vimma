@@ -12,7 +12,7 @@
     { "open": "fixture:long.html" },
     { "wait-for-state": { "tabs": [{}, { "selected": true, "title": "long top navigate" }] } },
     { "keys": ": a g e n t space m o d e l enter" },
-    { "wait-for-state": { "chat": { "view": "models", "question": null } } },
+    { "wait-for-state": { "chat": { "view": "models", "rows": 3, "question": null } } },
     { "keys": "k k k j j enter" },
     {
       "wait-for-state": { "chat": { "view": "models", "rows": 1 }, "notice": false },

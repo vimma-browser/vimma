@@ -327,7 +327,27 @@ addTidyTask(async function test_state_reports_the_window_and_the_notice_as_drawn
   };
   const drawn = (/** @type {string} */ cls) => log().querySelectorAll(`:scope > .${cls}`).length;
   await openPage();
+  Assert.deepEqual(
+    Object.keys(state()).sort(),
+    [
+      ...["agent", "chat", "mode", "notice", "panes", "pending", "prompt", "splits", "tabs"],
+      ...["update", "workspace"],
+    ],
+    "state's fields are listed one by one: nothing the host adds reaches the socket by itself",
+  );
   Assert.strictEqual(state().chat, null, "no chat window: chat is null");
+
+  // `agent` is the segment as the status bar last drew it, not as it will draw it next: the
+  // ran dot goes at its redraw, RAN_MS + 50 ms after the step, later under load.
+  const bar = /** @type {any} */ (VimmaHost._state(window).statusBar);
+  Assert.strictEqual(AgentUi.status(), null, "sanity: no agent connection, no segment to draw");
+  bar.renderBar({ ...bar.input(), agent: { waiting: 0, minutes: null, ran: true, builtin: null } });
+  Assert.equal(statusText("agent"), "◇ agent ·", "sanity: the bar draws the ran dot");
+  Assert.deepEqual(state().agent, { waiting: 0, ran: true }, "state reports the dot drawn");
+  bar.renderBar({ ...bar.input(), agent: { waiting: 2, minutes: null, ran: true, builtin: null } });
+  Assert.deepEqual(state().agent, { waiting: 2, ran: false }, "a question hides the dot");
+  bar.renderBar(bar.input());
+  Assert.strictEqual(state().agent, null, "and no segment drawn: null");
 
   const { notice } = VimmaHost._state(window);
   notice.show("agent: found claude 2.1.303 · /tmp/claude");

@@ -1146,23 +1146,24 @@ export const VimmaHost = {
   /**
    * What the control socket's `state` reports of `win`'s transient screen (docs/specs/
    * m0-control-protocol-and-vimma-ctl.md, "state"): whether a notice is shown and whether the
-   * prompt line is open; the agent chat window's view, how many list rows and transcript entries it draws, and its question slot;
-   * and the status bar's agent segment. Counted from what is drawn, so they say what a
-   * screenshot would show; counts and flags only, never text, so no page, title or conversation
-   * reaches the socket through them (security.md S9). The chat window never opens in a private
-   * window: `null` there.
+   * prompt line is open; the agent chat window's view, how many list rows and transcript entries
+   * it draws, and its question slot; and the status bar's agent segment. All of it as drawn, so
+   * it says what a screenshot would show; counts and flags only, never text, so no page, title
+   * or conversation reaches the socket through them (security.md S9). The chat window never
+   * opens in a private window: `null` there.
    * @param {BrowserWindow} win
-   * @returns {{ notice: boolean, prompt: boolean, chat: { view: string, rows: number, entries: number,
-   *   question: { armed: boolean } | null } | null,
+   * @returns {{ notice: boolean, prompt: boolean,
+   *   chat: { view: string, rows: number, entries: number,
+   *     question: { armed: boolean } | null } | null,
    *   agent: { waiting: number, ran: boolean } | null }}
    */
   screen(win) {
-    const segment = AgentUi.status();
-    // `◇ agent 2?` and `◇ agent ·`: the segment's grant minutes and the built-in agent's budget
-    // stay out, as nothing waits on them.
-    const agent = segment ? { waiting: segment.waiting, ran: segment.ran } : null;
     const state = states.get(win);
-    if (!state) return { notice: false, prompt: false, chat: null, agent };
+    if (!state) return { notice: false, prompt: false, chat: null, agent: null };
+    // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
+    // dropped at the redraw. Its grant minutes and the built-in agent's budget stay out, as
+    // nothing waits on them.
+    const agent = state.statusBar?.drawnAgent ?? null;
     const notice = !!state.notice.el?.matches(":popover-open");
     const prompt = state.rename.isOpen;
     const ui = state.agentChat;

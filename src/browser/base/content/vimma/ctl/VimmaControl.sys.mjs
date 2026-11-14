@@ -388,6 +388,9 @@ const COMMANDS = {
     // docs/specs/private-workspace.md decision 8d: a private window's pages stay unnamed; the
     // ids and the pane structure are kept, so scripts can still drive it.
     const hidden = lazy.PrivateBrowsingUtils.isWindowPrivate(win);
+    // Named one by one: the validator lets unknown top-level fields through, so a field the host
+    // added to screen() later would otherwise reach the socket unchecked (security.md S9).
+    const { notice, prompt, chat, agent } = VimmaHost.screen(win);
     return {
       mode: host.mode,
       pending: host.pending.length ? host.pending.join(" ") : null,
@@ -409,7 +412,10 @@ const COMMANDS = {
       update: controlUpdateState(VimmaUpdates.status(), VimmaUpdates.installType),
       // What is on screen for a moment (a notice, the agent chat window's list and question),
       // as flags and counts, so that a script waits for it rather than for a time (#981).
-      ...VimmaHost.screen(win),
+      notice,
+      prompt,
+      chat,
+      agent,
     };
   },
 
