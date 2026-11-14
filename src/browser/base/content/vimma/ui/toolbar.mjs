@@ -224,10 +224,10 @@ export class Toolbar {
         if (this.inBar(e.target)) this.win.setTimeout(() => this.focusChanged(), 0);
         break;
       case "popupshowing":
-        this.popupShowing(/** @type {any} */ (e.target));
+        this.popupShowing(/** @type {XULPopupElement | null} */ (e.target));
         break;
       case "popuphidden":
-        this.popupHidden(/** @type {any} */ (e.target));
+        this.popupHidden(/** @type {XULPopupElement | null} */ (e.target));
         break;
       case "PopupNotificationsBeforeAnchor":
         this.beforeAnchor(/** @type {Element} */ (e.target));
@@ -352,7 +352,7 @@ export class Toolbar {
    * Reason d: a panel or menu anchored in the bar holds it at the size its anchor needs, until
    * it closes, as F11's toolbox does (FullScreen._setPopupOpen).
    * @private
-   * @param {any} popup
+   * @param {XULPopupElement | null} popup
    */
   popupShowing(popup) {
     if (popup?.localName === "tooltip") return;
@@ -366,7 +366,7 @@ export class Toolbar {
     this.update();
   }
 
-  /** @private @param {any} popup */
+  /** @private @param {XULPopupElement | null} popup */
   popupHidden(popup) {
     this.release(popup);
     // A doorhanger that moves to another anchor hides and opens again: look after that.
@@ -386,7 +386,10 @@ export class Toolbar {
     return this.win.document.commandDispatcher?.focusedElement ?? null;
   }
 
-  /** @private @param {any} node */
+  /**
+   * Only an element has `closest`, so a node in the bar is an element.
+   * @private @param {any} node @returns {node is Element}
+   */
   inBar(node) {
     return !!node?.closest?.("#nav-bar");
   }

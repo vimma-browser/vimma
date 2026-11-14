@@ -472,7 +472,7 @@ export class WindowWorkspacesImpl {
     // A lazy (never selected) tab stays lazy: its copy loads on first selection, as Firefox's
     // own adoptTab and session restore keep such tabs.
     const lazyTab = !tab.linkedPanel;
-    /** @type {any} */
+    /** @type {MozTabbrowserTab} */
     let fresh;
     this.#moving = { from: id, to: target.id };
     try {
@@ -505,7 +505,7 @@ export class WindowWorkspacesImpl {
    */
   #principalFor(tab, userContextId) {
     const ssm = Services.scriptSecurityManager;
-    /** @type {any} */
+    /** @type {nsIPrincipal | null} */
     let principal;
     if (tab.linkedPanel) {
       principal = tab.linkedBrowser.contentPrincipal;
@@ -648,8 +648,8 @@ export class WindowWorkspacesImpl {
    */
   #progress = {
     onStateChange: (
-      /** @type {any} */ browser,
-      /** @type {any} */ webProgress,
+      /** @type {MozBrowser} */ browser,
+      /** @type {nsIWebProgress | null} */ webProgress,
       /** @type {unknown} */ _request,
       /** @type {number} */ flags,
     ) => {
@@ -661,10 +661,10 @@ export class WindowWorkspacesImpl {
       if (tab && !lazy.SessionStore.isTabRestoring(tab)) this.#onLoaded(tab);
     },
     onLocationChange: (
-      /** @type {any} */ browser,
-      /** @type {any} */ webProgress,
+      /** @type {MozBrowser} */ browser,
+      /** @type {nsIWebProgress | null} */ webProgress,
       /** @type {unknown} */ _request,
-      /** @type {any} */ location,
+      /** @type {nsIURI} */ location,
       /** @type {number} */ flags,
     ) => {
       if (!webProgress?.isTopLevel) return;
@@ -1244,7 +1244,7 @@ export class WindowWorkspacesImpl {
   /**
    * The selected tab's browser while its page loads in the parent process (the start page) or
    * SessionStore restores one into it, kept without focus until then (#guardFocus).
-   * @type {any}
+   * @type {MozTabBrowser | null}
    */
   #restoring = null;
 
@@ -1267,7 +1267,7 @@ export class WindowWorkspacesImpl {
   #guardFocus() {
     const gBrowser = this.#gBrowser;
     if (this.#win.closed || !gBrowser) return;
-    const browser = /** @type {any} */ (gBrowser.selectedBrowser);
+    const browser = gBrowser.selectedBrowser;
     if (this.#win.document.activeElement !== browser || browser.isRemoteBrowser) return;
     if (!lazy.SessionStore.isTabRestoring(gBrowser.selectedTab) && !layoutPending(browser)) return;
     this.#restoring = browser;

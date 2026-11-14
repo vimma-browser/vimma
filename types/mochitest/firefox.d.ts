@@ -248,11 +248,13 @@ interface PopupNotificationsApi {
 // value as the user's typing would, with input and change events.
 interface HTMLInputElement {
   setUserInput(value: string): void;
-  /** The field's editor (nsIEditor), null until it has one: its selection controller. */
-  readonly editor: { readonly selectionController: { getDisplaySelection(): number } } | null;
 }
 interface HTMLTextAreaElement {
   setUserInput(value: string): void;
+}
+// engine/dom/base/nsISelectionController.idl (what a test reads of a field's editor)
+interface nsISelectionController {
+  getDisplaySelection(): number;
 }
 
 // engine/toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs: a container.
@@ -291,9 +293,8 @@ interface TabbrowserAddOptions {
   pinned?: boolean;
 }
 
-// engine/dom/webidl/XULPopupElement.webidl: a <menupopup> or <panel>.
+// engine/dom/chrome-webidl/XULPopupElement.webidl: a <menupopup> or <panel>.
 interface XULPopupElement extends Element {
-  readonly state: "closed" | "showing" | "open" | "hiding";
   activateItem(item: Element, options?: object): void;
   hidePopup(cancel?: boolean): void;
 }
@@ -315,10 +316,11 @@ interface BrowsingContext {
 // the only side that has its document's global (WindowGlobalActors.webidl), once it has one.
 interface CanonicalBrowsingContext extends BrowsingContext {
   readonly children: CanonicalBrowsingContext[];
-  readonly currentWindowGlobal: {
-    readonly documentURI: { readonly spec: string } | null;
-    readonly isInitialDocument: boolean;
-  } | null;
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
+interface WindowGlobalParent {
+  readonly documentURI: { readonly spec: string } | null;
+  readonly isInitialDocument: boolean;
 }
 
 // engine/xpcom/io/nsIFile.idl (the members the tests use)
