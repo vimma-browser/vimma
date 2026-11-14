@@ -112,6 +112,10 @@ each without a change in behaviour:
   URL from `vimma.js` instead of building it from its own folder, and the child stays in
   `actors/`. This also ends the `actors/` ↔ `host/` folder loop. It changes how the actor is
   registered and `docs/security.md` section 13 names the file, so it gets a security review.
+  (Since changed: done. The parent actor is `host/VimmaParent.sys.mjs`, its code unchanged but
+  for three import paths. `vimma.js` passes its URL to `VimmaActors.register(parentURI)`, which
+  registers the pair with the same options as before; `actors/` names no `host/` module, and
+  `actors/` is out of the eager folder cycle.)
 - **The host reads the agent gate** (`host/VimmaHost.sys.mjs` and `host/agent-ui.mjs` eager,
   `host/mcp-ops.mjs` lazy → `ctl/AgentGate.sys.mjs`). The `:mcp log` picker, the agent line and
   `:mcp revoke` show and act on the gate's questions, grants and log. That state is something
@@ -212,6 +216,10 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
 - Strings built at run time from parts the check cannot see (a value read from a pref or a
   file) are not import specifiers it can read; it refuses non-fixed specifiers where modules
   are loaded, and ignores other computed strings.
+- An edge must name a module that exists: one git tracks and `jar.mn` packages by name, so a
+  mistyped `chrome://` URL (such as the parent actor's, which `vimma.js` passes to
+  `VimmaActors.register`) fails the check rather than the run. `core/` is not checked (a
+  git-ignored copy, packaged by a wildcard), nor is a folder prefix, which names no file.
 
 ## Consequences
 

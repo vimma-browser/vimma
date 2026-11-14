@@ -29,6 +29,9 @@
 // edges. ADR-026, "Limits of the check", lists what it does not see. The files come from `git ls-files`, so vimma/core/ (a git-ignored copy
 // that sync-core makes) is not read; imports of it are always allowed, as layer 0.
 //
+// Every edge outside core/ must also name a module that exists: one git tracks and jar.mn
+// packages. A mistyped chrome:// URL (the parent actor's, which vimma.js passes in) fails here.
+//
 //   node tools/layering/layering.ts
 
 import { execFileSync } from "node:child_process";
@@ -325,6 +328,47 @@ export function jarErrors(jar: string): string[] {
   return errors;
 }
 
+/**
+ * The modules jar.mn packages, by their path under vimma/. A wildcard line (core/**) adds none:
+ * the folders it packages are not checked by name.
+ * @param jar  jar.mn's text
+ */
+export function jarModules(jar: string): Set<string> {
+  const modules = new Set<string>();
+  for (const text of jar.split("\n")) {
+    const m = /^\s*content\/browser\/vimma\/(\S+)\s+\((\S+)\)/.exec(text);
+    if (m && !m[2]?.includes("*") && m[1]) modules.add(m[1]);
+  }
+  return modules;
+}
+
+/**
+ * Edges to a module that does not exist: one git does not track, or one jar.mn does not package,
+ * so a mistyped URL fails here instead of at run time (a missing parent actor drops every page
+ * report without an error in a release). core/ is skipped (a git-ignored copy sync-core makes,
+ * packaged by a wildcard), and so is a folder prefix, which names no file.
+ * @param edges  every edge of the tree
+ * @param tracked  the modules git tracks, relative to vimma/
+ * @param packaged  the modules jar.mn packages (jarModules)
+ */
+export function danglingEdges(
+  edges: Edge[],
+  tracked: Set<string>,
+  packaged: Set<string>,
+): string[] {
+  const errors: string[] = [];
+  for (const e of edges) {
+    if (e.to.endsWith("/") || folderOf(e.to) === "core") continue;
+    if (!tracked.has(e.to))
+      errors.push(
+        `${e.from}:${e.line}: names ${e.to}, which is not a module git tracks under vimma/`,
+      );
+    else if (!packaged.has(e.to))
+      errors.push(`${e.from}:${e.line}: names ${e.to}, which jar.mn does not package`);
+  }
+  return errors;
+}
+
 /** Exceptions without a fate, and leaving ones without the issue that removes them. */
 export function exceptionErrors(exceptions: Exception[]): string[] {
   const errors: string[] = [];
@@ -508,9 +552,11 @@ export function missingReadmes(root: string): string[] {
 
 function main(): void {
   const { edges, problems } = treeScan(ROOT);
+  const jar = readFileSync(join(ROOT, VIMMA, "jar.mn"), "utf8");
   const errors = [
     ...problems,
-    ...jarErrors(readFileSync(join(ROOT, VIMMA, "jar.mn"), "utf8")),
+    ...jarErrors(jar),
+    ...danglingEdges(edges, new Set(trackedFiles(ROOT)), jarModules(jar)),
     ...exceptionErrors(EXCEPTIONS),
     ...layerErrors(edges, LAYERS, EXCEPTIONS),
     ...eagerCycles(edges),

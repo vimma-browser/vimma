@@ -14,7 +14,9 @@ explicitly.
 ## Scope
 
 - `actors/VimmaParent.sys.mjs`, `actors/VimmaChild.sys.mjs`: a JSWindowActor pair, registered
-  at runtime by `actors/VimmaActors.sys.mjs` (called from `vimma.js`).
+  at runtime by `actors/VimmaActors.sys.mjs` (called from `vimma.js`). (Since changed: the
+  parent is `host/VimmaParent.sys.mjs`, and `vimma.js` passes its URL to
+  `VimmaActors.register`, ADR-026.)
 - The child reports focus changes with an `EditableDescriptor` (m1-core-logic) and runs scroll,
   blur and focus-first-input commands. The parent is the only thing that talks to it, and hands
   reports to the host.
@@ -78,7 +80,8 @@ actions that are not implemented yet (parallel spec).
   (`NetErrorChild` imports one). `safeForUntrustedWebProcess: true` is required for web content
   processes (`JSActorProtocol::RemoteTypeMatches`); the parent takes only a well-formed
   `{ descriptor, trigger }` from the child, and a forged one can only flip that tab's mode.
-  ESLint gets `JSWindowActorChild`/`JSWindowActorParent` as globals for `actors/` only.
+  ESLint gets `JSWindowActorChild`/`JSWindowActorParent` as globals for `actors/` only. (Since
+  changed: `JSWindowActorParent` for `host/VimmaParent.sys.mjs` only.)
   - `about:preferences` and other parent-process `about:` pages get the child in the parent
     process. Settings focuses its search box on load, so it opens in insert; `Esc` gives normal,
     where `j` scrolls it (tested).

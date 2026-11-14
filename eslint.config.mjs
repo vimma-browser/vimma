@@ -108,12 +108,11 @@ export default [
     },
   },
   {
-    // JSWindowActor base classes, globals in the system modules that define actors.
+    // The JSWindowActor child's base class, a global in the system modules that define actors.
     files: ["src/**/vimma/actors/**"],
     languageOptions: {
       globals: {
         JSWindowActorChild: "readonly",
-        JSWindowActorParent: "readonly",
         // System-module globals the parent side uses to check and open `F` targets.
         BrowsingContext: "readonly",
         Ci: "readonly",
@@ -122,6 +121,11 @@ export default [
         ChromeWorker: "readonly",
       },
     },
+  },
+  {
+    // The parent side of the actor pair (ADR-026: it forwards page reports to the host).
+    files: ["src/**/vimma/host/VimmaParent.sys.mjs"],
+    languageOptions: { globals: { JSWindowActorParent: "readonly" } },
   },
   {
     // about:vimma registers its nsIAboutModule factory through the component registrar.

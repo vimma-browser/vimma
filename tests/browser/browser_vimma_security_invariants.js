@@ -248,3 +248,58 @@ add_task(async function the_submit_check_test_hook_is_read_only_in_automation() 
     "the hook is declared, and read once, behind Cu.isInAutomation",
   );
 });
+
+// security.md section 13: content-process messages enter the parent only through Vimma's parent
+// actor, which Firefox loads from the URL VimmaActors.register() is given. A wrong URL fails in
+// silence (no parent actor, so every page report is dropped and no tab leaves normal mode), so
+// this asks for the actor in a normal tab and has the page's own focus reach the host.
+add_task(async function a_tabs_focus_report_reaches_the_host_through_the_parent_actor() {
+  await BrowserTestUtils.withNewTab(`${PAGE}?actor`, async (browser) => {
+    await focusContent(browser);
+    let actor = null;
+    try {
+      actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    } catch (e) {
+      Assert.ok(false, `the parent actor loads from its registered URL: ${e}`);
+    }
+    Assert.equal(actor?.constructor.name, "VimmaParent", "a normal tab has Vimma's parent actor");
+    await until(() => VimmaHost._browserMode(browser) === "normal", "the tab starts in normal");
+    await SpecialPowers.spawn(browser, [], () => {
+      const input = content.document.createElement("input");
+      content.document.body.append(input);
+      input.focus();
+    });
+    await until(
+      () => VimmaHost._browserMode(browser) === "insert",
+      "the page's focus report reached the host: the tab is in insert",
+    );
+  });
+});
+
+// security.md section 13: a parent actor URL that is not a module of host/ is refused before
+// anything is registered, so a typo fails at startup instead of dropping page reports in silence.
+// The actor is registered once per process already; the check runs before that guard, and the
+// real URL passes it (a second call with it is the guard's no-op).
+add_task(async function the_parent_actors_url_is_checked_before_it_is_registered() {
+  const { VimmaActors } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+  );
+  const bad = [
+    undefined,
+    "",
+    "https://example.org/VimmaParent.sys.mjs",
+    "chrome://browser/content/other/VimmaParent.sys.mjs",
+    "chrome://browser/content/vimma/actors/VimmaParent.sys.mjs",
+    "chrome://browser/content/vimma/host/../actors/VimmaChild.sys.mjs",
+    "chrome://browser/content/vimma/host/VimmaParent.mjs",
+  ];
+  for (const uri of bad) {
+    Assert.throws(
+      () => VimmaActors.register(/** @type {string} */ (uri)),
+      /parent actor/,
+      `refused: ${JSON.stringify(uri)}`,
+    );
+  }
+  VimmaActors.register("chrome://browser/content/vimma/host/VimmaParent.sys.mjs");
+  Assert.ok(true, "the real URL passes the check");
+});
