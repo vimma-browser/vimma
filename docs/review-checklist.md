@@ -24,7 +24,7 @@ maintainer). Each item is ticked, or answered "n/a" with a reason.
 - [ ] User-visible change → update `docs/guide.md` (and its "Features at a glance" or the README status if it changes what works).
 - [ ] A change to `tools/upstream/mozilla-release-key.asc` or `PINNED_FINGERPRINT` in
       `tools/upstream/verify-sha512.py` cites Mozilla's announcement and keeps every revocation
-      (ADR-021; `docs/runbook.md`, "Mozilla's release key"), and gets the
+      (ADR-021; `docs/runbook/ci-mozillas-release-key.md`, "Mozilla's release key"), and gets the
       `key-rotation-approved` label only after that check.
 - [ ] Every commit is a Conventional Commit with a body. The subject is the changelog line; the body
       explains why.

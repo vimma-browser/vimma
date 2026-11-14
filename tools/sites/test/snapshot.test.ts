@@ -19,7 +19,7 @@ import type { SnapshotEntry } from "../snapshot.ts";
 // The snapshot layer (docs/specs/site-compat.md, "Snapshot layer"): recorded pages replayed
 // offline on every pull request. A snapshot is third-party page content served to a real browser
 // in CI, so verifySnapshot is the gate that keeps scripts, handlers and network references out of
-// every committed one (docs/security.md, SC5).
+// every committed one (docs/security/17-site-compatibility-workflow.md, SC5).
 const DIR = new URL("../../../tests/e2e/fixtures/sites/", import.meta.url);
 const SITES = JSON.parse(readFileSync(new URL("../sites.json", import.meta.url), "utf8"));
 const MANIFEST = JSON.parse(readFileSync(new URL("snapshots.json", DIR), "utf8"));

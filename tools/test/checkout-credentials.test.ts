@@ -10,9 +10,10 @@ import { describe, expect, it } from "vitest";
 // actions/checkout writes the job's token into .git/config unless `persist-credentials: false`,
 // and every later step of the job can read it there: in a job a pull request starts, that is the
 // pull request's own `npm ci`, scripts and tests. A read-only token still reads the repository
-// and its API as the workflow, so no such job keeps it (docs/security.md, B19). A workflow
-// counts when an event that a pull request or a comment on one can start runs it (pull_request*,
-// merge_group, issue_comment, workflow_run), or when such a workflow calls it.
+// and its API as the workflow, so no such job keeps it
+// (docs/security/14-build-and-release-supply-chain.md, B19). A workflow counts when an event that a
+// pull request or a comment on one can start runs it (pull_request*, merge_group, issue_comment,
+// workflow_run), or when such a workflow calls it.
 const WORKFLOWS = fileURLToPath(new URL("../../.github/workflows/", import.meta.url));
 const REACHING = /^(?:pull_request.*|merge_group|issue_comment|workflow_run)$/;
 
@@ -79,7 +80,7 @@ describe("checkout credentials in the jobs a pull request runs", () => {
     expect(
       keptCredentials(repoWorkflows()),
       "add persist-credentials: false to the checkout, or list the job in KEEPS_CREDENTIALS " +
-        "with its reason (docs/security.md B19)",
+        "with its reason (docs/security/14-build-and-release-supply-chain.md B19)",
     ).toEqual(Object.keys(KEEPS_CREDENTIALS).sort());
   });
 

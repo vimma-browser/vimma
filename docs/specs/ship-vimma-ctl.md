@@ -158,12 +158,13 @@ that it cannot click or fill, although the browser can.
 ## Security and privacy
 
 - No new browser surface. `ctl` is a label, like `client` and `via`: it changes only whether
-  the notice is shown, never what the connection may do (docs/security.md, M34). The discovery
-  file's new `version` is public information.
+  the notice is shown, never what the connection may do (docs/security/12-agents-mcp.md, M34). The
+  discovery file's new `version` is public information.
 - The release gains two build jobs, `ctl` and `macos-ctl`, with a read-only token, no
   environment and no secret; the Rust toolchain comes through the runner's rustup from the
   version pinned in `rust-toolchain.toml`, and no crate is downloaded. The binary reaches users
-  only inside packages that `SHA256SUMS` lists and the `sign` jobs sign (docs/security.md, B13).
+  only inside packages that `SHA256SUMS` lists and the `sign` jobs sign
+  (docs/security/14-build-and-release-supply-chain.md, B13).
 - The agent-facing note is text `vimma-ctl` writes itself, never page content.
 - Licences: the static Linux binary links musl (MIT) and Rust's standard library (MIT OR
   Apache-2.0), both on the licence allowlist. Shipping their notices with the packages and
@@ -171,8 +172,8 @@ that it cannot click or fill, although the browser can.
   [#516](https://github.com/vimma-browser/vimma/issues/516). (Since changed: every package
   carries `vimma-ctl-licenses/` next to `vimma-ctl`, in `Vimma.app/Contents/Resources` on
   macOS, from `tools/package/ctl-notices.mjs`, and the release SBOM lists `vimma-ctl` with
-  musl, Rust's standard library and LLVM's libunwind; docs/runbook.md, "Release packages", and
-  docs/security.md, B13.)
+  musl, Rust's standard library and LLVM's libunwind; docs/runbook/ci-release-packages.md, "Release
+  packages", and docs/security/14-build-and-release-supply-chain.md, B13.)
 
 ## Tests
 
@@ -207,7 +208,7 @@ vimma`, `puts vimma-ctl next to vimma in the AppDir, and on PATH in the .deb and
   agent's tool" points MCP hosts at the shipped binary and describes the older-client notice;
   "Scripting with vimma-ctl" drops the build step.
 - `CONTRIBUTING.md`: building `vimma-ctl` from source, and where its version comes from.
-- `docs/security.md`: M34 and B13.
+- `docs/security/`: M34 and B13.
 - `CHANGELOG.md`: "Release packages ship vimma-ctl, and an older vimma-ctl says it is older".
 
 ## Delivery

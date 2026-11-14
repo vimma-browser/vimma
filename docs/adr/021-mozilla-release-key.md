@@ -47,11 +47,12 @@ new one ("Updated GPG key for signing Firefox and Thunderbird Releases", Mozilla
 Mozilla rotates the signing subkey about every two years, and at once after an incident. A new
 subkey is accepted by `gpgv` only with a binding signature from the pinned primary, so a rotation
 is an update of `mozilla-release-key.asc` from Mozilla's new `KEY` file, reviewed against
-Mozilla's announcement, with every revocation kept (`docs/runbook.md`, "Mozilla's release key";
-`docs/review-checklist.md`). Until the update lands, builds and the autopilot fail closed on
-releases signed by the new subkey. A change of the primary fingerprint means Mozilla replaced its
-root of trust: it is a review of this ADR, never a routine update. Spec build-supply-chain's
-sub-PR 5 adds a watch that opens a `security` issue when Mozilla's published key changes.
+Mozilla's announcement, with every revocation kept (`docs/runbook/ci-mozillas-release-key.md`,
+"Mozilla's release key"; `docs/review-checklist.md`). Until the update lands, builds and the
+autopilot fail closed on releases signed by the new subkey. A change of the primary fingerprint
+means Mozilla replaced its root of trust: it is a review of this ADR, never a routine update. Spec
+build-supply-chain's sub-PR 5 adds a watch that opens a `security` issue when Mozilla's published
+key changes.
 (Since changed: a pull request that changes `mozilla-release-key.asc`, or a line of
 `verify-sha512.py` that names `PINNED_FINGERPRINT` or `KEY_FILE`, fails the required check
 "Mozilla release key unchanged or approved" (`.github/workflows/key-guard.yml`) until a
@@ -85,4 +86,4 @@ subkey.
   which Mozilla signs with the same key (`docs/limits.md`).
 - The repository carries Mozilla's signed `SHA512SUMS` of two releases as test fixtures (about
   1.7 MB), because a signature covers the whole file.
-- docs/security.md, B1 and G4.
+- docs/security/, B1 and G4.

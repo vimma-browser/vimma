@@ -4,8 +4,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
- * Creates the upstream autopilot's GitHub App from a manifest (docs/runbook.md, "Upstream App";
- * docs/security.md, G14) and stores its client ID and private key where upstream.yml reads them.
+ * Creates the upstream autopilot's GitHub App from a manifest (docs/runbook/ci-upstream-bumps.md,
+ * "Upstream App"; docs/security/10-firefox-updates.md, G14) and stores its client ID and private
+ * key where upstream.yml reads them.
  *
  *   node tools/upstream/create-app.mjs [--org vimma-browser] [--repo vimma]
  *     [--name vimma-upstream-autopilot] [--env upstream-autopilot]

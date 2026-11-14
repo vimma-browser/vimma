@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md decisions 18 and 20, docs/security.md section 20 (V12): pdf.js's
-// own sidebar never shows, and the viewer's toolbar, menus and page gutter take Vimma's
-// theme tokens, in the built-in palette dark and light and in an Omarchy theme.
+// Spec: docs/specs/pdf-mode.md decisions 18 and 20, docs/security/20-pdf-viewer.md section 20
+// (V12): pdf.js's own sidebar never shows, and the viewer's toolbar, menus and page gutter take
+// Vimma's theme tokens, in the built-in palette dark and light and in an Omarchy theme.
 // file_vimma_outline_pagemode.pdf is file_vimma_outline.pdf with `/PageMode /UseOutlines` in its
 // catalog, which makes pdf.js open its sidebar on the outline by itself. In Firefox pdf.js finds
 // with the browser's find bar (firefox-surfaces-theme themes it), so it has no find bar of its own.

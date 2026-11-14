@@ -4,7 +4,7 @@
 # (ci.yml, in npm run coverage and cargo test); this runs many more from a random seed.
 #
 # A failure uploads the seed and each failing case (artifact `fuzz-failures`) and opens, or
-# comments on, one issue labelled `fuzz-failure`. Reproducing a seed: docs/runbook.md,
+# comments on, one issue labelled `fuzz-failure`. Reproducing a seed: docs/runbook/ci-fuzzing.md,
 # "Fuzzing: reproducing a failing seed".
 #
 # Minutes (private repo): one job of about 4 minutes a night (each property stops after
@@ -135,7 +135,7 @@ jobs:
             echo "The nightly fuzz run failed: ${RUN_URL} (\`${REF}\` at ${SHA})."
             echo
             echo "Seed: \`${SEED}\`. The failing cases are in the run's \`fuzz-failures\` artifact."
-            echo "Reproduce: docs/runbook.md, \"Fuzzing: reproducing a failing seed\"; for a"
+            echo "Reproduce: docs/runbook/ci-fuzzing.md, \"Fuzzing: reproducing a failing seed\"; for a"
             echo "JavaScript property:"
             echo
             echo '```sh'

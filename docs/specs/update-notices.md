@@ -156,11 +156,11 @@ colour. VimmaHost hands it each keydown after the agent question and before the 
 
 ## Security and privacy
 
-- No new request: the startup check is the same anonymous GET (`docs/security.md` UP3), and the
-  10-minute floor keeps restarts from multiplying it.
+- No new request: the startup check is the same anonymous GET (`docs/security/16-update-check.md`
+  UP3), and the 10-minute floor keeps restarts from multiplying it.
 - The question opens only about:vimma; it installs nothing and runs no command.
 - A page cannot answer the question: it never has focus, it does not open while a field has it,
-  and keys before the arming delay are ignored (`docs/security.md` UP9).
+  and keys before the arming delay are ignored (`docs/security/16-update-check.md` UP9).
 - The new pref `vimma.update.announced` holds a version string and is read only to compare it.
 
 ## Tests
@@ -182,7 +182,7 @@ colour. VimmaHost hands it each keydown after the agent question and before the 
 ## Docs and changelog
 
 - `docs/guide.md`, Updates: the startup check, the message and the security question.
-- `docs/security.md` §16: UP4 covers the message and the question; UP9 is new.
+- `docs/security/16-update-check.md` §16: UP4 covers the message and the question; UP9 is new.
 - `CHANGELOG.md`: one line under Added.
 
 ## Delivery

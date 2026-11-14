@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/pdf-mode.md (delivery PR 4, decision 10), docs/security.md section 20 (V7,
-// V8, V11): the outline panel on Tab and its `index` mode.
+// Spec: docs/specs/pdf-mode.md (delivery PR 4, decision 10), docs/security/20-pdf-viewer.md section
+// 20 (V7, V8, V11): the outline panel on Tab and its `index` mode.
 // file_vimma_outline_kinds.pdf has one outline entry of each kind: a named destination (page 2),
 // a named action (LastPage), an https link, a javascript: link pdf.js refuses (no target), a
 // title that looks like markup (page 3), an attachment, a Print action (not a navigation, so

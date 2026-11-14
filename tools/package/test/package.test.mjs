@@ -63,7 +63,10 @@ const REPO = "vimma-browser/vimma";
 const DOCS = {
   "README.md": new URL("../../../README.md", import.meta.url),
   "docs/guide.md": new URL("../../../docs/guide.md", import.meta.url),
-  "docs/runbook.md": new URL("../../../docs/runbook.md", import.meta.url),
+  "docs/runbook/ci-release-packages.md": new URL(
+    "../../../docs/runbook/ci-release-packages.md",
+    import.meta.url,
+  ),
   "docs/specs/m6-packaging.md": new URL("../../../docs/specs/m6-packaging.md", import.meta.url),
   "docs/specs/m6a-updater.md": new URL("../../../docs/specs/m6a-updater.md", import.meta.url),
   ".github/workflows/aur.yml": new URL("../../../.github/workflows/aur.yml", import.meta.url),
@@ -1374,7 +1377,7 @@ describe("cosign identity", () => {
   });
 
   it.each([
-    "docs/runbook.md",
+    "docs/runbook/ci-release-packages.md",
     "docs/guide.md",
     ".github/workflows/aur.yml",
     ".github/workflows/homebrew.yml",

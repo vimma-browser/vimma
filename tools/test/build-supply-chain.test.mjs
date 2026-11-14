@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { jobs, parseWorkflow } from "./workflow-runners.mjs";
 
-// docs/specs/build-supply-chain.md, decisions 12, 14, 16 and 17; docs/security.md, B3 and B4.
-// Surfer drives the Firefox build: it is pinned exactly, never merges without a person, installs
-// without install scripts, and runs only from node_modules.
+// docs/specs/build-supply-chain.md, decisions 12, 14, 16 and 17;
+// docs/security/14-build-and-release-supply-chain.md, B3 and B4. Surfer drives the Firefox build:
+// it is pinned exactly, never merges without a person, installs without install scripts, and runs
+// only from node_modules.
 const root = new URL("../../", import.meta.url);
 /** @param {string} path */
 const read = (path) => readFileSync(new URL(path, root), "utf8");
@@ -177,9 +178,10 @@ const WRITES_TREE = new RegExp(
 
 /**
  * What would let the pull request's files reach classify's workspace before, or while, its tools
- * run (docs/security.md, B3): classify sets up .nvmrc's Node on the base commit alone, so the order
- * of its first steps is what keeps setup-node's npm and yarn off the pull request's .npmrc and
- * .yarnrc, and the head commit's files may only ever be written under $RUNNER_TEMP.
+ * run (docs/security/14-build-and-release-supply-chain.md, B3): classify sets up .nvmrc's Node on
+ * the base commit alone, so the order of its first steps is what keeps setup-node's npm and yarn
+ * off the pull request's .npmrc and .yarnrc, and the head commit's files may only ever be written
+ * under $RUNNER_TEMP.
  * @param {string} text dependabot-automerge.yml
  * @returns {string[]} each fault found; empty when the workflow keeps the rule
  */

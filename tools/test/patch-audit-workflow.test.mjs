@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-// docs/security.md G8, docs/rebase.md "Patch-size audit": the quarterly patch audit's workflow
-// shape. Text checks, like upstream-workflow.test.mjs: no YAML dependency.
+// docs/security/10-firefox-updates.md G8, docs/rebase.md "Patch-size audit": the quarterly patch
+// audit's workflow shape. Text checks, like upstream-workflow.test.mjs: no YAML dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/patch-audit.yml", import.meta.url),
   "utf8",

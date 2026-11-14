@@ -459,8 +459,8 @@ fn check_role(discovery: &Discovery, role: Role) -> Result<(), Error> {
 }
 
 /// Send the auth that carries the full-control code, and only then show the user the code
-/// (docs/security.md S13): a process reading the terminal learns it too late to race its own
-/// auth with it in. A failed send shows nothing.
+/// (docs/security/01-control-socket.md S13): a process reading the terminal learns it too late to
+/// race its own auth with it in. A failed send shows nothing.
 fn auth_then_code(
     send: impl FnOnce() -> Result<(), Error>,
     say: impl FnOnce(),

@@ -67,7 +67,7 @@ jobs:
         run: node tools/ci/tree-covered.mjs
 
       # The squash commit's message is new on main (release-please builds the changelog from it,
-      # docs/runbook.md "Releases"), so lint it here when the check job below does not run.
+      # docs/runbook/ci-releases.md "Releases"), so lint it here when the check job below does not run.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.tree.outputs.skip == 'true'
         with:
@@ -119,7 +119,7 @@ jobs:
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc # exact Node pin (docs/runbook.md, "Bench baseline")
+          node-version-file: .nvmrc # exact Node pin (docs/runbook/ci-bench-baseline.md, "Bench baseline")
           cache: npm
 
       - name: npm ci
@@ -188,7 +188,7 @@ jobs:
       # Performance gate (ARCHITECTURE.md, "Testing"; issue #17): fails on a case over 50 µs, or
       # the suite more than 10 % slower (one case 25 %) than the baseline recorded for this
       # runner's CPU model. A step, not a job (~30 s; no extra per-job minute). Why it does not
-      # flake: docs/runbook.md, "Bench baseline".
+      # flake: docs/runbook/ci-bench-baseline.md, "Bench baseline".
       # Docs-only: instead of the whole suite, the Vitest files that read the repo's Markdown.
       - name: Vitest, the files that read Markdown (docs-only pull request)
         if: steps.classify.outputs.docs-only == 'true'
@@ -201,8 +201,8 @@ jobs:
       - name: Python tests (tools/upstream)
         run: npm run test:py
 
-      # docs/security.md names the test behind each rule; a renamed or deleted test fails here.
-      - name: Security model test links (docs/security.md)
+      # docs/security/ names the test behind each rule; a renamed or deleted test fails here.
+      - name: Security model test links (docs/security/)
         run: npm run security-links
 
       - name: Licences of package-lock.json
