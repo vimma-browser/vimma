@@ -377,7 +377,7 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     ].map(([name = "", shot = ""]): [string, string, Record<string, unknown>] => [
       name,
       shot,
-      { agent: { waiting: 1, armed: true } },
+      { notice: false, agent: { waiting: 1, armed: true } },
     ]),
     // The page's download has ended: the status bar says `↓ done`.
     ["issue-618-downloads-picker", "downloads-done", { downloads: "done" }],
@@ -386,6 +386,13 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     const i = steps.findIndex((step) => step.screenshot === shot);
     expect(i).toBeGreaterThan(0);
     expect(steps[i - 1]?.["wait-for-state"]).toEqual(expected);
+  });
+
+  // Firefox unhides its toolbar downloads button on its own schedule, after `↓ done`; state does
+  // not report it, so the scenario keeps it shown from the start, as the baseline shows it.
+  it("issue-618-downloads-picker keeps Firefox's downloads button shown", () => {
+    const scenario = all.find((s) => s.name === "issue-618-downloads-picker");
+    expect(scenario?.prefs?.["browser.download.autohideButton"]).toBe(false);
   });
 });
 

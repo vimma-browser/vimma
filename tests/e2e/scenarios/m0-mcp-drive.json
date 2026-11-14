@@ -58,7 +58,7 @@
         "as": "keys1"
       }
     },
-    { "wait-for-state": { "agent": { "waiting": 1, "armed": true } } },
+    { "wait-for-state": { "notice": false, "agent": { "waiting": 1, "armed": true } } },
     { "screenshot": "m0-mcp-drive-keys-question" },
     { "keys": "y" },
     {

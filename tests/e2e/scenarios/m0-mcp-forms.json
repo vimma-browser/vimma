@@ -201,6 +201,7 @@
     },
     {
       "wait-for-state": {
+        "notice": false,
         "agent": {
           "waiting": 1,
           "armed": true
@@ -291,6 +292,7 @@
     },
     {
       "wait-for-state": {
+        "notice": false,
         "agent": {
           "waiting": 1,
           "armed": true
