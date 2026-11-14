@@ -468,27 +468,43 @@ function deviceSize(browser) {
  * multiple of 5. No zoom or scale avoids this for every window size (any whole number of app
  * units makes some sizes whole), so the window is sized instead: one chrome pixel narrower is
  * 1 or 2 device pixels narrower (1.5, rounded), and a multiple of 5 minus 1 or 2 is not one.
+ * The window is not put back here: the task restores the outer size it had before the scale
+ * changed (resizeWindow).
  * @param {XULBrowserElement} browser
- * @returns {Promise<() => Promise<void>>} puts the window's width back
  */
 async function offWholePixels(browser) {
   const [width, height] = deviceSize(browser);
-  if (width % 5 || height % 5) return async () => {};
-  const resize = async (/** @type {number} */ by) => {
-    const resized = BrowserTestUtils.waitForEvent(window, "resize");
-    window.resizeBy(by, 0);
-    await resized;
-  };
-  await resize(-1);
+  if (width % 5 || height % 5) return;
+  await resizeWindow(() => window.resizeBy(-1, 0));
   const [now] = deviceSize(browser);
   Assert.ok(now < width && now % 5 !== 0, `the tab is ${now} device pixels wide, not ${width}`);
-  return () => resize(1);
+}
+
+/**
+ * Resizes the window with `resize` and waits for it. A maximized, full-screen or tiled window
+ * would never get its resize event, so the test says so instead of timing out.
+ * @param {() => void} resize
+ */
+async function resizeWindow(resize) {
+  Assert.equal(
+    window.windowState,
+    window.STATE_NORMAL,
+    "the test window can be resized (not maximized, full screen or tiled)",
+  );
+  const resized = BrowserTestUtils.waitForEvent(window, "resize");
+  resize();
+  await resized;
 }
 
 // At a fractional desktop scale and a full zoom other than 100 %, the viewer's size is not a
 // whole number of CSS pixels: PDF mode keeps its page state (the status bar's page, the
 // outline, `G`) and `state.pdf` still turns drawn (#1006).
 add_task(async function pdf_mode_at_a_fractional_size() {
+  // The outer size, in CSS pixels at the usual scale. resizeBy rounds the outer size to whole
+  // CSS pixels at scale 1.5 and changes both directions (nsGlobalWindowOuter::ResizeByOuter),
+  // so resizing back by one pixel would not always restore it: the size is restored as a whole
+  // once the scale is back, for the files that run after this one.
+  const outer = [window.outerWidth, window.outerHeight];
   await SpecialPowers.pushPrefEnv({
     set: [
       ["vimma.ui.pdf_outline.hidden", true],
@@ -497,40 +513,44 @@ add_task(async function pdf_mode_at_a_fractional_size() {
   });
   try {
     await withPdf(async (browser) => {
-      const restore = await offWholePixels(browser);
-      try {
-        browser.fullZoom = 1.1;
-        const size = await SpecialPowers.spawn(browser, [], () => [
-          content.innerWidth,
-          content.innerHeight,
-        ]);
-        Assert.ok(
-          size.some((v) => !Number.isInteger(v)),
-          `the viewer's size is not whole CSS pixels (${size})`,
-        );
-        await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
-        Assert.ok(PdfOps.state(browser), "the viewer's state is kept");
-        await TestUtils.waitForCondition(
-          () => PdfOps.drawn(browser)?.drawn === true,
-          "the first page is drawn",
-        );
-        Assert.ok(PdfOps.askOutline(browser), "the outline is asked for");
-        await TestUtils.waitForCondition(
-          () => !!PdfOps.outline(browser)?.entries.length,
-          "the outline is read",
-        );
-        Assert.ok(PdfOps.run(browser, "last", 0), "G goes to the last page");
-        Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "the last page is to come");
-        await TestUtils.waitForCondition(() => segment("page").includes("6/6"), "the last page");
-        await TestUtils.waitForCondition(
-          () => PdfOps.drawn(browser)?.drawn === true,
-          "the last page is drawn",
-        );
-      } finally {
-        await restore();
-      }
+      await offWholePixels(browser);
+      browser.fullZoom = 1.1;
+      const size = await SpecialPowers.spawn(browser, [], () => [
+        content.innerWidth,
+        content.innerHeight,
+      ]);
+      Assert.ok(
+        size.some((v) => !Number.isInteger(v)),
+        `the viewer's size is not whole CSS pixels (${size})`,
+      );
+      await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+      Assert.ok(PdfOps.state(browser), "the viewer's state is kept");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      Assert.ok(PdfOps.askOutline(browser), "the outline is asked for");
+      await TestUtils.waitForCondition(
+        () => !!PdfOps.outline(browser)?.entries.length,
+        "the outline is read",
+      );
+      Assert.ok(PdfOps.run(browser, "last", 0), "G goes to the last page");
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "the last page is to come");
+      await TestUtils.waitForCondition(() => segment("page").includes("6/6"), "the last page");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the last page is drawn",
+      );
     });
   } finally {
     await SpecialPowers.popPrefEnv();
+    if (window.outerWidth !== outer[0] || window.outerHeight !== outer[1]) {
+      await resizeWindow(() => window.resizeTo(outer[0], outer[1]));
+    }
+    Assert.deepEqual(
+      [window.outerWidth, window.outerHeight],
+      outer,
+      "the window has its size from before the task",
+    );
   }
 });
