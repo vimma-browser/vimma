@@ -149,7 +149,7 @@ each without a change in behaviour:
   the eager folder cycle: no two folders import each other eagerly.) (Since changed, issue
   #1012: the importer rule is a set of allow-lists, each the one form the tree uses, so that
   a new form fails until it is reviewed; widening a list is a change to
-  `tools/layering/layering.ts` that needs a fresh security review. `docs/security.md` section 12
+  `tools/layering/` that needs a fresh security review. `docs/security.md` section 12
   lists what is checked, each item with its test: the load positions of the modules (fixed
   `.mjs` or `.js` URLs, no options, the gate only by its exact URL, in no worker, and only from
   a listed module), `ChromeUtils` and the loader only in their direct forms, the gate's file name
@@ -375,7 +375,7 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   `tools/layering/layers.ts`, raising the pinned count in its test, and an amendment to this
   record that says why the import cannot be avoided. (Since changed: the list is empty and the
   check refuses any entry, so an exception would mean changing `exceptionErrors` in
-  `tools/layering/layering.ts`, its test and decision 5.)
+  `tools/layering/layer-rules.ts`, its test and decision 5.)
 - A new importer of the agent gate (`host/AgentGate.sys.mjs`) fails `npm run layering` even where
   the layers allow it: it needs a security review against `docs/security.md` section 12, then a
   line in `RESTRICTED` (`tools/layering/layers.ts`) and in its test.

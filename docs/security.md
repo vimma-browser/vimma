@@ -1013,7 +1013,12 @@ Only the seven modules that call the gate today may import it (ADR-026, `RESTRIC
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
 section first. `npm run layering` checks exactly the following, and fails on anything outside it.
 Where a rule could list forms to refuse, it lists instead the one form the tree uses; widening
-such a list is a change to `tools/layering/layering.ts` that needs a fresh security review.
+such a list is a change to `tools/layering/` that needs a fresh security review. Each item has
+its module there: load positions in `scan.ts` and `urls.ts`, the loader in `loader.ts`, the
+gate's importers and file name in `restricted.ts` (from the strings `scan.ts` and `pages.ts`
+collect), hand-ons in `hand-ons.ts`, pages in `pages.ts`, encoding in `encoding.ts`, packaging
+and file types in `packaging.ts`, Firefox patches in `patches.ts` and vimma-core in
+`vimma-core.ts`; `tree.ts` reads the tree and runs them all.
 
 - **Load positions in the modules of `vimma/`** (`.mjs`, `.js`; `core/` aside, below): `import`
   and `export … from` declarations, `import()`, a direct `ChromeUtils.importESModule(…)` or
