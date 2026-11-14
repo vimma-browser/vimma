@@ -308,10 +308,11 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   store is decided by scope: an assignment to a name that resolves to no declaration in scope
   is a store on the shared global and fails. The value of an assignment (`(gate ??= …)`) is
   followed like the gate unless the statement around it throws it away. What a call of the
-  gate returns, what one of its getters returns (some are shared objects: a waiting question's
-  `label`, the connections' labels, the log's rows, issue #1018), and what a function that
-  calls the gate does for its own caller, are not followed; the security review of a listed
-  importer judges those.
+  gate returns, what one of its getters returns, and what a function that calls the gate does
+  for its own caller, are not followed; the security review of a listed importer judges
+  those. What the getters, `grants()` and listener events hand out are frozen copies
+  (docs/security.md M62), so handing one on lets its holder read it and change nothing of the
+  gate's.
 - A string, template string or regular expression literal that names the gate's file fails in
   a module the list does not hold, and anywhere in the text of a page, matched on its letters
   and digits alone after escapes and references are decoded, so that an escape, a control
