@@ -81,6 +81,8 @@ const tokenColour = (/** @type {string} */ name) => rgb(token(name));
  */
 function colourVar(el, name) {
   const value = style(el).getPropertyValue(name).trim();
+  // Without a value the probe would inherit its colour, as the element's text may.
+  Assert.ok(value, `${name} is set on <${el.localName}>`);
   const doc = el.ownerDocument;
   const probe = doc.createElementNS(XHTML, "div");
   probe.style.color = value;
@@ -98,7 +100,8 @@ function backdrop(/** @type {Element} */ el) {
   while (node) {
     const bg = style(node).backgroundColor;
     if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
-    node = node.parentElement ?? /** @type {any} */ (node.getRootNode()).host ?? null;
+    // A shadow root has its host; a document, the root of anything else here, has none.
+    node = node.parentElement ?? /** @type {ShadowRoot} */ (node.getRootNode()).host ?? null;
   }
   return "none";
 }
@@ -129,7 +132,8 @@ function nearly(actual, expected, msg) {
   const parse = (/** @type {string} */ s) => (s.match(/\d+/g) ?? []).map(Number);
   const a = parse(actual);
   const e = parse(expected);
-  const ok = a.length >= 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
+  // Three channels on both sides: a token that is not set gives "rgb(NaN, NaN, NaN)", no number.
+  const ok = a.length >= 3 && e.length === 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
   Assert.ok(ok, `${msg} (${actual}, expected ${expected})`);
 }
 
@@ -139,12 +143,30 @@ function until(cond, msg) {
 }
 
 /**
+ * A tab's find bar, made on first use. It changes nothing at run time: getFindBar resolves with
+ * null only for a tab that closed meanwhile, and the reads that follow throw on that.
+ * @param {MozTabbrowserTab} tab
+ */
+async function findBarOf(tab) {
+  return /** @type {MozFindbar} */ (await gBrowser.getFindBar(tab));
+}
+
+/**
+ * The window's own document as the parent process draws it. It changes nothing at run time: a
+ * read through a missing global throws.
+ * @param {{ readonly browsingContext: CanonicalBrowsingContext }} owner  a window or a <browser>
+ */
+function globalOf(owner) {
+  return /** @type {WindowGlobalParent} */ (owner.browsingContext.currentWindowGlobal);
+}
+
+/**
  * The find bar: its surface, its field and its text, painted.
  * @param {string} label
  * @param {MozTabbrowserTab} tab
  */
 async function assertFindBar(label, tab) {
-  const findbar = await gBrowser.getFindBar(tab);
+  const findbar = await findBarOf(tab);
   findbar.setAttribute("noanim", "true");
   findbar.open();
   await until(() => !findbar.hidden && findbar.getBoundingClientRect().height > 20, "find bar");
@@ -152,7 +174,7 @@ async function assertFindBar(label, tab) {
   Assert.equal(backdrop(findbar), surface, `${label}: the find bar is on --vimma-bg-dark`);
   Assert.equal(style(findbar).color, tokenColour("--vimma-fg"), `${label}: its text is --vimma-fg`);
   Assert.equal(style(findbar).colorScheme, token("--vimma-color-scheme"), `${label}: its scheme`);
-  const field = /** @type {Element} */ (findbar._findField);
+  const field = findbar._findField;
   Assert.equal(
     style(field).backgroundColor,
     tokenColour("--vimma-bg"),
@@ -161,7 +183,7 @@ async function assertFindBar(label, tab) {
   Assert.equal(style(field).color, tokenColour("--vimma-fg"), `${label}: its text is --vimma-fg`);
   const box = findbar.getBoundingClientRect();
   nearly(
-    await pixel(window.browsingContext.currentWindowGlobal, box.right - 120, box.top + 4),
+    await pixel(globalOf(window), box.right - 120, box.top + 4),
     surface,
     `${label}: the find bar paints --vimma-bg-dark`,
   );
@@ -170,18 +192,22 @@ async function assertFindBar(label, tab) {
   // The same bar as `/` opens it: a floating prompt framed like a picker (picker.css).
   openPrompt(findbar);
   await until(() => !findbar.hidden && findbar.getBoundingClientRect().height > 20, "prompt");
-  for (const side of ["Top", "Right", "Bottom", "Left"]) {
+  for (const side of ["top", "right", "bottom", "left"]) {
     Assert.equal(
-      style(findbar)[`border${side}Color`],
+      style(findbar).getPropertyValue(`border-${side}-color`),
       tokenColour("--vimma-muted"),
-      `${label}: the prompt's ${side.toLowerCase()} border is --vimma-muted`,
+      `${label}: the prompt's ${side} border is --vimma-muted`,
     );
-    Assert.equal(style(findbar)[`border${side}Width`], "1px", `${label}: 1px on the ${side}`);
+    Assert.equal(
+      style(findbar).getPropertyValue(`border-${side}-width`),
+      "1px",
+      `${label}: 1px on the ${side}`,
+    );
   }
   Assert.equal(backdrop(findbar), surface, `${label}: the prompt is on --vimma-bg-dark`);
   const prompt = findbar.getBoundingClientRect();
   nearly(
-    await pixel(window.browsingContext.currentWindowGlobal, prompt.right - 120, prompt.top + 4),
+    await pixel(globalOf(window), prompt.right - 120, prompt.top + 4),
     surface,
     `${label}: the prompt paints --vimma-bg-dark`,
   );
@@ -195,7 +221,7 @@ async function assertFindBar(label, tab) {
  * @param {string} label
  */
 async function assertMenus(label) {
-  const menu = /** @type {any} */ (document.createXULElement("menupopup"));
+  const menu = /** @type {XULPopupElement} */ (document.createXULElement("menupopup"));
   for (const text of ["One", "Two"]) {
     const item = document.createXULElement("menuitem");
     item.setAttribute("label", text);
@@ -252,13 +278,23 @@ async function assertMenus(label) {
 }
 
 /**
+ * A prompt's XUL <dialog> (commonDialog.xhtml). It changes nothing at run time: a read through
+ * a missing one throws.
+ * @param {Window} win  the dialog's window
+ */
+function dialogOf(win) {
+  const dialog = /** @type {Element | null} */ (win.document.querySelector("dialog"));
+  return /** @type {MozDialogElement} */ (dialog);
+}
+
+/**
  * A prompt's dialog document: the surface, the text and the main button.
  * @param {string} label
  * @param {Window} win  the dialog's window
  */
 function assertDialog(label, win) {
   const root = /** @type {Element} */ (win.document.documentElement);
-  const dialog = /** @type {any} */ (win.document.querySelector("dialog"));
+  const dialog = dialogOf(win);
   Assert.equal(backdrop(dialog), tokenColour("--vimma-bg-dark"), `${label}: on --vimma-bg-dark`);
   Assert.equal(style(dialog).color, tokenColour("--vimma-fg"), `${label}: its text is --vimma-fg`);
   Assert.equal(style(root).colorScheme, token("--vimma-color-scheme"), `${label}: its scheme`);
@@ -289,7 +325,7 @@ async function assertDialogs(label, tab) {
   let [win] = /** @type {[Window]} */ (/** @type {unknown} */ (await loaded));
   Assert.ok(win.docShell.chromeEventHandler, `${label}: the alert is in the tab`);
   assertDialog(`${label}: the tab-modal alert`, win);
-  /** @type {any} */ (win.document.querySelector("dialog")).acceptDialog();
+  dialogOf(win).acceptDialog();
 
   loaded = TestUtils.topicObserved("common-dialog-loaded");
   // alertBC spins until the prompt closes: off this task, so the task can check and close it.
@@ -305,7 +341,7 @@ async function assertDialogs(label, tab) {
   Assert.ok(!win.docShell.chromeEventHandler, `${label}: the alert is a window of its own`);
   assertDialog(`${label}: the window-modal alert`, win);
   const closed = BrowserTestUtils.domWindowClosed(win);
-  /** @type {any} */ (win.document.querySelector("dialog")).acceptDialog();
+  dialogOf(win).acceptDialog();
   await closed;
 }
 
@@ -353,18 +389,14 @@ async function assertPages(label) {
     );
     const { width, height } = browser.getBoundingClientRect();
     nearly(
-      await pixel(
-        /** @type {WindowGlobalParent} */ (browser.browsingContext.currentWindowGlobal),
-        width - 4,
-        height - 4,
-      ),
+      await pixel(globalOf(browser), width - 4, height - 4),
       tokenColour("--vimma-bg"),
       `${what}: paints --vimma-bg`,
     );
     if (url === "about:preferences") {
       // The default-browser card's illustration is Firefox's mascot (decision 6).
       for (const promo of doc.querySelectorAll("moz-promo")) {
-        const img = /** @type {any} */ (promo).shadowRoot?.querySelector(".image-container");
+        const img = promo.shadowRoot?.querySelector(".image-container");
         if (!/\/illustrations\/kit-/.test(promo.getAttribute("imagesrc") ?? "")) continue;
         Assert.equal(img?.getBoundingClientRect().width, 0, `${what}: no Firefox illustration`);
       }
@@ -427,12 +459,16 @@ add_task(async function high_contrast_keeps_firefox_colours() {
       /** @type {Window} */ (doc.defaultView).matchMedia("(prefers-contrast)").matches,
     "high contrast is on in the window and the page",
   );
+  // The two tokens the checks below compare with: a token that is not set equals no colour.
+  for (const name of ["--vimma-bg", "--vimma-bg-dark"]) {
+    Assert.ok(/^#[0-9a-f]{6}$/i.test(token(name)), `${name} is a colour`);
+  }
   Assert.notEqual(
     colourVar(/** @type {Element} */ (doc.documentElement), "--background-color-canvas"),
     tokenColour("--vimma-bg"),
     "a page keeps Firefox's high-contrast canvas",
   );
-  const findbar = await gBrowser.getFindBar(tab);
+  const findbar = await findBarOf(tab);
   findbar.setAttribute("noanim", "true");
   findbar.open();
   await until(() => !findbar.hidden, "find bar");
