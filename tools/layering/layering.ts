@@ -114,11 +114,12 @@ function resolveSpec(spec: string, file: string, relativeAllowed: boolean): Reso
 }
 
 /**
- * Whether a path is a classic script at the top of vimma/ (vimma.js, which browser.xhtml loads
- * with `<script src>`). No module can import one, so a string that names it outside a load
- * position is not an edge; passed to `importESModule` or `import()`, it still is one.
+ * Whether a path is vimma.js, the one classic script at the top of vimma/, which browser.xhtml
+ * loads with `<script src>`. No module can import it, so a string that names it outside a load
+ * position is not an edge; passed to `importESModule` or `import()`, it still is one. Any other
+ * top-level name, a second script included, stays an edge until it is named here.
  */
-const isRootScript = (path: string) => !path.includes("/") && path.endsWith(".js");
+const isRootScript = (path: string) => path === "vimma.js";
 
 /** The value of a string literal, or of a template literal without `${}`; else null. */
 function fixedString(node: AstNode): string | null {

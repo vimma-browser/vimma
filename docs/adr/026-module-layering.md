@@ -137,8 +137,9 @@ each without a change in behaviour:
   `HostServices`. `vimma.js`, the window script, which may import every folder, provides them with
   `HostServices.provide` before it starts the first window's host. A service is provided once
   and never replaced (a second window's `vimma.js` hands over the same ones), which is the
-  guarantee; a check on the caller's file name catches a mistaken caller. One asked for before it is provided gives the answer that does the least: every
-  download counts as an agent's, there are no conversations, and `config.toml` is not written.
+  guarantee; a check on the caller's file name catches a mistaken caller. One asked for before
+  it is provided gives the answer that does the least: every download counts as an agent's,
+  there are no conversations, and `config.toml` is not written.
   A registry rather than arguments to `VimmaHost.init`, because the five calls sit in four
   modules that the host reaches on different paths, and threading the services through each
   would change their signatures for no gain in what they depend on.)

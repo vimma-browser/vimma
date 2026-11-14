@@ -136,10 +136,11 @@ describe("importsOf: every way a module reaches another", () => {
           `const PROVIDER = "${V}vimma.js";`,
           `const AGENT = "${V}agent/AgentChat.sys.mjs";`,
           `const CHAT = \`${V}agent/agent-ui.mjs\`;`,
+          `const OTHER = "${V}vimma2.js";`,
         ].join("\n"),
         "host/host-services.mjs",
       ),
-    ).toEqual(["agent/AgentChat.sys.mjs (lazy)", "agent/agent-ui.mjs (lazy)"]);
+    ).toEqual(["agent/AgentChat.sys.mjs (lazy)", "agent/agent-ui.mjs (lazy)", "vimma2.js (lazy)"]);
   });
 
   test("loading the root window script as a module is still an edge", () => {
