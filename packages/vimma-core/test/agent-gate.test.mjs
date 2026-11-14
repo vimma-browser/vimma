@@ -27,6 +27,7 @@ import {
   RECONNECT_MS,
   UNTRUSTED_CLOSE,
   UNTRUSTED_OPEN,
+  FROZEN_COPY_DEPTH,
   frozenCopy,
   grantLength,
   mcpActivity,
@@ -1120,6 +1121,49 @@ describe("the gate's copies (security.md M62)", () => {
         return true;
       }),
     );
+  });
+
+  test("frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype", () => {
+    const what = JSON.parse('{"url":"x","__proto__":{"danger":"exe"}}');
+    const copy = /** @type {any} */ (frozenCopy(what));
+    expect(Object.keys(copy)).toEqual(["url", "__proto__"]);
+    expect(copy.danger).toBeUndefined();
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+    expect(Object.getOwnPropertyDescriptor(copy, "__proto__")?.value).toEqual({ danger: "exe" });
+    expect(JSON.stringify(copy)).toBe(JSON.stringify(what));
+    expect({ ...copy }).toEqual({ ...what });
+  });
+
+  test("frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error", () => {
+    /** @type {any} */
+    let deep = {};
+    for (let i = 0; i < 100_000; i++) deep = { deep };
+    expect(() => frozenCopy(deep)).toThrow(/deeper than 32 levels/);
+    /** @type {any} */
+    let ok = "leaf";
+    for (let i = 0; i < FROZEN_COPY_DEPTH; i++) ok = { ok };
+    expect(() => frozenCopy(ok)).not.toThrow();
+    expect(() => frozenCopy({ ok })).toThrow(/deeper than 32 levels/);
+  });
+
+  test("frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null", () => {
+    /** @type {any} */
+    let shared = { leaf: 1 };
+    for (let i = 0; i < 22; i++) shared = { a: shared, b: shared };
+    const start = performance.now();
+    const copy = /** @type {any} */ (frozenCopy(shared));
+    expect(performance.now() - start).toBeLessThan(200);
+    /** @type {any} */
+    let walk = copy;
+    for (let i = 0; i < 22; i++) walk = i % 2 ? walk.a : walk.b;
+    expect(walk).toEqual({ leaf: 1 });
+    expect(copy.a).toBe(copy.b);
+    /** @type {any} */
+    const loop = { name: "x", list: [] };
+    loop.list.push(loop, { back: loop });
+    const c = /** @type {any} */ (frozenCopy(loop));
+    expect(c.list[0]).toBeNull();
+    expect(c.list[1].back).toBeNull();
   });
 
   test(":mcp log keeps its own row: the caller's object and a reader's row change nothing", () => {

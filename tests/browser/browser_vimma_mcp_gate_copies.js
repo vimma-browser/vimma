@@ -53,6 +53,7 @@ add_task(async function test_question_and_log_show_what_was_asked() {
   AgentGate.connect(CONN, { client: "agent-a", via: "test" });
   const conn = AgentGate.connections.find((l) => l.client === "agent-a");
   Assert.ok(conn, "the connection is listed");
+  Assert.ok(Object.isFrozen(AgentGate.connections), "connections is a frozen array");
   tryWrite(conn, "client", "built-in agent");
   Assert.ok(
     AgentGate.connections.some((l) => l.client === "agent-a"),
@@ -83,6 +84,7 @@ add_task(async function test_question_and_log_show_what_was_asked() {
     tryWrite(asked.what, "url", READER);
     tryWrite(asked, "tool", "vimma_read_page");
 
+    Assert.ok(Object.isFrozen(AgentGate.waiting), "waiting is a frozen array");
     const again = /** @type {NonNullable<typeof q>} */ (questionOf(CONN));
     Assert.equal(again.label.client, "agent-a", "the waiting question keeps the agent's name");
     Assert.equal(/** @type {any} */ (again.what).url, ASKED, "and the URL it asked for");
@@ -103,6 +105,7 @@ add_task(async function test_question_and_log_show_what_was_asked() {
     const answered = events.find((e) => e.kind === "answered");
     Assert.equal(answered?.question.what.url, ASKED, "the answered event keeps the URL");
 
+    Assert.ok(Object.isFrozen(AgentGate.log), "log is a frozen array");
     const row = AgentGate.log[0];
     Assert.equal(row?.client, "agent-a", "the log row names the agent");
     Assert.equal(row?.detail, ASKED, "and the URL it asked for");
@@ -172,11 +175,12 @@ add_task(async function test_a_here_answer_allows_the_button_the_question_named(
     Assert.ok(waits, "a button the question never named still asks");
     if (waits) AgentGate.answer(waits.id, { kind: "deny" });
     Assert.ok(!(await otherClick).allow, "and is denied here");
-    const same = await AgentGate.request(CONN, "vimma_activate", form, {
-      always: true,
-      covered: buy,
-    });
-    Assert.ok(same.allow, "the button the question named runs under the allowance");
+    const same = AgentGate.request(CONN, "vimma_activate", form, { always: true, covered: buy });
+    // Answered when it asks instead, so a failure here never hangs the file.
+    const asks = questionOf(CONN);
+    if (asks) AgentGate.answer(asks.id, { kind: "deny" });
+    Assert.ok(!asks, "the button the question named does not ask");
+    Assert.ok((await same).allow, "it runs under the allowance");
   } finally {
     for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
     AgentGate.revoke();
@@ -192,6 +196,11 @@ add_task(async function test_ran_events_and_grant_labels_are_the_gates_own() {
     const read = AgentGate.request(OTHER, "vimma_read_page", { url: ASKED });
     AgentGate.answer(/** @type {any} */ (questionOf(OTHER)).id, { kind: "grant", minutes: 5 });
     Assert.ok((await read).allow, "granted");
+    const grants = AgentGate.grants();
+    Assert.ok(Object.isFrozen(grants), "grants() is a frozen array");
+    const mine = grants.find((/** @type {{ conn: unknown }} */ g) => g.conn === OTHER);
+    Assert.ok(mine && Object.isFrozen(mine), "and each grant in it is frozen");
+    Assert.equal(tryWrite(mine, "until", 0), false, "so a reader cannot change its end");
     const label = labelOf(OTHER);
     Assert.equal(label?.client, "agent-b", "the grant names its agent");
     tryWrite(label, "client", "built-in agent");
@@ -226,5 +235,110 @@ add_task(async function test_ran_events_and_grant_labels_are_the_gates_own() {
   } finally {
     AgentGate.revoke();
     AgentGate.disconnect(OTHER);
+  }
+});
+
+// The other flags the answer is checked against (a file Vimma could not scan, a payment's `a`):
+// a caller that drops one after asking changes nothing, as for `danger` above.
+add_task(async function test_unscanned_and_pay_are_checked_as_asked() {
+  AgentGate.connect(CONN, { client: "agent-a" });
+  try {
+    /** @type {Record<string, unknown>} */
+    const file = { name: "data.zip", size: 10, host: "asked.example", unscanned: true };
+    const download = AgentGate.request(CONN, "vimma_download", file, { always: true });
+    delete file.unscanned;
+    const dq = /** @type {NonNullable<ReturnType<typeof questionOf>>} */ (questionOf(CONN));
+    Assert.equal(
+      AgentGate.answer(dq.id, { kind: "grant", minutes: 5 }),
+      null,
+      "a grant answer to the unscanned file the user saw makes no grant",
+    );
+    Assert.equal(labelOf(CONN), null, "the connection has no grant");
+    AgentGate.answer(dq.id, { kind: "deny" });
+    Assert.ok(!(await download).allow, "denied");
+
+    // A payment is one yes or no: a grant answer allows it once and makes no grant.
+    const submit = { method: "post", action: `${ASKED}pay`, host: "asked.example" };
+    /** @type {Record<string, unknown>} */
+    const once = { url: ASKED, pay: { amount: "10 EUR" } };
+    const paid = AgentGate.request(CONN, "vimma_activate", once, { always: true });
+    delete once.pay;
+    const oq = /** @type {NonNullable<ReturnType<typeof questionOf>>} */ (questionOf(CONN));
+    Assert.equal(
+      AgentGate.answer(oq.id, { kind: "grant", minutes: 5 }),
+      null,
+      "a grant answer to the payment the user saw makes no grant",
+    );
+    Assert.equal(labelOf(CONN), null, "the connection still has no grant");
+    Assert.ok((await paid).allow, "that one payment is allowed");
+
+    const read = AgentGate.request(CONN, "vimma_read_page", { url: ASKED });
+    const rq = questionOf(CONN);
+    if (rq) AgentGate.answer(rq.id, { kind: "grant", minutes: 5 });
+    Assert.ok((await read).allow, "granted");
+    const key = "asked.example|form|pay";
+    /** @type {Record<string, unknown>} */
+    const payment = {
+      url: ASKED,
+      pay: { amount: "10 EUR" },
+      submit,
+      here: { site: "asked.example", key },
+    };
+    const paying = AgentGate.request(CONN, "vimma_activate", payment, { always: true });
+    delete payment.pay;
+    const pq = /** @type {NonNullable<ReturnType<typeof questionOf>>} */ (questionOf(CONN));
+    Assert.equal(AgentGate.answer(pq.id, { kind: "here" }), null, "a is no answer to a payment");
+    Assert.ok(questionOf(CONN), "the payment still waits");
+    AgentGate.answer(pq.id, { kind: "deny" });
+    Assert.ok(!(await paying).allow, "denied");
+    const again = AgentGate.request(CONN, "vimma_activate", payment, {
+      always: true,
+      covered: key,
+    });
+    const aq = questionOf(CONN);
+    Assert.ok(aq, "and no allowance was made for it");
+    if (aq) AgentGate.answer(aq.id, { kind: "deny" });
+    await again;
+  } finally {
+    for (const q of AgentGate.waiting) AgentGate.answer(q.id, { kind: "deny" });
+    AgentGate.revoke();
+    AgentGate.disconnect(CONN);
+  }
+});
+
+// A new name (a conversation titled by its first message) is stored as a frozen copy too.
+add_task(async function test_relabel_keeps_a_frozen_copy() {
+  AgentGate.connect(CONN, { client: "agent-a" });
+  try {
+    AgentGate.relabel(CONN, "agent-c");
+    const label = AgentGate.connections.find((l) => l.client === "agent-c");
+    Assert.ok(label && Object.isFrozen(label), "the new label is frozen");
+    tryWrite(label, "client", "built-in agent");
+    Assert.ok(
+      AgentGate.connections.some((l) => l.client === "agent-c"),
+      "a reader cannot rename it",
+    );
+  } finally {
+    AgentGate.disconnect(CONN);
+  }
+});
+
+// A request too deep to copy is refused before it is queued: the caller's await throws, so it
+// fails closed, and nothing waits.
+add_task(async function test_a_request_too_deep_to_copy_is_never_queued() {
+  AgentGate.connect(CONN, { client: "agent-a" });
+  try {
+    /** @type {any} */
+    let what = { url: ASKED };
+    for (let i = 0; i < 40; i++) what = { what };
+    Assert.throws(
+      () => AgentGate.request(CONN, "vimma_read_page", what),
+      /deeper than 32 levels/,
+      "the request throws",
+    );
+    Assert.equal(questionOf(CONN), undefined, "and nothing waits");
+    Assert.equal(AgentGate.waiting.length, 0, "no question at all");
+  } finally {
+    AgentGate.disconnect(CONN);
   }
 });

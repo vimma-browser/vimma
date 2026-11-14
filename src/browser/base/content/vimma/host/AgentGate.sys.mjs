@@ -463,13 +463,15 @@ export const AgentGate = {
 
   /**
    * The waiting questions, oldest first: the one to ask now is the first.
-   * @returns {Question[]}
+   * @returns {readonly Readonly<Question>[]}
    */
   get waiting() {
-    return queue.waiting.flatMap((r) => {
-      const q = questionOf(r.id);
-      return q ? [q] : [];
-    });
+    return Object.freeze(
+      queue.waiting.flatMap((r) => {
+        const q = questionOf(r.id);
+        return q ? [q] : [];
+      }),
+    );
   },
 
   /**
@@ -487,7 +489,7 @@ export const AgentGate = {
 
   /** `:mcp log`'s rows, newest first (mcp-drive D14): frozen, the log's own (M62). */
   get log() {
-    return log.entries();
+    return Object.freeze(log.entries());
   },
 
   /**
@@ -520,16 +522,22 @@ export const AgentGate = {
     return ranAt;
   },
 
-  /** Grants in force, the one ending first first, with their connection's frozen label. */
+  /** Grants in force, the one ending first first, with their connection's label: all frozen. */
   grants() {
-    return queue.grants(Date.now()).map((g) => ({ ...g, label: labels.get(g.conn) ?? null }));
+    return Object.freeze(
+      queue
+        .grants(Date.now())
+        .map((g) => Object.freeze({ ...g, label: labels.get(g.conn) ?? null })),
+    );
   },
 
   /**
    * Agent connections' labels, frozen (`:mcp`, about:vimma); never a full-control question's.
    */
   get connections() {
-    return [...labels.entries()].filter(([conn]) => !NOT_AGENTS.has(conn)).map(([, l]) => l);
+    return Object.freeze(
+      [...labels.entries()].filter(([conn]) => !NOT_AGENTS.has(conn)).map(([, l]) => l),
+    );
   },
 
   /**

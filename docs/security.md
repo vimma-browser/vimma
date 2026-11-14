@@ -1101,13 +1101,22 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   caller does to its object afterwards; a module that reads the gate can neither rename a
   connection nor change a waiting question, an event the next listener hears or a log row; and
   a reader's write never reaches the object the caller acts on. What the caller then does is
-  still checked against the page when it runs (decision 19), not against the gate's copy.
+  still checked against the page when it runs (decision 19), not against the gate's copy. The
+  copy is of JSON-like data: a `__proto__` key stays data, never the copy's prototype, a shared
+  object is copied once, and a request nested deeper than 32 levels throws before it is queued,
+  so its caller fails closed.
   [`test_question_and_log_show_what_was_asked`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_dangerous_download_stays_one_file_after_the_caller_changes_it`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_a_here_answer_allows_the_button_the_question_named`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`test_ran_events_and_grant_labels_are_the_gates_own`](../tests/browser/browser_vimma_mcp_gate_copies.js),
   [`frozenCopy copies plain data deeply and freezes every level`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`frozenCopy reads a getter once, and drops functions and cycles`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`test_unscanned_and_pay_are_checked_as_asked`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_relabel_keeps_a_frozen_copy`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`test_a_request_too_deep_to_copy_is_never_queued`](../tests/browser/browser_vimma_mcp_gate_copies.js),
+  [`frozenCopy keeps a __proto__ key as its own data, never as the copy's prototype`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`frozenCopy refuses data nested deeper than FROZEN_COPY_DEPTH, with a clear error`](../packages/vimma-core/test/agent-gate.test.mjs),
+  [`frozenCopy copies shared sub-objects in linear time, and a cycle still becomes null`](../packages/vimma-core/test/agent-gate.test.mjs),
   [`:mcp log keeps its own row: the caller's object and a reader's row change nothing`](../packages/vimma-core/test/agent-gate.test.mjs)
 - M2. Agent commands **must** see only tabs of the agent workspace in its container, checked
   when each command runs; **never** another workspace's tab, a foreign or pinned tab, or a
