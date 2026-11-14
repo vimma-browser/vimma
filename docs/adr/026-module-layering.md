@@ -216,6 +216,10 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
 - Strings built at run time from parts the check cannot see (a value read from a pref or a
   file) are not import specifiers it can read; it refuses non-fixed specifiers where modules
   are loaded, and ignores other computed strings.
+- An edge must name a module that exists: one git tracks and `jar.mn` packages by name, so a
+  mistyped `chrome://` URL (such as the parent actor's, which `vimma.js` passes to
+  `VimmaActors.register`) fails the check rather than the run. `core/` is not checked (a
+  git-ignored copy, packaged by a wildcard), nor is a folder prefix, which names no file.
 
 ## Consequences
 
