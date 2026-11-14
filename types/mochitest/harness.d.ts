@@ -343,6 +343,11 @@ declare var browserDOMWindow: BrowserWindow["browserDOMWindow"];
 declare var BrowserCommands: BrowserWindow["BrowserCommands"];
 // engine/browser/base/content/utilityOverlay.js
 declare function openAboutDialog(): void;
+// engine/browser/base/content/browser-places.js: `star` is the URL bar's star button, an <image>
+// (document.getElementById("star-button"), so null in a window without one).
+declare var BookmarkingUI: { readonly star: XULElement | null };
+// engine/browser/base/content/browser.js: the View > Toolbars menu items' command handler.
+declare function onViewToolbarCommand(aEvent: Event): void;
 // engine/browser/base/content/browser.js: opens a browser window; `args` is its first URL (an
 // nsISupportsString).
 declare function OpenBrowserWindow(options?: { private?: boolean; args?: unknown }): BrowserWindow;

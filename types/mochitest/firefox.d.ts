@@ -576,3 +576,10 @@ interface BrowserWindow {
     params: { inBackground?: boolean; triggeringPrincipal?: nsIPrincipal; userContextId?: number },
   ): void;
 }
+
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element has click(), and its `dataset`
+// (XULElement includes HTMLOrSVGOrMathMLElement, engine/dom/webidl/Element.webidl).
+interface XULElement {
+  readonly dataset: DOMStringMap;
+  click(): void;
+}

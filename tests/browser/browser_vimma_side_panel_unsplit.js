@@ -33,16 +33,70 @@ const NOTICE_ID = "vimma-notice";
 const WIDTH = 1280;
 const HEIGHT = 800;
 
-const view = (win = window) => PaneViews.get(win);
-const panel = (win = window) => win.document.getElementById(PANEL_ID);
+/**
+ * The window's split view, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} [win]
+ */
+const view = (win = window) => /** @type {PaneView} */ (PaneViews.get(win));
+/**
+ * The window's split tree, read while the test has a split. With none, every read of it below
+ * (leaves, `.root`, `.layout`) throws, as before.
+ */
+const panes = () => /** @type {Panes} */ (view().panes);
+/**
+ * The window's workspaces, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} [win]
+ */
+const workspaces = (win = window) =>
+  /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win));
+/**
+ * The window's workspaces once their model is built (the same object as workspaces(win)).
+ * @param {BrowserWindow} [win]
+ */
+const live = (win = window) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+/** @param {Window} [win] */
+const panel = (win = window) =>
+  /** @type {HTMLElement | null} */ (win.document.getElementById(PANEL_ID));
+/**
+ * The side panel, which a test reads while it is open.
+ * @param {Window} [win]
+ */
+const shownPanel = (win = window) => /** @type {HTMLElement} */ (panel(win));
+/** @param {Window} [win] */
 const isOpen = (win = window) =>
-  !!panel(win) && !panel(win).hidden && BrowserTestUtils.isVisible(panel(win));
-const rows = (win = window) => [...(panel(win)?.querySelectorAll("[role=option]") ?? [])];
+  !!panel(win) && !shownPanel(win).hidden && BrowserTestUtils.isVisible(shownPanel(win));
+/**
+ * The panel's rows (side-panel.mjs makes each an <li>).
+ * @param {Window} [win]
+ */
+const rows = (win = window) => [
+  .../** @type {NodeListOf<HTMLElement> | never[]} */ (
+    panel(win)?.querySelectorAll("[role=option]") ?? []
+  ),
+];
+/** @param {Element} row */
 const titleOf = (row) => row.querySelector(".vimma-panel-title")?.textContent ?? "";
+/** @param {string} name */
 const rowOf = (name) => rows().find((r) => titleOf(r) === name);
+/**
+ * The listed row titled `name`; reading a missing one throws, as before.
+ * @param {string} name
+ */
+const listedRow = (name) => /** @type {HTMLElement} */ (rowOf(name));
+/** @param {string} name */
 const gutterOf = (name) => rowOf(name)?.querySelector(".vimma-panel-mark")?.textContent ?? "";
-const selected = () => panel().querySelector("[role=option][aria-selected=true]");
-const count = (win = window) => panel(win).querySelector(".vimma-panel-count");
+/**
+ * The highlighted row. With none, indexOf gives -1 and titleOf throws, as before.
+ */
+const selected = () =>
+  /** @type {HTMLElement} */ (shownPanel().querySelector("[role=option][aria-selected=true]"));
+/**
+ * The panel header's count, which the open panel has.
+ * @param {Window} [win]
+ */
+const count = (win = window) =>
+  /** @type {Element} */ (shownPanel(win).querySelector(".vimma-panel-count"));
+/** @param {Window} [win] */
 const markedTitles = (win = window) =>
   rows(win)
     .filter((r) => r.getAttribute("aria-checked") === "true")
@@ -53,6 +107,10 @@ function notice() {
   return n && n.matches(":popover-open") ? n.textContent : null;
 }
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
@@ -61,32 +119,62 @@ function nextFrame() {
   return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 }
 
-/** @type {Map<string, Element>} */
+/** @type {Map<string, SplitTab>} */
 const byName = new Map();
-const tab = (name) => /** @type {Element} */ (byName.get(name));
+/**
+ * The tab a test named: page() names each tab it opens.
+ * @param {string} name
+ */
+const tab = (name) => /** @type {SplitTab} */ (byName.get(name));
+/** @param {MozTabbrowserTab} t */
 const nameOf = (t) => [...byName].find(([, x]) => x === t)?.[0] ?? t.label;
-const tabOf = (panelId) => gBrowser.tabs.find((t) => t.linkedPanel === panelId);
+/**
+ * The tab of a pane's panel. With none, nameOf reads `label` off undefined and throws, as before.
+ * @param {string} panelId
+ */
+const tabOf = (panelId) =>
+  /** @type {MozTabbrowserTab} */ (gBrowser.tabs.find((t) => t.linkedPanel === panelId));
+/**
+ * The pane that shows `t`. With none, closePane throws on the missing pane, as before.
+ * @param {Panes} p
+ * @param {SplitTab} t
+ */
+const paneOf = (p, t) => /** @type {string} */ (Panes.paneOfTab(p, t.linkedPanel));
 
-/** The shown tree with each leaf named by its tab: `x[a,y[b,c]]`; one pane: "". */
+/**
+ * The shown tree with each leaf named by its tab: `x[a,y[b,c]]`; one pane: "".
+ * @param {Panes | null} [panes]
+ */
 function shape(panes = view().panes) {
+  /** @type {(n: Panes["root"]) => string} */
   const walk = (n) =>
     n.type === "leaf" ? nameOf(tabOf(n.tab)) : `${n.axis}[${n.children.map(walk).join(",")}]`;
   return panes ? walk(panes.root) : "";
 }
 
-/** Every split's ratios, depth first. */
+/**
+ * Every split's ratios, depth first.
+ * @param {Panes["root"]} node
+ * @returns {number[][]}
+ */
 function ratios(node) {
   return node.type === "leaf" ? [] : [node.ratios.slice(), ...node.children.flatMap(ratios)];
 }
 
 function focusedName() {
-  const p = view().panes;
-  return nameOf(tabOf(Panes.leaves(p).find((l) => l.pane === p.focus).tab));
+  const p = panes();
+  // The focused pane is a leaf of the tree; a missing one throws on `.tab`, as before.
+  const focused = /** @type {PaneLeaf} */ (Panes.leaves(p).find((l) => l.pane === p.focus));
+  return nameOf(tabOf(focused.tab));
 }
 
-/** A page titled `name` with a tall body, a text field and a JS marker. */
+/**
+ * A page titled `name` with a tall body, a text field and a JS marker.
+ * @param {string} name
+ */
 async function page(name) {
-  const t = BrowserTestUtils.addTab(gBrowser, `${PAGE}?${name}`);
+  // A loaded tab has its panel.
+  const t = /** @type {SplitTab} */ (BrowserTestUtils.addTab(gBrowser, `${PAGE}?${name}`));
   await BrowserTestUtils.browserLoaded(t.linkedBrowser);
   await SpecialPowers.spawn(t.linkedBrowser, [name], (n) => {
     const doc = content.document;
@@ -105,7 +193,10 @@ async function page(name) {
   return t;
 }
 
-/** What a reload or a recreated page would change. */
+/**
+ * What a reload or a recreated page would change.
+ * @param {SplitTab[]} tabs
+ */
 function identity(tabs) {
   return tabs.map((t) => ({
     browser: t.linkedBrowser,
@@ -114,7 +205,12 @@ function identity(tabs) {
   }));
 }
 
-/** No page reloaded: same browser and document, marker, scroll and typed text. */
+/**
+ * No page reloaded: same browser and document, marker, scroll and typed text.
+ * @param {SplitTab[]} tabs
+ * @param {ReturnType<typeof identity>} before
+ * @param {string} what
+ */
 async function assertNotReloaded(tabs, before, what) {
   const now = identity(tabs);
   for (const [i, t] of tabs.entries()) {
@@ -124,7 +220,8 @@ async function assertNotReloaded(tabs, before, what) {
     Assert.equal(now[i].innerWindowId, before[i].innerWindowId, `${what}: ${n}'s document`);
     const state = await SpecialPowers.spawn(t.linkedBrowser, [], () => ({
       marker: content.wrappedJSObject.vimmaMarker,
-      field: content.document.getElementById("field")?.value,
+      field: /** @type {HTMLInputElement | null} */ (content.document.getElementById("field"))
+        ?.value,
       scrolled: content.scrollY,
     }));
     Assert.equal(state.marker, n, `${what}: ${n}'s page state survives`);
@@ -133,7 +230,12 @@ async function assertNotReloaded(tabs, before, what) {
   }
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {Window} [win]
+ * @param {KeyEventOptions} [modifiers]
+ */
 function prefix(key, win = window, modifiers = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, modifiers, win);
@@ -147,7 +249,10 @@ async function openPanel() {
   await until(() => isOpen(), "ctrl+b b opens the side panel");
 }
 
-/** j / k until the highlight is on the row titled `name`. */
+/**
+ * j / k until the highlight is on the row titled `name`.
+ * @param {string} name
+ */
 async function goTo(name) {
   const at = rows().findIndex((r) => titleOf(r) === name);
   Assert.greaterOrEqual(at, 0, `${name} is listed`);
@@ -157,7 +262,10 @@ async function goTo(name) {
   await until(() => titleOf(selected()) === name, `the highlight is on ${name}`);
 }
 
-/** `space` on each named row, which flips its mark. */
+/**
+ * `space` on each named row, which flips its mark.
+ * @param {...string} names
+ */
 async function toggle(...names) {
   for (const n of names) {
     await goTo(n);
@@ -173,7 +281,11 @@ async function enter() {
   await until(() => !isOpen(), "Enter closes the panel");
 }
 
-/** Shows the named tabs as the panes (no panel), focus on `focus`. */
+/**
+ * Shows the named tabs as the panes (no panel), focus on `focus`.
+ * @param {string[]} names
+ * @param {string} [focus]
+ */
 async function split(names, focus = names[0]) {
   const result = view().showTabs(names.map(tab), tab(focus));
   Assert.ok(result.ok, `split ${names.join(", ")}`);
@@ -182,10 +294,15 @@ async function split(names, focus = names[0]) {
 }
 
 /** The tab strip's order of the workspace's tabs we made. */
-const tabOrder = () => gBrowser.tabs.filter((t) => [...byName.values()].includes(t)).map(nameOf);
+const tabOrder = () => {
+  /** @type {MozTabbrowserTab[]} */
+  const made = [...byName.values()];
+  return gBrowser.tabs.filter((t) => made.includes(t)).map(nameOf);
+};
 
-/** @type {Element[]} */
+/** @type {SplitTab[]} */
 const opened = [];
+/** @type {[number, number]} */
 const startSize = [window.outerWidth, window.outerHeight];
 
 async function reset() {
@@ -206,7 +323,7 @@ registerCleanupFunction(async () => {
 });
 
 add_task(async function setup_five_pages() {
-  await WindowWorkspaces.get(window).ready;
+  await workspaces().ready;
   if (window.outerWidth !== WIDTH || window.outerHeight !== HEIGHT) {
     const resized = BrowserTestUtils.waitForEvent(window, "resize");
     window.resizeTo(WIDTH, HEIGHT);
@@ -234,7 +351,11 @@ add_task(async function a_split_opens_with_its_panes_marked_and_one_esc_closes()
   );
   Assert.equal(count().textContent, "split: 3 panes", "the header names the split");
   for (const n of ["d", "e"]) {
-    Assert.equal(rowOf(n).getAttribute("aria-checked"), "false", `${n} is checkable, unchecked`);
+    Assert.equal(
+      listedRow(n).getAttribute("aria-checked"),
+      "false",
+      `${n} is checkable, unchecked`,
+    );
     Assert.equal(gutterOf(n), "", `${n}'s gutter is empty`);
   }
   Assert.equal(gutterOf("b"), "●", "a pane's row shows ●");
@@ -255,8 +376,8 @@ add_task(async function enter_on_unchanged_marks_goes_to_the_highlighted_row() {
 add_task(async function unmarking_a_pane_keeps_the_others_shape_and_the_tab_after_the_split() {
   await split(["a", "b", "c", "d"], "a");
   Assert.ok(view().resize("wider", 0.1).ok, "a is made wider by hand");
-  const before = view().panes;
-  const cPane = Panes.paneOfTab(before, tab("c").linkedPanel);
+  const before = panes();
+  const cPane = paneOf(before, tab("c"));
   const want = Panes.closePane(before, cPane);
   const all = ["a", "b", "c", "d"].map(tab);
   const kept = identity(all);
@@ -265,13 +386,16 @@ add_task(async function unmarking_a_pane_keeps_the_others_shape_and_the_tab_afte
   await toggle("c");
   Assert.equal(count().textContent, "split: 4 → 3", "the header says what Enter will do");
   Assert.equal(gutterOf("c"), "○", "c shows it will leave");
-  Assert.equal(rowOf("c").getAttribute("aria-checked"), "false", "c is unchecked");
+  Assert.equal(listedRow("c").getAttribute("aria-checked"), "false", "c is unchecked");
   await goTo("d");
   await enter();
 
   await until(() => shape() === shape(want), `the rest keep their shape: ${shape(want)}`);
-  Assert.deepEqual(ratios(view().panes.root), ratios(want.root), "and their sizes");
-  Assert.equal(view().panes.layout, before.layout, "the stored preset is kept");
+  Assert.deepEqual(ratios(panes().root), ratios(want.root), "and their sizes");
+  // The dwindle default stores no preset (browser_vimma_side_panel_marks.js checks it), so both
+  // are undefined here and this checks that the unmark stores none. strictEqual: a null layout
+  // would not pass for undefined.
+  Assert.strictEqual(panes().layout, before.layout, "the stored preset is kept");
   Assert.equal(focusedName(), "d", "Enter goes to the highlighted row: d, a pane");
   Assert.ok(tab("c").isConnected && !tab("c").closing, "c is still open");
   Assert.ok(!tab("c").splitview, "c left the split");
@@ -376,6 +500,7 @@ add_task(async function unmarking_every_pane_shows_the_highlighted_tab_alone() {
 
 // Revision (decisions 20-27): a split kept as a hidden view.
 const hiddenView = () => view().panes?.hidden === true;
+/** @param {string} id */
 const segText = (id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
     ?.textContent ?? null;
@@ -383,7 +508,7 @@ const segText = (id) =>
 add_task(async function the_users_flow_space_on_c_enter_on_c_shows_c_alone() {
   await split(["a", "b", "c"], "a");
   Assert.ok(view().resize("wider", 0.1).ok, "a is made wider by hand");
-  const want = Panes.closePane(view().panes, Panes.paneOfTab(view().panes, tab("c").linkedPanel));
+  const want = Panes.closePane(panes(), paneOf(panes(), tab("c")));
   await openPanel();
   await toggle("c");
   await goTo("c");
@@ -391,18 +516,21 @@ add_task(async function the_users_flow_space_on_c_enter_on_c_shows_c_alone() {
   await until(() => gBrowser.selectedTab === tab("c"), "c is selected");
   Assert.ok(hiddenView(), "a and b stay a view, hidden");
   Assert.equal(shape(), shape(want), "the view is a | b");
-  Assert.deepEqual(ratios(view().panes.root), ratios(want.root), "at their sizes");
+  Assert.deepEqual(ratios(panes().root), ratios(want.root), "at their sizes");
   Assert.ok(!tab("c").splitview, "c is out of the split, alone");
   await until(() => document.activeElement === tab("c").linkedBrowser, "c's page has focus");
   await until(() => segText("pane") === "split 2 hidden", "the status bar says so");
   for (const n of ["a", "b"]) {
-    const panel = document.getElementById(tab(n).linkedPanel);
+    // A pane's tab has its panel; a missing one throws on `.classList`, as before.
+    const panel = /** @type {Element} */ (document.getElementById(tab(n).linkedPanel));
     Assert.ok(
       !panel.classList.contains("split-view-panel-active"),
       `${n}'s panel is suspended, not drawn over c`,
     );
   }
-  Assert.equal(
+  // strictEqual: with nothing at the point and a tab without its panel, equal passed on
+  // undefined == null.
+  Assert.strictEqual(
     document.elementFromPoint(100, 300)?.closest?.(".browserSidebarContainer")?.id,
     tab("c").linkedPanel,
     "what shows on the left is c",
@@ -418,13 +546,13 @@ add_task(async function the_users_flow_space_on_c_enter_on_c_shows_c_alone() {
 });
 
 add_task(async function picking_a_tab_of_the_hidden_view_brings_it_back_whole() {
-  const before = ratios(view().panes.root);
+  const before = ratios(panes().root);
   await openPanel();
   await goTo("b");
   await enter();
   await until(() => !hiddenView(), "the view shows again");
   Assert.equal(focusedName(), "b", "focused on b's pane");
-  Assert.deepEqual(ratios(view().panes.root), before, "at its sizes");
+  Assert.deepEqual(ratios(panes().root), before, "at its sizes");
   await until(() => segText("pane") === "pane 2/2", "the status bar is back to pane 2/2");
 });
 
@@ -439,23 +567,27 @@ add_task(async function every_route_to_an_outside_tab_shows_it_alone() {
 
   // ctrl+b n / p step through the tab order: a view's tab shows the view, any other alone.
   const order = gBrowser.visibleTabs;
-  const next = order[order.indexOf(gBrowser.selectedTab) + 1];
+  // The tab after a is another of the test's loaded pages, with its panel.
+  const next = /** @type {SplitTab} */ (order[order.indexOf(gBrowser.selectedTab) + 1]);
   await focusContent(gBrowser.selectedBrowser);
   prefix("n");
   await until(() => gBrowser.selectedTab === next, "ctrl+b n moves on");
-  Assert.equal(hiddenView(), !Panes.paneOfTab(view().panes, next.linkedPanel), "per its tab");
+  Assert.equal(hiddenView(), !Panes.paneOfTab(panes(), next.linkedPanel), "per its tab");
 
   // The goto picker.
   gBrowser.selectedTab = tab("a");
   await focusContent(gBrowser.selectedBrowser);
   prefix("g");
-  await until(() => document.getElementById("vimma-picker")?.open, "the picker opens");
+  await until(
+    () => /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-picker"))?.open,
+    "the picker opens",
+  );
   EventUtils.synthesizeKey("e"); // it opens typing (docs/specs/tab-search.md)
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => gBrowser.selectedTab === tab("e"), "the picker selects e");
   Assert.ok(hiddenView(), "e alone, the view hidden");
   Assert.deepEqual(
-    Panes.leaves(view().panes).map((l) => nameOf(tabOf(l.tab))),
+    Panes.leaves(panes()).map((l) => nameOf(tabOf(l.tab))),
     ["a", "b"],
     "the view is unchanged",
   );
@@ -464,22 +596,29 @@ add_task(async function every_route_to_an_outside_tab_shows_it_alone() {
 
 add_task(async function another_workspace_in_the_panel_shows_its_own_split() {
   const w = WorkspaceStore.addWorkspace({ name: "unsplit-b", color: "blue", icon: "briefcase" });
+  // inW below compares containers: without one, Number(null) is the default container's 0, and
+  // the wait would pass on the first workspace's tab.
+  Assert.ok(w.userContextId, "the new workspace has its own container");
   registerCleanupFunction(() => WorkspaceStore.deleteWorkspace(w.id, { confirmed: true }));
   const win = await BrowserTestUtils.openNewBrowserWindow();
   registerCleanupFunction(() => !win.closed && BrowserTestUtils.closeWindow(win));
-  const ww = WindowWorkspaces.get(win);
+  const ww = workspaces(win);
   await ww.ready;
   await until(() => !!ww.model, "the new window has its workspaces");
+  /** The active workspace's id, read once the model is built (above). */
+  const active = () => live(win).model.active;
+  /** @param {string} q */
   const add = async (q) => {
-    const t = BrowserTestUtils.addTab(win.gBrowser, `${PAGE}?${q}`);
+    // A loaded tab has its panel.
+    const t = /** @type {SplitTab} */ (BrowserTestUtils.addTab(win.gBrowser, `${PAGE}?${q}`));
     await BrowserTestUtils.browserLoaded(t.linkedBrowser);
     return t;
   };
-  const first = ww.model.active;
+  const first = active();
   const x = await add("x");
   Assert.ok(view(win).split("vertical", { tab: x }).ok, "the first workspace: start | x");
   ww.switchTo({ id: w.id });
-  await until(() => ww.model.active === w.id, "the second workspace");
+  await until(() => active() === w.id, "the second workspace");
   const inW = () => win.gBrowser.selectedTab.userContextId === Number(w.userContextId);
   await until(inW, "its start tab is selected");
   const y = await add("y");
@@ -493,7 +632,7 @@ add_task(async function another_workspace_in_the_panel_shows_its_own_split() {
   await until(() => count(win).textContent === "split: 2 panes", "on the second's split");
   Assert.equal(markedTitles(win).length, 2, "its two panes are marked");
   prefix("(", win, { shiftKey: true });
-  await until(() => ww.model.active === first, "ctrl+b ( lists the first workspace");
+  await until(() => active() === first, "ctrl+b ( lists the first workspace");
   await until(() => count(win).textContent === "split: 2 panes", "with its own split");
   Assert.equal(markedTitles(win).length, 2, "and its two panes marked");
   Assert.equal(
@@ -521,11 +660,14 @@ add_task(async function a_switching_follow_in_a_split_takes_the_focused_pane() {
   EventUtils.synthesizeKey("g", {});
   EventUtils.synthesizeKey("F", { shiftKey: true });
   await until(() => VimmaHost._hints(window)?.hints.length, "gF labels the links");
-  const { label } = VimmaHost._hints(window).hints.find((h) => h.target.href === target);
+  // The hints are up (above), and one is on the link; a missing one throws, as before.
+  const hints = /** @type {HostHints} */ (VimmaHost._hints(window)).hints;
+  const { label } = /** @type {HostHint} */ (hints.find((h) => h.target.href === target));
   const opened = BrowserTestUtils.waitForNewTab(gBrowser, target, true);
   for (const c of label.slice(0, -1)) EventUtils.synthesizeKey(c, {});
   EventUtils.synthesizeKey(label.slice(-1).toUpperCase(), { shiftKey: true });
-  const followed = await opened;
+  // A loaded tab has its panel.
+  const followed = /** @type {SplitTab} */ (await opened);
   byName.set("followed", followed);
   await until(() => gBrowser.selectedTab === followed, "the new tab is selected");
   await until(

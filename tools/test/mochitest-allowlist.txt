@@ -18,9 +18,6 @@ tests/browser/browser_vimma_agent_outside_opens.js
 tests/browser/browser_vimma_agent_store.js
 tests/browser/browser_vimma_app_launcher.js
 tests/browser/browser_vimma_app_version.js
-tests/browser/browser_vimma_bookmarks.js
-tests/browser/browser_vimma_bookmarks_toolbar.js
-tests/browser/browser_vimma_bookmarks_workspaces.js
 tests/browser/browser_vimma_branding.js
 tests/browser/browser_vimma_branding_files.js
 tests/browser/browser_vimma_config.js
@@ -61,12 +58,8 @@ tests/browser/browser_vimma_restart.js
 tests/browser/browser_vimma_safebrowsing.js
 tests/browser/browser_vimma_settings_managed.js
 tests/browser/browser_vimma_setup.js
-tests/browser/browser_vimma_side_panel.js
-tests/browser/browser_vimma_side_panel_marks.js
-tests/browser/browser_vimma_side_panel_unsplit.js
 tests/browser/browser_vimma_sidebar_theme.js
 tests/browser/browser_vimma_site_permissions.js
-tests/browser/browser_vimma_split_layout.js
 tests/browser/browser_vimma_square_corners.js
 tests/browser/browser_vimma_start_page.js
 tests/browser/browser_vimma_statusbar.js

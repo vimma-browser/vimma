@@ -33,38 +33,71 @@ const NOTICE_ID = "vimma-notice";
 
 const def = (/** @type {string} */ name) =>
   WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const ww = () => WindowWorkspaces.get(window);
+/**
+ * The id of a workspace the test made (main, alpha); a missing one throws on `.id`, as before.
+ * @param {string} name
+ */
+const defId = (name) => /** @type {WorkspaceDefinition} */ (def(name)).id;
+/** The window's workspaces: this window has them built. */
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const active = () => ww().model.active;
-const tabsIn = (/** @type {string} */ name) =>
-  ww().model.workspaces.find((w) => w.id === def(name).id).tabs;
+/**
+ * The tabs of a workspace the test made; a missing one throws on `.tabs`, as before.
+ * @param {string} name
+ */
+const tabsIn = (name) =>
+  /** @type {WorkspaceState} */ (ww().model.workspaces.find((w) => w.id === defId(name))).tabs;
 
-const panel = () => document.getElementById(PANEL_ID);
-const isOpen = () => !!panel() && !panel().hidden && BrowserTestUtils.isVisible(panel());
-const rows = () => [...(panel()?.querySelectorAll("[role=option]") ?? [])];
+const panel = () => /** @type {HTMLElement | null} */ (document.getElementById(PANEL_ID));
+/** The side panel, which a test reads while it is open. */
+const shownPanel = () => /** @type {HTMLElement} */ (panel());
+const isOpen = () => !!panel() && !shownPanel().hidden && BrowserTestUtils.isVisible(shownPanel());
+/** The panel's rows (side-panel.mjs makes each an <li>). */
+const rows = () => [
+  .../** @type {NodeListOf<HTMLElement> | never[]} */ (
+    panel()?.querySelectorAll("[role=option]") ?? []
+  ),
+];
+/**
+ * @param {Element} el
+ * @param {string} name
+ */
 const text = (el, name) => el.querySelector(`.vimma-panel-${name}`)?.textContent ?? "";
 const titles = () => rows().map((r) => text(r, "title"));
-const selected = () => panel().querySelector("[role=option][aria-selected=true]");
-const header = () => panel().querySelector(".vimma-panel-header");
+/**
+ * The highlighted row, which the open panel has. With none, text() and `.classList` throw and
+ * indexOf gives -1, as before.
+ */
+const selected = () =>
+  /** @type {HTMLElement} */ (shownPanel().querySelector("[role=option][aria-selected=true]"));
+/** The panel's header, which the open panel has; with none, text() throws, as before. */
+const header = () => /** @type {Element} */ (shownPanel().querySelector(".vimma-panel-header"));
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
 registerCleanupFunction(async () => {
   PanelNumbers.set("absolute");
   if (isOpen()) EventUtils.synthesizeKey("KEY_Escape");
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: defId("main") });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
     (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -89,7 +122,10 @@ async function openPanel() {
   await until(isOpen, "ctrl+b b opens the side panel");
 }
 
-/** Opens `${PAGE}?<query>` in the shown workspace, selected, titled `query`. */
+/**
+ * Opens `${PAGE}?<query>` in the shown workspace, selected, titled `query`.
+ * @param {string} query
+ */
 async function openPage(query) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${query}`);
   await SpecialPowers.spawn(tab.linkedBrowser, [query], (t) => {
@@ -101,7 +137,7 @@ async function openPage(query) {
 
 /** Every visible child of #browser, left to right. */
 function browserBoxOrder() {
-  return [...document.getElementById("browser").children]
+  return [.../** @type {Element} */ (document.getElementById("browser")).children]
     .filter((el) => BrowserTestUtils.isVisible(el) && el.getBoundingClientRect().width > 0)
     .sort((a, b) => a.getBoundingClientRect().left - b.getBoundingClientRect().left);
 }
@@ -111,10 +147,10 @@ add_task(async function setup_two_workspaces() {
   if (!def("alpha")) WorkspaceStore.newWorkspace("alpha");
   // docs/specs/vimma-mcp.md decision 8: the agent workspace too, last.
   await until(() => ww().model.workspaces.length === 3, "main, alpha and agent");
-  ww().switchTo({ id: def("alpha").id });
+  ww().switchTo({ id: defId("alpha") });
   await openPage("alpha-one");
-  ww().switchTo({ id: def("main").id });
-  await until(() => active() === def("main").id, "back in main");
+  ww().switchTo({ id: defId("main") });
+  await until(() => active() === defId("main"), "back in main");
   await openPage("main-two");
   await openPage("main-three");
 });
@@ -122,10 +158,12 @@ add_task(async function setup_two_workspaces() {
 add_task(async function hidden_by_default_and_prefix_b_opens_it_on_the_left() {
   Assert.ok(!isOpen(), "the panel is closed at start");
   await openPanel();
-  Assert.equal(browserBoxOrder()[0], panel(), "it is the leftmost box of the window");
+  // strictEqual: with no panel and no visible box, equal passed on undefined == null.
+  Assert.strictEqual(browserBoxOrder()[0], shownPanel(), "it is the leftmost box of the window");
   Assert.ok(
-    panel().getBoundingClientRect().right <=
-      document.getElementById("tabbrowser-tabbox").getBoundingClientRect().left,
+    shownPanel().getBoundingClientRect().right <=
+      /** @type {Element} */ (document.getElementById("tabbrowser-tabbox")).getBoundingClientRect()
+        .left,
     "the pages sit to its right",
   );
   Assert.stringContains(text(header(), "name"), "1:main", "headed by the current workspace");
@@ -143,18 +181,23 @@ add_task(async function hidden_by_default_and_prefix_b_opens_it_on_the_left() {
     Array.from({ length: n }, (_, i) => String(i + 1)),
     "numbered rows",
   );
-  Assert.equal(text(rows().at(-1), "host"), "example.com", "with the host");
+  // The list has rows (above); a missing last one throws in text(), as before.
+  Assert.equal(
+    text(/** @type {HTMLElement} */ (rows().at(-1)), "host"),
+    "example.com",
+    "with the host",
+  );
   Assert.equal(text(selected(), "title"), "main-three", "the highlight starts on the active tab");
   Assert.ok(selected().classList.contains("vimma-panel-active"), "which is marked active");
-  Assert.ok(panel().contains(document.activeElement), "focus is in the panel");
+  Assert.ok(shownPanel().contains(document.activeElement), "focus is in the panel");
   Assert.equal(VimmaHost.status(window).mode, "panel", "the window is in panel mode");
 
   // Theme tokens, as the pickers: the panel takes --vimma-bg-dark.
-  const bg = getComputedStyle(panel()).backgroundColor;
+  const bg = getComputedStyle(shownPanel()).backgroundColor;
   document.documentElement.style.setProperty("--vimma-bg-dark", "rgb(1, 2, 3)");
-  await until(() => getComputedStyle(panel()).backgroundColor === "rgb(1, 2, 3)", "themed");
+  await until(() => getComputedStyle(shownPanel()).backgroundColor === "rgb(1, 2, 3)", "themed");
   document.documentElement.style.removeProperty("--vimma-bg-dark");
-  await until(() => getComputedStyle(panel()).backgroundColor === bg, "and back");
+  await until(() => getComputedStyle(shownPanel()).backgroundColor === bg, "and back");
 
   toggleKey();
   await until(() => !isOpen(), "ctrl+b b closes it again");
@@ -179,9 +222,10 @@ add_task(async function j_k_and_enter_select_a_tab_and_close() {
   await openPanel();
   const n = rows().length;
   EventUtils.synthesizeKey("j");
-  Assert.equal(selected(), rows()[n - 1], "j stops at the last row");
+  // strictEqual: with no highlight and no rows, equal passed on null == undefined.
+  Assert.strictEqual(selected(), rows()[n - 1], "j stops at the last row");
   for (let i = 0; i <= n; i++) EventUtils.synthesizeKey("k");
-  Assert.equal(selected(), rows()[0], "k moves up and stops at the first row");
+  Assert.strictEqual(selected(), rows()[0], "k moves up and stops at the first row");
   for (let i = 0; i < n - 2; i++) EventUtils.synthesizeKey("j");
   Assert.equal(text(selected(), "title"), "main-two", "j moves down");
   EventUtils.synthesizeKey("KEY_Enter");
@@ -233,6 +277,7 @@ add_task(async function counts_gg_and_G_move_the_highlight_past_row_nine() {
   Assert.equal(at(), 10, "11G goes to row 11");
   Assert.equal(text(selected(), "number"), "11", "whose number is 11");
   EventUtils.synthesizeKey("u", { ctrlKey: true });
+  // at() is -1 with no highlight, which passes less() and fails greater() just below.
   Assert.less(at(), 10, "ctrl+u moves up");
   Assert.greater(at(), 0, "by half the rows shown, not to the top");
   EventUtils.synthesizeKey("d", { ctrlKey: true });
@@ -292,16 +337,16 @@ add_task(async function esc_and_prefix_b_close_and_keys_never_reach_the_page() {
 add_task(async function next_workspace_re_renders_the_panel_for_the_next_workspace() {
   await openPanel();
   prefix(")", { shiftKey: true });
-  await until(() => active() === def("alpha").id, "ctrl+b ) switches to alpha");
+  await until(() => active() === defId("alpha"), "ctrl+b ) switches to alpha");
   await until(() => text(header(), "name").includes("2:alpha"), "the header follows");
   Assert.ok(isOpen(), "the panel stays open");
   await until(() => titles().includes("alpha-one"), "and lists alpha's tabs");
   Assert.equal(rows().length, tabsIn("alpha").length, "only alpha's");
   Assert.stringContains(text(header(), "neighbours"), "main", "its neighbour is main");
   prefix("(", { shiftKey: true });
-  await until(() => active() === def("main").id, "ctrl+b ( goes back");
+  await until(() => active() === defId("main"), "ctrl+b ( goes back");
   await until(() => titles().includes("main-two"), "and main's rows come back");
-  await until(() => panel().contains(document.activeElement), "focus stays in the panel");
+  await until(() => shownPanel().contains(document.activeElement), "focus stays in the panel");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "Esc closes it");
 });
@@ -321,7 +366,7 @@ add_task(async function a_tab_opened_while_open_gets_a_row() {
 add_task(async function it_stays_leftmost_when_firefox_moves_its_sidebar_right() {
   await SpecialPowers.pushPrefEnv({ set: [["sidebar.position_start", false]] });
   await openPanel();
-  Assert.equal(browserBoxOrder()[0], panel(), "still the leftmost box");
+  Assert.strictEqual(browserBoxOrder()[0], shownPanel(), "still the leftmost box");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
   await SpecialPowers.popPrefEnv();
@@ -329,6 +374,7 @@ add_task(async function it_stays_leftmost_when_firefox_moves_its_sidebar_right()
 
 // docs/specs/key-handling-batch.md § 4
 add_task(async function x_closes_the_selected_tab_and_the_panel_stays_open_on_the_next_row() {
+  /** @type {MozTabbrowserTab[]} */
   const opened = [];
   for (const q of ["x-one", "x-two", "x-three", "x-four"]) opened.push(await openPage(q));
   // SessionStore caches a page's history on a 15 s timer. A tab closed before then is put on
@@ -349,7 +395,7 @@ add_task(async function x_closes_the_selected_tab_and_the_panel_stays_open_on_th
   Assert.ok(isOpen(), "the panel stays open");
   Assert.equal(at("x-two"), -1, "x-two is not listed");
   Assert.equal(text(selected(), "title"), "x-three", "the highlight is on the next row");
-  Assert.ok(panel().contains(document.activeElement), "the panel keeps focus");
+  Assert.ok(shownPanel().contains(document.activeElement), "the panel keeps focus");
 
   EventUtils.synthesizeKey("x");
   await until(() => !opened[2].isConnected, "a second x closes x-three");
@@ -363,7 +409,8 @@ add_task(async function x_closes_the_selected_tab_and_the_panel_stays_open_on_th
   // SessionStore's event once the page is back: a busy runner takes seconds to get there.
   const restored = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "SSTabRestored");
   EventUtils.synthesizeKey("t", { ctrlKey: true, shiftKey: true });
-  const { target: back } = await restored;
+  // SSTabRestored is fired at the tab that was restored.
+  const back = /** @type {MozTabbrowserTab} */ ((await restored).target);
   Assert.stringContains(back.linkedBrowser.currentURI.spec, "x-four", "x-four reopens");
   // Its title was set by the test's script before; the reloaded page has its own.
   await until(
@@ -382,15 +429,21 @@ add_task(async function x_closes_the_selected_tab_and_the_panel_stays_open_on_th
 // picker; the workspace chosen there gets the row's tab, not the selected one.
 const PICKER_ID = "vimma-workspace-picker";
 const PROMPT_ID = "vimma-rename";
-const picker = () => document.getElementById(PICKER_ID);
+// ui/picker.mjs makes each picker a <dialog>.
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const pickerOpen = () => !!picker()?.open;
+/** The workspace picker, which a test reads while it is open. */
+const shownPicker = () => /** @type {HTMLDialogElement} */ (picker());
 const pickerSelected = () =>
-  picker().querySelector("[role=option][aria-selected=true] .vimma-picker-title")?.textContent;
+  shownPicker().querySelector("[role=option][aria-selected=true] .vimma-picker-title")?.textContent;
 const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
 const promptText = () =>
   document.getElementById(PROMPT_ID)?.querySelector(".vimma-cmdline-prompt")?.textContent ?? "";
 
-/** m on the row titled `title`: the panel closes and the workspace picker opens. */
+/**
+ * m on the row titled `title`: the panel closes and the workspace picker opens.
+ * @param {string} title
+ */
 async function moveFromPanel(title) {
   await openPanel();
   while (text(selected(), "title") !== title) {
@@ -401,7 +454,9 @@ async function moveFromPanel(title) {
   EventUtils.synthesizeKey("m");
   await until(pickerOpen, "m opens the workspace picker");
   Assert.ok(!isOpen(), "the side panel has closed");
-  Assert.stringContains(picker().querySelector("h1").textContent, title, "naming the tab");
+  // The picker has its heading; a missing one throws, as before.
+  const heading = /** @type {Element} */ (shownPicker().querySelector("h1"));
+  Assert.stringContains(heading.textContent, title, "naming the tab");
 }
 
 add_task(async function m_moves_the_highlighted_background_tab_to_the_workspace_picked() {
@@ -467,7 +522,7 @@ add_task(async function x_never_closes_a_pinned_tab() {
   // Pinned tabs belong to no workspace (docs/guide.md, "Workspaces"), so the panel never lists them.
   const pinned = await openPage("x-pinned");
   // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
-  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
+  ww().unpinsPinnedTabs = false;
   gBrowser.pinTab(pinned);
   const other = await openPage("x-unpinned");
   await openPanel();
@@ -478,10 +533,12 @@ add_task(async function x_never_closes_a_pinned_tab() {
   Assert.ok(pinned.isConnected, "the pinned tab stays");
 
   // A row whose tab was pinned since the last render: refused with a notice, nothing closed.
-  const sidePanel = VimmaHost._state(window).panel;
+  const sidePanel = /** @type {HostState} */ (VimmaHost._state(window)).panel;
+  // The open panel has rendered its state; without one, `.rows` throws, as before.
+  const shown = /** @type {NonNullable<typeof sidePanel.state>} */ (sidePanel.state);
   sidePanel.state = {
-    ...sidePanel.state,
-    rows: sidePanel.state.rows.map((r) => ({ ...r, pinned: true })),
+    ...shown,
+    rows: shown.rows.map((r) => ({ ...r, pinned: true })),
   };
   const n = gBrowser.tabs.length;
   EventUtils.synthesizeKey("x");
@@ -491,7 +548,7 @@ add_task(async function x_never_closes_a_pinned_tab() {
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => !isOpen(), "closed");
   gBrowser.unpinTab(pinned);
-  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
+  ww().unpinsPinnedTabs = true;
   BrowserTestUtils.removeTab(pinned);
 });
 
@@ -500,6 +557,7 @@ add_task(async function x_never_closes_a_pinned_tab() {
 add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
   const priv = await BrowserTestUtils.openNewBrowserWindow({ private: true });
   const names = ["Private one", "Private two", "Private three"];
+  /** @type {MozTabbrowserTab[]} */
   const tabs = [];
   for (const name of names) {
     const tab = await BrowserTestUtils.openNewForegroundTab(
@@ -518,11 +576,16 @@ add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
   await until(() => !tabs[1].linkedPanel && !tabs[2].linkedPanel, "two tabs unloaded");
   // focusContent checks this window's focus; the private window is another.
   await SimpleTest.promiseFocus(priv.gBrowser.selectedBrowser);
-  const privPanel = () => priv.document.getElementById(PANEL_ID);
+  const privPanel = () =>
+    /** @type {HTMLElement | null} */ (priv.document.getElementById(PANEL_ID));
+  /** The private panel, read once it is open. */
+  const privShown = () => /** @type {HTMLElement} */ (privPanel());
   EventUtils.synthesizeKey("b", { ctrlKey: true }, priv);
   EventUtils.synthesizeKey("b", {}, priv);
-  await until(() => privPanel() && !privPanel().hidden, "ctrl+b b opens the private panel");
-  const privRows = () => [...privPanel().querySelectorAll("[role=option]")];
+  await until(() => privPanel() && !privShown().hidden, "ctrl+b b opens the private panel");
+  const privRows = () => [
+    .../** @type {NodeListOf<HTMLElement>} */ (privShown().querySelectorAll("[role=option]")),
+  ];
   Assert.deepEqual(
     privRows()
       .map((r) => text(r, "title"))
@@ -532,7 +595,9 @@ add_task(async function unloaded_private_tabs_are_rows_of_their_own() {
   );
   const ids = privRows().map((r) => r.dataset.tabId);
   Assert.equal(new Set(ids).size, ids.length, "every row names a tab of its own");
-  const privSelected = () => privPanel().querySelector("[role=option][aria-selected=true]");
+  // The highlighted row; with none, text() throws, as before.
+  const privSelected = () =>
+    /** @type {Element} */ (privShown().querySelector("[role=option][aria-selected=true]"));
   Assert.equal(text(privSelected(), "title"), "Private one", "the highlight starts on it");
   for (let i = 0; i < 2; i++) EventUtils.synthesizeKey("j", {}, priv);
   Assert.equal(text(privSelected(), "title"), "Private three", "j reaches the third tab");
