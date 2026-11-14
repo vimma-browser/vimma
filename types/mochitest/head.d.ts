@@ -87,6 +87,7 @@ declare function windowGlobalOf(
  */
 declare function historyOf(browser: MozBrowser): {
   readonly count: number;
+  readonly index: number;
   getEntryAtIndex(index: number): {
     readonly URI: nsIURI;
   };

@@ -5,7 +5,7 @@
 // Spec: docs/specs/m1-copy-mode.md (Vim motions, V, o, iw/aw, Y). Each test puts the caret at a
 // known character, enters copy mode and asserts on the selected text.
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf, windowGlobalOf -- from head.js */
 
 "use strict";
 
@@ -313,7 +313,7 @@ add_task(async function Y_yanks_the_whole_lines() {
 
 add_task(async function malformed_find_messages_are_refused() {
   await withPage(async (browser) => {
-    const actor = browser.browsingContext.currentWindowGlobal.getActor("Vimma");
+    const actor = windowGlobalOf(contextOf(browser)).getActor("Vimma");
     const bad = [
       { op: "find_forward" },
       { op: "find_forward", char: "" },

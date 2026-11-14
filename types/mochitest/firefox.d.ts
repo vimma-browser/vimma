@@ -327,6 +327,8 @@ interface AutoCompletePopupElement extends XULPopupElement {
 interface CanonicalBrowsingContext {
   readonly sessionHistory: {
     readonly count: number;
+    /** The current entry's index. */
+    readonly index: number;
     getEntryAtIndex(index: number): { readonly URI: nsIURI };
   } | null;
 }
@@ -337,6 +339,10 @@ interface BrowsingContext {
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
   readonly isInitialDocument: boolean;
+  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
+  getActor(
+    name: "Vimma",
+  ): import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   /** The id of the process the document is in. */
   readonly osPid: number;
   /**

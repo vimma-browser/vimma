@@ -10,6 +10,8 @@
 
 /* global add_setup -- the browser-chrome harness (browser-test.js) */
 
+/* global historyOf -- from head.js */
+
 "use strict";
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -142,7 +144,7 @@ const type = (keys, win = window) => EventUtils.sendString(keys, win);
  * @param {string} what
  */
 async function jump(browser, keys, page, what) {
-  const sh = browser.browsingContext.sessionHistory;
+  const sh = historyOf(browser);
   const before = sh.index;
   type(keys);
   await until(browser, { page }, what);
