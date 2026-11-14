@@ -20,7 +20,8 @@ import {
 
 // docs/specs/pdf-mode.md, docs/security/ section 18 (V6).
 // `doc` counts the documents pdf.js has opened in this viewer (V11).
-// `drawn`, `ops`, `width` and `height` say what the viewer had drawn when it reported (#1006).
+// `drawn`, `ops`, `width`, `height` and `zoom` say what the viewer had drawn when it reported
+// (#1006, #1040).
 const good = {
   page: 3,
   pages: 12,
@@ -31,6 +32,8 @@ const good = {
   ops: 0,
   width: 1040,
   height: 700,
+  // The tab's full zoom as the viewer's browsing context had it (BrowsingContext.fullZoom).
+  zoom: 1,
 };
 
 describe("parsePdfState", () => {
@@ -79,11 +82,21 @@ describe("parsePdfState", () => {
       ["a fractional width", { ...good, width: 1040.5 }],
       ["a width beyond any screen", { ...good, width: 1e9 }],
       ["no height", { ...good, height: undefined }],
+      ["no zoom", { ...good, zoom: undefined }],
+      ["a zoom as a string", { ...good, zoom: "1" }],
+      ["a zoom as an object", { ...good, zoom: { valueOf: /** @returns {number} */ () => 1 } }],
+      ["a zoom of NaN", { ...good, zoom: NaN }],
+      ["an infinite zoom", { ...good, zoom: Infinity }],
+      ["a zoom of 0", { ...good, zoom: 0 }],
+      ["a zoom of -0", { ...good, zoom: -0 }],
+      ["a negative zoom", { ...good, zoom: -1 }],
+      ["a zoom past any Firefox allows", { ...good, zoom: 1e308 }],
+      ["a zoom below any Firefox allows", { ...good, zoom: 5e-324 }],
       ["none of them", { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 }],
     ])("%s", (_name, raw) => {
       const s = parsePdfState(raw);
       expect(s).toMatchObject({ page: 3, pages: 12, label: "", doc: 1, drawn: false });
-      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700 })).toBe(false);
+      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700, zoom: 1 })).toBe(false);
     });
   });
 
@@ -96,9 +109,9 @@ describe("parsePdfState", () => {
 });
 
 // `state.pdf` (#1006): the viewer's last report says every page in view was drawn, it came after
-// every operation Vimma sent it, and the viewer then had the size its tab has now.
+// every operation Vimma sent it, and the viewer then had the size and the zoom its tab has now.
 describe("pdfDrawn", () => {
-  const now = { sent: 2, width: 1040, height: 700 };
+  const now = { sent: 2, width: 1040, height: 700, zoom: 1 };
   test("drawn once the report answers every operation sent, at the tab's size", () => {
     expect(pdfDrawn({ ...good, ops: 2 }, now)).toBe(true);
     expect(pdfDrawn({ ...good, ops: 3 }, now)).toBe(true);
@@ -114,6 +127,34 @@ describe("pdfDrawn", () => {
   });
   test("a size within a pixel's rounding is the same size", () => {
     expect(pdfDrawn({ ...good, ops: 2, width: 1041, height: 699 }, now)).toBe(true);
+  });
+
+  // #1040: a full-zoom change leaves the tab's size in device pixels as it was, so only the
+  // zoom tells a report from before it from one after it. Both sides read the same synced
+  // BrowsingContext.fullZoom, so the comparison is exact at every desktop scale and zoom, on or
+  // off Firefox's steps; a tolerance on the pixel ratio was not (scale 2: 170% then 160% round
+  // to 18 and 19 app units per device pixel, 0.75 from 30 / 1.6).
+  test.each([
+    ["170% to 160%", 1.7, 1.6],
+    ["111% to 110%", 1.11, 1.1],
+    ["110% to 100%", 1.1, 1],
+    ["100% to 110%", 1, 1.1],
+    ["30% to 50%", 0.3, 0.5],
+    ["the zoom as a double to the same as a float", 1.1, Math.fround(1.1)],
+  ])("a report from before a zoom change, %s, is not drawn", (_name, zoom, tabZoom) => {
+    expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom: tabZoom })).toBe(false);
+  });
+  test.each([1, 0.3, 1.6, Math.fround(1.1), 5])(
+    "a report at the tab's zoom %s is drawn",
+    (zoom) => {
+      expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom })).toBe(true);
+    },
+  );
+  test.each([0, -0, NaN, Infinity, -1])("never drawn when the tab's zoom is %s", (zoom) => {
+    expect(pdfDrawn({ ...good, ops: 2, zoom }, { ...now, zoom })).toBe(false);
+  });
+  test("a report with no usable zoom is never drawn", () => {
+    expect(pdfDrawn(parsePdfState({ ...good, ops: 2, zoom: NaN }), now)).toBe(false);
   });
 });
 

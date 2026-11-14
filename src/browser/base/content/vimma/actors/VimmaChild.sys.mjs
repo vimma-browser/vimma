@@ -810,6 +810,11 @@ export class VimmaChild extends JSWindowActorChild {
         this.#pdf?.run(msg.data);
         this.#pdf?.schedule();
         return undefined;
+      case "Vimma:PdfZoom":
+        // The tab's full zoom changed (#1040): a report at the new zoom, which a zoom that keeps
+        // the page's layout would not otherwise bring. No data, nothing run in the viewer.
+        this.#pdf?.schedule();
+        return undefined;
       case "Vimma:PdfWhere":
         // Where the view is, for a mark (docs/specs/pdf-mode.md decision 11).
         return this.#pdf?.position() ?? null;

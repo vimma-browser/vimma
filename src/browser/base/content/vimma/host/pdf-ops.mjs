@@ -44,6 +44,42 @@ const listeners = new Set();
 const sentOps = new WeakMap();
 
 /**
+ * The chrome windows whose tabs' zoom changes are watched (watchZoom).
+ * @type {WeakSet<object>}
+ */
+const zoomWatched = new WeakSet();
+
+/**
+ * A tab's full zoom changed (#1040): the report kept from before reads as not drawn, so a zoom
+ * and back before the viewer's next report is not taken for the old zoom, and the viewer is
+ * asked for a report. A zoom that keeps the page's app units per device pixel changes neither
+ * its size nor its pixel ratio, so the viewer would get no resize or resolution event and send
+ * none of its own. The message goes after the zoom's own sync to the content process, so the
+ * report carries the new zoom. FullZoomChange is chrome-only, dispatched on the tab's browser
+ * by BrowsingContext::DidSet (or by the browser itself in Responsive Design Mode).
+ * @param {Event} event
+ */
+function onZoomChange(event) {
+  const browser = /** @type {MozBrowser} */ (event.target);
+  const kept = states.get(browser);
+  const wg = viewerGlobal(browser);
+  if (!kept || !wg) return;
+  states.set(browser, { ...kept, state: Object.freeze({ ...kept.state, drawn: false }) });
+  wg.getActor("Vimma").sendAsyncMessage("Vimma:PdfZoom");
+}
+
+/**
+ * Watches the zoom of the tabs of `browser`'s window, once per window.
+ * @param {MozBrowser} browser
+ */
+function watchZoom(browser) {
+  const win = browser.ownerDocument?.defaultView;
+  if (!win || zoomWatched.has(win)) return;
+  zoomWatched.add(win);
+  win.addEventListener("FullZoomChange", onZoomChange);
+}
+
+/**
  * Sends the viewer's actor one operation, and counts it.
  * @param {WindowGlobalParent} wg  the viewer's window global (viewerGlobal)
  * @param {object} msg  a parsed operation (parsePdfOp)
@@ -136,7 +172,11 @@ const sameState = (a, b) =>
  * @param {PdfState} a @param {PdfState} b
  */
 const sameView = (a, b) =>
-  a.drawn === b.drawn && a.ops === b.ops && a.width === b.width && a.height === b.height;
+  a.drawn === b.drawn &&
+  a.ops === b.ops &&
+  a.width === b.width &&
+  a.height === b.height &&
+  a.zoom === b.zoom;
 
 export const PdfOps = {
   /**
@@ -186,8 +226,10 @@ export const PdfOps = {
       !!state && !!old && old.windowId === wg.innerWindowId && sameState(old.state, state);
     if (same && old && sameView(old.state, state)) return;
     if (!state && !old) return;
-    if (state) states.set(browser, { windowId: wg.innerWindowId, state });
-    else states.delete(browser);
+    if (state) {
+      states.set(browser, { windowId: wg.innerWindowId, state });
+      watchZoom(browser);
+    } else states.delete(browser);
     if (same) return;
     for (const fn of listeners) {
       try {
@@ -223,8 +265,9 @@ export const PdfOps = {
    * `state.pdf` (docs/specs/m0-control-protocol-and-vimma-ctl.md, "state"; #1006): null unless
    * `browser` shows the PDF viewer; else whether it has drawn every page in view as the tab
    * shows it now (core pdfDrawn): its last report says so, came after every operation sent to
-   * it, and was made at the tab's present size, so neither a key just sent nor a resize under
-   * way reads as drawn. One flag: never the page, the page count, the title or the outline.
+   * it, and was made at the tab's present size and zoom, so neither a key just sent nor a
+   * resize or full-zoom change under way reads as drawn (#1040). One flag: never the page, the
+   * page count, the title or the outline.
    * @param {MozBrowser} browser
    * @returns {{ drawn: boolean } | null}
    */
@@ -238,7 +281,12 @@ export const PdfOps = {
     const box = browser.getBoundingClientRect();
     const width = Math.round(box.width * ratio);
     const height = Math.round(box.height * ratio);
-    return { drawn: pdfDrawn(this.state(browser), { sent, width, height }) };
+    // A zoom change leaves that size as it was: the browsing context's zoom, the synced value
+    // the viewer reports, tells a report from before one. Not browser.fullZoom, which in
+    // Responsive Design Mode is the RDM pane's zoom while the page's own stays 1.
+    const zoom = browser.browsingContext?.fullZoom ?? 0;
+    const now = { sent, width, height, zoom };
+    return { drawn: pdfDrawn(this.state(browser), now) };
   },
 
   /**

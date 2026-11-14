@@ -82,7 +82,7 @@ only the agent workspace, and every request asks you first (§12).
   `null` unless that tab shows the viewer; it **never** carries the page, the page count, the
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
-  changes when a script's wait ends, nothing else.
+  (its drawing, size or zoom) changes when a script's wait ends, nothing else.
   [`control_state_is_read_only`](../../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../../tests/browser/browser_vimma_control.js),
