@@ -17,6 +17,7 @@ import {
   jarModules,
   layerErrors,
   coreErrors,
+  encodingErrors,
   fileTypeErrors,
   missingReadmes,
   mozBuildErrors,
@@ -1397,7 +1398,7 @@ describe("handOnsOf: nested and computed destructuring", () => {
   });
 });
 
-describe("htmlImports: a page is read whole, as the parser reads it", () => {
+describe("htmlImports: a page is read whole, values across lines and references decoded", () => {
   const page = (html: string) => htmlImports(html, "about/x.html");
   const ENTITY =
     "a page may use only the character references &amp; &quot; &apos; &lt; &gt; and numeric ones, which the check decodes";
@@ -1852,5 +1853,94 @@ describe("scanModule: the gate loads only as a module of the main loader", () =>
     ).toContain(
       `${LISTED}:1: loads a Vimma module with an options argument, which can load it and everything it imports, the gate included, a second time in another global`,
     );
+  });
+});
+
+describe("htmlImports: attributes as the parser keeps them, and the policy first", () => {
+  const POLICY = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'" />`;
+  const SCRIPT = `<script type="module" src="${V}start/start.mjs"></script>`;
+  const problems = (html: string) => htmlImports(html, "start/x.html").problems.join("\n");
+  test("a repeated attribute fails: the parser keeps the first copy", () => {
+    expect(
+      problems(
+        `<meta http-equiv="Content-Security-Policy" content="script-src chrome: data:" content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'" />\n${SCRIPT}`,
+      ),
+    ).toContain("start/x.html:1: <meta> repeats the attribute content");
+    expect(
+      problems(
+        `${POLICY}\n<script type="module" src="data:text/javascript,1" SRC="${V}start/start.mjs"></script>`,
+      ),
+    ).toContain("start/x.html:2: <script> repeats the attribute src");
+  });
+
+  test("the policy comes once, before the first script or link", () => {
+    const ORDER =
+      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, before the first of them";
+    expect(problems(`${SCRIPT}\n${POLICY}`)).toContain(ORDER);
+    expect(
+      problems(
+        `<link rel="stylesheet" href="chrome://browser/skin/vimma/start.css" />\n${POLICY}\n${SCRIPT}`,
+      ),
+    ).toContain(ORDER);
+    expect(problems(`${POLICY}\n${POLICY}\n${SCRIPT}`)).toContain(ORDER);
+    expect(htmlImports(`${POLICY}\n${SCRIPT}`, "start/x.html").problems).toEqual([]);
+  });
+});
+
+describe("encodingErrors: every file the check reads is UTF-8, as the check reads it", () => {
+  const bytes = (...b: number[]) => new Uint8Array(b);
+  const ENC = (what: string) =>
+    `vimma/a.html: ${what}; the check reads UTF-8 without a byte order mark, as Firefox reads these files only then`;
+  test.each([
+    [bytes(0xef, 0xbb, 0xbf, 0x3c), "starts with a byte order mark"],
+    [bytes(0xff, 0xfe, 0x3c, 0x00), "starts with a byte order mark"],
+    [bytes(0xfe, 0xff, 0x00, 0x3c), "starts with a byte order mark"],
+    [bytes(0x3c, 0x00, 0x3e), "holds a NUL byte"],
+    [bytes(0x3c, 0xc3, 0x28), "is not valid UTF-8"],
+  ])("%s", (b, what) => {
+    expect(encodingErrors(b, "vimma/a.html")).toEqual([ENC(what)]);
+  });
+
+  test("plain UTF-8 passes", () => {
+    expect(encodingErrors(new TextEncoder().encode("<p>é</p>"), "vimma/a.html")).toEqual([]);
+  });
+
+  test("a UTF-16 page in the tree fails the whole check", () => {
+    const root = tempDir("vimma-layering-");
+    const vimma = join(root, "src/browser/base/content/vimma");
+    mkdirSync(join(vimma, "start"), { recursive: true });
+    writeFileSync(join(vimma, "jar.mn"), "browser.jar:\n");
+    writeFileSync(join(vimma, "start/README.md"), "");
+    writeFileSync(
+      join(vimma, "start/x.html"),
+      Buffer.concat([
+        Buffer.from([0xff, 0xfe]),
+        Buffer.from("<script src=data:,1></script>", "utf16le"),
+      ]),
+    );
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "."], { cwd: root });
+    expect(treeErrors(root).errors.join("\n")).toContain(
+      "vimma/start/x.html: starts with a byte order mark",
+    );
+  });
+});
+
+describe("scanModule: a worker reached as a member is a worker", () => {
+  test("new globalThis.ChromeWorker(<built URL>) fails", () => {
+    expect(allErrors(`new globalThis.ChromeWorker("${V}host/Agent" + x);`, UNLISTED)).toContain(
+      `${UNLISTED}:1: an import specifier is not a fixed string`,
+    );
+  });
+});
+
+describe("patchErrors: today's build lines only in browser/base/moz.build", () => {
+  test("the same line in another build file fails", () => {
+    expect(
+      patchErrors(
+        [{ file: "src/x.patch", text: '+++ b/browser/other/moz.build\n+    "content/vimma",' }],
+        RESTRICTED,
+      ).join("\n"),
+    ).toContain("names Vimma's folder (content/vimma) in a build file");
   });
 });

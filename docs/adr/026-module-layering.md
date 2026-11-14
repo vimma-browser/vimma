@@ -263,11 +263,12 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   module is loaded, whatever it starts with, and ignores other computed strings. A load
   position is an `import` or `export … from` declaration, `import()`, a direct
   `ChromeUtils.importESModule(…)` or `….defineESModuleGetters(…)` call, or the first argument of
-  `new Worker`, `ChromeWorker` or `SharedWorker`, which may also be a name whose one declaration
+  `new Worker`, `ChromeWorker` or `SharedWorker` (by name or as a member, as
+  `globalThis.ChromeWorker`), which may also be a name whose one declaration
   is a `const` with a fixed string. Any other mention of either loader's name, in an identifier,
   a string or a template string, is refused, and `ChromeUtils` itself may appear only as
-  `ChromeUtils.<name>`. Reflection that does not name `ChromeUtils` (`globalThis[k]` with a key
-  built at run time), `Services.scriptloader.loadSubScript` with a built URL (it runs a classic
+  `ChromeUtils.<name>`. Reflection that does not name `ChromeUtils` or a worker constructor (`globalThis[k]`
+  with a key built at run time), `Services.scriptloader.loadSubScript` with a built URL (it runs a classic
   script, which cannot hold `import` declarations), and loaders Firefox no longer has
   (`Cu.import`) are not read; a review of the module that adds one looks for it.
 - Code run from a string (`eval`, `new Function`, or `Function` reached without its name, as
@@ -317,13 +318,24 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   character or punctuation between them does not hide it. One built from smaller pieces
   (`"Agent" + "Gate.sys.mjs"`) does not, and needs a load position the check refuses, or
   `eval`.
-- A page is read whole, as its parser reads it, and must keep to what the pages use today: the
-  elements of today's pages; a script only `type="module"` with the `src` of a Vimma module and
-  no inline code; a link only to one of today's stylesheets; a meta only `charset="utf-8"`, the colour
-  scheme, or one of today's two Content-Security-Policy values (`about.html`'s adds
-  `connect-src chrome:`), which a page with a script must carry; an `<a href>` only an about:
-  page or a fragment; no other element with a URL attribute; no `on…` attribute, `srcdoc` or
-  `<base>`; and no named reference but `&amp;`, `&quot;`, `&apos;`, `&lt;`, `&gt;`.
+- A page is read whole: an attribute value across lines is one URL (a URL parser drops the line
+  breaks), numeric references and the five named ones are decoded, and an attribute given twice
+  in one tag is refused, since the parser keeps the first copy. It must keep to what the pages
+  use today: the elements of today's pages; a script only `type="module"` with the `src` of a
+  Vimma module and no inline code; a link only to one of today's stylesheets; a meta only
+  `charset="utf-8"`, the colour scheme, or one of today's two Content-Security-Policy values
+  (`about.html`'s adds `connect-src chrome:`); exactly one such policy, before the first script
+  or stylesheet, in a page that has either, since a meta policy governs only what loads after
+  it; an `<a href>` only an about: page or a fragment; no other element with a URL attribute; no
+  `on…` attribute, `srcdoc` or `<base>`; and no named reference but `&amp;`, `&quot;`, `&apos;`,
+  `&lt;`, `&gt;`.
+- Every file the check reads (modules, pages, `jar.mn`, `vimma/moz.build`, vimma-core's sources,
+  the Firefox patches) goes through one read that refuses a byte order mark, a NUL byte or bytes
+  that are not UTF-8: the check reads UTF-8, and a page saved as UTF-16 would show it no tags at
+  all while the parser, sniffing the mark, reads them.
+- Theme files that `jar.mn` packages from outside `vimma/` (its `skin/classic/browser/vimma/`
+  entries, stylesheets and images such as an `.svg`) are not read; an SVG opened as a document
+  can run script, so a change to one is for review.
 - `core/` is a copy of `packages/vimma-core/src`, which eslint keeps pure (ADR-005: no
   Firefox URL in an `import` declaration, no Firefox global by name). The layering check reads
   those sources too and refuses what eslint lets through: `import()`, `globalThis`, `eval`,
@@ -341,7 +353,7 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   `"chrome://browser/content/" + …` or `` `chrome://browser/content/vimma/${dir}/…` ``. In a
   build file named by the hunk's `+++` header (`moz.build`, a `.mozbuild`, a `.mn`, a
   `.manifest`), a line that names `content/vimma` fails unless it is one of the four
-  `browser/base/moz.build` adds today (the folder in `DIRS`, the three licence pages). A URL
+  `browser/base/moz.build` adds today, in a hunk of that file (the folder in `DIRS`, the three licence pages). A URL
   assembled from pieces that are none of these (a name split across two lines, a URL rewritten
   with `.replace`, a scheme split as `chrome:/` + `/…`, a value read at run time), and a build
   file the hunk does not name, are left to the review every new patch gets with its line in

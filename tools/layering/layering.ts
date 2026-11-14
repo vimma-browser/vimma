@@ -508,7 +508,16 @@ export function scanModule(
     } else if (
       node.type === "NewExpression" &&
       isNode(node["callee"]) &&
-      WORKERS.has(String(node["callee"]["name"])) &&
+      // `new ChromeWorker(…)`, and `new globalThis.ChromeWorker(…)` alike.
+      WORKERS.has(
+        String(
+          node["callee"].type === "MemberExpression" &&
+            !node["callee"]["computed"] &&
+            isNode(node["callee"]["property"])
+            ? node["callee"]["property"]["name"]
+            : node["callee"]["name"],
+        ),
+      ) &&
       isNode(((node["arguments"] as unknown[]) ?? [])[0])
     ) {
       // A worker's script URL is a load position (decision 2): a fixed string, or a name whose
@@ -1257,8 +1266,9 @@ export function htmlImports(
 
   // Tags, each with its attributes, read by hand: each step moves forward, and an unclosed
   // quote ends the page instead of being searched again from every later attribute.
-  let csp = false;
-  let scripts = false;
+  /** Where each Content-Security-Policy meta and the first script or stylesheet stand. */
+  const policies: number[] = [];
+  let firstLoad = -1;
   for (let lt = html.indexOf("<"); lt >= 0; lt = html.indexOf("<", lt + 1)) {
     const tag = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(html.slice(lt + 1, lt + 65))?.[0]?.toLowerCase();
     if (!tag) continue;
@@ -1290,13 +1300,15 @@ export function htmlImports(
           pos = stop;
         }
       }
-      if (name) attrs.set(name, clean(decodeEntities(value)));
+      // The parser keeps the first copy of an attribute; the check refuses a second.
+      if (name && attrs.has(name)) page(lt, `<${tag}> repeats the attribute ${name}`);
+      else if (name) attrs.set(name, clean(decodeEntities(value)));
     }
     for (const name of attrs.keys()) if (/^on/.test(name) || name === "srcdoc") problem(lt, RISKY);
     if (tag === "base") problem(lt, RISKY);
     if (!PAGE_TAGS.has(tag)) page(lt, `<${tag}> is not an element the pages use today`);
     else if (tag === "script") {
-      scripts = true;
+      if (firstLoad < 0) firstLoad = lt;
       const src = attrs.get("src") ?? "";
       const r = resolveSpec(src, file, true);
       const keys = [...attrs.keys()].sort().join(" ");
@@ -1311,6 +1323,7 @@ export function htmlImports(
         edges.push({ from: file, to: r.to, kind: "eager", line: lineAt(lt) });
       else page(lt, `<script> takes only type="module" and the src of a Vimma module`);
     } else if (tag === "link") {
+      if (firstLoad < 0) firstLoad = lt;
       const keys = [...attrs.keys()].sort().join(" ");
       if (
         keys !== "href rel" ||
@@ -1328,7 +1341,7 @@ export function htmlImports(
         (keys === "content http-equiv" &&
           attrs.get("http-equiv") === "Content-Security-Policy" &&
           PAGE_CSPS.has(attrs.get("content") ?? ""));
-      if (ok && keys === "content http-equiv") csp = true;
+      if (keys === "content http-equiv") policies.push(lt);
       if (!ok)
         page(
           lt,
@@ -1345,8 +1358,12 @@ export function htmlImports(
     if (ended) break;
     lt = Math.max(lt, pos - 1);
   }
-  if (scripts && !csp)
-    page(0, "a page with a script carries one of today's Content-Security-Policy values");
+  // A meta policy governs only what loads after it.
+  if (firstLoad >= 0 && (policies.length !== 1 || (policies[0] ?? 0) > firstLoad))
+    page(
+      0,
+      "a page with a script or a stylesheet carries exactly one of today's Content-Security-Policy values, before the first of them",
+    );
 
   const lower = html.toLowerCase();
   // Inline scripts: each search starts where the last one ended.
@@ -1626,7 +1643,7 @@ export function patchErrors(
       if (
         /(^|\/)(moz\.build|[^/]*\.mozbuild|[^/]*\.mn|[^/]*\.manifest)$/.test(changed) &&
         lettersOnly(decoded).includes("contentvimma") &&
-        !BUILD_LINES.has(line.slice(1))
+        !(changed === "browser/base/moz.build" && BUILD_LINES.has(line.slice(1)))
       )
         errors.push(
           `${file}:${i + 1}: names Vimma's folder (content/vimma) in a build file; ${WIDEN}`,
@@ -1816,10 +1833,50 @@ export function trackedFiles(root: string): string[] {
     .map((f) => f.slice(VIMMA.length));
 }
 
+/**
+ * Why a file's bytes are not what the check reads them as, if they are not: a byte order mark
+ * (a parser would decode UTF-16, or skip it), a NUL byte, or bytes that are not UTF-8. The
+ * check reads every file as UTF-8, so a file must be exactly that.
+ * @param bytes  the file's contents
+ * @param label  the file, for the error
+ */
+export function encodingErrors(bytes: Uint8Array, label: string): string[] {
+  const why =
+    (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) ||
+    (bytes[0] === 0xff && bytes[1] === 0xfe) ||
+    (bytes[0] === 0xfe && bytes[1] === 0xff)
+      ? "starts with a byte order mark"
+      : bytes.includes(0)
+        ? "holds a NUL byte"
+        : (() => {
+            try {
+              new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+              return null;
+            } catch {
+              return "is not valid UTF-8";
+            }
+          })();
+  return why === null
+    ? []
+    : [
+        `${label}: ${why}; the check reads UTF-8 without a byte order mark, as Firefox reads these files only then`,
+      ];
+}
+
+/** Encoding problems of the files the tree check has read (readText). */
+let encodingProblems: string[] = [];
+
+/** The one way the tree check reads a file: as UTF-8, with its encoding checked. */
+function readText(path: string, label: string): string {
+  const bytes = readFileSync(path);
+  encodingProblems.push(...encodingErrors(bytes, label));
+  return bytes.toString("utf8");
+}
+
 /** Every edge of the tree, and every specifier in it that cannot be read. */
 export function treeScan(root: string): Scan {
   const scans = trackedFiles(root).map((f) => {
-    const text = readFileSync(join(root, VIMMA, f), "utf8");
+    const text = readText(join(root, VIMMA, f), `vimma/${f}`);
     return f.endsWith(".html") ? htmlImports(text, f) : scanModule(text, f);
   });
   return {
@@ -1838,7 +1895,7 @@ function trackedPatches(root: string): { file: string; text: string }[] {
   })
     .split("\0")
     .filter(Boolean)
-    .map((file) => ({ file, text: readFileSync(join(root, file), "utf8") }));
+    .map((file) => ({ file, text: readText(join(root, file), file) }));
 }
 
 /** The files git tracks under a folder of the repository, relative to the repository. */
@@ -1850,22 +1907,26 @@ function gitFiles(root: string, folder: string): string[] {
 
 /** Everything `npm run layering` checks in the tree at `root`, and the edges it read. */
 export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
+  encodingProblems = [];
   const { edges, problems, handOns = [], names = [] } = treeScan(root);
   const data = Object.fromEntries(
     Object.keys(RESTRICTED).map((m) => {
       const path = join(root, VIMMA, m);
-      return [m, existsSync(path) ? getterNames(readFileSync(path, "utf8"), m) : new Set<string>()];
+      return [
+        m,
+        existsSync(path) ? getterNames(readText(path, `vimma/${m}`), m) : new Set<string>(),
+      ];
     }),
   );
-  const jar = readFileSync(join(root, VIMMA, "jar.mn"), "utf8");
+  const jar = readText(join(root, VIMMA, "jar.mn"), "vimma/jar.mn");
   const vimmaFiles = gitFiles(root, VIMMA).map((f) => f.slice(VIMMA.length));
   const mozBuild = join(root, VIMMA, "moz.build");
   const core = gitFiles(root, "packages/vimma-core/src/").filter((f) => /\.m?js$/.test(f));
   const errors = [
     ...problems,
     ...fileTypeErrors(vimmaFiles),
-    ...(existsSync(mozBuild) ? mozBuildErrors(readFileSync(mozBuild, "utf8")) : []),
-    ...core.flatMap((f) => coreErrors(readFileSync(join(root, f), "utf8"), f)),
+    ...(existsSync(mozBuild) ? mozBuildErrors(readText(mozBuild, "vimma/moz.build")) : []),
+    ...core.flatMap((f) => coreErrors(readText(join(root, f), f), f)),
     ...jarErrors(jar),
     ...danglingEdges(edges, new Set(trackedFiles(root)), jarModules(jar)),
     ...exceptionErrors(EXCEPTIONS),
@@ -1876,6 +1937,8 @@ export function treeErrors(root: string): { edges: Edge[]; errors: string[] } {
     ...missingReadmes(root).map(
       (d) => `vimma/${d}/ has no README.md: say what it owns and what it may import (${ADR})`,
     ),
+    // Last, after every read above.
+    ...encodingProblems,
   ];
   return { edges, errors };
 }

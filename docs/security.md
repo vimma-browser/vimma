@@ -401,142 +401,142 @@ text that pages, add-ons and bookmarks choose.
   [`test_an_executable_asks_firefoxs_prompt_first`](../tests/browser/browser_vimma_downloads.js)
 - C3. With Firefox's toolbar hidden ([toolbar-toggle](specs/toolbar-toggle.md)), the status bar
   is the only origin indicator: the page reaches the window's top, so there is no line of death.
-  - The status bar **must** always show the selected page's real address with its registrable
-    domain whole: truncation **never** cuts inside it (the path, then the leftmost labels go
-    first), also for a `blob:` or `view-source:` address (the origin it carries), and **never**
-    in the middle of an address without a host. A page title **never** takes the address's
-    place. The bar's order is: the mode's one-column short form, then the error, `not secure`,
-    `private` and in-use cues, then the address, then the rest (the mode's full word, the title,
-    the tab position, the workspace). The address takes room only from what comes after it: it
-    is cut to `…<domain>…` while the rest gives way, and cut further, its domain's end as the
-    last resort, rather than push a cue or the mode's short form off the bar. An about:blank a page opened or controls **must** read
-    `about:blank from <the origin that wrote it>`, never nothing.
-    [`the URL keeps its registrable domain while the toolbar is hidden`](../packages/vimma-core/test/statusbar.test.mjs),
-    [`the_status_bar_keeps_the_registrable_domain`](../tests/browser/browser_vimma_toolbar.js),
-    [`an_about_blank_a_page_wrote_says_so`](../tests/browser/browser_vimma_toolbar.js),
-    [`a_blob_page_shows_its_origin`](../tests/browser/browser_vimma_toolbar.js),
-    [`an_about_blank_names_its_writer_after_the_opener_leaves`](../tests/browser/browser_vimma_toolbar.js),
-    [`the security cues outrank the kept URL`](../packages/vimma-core/test/statusbar.test.mjs)
-  - It **must** say `not secure` wherever Firefox's address bar would warn (plain http, a
-    certificate error page or exception, mixed content), read from the browser's security state,
-    never from the hidden address bar, and `private` in a private window.
-    [`securityFromState`](../packages/vimma-core/test/statusbar.test.mjs),
-    [`not_secure_comes_from_the_browser_state`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_status_bar_says_not_secure_and_private`](../tests/browser/browser_vimma_toolbar.js)
-  - It **must** say which devices the selected page uses (camera, microphone, screen, location,
-    XR, serial; `paused` where Firefox says so), the cues the hidden address bar and tab strip
-    carried. It does not cover background tabs or the other pane of a split (only the selected
-    tab is read, and the tab strip is hidden), nor Firefox's camera and microphone grace period
-    after a stream ends; on Linux the desktop's global WebRTC indicator still shows background
-    capture.
-    [`sharing: devices in use while the toolbar is hidden`](../packages/vimma-core/test/statusbar.test.mjs),
-    [`the_status_bar_shows_camera_and_mic_in_use`](../tests/browser/browser_vimma_toolbar.js)
-  - A permission prompt **must** hang from its own icon in the address bar, next to the site's
-    identity and address, as with the toolbar shown (the prompt bar), and **never** open
-    unanchored: if its icon cannot be revealed, the toolbar comes back first. The minimal bar for
-    typing an address shows no identity; the status bar above is the origin indicator then. Pop-up
-    windows **must** keep their read-only address bar.
-    [`a_permission_prompt_hangs_from_its_icon`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_identity_panel_shows_the_site_identity`](../tests/browser/browser_vimma_toolbar.js),
-    [`a_failed_reveal_for_a_prompt_shows_the_toolbar`](../tests/browser/browser_vimma_toolbar.js),
-    [`exclusions`](../tests/browser/browser_vimma_toolbar.js)
-  - Vimma's keys for a permission prompt (`y`, `n`, `Tab`; toolbar shown or hidden) **must
-    not** answer it before it has shown for `security.notification_enable_delay` with no key in
-    between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
-    or the prompt's own, such as the password prompt's username), **never** while one of
-    Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
-    typed, the other prompts), **never** in hint, copy or element mode (a label typed from any
-    `[modal] hint_chars`, the yank: a page can time a prompt to the mode; `Esc` leaves it, and
-    then `y` answers), nor while link labels or a focused block are still on screen after a
-    prompt took focus (the next key ends them), so `y` and `n` answer a prompt only in normal and
-    resize mode or with focus on the prompt itself, and go through Firefox's own buttons, so
-    Firefox's click delay still applies. The wait counts from Firefox's own time for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
-    moves or resizes, the window is activated or another prompt takes the panel), so an armed key
-    never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
-    `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
-    its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
-    under the same delay; no text field has focus then.
-    The notice after an add-on install ("<name> was added", Firefox's app menu notification)
-    takes `y` (OK) and `p` (its "Pin extension to toolbar" checkbox) under the same rules, and
-    `Tab` focuses that checkbox; `n` stays Vimma's, since the notice has no second button.
-    Firefox gives that notice no delay of its own, so the wait counts from when Vimma sees it
-    shown, filled with another add-on's notice in place, or the window activated, or from the
-    last key, and it starts again when the checkbox appears or goes and when a permission prompt
-    over it closes. A page cannot raise the notice: it follows only an add-on install or enable
-    answered in Firefox's own install prompt or add-ons manager. It grants nothing: `p` moves the
-    add-on's button between the toolbar and the extensions menu, and private-window access is
-    asked in the install prompt, not here. No other notice of that panel takes the keys (the
-    update notices' main button restarts the browser).
-    [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
-    [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
-    [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
-    [`prompt_keys_leave_live_grep_and_find_their_keys`](../tests/browser/browser_vimma_toolbar.js),
-    [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
-    [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_addon_installed_notice_answers_p_and_y`](../tests/browser/browser_vimma_toolbar.js),
-    [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
-  - Firefox's pop-up blocked bar takes the same keys (`y` allows the site, `n` blocks it, `Esc`
-    closes the bar; docs/specs/popup-blocked.md) under the same rules. They count only from the
-    later of the moment Vimma first sees the bar and the last key pressed in the window, plus
-    `security.notification_enable_delay` (0.5 s by default), so any key restarts the wait, and a
-    held (repeated) key never answers. They **never** answer from a text field, while a picker,
-    the command line or a search holds the keyboard, or in hint, copy or element mode, and
-    **never** while a permission prompt or the add-on installed notice is open, whose keys come
-    first; Vimma never moves focus onto the bar. In the agent workspace no key answers the bar and `:popups` refuses, and
-    `runPopupRow` checks again when a row runs, so neither the keys nor any row (allow, block,
-    reset, open, redirect, hide, settings) does anything there (M10). A row runs only on the
-    page it was listed for: the picker keeps the page's principal when it opens and refuses a row
-    once the tab's principal differs, so a navigation under the open picker cannot land Allow on
-    another site. With `dom.disable_open_during_load` locked, `y` and `n` stay the page's and no
-    Vimma path writes the site's permission (the keys, the rows and `setSitePopups`, the site
-    permissions picker's writer, §19), as Firefox's own menu hides its allow. Allow goes through Firefox's own
-    `toggleAllowPopupsForSite` or `SitePermissions`; Block is stored with Firefox's own
-    `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
-    which keeps it for the private session only in a private window (PermissionManager forces
-    `EXPIRE_SESSION` for private principals).
-    [`popupBarKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
-    [`y_answers_only_once_the_bar_is_armed_and_allows_the_site`](../tests/browser/browser_vimma_popups.js),
-    [`n_blocks_the_site_and_esc_only_closes_the_bar`](../tests/browser/browser_vimma_popups.js),
-    [`keys_typed_in_a_field_or_the_command_line_are_theirs`](../tests/browser/browser_vimma_popups.js),
-    [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
-    [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
-    [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
-  - Firefox's dialogs over a tab or the window (`commonDialog.xhtml`: leave page, a page's
-    `alert`, `confirm` and `prompt`, a sign-in; docs/specs/firefox-dialogs.md) take `y` (the
-    main button) and `n` (the button `Esc` runs) under the same wait: from the later of the
-    moment the dialog's frame loaded and the last key typed in it, plus
-    `security.notification_enable_delay`; a key before then, or held, is swallowed and answers
-    nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
-    buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
-    hand; the wait is what keeps that typing from answering it.
-    [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
-    [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
-    [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
-  - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
-    open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
-    under the same wait: `y` opens another application, so a page that follows a link under a
-    typing hand must not get that typing as an answer. The wait for every one of these dialogs
-    starts again when `SubDialog` shows the frame (`dialogopen`), so it counts only time on
-    screen. `y` **also** waits for Firefox's own guard where Firefox applies it (the permission
-    question always; the application list when the permission question was skipped), the main
-    button it keeps disabled until the dialog's window has had focus for
-    `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
-    button is disabled. Only `SubDialog` frames (`.dialogFrame`) are taken. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
-    field, so the keys answer from it, and the box's state is the user's, never changed by them.
-    [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
-    [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
-  - The download question (`unknownContentType.xhtml`, a window of its own opened over the
-    browser window) takes the same keys under the same wait, from the window's `load` and again
-    each time it becomes the active window: `y`
-    presses OK, which saves the file or opens it with an application, so it **also** waits for
-    the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
-    Only a window whose opener is the browser window and whose document is the download question
-    is taken; its keys are read in that window, never from a page.
-    [`download_n_cancels_y_saves`](../tests/browser/browser_vimma_dialog_keys.js)
-  - Accepted, low: a page can time a reveal under the pointer (a permission request shows the
-    prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
-    section.
+- The status bar **must** always show the selected page's real address with its registrable
+  domain whole: truncation **never** cuts inside it (the path, then the leftmost labels go
+  first), also for a `blob:` or `view-source:` address (the origin it carries), and **never**
+  in the middle of an address without a host. A page title **never** takes the address's
+  place. The bar's order is: the mode's one-column short form, then the error, `not secure`,
+  `private` and in-use cues, then the address, then the rest (the mode's full word, the title,
+  the tab position, the workspace). The address takes room only from what comes after it: it
+  is cut to `…<domain>…` while the rest gives way, and cut further, its domain's end as the
+  last resort, rather than push a cue or the mode's short form off the bar. An about:blank a page opened or controls **must** read
+  `about:blank from <the origin that wrote it>`, never nothing.
+  [`the URL keeps its registrable domain while the toolbar is hidden`](../packages/vimma-core/test/statusbar.test.mjs),
+  [`the_status_bar_keeps_the_registrable_domain`](../tests/browser/browser_vimma_toolbar.js),
+  [`an_about_blank_a_page_wrote_says_so`](../tests/browser/browser_vimma_toolbar.js),
+  [`a_blob_page_shows_its_origin`](../tests/browser/browser_vimma_toolbar.js),
+  [`an_about_blank_names_its_writer_after_the_opener_leaves`](../tests/browser/browser_vimma_toolbar.js),
+  [`the security cues outrank the kept URL`](../packages/vimma-core/test/statusbar.test.mjs)
+- It **must** say `not secure` wherever Firefox's address bar would warn (plain http, a
+  certificate error page or exception, mixed content), read from the browser's security state,
+  never from the hidden address bar, and `private` in a private window.
+  [`securityFromState`](../packages/vimma-core/test/statusbar.test.mjs),
+  [`not_secure_comes_from_the_browser_state`](../tests/browser/browser_vimma_toolbar.js),
+  [`the_status_bar_says_not_secure_and_private`](../tests/browser/browser_vimma_toolbar.js)
+- It **must** say which devices the selected page uses (camera, microphone, screen, location,
+  XR, serial; `paused` where Firefox says so), the cues the hidden address bar and tab strip
+  carried. It does not cover background tabs or the other pane of a split (only the selected
+  tab is read, and the tab strip is hidden), nor Firefox's camera and microphone grace period
+  after a stream ends; on Linux the desktop's global WebRTC indicator still shows background
+  capture.
+  [`sharing: devices in use while the toolbar is hidden`](../packages/vimma-core/test/statusbar.test.mjs),
+  [`the_status_bar_shows_camera_and_mic_in_use`](../tests/browser/browser_vimma_toolbar.js)
+- A permission prompt **must** hang from its own icon in the address bar, next to the site's
+  identity and address, as with the toolbar shown (the prompt bar), and **never** open
+  unanchored: if its icon cannot be revealed, the toolbar comes back first. The minimal bar for
+  typing an address shows no identity; the status bar above is the origin indicator then. Pop-up
+  windows **must** keep their read-only address bar.
+  [`a_permission_prompt_hangs_from_its_icon`](../tests/browser/browser_vimma_toolbar.js),
+  [`the_identity_panel_shows_the_site_identity`](../tests/browser/browser_vimma_toolbar.js),
+  [`a_failed_reveal_for_a_prompt_shows_the_toolbar`](../tests/browser/browser_vimma_toolbar.js),
+  [`exclusions`](../tests/browser/browser_vimma_toolbar.js)
+- Vimma's keys for a permission prompt (`y`, `n`, `Tab`; toolbar shown or hidden) **must
+  not** answer it before it has shown for `security.notification_enable_delay` with no key in
+  between (any key restarts the wait), **never** from a text field (the page's, the chrome's,
+  or the prompt's own, such as the password prompt's username), **never** while one of
+  Vimma's own surfaces holds the keyboard (a picker, live grep, the command line, a search being
+  typed, the other prompts), **never** in hint, copy or element mode (a label typed from any
+  `[modal] hint_chars`, the yank: a page can time a prompt to the mode; `Esc` leaves it, and
+  then `y` answers), nor while link labels or a focused block are still on screen after a
+  prompt took focus (the next key ends them), so `y` and `n` answer a prompt only in normal and
+  resize mode or with focus on the prompt itself, and go through Firefox's own buttons, so
+  Firefox's click delay still applies. The wait counts from Firefox's own time for the prompt (`timeShown`), which Firefox moves later on its own (for example when the panel
+  moves or resizes, the window is activated or another prompt takes the panel), so an armed key
+  never meets a button Firefox's delay still refuses. Vimma **never** gives the prompt focus;
+  `Tab` focuses the secondary (Block) button first. A prompt Firefox itself opens with focus on
+  its panel (the add-on install prompt, `autofocus` in ExtensionsUI) takes the keys from there,
+  under the same delay; no text field has focus then.
+  The notice after an add-on install ("<name> was added", Firefox's app menu notification)
+  takes `y` (OK) and `p` (its "Pin extension to toolbar" checkbox) under the same rules, and
+  `Tab` focuses that checkbox; `n` stays Vimma's, since the notice has no second button.
+  Firefox gives that notice no delay of its own, so the wait counts from when Vimma sees it
+  shown, filled with another add-on's notice in place, or the window activated, or from the
+  last key, and it starts again when the checkbox appears or goes and when a permission prompt
+  over it closes. A page cannot raise the notice: it follows only an add-on install or enable
+  answered in Firefox's own install prompt or add-ons manager. It grants nothing: `p` moves the
+  add-on's button between the toolbar and the extensions menu, and private-window access is
+  asked in the install prompt, not here. No other notice of that panel takes the keys (the
+  update notices' main button restarts the browser).
+  [`doorhangerKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`permission_prompts_answer_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+  [`prompt_keys_arm_on_firefoxs_own_delay`](../tests/browser/browser_vimma_toolbar.js),
+  [`prompt_keys_leave_live_grep_and_find_their_keys`](../tests/browser/browser_vimma_toolbar.js),
+  [`KEY_KEEPING_MODES`](../packages/vimma-core/test/modes.test.mjs),
+  [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../tests/browser/browser_vimma_toolbar.js),
+  [`the_addon_install_prompt_answers_y_and_n`](../tests/browser/browser_vimma_toolbar.js),
+  [`the_addon_installed_notice_answers_p_and_y`](../tests/browser/browser_vimma_toolbar.js),
+  [`the_prompts_own_fields_take_their_keys`](../tests/browser/browser_vimma_password_prompt.js)
+- Firefox's pop-up blocked bar takes the same keys (`y` allows the site, `n` blocks it, `Esc`
+  closes the bar; docs/specs/popup-blocked.md) under the same rules. They count only from the
+  later of the moment Vimma first sees the bar and the last key pressed in the window, plus
+  `security.notification_enable_delay` (0.5 s by default), so any key restarts the wait, and a
+  held (repeated) key never answers. They **never** answer from a text field, while a picker,
+  the command line or a search holds the keyboard, or in hint, copy or element mode, and
+  **never** while a permission prompt or the add-on installed notice is open, whose keys come
+  first; Vimma never moves focus onto the bar. In the agent workspace no key answers the bar and `:popups` refuses, and
+  `runPopupRow` checks again when a row runs, so neither the keys nor any row (allow, block,
+  reset, open, redirect, hide, settings) does anything there (M10). A row runs only on the
+  page it was listed for: the picker keeps the page's principal when it opens and refuses a row
+  once the tab's principal differs, so a navigation under the open picker cannot land Allow on
+  another site. With `dom.disable_open_during_load` locked, `y` and `n` stay the page's and no
+  Vimma path writes the site's permission (the keys, the rows and `setSitePopups`, the site
+  permissions picker's writer, §19), as Firefox's own menu hides its allow. Allow goes through Firefox's own
+  `toggleAllowPopupsForSite` or `SitePermissions`; Block is stored with Firefox's own
+  `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
+  which keeps it for the private session only in a private window (PermissionManager forces
+  `EXPIRE_SESSION` for private principals).
+  [`popupBarKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`y_answers_only_once_the_bar_is_armed_and_allows_the_site`](../tests/browser/browser_vimma_popups.js),
+  [`n_blocks_the_site_and_esc_only_closes_the_bar`](../tests/browser/browser_vimma_popups.js),
+  [`keys_typed_in_a_field_or_the_command_line_are_theirs`](../tests/browser/browser_vimma_popups.js),
+  [`a_row_never_lands_on_a_site_the_page_navigated_to`](../tests/browser/browser_vimma_popups.js),
+  [`a_locked_popup_pref_leaves_the_site_permission_alone`](../tests/browser/browser_vimma_popups.js),
+  [`the_agent_workspace_refuses_and_grants_nothing`](../tests/browser/browser_vimma_popups.js)
+- Firefox's dialogs over a tab or the window (`commonDialog.xhtml`: leave page, a page's
+  `alert`, `confirm` and `prompt`, a sign-in; docs/specs/firefox-dialogs.md) take `y` (the
+  main button) and `n` (the button `Esc` runs) under the same wait: from the later of the
+  moment the dialog's frame loaded and the last key typed in it, plus
+  `security.notification_enable_delay`; a key before then, or held, is swallowed and answers
+  nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
+  buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
+  hand; the wait is what keeps that typing from answering it.
+  [`dialogKey`](../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`leave_page_n_stays_y_leaves`](../tests/browser/browser_vimma_dialog_keys.js),
+  [`prompt_field_types`](../tests/browser/browser_vimma_dialog_keys.js)
+- The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to
+  open the link with ...?", and `appChooser.xhtml`, the application list) take the same keys
+  under the same wait: `y` opens another application, so a page that follows a link under a
+  typing hand must not get that typing as an answer. The wait for every one of these dialogs
+  starts again when `SubDialog` shows the frame (`dialogopen`), so it counts only time on
+  screen. `y` **also** waits for Firefox's own guard where Firefox applies it (the permission
+  question always; the application list when the permission question was skipped), the main
+  button it keeps disabled until the dialog's window has had focus for
+  `security.dialog_enable_delay` (`EnableDelayHelper`): it is swallowed, never queued, while the
+  button is disabled. Only `SubDialog` frames (`.dialogFrame`) are taken. `n` (Cancel) opens nothing. A checkbox ("Always allow") is not a text
+  field, so the keys answer from it, and the box's state is the user's, never changed by them.
+  [`protocol_permission_n_cancels_y_opens`](../tests/browser/browser_vimma_dialog_keys.js),
+  [`protocol_app_chooser`](../tests/browser/browser_vimma_dialog_keys.js)
+- The download question (`unknownContentType.xhtml`, a window of its own opened over the
+  browser window) takes the same keys under the same wait, from the window's `load` and again
+  each time it becomes the active window: `y`
+  presses OK, which saves the file or opens it with an application, so it **also** waits for
+  the OK button Firefox keeps disabled (`EnableDelayHelper`), and `n` cancels the download.
+  Only a window whose opener is the browser window and whose document is the download question
+  is taken; its keys are read in that window, never from a page.
+  [`download_n_cancels_y_saves`](../tests/browser/browser_vimma_dialog_keys.js)
+- Accepted, low: a page can time a reveal under the pointer (a permission request shows the
+  prompt bar, a download the full toolbar); there is no hover reveal. See the spec's Security
+  section.
 - C4. Vimma's start page stands in for Firefox's `about:home`, `about:newtab` and `about:welcome`
   modules in the parent process (`start/StartPage.sys.mjs`): while `vimma.startpage.newtab` is
   on, these loads are the chrome start page in the parent, and the stand-in's flags have no
@@ -1004,7 +1004,7 @@ such a list is a change to `tools/layering/layering.ts` that needs a fresh secur
 - **Load positions in the modules of `vimma/`** (`.mjs`, `.js`; `core/` aside, below): `import`
   and `export … from` declarations, `import()`, a direct `ChromeUtils.importESModule(…)` or
   `….defineESModuleGetters(…)` call, and the first argument of `new Worker`, `ChromeWorker` or
-  `SharedWorker`. Each must be a fixed string (a worker's may be a name whose one declaration is
+  `SharedWorker`, by name or as a member (`globalThis.ChromeWorker`). Each must be a fixed string (a worker's may be a name whose one declaration is
   a `const` with one) naming a `.mjs` or `.js` file, with no options argument or import
   attributes. Only a listed module may load the gate, by its exact `chrome://` URL or a plain
   relative path, and never in a worker. A URL's tabs, line breaks, ends, query, fragment, `.`
@@ -1016,6 +1016,7 @@ such a list is a change to `tools/layering/layering.ts` that needs a fresh secur
   [`scanModule: a listed importer may not load a second gate`](../tools/layering/test/layering.test.ts),
   [`scanModule: no options argument on any Vimma module, and workers are load positions`](../tools/layering/test/layering.test.ts),
   [`scanModule: the gate loads only as a module of the main loader`](../tools/layering/test/layering.test.ts),
+  [`scanModule: a worker reached as a member is a worker`](../tools/layering/test/layering.test.ts),
   [`scanModule: only module files are loaded`](../tools/layering/test/layering.test.ts),
   [`a new importer of the agent gate fails, in host/ or a higher folder alike`](../tools/layering/test/layering.test.ts)
 - **The loader itself:** `ChromeUtils` appears only as `ChromeUtils.<name>`, and either loader's
@@ -1046,11 +1047,20 @@ such a list is a change to `tools/layering/layering.ts` that needs a fresh secur
 - **Pages** (`.html`): only the elements, URLs and policies the pages use today. A script is
   only `type="module"` with the `src` of a Vimma module, with no inline code; a link only one of
   today's stylesheets; a meta only `charset="utf-8"`, the colour scheme, or one of today's two
-  Content-Security-Policy values, which a page with a script must carry; an `<a href>` only an
-  about: page or a fragment; no other element with a URL attribute, no `on…` attribute,
-  `srcdoc` or `<base>`, and no named reference but the five.
+  Content-Security-Policy values; a page with a script or a stylesheet carries exactly one such
+  policy, before the first of them, since a meta policy governs only what loads after it; an
+  `<a href>` only an about: page or a fragment; no other element with a URL attribute, no `on…`
+  attribute, `srcdoc` or `<base>`, and no named reference but the five. An attribute given twice
+  in one tag is refused, since the parser keeps the first copy and the check would otherwise
+  read another.
   [`htmlImports: only the elements, URLs and policies the pages use today`](../tools/layering/test/layering.test.ts),
-  [`htmlImports: a page is read whole, as the parser reads it`](../tools/layering/test/layering.test.ts)
+  [`htmlImports: a page is read whole, values across lines and references decoded`](../tools/layering/test/layering.test.ts),
+  [`htmlImports: attributes as the parser keeps them, and the policy first`](../tools/layering/test/layering.test.ts)
+- **Encoding:** every file the check reads (modules, pages, `jar.mn`, `vimma/moz.build`,
+  vimma-core's sources, the Firefox patches) goes through one read that refuses a byte order
+  mark, a NUL byte or bytes that are not UTF-8, so that a page the parser would decode as
+  UTF-16 is not read as an empty UTF-8 one.
+  [`encodingErrors: every file the check reads is UTF-8, as the check reads it`](../tools/layering/test/layering.test.ts)
 - **Packaging and file types:** `jar.mn` has only comments (`#` and a space, or `#` alone), one `browser.jar:` header,
   entries that package a script, a page or any file of `vimma/` under its own path (no `.` or
   `..` segment), and `.svg` overrides; `vimma/moz.build` has only its two manifest lists of plain
@@ -1065,10 +1075,11 @@ such a list is a change to `tools/layering/layering.ts` that needs a fresh secur
 - **Firefox patches:** an added line fails when it names the gate's file (escapes and markup
   decoded), holds `content/browser/vimma` or a Vimma URL that names no file, passes an options
   argument next to a Vimma URL, or, in a build file (`moz.build`, `jar.mn`, a manifest), names
-  `content/vimma` other than in the four lines `browser/base/moz.build` adds today.
+  `content/vimma` other than in the four lines `browser/base/moz.build` adds today, in that file.
   [`an added line of a Firefox patch that names a restricted module fails`](../tools/layering/test/layering.test.ts),
   [`patchErrors: escapes and markup that hide the gate's file name`](../tools/layering/test/layering.test.ts),
-  [`patchErrors: build files and options`](../tools/layering/test/layering.test.ts)
+  [`patchErrors: build files and options`](../tools/layering/test/layering.test.ts),
+  [`patchErrors: today's build lines only in browser/base/moz.build`](../tools/layering/test/layering.test.ts)
 - **vimma-core** (`core/` is a copy of `packages/vimma-core/src`): eslint keeps it free of
   Firefox's URLs in `import` declarations and of Firefox's globals by name (ADR-005), and the
   layering check refuses `import()`, `globalThis`, `eval`, `Function` and the gate's file name.
@@ -1079,7 +1090,10 @@ Not checked, and so left to the review of a change to a listed module or of a ne
 wrapper, a callback or a listener handed out); what a call or a getter of the gate returns (the
 connections' labels and a waiting question's `label` are shared objects, issue #1018); code run
 from a string (`eval`, `new Function`, or `Function` reached as `.constructor.constructor`);
-reflection that does not name `ChromeUtils`; a URL assembled from finer pieces than one line or
+reflection that does not name `ChromeUtils` or a worker constructor (a built name such as
+`globalThis["Chrome" + "Worker"]`); theme files `jar.mn` packages from outside `vimma/` (its
+`skin/classic/browser/vimma/` entries, such as an `.svg`, which can run script when opened as a
+document); a URL assembled from finer pieces than one line or
 one string shows; a patch to a Firefox build file whose hunk has no `+++` header naming it; and
 anything that only a build or a browser run would show.
 
@@ -1953,54 +1967,54 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`agent-elements: the page, its list inside the untrusted delimiters, how many dropped`](../packages/vimma-core/test/control-v2.test.mjs),
   [`elements_list_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
 
-  `agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
-  base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; unless asked `full`, it is at most
-  1,024 pixels wide and the smaller of a PNG and a JPEG (issue #584); the protocol validator and
-  `vimma-ctl mcp` **must** refuse any other type, size or encoding, and `vimma-ctl mcp` **must**
-  pass it on as an MCP image item only after the untrusted header, which says that text in the
-  image is web content and not from you. Labels drawn on it (F20) come only from the
-  connection's current `vimma_elements` list of that page, and only while its top frame has
-  not scrolled since the list was made and for 120 s after it, because they are drawn at the
-  places the list recorded and a page that updates in place moves its elements without a
-  navigation; else none is drawn and the result says the list is stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
-  meets the viewport of any frame of the tab: each frame's child checks, just before and again
-  just after the drawing, every form control of its document and its open and closed shadow
-  trees, a number field showing text it cannot parse and an autofill preview counting as a
-  value, a select counting when its choice differs from the page's default; a field counts even
-  if the page covers or hides it otherwise, and a frame that fails counts as showing one. A
-  frame that has no Vimma actor (a data: or blob: document) or does not answer in 5 s refuses
-  the screenshot too, saying that Vimma could not check every frame. A scroll of the top frame
-  between the two checks discards the image. The agent's own steps on that tab and its
-  screenshot exclude each other: from the first check to the second, `agent-keys`,
-  `agent-activate` and `agent-fill` there are denied as `in-use` (a running `agent-keys` stops
-  before its next step), and a screenshot is refused while one of them runs, so the agent cannot
-  scroll or change the tab between its checks. A page that is not http or https is refused
-  before the question. A value the page copies out of such a field into
-  other text, or draws on a canvas, is not recognised, and a value that appears and goes again
-  within the moment of the drawing, between the two checks, is not seen by either.
-  [`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`test_screenshot_is_smaller_unless_asked_full`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
-  [`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
-  [`labels at their element's corner, scaled; those off the image are left out`](../packages/vimma-core/test/agent-act.test.mjs),
-  [`agent-screenshot: the image, its size, the page, and the labels drawn`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp/render.rs),
-  [`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp/command.rs)
+`agent-screenshot`'s image (F19) **must** be a PNG, or a JPEG when the PNG does not fit, whose
+base64 is at most 700 KiB, at most 1,280 by 16,384 pixels; unless asked `full`, it is at most
+1,024 pixels wide and the smaller of a PNG and a JPEG (issue #584); the protocol validator and
+`vimma-ctl mcp` **must** refuse any other type, size or encoding, and `vimma-ctl mcp` **must**
+pass it on as an MCP image item only after the untrusted header, which says that text in the
+image is web content and not from you. Labels drawn on it (F20) come only from the
+connection's current `vimma_elements` list of that page, and only while its top frame has
+not scrolled since the list was made and for 120 s after it, because they are drawn at the
+places the list recorded and a page that updates in place moves its elements without a
+navigation; else none is drawn and the result says the list is stale. A screenshot **must** be refused (F21) while a sensitive field as above, with a value,
+meets the viewport of any frame of the tab: each frame's child checks, just before and again
+just after the drawing, every form control of its document and its open and closed shadow
+trees, a number field showing text it cannot parse and an autofill preview counting as a
+value, a select counting when its choice differs from the page's default; a field counts even
+if the page covers or hides it otherwise, and a frame that fails counts as showing one. A
+frame that has no Vimma actor (a data: or blob: document) or does not answer in 5 s refuses
+the screenshot too, saying that Vimma could not check every frame. A scroll of the top frame
+between the two checks discards the image. The agent's own steps on that tab and its
+screenshot exclude each other: from the first check to the second, `agent-keys`,
+`agent-activate` and `agent-fill` there are denied as `in-use` (a running `agent-keys` stops
+before its next step), and a screenshot is refused while one of them runs, so the agent cannot
+scroll or change the tab between its checks. A page that is not http or https is refused
+before the question. A value the page copies out of such a field into
+other text, or draws on a canvas, is not recognised, and a value that appears and goes again
+within the moment of the drawing, between the two checks, is not seen by either.
+[`test_screenshot_refused_while_a_sensitive_value_is_on_screen`](../tests/browser/browser_vimma_mcp_screenshot.js),
+[`test_screenshot_fits_the_reply_line`](../tests/browser/browser_vimma_mcp_screenshot.js),
+[`test_screenshot_is_smaller_unless_asked_full`](../tests/browser/browser_vimma_mcp_screenshot.js),
+[`test_screenshot_draws_labels`](../tests/browser/browser_vimma_mcp_screenshot.js),
+[`test_screenshot_and_the_agents_own_steps_exclude_each_other`](../tests/browser/browser_vimma_mcp_screenshot.js),
+[`the scale: at most 1,280 pixels wide, at most the device pixel ratio`](../packages/vimma-core/test/agent-act.test.mjs),
+[`labels at their element's corner, scaled; those off the image are left out`](../packages/vimma-core/test/agent-act.test.mjs),
+[`agent-screenshot: the image, its size, the page, and the labels drawn`](../packages/vimma-core/test/control-v2.test.mjs),
+[`a_screenshot_is_an_image_after_the_untrusted_header`](../tools/vimma-ctl/src/mcp/render.rs),
+[`screenshot_calls_become_agent_commands`](../tools/vimma-ctl/src/mcp/command.rs)
 
-  `agent-console`'s errors and failed requests (F24) **must** each be one string inside the
-  untrusted-content delimiters, wrapped by the browser as above, and the protocol validator and
-  `vimma-ctl mcp` **must** refuse either list when it is not. At most 100 errors and 100 failed
-  requests, newest first, one JSON object a line, and no more than fit 512 KiB of the reply
-  line together, the oldest left out and counted; messages are cut at 1,000 characters and URLs
-  and files at 512, page strings are NFKC-normalised and stripped of invisible characters, and
-  no page `<`, line separator or paragraph separator appears literally. Messages and URLs are
-  the page's own and can carry tokens it put there; they come only from the agent's own tab.
-  [`the lists: newest first, only after since, at most 100 each, within the bytes`](../packages/vimma-core/test/agent-act.test.mjs),
-  [`no page string can spell a delimiter or a line of its own`](../packages/vimma-core/test/agent-act.test.mjs),
-  [`agent-console: the page, its errors and requests inside the delimiters, the time`](../packages/vimma-core/test/control-v2.test.mjs),
-  [`console_lists_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
+`agent-console`'s errors and failed requests (F24) **must** each be one string inside the
+untrusted-content delimiters, wrapped by the browser as above, and the protocol validator and
+`vimma-ctl mcp` **must** refuse either list when it is not. At most 100 errors and 100 failed
+requests, newest first, one JSON object a line, and no more than fit 512 KiB of the reply
+line together, the oldest left out and counted; messages are cut at 1,000 characters and URLs
+and files at 512, page strings are NFKC-normalised and stripped of invisible characters, and
+no page `<`, line separator or paragraph separator appears literally. Messages and URLs are
+the page's own and can carry tokens it put there; they come only from the agent's own tab.
+[`the lists: newest first, only after since, at most 100 each, within the bytes`](../packages/vimma-core/test/agent-act.test.mjs),
+[`no page string can spell a delimiter or a line of its own`](../packages/vimma-core/test/agent-act.test.mjs),
+[`agent-console: the page, its errors and requests inside the delimiters, the time`](../packages/vimma-core/test/control-v2.test.mjs),
+[`console_lists_as_untrusted_content`](../tools/vimma-ctl/src/mcp/render.rs)
 
 - M32. More than 30 `agent-elements` calls, 30 `agent-activate` and `agent-fill` calls
   together, 12 `agent-screenshot` calls, or 30 `agent-console` calls, of one connection a minute (mcp-forms F21, F26), counted when asked and before the
