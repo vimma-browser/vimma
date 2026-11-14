@@ -185,7 +185,13 @@ const MAP =
 const SECOND =
   "names a restricted module by another URL than its own chrome:// URL or a plain relative path, which loads a second copy of it with its own state";
 const OPTIONS =
-  "loads a restricted module with an options argument, which can load a second copy of it in another global";
+  "loads a Vimma module with an options argument, which can load it and everything it imports, the gate included, a second time in another global";
+/** What every allow-list error ends with: the lists are the tree's forms, widened on review. */
+const WIDEN =
+  "widening this allow-list is a change to tools/layering/layering.ts that needs a fresh security review (ADR-026)";
+const WORKER_GATE = "loads a restricted module in a worker, a second copy of it with its own state";
+/** The constructors whose first argument is a script URL loaded in a worker. */
+const WORKERS = new Set(["Worker", "ChromeWorker", "SharedWorker"]);
 /** The two loader functions whose specifiers the check reads, only where called directly. */
 const LOADERS = new Set(["importESModule", "defineESModuleGetters"]);
 const CHROMEUTILS =
@@ -364,6 +370,8 @@ export function scanModule(
   const problems: string[] = [];
   const names: Mention[] = [];
   const bases = [...watched].map((m) => [m, lettersOnly(posix.basename(m))] as const);
+  /** Scope references, made once, when a worker's URL is a name. */
+  let refs: Map<unknown, Reference> | undefined;
   /** Nodes already read by the form that holds them. */
   const done = new Set<AstNode>();
   const lineOf = (node: AstNode) => node.loc?.start.line ?? 0;
@@ -411,7 +419,8 @@ export function scanModule(
     const inside =
       vimmaPath(canon) !== null ||
       (relative && (canon.startsWith("./") || canon.startsWith("../")));
-    if (r === null && inside && /\.[a-z0-9]+$/i.test(canon) && !/\.m?js$/i.test(canon))
+    // Case-sensitive, as git and the jar are: `x.MJS` is not a module the check reads.
+    if (r === null && inside && /\.[a-z0-9]+$/i.test(canon) && !/\.m?js$/.test(canon))
       problem(node, NOT_MODULE);
     if (r === "partial") problem(node, PARTIAL);
     else if (r === "unresolved") problem(node, UNRESOLVED);
@@ -446,9 +455,13 @@ export function scanModule(
         node.type === "ExportAllDeclaration") &&
       isNode(source)
     ) {
-      specifier(source, "eager", true, node);
+      const to = specifier(source, "eager", true, node);
+      // Import attributes (`with { … }`) are options too: they change how the module loads.
+      if (to && ((node["attributes"] as unknown[] | undefined) ?? []).length)
+        problem(source, OPTIONS);
     } else if (node.type === "ImportExpression" && isNode(source)) {
-      specifier(source, "lazy", true, node);
+      const to = specifier(source, "lazy", true, node);
+      if (to && isNode(node["options"])) problem(source, OPTIONS);
     } else if (node.type === "CallExpression") {
       const callee = node["callee"];
       const args = Array.isArray(node["arguments"]) ? (node["arguments"] as unknown[]) : [];
@@ -467,7 +480,7 @@ export function scanModule(
       if (direct && isNode(callee) && isNode(callee["property"])) done.add(callee["property"]);
       if (direct && method === "importESModule" && isNode(first)) {
         const to = specifier(first, lazy ? "lazy" : "eager", false, first);
-        if (to && watched.has(to) && args.length > 1) problem(first, OPTIONS);
+        if (to && args.length > 1) problem(first, OPTIONS);
       } else if (direct && method === "defineESModuleGetters" && isNode(second)) {
         const loaded: string[] = [];
         if (second.type !== "ObjectExpression") specifier(second, "lazy", false, second);
@@ -486,12 +499,35 @@ export function scanModule(
               if (to) loaded.push(to);
             }
           }
-        if (args.length > 2 && loaded.some((to) => watched.has(to))) problem(second, OPTIONS);
+        if (args.length > 2 && loaded.length) problem(second, OPTIONS);
       }
       // A function called on the spot runs now, as its caller does.
       if (isNode(callee) && isFunction(callee)) {
         walk(callee, lazy, true);
       }
+    } else if (
+      node.type === "NewExpression" &&
+      isNode(node["callee"]) &&
+      WORKERS.has(String(node["callee"]["name"])) &&
+      isNode(((node["arguments"] as unknown[]) ?? [])[0])
+    ) {
+      // A worker's script URL is a load position (decision 2): a fixed string, or a name whose
+      // one declaration is a `const` with one (`new ChromeWorker(WORKER_URL)`), whose string the
+      // walk reads as an edge where it is declared.
+      const first = ((node["arguments"] as unknown[]) ?? [])[0];
+      let to: string | null = null;
+      if (isNode(first) && first.type === "Identifier") {
+        done.add(first);
+        refs ??= scopeRefs(ast, file);
+        const spec = constString(first, refs);
+        if (spec === null) problem(first, NOT_FIXED);
+        else {
+          const r = resolveSpec(spec, file, true);
+          to = typeof r === "object" && r !== null ? r.to : null;
+        }
+      } else if (isNode(first)) to = specifier(first, "lazy", true, first);
+      // A worker has its own global: the gate there is a second copy with its own state.
+      if (to && watched.has(to) && isNode(first)) problem(first, WORKER_GATE);
     } else if (node.type === "Identifier" && LOADERS.has(String(node["name"]))) {
       // Aliased, bound, called through .call or a comma, or destructured: not a load the check
       // can read.
@@ -617,11 +653,12 @@ const BINDING_KEYS: Record<string, string[]> = {
  * that calls the module is a caller, not a hand-on: what it does for its own caller is the
  * security review's to judge.
  */
-function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): HandOn[] {
-  const out: HandOn[] = [];
-  if (!watched.size) return out;
-  // Scopes as the language defines them: which declaration, if any, each name read or written
-  // resolves to. A name no scope declares is a property of the shared global.
+/**
+ * Scopes as the language defines them: for each name read or written, the reference that says
+ * which declaration, if any, it resolves to. A name no scope declares is a property of the
+ * shared global.
+ */
+function scopeRefs(ast: AstNode, file: string): Map<unknown, Reference> {
   const scopes = analyze(ast as unknown as Parameters<typeof analyze>[0], {
     ecmaVersion: 2022,
     sourceType: file.endsWith(".js") ? "script" : "module",
@@ -629,6 +666,23 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
   const refs = new Map<unknown, Reference>();
   for (const scope of scopes.scopes)
     for (const ref of scope.references) refs.set(ref.identifier, ref);
+  return refs;
+}
+
+/** The fixed string a name holds when its one declaration is a `const` with one; else null. */
+function constString(id: AstNode, refs: Map<unknown, Reference>): string | null {
+  const variable = refs.get(id)?.resolved;
+  const def = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+  if (def?.type !== "Variable" || (def.parent as { kind?: string } | null)?.kind !== "const")
+    return null;
+  const init = (def.node as unknown as AstNode)["init"];
+  return isNode(init) ? fixedString(init) : null;
+}
+
+function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): HandOn[] {
+  const out: HandOn[] = [];
+  if (!watched.size) return out;
+  const refs = scopeRefs(ast, file);
   /** Whether a name, read or written here, resolves to a declaration in scope. */
   const local = (id: AstNode) => Boolean(refs.get(id)?.resolved);
   /**
@@ -815,7 +869,7 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
         hold(String(on["name"]), { kind: "lazy", keys }, node);
       else
         for (const to of new Set(keys.values()))
-          add(node, to, "defines a getter outside a local object for");
+          add(node, to, "defines a getter outside a fresh `const X = {}` of the module's own for");
     }
   }
 
@@ -828,6 +882,13 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       const to = target(((node["arguments"] as unknown[]) ?? [])[0], false);
       return to ? { kind: "ns", to } : null;
     }
+    // An assignment's value is its right side: `(gate ??= …)` is the gate.
+    if (
+      node.type === "AssignmentExpression" &&
+      ["=", "||=", "&&=", "??="].includes(String(node["operator"])) &&
+      isNode(node["right"])
+    )
+      return holdOf(node["right"]);
     if (node.type === "AwaitExpression" && isNode(node["argument"])) {
       const arg = node["argument"];
       const to = arg.type === "ImportExpression" ? target(arg["source"], true) : null;
@@ -967,18 +1028,33 @@ function handOnsOf(ast: AstNode, file: string, watched: ReadonlySet<string>): Ha
       isNode(parent["left"]) &&
       parent["left"].type === "Identifier" &&
       local(parent["left"])
-    )
+    ) {
+      // The alias is fine; the assignment's own value goes on, unless it is thrown away.
+      const { expr: assignment, parent: user } = up(parent);
+      const list = user?.type === "SequenceExpression" ? (user["expressions"] as unknown[]) : [];
+      const discarded =
+        user?.type === "ExpressionStatement" ||
+        (user?.type === "ForStatement" && user["update"] === assignment) ||
+        (list.length > 0 && list[list.length - 1] !== assignment);
+      if (!discarded) check(assignment, h);
       return;
+    }
     if (
       h.kind === "lazy" &&
       isDefine(parent) &&
       ((parent["arguments"] as unknown[]) ?? [])[0] === expr
     )
       return;
+    const passed =
+      h.kind === "lazy" &&
+      (parent.type === "CallExpression" || parent.type === "NewExpression") &&
+      ((parent["arguments"] as unknown[]) ?? []).includes(expr);
     const how =
       parent.type === "ExportSpecifier" || parent.type === "ExportDefaultDeclaration"
         ? "re-exports"
-        : "hands on";
+        : passed
+          ? "passes to another function (keep other getters on a second lazy object) the lazy object of"
+          : "hands on";
     for (const to of toOf(h)) add(expr, to, how);
   };
 
@@ -1092,14 +1168,45 @@ const INLINE = "an inline <script> is not read; load the code from a module file
 const RISKY =
   "an on… event attribute, srcdoc or <base> changes what a page runs or loads in a way the check does not read";
 
+/** The elements Vimma's pages use today; any other fails (PAGE). */
+const PAGE_TAGS = new Set(
+  "a body button code div dl footer h1 h2 head header hr html input kbd label li link main meta p pre script section span title ul".split(
+    " ",
+  ),
+);
+/** The Content-Security-Policy values the pages carry today (about.html adds connect-src). */
+const PAGE_CSPS = new Set([
+  "default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'",
+  "default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; connect-src chrome:; img-src chrome:; object-src 'none'",
+]);
+/** The stylesheets the pages link today. */
+const PAGE_STYLESHEETS = new Set(
+  ["logo", "about", "setup", "start"].map((n) => `chrome://browser/skin/vimma/${n}.css`),
+);
+/** Attributes that make an element load a URL. */
+const URL_ATTRIBUTES = new Set([
+  "src",
+  "href",
+  "data",
+  "action",
+  "formaction",
+  "srcset",
+  "poster",
+  "background",
+  "xlink:href",
+]);
+
 /**
- * The modules a page under vimma/ loads (`<script src>`, `<link href>`), as eager edges, and
- * the lines that name a restricted module's file (Scan.names). The page is read whole, as its
- * parser reads it: an attribute value may span lines (a URL parser drops the line breaks),
- * quoted or not, with numeric references and the five named ones decoded. Anything the check
- * cannot read is a problem: another named reference, an inline `<script>` (any case, with or
- * without `src`), an `on…` event attribute, `srcdoc`, or `<base>`. Every search moves forward
- * only, so a page is read in linear time.
+ * The modules a page under vimma/ loads (`<script type="module" src>`), as eager edges, the
+ * lines that name a restricted module's file (Scan.names), and every part of the page outside
+ * the allow-lists of what the pages use today: the elements (PAGE_TAGS); a script only
+ * `type="module"` with the `src` of a Vimma module the check reads, and no inline code; a link
+ * only to one of today's stylesheets; a meta only a charset, the colour scheme or one of
+ * today's Content-Security-Policy values, which a page with a script must carry; an `<a href>`
+ * only to an about: page or a fragment; no other element with a URL attribute; no `on…`
+ * attribute or `srcdoc`; no named character reference but the five. The page is read whole, as
+ * its parser reads it (a value across lines is one URL), and every search moves forward only,
+ * so a page is read in linear time.
  * @param html  the page's text
  * @param file  its path relative to vimma/
  */
@@ -1109,6 +1216,7 @@ export function htmlImports(
   watched: ReadonlySet<string> = WATCHED,
 ): Scan {
   const edges: Edge[] = [];
+  const found = new Set<string>();
   const problems: string[] = [];
   const names: Mention[] = [];
   const starts = [0];
@@ -1126,55 +1234,121 @@ export function htmlImports(
   };
   const problem = (offset: number, message: string) => {
     const text = `${file}:${lineAt(offset)}: ${message}`;
-    if (!problems.includes(text)) problems.push(text);
+    if (!found.has(text)) {
+      found.add(text);
+      problems.push(text);
+    }
   };
+  const page = (offset: number, detail: string) => problem(offset, `${detail}; ${WIDEN}`);
   for (const m of html.matchAll(/&([a-z][a-z0-9]*)/gi))
     if (!NAMED.has((m[1] ?? "").toLowerCase())) problem(m.index, ENTITY);
 
+  // The file-name rule reads the whole page, `%` escapes and references decoded.
   const bases = [...watched].map((m) => [m, lettersOnly(posix.basename(m))] as const);
   html.split("\n").forEach((raw, i) => {
-    const letters = lettersOnly(decodeEntities(raw));
+    const letters = lettersOnly(unescape(decodeEntities(raw)));
     for (const [to, base] of bases)
       if (letters.includes(base)) names.push({ from: file, to, line: i + 1 });
   });
-  const whole = lettersOnly(decodeEntities(html));
+  const whole = lettersOnly(unescape(decodeEntities(html)));
   for (const [to, base] of bases)
     if (whole.includes(base) && !names.some((n) => n.to === to))
       names.push({ from: file, to, line: 1 });
 
-  // Attributes: a regex finds each name, and the value is read by hand, so an unclosed quote
-  // ends the search instead of being tried again from every later attribute.
-  const attribute = /(?<![\w-])(src|href|srcdoc|on[a-z]+)\s*=\s*/gi;
-  for (let m = attribute.exec(html); m; m = attribute.exec(html)) {
-    const name = (m[1] ?? "").toLowerCase();
-    const at = m.index;
-    let pos = attribute.lastIndex;
-    let value: string;
-    const quote = html[pos];
-    if (quote === '"' || quote === "'") {
-      const close = html.indexOf(quote, pos + 1);
-      value = html.slice(pos + 1, close < 0 ? html.length : close);
-      pos = close < 0 ? html.length : close + 1;
-    } else {
+  // Tags, each with its attributes, read by hand: each step moves forward, and an unclosed
+  // quote ends the page instead of being searched again from every later attribute.
+  let csp = false;
+  let scripts = false;
+  for (let lt = html.indexOf("<"); lt >= 0; lt = html.indexOf("<", lt + 1)) {
+    const tag = /^[a-zA-Z][a-zA-Z0-9-]*/.exec(html.slice(lt + 1, lt + 65))?.[0]?.toLowerCase();
+    if (!tag) continue;
+    const attrs = new Map<string, string>();
+    let pos = lt + 1 + tag.length;
+    let ended = false;
+    while (pos < html.length) {
+      while (pos < html.length && /[\s/]/.test(html[pos] ?? "")) pos++;
+      if (pos >= html.length || html[pos] === ">") break;
       let end = pos;
-      while (end < html.length && !/[\s>]/.test(html[end] ?? "")) end++;
-      value = html.slice(pos, end);
+      while (end < html.length && !/[\s/>=]/.test(html[end] ?? "")) end++;
+      const name = html.slice(pos, end).toLowerCase();
       pos = end;
+      while (pos < html.length && /\s/.test(html[pos] ?? "")) pos++;
+      let value = "";
+      if (html[pos] === "=") {
+        pos++;
+        while (pos < html.length && /\s/.test(html[pos] ?? "")) pos++;
+        const quote = html[pos];
+        if (quote === '"' || quote === "'") {
+          const close = html.indexOf(quote, pos + 1);
+          value = html.slice(pos + 1, close < 0 ? html.length : close);
+          if (close < 0) ended = true;
+          pos = close < 0 ? html.length : close + 1;
+        } else {
+          let stop = pos;
+          while (stop < html.length && !/[\s>]/.test(html[stop] ?? "")) stop++;
+          value = html.slice(pos, stop);
+          pos = stop;
+        }
+      }
+      if (name) attrs.set(name, clean(decodeEntities(value)));
     }
-    attribute.lastIndex = pos;
-    if (name !== "src" && name !== "href") {
-      problem(at, RISKY);
-      continue;
+    for (const name of attrs.keys()) if (/^on/.test(name) || name === "srcdoc") problem(lt, RISKY);
+    if (tag === "base") problem(lt, RISKY);
+    if (!PAGE_TAGS.has(tag)) page(lt, `<${tag}> is not an element the pages use today`);
+    else if (tag === "script") {
+      scripts = true;
+      const src = attrs.get("src") ?? "";
+      const r = resolveSpec(src, file, true);
+      const keys = [...attrs.keys()].sort().join(" ");
+      if (r === "alias") problem(lt, ALIAS);
+      else if (
+        keys === "src type" &&
+        attrs.get("type") === "module" &&
+        typeof r === "object" &&
+        r !== null &&
+        /\.m?js$/.test(r.to)
+      )
+        edges.push({ from: file, to: r.to, kind: "eager", line: lineAt(lt) });
+      else page(lt, `<script> takes only type="module" and the src of a Vimma module`);
+    } else if (tag === "link") {
+      const keys = [...attrs.keys()].sort().join(" ");
+      if (
+        keys !== "href rel" ||
+        attrs.get("rel") !== "stylesheet" ||
+        !PAGE_STYLESHEETS.has(attrs.get("href") ?? "")
+      )
+        page(lt, `<link> takes only rel="stylesheet" and a stylesheet the pages use today`);
+    } else if (tag === "meta") {
+      const keys = [...attrs.keys()].sort().join(" ");
+      const ok =
+        (keys === "charset" && attrs.get("charset") === "utf-8") ||
+        (keys === "content name" &&
+          attrs.get("name") === "color-scheme" &&
+          attrs.get("content") === "dark light") ||
+        (keys === "content http-equiv" &&
+          attrs.get("http-equiv") === "Content-Security-Policy" &&
+          PAGE_CSPS.has(attrs.get("content") ?? ""));
+      if (ok && keys === "content http-equiv") csp = true;
+      if (!ok)
+        page(
+          lt,
+          "<meta> is none of the forms the pages use today (a charset, the colour scheme, or one of today's Content-Security-Policy values)",
+        );
+    } else if (tag === "a") {
+      const href = attrs.get("href");
+      if (href !== undefined && !/^(about:|#)/.test(href))
+        page(lt, "<a href> may name only an about: page or a fragment");
+    } else {
+      const loads = [...attrs.keys()].find((a) => URL_ATTRIBUTES.has(a));
+      if (loads) page(lt, `<${tag}> may not load a URL (${loads})`);
     }
-    const r = resolveSpec(clean(decodeEntities(value)), file, true);
-    if (r === "alias") problem(at, ALIAS);
-    else if (typeof r === "object" && r !== null && !r.to.endsWith("/"))
-      edges.push({ from: file, to: r.to, kind: "eager", line: lineAt(at) });
+    if (ended) break;
+    lt = Math.max(lt, pos - 1);
   }
+  if (scripts && !csp)
+    page(0, "a page with a script carries one of today's Content-Security-Policy values");
 
   const lower = html.toLowerCase();
-  for (let at = lower.indexOf("<base"); at >= 0; at = lower.indexOf("<base", at + 5))
-    if (/[\s>/]/.test(lower[at + 5] ?? "")) problem(at, RISKY);
   // Inline scripts: each search starts where the last one ended.
   for (let at = lower.indexOf("<script"); at >= 0;) {
     if (!/[\s>/]/.test(lower[at + 7] ?? "")) {
@@ -1202,12 +1376,23 @@ export function jarErrors(jar: string): string[] {
   const errors: string[] = [];
   /** A file that runs code: a module, a script or a page. */
   const runs = (path: string) => /\.(m?js|x?html?)$/i.test(path);
+  const LINE = (n: number) =>
+    `jar.mn:${n}: not one of the line forms jar.mn has today (a "# " comment, the browser.jar: header, an entry, an .svg override); ${WIDEN}`;
+  let headers = 0;
   jar.split("\n").forEach((text, i) => {
+    const n = i + 1;
+    // jar_maker runs the preprocessor first: `#include`, `#ifdef`, `#filter` and the like are
+    // directives, so a comment is `#` and a space, or `#` alone.
+    if (text.trim() === "" || /^#( .*)?$/.test(text)) return;
+    if (text === "browser.jar:") {
+      if (++headers > 1) errors.push(LINE(n));
+      return;
+    }
     // A manifest line could override a module's or a page's URL with another file, or map a
     // new chrome or resource root onto Vimma's files: either loads code the check never reads,
     // or a second copy. Only what the tree has may stand: one .svg image over another, both
     // outside Vimma's content.
-    const manifest = /^\s*%\s*(\S+)\s*(.*)$/.exec(text);
+    const manifest = /^%\s*(\S+)\s*(.*)$/.exec(text);
     if (manifest) {
       const [, directive = "", rest = ""] = manifest;
       const urls = rest.split(/\s+/).filter(Boolean);
@@ -1219,20 +1404,30 @@ export function jarErrors(jar: string): string[] {
       };
       if (directive !== "override" || urls.length !== 2 || !urls.every(image))
         errors.push(
-          `jar.mn:${i + 1}: a manifest line here may only override one .svg image with another, outside content/vimma/: no line may swap, re-root or register a Vimma module`,
+          `jar.mn:${n}: a manifest line here may only override one .svg image with another, outside content/vimma/: no line may swap, re-root or register a Vimma module; ${WIDEN}`,
         );
       return;
     }
     // A preprocessed line packages a file the preprocessor rewrites first.
     if (/^\s*\*/.test(text)) {
       errors.push(
-        `jar.mn:${i + 1}: a preprocessed (*) line is not read by the check; package Vimma's files as they are`,
+        `jar.mn:${n}: a preprocessed (*) line is not read by the check; package Vimma's files as they are; ${WIDEN}`,
       );
       return;
     }
-    const line = /^\s*(\S+)\s+\((\S+)\)\s*$/.exec(text);
-    if (!line) return;
+    const line = /^ +(\S+) +\((\S+)\)$/.exec(text);
+    if (!headers || !line) {
+      errors.push(LINE(n));
+      return;
+    }
     const [, target = "", from = ""] = line;
+    // `content/browser/vimma/../evil/e.mjs (../evil/e.mjs)` would look like its own path.
+    if ([target, from].some((p) => p.split("/").some((seg) => seg === "." || seg === ".."))) {
+      errors.push(
+        `jar.mn:${n}: a "." or ".." segment in a jar.mn path can package a file from outside vimma/; ${WIDEN}`,
+      );
+      return;
+    }
     const inside = target.startsWith("content/browser/vimma/");
     const url = inside ? target.slice("content/browser/vimma/".length) : "";
     const moved = from.includes("*")
@@ -1245,12 +1440,13 @@ export function jarErrors(jar: string): string[] {
       (!inside || from !== url);
     if (moved && inside)
       errors.push(
-        `jar.mn:${i + 1}: content/browser/vimma/${url} is packaged from ${from}; a module's URL must be its source path`,
+        `jar.mn:${n}: content/browser/vimma/${url} is packaged from ${from}; a module's URL must be its source path`,
       );
     else if (moved || misplaced)
       errors.push(
-        `jar.mn:${i + 1}: a script or page may be packaged only from vimma/, under its own path in content/browser/vimma/`,
+        `jar.mn:${n}: a script or page may be packaged only from vimma/, under its own path in content/browser/vimma/; ${WIDEN}`,
       );
+    else if (!inside && !target.startsWith("skin/classic/browser/vimma/")) errors.push(LINE(n));
   });
   return errors;
 }
@@ -1373,6 +1569,14 @@ export function restrictedErrors(
   return errors;
 }
 
+/** The added lines of today's build-file patches that name Vimma's folder (patchErrors). */
+const BUILD_LINES = new Set([
+  '    "content/vimma",',
+  '    "content/vimma/licence/list.html",',
+  '    "content/vimma/licence/body.html",',
+  '    "content/vimma/licence/product-name.html",',
+]);
+
 /**
  * A patch line as the code in it reads: JavaScript escapes (`\x47`, `\u0047`, `\u{47}`) and
  * character references decoded, and tabs and line breaks, escaped or not, dropped, as a URL
@@ -1406,12 +1610,27 @@ export function patchErrors(
 ): string[] {
   const errors: string[] = [];
   const files = Object.keys(restricted).map((m) => [m, lettersOnly(posix.basename(m))] as const);
-  for (const { file, text } of patches)
+  for (const { file, text } of patches) {
+    /** The Firefox file the hunk changes, from its `+++ b/…` header. */
+    let changed = "";
     text.split("\n").forEach((line, i) => {
+      const header = /^\+\+\+ (?:b\/)?(\S+)/.exec(line);
+      if (header) changed = header[1] ?? "";
       if (!line.startsWith("+") || line.startsWith("+++")) return;
       const named = new Set<string>();
       const pieces: string[] = [];
       const decoded = decodeEscapes(line);
+      // A build file (moz.build, jar.mn, a manifest) that names Vimma's folder could package or
+      // export its files under another URL; only the lines browser/base/moz.build adds today
+      // may (the folder in DIRS, the licence pages in the about:license inputs).
+      if (
+        /(^|\/)(moz\.build|[^/]*\.mozbuild|[^/]*\.mn|[^/]*\.manifest)$/.test(changed) &&
+        lettersOnly(decoded).includes("contentvimma") &&
+        !BUILD_LINES.has(line.slice(1))
+      )
+        errors.push(
+          `${file}:${i + 1}: names Vimma's folder (content/vimma) in a build file; ${WIDEN}`,
+        );
       // The lookbehind starts a scheme only at its first letter, so a long run of letters is
       // read once, not once per letter.
       for (const [url] of decoded.matchAll(
@@ -1426,6 +1645,13 @@ export function patchErrors(
         )
           pieces.push(url);
       }
+      if (
+        /\bglobal\s*:/.test(decoded) &&
+        [...decoded.matchAll(/(?<![a-z0-9+.-])[a-z][a-z0-9+.-]*:\/\/[^\s"'`$,);]*/gi)].some(
+          ([url]) => vimmaPath(canonical(url)) !== null,
+        )
+      )
+        errors.push(`${file}:${i + 1}: ${OPTIONS}`);
       const lower = unescape(decoded).toLowerCase();
       const letters = lettersOnly(lower);
       for (const [module, base] of files) if (letters.includes(base)) named.add(module);
@@ -1442,6 +1668,7 @@ export function patchErrors(
           `${file}:${i + 1}: builds a Vimma URL from parts (${piece}); a Firefox patch names each Vimma module by its whole chrome:// URL, so that the check can read it`,
         );
     });
+  }
   return errors;
 }
 
@@ -1666,38 +1893,51 @@ const FILE_TYPES = new Set(["mjs", "js", "html", "md", "mn", "build", "png", "sh
  * @param files  every file git tracks under vimma/, relative to it
  */
 export function fileTypeErrors(files: string[]): string[] {
+  /** Lower case only, as the scan's own patterns are; a build file only where the build reads it. */
+  const known = (f: string) => {
+    const ext = /\.([a-z0-9]+)$/.exec(f)?.[1];
+    if (ext === undefined || !FILE_TYPES.has(ext)) return false;
+    if (ext === "mn") return f === "jar.mn";
+    if (ext === "build") return f === "moz.build";
+    return true;
+  };
   return files
-    .filter((f) => !FILE_TYPES.has(/\.([a-z0-9]+)$/i.exec(f)?.[1]?.toLowerCase() ?? ""))
-    .map(
-      (f) =>
-        `vimma/${f}: a file type the check does not read; teach tools/layering/layering.ts to read it first`,
-    );
+    .filter((f) => !known(f))
+    .map((f) => `vimma/${f}: a file type the check does not read; ${WIDEN}`);
 }
 
-/** The variables vimma/moz.build sets today; any other could export a module elsewhere. */
-const MOZ_BUILD_VARIABLES = new Set(["JAR_MANIFESTS", "BROWSER_CHROME_MANIFESTS"]);
+/** A plain string in vimma/moz.build: no quote, bracket, `#`, `;` or backslash inside. */
+const MOZ_STRING = '"[^"\\[\\]#;\\\\]*"';
+const MOZ_NAME = "(?:JAR_MANIFESTS|BROWSER_CHROME_MANIFESTS)";
 
 /**
- * Statements of vimma/moz.build other than the two it has: EXTRA_JS_MODULES, MOZ_SRC_FILES or
- * any other variable could ship a Vimma module under resource:// or moz-src:// as well, a
- * second copy with its own state. Each statement at bracket depth 0 must set one of
- * MOZ_BUILD_VARIABLES.
+ * Lines of vimma/moz.build outside the shape it has today. EXTRA_JS_MODULES, MOZ_SRC_FILES,
+ * GENERATED_FILES or any other statement could ship a Vimma module under resource:// or
+ * moz-src:// as well, a second copy with its own state; and Python can hide one statement in
+ * another. So the file is matched line by line: a comment (`#` and a space, or `#` alone), a
+ * blank line, `NAME += ["…"]`, or `NAME += [` then lines of one plain string and a comma, then
+ * `]`, with NAME JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS.
  * @param text  vimma/moz.build's text
  */
 export function mozBuildErrors(text: string): string[] {
+  const oneLine = new RegExp(`^${MOZ_NAME} \\+= \\[${MOZ_STRING}\\]$`);
+  const open = new RegExp(`^${MOZ_NAME} \\+= \\[$`);
+  const item = new RegExp(`^ +${MOZ_STRING},$`);
   const errors: string[] = [];
-  let depth = 0;
-  text.split("\n").forEach((raw, i) => {
-    const line = raw.replace(/#.*$/, "");
-    if (depth === 0 && line.trim()) {
-      const name = /^([A-Za-z_][A-Za-z0-9_]*)\s*\+?=/.exec(line)?.[1];
-      if (!name || !MOZ_BUILD_VARIABLES.has(name))
-        errors.push(
-          `vimma/moz.build:${i + 1}: may set only JAR_MANIFESTS and BROWSER_CHROME_MANIFESTS, so that no Vimma file is exported under another URL`,
-        );
-    }
-    for (const c of line) depth += c === "[" || c === "(" ? 1 : c === "]" || c === ")" ? -1 : 0;
+  const fail = (n: number) =>
+    errors.push(
+      `vimma/moz.build:${n}: not one of the statement forms vimma/moz.build has today (JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS += a list of plain strings); ${WIDEN}`,
+    );
+  let inList = false;
+  const lines = text.split("\n");
+  lines.forEach((line, i) => {
+    if (inList) {
+      if (line === "]") inList = false;
+      else if (!item.test(line)) fail(i + 1);
+    } else if (open.test(line)) inList = true;
+    else if (!(line === "" || /^#( .*)?$/.test(line) || oneLine.test(line))) fail(i + 1);
   });
+  if (inList) fail(lines.length);
   return errors;
 }
 

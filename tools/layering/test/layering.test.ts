@@ -29,6 +29,8 @@ import { EXCEPTIONS, RESTRICTED } from "../layers.ts";
 
 const V = "chrome://browser/content/vimma/";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+const WIDEN =
+  "widening this allow-list is a change to tools/layering/layering.ts that needs a fresh security review (ADR-026)";
 const REVIEW =
   "a new caller of the agent gate needs a security review (docs/security.md section 12)";
 const ONLY = {
@@ -41,7 +43,7 @@ const MAP =
 const SECOND =
   "names a restricted module by another URL than its own chrome:// URL or a plain relative path, which loads a second copy of it with its own state";
 const OPTIONS =
-  "loads a restricted module with an options argument, which can load a second copy of it in another global";
+  "loads a Vimma module with an options argument, which can load it and everything it imports, the gate included, a second time in another global";
 
 /**
  * A specifier in double quotes. The fixtures build their relative imports with it, so that
@@ -327,16 +329,17 @@ describe("htmlImports", () => {
     expect(
       htmlImports(
         [
+          `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'" />`,
           `<link rel="stylesheet" href="chrome://browser/skin/vimma/about.css" />`,
           `<script type="module" src="${V}about/about.mjs"></script>`,
-          `<script src="../ui/x.js"></script>`,
+          `<script type="module" src="../ui/x.js"></script>`,
         ].join("\n"),
         "about/about.html",
       ),
     ).toEqual({
       edges: [
-        { from: "about/about.html", to: "about/about.mjs", kind: "eager", line: 2 },
-        { from: "about/about.html", to: "ui/x.js", kind: "eager", line: 3 },
+        { from: "about/about.html", to: "about/about.mjs", kind: "eager", line: 3 },
+        { from: "about/about.html", to: "ui/x.js", kind: "eager", line: 4 },
       ],
       problems: [],
       names: [],
@@ -349,7 +352,7 @@ describe("htmlImports", () => {
         `<p>\n<script type="module">\n  import "../host/a.mjs";\n</script>`,
         "about/a.html",
       ).problems,
-    ).toEqual(["about/a.html:2: an inline <script> is not read; load the code from a module file"]);
+    ).toContain("about/a.html:2: an inline <script> is not read; load the code from a module file");
   });
 });
 
@@ -776,7 +779,9 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
   test("a getter put on the shared global, or the gate stored or passed anywhere", () => {
     expect(
       handedOn(`ChromeUtils.defineESModuleGetters(globalThis, { AgentGate: ${url} });`),
-    ).toEqual([error(1, "defines a getter outside a local object for")]);
+    ).toEqual([
+      error(1, "defines a getter outside a fresh `const X = {}` of the module's own for"),
+    ]);
     expect(handedOn(`${imp}\nglobalThis.gate = AgentGate;`)).toEqual([handsOn(2)]);
     expect(handedOn(`${imp}\nServices.obs.notifyObservers(AgentGate, "x");`)).toEqual([handsOn(2)]);
   });
@@ -1031,7 +1036,9 @@ describe("handOnsOf: holders a name could hide", () => {
       errors(
         `const ChromeUtils = { defineLeak(o) { globalThis.leak = o; } };\nconst lazy = {};\nglobalThis.ChromeUtils.defineESModuleGetters(lazy, { AgentGate: ${U} });\nChromeUtils.defineLeak(lazy);`,
       ),
-    ).toContain(`host/VimmaHost.sys.mjs:4: hands on ${tail}`);
+    ).toContain(
+      `host/VimmaHost.sys.mjs:4: passes to another function (keep other getters on a second lazy object) the lazy object of ${tail}`,
+    );
   });
 });
 
@@ -1076,7 +1083,7 @@ describe("scanModule: a listed importer may not load a second gate", () => {
 
 describe("jarErrors: manifest lines", () => {
   const MANIFEST = (n: number) =>
-    `jar.mn:${n}: a manifest line here may only override one .svg image with another, outside content/vimma/: no line may swap, re-root or register a Vimma module`;
+    `jar.mn:${n}: a manifest line here may only override one .svg image with another, outside content/vimma/: no line may swap, re-root or register a Vimma module; ${WIDEN}`;
   test("an override of a module, or a new root onto Vimma's files, fails", () => {
     expect(
       jarErrors(
@@ -1315,7 +1322,7 @@ describe("scanModule: ChromeUtils is read only as ChromeUtils.<name>", () => {
 describe("handOnsOf: a lazy getter object is a fresh local object, bound once", () => {
   const define = `ChromeUtils.defineESModuleGetters(lazy, { AgentGate: "${U}" });`;
   const outside = (n: number) =>
-    `${LISTED}:${n}: defines a getter outside a local object for ${GATE_TAIL}`;
+    `${LISTED}:${n}: defines a getter outside a fresh \`const X = {}\` of the module's own for ${GATE_TAIL}`;
   test.each([
     [`const lazy = globalThis;\n${define}`, 2],
     [`const lazy = Services;\n${define}`, 2],
@@ -1446,7 +1453,7 @@ describe("htmlImports: a page is read whole, as the parser reads it", () => {
 
 describe("jarErrors: scripts and pages are packaged only under their own path", () => {
   const SCRIPT = (n: number) =>
-    `jar.mn:${n}: a script or page may be packaged only from vimma/, under its own path in content/browser/vimma/`;
+    `jar.mn:${n}: a script or page may be packaged only from vimma/, under its own path in content/browser/vimma/; ${WIDEN}`;
   test("a module packaged anywhere else, or by a preprocessed line, fails", () => {
     expect(
       jarErrors(
@@ -1463,7 +1470,7 @@ describe("jarErrors: scripts and pages are packaged only under their own path", 
     ).toEqual([
       SCRIPT(2),
       SCRIPT(3),
-      "jar.mn:4: a preprocessed (*) line is not read by the check; package Vimma's files as they are",
+      `jar.mn:4: a preprocessed (*) line is not read by the check; package Vimma's files as they are; ${WIDEN}`,
       SCRIPT(5),
     ]);
   });
@@ -1493,8 +1500,8 @@ describe("patchErrors: escapes and markup that hide the gate's file name", () =>
 describe("fileTypeErrors: every file under vimma/ is of a type the check reads or packages", () => {
   test("a page type it does not read fails", () => {
     expect(fileTypeErrors(["about/a.xhtml", "host/b.mjs", "start/c.png", "ui/d.svg"])).toEqual([
-      "vimma/about/a.xhtml: a file type the check does not read; teach tools/layering/layering.ts to read it first",
-      "vimma/ui/d.svg: a file type the check does not read; teach tools/layering/layering.ts to read it first",
+      `vimma/about/a.xhtml: a file type the check does not read; ${WIDEN}`,
+      `vimma/ui/d.svg: a file type the check does not read; ${WIDEN}`,
     ]);
   });
 });
@@ -1504,8 +1511,8 @@ describe("mozBuildErrors: vimma/moz.build exports no module", () => {
     const text =
       'JAR_MANIFESTS += ["jar.mn"]\n\nBROWSER_CHROME_MANIFESTS += [\n    "/x/browser.toml",\n]\nEXTRA_JS_MODULES += ["host/AgentGate.sys.mjs"]\nMOZ_SRC_FILES += ["x"]';
     expect(mozBuildErrors(text)).toEqual([
-      "vimma/moz.build:6: may set only JAR_MANIFESTS and BROWSER_CHROME_MANIFESTS, so that no Vimma file is exported under another URL",
-      "vimma/moz.build:7: may set only JAR_MANIFESTS and BROWSER_CHROME_MANIFESTS, so that no Vimma file is exported under another URL",
+      `vimma/moz.build:6: not one of the statement forms vimma/moz.build has today (JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS += a list of plain strings); ${WIDEN}`,
+      `vimma/moz.build:7: not one of the statement forms vimma/moz.build has today (JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS += a list of plain strings); ${WIDEN}`,
     ]);
   });
 });
@@ -1563,14 +1570,287 @@ describe("treeErrors: file types, vimma/moz.build and vimma-core are read too", 
     execFileSync("git", ["init", "-q"], { cwd: root });
     execFileSync("git", ["add", "."], { cwd: root });
     const { errors } = treeErrors(root);
+    expect(errors).toContain(`vimma/ui/a.xhtml: a file type the check does not read; ${WIDEN}`);
     expect(errors).toContain(
-      "vimma/ui/a.xhtml: a file type the check does not read; teach tools/layering/layering.ts to read it first",
-    );
-    expect(errors).toContain(
-      "vimma/moz.build:1: may set only JAR_MANIFESTS and BROWSER_CHROME_MANIFESTS, so that no Vimma file is exported under another URL",
+      `vimma/moz.build:1: not one of the statement forms vimma/moz.build has today (JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS += a list of plain strings); ${WIDEN}`,
     );
     expect(errors).toContain(
       "packages/vimma-core/src/a.mjs:1: vimma-core may not use import(), globalThis, eval or Function, nor name a restricted module's file: the layering check does not read core/",
+    );
+  });
+});
+
+/** Whether any error is on this line of this file. */
+const onLine = (errors: string[], file: string, n: number) =>
+  errors.some((e) => e.startsWith(`${file}:${n}: `));
+
+describe("handOnsOf: the value of an assignment is the gate too", () => {
+  const imp = `import { AgentGate } from "${U}";\n`;
+  test.each([
+    [`${imp}let b;\nexport const a = (b = AgentGate);`, 3],
+    [`${imp}let b;\nglobalThis.leak = (b = AgentGate);`, 3],
+    [
+      `let gate;\nexport function getGate() { return (gate ??= ChromeUtils.importESModule("${U}").AgentGate); }`,
+      2,
+    ],
+    [`${imp}let c;\nexport const get = () => (c = AgentGate);`, 3],
+    [`${imp}let c;\nServices.obs.notifyObservers(c = AgentGate, "x");`, 3],
+    [`${imp}let b;\nlet a = b = AgentGate;\nexport { a };`, 4],
+    [`${imp}let b;\nexport const a = (b ||= AgentGate);`, 3],
+    [`${imp}let b;\nexport const a = (b &&= AgentGate);`, 3],
+  ])("%s", (source, line) => {
+    expect(onLine(allErrors(source, LISTED), LISTED, line)).toBe(true);
+  });
+
+  test("an assignment whose value is discarded is only an alias", () => {
+    expect(
+      allErrors(
+        `${imp}let g;\ng = AgentGate;\nlet h;\n(h = AgentGate), g.revoke();\nfor (;; g = AgentGate) break;`,
+        LISTED,
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("jarErrors: only the line forms jar.mn has today", () => {
+  const LINE = (n: number) =>
+    `jar.mn:${n}: not one of the line forms jar.mn has today (a "# " comment, the browser.jar: header, an entry, an .svg override); ${WIDEN}`;
+  const DOTS = (n: number) =>
+    `jar.mn:${n}: a "." or ".." segment in a jar.mn path can package a file from outside vimma/; ${WIDEN}`;
+  test.each([
+    ["        content/browser/vimma/../evil/e.mjs (../evil/e.mjs)", DOTS(2)],
+    ["        content/browser/vimma/ui/../../evil/e.mjs (ui/../../evil/e.mjs)", DOTS(2)],
+    ["        content/browser/vimma/ui/./a.mjs (ui/./a.mjs)", DOTS(2)],
+    ["        content/browser/vimma/../leak/ (../leak/*)", DOTS(2)],
+    ["#include host/extra.inc.mn", LINE(2)],
+    ["#ifdef X", LINE(2)],
+    ["#filter substitution", LINE(2)],
+    ["        content/browser/vimma/ui/a.mjs", LINE(2)],
+    ["other.jar:", LINE(2)],
+    ["browser.jar:", LINE(2)],
+    ["relativesrcdir ../..:", LINE(2)],
+    ["[localization] @AB_CD@.jar:", LINE(2)],
+    ["        content/browser/leak.mjs\t(host/AgentGate.sys.mjs) # c", LINE(2)],
+  ])("%s", (line, error) => {
+    expect(jarErrors(`browser.jar:\n${line}`)).toContain(error);
+  });
+
+  test("the forms it has pass", () => {
+    expect(
+      jarErrors(
+        [
+          "# This Source Code Form is subject to the terms of the Mozilla Public",
+          "",
+          "browser.jar:",
+          "        content/browser/vimma/vimma.js                    (vimma.js)",
+          "        content/browser/vimma/core                        (core/**/*.mjs)",
+          "        skin/classic/browser/vimma/hints.css              (/browser/themes/shared/vimma/hints.css)",
+          "        content/browser/vimma/about/patches.json          (/browser/config/vimma/patches.json)",
+          "#",
+          "% override chrome://browser/skin/sidebar/foxy.svg chrome://browser/skin/vimma/empty.svg",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("mozBuildErrors: vimma/moz.build has exactly today's shape", () => {
+  const SHAPE = (n: number) =>
+    `vimma/moz.build:${n}: not one of the statement forms vimma/moz.build has today (JAR_MANIFESTS or BROWSER_CHROME_MANIFESTS += a list of plain strings); ${WIDEN}`;
+  test.each([
+    ['JAR_MANIFESTS += ["jar.mn"]; EXTRA_JS_MODULES += ["host/AgentGate.sys.mjs"]', [SHAPE(1)]],
+    ['JAR_MANIFESTS += ["jar.mn", "]"]\nEXTRA_JS_MODULES += ["x"]', [SHAPE(1), SHAPE(2)]],
+    ['JAR_MANIFESTS += ["jar.mn", "["]\nEXTRA_JS_MODULES += ["x"]', [SHAPE(1), SHAPE(2)]],
+    ['JAR_MANIFESTS += [] if "]" else []', [SHAPE(1)]],
+    ["JAR_MANIFESTS += [x for x in y]", [SHAPE(1)]],
+    ["BROWSER_CHROME_MANIFESTS = EXTRA_JS_MODULES", [SHAPE(1)]],
+    ['JAR_MANIFESTS += [\n    "jar.mn", "x",\n]', [SHAPE(2)]],
+    ['JAR_MANIFESTS += [\n    "a#b",\n]', [SHAPE(2)]],
+    ['JAR_MANIFESTS += ["""jar.mn\n]\n"""]', [SHAPE(1), SHAPE(2), SHAPE(3)]],
+    ['include("other.mozbuild")', [SHAPE(1)]],
+  ])("%s", (text, errors) => {
+    expect(mozBuildErrors(text)).toEqual(errors);
+  });
+
+  test("today's file passes", () => {
+    expect(
+      mozBuildErrors(readFileSync(join(ROOT, "src/browser/base/content/vimma/moz.build"), "utf8")),
+    ).toEqual([]);
+  });
+});
+
+describe("fileTypeErrors: types are lower case, and build files only at the top", () => {
+  const TYPE = (f: string) => `vimma/${f}: a file type the check does not read; ${WIDEN}`;
+  test("an upper-case extension, a second jar.mn or moz.build, fail", () => {
+    expect(
+      fileTypeErrors([
+        "ui/x.MJS",
+        "ui/x.Js",
+        "host/extra.inc.mn",
+        "ui/moz.build",
+        "jar.mn",
+        "moz.build",
+      ]),
+    ).toEqual([TYPE("ui/x.MJS"), TYPE("ui/x.Js"), TYPE("host/extra.inc.mn"), TYPE("ui/moz.build")]);
+  });
+
+  test("a load of an upper-case module name is not a module", () => {
+    expect(allErrors(`ChromeUtils.importESModule("${V}ui/leak.MJS");`, UNLISTED)).toContain(
+      `${UNLISTED}:1: loads a Vimma file that is not a module (.mjs or .js)`,
+    );
+  });
+});
+
+describe("htmlImports: only the elements, URLs and policies the pages use today", () => {
+  const CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome:; object-src 'none'" />`;
+  const page = (html: string) => htmlImports(`${CSP}\n${html}`, "start/x.html").problems;
+  const at2 = (problems: string[]) => problems.some((p) => p.startsWith("start/x.html:2: "));
+  test.each([
+    `<script type="module" src="data:text/javascript;base64,aW1wb3J0"></script>`,
+    `<script type="module" src="javascript:1"></script>`,
+    `<script src="${V}start/start.mjs"></script>`,
+    `<script type="importmap" src="x.json"></script>`,
+    `<iframe src="javascript:1"></iframe>`,
+    `<object data="${V}host/AgentGate.sys.mjs"></object>`,
+    `<embed src="x">`,
+    `<link rel="modulepreload" href="${V}host/AgentGate.sys.mjs">`,
+    `<link rel="stylesheet" href="https://example.com/a.css">`,
+    `<meta http-equiv="refresh" content="0;url=data:text/html,x">`,
+    `<svg><script href="x"/></svg>`,
+    `<form action="javascript:1"></form>`,
+    `<a href="javascript:1">x</a>`,
+    `<img src="x">`,
+  ])("%s", (html) => {
+    expect(at2(page(html))).toBe(true);
+  });
+
+  test("a policy other than today's two fails, and a page with a script needs one", () => {
+    expect(
+      htmlImports(
+        `<meta http-equiv="Content-Security-Policy" content="script-src chrome: data:">`,
+        "start/x.html",
+      ).problems,
+    ).toHaveLength(1);
+    expect(
+      htmlImports(`<script type="module" src="${V}start/start.mjs"></script>`, "start/x.html")
+        .problems,
+    ).toHaveLength(1);
+  });
+
+  test("today's pages pass", () => {
+    for (const f of [
+      "about/about.html",
+      "start/start.html",
+      "setup/setup.html",
+      "licence/list.html",
+      "licence/body.html",
+      "licence/product-name.html",
+    ]) {
+      const text = readFileSync(join(ROOT, "src/browser/base/content/vimma", f), "utf8");
+      expect(htmlImports(text, f).problems).toEqual([]);
+    }
+  });
+
+  test("a %-escaped file name anywhere in a page is a name", () => {
+    expect(htmlImports(`<p title="Agent%47ate.sys.mjs"></p>`, "about/x.html").names).toHaveLength(
+      1,
+    );
+  });
+
+  test("20,000 unknown references are read in linear time", () => {
+    const start = Date.now();
+    htmlImports("&a\n".repeat(20000), "about/x.html");
+    expect(Date.now() - start).toBeLessThan(500);
+  });
+});
+
+describe("scanModule: no options argument on any Vimma module, and workers are load positions", () => {
+  const OPTIONS =
+    "loads a Vimma module with an options argument, which can load it and everything it imports, the gate included, a second time in another global";
+  test.each([
+    `ChromeUtils.importESModule("${V}host/VimmaHost.sys.mjs", { global: "devtools" });`,
+    `const lazy = {};\nChromeUtils.defineESModuleGetters(lazy, { C: "${V}ctl/VimmaControl.sys.mjs" }, { global: "current" });`,
+  ])("%s", (source) => {
+    expect(allErrors(source, "ctl/NewThing.sys.mjs").join("\n")).toContain(OPTIONS);
+  });
+
+  test("a worker's URL is a load position: fixed, and an edge", () => {
+    expect(
+      allErrors(
+        "new ChromeWorker(`" + V + "host/Agent${'Gate'}.sys.mjs`, { type: 'module' });",
+        UNLISTED,
+      ),
+    ).toContain(`${UNLISTED}:1: an import specifier is not a fixed string`);
+    expect(found(`new ChromeWorker("${V}ui/w.mjs");`, UNLISTED)).toEqual(["ui/w.mjs (lazy)"]);
+    expect(allErrors(`const W = "${V}ui/w.mjs";\nnew ChromeWorker(W);`, UNLISTED)).toEqual([]);
+    expect(allErrors(`let W = "${V}ui/w.mjs";\nnew ChromeWorker(W);`, UNLISTED)).toContain(
+      `${UNLISTED}:2: an import specifier is not a fixed string`,
+    );
+  });
+});
+
+describe("patchErrors: build files and options", () => {
+  const run = (file: string, line: string) =>
+    patchErrors([{ file: "src/x.patch", text: `+++ b/${file}\n+${line}` }], RESTRICTED);
+  test.each([
+    ["browser/base/jar.mn", "  content/browser/x/G.sys.mjs (content/vimma/host/Agent*.sys.mjs)"],
+    ["browser/base/moz.build", 'MOZ_SRC_FILES += ["base/content/vimma/host/Agent*"]'],
+    ["browser/base/moz.build", 'DIRS += ["content/vimma/ui"]'],
+    ["browser/modules/moz.build", 'EXTRA_JS_MODULES.vimma += ["../base/content/vimma/host/x.mjs"]'],
+  ])("%s: %s", (file, line) => {
+    expect(run(file, line).join("\n")).toContain(
+      "names Vimma's folder (content/vimma) in a build file",
+    );
+  });
+
+  test("today's lines in browser/base/moz.build pass", () => {
+    for (const line of [
+      '    "content/vimma",',
+      '    "content/vimma/licence/list.html",',
+      '    "content/vimma/licence/body.html",',
+      '    "content/vimma/licence/product-name.html",',
+    ])
+      expect(run("browser/base/moz.build", line)).toEqual([]);
+  });
+
+  test("an options argument on a line that names a Vimma URL fails", () => {
+    expect(
+      run(
+        "browser/x.sys.mjs",
+        `ChromeUtils.importESModule("${V}host/VimmaHost.sys.mjs", { global: "devtools" });`,
+      ).join("\n"),
+    ).toContain("loads a Vimma module with an options argument");
+  });
+});
+
+describe("handOnsOf: the lazy object goes to no other function", () => {
+  test("XPCOMUtils on the gate's lazy object says to use a second one", () => {
+    expect(
+      allErrors(
+        `const lazy = {};\nChromeUtils.defineESModuleGetters(lazy, { AgentGate: "${U}" });\nXPCOMUtils.defineLazyPreferenceGetter(lazy, "x", "a.b", false);`,
+        LISTED,
+      ),
+    ).toContain(
+      `${LISTED}:3: passes to another function (keep other getters on a second lazy object) the lazy object of ${GATE_TAIL}`,
+    );
+  });
+});
+
+describe("scanModule: the gate loads only as a module of the main loader", () => {
+  test("in a worker it would be a second copy, in another global", () => {
+    expect(allErrors(`new ChromeWorker("${U}", { type: "module" });`, LISTED)).toContain(
+      `${LISTED}:1: loads a restricted module in a worker, a second copy of it with its own state`,
+    );
+  });
+
+  test("import attributes on a Vimma module count as options", () => {
+    expect(
+      allErrors(
+        `import { AgentGate } from "${U}" with { type: "json" };\nAgentGate.revoke();`,
+        LISTED,
+      ),
+    ).toContain(
+      `${LISTED}:1: loads a Vimma module with an options argument, which can load it and everything it imports, the gate included, a second time in another global`,
     );
   });
 });
