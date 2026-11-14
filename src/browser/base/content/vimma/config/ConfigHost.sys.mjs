@@ -564,7 +564,8 @@ export const ConfigHost = {
       console.error(`vimma: cannot write ${path}`, e);
       return `cannot write ${path}`;
     }
-    await this.reload();
+    // ConfigHost, not `this`: vimma.js hands the host this method on its own (HostServices).
+    await ConfigHost.reload();
     return null;
   },
 

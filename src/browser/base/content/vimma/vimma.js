@@ -71,6 +71,26 @@
   const { VimmaHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/VimmaHost.sys.mjs",
   );
+  // The commands of higher folders the host runs (ADR-026): handed over before the host starts,
+  // since its first window follows the conversations from init. Once per process; a later
+  // window hands over the same ones, which changes nothing.
+  const { HostServices } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/host/host-services.mjs",
+  );
+  const { AgentChat } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
+  );
+  const { AgentDownloads } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs",
+  );
+  const { ConfigHost } = ChromeUtils.importESModule(
+    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
+  );
+  HostServices.provide({
+    agentChat: AgentChat,
+    isAgentDownload: AgentDownloads.isAgentDownload,
+    addRoute: ConfigHost.addRoute,
+  });
   VimmaHost.init(window);
 
   // The workspace definitions, once per app (m3-workspaces, sub-spec 2a): Tabbrowser-sys-mjs.patch
@@ -96,9 +116,6 @@
 
   // config.toml (spec m5-config-load), once its users exist: the keymap, [panes] max, hints,
   // [sites] and [theme]. Read asynchronously; until then the built-in defaults apply.
-  const { ConfigHost } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
-  );
   ConfigHost.init(window);
 
   // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and

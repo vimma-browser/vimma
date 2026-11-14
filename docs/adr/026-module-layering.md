@@ -132,7 +132,16 @@ each without a change in behaviour:
   `config/ConfigHost.sys.mjs`). The agent line follows conversations, `:agent give` hands a tab
   over, the downloads picker marks an agent's downloads, `:route add` writes `config.toml` and
   reports the result. The higher folder hands the host an interface object at startup instead
-  (decision 4).
+  (decision 4). (Since changed: done. `host/host-services.mjs` holds the three services the host
+  runs, `agentChat`, `isAgentDownload` and `addRoute`, and the host calls them through
+  `HostServices`. `vimma.js`, the one module that may import every folder, provides them with
+  `HostServices.provide` before it starts the first window's host; no other caller may, a
+  service is provided once and never replaced (a second window's `vimma.js` hands over the same
+  ones), and one asked for before it is provided gives the answer that does the least: every
+  download counts as an agent's, there are no conversations, and `config.toml` is not written.
+  A registry rather than arguments to `VimmaHost.init`, because the five calls sit in four
+  modules that the host reaches on different paths, and threading the services through each
+  would change their signatures for no gain in what they depend on.)
 - **The agent chat window drives the agent** (lazy: `ui/agent-chat.mjs` →
   `agent/AgentChat.sys.mjs`, `agent/AgentCli.sys.mjs`, `agent/AgentKeys.sys.mjs`,
   `config/ConfigHost.sys.mjs`, `host/mcp-ops.mjs`). The host builds the window, so it passes the

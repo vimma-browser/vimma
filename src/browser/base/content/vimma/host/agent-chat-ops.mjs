@@ -11,11 +11,7 @@ import { parseAgentCommand } from "../core/agent-chat.mjs";
 import { moveTabQuestion } from "../core/workspacedefs.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-
-const lazy = /** @type {Lazy<"AgentChat">} */ ({});
-ChromeUtils.defineESModuleGetters(lazy, {
-  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
-});
+import { HostServices } from "./host-services.mjs";
 
 /** What a tab is called in the transcript: its label, on one line, cut. @param {any} tab */
 const tabTitle = (tab) =>
@@ -46,11 +42,11 @@ export function giveSelectedTab(win, id, ask, say) {
   const tab = gBrowser.selectedTab;
   const title = tabTitle(tab);
   if (tab.userContextId === /** @type {any} */ (agent).userContextId && !ww.isForeign(tab)) {
-    const owner = lazy.AgentChat.ownerOf(tab);
+    const owner = HostServices.agentChat.ownerOf(tab);
     if (owner === id) say("agent: that tab is this conversation's already");
     // Another conversation's tab stays its own: one model never reaches another's pages (B17).
     else if (owner !== null) say("agent: that tab is another conversation's");
-    else lazy.AgentChat.give(id, tab, title);
+    else HostServices.agentChat.give(id, tab, title);
     return;
   }
   ask(moveTabQuestion(agent.name, { agent: WorkspaceStore.agentName }), () => {
@@ -60,7 +56,7 @@ export function giveSelectedTab(win, id, ask, say) {
       return;
     }
     // A conversation deleted meanwhile gets nothing: the tab stays where it was.
-    if (!lazy.AgentChat.list().some((/** @type {any} */ c) => c.id === id)) {
+    if (!HostServices.agentChat.list().some((c) => c.id === id)) {
       say("agent: that conversation is gone; nothing was moved");
       return;
     }
@@ -72,7 +68,7 @@ export function giveSelectedTab(win, id, ask, say) {
         onMoved: (fresh) => {
           // Inside moveTab, before the old tab closes: a throw here would leave both open.
           try {
-            lazy.AgentChat.give(id, fresh, title);
+            HostServices.agentChat.give(id, fresh, title);
             given = true;
           } catch (e) {
             console.error("vimma agent: giving the tab failed", e);

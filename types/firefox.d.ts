@@ -252,6 +252,12 @@ declare const Components: {
   ID(id: string): unknown;
   readonly manager: any;
   isSuccessCode(code: number): boolean;
+  // The calling script's frame (xpccomponents.idl, nsIStackFrame): host/host-services.mjs checks
+  // that only vimma.js provides the host's services.
+  readonly stack: {
+    readonly filename: string;
+    readonly caller: { readonly filename: string } | null;
+  };
 };
 
 // engine/dom/chrome-webidl/BrowsingContext.webidl
