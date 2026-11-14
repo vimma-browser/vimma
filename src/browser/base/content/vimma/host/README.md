@@ -35,8 +35,13 @@ takes from a page is checked as [docs/security.md](../../../../../../docs/securi
 and 20 say. `AgentGate.sys.mjs` decides what an agent may do and asks you (section 12): a change
 to it gets a separate security review, as one to `ctl/` does. Only the modules `RESTRICTED` lists
 in `tools/layering/layers.ts` may import it (three here, three in `ctl/`, `agent/AgentChat.sys.mjs`),
-and `npm run layering` fails on any other, `VimmaParent.sys.mjs` included, and on a module that
-re-exports it: a new caller needs a security review, then a line there.
+and `npm run layering` fails on any other module or page that loads it or names its file,
+`VimmaParent.sys.mjs` included, and on a module that hands it on (exports, returns, passes or
+stores it, or takes a method of it without calling it, by a member read or by destructuring at
+any depth): a new caller needs a security review, then a line there.
+[docs/security.md](../../../../../../docs/security.md) section 12 lists everything the check
+reads, with its tests; what a call or a getter of the gate returns, and a function that calls it
+for someone else, are for that review (ADR-026, "Limits of the check").
 
 **Read more:** [The life of a keypress](../../../../../../docs/architecture/keypress.md),
 [Workspaces and panes](../../../../../../docs/architecture/workspaces-and-panes.md).

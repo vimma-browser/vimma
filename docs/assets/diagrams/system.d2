@@ -161,7 +161,7 @@ west.local.mcp -> app.parent.front.ctl { class: gated }
 west.local.scripts -> app.parent.front.ctl { class: gated }
 app.parent.agent -> west.local.clis { class: flow }
 app.parent.agent -> app.parent.front.ctl: "the same agent commands,\nin process (no token)" { class: flow }
-app.parent.front.ctl -> app.parent.front.gate: "agent role:\nevery call" { class: gated }
+app.parent.front.ctl -> app.parent.front.gate: "agent role:\nevery call\nbut hello,\nping, cancel" { class: gated }
 app.parent.front.gate -> app.parent.chrome { class: flow }
 app.parent.front.ctl -> app.parent.chrome: "full role: the token alone\n(one question per connection\nwhile MCP is on)" { class: flow }
 app.parent.chrome <-> app.content.child: "actor messages" { class: flow }
