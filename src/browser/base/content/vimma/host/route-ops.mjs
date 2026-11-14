@@ -11,6 +11,7 @@ import { findWorkspace, workspaceRefFor } from "../core/workspaces.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceRouter } from "../workspaces/WorkspaceRouter.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
+import { HostServices } from "./host-services.mjs";
 import { openUrl } from "./tab-ops.mjs";
 
 export const ROUTE_USAGE = ":route, :route add [workspace], :route move";
@@ -62,13 +63,8 @@ function addRoute(win, tab, name, say) {
       : `:route add: route ${earlier.index} already sends ${domain} to "${earlier.workspace}" ` +
           `(${describeRoute(earlier)}); edit it in config.toml (:config)`;
   }
-  // ConfigHost imports VimmaHost, which reaches this module through runners.mjs: imported on
-  // use (runners.mjs reaches ConfigHost only through CONFIG_RELOAD_TOPIC), so module evaluation
-  // never runs in a cycle.
-  const { ConfigHost } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
-  );
-  ConfigHost.addRoute({ domain, workspace }).then(
+  // ConfigHost's, which vimma.js provides: config/ sits above the host (ADR-026).
+  HostServices.addRoute({ domain, workspace }).then(
     (/** @type {string | null} */ refused) =>
       say(refused ? `:route add: ${refused}` : `added: ${domain} → "${workspace}" (config.toml)`),
     (/** @type {unknown} */ e) => say(`:route add: ${/** @type {Error} */ (e).message}`),

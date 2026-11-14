@@ -20,6 +20,9 @@
 //   lazy   anything else: a defineESModuleGetters map, importESModule inside a function,
 //          import(), an actor's esModuleURI, a worker's URL. Loaded on first use.
 //
+// A string naming vimma.js, the root window script, is not an edge outside a load position: no
+// module can import a classic script.
+//
 // A specifier where a module is loaded must be a fixed string, so that no import escapes the
 // check; a string holding only part of a Vimma URL is refused too. Type-only references
 // (`@import`, `import("…")` in JSDoc) are comments and never load a module, so they are not
@@ -110,6 +113,14 @@ function resolveSpec(spec: string, file: string, relativeAllowed: boolean): Reso
   return { to: path.slice(0, slash + 1) };
 }
 
+/**
+ * Whether a path is vimma.js, the one classic script at the top of vimma/, which browser.xhtml
+ * loads with `<script src>`. No module can import it, so a string that names it outside a load
+ * position is not an edge; passed to `importESModule` or `import()`, it still is one. Any other
+ * top-level name, a second script included, stays an edge until it is named here.
+ */
+const isRootScript = (path: string) => path === "vimma.js";
+
 /** The value of a string literal, or of a template literal without `${}`; else null. */
 function fixedString(node: AstNode): string | null {
   if (node.type === "Literal" && typeof node["value"] === "string") return node["value"];
@@ -174,11 +185,15 @@ export function scanModule(source: string, file: string): Scan {
   const lineOf = (node: AstNode) => node.loc?.start.line ?? 0;
   const problem = (node: AstNode, message: string) =>
     problems.push(`${file}:${lineOf(node)}: ${message}`);
-  /** A string in any position: a module URL in it is a lazy reference. */
+  /**
+   * A string in any position: a module URL in it is a lazy reference. The root window script's
+   * URL is not: it is text, as a page's URL is (isRootScript).
+   */
   const reference = (spec: string, node: AstNode) => {
     const r = resolveSpec(spec, file, false);
     if (r === "partial") problem(node, PARTIAL);
-    else if (r) edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
+    else if (r && !isRootScript(r.to))
+      edges.push({ from: file, to: r.to, kind: "lazy", line: lineOf(node) });
   };
   /** A specifier where a module is loaded: it must be a fixed string. */
   const specifier = (node: AstNode, kind: Edge["kind"], relative: boolean, at: AstNode) => {

@@ -672,10 +672,14 @@ A local file you trust and edit. Spec: [m5-config-load](specs/m5-config-load.md)
   [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.ts),
   [`command, path, args and env in a cli provider are errors with their line`](../packages/vimma-core/test/config-agent.test.mjs)
 - F4. `:route add` **must** write each value as one escaped TOML string, and write nothing when
-  the result would not parse.
+  the result would not parse. The host reaches `ConfigHost.addRoute` only through
+  `host/host-services.mjs`, which `vimma.js` fills (§21, D4); asked before that, it writes
+  nothing.
   [`appendRouteText quotes a workspace name as a TOML string`](../packages/vimma-core/test/routes.test.mjs),
   [`appendRouteText refuses what would not parse, and says why`](../packages/vimma-core/test/routes.test.mjs),
-  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js)
+  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js),
+  [`route_add_says_why_config_toml_refused_the_rule`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js)
 - F5. Reading `config.toml` **never** throws, hangs or changes a built-in prototype; nesting
   deeper than 32 levels is refused; a key, colour or modifier named like an `Object` member
   (`constructor`, `__proto__`) is unknown, never looked up; an accepted config holds only values
@@ -4363,8 +4367,19 @@ referring pages are chosen by the sites the files came from.
   **must** open only an `http:` or `https:` page, never a script,
   `data:` or `file:` address a page chose as its referrer, and **must** open it in the
   download's own container (the window's non-agent one for a history entry), **never** the agent
-  workspace's, even with that workspace on screen: the full referrer may carry a token.
+  workspace's, even with that workspace on screen: the full referrer may carry a token. The
+  picker asks M11's test through `host/host-services.mjs`, because `ctl/` sits above the host
+  (ADR-026): `vimma.js` provides it there before the first window's host starts, and once it is
+  provided nothing can replace it, because the registry is frozen and refuses a second value. Its
+  check that the caller is `vimma.js` only catches mistakes: code that already runs with the
+  system principal can run under that file name. Asked before it is provided, every download
+  counts as an agent's. The registry has no observer topic, control-socket command or agent
+  command, and pages cannot load chrome modules.
   [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
+  [`test_vimma_js_provided_every_service_before_the_window_started`](../tests/browser/browser_vimma_host_services.js),
+  [`test_only_vimma_js_provides_and_nothing_swaps_a_service`](../tests/browser/browser_vimma_host_services.js),
+  [`test_code_named_vimma_js_still_cannot_replace_a_service`](../tests/browser/browser_vimma_host_services.js),
+  [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js),
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
   [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),
