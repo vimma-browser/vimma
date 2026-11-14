@@ -87,7 +87,7 @@ export function mcpStatus({ enabled, from, workspace }) {
 /**
  * What `:mcp` adds to its status while agents use Vimma (decision 25): connections, waiting
  * questions, and grants with the time left on the one ending first.
- * @param {{ connections: number, waiting: number, grants: { until: number }[], now: number }} a
+ * @param {{ connections: number, waiting: number, grants: readonly { until: number }[], now: number }} a
  */
 export function mcpActivity({ connections, waiting, grants, now }) {
   /** @param {number} n @param {string} one */
@@ -270,6 +270,62 @@ export const LOG_SIZE = 100;
  *   showed them
  */
 
+/** How deep `frozenCopy` goes before it refuses: far more than any request's shape. */
+export const FROZEN_COPY_DEPTH = 32;
+
+/**
+ * A deep, frozen copy of plain data, for what the agent gate keeps from a caller and hands to a
+ * reader (security.md M62): nothing either side holds can change what a question showed, what
+ * an answer is checked against or a `:mcp log` row. It is for JSON-like data of a fixed shape:
+ * each own enumerable string key is read once (a getter included) and kept as an own data
+ * property, `__proto__` too; a function is left out (undefined); symbol keys and non-enumerable
+ * properties go; any other object is copied by its keys alone, so a Date, Map, Set or URL becomes
+ * `{}` and a typed array an object of indexes. An object shared within the data is copied once
+ * (linear time); one met again inside itself becomes null. Data nested deeper than
+ * FROZEN_COPY_DEPTH objects throws, and the gate's callers fail closed on a throw.
+ * @template T
+ * @param {T} value
+ * @returns {Readonly<T>}
+ */
+export function frozenCopy(value) {
+  /** Objects being copied: met again, they are a cycle. @type {WeakSet<object>} */
+  const open = new WeakSet();
+  /** Objects already copied: met again, they share their copy. @type {WeakMap<object, unknown>} */
+  const done = new WeakMap();
+  /** @param {unknown} v @param {number} depth @returns {unknown} */
+  const copy = (v, depth) => {
+    if (typeof v === "function") return undefined;
+    if (v === null || typeof v !== "object") return v;
+    if (done.has(v)) return done.get(v);
+    if (open.has(v)) return null;
+    if (depth > FROZEN_COPY_DEPTH) {
+      throw new Error(`frozenCopy: data nested deeper than ${FROZEN_COPY_DEPTH} levels`);
+    }
+    open.add(v);
+    /** @type {unknown} */
+    let out;
+    if (Array.isArray(v)) {
+      out = Array.from(v, (x) => copy(x, depth + 1));
+    } else {
+      /** @type {Record<string, unknown>} */
+      const o = {};
+      for (const key of Object.keys(v)) {
+        // defineProperty, not `o[key] =`: a `__proto__` key stays data, never the prototype.
+        Object.defineProperty(o, key, {
+          value: copy(/** @type {Record<string, unknown>} */ (v)[key], depth + 1),
+          enumerable: true,
+        });
+      }
+      out = o;
+    }
+    open.delete(v);
+    Object.freeze(out);
+    done.set(v, out);
+    return out;
+  };
+  return /** @type {Readonly<T>} */ (copy(value, 1));
+}
+
 /**
  * The last LOG_SIZE agent calls, asked or under a grant (mcp-drive D14, security.md M23). In
  * memory only, like grants (vimma-mcp decision 22): it would hold the agent workspace's
@@ -277,17 +333,21 @@ export const LOG_SIZE = 100;
  */
 export class AgentLog {
   constructor() {
-    /** @type {LogEntry[]} oldest first */
+    /** @type {Readonly<LogEntry>[]} oldest first */
     this.rows = [];
   }
 
   /** @param {LogEntry} entry */
   add(entry) {
-    this.rows.push(entry);
+    // Its own frozen row: neither the caller's object nor a reader's can change it (M62).
+    this.rows.push(frozenCopy(entry));
     if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
   }
 
-  /** Newest first. */
+  /**
+   * Newest first: a new array of the log's frozen rows.
+   * @returns {Readonly<LogEntry>[]}
+   */
   entries() {
     return [...this.rows].reverse();
   }

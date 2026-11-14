@@ -784,7 +784,7 @@ export function logRow(e) {
 /**
  * The status bar's agent state (decision 24), or null when there is nothing to show: no agent
  * connection and no question waiting.
- * @param {{ connections: number, waiting: number, grants: { until: number }[],
+ * @param {{ connections: number, waiting: number, grants: readonly { until: number }[],
  *   ranAt: number | null, now: number }} a
  * @returns {{ waiting: number, minutes: number | null, ran: boolean } | null}
  */

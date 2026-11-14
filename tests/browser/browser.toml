@@ -218,6 +218,8 @@ support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 ["browser_vimma_mcp_prompt_guards.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
+["browser_vimma_mcp_gate_copies.js"]
+
 ["browser_vimma_mcp_control.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
