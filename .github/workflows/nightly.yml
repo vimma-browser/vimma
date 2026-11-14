@@ -35,7 +35,12 @@ name: nightly
 
 on:
   schedule:
-    - cron: "0 3 * * *"
+    # In the night in Finland, after the day's merges. GitHub starts this repository's schedules
+    # hours late: the nightly 6 h 40 min to 7 h 34 min on 2026-11-08 to 2026-11-13, and 4.5 to
+    # 5 h in mid-October. So 17:23 UTC starts the build at about 00:00 to 02:00 UTC, and still
+    # in the night with any delay seen so far; tools/test/nightly-workflow.test.mjs holds the
+    # sum. docs/runbook.md, "When the nightly starts", says what to check and move.
+    - cron: "23 17 * * *"
   workflow_dispatch:
 
 permissions:

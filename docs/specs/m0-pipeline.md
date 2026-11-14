@@ -16,7 +16,7 @@ new Firefox releases arrive as PRs.
 - `e2e.yml` (PR): skeleton job that runs only once the M0 build-strategy ADR picks
   UI-only vs artifact build; until then it is a no-op with a TODO naming the ADR. (ADR-010 and
   m0-build-strategy have since made it the artifact-build mochitest job.)
-- `nightly.yml` (03:00 UTC): full Linux x86_64 build via Surfer on a large or self-hosted runner,
+- `nightly.yml` (in the night): full Linux x86_64 build via Surfer on a large or self-hosted runner,
   publish rolling `nightly` release; on failure open an issue with logs. (Since changed: the
   nightly keeps its package as a 7-day workflow artifact and publishes no release until the
   release gate; spec build-supply-chain, decision 23. Since changed again: with the repository

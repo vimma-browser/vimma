@@ -275,8 +275,8 @@ ARCHITECTURE.md.
   change to a `.patch`, C++, `moz.build`, `configs/` or branding is compiled only by a full
   build: the nightly, the macOS build of `macos.yml`, a release, or the contributor's own full
   build, whose mochitest run the pull request must report
-  ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs at 03:00 UTC only while
-  the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
+  ([CONTRIBUTING.md](../../CONTRIBUTING.md), "Testing"). The nightly runs in the night (about
+  00:00 to 02:00 UTC) only while the repository variable `NIGHTLY_ENABLED` is `true`. Its `changes` job
   (`tools/update/nightly-change.mjs`) skips a scheduled build only when public nightlies are on
   and the rolling release already records the same commit and Firefox version; anything else,
   a doubt included, builds.

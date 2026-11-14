@@ -464,7 +464,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
      free disk is almost three times the build's 30 GB, though only 14 GB is documented (R9,
      R10). Its only open point was time: at least 116 minutes of compiling on 4 CPUs by the
      thread-minute estimate (R10), 113 measured (R15). A release, built with an empty cache,
-     takes the full cold time; the nightly runs unattended at 03:00 UTC, so a long build costs
+     takes the full cold time; the nightly runs unattended in the night, so a long build costs
      only latency. Floorp builds on the same runner in similar times (R11).
    - The 4-hour threshold leaves the 1.5× margin of decision 10 inside GitHub's 6-hour job limit
      (R9).

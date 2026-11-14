@@ -431,7 +431,7 @@ For a draft you fixed by hand, tick the rest:
 - [ ] split-view contract green on both builds
 
 Then `gh pr ready <n>`, which starts `ci.yml` and `e2e.yml`. Merge when green. The nightly
-re-downloads Firefox because `surfer.json` changed, and builds it at 03:00 UTC. release-please
+re-downloads Firefox because `surfer.json` changed, and builds it the next night. release-please
 then lists `upstream: firefox X.Y.Z` under Changed in the next release PR (the `upstream` type is
 listed; `chore` would be hidden, which is why the autopilot does not use it).
 
