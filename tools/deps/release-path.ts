@@ -3,36 +3,44 @@
 // `classify` job runs this from the pull request's base commit on the head commit's lockfile, read
 // as data, and holds the pull request for a person when any package on the release path changes.
 //
-//   node tools/deps/release-path.mjs --diff <base lockfile> <head lockfile>
+//   node tools/deps/release-path.ts --diff <base lockfile> <head lockfile>
 //     prints {"decision":"merge"|"review","packages":[{name,key,old,new,diff}]}
-//   node tools/deps/release-path.mjs [lockfile]
+//   node tools/deps/release-path.ts [lockfile]
 //     prints the release path's lockfile keys, one per line
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 /**
  * What release.yml's build job runs from node_modules: Surfer (npm run import, surfer build) and
- * ajv (validate-sbom.mjs). release-path.test.mjs checks this against the job's imports.
+ * ajv (validate-sbom.mjs). release-path.test.ts checks this against the job's imports.
  */
 export const ROOTS = ["@zen-browser/surfer", "ajv"];
 
-/**
- * @typedef {{ version?: string, resolved?: string, integrity?: string, name?: string,
- *   dependencies?: Record<string, string>, optionalDependencies?: Record<string, string>,
- *   peerDependencies?: Record<string, string>, link?: boolean }} Entry
- * @typedef {{ packages: Record<string, Entry> }} Lockfile
- * @typedef {{ name: string, key: string, old: string | null, new: string | null, diff: boolean }}
- *   Change
- */
+export type Entry = {
+  version?: string;
+  resolved?: string;
+  integrity?: string;
+  name?: string;
+  dependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+  link?: boolean;
+};
+export type Lockfile = { packages: Record<string, Entry> };
+export type Change = {
+  name: string;
+  key: string;
+  old: string | null;
+  new: string | null;
+  diff: boolean;
+};
 
 /**
  * Node's lookup: the nearest node_modules/<name> from `from` upwards, then the top level.
- * @param {Record<string, Entry>} packages
- * @param {string} from a lockfile key ("" for the root package)
- * @param {string} name
- * @returns {string | undefined} the key of the package `from` gets for `name`
+ * @param from a lockfile key ("" for the root package)
+ * @returns the key of the package `from` gets for `name`
  */
-function resolve(packages, from, name) {
+function resolve(packages: Record<string, Entry>, from: string, name: string): string | undefined {
   let dir = from;
   for (;;) {
     const key = dir ? `${dir}/node_modules/${name}` : `node_modules/${name}`;
@@ -44,18 +52,19 @@ function resolve(packages, from, name) {
 }
 
 /**
- * @param {Lockfile} lock a package-lock.json, lockfileVersion 2 or 3
- * @returns {Set<string>} the lockfile keys of the roots and every package they depend on
+ * @param lock a package-lock.json, lockfileVersion 2 or 3
+ * @returns the lockfile keys of the roots and every package they depend on
  */
-export function releasePath(lock) {
+export function releasePath(lock: Lockfile): Set<string> {
   const packages = lock?.packages;
   if (!packages || typeof packages !== "object") throw new Error("not a lockfile: no packages");
-  /** @type {Set<string>} */
-  const out = new Set();
-  /** @type {[string, string, boolean][]} from, name, required */
-  const queue = ROOTS.map((name) => /** @type {[string, string, boolean]} */ (["", name, true]));
+  const out = new Set<string>();
+  // from, name, required
+  const queue: [string, string, boolean][] = ROOTS.map(
+    (name) => ["", name, true] as [string, string, boolean],
+  );
   while (queue.length > 0) {
-    const [from, name, required] = /** @type {[string, string, boolean]} */ (queue.pop());
+    const [from, name, required] = queue.pop() as [string, string, boolean];
     const key = resolve(packages, from, name);
     if (key === undefined) {
       // A missing required package means the lockfile is not what npm would install from.
@@ -77,16 +86,18 @@ const NAME = /^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
 const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 /**
- * @param {Lockfile} base the base commit's lockfile
- * @param {Lockfile} head the pull request's lockfile
- * @returns {{ decision: "merge" | "review", packages: Change[] }} `review` when a package whose
- *   version, resolved or integrity changed is on the release path of either lockfile; `diff`
- *   says whether its name and both versions are safe to hand to `npm diff` as arguments
+ * @param base the base commit's lockfile
+ * @param head the pull request's lockfile
+ * @returns `review` when a package whose version, resolved or integrity changed is on the release
+ *   path of either lockfile; `diff` says whether its name and both versions are safe to hand to
+ *   `npm diff` as arguments
  */
-export function classify(base, head) {
+export function classify(
+  base: Lockfile,
+  head: Lockfile,
+): { decision: "merge" | "review"; packages: Change[] } {
   const path = new Set([...releasePath(base), ...releasePath(head)]);
-  /** @type {Change[]} */
-  const packages = [];
+  const packages: Change[] = [];
   for (const key of [...path].sort()) {
     const a = base.packages[key];
     const b = head.packages[key];
@@ -108,8 +119,7 @@ export function classify(base, head) {
   return { decision: packages.length > 0 ? "review" : "merge", packages };
 }
 
-/** @param {string} file */
-const load = (file) => /** @type {Lockfile} */ (JSON.parse(readFileSync(file, "utf8")));
+const load = (file: string) => JSON.parse(readFileSync(file, "utf8")) as Lockfile;
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2);
@@ -120,7 +130,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.stdout.write(`${key}\n`);
     }
   } else {
-    process.stderr.write("usage: release-path.mjs [lockfile] | --diff <base> <head>\n");
+    process.stderr.write("usage: release-path.ts [lockfile] | --diff <base> <head>\n");
     process.exit(2);
   }
 }
