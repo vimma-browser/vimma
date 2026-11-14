@@ -605,8 +605,7 @@ Vimma.
   releases.
 - [docs/rebase.md](docs/rebase.md): moving to a new Firefox release.
 - [docs/review-checklist.md](docs/review-checklist.md): what a PR needs before merge.
-- [docs/security/README.md](docs/security/README.md): the security model, a rule per risky component
-  with the tests that enforce it. A change that touches one of those components keeps its rules true
+- [docs/security/](docs/security/README.md): the security model, a rule per risky component with the tests that enforce it. A change that touches one of those components keeps its rules true
   and its test links valid (CI checks them); vulnerabilities are reported as
   [SECURITY.md](SECURITY.md) says.
 - [docs/adr/](docs/adr/) and [docs/specs/](docs/specs/): decisions and feature specs.

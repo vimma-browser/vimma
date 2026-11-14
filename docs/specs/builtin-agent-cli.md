@@ -229,8 +229,8 @@ own configuration allows; Vimma does not confine them, and the window states whi
   or run as a command". A program path in `config.toml` would break it (C4).
 - `docs/security/01-control-socket.md` S1, S12: the control socket listens only while
   `vimma.control.enabled` or `vimma.mcp.enabled` is on, and the agent role runs only with MCP on.
-  M35: the built-in agent acts through `runAgentCommand` on one connection per conversation
-  (`builtin:<n>`) and works with MCP off.
+  `docs/security/12-agents-mcp-built-in-agent.md` M35: the built-in agent acts through
+  `runAgentCommand` on one connection per conversation (`builtin:<n>`) and works with MCP off.
 - `tools/vimma-ctl/src/mcp_serve.rs:297-329`: `vimma-ctl mcp` opens its agent connection with the
   discovery file's token and sends a random session id in `agent-hello` (`:112`, `:325`), so a
   reconnect keeps its grant (mcp-session-grants).

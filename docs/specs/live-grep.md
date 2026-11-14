@@ -617,7 +617,7 @@ page's content process for page text and in the parent process for recently clos
 URLs, so a pathological pattern costs at most that, in one worker thread, and never freezes a
 page or the browser's own window. Recently closed tabs and windows come from SessionStore, which
 holds their titles and URLs in memory already; live grep keeps no copy after the search.
-[security.md §15](../security/15-live-grep.md) lists the rules (L1 to L8) and their tests.
+[docs/security/15-live-grep.md §15](../security/15-live-grep.md) lists the rules (L1 to L8) and their tests.
 
 ## Tests
 

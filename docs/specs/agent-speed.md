@@ -325,8 +325,8 @@ a conversation's own tabs, and the per-conversation rates.
   security-sensitive: the delimiters, the URL and title line, M31's limits and escaping, and
   the rule that a sensitive field shows no value must hold for every list, and a list that
   leaves lines out must not become a way for a page to hide an element the model then clicks
-  by a stale label (labels stay those of the current page). docs/security/12-agents-mcp.md M31 gains
-  the rules, and the change gets a fresh review.
+  by a stale label (labels stay those of the current page). docs/security/12-agents-mcp.md M31
+  gains the rules, and the change gets a fresh review.
 - **S5 (pruning)** removes page text from later requests and never adds any; the first line it
   keeps is Vimma's wording around the page's URL and title, already escaped and cut.
 - **S6 (several calls a turn)** changes no gate rule: each call is checked, rated and logged on

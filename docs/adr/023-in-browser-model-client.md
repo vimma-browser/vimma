@@ -54,8 +54,8 @@ calls reach the gate, where its requests may go, and where an API key is kept.
 
 ## Consequences
 
-- Every rule of [docs/security/12-agents-mcp.md](../security/12-agents-mcp.md) §12 covers the
-  built-in agent; its own rules are M35-M41 there.
+- Every rule of [docs/security/](../security/README.md) §12 covers the built-in agent; its own
+  rules are M35-M41 there.
 - What the bench measures over `vimma-ctl mcp` is what the built-in agent runs: the same loop,
   tool definitions, system text and result text.
 - A key does not move to a new machine with a copied profile when a desktop keyring holds

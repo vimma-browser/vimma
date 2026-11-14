@@ -119,7 +119,7 @@ All references are to `main` at aac585a5, Firefox 157.
   rule a non-text indicator such as a split stripe needs.
 - **Agents.** The agent's `vimma_keys` runs an allowlist; every `pane.*` action is refused
   (`packages/vimma-core/src/agent-keys.mjs:114`, [mcp-drive](mcp-drive.md)). The agent role
-  never reaches `state` ([security.md](../security/01-control-socket.md) S12).
+  never reaches `state` ([docs/security/01-control-socket.md](../security/01-control-socket.md) S12).
 
 ## Design
 
@@ -256,7 +256,8 @@ know (the rule `panes` and `loading` were added under):
 ## Security and privacy
 
 - **The control socket (security-relevant).** `state` grows by one read-only field over tabs the
-  window already lists. [security.md](../security/01-control-socket.md) S9 changes from "and the pane structure"
+  window already lists. [docs/security/01-control-socket.md](../security/01-control-socket.md) S9
+  changes from "and the pane structure"
   to "and the pane structure of every split", with tests that `state` stays read-only with
   several splits and that a private window's `splits` carries no URL or title. S11's fuzzing of
   the validator covers the new field. The agent role still never reaches `state` (S12), so an

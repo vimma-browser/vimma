@@ -43,6 +43,7 @@ export const MARKDOWN_TESTS = Object.freeze([
   "tools/package/test/package.test.mjs",
   "tools/release/test/changelog.test.mjs",
   "tools/security/test/check-doc-links.test.ts",
+  "tools/security/test/doc-index.test.ts",
 ]);
 
 /**

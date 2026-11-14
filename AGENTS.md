@@ -61,8 +61,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run lane:setup` / `npm run lane:teardown`: a worktree's own artifact engine for browser
   tests, copied from the primary checkout's `engine/`. If setup fails on `verify-source --require`
   naming an older Firefox version, the primary checkout is behind `surfer.json` after a Firefox
-  bump: it is updated once for every lane (`docs/runbook/parallel-browser-lanes.md`, "Parallel browser lanes"), not
-  downloaded again per lane. If it says the engine was never verified, run `npm run verify-source`
+  bump: it is updated once for every lane (`docs/runbook/parallel-browser-lanes.md`, "Parallel
+  browser lanes"), not downloaded again per lane. If it says the engine was never verified, run `npm run verify-source`
   in the primary checkout.
 - `cargo test` and `cargo clippy -- -D warnings` in `tools/vimma-ctl` (Rust).
 - `npm run security-links`: every test link in `docs/security/` resolves.

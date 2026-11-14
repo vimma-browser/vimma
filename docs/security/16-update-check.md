@@ -548,7 +548,7 @@ _Pages_ and _extensions_ cannot reach it.
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can
 ask to sign, through GitHub OIDC: `sign` and `nightly-sign` for manifests (UP7) and `mar-sign`, called by `release.yml` and `nightly.yml`, for MARs (UP14); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
-setup is in [runbook.md](../runbook/ci-update-keys-and-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
+setup is in [docs/runbook/ci-update-keys-and-update-host.md](../runbook/ci-update-keys-and-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by
 [`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.mjs));

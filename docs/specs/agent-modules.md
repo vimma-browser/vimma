@@ -45,8 +45,8 @@ own reviewed pipeline.
 - **A missing feature means waiting or writing an add-on.** Neovim users turn a missing feature
   into a few lines of Lua in their config. A Vimma user who wants "dim everything but the
   article" has no such place: Vimma's `config.toml` holds settings and bindings, never code
-  ([security.md](../security/08-config-toml.md) F3), and a WebExtension must be signed by Mozilla before a
-  release build loads it for good (Research, "Add-on signing").
+  ([docs/security/08-config-toml.md](../security/08-config-toml.md) F3), and a WebExtension must be
+  signed by Mozilla before a release build loads it for good (Research, "Add-on signing").
 - **Personal tools should be easy to build.** Most such wishes are small and personal: a page
   tweak, a binding, a floating video, reader-style dimming. A tool for them is worth having only
   if building it takes a sentence and one approval, refining it takes another sentence, and
