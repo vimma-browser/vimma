@@ -83,11 +83,13 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
 const mainId = () =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
 /** @param {() => unknown} cond @param {string} msg */
@@ -149,12 +151,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-elements` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {object | null} [answer] @param {object} [args]
+ * @param {any} c @param {any} tab @param {GateAnswer | null} [answer] @param {object} [args]
  */
 async function elements(c, tab, answer = { kind: "once" }, args = {}) {
   const id = c.request("agent-elements", { tab: idOf(tab), ...args });
@@ -333,8 +335,8 @@ addTidyTask(async function test_agent_labels_leave_the_users_hint_mode_alone() {
     agent: true,
     elements: true,
   });
-  const plans = users.find((/** @type {{ href: string }} */ t) => t.href === `${PAGE}?plans`);
-  VimmaActors.activateHint(plans);
+  const plans = users.find((t) => t.href === `${PAGE}?plans`);
+  VimmaActors.activateHint(/** @type {HintTarget} */ (plans));
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?plans`);
   Assert.ok(true, "the user's target still follows after an agent's list there");
   c.close();
@@ -451,7 +453,7 @@ addTidyTask(async function test_elements_under_a_grant_notice_log_and_rate() {
 
 /**
  * `command` with `elements: true`, answered with `answer` (null: a grant runs it).
- * @param {any} c @param {string} command @param {object} args @param {object | null} [answer]
+ * @param {any} c @param {string} command @param {object} args @param {GateAnswer | null} [answer]
  */
 async function withList(c, command, args, answer = { kind: "once" }) {
   const id = c.request(command, { ...args, elements: true });

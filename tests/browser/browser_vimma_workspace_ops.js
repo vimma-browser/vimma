@@ -39,11 +39,13 @@ const PROMPT_ID = "vimma-rename";
 const CMDLINE_INPUT_ID = "vimma-cmdline-input";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+    )
   );
 const main = () => def("main");
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const active = () => ww().model.active;
 const identity = (/** @type {number} */ id) =>
   ContextualIdentityService.getPublicIdentityFromId(id);
@@ -428,7 +430,9 @@ add_task(async function moving_a_workspaces_last_tab_opens_its_home_tab() {
   const b = def("beta");
   const g = await create("gamma");
   Assert.equal(
-    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id).tabs.length,
+    /** @type {WorkspaceState} */ (
+      ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id)
+    ).tabs.length,
     1,
     "one tab",
   );
@@ -440,9 +444,11 @@ add_task(async function moving_a_workspaces_last_tab_opens_its_home_tab() {
   await until(() => !only.isConnected, "the tab moves");
   await reopened(b.userContextId, `${PAGE}?last`);
   Assert.equal(active(), g.id, "the window stays in gamma");
-  const left = ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id).tabs;
+  const left = /** @type {WorkspaceState} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === g.id)
+  ).tabs;
   Assert.equal(left.length, 1, "gamma has a tab again");
-  const home = ww().tabOf(left[0]);
+  const home = /** @type {MozTabbrowserTab} */ (ww().tabOf(left[0]));
   Assert.equal(home.userContextId, g.userContextId, "in gamma's container");
   Assert.ok(home.selected && !home.hidden, "selected and shown");
 });
@@ -452,7 +458,7 @@ add_task(async function a_split_member_leaves_its_split_before_it_moves() {
   const b = def("beta");
   ww().switchTo({ id: a.id });
   const left = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?left`);
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   Assert.ok(view.split("vertical").ok, "a split");
   const right = gBrowser.selectedTab;
   await until(() => right.splitview && left.splitview, "laid out on Firefox's split view");
@@ -483,7 +489,8 @@ add_task(async function a_split_member_leaves_its_split_before_it_moves() {
 
   await runCommand(`wsmove ${number}`);
   await until(() => !right.isConnected, "the split member moves");
-  Assert.equal(view.panes, null, "the split is gone: one pane left");
+  // Read again after the close: the Assert.ok above narrowed it to set.
+  Assert.equal(/** @type {Panes | null} */ (view.panes), null, "the split is gone: one pane left");
   await until(() => !left.splitview, "and so is Firefox's wrapper");
   const moved = await reopened(b.userContextId, `${PAGE}?right`);
   Assert.ok(moved, "it reopens in beta, by number");

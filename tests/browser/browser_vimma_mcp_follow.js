@@ -73,11 +73,13 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
 const mainId = () =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
 /** @param {() => unknown} cond @param {string} msg */
@@ -167,12 +169,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-keys` on `tab`, answered with `answer` (null: not asked, a grant runs it).
- * @param {any} c @param {any} tab @param {string} keys @param {object | null} [answer]
+ * @param {any} c @param {any} tab @param {string} keys @param {GateAnswer | null} [answer]
  */
 async function keys(c, tab, keys, answer = { kind: "once" }) {
   const id = c.request("agent-keys", { tab: idOf(tab), keys });
@@ -368,8 +370,8 @@ add_task(async function test_agent_hints_leave_the_users_hint_mode_alone() {
   // In one tab, an agent's collection never takes the user's targets from the page's child.
   const users = await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow");
   await VimmaActors.collectHints(mine.linkedBrowser, "hint.follow", { agent: true });
-  const same = users.find((/** @type {{ href: string }} */ t) => t.href === `${PAGE}?same`);
-  VimmaActors.activateHint(same);
+  const same = users.find((t) => t.href === `${PAGE}?same`);
+  VimmaActors.activateHint(/** @type {HintTarget} */ (same));
   await BrowserTestUtils.browserLoaded(mine.linkedBrowser, false, `${PAGE}?same`);
   Assert.ok(true, "the user's target still follows after an agent's collection there");
   c.close();

@@ -34,14 +34,18 @@ const PAGE = "https://example.com/";
 const NOTICE_ID = "vimma-notice";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+    )
   );
 const main = () => def("main");
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const active = () => ww().model.active;
 const modelWs = (/** @type {string} */ id) =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id);
+  /** @type {WorkspaceState} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id)
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 const segment = (/** @type {string} */ id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -89,7 +93,8 @@ async function openIn(url, ucid) {
 async function workspace(name) {
   const d = WorkspaceStore.newWorkspace(name);
   await until(() => !!modelWs(d.id), `${name} is in the window`);
-  return d;
+  // Containers are on: the workspace has its own.
+  return /** @type {ContainedWorkspace} */ (d);
 }
 
 /** The definitions file on disk, once it has `cond`. */
@@ -199,7 +204,11 @@ add_task(async function containers_off_at_startup_is_a_persistent_status_bar_err
   });
   await store.init();
   Assert.ok(store.disabled, "disabled");
-  Assert.stringContains(store.alert, "privacy.userContext.enabled", "it names the pref");
+  Assert.stringContains(
+    /** @type {string} */ (store.alert),
+    "privacy.userContext.enabled",
+    "it names the pref",
+  );
   Assert.equal(WorkspaceStore.alert, null, "the app's store has none");
 
   WorkspaceStore.disabled = true;

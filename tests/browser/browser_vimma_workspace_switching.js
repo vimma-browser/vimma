@@ -33,16 +33,19 @@ const created = [];
 function workspace(name) {
   const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
   created.push(w.id);
-  return w;
+  // Containers are on: the workspace has its own.
+  return /** @type {ContainedWorkspace} */ (w);
 }
 
 /** A workspace definition (id, name, userContextId) by name. */
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+    )
   );
 const main = () => def("main");
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 
 registerCleanupFunction(async () => {
   if (/** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID))?.open)
@@ -68,8 +71,8 @@ function segText(id) {
   );
 }
 
-/** The workspace segment as the bar draws it: `● <index>:<name>`. */
-function wsLabel(/** @type {WorkspaceState} */ w) {
+/** The workspace segment as the bar draws it for a workspace definition: `● <index>:<name>`. */
+function wsLabel(/** @type {WorkspaceDefinition} */ w) {
   const index =
     WorkspaceStore.definitions.workspaces.findIndex(
       (/** @type {WorkspaceDefinition} */ d) => d.id === w.id,
@@ -267,8 +270,9 @@ add_task(async function a_split_hides_as_a_whole_and_comes_back_laid_out() {
   const left = await openPage(`${PAGE}?left`);
   prefix("v");
   const right = await startTab();
-  const view = PaneViews.get(window);
-  Assert.equal(leaves(view.panes).length, 2, "A has two panes");
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
+  // Split above: panes are set.
+  Assert.equal(leaves(/** @type {Panes} */ (view.panes)).length, 2, "A has two panes");
   const wrapper = left.splitview;
   Assert.ok(wrapper && right.splitview === wrapper, "in one split view");
 
@@ -282,7 +286,7 @@ add_task(async function a_split_hides_as_a_whole_and_comes_back_laid_out() {
   await press("(", A);
   Assert.ok(!left.hidden && !right.hidden, "the split comes back");
   Assert.equal(gBrowser.selectedTab, right, "on its focused pane");
-  Assert.equal(leaves(view.panes).length, 2, "with A's two panes");
+  Assert.equal(leaves(/** @type {Panes} */ (view.panes)).length, 2, "with A's two panes");
   await until(() => {
     // Both tabs are loaded, so each has its panel.
     const l = /** @type {Element} */ (

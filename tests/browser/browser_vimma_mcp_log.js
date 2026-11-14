@@ -76,10 +76,11 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** Answers the waiting question. @param {string} kind @param {object} [extra] */
+/** Answers the waiting question. @param {GateAnswer["kind"]} kind @param {object} [extra] */
 async function answer(kind, extra = {}) {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  AgentGate.answer(AgentGate.waiting[0].id, { kind, ...extra });
+  // `extra` holds what the kind takes (a grant's minutes).
+  AgentGate.answer(AgentGate.waiting[0].id, /** @type {GateAnswer} */ ({ kind, ...extra }));
 }
 
 add_task(async function test_mcp_log_lists_asked_and_granted_calls() {

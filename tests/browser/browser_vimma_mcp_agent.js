@@ -71,7 +71,7 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
 
@@ -117,10 +117,10 @@ async function agentClient(name = "example-agent", session = undefined) {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
-/** Answer the oldest question. @param {object} answer */
+/** Answer the oldest question. @param {GateAnswer} answer */
 async function answer(answer) {
   const q = await question();
   AgentGate.answer(q.id, answer);
@@ -444,10 +444,13 @@ add_task(async function test_one_grant_covers_every_tool_of_its_connection() {
   other.close();
 
   Assert.ok(
-    McpHost.run(
-      "revoke",
-      () => {},
-      () => {},
+    // revoke asks nothing, so it returns its notice.
+    /** @type {string} */ (
+      McpHost.run(
+        "revoke",
+        () => {},
+        () => {},
+      )
     ).includes("1"),
     ":mcp revoke says it ended 1",
   );
@@ -764,7 +767,7 @@ add_task(async function test_the_read_checks_last() {
   const c = await agentClient();
   // The page navigates while the selection is fetched, after the text was read.
   const selection = VimmaActors.selection;
-  VimmaActors.selection = async (/** @type {unknown[]} */ ...args) => {
+  VimmaActors.selection = async (/** @type {Parameters<typeof selection>} */ ...args) => {
     BrowserTestUtils.startLoadingURIString(tab.linkedBrowser, `${PAGE}?moved`);
     await BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, `${PAGE}?moved`);
     return selection.apply(VimmaActors, args);
@@ -810,7 +813,7 @@ add_task(async function test_confinement_edges() {
   // A pinned agent tab: out of every workspace.
   const pinned = await openAgentTab();
   // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
-  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = false;
   gBrowser.pinTab(pinned);
   Assert.ok(!(await listed()).includes(idOf(pinned)), "a pinned tab is not the agent's");
 
@@ -830,7 +833,7 @@ add_task(async function test_confinement_edges() {
 
   c.close();
   gBrowser.unpinTab(pinned);
-  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = true;
   // Showing the empty agent workspace opened its home tab too: leave one tab, as found.
   ww().switchTo({ name: "main" });
   while (gBrowser.tabs.length > 1)

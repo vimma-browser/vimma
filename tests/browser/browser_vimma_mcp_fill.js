@@ -67,11 +67,13 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
 const mainId = () =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
 /** @param {() => unknown} cond @param {string} msg */
@@ -122,7 +124,7 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /** The list's elements by what they say. @param {any} c @param {any} tab */
@@ -145,7 +147,7 @@ async function labels(c, tab) {
 /**
  * `agent-fill` on `tab`, answered with `answer` (null: not asked, a grant runs it).
  * @param {any} c @param {any} tab @param {{ label: string, value: string | boolean }[]} fields
- * @param {{ answer?: object | null, submit?: true | string, asked?: (q: any) => any }} [o]
+ * @param {{ answer?: GateAnswer | null, submit?: true | string, asked?: (q: any) => any }} [o]
  */
 async function fill(c, tab, fields, { answer = { kind: "once" }, submit, asked } = {}) {
   const id = c.request("agent-fill", {

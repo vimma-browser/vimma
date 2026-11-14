@@ -25,13 +25,17 @@ const NOTICE_ID = "vimma-notice";
 const PROMPT_ID = "vimma-rename";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+    )
   );
-const ww = () => WindowWorkspaces.get(window);
+const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const active = () => ww().model.active;
 const tabsIn = (/** @type {string} */ id) =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id).tabs;
+  /** @type {WorkspaceState} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id)
+  ).tabs;
 
 const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const isOpen = () => !!picker()?.open;
