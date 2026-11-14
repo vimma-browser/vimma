@@ -105,7 +105,8 @@ only the agent workspace, and every request asks you first (§12).
   [`vimma_ctl_state_withholds_private_urls_and_titles`](../tests/browser/browser_vimma_private_workspace.js),
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js),
   [`notice, prompt, chat and agent, when present, are flags and counts only`](../packages/vimma-core/test/control.test.mjs),
-  [`test_state_reports_the_window_and_the_notice_as_drawn`](../tests/browser/browser_vimma_agent_chat.js)
+  [`test_state_reports_the_window_and_the_notice_as_drawn`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_state_names_each_top_level_field`](../tests/browser/browser_vimma_control.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

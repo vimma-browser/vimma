@@ -323,17 +323,14 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     "issue-618-downloads-picker: downloads-done",
     "issue-618-downloads-picker: downloads-picker",
     "issue-682-multiple-splits: multiple-splits-panel",
-    "m0-mcp-checkpoints: m0-mcp-checkpoints-basket-ran",
     "m0-mcp-checkpoints: m0-mcp-checkpoints-pay-question",
     "m0-mcp-checkpoints: m0-mcp-checkpoints-card-question",
     "m0-mcp-checkpoints: m0-mcp-checkpoints-hosted-question",
-    "m0-mcp-checkpoints: m0-mcp-checkpoints-hosted-allowed",
     "m0-mcp-drive: m0-mcp-drive-keys-question",
     "m0-mcp-drive: m0-mcp-drive-shown",
     "m0-mcp-forms: m0-mcp-forms-fill-question",
     "m0-mcp-forms: m0-mcp-forms-submit-question",
     "m0-mcp-stdio: m0-mcp-stdio-question",
-    "m0-mcp-stdio: m0-mcp-stdio-grant",
   ];
   const all = loadScenarios(SCENARIOS, {});
 
@@ -357,6 +354,29 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
       expect(wait, `the step before ${steps[i]?.screenshot}`).toMatchObject({ notice: false });
     }
     expect(steps.some((step) => step.sleep !== undefined)).toBe(false);
+  });
+
+  // #1006: a step under a grant shows its notice (NOTICE_MS) and the ran dot (RAN_MS) from the
+  // moment the gate lets it run, before its answer; each screenshot waits for the screen it shows.
+  it.each([
+    // After a step under a grant: both gone, the bar back to `◇ agent 10m` or `15m`.
+    [
+      "m0-mcp-checkpoints",
+      "m0-mcp-checkpoints-basket-ran",
+      { notice: false, agent: { ran: false } },
+    ],
+    ["m0-mcp-stdio", "m0-mcp-stdio-grant", { notice: false, agent: { waiting: 0, ran: false } }],
+    // Right after `y`: its notice and the dot, both still shown.
+    [
+      "m0-mcp-checkpoints",
+      "m0-mcp-checkpoints-hosted-allowed",
+      { notice: true, agent: { ran: true } },
+    ],
+  ])("%s photographs %s once the screen it shows is drawn", (name, shot, expected) => {
+    const steps = all.find((s) => s.name === name)?.steps ?? [];
+    const i = steps.findIndex((step) => step.screenshot === shot);
+    expect(i).toBeGreaterThan(0);
+    expect(steps[i - 1]?.["wait-for-state"]).toEqual(expected);
   });
 });
 

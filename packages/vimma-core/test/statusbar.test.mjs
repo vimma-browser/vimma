@@ -340,6 +340,23 @@ describe("status bar segments", () => {
     });
   });
 
+  // The control socket's state.agent.ran reads this mark from the drawn segment (#1006), not its
+  // background, so that a background for another reason never reads as the dot.
+  test("the agent segment marks the ran dot itself, and fitting keeps the mark", () => {
+    const at = (/** @type {StatusInput["agent"]} */ agent) =>
+      statusSegments({ ...base, agent }).find((s) => s.id === "agent");
+    expect(at({ waiting: 0, minutes: 14, ran: true })?.dot).toBe(true);
+    expect(at({ waiting: 0, minutes: 14, ran: false })?.dot).toBe(false);
+    expect(at({ waiting: 1, minutes: null, ran: true })?.dot).toBe(false);
+    expect(at({ waiting: 0, minutes: null, ran: true, builtin: "◇ built-in 1/60" })?.dot).toBe(
+      false,
+    );
+    const all = statusSegments({ ...base, agent: { waiting: 0, minutes: null, ran: true } });
+    const fitted = fitStatus(all, 30).find((s) => s.id === "agent");
+    expect(fitted?.dot).toBe(true);
+    expect(statusSegments(base).every((s) => s.id === "agent" || s.dot === undefined)).toBe(true);
+  });
+
   test("the agent segment gives way just after the workspace's", () => {
     const all = statusSegments({ ...base, agent: { waiting: 1, minutes: null, ran: false } });
     const p = (/** @type {string} */ id) => /** @type {Segment} */ (all.find((s) => s.id === id));

@@ -468,6 +468,27 @@ add_task(async function test_state_panes() {
   Services.prefs.clearUserPref("browser.tabs.splitview.hasUsed");
 });
 
+// The validator lets unknown top-level fields through (protocol v1 lets the server add fields),
+// so `state` names each field it returns one by one, and this list is the check that nothing
+// else reaches the socket (security.md S9).
+add_task(async function test_state_names_each_top_level_field() {
+  await enable();
+  const client = await session();
+  const { result } = await client.request(1, "state");
+  Assert.deepEqual(
+    Object.keys(result).sort(),
+    [
+      ...["agent", "chat", "mode", "notice", "panes", "pending", "prompt", "splits", "tabs"],
+      ...["update", "workspace"],
+    ],
+    "a new state field: add it here, to the protocol spec's state section " +
+      "(docs/specs/m0-control-protocol-and-vimma-ctl.md) and to security.md S9, " +
+      "with a type check in vimma-core's validator",
+  );
+  client.close();
+  await disable();
+});
+
 // docs/specs/multiple-splits.md, "Control protocol": every split of the workspace in `splits`,
 // read-only; `panes` keeps its meaning (the shown split, else the one shown last, hidden).
 add_task(async function test_state_splits() {
