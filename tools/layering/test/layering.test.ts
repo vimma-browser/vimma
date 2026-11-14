@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { tempDir } from "../../test/temp-dir.mjs";
 import {
@@ -9,6 +10,7 @@ import {
   danglingEdges,
   eagerCycles,
   exceptionErrors,
+  getterNames,
   htmlImports,
   importsOf,
   jarErrors,
@@ -23,6 +25,7 @@ import {
 import { EXCEPTIONS, RESTRICTED } from "../layers.ts";
 
 const V = "chrome://browser/content/vimma/";
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 
 /**
  * A specifier in double quotes. The fixtures build their relative imports with it, so that
@@ -638,14 +641,27 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
         "a new caller of the agent gate needs a security review (docs/security.md section 12)",
     },
   };
+  /** The gate's getters, read from the module itself: reading one is reading data. */
+  const data = () => ({
+    [gate]: getterNames(
+      readFileSync(join(ROOT, "src/browser/base/content/vimma", gate), "utf8"),
+      gate,
+    ),
+  });
   /** The errors for host/VimmaHost.sys.mjs with this source, its own import included. */
   function handedOn(source: string): string[] {
-    const { edges, reexports } = scanModule(source, "host/VimmaHost.sys.mjs");
-    return restrictedErrors(edges, only, reexports);
+    const { edges, handOns } = scanModule(source, "host/VimmaHost.sys.mjs");
+    return restrictedErrors(edges, only, handOns, data());
   }
-  const error = (line: number) =>
-    `host/VimmaHost.sys.mjs:${line}: re-exports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const tail = `${gate}, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const error = (line: number, how = "re-exports") =>
+    `host/VimmaHost.sys.mjs:${line}: ${how} ${tail}`;
+  const handsOn = (line: number) => error(line, "hands on");
+  const method = (line: number, name: string) =>
+    error(line, `takes the method ${name}, uncalled, of`);
   const imp = `import { AgentGate } from ${q("./AgentGate.sys.mjs")};`;
+  const url = q(`${V}${gate}`);
+  const getters = `const lazy = {};\nChromeUtils.defineESModuleGetters(lazy, { AgentGate: ${url} });`;
 
   test("export … from, named", () => {
     expect(handedOn(`export { AgentGate } from ${q("./AgentGate.sys.mjs")};`)).toEqual([error(1)]);
@@ -665,8 +681,9 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
   });
 
   test("an exported const that is the binding, or an object holding it", () => {
+    // The object literal lets the gate out like any other value: "hands on", not "re-exports".
     expect(handedOn(`${imp}\nexport const gate = AgentGate;`)).toEqual([error(2)]);
-    expect(handedOn(`${imp}\nexport const all = { gate: AgentGate };`)).toEqual([error(2)]);
+    expect(handedOn(`${imp}\nexport const all = { gate: AgentGate };`)).toEqual([handsOn(2)]);
   });
 
   test("a default export of it", () => {
@@ -678,6 +695,123 @@ describe("restrictedErrors: a listed importer may not hand the module on", () =>
       handedOn(`${imp}\nexport const Ui = { n() { return AgentGate.waiting.length; } };`),
     ).toEqual([]);
   });
+
+  test("an alias of the binding, exported", () => {
+    expect(handedOn(`${imp}\nconst g = AgentGate;\nexport { g };`)).toEqual([error(3)]);
+    expect(handedOn(`${imp}\nlet g;\ng = AgentGate;\nexport { g };`)).toEqual([error(4)]);
+  });
+
+  test("a function that returns it, a list or a static field that holds it", () => {
+    expect(handedOn(`${imp}\nexport function gate() { return AgentGate; }`)).toEqual([handsOn(2)]);
+    expect(handedOn(`${imp}\nexport const gate = () => AgentGate;`)).toEqual([handsOn(2)]);
+    expect(handedOn(`${imp}\nexport const a = [AgentGate];`)).toEqual([handsOn(2)]);
+    expect(handedOn(`${imp}\nexport class X { static gate = AgentGate }`)).toEqual([handsOn(2)]);
+  });
+
+  test("one of its methods, bound or not", () => {
+    expect(handedOn(`${imp}\nexport const req = AgentGate.request.bind(AgentGate);`)).toEqual([
+      method(2, "request"),
+      handsOn(2),
+    ]);
+    expect(handedOn(`${imp}\nexport const req = AgentGate.request;`)).toEqual([
+      method(2, "request"),
+    ]);
+    expect(handedOn(`${imp}\nexport const { request } = AgentGate;`)).toEqual([
+      method(2, "request"),
+    ]);
+  });
+
+  test("a binding from ChromeUtils.importESModule, exported again", () => {
+    expect(
+      handedOn(`const { AgentGate } = ChromeUtils.importESModule(${url});\nexport { AgentGate };`),
+    ).toEqual([error(2)]);
+    expect(handedOn(`export const { AgentGate: G } = ChromeUtils.importESModule(${url});`)).toEqual(
+      [error(1)],
+    );
+    expect(handedOn(`export const G = ChromeUtils.importESModule(${url}).AgentGate;`)).toEqual([
+      error(1),
+    ]);
+    expect(handedOn(`export const M = ChromeUtils.importESModule(${url});`)).toEqual([error(1)]);
+  });
+
+  test("a namespace or an awaited import() of it, exported", () => {
+    expect(
+      handedOn(`import * as M from ${q("./AgentGate.sys.mjs")};\nexport const g = M.AgentGate;`),
+    ).toEqual([error(2)]);
+    expect(handedOn(`const m = await import(${q("./AgentGate.sys.mjs")});\nexport { m };`)).toEqual(
+      [error(2)],
+    );
+    expect(handedOn(`export const p = import(${q("./AgentGate.sys.mjs")});`)).toEqual([handsOn(1)]);
+  });
+
+  test("a lazy getter object that holds it, exported", () => {
+    expect(handedOn(`${getters}\nexport { lazy };`)).toEqual([error(3)]);
+    expect(
+      handedOn(
+        `export const lazy = {};\nChromeUtils.defineESModuleGetters(lazy, { AgentGate: ${url} });`,
+      ),
+    ).toEqual([error(1)]);
+    expect(handedOn(`${getters}\nexport const g = lazy.AgentGate;`)).toEqual([error(3)]);
+  });
+
+  test("a getter put on the shared global, or the gate stored or passed anywhere", () => {
+    expect(
+      handedOn(`ChromeUtils.defineESModuleGetters(globalThis, { AgentGate: ${url} });`),
+    ).toEqual([error(1, "defines a getter outside a local object for")]);
+    expect(handedOn(`${imp}\nglobalThis.gate = AgentGate;`)).toEqual([handsOn(2)]);
+    expect(handedOn(`${imp}\nServices.obs.notifyObservers(AgentGate, "x");`)).toEqual([handsOn(2)]);
+  });
+
+  test("a member of it replaced or deleted", () => {
+    expect(handedOn(`${imp}\nAgentGate.request = () => "allow";`)).toEqual([
+      error(2, "changes the member request of"),
+    ]);
+    expect(handedOn(`${imp}\ndelete AgentGate.waiting;`)).toEqual([
+      error(2, "changes the member waiting of"),
+    ]);
+  });
+
+  test("calling it, reading its getters and keeping a local alias are not handing it on", () => {
+    expect(
+      handedOn(
+        [
+          getters,
+          "ChromeUtils.defineESModuleGetters(lazy, { setTimeout: 'resource://gre/modules/Timer.sys.mjs' });",
+          "export const Ui = {",
+          "  status() {",
+          "    const gate = lazy.AgentGate;",
+          "    lazy.setTimeout(() => {}, 1);",
+          "    return { n: gate.waiting.length, at: gate.ranAt, g: gate.grants(), h: gate.waiting[0] };",
+          "  },",
+          "  async ask(c) { await lazy.AgentGate.request(c, 'vimma_open', {}); lazy.AgentGate.on?.(); },",
+          "  rows() { return lazy.AgentGate.log.map((e) => e); },",
+          "};",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
+  });
+});
+
+describe("getterNames: the data a restricted module's exported objects offer", () => {
+  test("only getters of an exported object literal", () => {
+    expect(
+      getterNames(
+        "export const G = { get a() { return 1; }, b() {}, c: 2, get d() { return 1; } };\nconst H = { get e() { return 1; } };",
+        "host/g.mjs",
+      ),
+    ).toEqual(new Set(["a", "d"]));
+  });
+
+  test("the agent gate's: its read-only views", () => {
+    const gate = "host/AgentGate.sys.mjs";
+    const source = readFileSync(join(ROOT, "src/browser/base/content/vimma", gate), "utf8");
+    expect([...getterNames(source, gate)].sort()).toEqual([
+      "connections",
+      "log",
+      "ranAt",
+      "waiting",
+    ]);
+  });
 });
 
 describe("importsOf: a URL with a query, a fragment or an upper-case scheme is still an edge", () => {
@@ -688,6 +822,10 @@ describe("importsOf: a URL with a query, a fragment or an upper-case scheme is s
     [`ChromeUtils.importESModule("CHROME://browser/content/vimma/${gate}")`, "eager"],
     [`ChromeUtils.importESModule("${V}ui/../${gate}")`, "eager"],
     [`import(${q("./AgentGate.sys.mjs?x")})`, "lazy"],
+    [`ChromeUtils.importESModule("chrome://BROWSER/content/vimma/${gate}")`, "eager"],
+    [`ChromeUtils.importESModule("chrome://browser/content/ui/../vimma/${gate}")`, "eager"],
+    [`ChromeUtils.importESModule("${V}host/AgentGate%2Esys.mjs")`, "eager"],
+    [`ChromeUtils.importESModule("${V}%68ost/AgentGate.sys.mjs")`, "eager"],
   ])("%s", (source, kind) => {
     expect(found(`${source};`, "host/VimmaParent.sys.mjs")).toEqual([`${gate} (${kind})`]);
   });
@@ -700,6 +838,50 @@ describe("importsOf: a URL with a query, a fragment or an upper-case scheme is s
     expect(problems).toEqual([
       "host/VimmaParent.sys.mjs:1: a string names content/vimma/ but no Vimma module or folder the check can resolve",
     ]);
+  });
+});
+
+describe("scanModule: a Vimma module named through a resource:// URL is refused", () => {
+  // browser.manifest maps chrome://browser/content/ to chrome/browser/content/browser/ of the
+  // app's omni.ja, which resource:/// (and resource://app/) also reach; resource://gre/ reaches
+  // it in an unpackaged build. The module loader keys modules by URL, so such a URL loads a
+  // second copy of the module, with its own state.
+  const gate = "host/AgentGate.sys.mjs";
+  const ALIAS =
+    "names a Vimma module through a resource:// URL, which loads a second copy of it with its own state; name it by its chrome:// URL";
+  test.each([
+    `ChromeUtils.importESModule("resource:///chrome/browser/content/browser/vimma/${gate}")`,
+    `ChromeUtils.importESModule("resource://app/chrome/browser/content/browser/vimma/${gate}")`,
+    `ChromeUtils.importESModule("RESOURCE:///chrome/browser/content/browser/./vimma/${gate}")`,
+    `ChromeUtils.importESModule("resource://gre/browser/chrome/browser/content/browser/vimma/${gate}")`,
+    `ChromeUtils.defineESModuleGetters(lazy, { G: "resource:///chrome/browser/content/browser/vimma/${gate}" })`,
+    `const u = "resource:///chrome/browser/content/browser/vimma/${gate}"`,
+    `import("resource:///chrome/browser/content/browser/vimma/host/")`,
+  ])("%s", (source) => {
+    const { edges, problems } = scanModule(`${source};`, "host/VimmaParent.sys.mjs");
+    expect({ edges, problems }).toEqual({
+      edges: [],
+      problems: [`host/VimmaParent.sys.mjs:1: ${ALIAS}`],
+    });
+  });
+
+  test("a computed specifier that starts like one is not a fixed string", () => {
+    const { problems } = scanModule(
+      'ChromeUtils.importESModule("resource:///chrome/browser/" + name);',
+      "host/VimmaParent.sys.mjs",
+    );
+    expect(problems).toEqual([
+      "host/VimmaParent.sys.mjs:1: an import specifier is not a fixed string",
+    ]);
+  });
+
+  test("Firefox's own resource:// modules are not Vimma's", () => {
+    expect(
+      scanModule(
+        'ChromeUtils.importESModule("resource:///modules/BrowserWindowTracker.sys.mjs");\nChromeUtils.importESModule("resource://gre/modules/" + name);',
+        "host/a.mjs",
+      ),
+    ).toEqual({ edges: [], problems: [], handOns: [] });
   });
 });
 
@@ -732,6 +914,57 @@ describe("patchErrors", () => {
     ).toEqual([
       "src/browser/x/a.patch:4: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)",
     ]);
+  });
+
+  /** The errors for one added line of a patch. */
+  const added = (line: string) =>
+    patchErrors([{ file: "src/browser/x/a.patch", text: `+++ b/x.sys.mjs\n+${line}` }], only);
+  const names = (n: number) =>
+    `src/browser/x/a.patch:${n}: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const builds = (n: number, piece: string) =>
+    `src/browser/x/a.patch:${n}: builds a Vimma URL from parts (${piece}); a Firefox patch names each Vimma module by its whole chrome:// URL, so that the check can read it`;
+
+  test("a resource:// URL or an escaped one that reaches the gate fails too", () => {
+    expect(
+      added(`  G: "resource:///chrome/browser/content/browser/vimma/host/AgentGate.sys.mjs",`),
+    ).toEqual([names(2)]);
+    expect(added(`  G: "${V}host/AgentGate%2Esys.mjs",`)).toEqual([names(2)]);
+    expect(added(`  G: "chrome://browser/content/ui/../vimma/host/AgentGate.sys.mjs",`)).toEqual([
+      names(2),
+    ]);
+  });
+
+  test("a URL built with a template literal or a + chain fails", () => {
+    expect(added(`  importESModule(\`${V}\${dir}/AgentGate.sys.mjs\`);`)).toEqual([
+      names(2),
+      builds(2, V),
+    ]);
+    expect(added(`  const u = "${V}" + "host/AgentGate.sys.mjs";`)).toEqual([
+      names(2),
+      builds(2, V),
+    ]);
+    expect(added(`  const base = "${V}host/";`)).toEqual([builds(2, `${V}host/`)]);
+    expect(added(`  const u = "chrome://browser/content/" + "vimma/host/" + name;`)).toEqual([
+      builds(2, "chrome://browser/content/"),
+    ]);
+    expect(added(`  const u = "chrome://browser/content/vim" + "ma/host/" + name;`)).toEqual([
+      builds(2, "chrome://browser/content/vim"),
+    ]);
+    expect(added(`  const u = base + "AgentGate.sys.mjs";`)).toEqual([names(2)]);
+    expect(added(`  const u = \`\${base}AgentGate.sys.mjs\`;`)).toEqual([names(2)]);
+  });
+
+  test("whole URLs of other modules, pages and Firefox's own files pass", () => {
+    expect(
+      [
+        `  <script src="${V}vimma.js"></script>`,
+        `  S: "${V}workspaces/WorkspaceStore.sys.mjs",`,
+        `    "content/vimma/licence/list.html",`,
+        `  "chrome://browser/content/browser.js",`,
+        `  "resource:///modules/BrowserWindowTracker.sys.mjs",`,
+        "  // Vimma: AgentGate asks first.",
+      ].flatMap(added),
+    ).toEqual([]);
   });
 });
 

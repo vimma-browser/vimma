@@ -140,14 +140,26 @@ each without a change in behaviour:
   `tools/layering/layers.ts` lists exactly its seven importers of today (`host/VimmaHost.sys.mjs`,
   `host/agent-ui.mjs`, `host/mcp-ops.mjs`, `ctl/VimmaControl.sys.mjs`, `ctl/agent-commands.mjs`,
   `ctl/AgentDownloads.sys.mjs`, `agent/AgentChat.sys.mjs`). `npm run layering` fails on any other
-  importer, eager or lazy; on a listed one that stops importing it; on a module that re-exports
-  it (`export … from`, `export *`, or an imported binding exported again, in an object literal
-  or as the default); and on an added line of a Firefox patch that names its URL. A new caller of
-  the gate is a security review, then a line there; it is a rule on importers, not a layering
-  exception. What the check cannot see is a gate object a listed importer hands on at run time
-  (a callback, an argument, `host-services.mjs`): that is what the security review of a change
-  to a listed importer must look for. The list is empty, and with it
-  the eager folder cycle: no two folders import each other eagerly.)
+  importer, eager or lazy; on a listed one that stops importing it; on a module that hands it
+  on; and on an added line of a Firefox patch that names it. A new caller of the gate is a
+  security review, then a line there; it is a rule on importers, not a layering exception. What
+  the check cannot see is a function that calls the gate for someone else (an exported wrapper,
+  a callback or a listener handed out, `host-services.mjs`): that is what the security review of
+  a change to a listed importer must look for. The list is empty, and with it
+  the eager folder cycle: no two folders import each other eagerly.) (Since changed, issue
+  #1012: "hands on" is followed through names. A module holds the gate by an `import`, by a
+  binding of `ChromeUtils.importESModule` or of an awaited `import()`, or by a lazy getter
+  object that `defineESModuleGetters` fills, and through any local alias of these. Each use
+  must call a member of it, read one of its getters (its read-only views, read from the gate's
+  own source: `waiting`, `log`, `ranAt`, `connections`), keep a local alias, or pass the lazy
+  object to a ChromeUtils or XPCOMUtils `define…` call; anything else fails: an export of it
+  (`export … from`, `export *`, or any exported name that holds it), a return, an argument, an
+  array or object holding it, a class field, a store on an object or on `globalThis`, a method
+  taken without a call (bound or not), a member replaced or deleted, a getter defined on an
+  object the module does not declare, an `import()` not awaited. An import is seen whatever
+  its URL's query, fragment, `.` or `..` segments, `%` escapes or case of scheme and host; one
+  through `resource://` to the packaged file is refused (see "Limits of the check"). A patch
+  line fails when it names the gate's file at all, or holds a Vimma URL that names no file.)
 - **Two modules live in the wrong folder.** `host/VimmaHost.sys.mjs` records each key in
   `about/key-log.mjs` for `about:vimma`; the log moves to `host/`, which writes it.
   `workspaces/WindowWorkspaces.sys.mjs` saves and restores tab labels from `host/tab-labels.mjs`;
@@ -251,6 +263,25 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
 - Strings built at run time from parts the check cannot see (a value read from a pref or a
   file) are not import specifiers it can read; it refuses non-fixed specifiers where modules
   are loaded, and ignores other computed strings.
+- A Vimma module's file is reachable by more than its `chrome://` URL: `browser.manifest` maps
+  `chrome://browser/content/` to `chrome/browser/content/browser/` of the app's `omni.ja`,
+  which `resource:///` and `resource://app/` name too (and `resource://gre/` in an unpackaged
+  build). The module loader accepts `resource://` and keys each module by its URL, so such a
+  URL would load a second copy of the module with its own state; for the agent gate, its own
+  questions and grants. The check refuses any string whose path holds
+  `content/browser/vimma`, and a computed specifier that starts like one.
+- The hand-on rule for a restricted module follows names, not scopes: a local name that
+  shadows one holding the gate is treated as the gate, which can only add errors. What a call
+  of the gate returns, and what a function that calls the gate does for its own caller, are
+  not followed; the security review of a listed importer judges those.
+- A Firefox patch is text in many languages, so its added lines are read as text, one at a
+  time. A line fails on the gate's file name (`AgentGate.sys.mjs`, in any case, escaped or
+  not), on a URL that reaches the gate, and on a URL that stops before it names a file inside
+  a Vimma root: a Vimma folder's URL, or a cut-off start of `chrome://browser/content/vimma/` or
+  of a `resource://` root, such as `"chrome://browser/content/" + …` or
+  `` `chrome://browser/content/vimma/${dir}/…` ``. A URL assembled from pieces that are none of
+  these (a file name split in two, a value read at run time) is left to the review every new
+  patch gets with its line in ADR-003's register.
 - An edge must name a module that exists: one git tracks and `jar.mn` packages by name, so a
   mistyped `chrome://` URL (such as the parent actor's, which `vimma.js` passes to
   `VimmaActors.register`) fails the check rather than the run. `core/` is not checked (a
