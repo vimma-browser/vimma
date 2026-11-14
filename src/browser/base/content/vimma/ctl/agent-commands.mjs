@@ -1842,9 +1842,14 @@ export const AgentTabOwners = {
 };
 
 /**
- * The handlers by command, each with its own arguments (core AgentArgs).
+ * Each command's result, as its handler gives it.
+ * @typedef {{ [C in AgentCommand]: Awaited<ReturnType<(typeof COMMANDS)[C]>> }} AgentResults
+ */
+
+/**
+ * The handlers by command, each with its own arguments (core AgentArgs) and result.
  * @typedef {{ [C in AgentCommand]: (conn: ConnId, state: AgentConn, args: AgentArgs[C],
- *   rid: number | undefined) => object | Promise<object> }} Handlers
+ *   rid: number | undefined) => AgentResults[C] | Promise<AgentResults[C]> }} Handlers
  */
 
 /**
@@ -1861,16 +1866,30 @@ function start(request, conn, state, rid) {
 
 /**
  * Run an agent command, validated already. Its arguments are parsed again (core
- * parseAgentRequest), so whatever reaches a handler has the shape it reads. `state` is the
- * connection's: `agent` once its hello is in. Throws AgentError for every refusal.
+ * parseAgentRequest), so whatever reaches a handler has the shape it reads, and the result is
+ * that command's handler's. `state` is the connection's: `agent` once its hello is in. Rejects
+ * with AgentError for every refusal.
+ * @overload
+ * @param {ConnId} conn @param {AgentConn} state @param {C} command @param {unknown} args
+ * @param {number} [rid]
+ * @returns {Promise<AgentResults[C]>}
+ * @template {AgentCommand} C
+ */
+/**
+ * @overload
+ * @param {ConnId} conn @param {AgentConn} state @param {string} command @param {unknown} args
+ * @param {number} [rid]
+ * @returns {Promise<object>}
+ */
+/**
  * @param {ConnId} conn
  * @param {AgentConn} state
  * @param {string} command
  * @param {unknown} args
  * @param {number} [rid]  the request's id, which `agent-cancel` names
- * @returns {object | Promise<object>}
+ * @returns {Promise<object>}
  */
-export function runAgentCommand(conn, state, command, args, rid) {
+export async function runAgentCommand(conn, state, command, args, rid) {
   if (command === "agent-hello") {
     if (state.agent) throw new AgentError("bad-request", "agent-hello was already sent");
   } else if (!state.agent) {
@@ -1882,17 +1901,14 @@ export function runAgentCommand(conn, state, command, args, rid) {
   const request = parseAgentRequest(command, args);
   if (!request) throw new AgentError("invalid-args", `${command}: invalid arguments`);
   // The tab the command names runs at foreground priority from the request until its reply,
-  // the wait for the user's answer included (issue #605).
+  // the wait for the user's answer included (issue #605). The handler starts before this
+  // function first awaits, as any other command: questions keep the order their requests came
+  // in.
   const tab = "tab" in request.args ? request.args.tab : undefined;
   const release = request.command === "agent-hello" ? null : raiseNamedTab(conn, tab);
-  if (!release) return start(request, conn, state, rid);
-  // Started at once, as any other command: questions keep the order their requests came in.
-  let result;
   try {
-    result = start(request, conn, state, rid);
-  } catch (e) {
-    release();
-    throw e;
+    return await start(request, conn, state, rid);
+  } finally {
+    release?.();
   }
-  return Promise.resolve(result).finally(release);
 }
