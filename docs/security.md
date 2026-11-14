@@ -2163,8 +2163,11 @@ for the user.
 - M45. Before a conversation's first task to an endpoint off this machine (and again after its
   provider changes), the window **must** say where page text, field values, screenshots and the
   user's messages go and send nothing without a `y` to that endpoint; `AgentChat.send` itself
-  **must** refuse a task the notice was not answered for.
+  **must** refuse a task the notice was not answered for. A message whose provider's key is
+  still being read when the user leaves the transcript **must not** be sent, nor its notice
+  asked: it stays in the input, and a notice says so.
   [`test_external_provider_notice_before_first_task`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_a_send_waiting_for_its_key_hint_is_sent_only_if_the_user_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`the notice before the first task names the host and, when known, who runs it`](../packages/vimma-core/test/agent-chat.test.mjs)
 - M46. A hosted provider's key **must** be typed only into the window's password field, which
   hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
@@ -2173,8 +2176,15 @@ for the user.
   text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
   key: it has no reveal button, cancels every reveal a user can ask for (`MozWillToggleReveal`), opens no context
   menu, and gives up nothing to copy, cut or drag; it never holds a stored key, so changing a
-  key means entering it again. Any way out of the field (Esc, closing the window, another
-  view) empties it. A provider that needs a key and has none for
+  key means entering it again. Any way out of the field (Esc, closing the window or the
+  browser window, another view or conversation, another provider's key field) empties it and
+  forgets which provider it was for, leaving nothing to bring back with an undo. A model pick,
+  a send or a key's store that answers after the user left the list or the field it came from
+  (a key hint can wait on the keyring, a local model's preparation for a minute) **must not**
+  switch the view, so it never opens the key field over another view nor leaves the field the
+  user is typing in: the pick is not used, the message is not sent, and the stored key changes
+  no conversation's model; of two picks, the later is used. A provider that needs a key and
+  has none for
   its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
   deletes a key after a `y`. The window reaches the keys only through what the host hands it
@@ -2190,6 +2200,13 @@ for the user.
   [`test_hosted_anthropic_provider_asks_for_its_key_before_the_task`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_a_key_typed_and_left_is_dropped_and_no_task_goes_keyless`](../tests/browser/browser_vimma_agent_chat.js),
   [`test_an_entered_key_is_never_shown_again_nor_copied_out`](../tests/browser/browser_vimma_agent_chat.js),
+  [`test_every_way_out_of_the_key_field_empties_it`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_left_while_its_model_is_prepared_leaves_the_key_field_alone`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_whose_window_closed_while_it_was_prepared_is_not_used`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_the_later_of_two_picks_wins_whichever_is_ready_first`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_left_before_its_key_hint_opens_no_key_field`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_key_stored_after_the_field_was_left_switches_nothing`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_key_deleted_as_the_picker_opens_again_is_shown_gone`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,
