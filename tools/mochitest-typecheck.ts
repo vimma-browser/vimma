@@ -26,18 +26,20 @@ export function readAllowlist(text: string): string[] {
 }
 
 /**
- * tsc's errors (`--pretty false`) by file: each error with its indented continuation lines.
+ * tsc's errors (`--pretty false`) by file: each error with its indented continuation lines. An
+ * error that names no file (a missing global type or file, a bad option) is kept under "".
  */
 export function errorsByFile(output: string): Map<string, string[]> {
   const errors = new Map<string, string[]>();
   let last: { file: string; index: number } | null = null;
   for (const line of output.split("\n")) {
-    const m = /^(\S[^(]*)\(\d+,\d+\): error TS\d+:/.exec(line);
-    if (m?.[1]) {
-      const list = errors.get(m[1]) ?? [];
+    const m = /^(?:(\S[^(]*)\(\d+,\d+\): )?error TS\d+:/.exec(line);
+    if (m) {
+      const file = m[1] ?? "";
+      const list = errors.get(file) ?? [];
       list.push(line);
-      errors.set(m[1], list);
-      last = { file: m[1], index: list.length - 1 };
+      errors.set(file, list);
+      last = { file, index: list.length - 1 };
     } else if (last && /^\s+\S/.test(line)) {
       const list = errors.get(last.file);
       if (list) list[last.index] += `\n${line}`;
@@ -50,7 +52,8 @@ export function errorsByFile(output: string): Map<string, string[]> {
 
 /**
  * What breaks the ratchet: every error in a file that is not listed (a declaration file under
- * types/ included), then each listed file that has no errors or is not tracked.
+ * types/ included) or in no file at all, then each listed file that has no errors or is not
+ * tracked.
  */
 export function ratchetErrors(
   errors: Map<string, string[]>,

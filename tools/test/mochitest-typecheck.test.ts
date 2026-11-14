@@ -43,6 +43,31 @@ describe("the mochitest type-check ratchet (#959)", () => {
     );
   });
 
+  // An error with no file (a missing global type, a missing file, a bad option) breaks the whole
+  // program, so it must fail the run even while the listed files have errors of their own.
+  it("keeps an error that names no file, and fails on it beside a listed file's errors", () => {
+    const out = [
+      "error TS2318: Cannot find global type 'Array'.",
+      "tests/browser/listed.js(1,1): error TS2304: Cannot find name 'x'.",
+      "error TS6053: File '/nowhere/types/mochitest/harness.d.ts' not found.",
+      "  The file is in the program because:",
+      "",
+    ].join("\n");
+    const errors = errorsByFile(out);
+    expect(errors.get("")).toEqual([
+      "error TS2318: Cannot find global type 'Array'.",
+      "error TS6053: File '/nowhere/types/mochitest/harness.d.ts' not found.\n" +
+        "  The file is in the program because:",
+    ]);
+    expect(ratchetErrors(errors, ["tests/browser/listed.js"], ["tests/browser/listed.js"])).toEqual(
+      [
+        "error TS2318: Cannot find global type 'Array'.",
+        "error TS6053: File '/nowhere/types/mochitest/harness.d.ts' not found.\n" +
+          "  The file is in the program because:",
+      ],
+    );
+  });
+
   it("fails on errors in an unlisted file, and on a listed file that is clean or gone", () => {
     const errors = new Map([
       ["tests/browser/listed.js", ["tests/browser/listed.js(1,1): error TS2304: x"]],
