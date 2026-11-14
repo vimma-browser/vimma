@@ -289,3 +289,18 @@ interface nsIFile {
 interface Tabbrowser {
   readonly currentURI: nsIURI;
 }
+
+// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils): a sandbox, and code run
+// in it. A sandbox is a global object whose members are whatever the code run in it defines, so
+// it is untyped.
+interface XPCComponentsUtils {
+  Sandbox(principal: unknown, options?: object): any;
+  evalInSandbox(
+    source: string,
+    sandbox: unknown,
+    version?: string,
+    filename?: string,
+    lineNo?: number,
+    enforceFilenameRestrictions?: boolean,
+  ): unknown;
+}
