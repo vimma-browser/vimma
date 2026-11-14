@@ -1,8 +1,7 @@
 # Spec: release-versioning
 
 Status: implemented · Area: CI (`release-please-config.json`, `docs/runbook/ci-releases.md`
-"Releases",
-`tools/package/test/release-workflow.test.mjs`). No upstream patch, no app code.
+"Releases", `tools/package/test/release-workflow.test.mjs`). No upstream patch, no app code.
 
 ## Goal
 

@@ -81,8 +81,8 @@ loudly at `surfer import` when upstream moves the code around it.
   hand. `docs/security/16-update-check.md` UP12 states the limit.
 - The primary's certificate is self-signed by the KMS key, which only the maintainer's
   credentials can ask to sign outside the release workflow
-  (`docs/runbook/ci-update-signing-keys-and-the-update-host.md`, "Update signing
-  keys and the update host", step 5b).
+  (`docs/runbook/ci-update-keys-and-update-host.md`, "Update signing keys and the update host", step
+  5b).
 - Three upstream files carry Vimma's hunks for updates (`browser/moz.configure`,
   `toolkit/mozapps/update/updater/moz.build`, and with the manifest hook of sub-PR 3,
   `toolkit/mozapps/update/UpdateService.sys.mjs`); each has a line in ADR-003's register.

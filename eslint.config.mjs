@@ -162,7 +162,7 @@ export default [
   },
   {
     // An agent submission's test hook is read only under a harness: Cu.isInAutomation
-    // (docs/security/12-agents.md M28).
+    // (docs/security/12-agents-mcp.md M28).
     files: ["src/**/vimma/actors/VimmaChild.sys.mjs"],
     languageOptions: { globals: { Cu: "readonly" } },
   },
@@ -174,7 +174,7 @@ export default [
   },
   {
     // Agent pages launch no app: the component registrar wraps the external-protocol chooser
-    // (docs/security/12-agents.md M10).
+    // (docs/security/12-agents-mcp.md M10).
     files: ["src/**/vimma/ctl/AgentPages.sys.mjs"],
     languageOptions: { globals: { Components: "readonly" } },
   },

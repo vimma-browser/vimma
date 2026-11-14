@@ -39,14 +39,16 @@
  * @property {AgentChatService} agentChat  agent/AgentChat.sys.mjs's `AgentChat`, served as the
  *   members the host and the chat window use only
  * @property {(download: any) => boolean} isAgentDownload  ctl/AgentDownloads.sys.mjs's test
- * (docs/security/12-agents.md M11): the downloads picker opens, retries, unblocks and follows none
+ *   (docs/security/12-agents-mcp.md M11): the downloads picker opens, retries, unblocks and follows
+ *   none
  * @property {(rule: { domain: string, workspace: string }) => Promise<string | null>} addRoute
  *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule and reads the file again; why not,
  *   or null
  * @property {ChatClis} agentCli  agent/AgentCli.sys.mjs's `AgentCli`, served as its `enabled`,
  *   `find`, `noneFound` and `use` only, for the chat window
  * @property {ChatKeys} agentKeys  agent/AgentKeys.sys.mjs's `AgentKeys`, served as its `hint`,
- * `set` and `delete` only, for the chat window (docs/security/12-agents-built-in-agent.md M40, M46)
+ *   `set` and `delete` only, for the chat window (docs/security/12-agents-mcp-built-in-agent.md
+ *   M40, M46)
  * @property {AgentChatServices["configRefused"]} configRefused  config/ConfigHost.sys.mjs's
  *   `refused`: why config.toml did not apply, for the chat window (Behaviour 6)
  * @property {AgentChatServices["addAgentProvider"]} addAgentProvider

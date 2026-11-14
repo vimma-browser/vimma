@@ -118,8 +118,7 @@ panes look as they do today. The border is 3 px wide, and unfocused panes are no
   `launcher.ts`, ADR-025; `vimma.theme.source = builtin`) and a light theme, so baselines are the
   vimma light palette; a run under the Omarchy theme (`vimma.theme.source = omarchy`,
   `vimma.theme.omarchyPath`) is for looking at screenshots, not for baselines
-  (`docs/runbook/testing.md`,
-  "Baselines").
+  (`docs/runbook/testing.md`, "Baselines").
 
 ### Zen Browser (zen-browser/desktop at `185e856f`, `src/zen/split-view/zen-split-view.css`)
 

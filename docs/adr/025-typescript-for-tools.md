@@ -79,9 +79,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    Node with nothing of the pull request run first, and a `.ts` file would need a Node set up in
    that checkout: `actions/setup-node` runs `npm --version` and `yarn --version` there, and a
    package manager reads its configuration from the current directory
-   (docs/security/14-build-and-release-supply-chain.md, B18).
-   `tools/ci/tree-covered.mjs` runs only on pushes to `main`, from trusted files, and may move
-   with the rest of `tools/ci`.
+   (docs/security/14-build-and-release-supply-chain.md, B18). `tools/ci/tree-covered.mjs` runs only
+   on pushes to `main`, from trusted files, and may move with the rest of `tools/ci`.
 
 ## Reasoning
 

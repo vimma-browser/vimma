@@ -5,10 +5,10 @@
 # themselves (workflows hold write tokens and the model API secret), and neither does any change to
 # a package the release build runs (Surfer, ajv and their dependencies), security updates included:
 # `classify` finds them in the lockfile diff and puts their published diff in its job summary
-# (docs/security/14-build-and-release-supply-chain.md, B3; spec build-supply-chain, decisions 14 and
-# 15). pull_request, never pull_request_target: on Dependabot's PRs GITHUB_TOKEN gets the
-# permissions below and no secrets. `classify` runs the base commit's code and reads the head
-# commit's lockfile as data; `automerge`, which can write, checks nothing out.
+# (docs/security/14-build-and-release-supply-chain.md, B3; spec build-supply-chain, decisions 14 and 15).
+# pull_request, never pull_request_target: on Dependabot's PRs GITHUB_TOKEN gets the permissions
+# below and no secrets. `classify` runs the base commit's code and reads the head commit's lockfile
+# as data; `automerge`, which can write, checks nothing out.
 name: Dependabot auto-merge
 
 on:

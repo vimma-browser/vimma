@@ -194,7 +194,8 @@ add_task(async function a_combobox_in_a_cross_origin_frame() {
 });
 
 // docs/security/13-page-modes.md K6: the arrow key Vimma presses is the page's. With an insert-mode
-// binding on <Down> (here: new tab), the key still reaches the page and runs no binding.
+// binding on
+// <Down> (here: new tab), the key still reaches the page and runs no binding.
 add_task(async function a_pressed_arrow_key_runs_no_vimma_binding() {
   const { compileKeymap } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/core/keymap.mjs",

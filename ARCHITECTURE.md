@@ -320,8 +320,7 @@ are read and applied: [Config and theme](docs/architecture/config-and-theme.md).
 ## Trust boundaries
 
 [docs/security/](docs/security/README.md) is the contract: one rule per risky component, each with
-the
-tests that enforce it. In short:
+the tests that enforce it. In short:
 
 - **Pages** are untrusted. Vimma reaches them only through the actor pair, and what it takes from
   a page (a link, a title, text) is shown or opened under the rules of security.md §4, §6 and
@@ -356,16 +355,14 @@ tests that enforce it. In short:
 Tests are written before the code they test, and a baseline or snapshot changes only with a
 reason in the commit body ([CONTRIBUTING.md](CONTRIBUTING.md), "Workflow"). CI never retries a
 test: a flaky one gets an issue and a fix for its cause
-([docs/runbook/testing.md](docs/runbook/testing.md),
-"Testing"). Each layer, where it runs and what no layer covers:
-[Testing](docs/architecture/testing.md).
+([docs/runbook/testing.md](docs/runbook/testing.md), "Testing"). Each layer, where it runs and what
+no layer covers: [Testing](docs/architecture/testing.md).
 
 ## Automation and release infrastructure
 
 Every workflow in `.github/workflows/`. Setup, secrets and recovery for each are in
 [docs/runbook/ci.md](docs/runbook/ci.md), "CI and automation"; the security rules for those that
-hold
-secrets are in security.md §10 and §14.
+hold secrets are in security.md §10 and §14.
 
 | Workflow                   | Runs on                     | What it does                                                                                                                          |
 | -------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |

@@ -61,8 +61,7 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run lane:setup` / `npm run lane:teardown`: a worktree's own artifact engine for browser
   tests, copied from the primary checkout's `engine/`. If setup fails on `verify-source --require`
   naming an older Firefox version, the primary checkout is behind `surfer.json` after a Firefox
-  bump: it is updated once for every lane (`docs/runbook/parallel-browser-lanes.md`, "Parallel
-  browser lanes"), not
+  bump: it is updated once for every lane (`docs/runbook/parallel-browser-lanes.md`, "Parallel browser lanes"), not
   downloaded again per lane. If it says the engine was never verified, run `npm run verify-source`
   in the primary checkout.
 - `cargo test` and `cargo clippy -- -D warnings` in `tools/vimma-ctl` (Rust).
@@ -209,12 +208,11 @@ labels`). An item with the other machine's label is not yours: do not push to it
    `Part of #N`, and a dependency's licence line when one was added.
 7. Wait for green: `gh pr checks <N> --watch`. A failed job in a test your change cannot reach:
    reproduce it in your lane first, on two busy CPUs as `docs/runbook/testing.md` "To shake out a
-   race"
-   shows (`--repeat=N` runs the file N+1 times). Failing there is a real failure, yours or
+   race" shows (`--repeat=N` runs the file N+1 times). Failing there is a real failure, yours or
    `main`'s. Passing every time: re-run the job once, name the flake and its issue (open one with
-   the log if none exists), and say so. Any other failed job: re-run at most once, only for a
-   known flake, and say so. Never re-run a second time: a second unrelated failure is reported,
-   not retried. A real failure: fix it, or stop and report.
+   the log if none exists), and say so. Any other failed job: re-run at most once, only for a known
+   flake, and say so. Never re-run a second time: a second unrelated failure is reported, not
+   retried. A real failure: fix it, or stop and report.
 8. Squash-merge with a checked message. Write the subject and body to `msg.txt` and the body
    alone to a file (`tail -n +3 msg.txt > body.txt`), then merge in one unbroken `&&` chain, so
    that any failure blocks the merge (a `;` once merged a pull request with an empty message):

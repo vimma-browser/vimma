@@ -139,35 +139,36 @@ describe("checkAll", () => {
   const write = (name: string, md: string) =>
     writeFileSync(join(dir, "docs", "security", name), md);
 
-  test("a folder passes when its files' links resolve, one of them without a test link", () => {
-    write("README.md", "[rules](01-a.md)\n");
+  test("a folder passes when every file of it links a test that exists", () => {
+    write("README.md", "[rules](01-a.md) [`real_task`](../../tests/a.js)\n");
     write("01-a.md", "[`real_task`](../../tests/a.js)\n");
     const r = checkAll([join(dir, "docs", "security")]);
-    expect(r).toMatchObject({ failed: false, errors: [], tests: 1 });
-    expect(r.lines.at(-1)).toMatch(/security: 1 test links resolve in 2 files$/);
+    expect(r).toMatchObject({ failed: false, errors: [], tests: 2 });
+    expect(r.lines.at(-1)).toMatch(/security: 2 test links resolve in 2 files$/);
   });
 
-  test("a folder with no test link at all fails: the check would be vacuous", () => {
+  test("a file with no test link fails, in a folder or named on its own: its check would be vacuous", () => {
     write("README.md", "[rules](01-a.md)\n");
-    write("01-a.md", "no links\n");
+    write("01-a.md", "[`real_task`](../../tests/a.js)\n");
     const r = checkAll([join(dir, "docs", "security")]);
     expect(r.failed).toBe(true);
-    expect(r.errors.join("\n")).toMatch(/no test links found/);
-  });
-
-  test("a file named on its own still needs a test link", () => {
-    write("README.md", "[rules](01-a.md)\n");
-    write("01-a.md", "[`real_task`](../../tests/a.js)\n");
+    expect(r.errors).toEqual([expect.stringMatching(/README\.md: no test links found/)]);
     expect(checkAll([join(dir, "docs", "security", "README.md")]).failed).toBe(true);
     expect(checkAll([join(dir, "docs", "security", "01-a.md")]).failed).toBe(false);
   });
 
+  test("a folder without a Markdown file fails", () => {
+    const r = checkAll([join(dir, "tests")]);
+    expect(r.failed).toBe(true);
+    expect(r.errors.join("\n")).toMatch(/no Markdown files found/);
+  });
+
   test("a broken link in any file of the folder fails", () => {
-    write("README.md", "[rules](02-gone.md)\n");
+    write("README.md", "[rules](02-gone.md) [`real_task`](../../tests/a.js)\n");
     write("01-a.md", "[`real_task`](../../tests/a.js)\n");
     const r = checkAll([join(dir, "docs", "security")]);
     expect(r.failed).toBe(true);
-    expect(r.errors.join("\n")).toMatch(/README\.md:1: 02-gone\.md does not exist/);
+    expect(r.errors).toEqual([expect.stringMatching(/README\.md:1: 02-gone\.md does not exist/)]);
   });
 });
 

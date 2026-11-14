@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { tempDir } from "./temp-dir.mjs";
 
 // Spec m7-upstream-autopilot, docs/security/10-firefox-updates.md §10: the upstream autopilot's
-// workflow shape. Text checks, like safebrowsing-workflows.test.mjs: no YAML dependency.
+// workflow shape.
+// Text checks, like safebrowsing-workflows.test.mjs: no YAML dependency.
 const dir = new URL("../../.github/workflows/", import.meta.url);
 /** @param {string} name */
 const workflow = (name) => readFileSync(new URL(name, dir), "utf8");

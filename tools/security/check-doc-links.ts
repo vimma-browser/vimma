@@ -11,8 +11,7 @@
 //
 //   node tools/security/check-doc-links.ts [file.md | folder ...]   (default: docs/security)
 //
-// A folder stands for every Markdown file under it. Its files need not each link a test (the
-// index and the out-of-scope page link none), but the folder as a whole must.
+// A folder stands for every Markdown file under it.
 
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -171,8 +170,8 @@ export function docFiles(path: string): string[] {
 }
 
 /**
- * Checks every file and folder of `paths` (absolute). A file, or a folder as a whole, with no
- * test link fails: the check would pass without checking anything.
+ * Checks every file of `paths` (absolute), and every Markdown file under each folder of it. A
+ * file with no test link fails: its check would pass without checking anything.
  */
 export function checkAll(paths: string[]): {
   lines: string[];
@@ -190,10 +189,11 @@ export function checkAll(paths: string[]): {
       const { problems, tests } = checkFile(file);
       errors.push(...problems);
       total += tests;
-      if (!problems.length) lines.push(`${relative(ROOT, file)}: ${tests} test links resolve`);
+      if (tests === 0)
+        errors.push(`${relative(ROOT, file)}: no test links found; the check would be vacuous`);
+      else if (!problems.length) lines.push(`${relative(ROOT, file)}: ${tests} test links resolve`);
     }
-    if (total === 0)
-      errors.push(`${relative(ROOT, path)}: no test links found; the check would be vacuous`);
+    if (files.length === 0) errors.push(`${relative(ROOT, path)}: no Markdown files found`);
     else if (files[0] !== path)
       lines.push(`${relative(ROOT, path)}: ${total} test links resolve in ${files.length} files`);
     all += total;

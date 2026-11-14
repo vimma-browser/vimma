@@ -5,8 +5,7 @@ boundaries. The pages here are the next level of detail. Each follows one thing 
 from start to end, in order, with a sequence diagram, the real file and function names, what can
 refuse or fail at each step, and where that is tested. They link to the specs, decision records,
 [docs/security/](../security/README.md) and [docs/runbook/](../runbook/README.md) for the rules and
-the
-procedures rather than repeating them.
+the procedures rather than repeating them.
 
 | Page                                                              | Follows                                                                                            |
 | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |

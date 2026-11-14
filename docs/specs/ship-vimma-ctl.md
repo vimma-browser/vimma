@@ -158,9 +158,8 @@ that it cannot click or fill, although the browser can.
 ## Security and privacy
 
 - No new browser surface. `ctl` is a label, like `client` and `via`: it changes only whether
-  the notice is shown, never what the connection may do (docs/security/12-agents.md, M34). The
-  discovery
-  file's new `version` is public information.
+  the notice is shown, never what the connection may do (docs/security/12-agents-mcp.md, M34). The
+  discovery file's new `version` is public information.
 - The release gains two build jobs, `ctl` and `macos-ctl`, with a read-only token, no
   environment and no secret; the Rust toolchain comes through the runner's rustup from the
   version pinned in `rust-toolchain.toml`, and no crate is downloaded. The binary reaches users
@@ -174,8 +173,7 @@ that it cannot click or fill, although the browser can.
   carries `vimma-ctl-licenses/` next to `vimma-ctl`, in `Vimma.app/Contents/Resources` on
   macOS, from `tools/package/ctl-notices.mjs`, and the release SBOM lists `vimma-ctl` with
   musl, Rust's standard library and LLVM's libunwind; docs/runbook/ci-release-packages.md, "Release
-  packages", and
-  docs/security/14-build-and-release-supply-chain.md, B13.)
+  packages", and docs/security/14-build-and-release-supply-chain.md, B13.)
 
 ## Tests
 

@@ -157,8 +157,7 @@ colour. VimmaHost hands it each keydown after the agent question and before the 
 ## Security and privacy
 
 - No new request: the startup check is the same anonymous GET (`docs/security/16-update-check.md`
-  UP3), and the
-  10-minute floor keeps restarts from multiplying it.
+  UP3), and the 10-minute floor keeps restarts from multiplying it.
 - The question opens only about:vimma; it installs nothing and runs no command.
 - A page cannot answer the question: it never has focus, it does not open while a field has it,
   and keys before the arming delay are ignored (`docs/security/16-update-check.md` UP9).

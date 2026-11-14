@@ -610,14 +610,14 @@ Paths under `vimma/` are `src/browser/base/content/vimma/`.
     `APPLE_DEVELOPER_ID_P12` (base64), `APPLE_DEVELOPER_ID_P12_PASSWORD`, `APPLE_NOTARY_API_KEY`
     (the JSON of `rcodesign encode-app-store-connect-api-key`) and `APPLE_TEAM_ID`; only `main`
     may deploy to it, as `build` and `homebrew` (docs/security/14-build-and-release-supply-chain.md,
-    B14), so no branch or tag can
-    read the secrets by editing a workflow. No reviewer is required, because a Firefox security
-    release ships without a person (decision 12). The job writes the p12, its password and the key
-    with the shell's `printf` to files of mode 600 under `$RUNNER_TEMP`, passes only their paths
-    to rcodesign, and deletes them in an `always()` step before anything is uploaded. Before signing it checks that the certificate's subject is a Developer ID
-    Application and its team ID is `APPLE_TEAM_ID`, so a certificate from another team, or an
-    Apple Development certificate, never signs a release. Rejected: a required reviewer, which
-    would hold every security release for a person.
+    B14), so no branch or tag can read the secrets by editing a workflow. No reviewer is required,
+    because a Firefox security release ships without a person (decision 12). The job writes the p12,
+    its password and the key with the shell's `printf` to files of mode 600 under `$RUNNER_TEMP`,
+    passes only their paths to rcodesign, and deletes them in an `always()` step before anything is
+    uploaded. Before signing it checks that the certificate's subject is a Developer ID Application
+    and its team ID is `APPLE_TEAM_ID`, so a certificate from another team, or an Apple Development
+    certificate, never signs a release. Rejected: a required reviewer, which would hold every
+    security release for a person.
 28. **The disk-image tools come from `macos-build`, and never reach the secrets.** `macos-unpack`
     and `macos-pack` have no `engine/` and no `mach`, so `macos-build` copies the `dmg`, `hfsplus` and `newfs_hfs` that its `mach`
     bootstrapped from Mozilla's Taskcluster, found as `make_dmg.py` finds them, into a one-day
@@ -728,8 +728,8 @@ Mac-native integrations such as Handoff, the Services menu or a global hotkey.
   the p12 never enters a keychain. A leaked p12 lets its holder sign software that Gatekeeper
   accepts as Vimma's team until Apple revokes the certificate; a leaked API key lets its holder
   notarise under the team until it is revoked in App Store Connect.
-  `docs/security/14-build-and-release-supply-chain.md`, B14, and
-  `docs/runbook/` describe the response.
+  `docs/security/14-build-and-release-supply-chain.md`, B14, and `docs/runbook/` describe the
+  response.
 - **Ad hoc builds.** An ad hoc signature proves nothing about who built the app. Testers get the
   `.dmg` from this repository's GitHub Release, and check it with cosign against the same identity
   as the Linux files, `release.yml` at `refs/heads/main`; the guide says how. Open Anyway lowers Gatekeeper for that one app only.
@@ -840,8 +840,7 @@ With the sub-PRs:
 - `docs/runbook/`: `macos.yml`, its measured time and disk; with sub-PR 7, setting up and
   rotating the certificate and the API key, the `macos-sign` environment, and re-running signing.
 - `docs/security/14-build-and-release-supply-chain.md`, B14 with sub-PR 7: the Apple secrets, their
-  environment, and a leaked p12 or
-  API key.
+  environment, and a leaked p12 or API key.
 - ADR-018 with sub-PR 3.
 - `CHANGELOG.md` `[Unreleased]`: one line per sub-PR that changes what a user can run (sub-PRs 2,
   3, 6 and 7); CI-only sub-PRs need none.

@@ -394,11 +394,10 @@ download list view and runs each action through Firefox's own objects. The picke
    `ctl/AgentDownloads.sys.mjs` already uses: its container, its tab's container, or a path in the
    quarantine folder) refuses `o`, `shift+o`, `Enter`'s open, `r` and `!` with the existing notice,
    because [vimma-mcp](vimma-mcp.md) decision 31 owns how such a file is admitted and
-   docs/security/12-agents.md M12 says it is never opened by Vimma. It refuses `u` too, because the
-   referring
-   page was chosen by the agent, and opening it would load that page in the user's workspace and
-   container, with the user's cookies. The refusal of `o` is checked twice: by the picker, so the
-   key says why at once, and by the `launchDownload` override, which stays the rule.
+   docs/security/12-agents-mcp.md M12 says it is never opened by Vimma. It refuses `u` too, because
+   the referring page was chosen by the agent, and opening it would load that page in the user's
+   workspace and container, with the user's cookies. The refusal of `o` is checked twice: by the
+   picker, so the key says why at once, and by the `launchDownload` override, which stays the rule.
 9. **A `downloads` segment on the status bar.** Core `downloadSegment(summary)` turns the window's
    list (Firefox's `DownloadsCommon.summarizeDownloads` fields: count, paused, percent, time left)
    into a right-side segment: `↓ 42%`, `↓ 3 · 42%`, `↓ 3`, `↓ paused`; then `↓ done` for 10
@@ -509,8 +508,7 @@ executable prompt, its blocked-download dialog and `allowOverride`, Gatekeeper o
 agent-download rules M11-M13 all apply. What changes:
 
 - **Rule C2 gains a third exception.** Opening a download and showing it in its folder hand a file
-  to the OS, which is starting a process in C2's sense. `docs/security/06-chrome-ui-rendering.md` C2
-  gets: chrome code may
+  to the OS, which is starting a process in C2's sense. `docs/security/06-chrome-ui-rendering.md` C2 gets: chrome code may
   ask Firefox to open a download or show it in its folder only through
   `DownloadsCommon.openDownload` and `Download.showContainingDirectory`, only from
   `host/download-ops.mjs`, and only on a key the user pressed in the picker. The chrome-source test
@@ -540,8 +538,7 @@ agent-download rules M11-M13 all apply. What changes:
 
 The change touches neither the control socket nor the agent gate's code, but it adds rules to
 docs/security/06-chrome-ui-rendering.md and widens C2, so each sub-PR that changes those rules gets
-a review by a fresh
-agent before it merges.
+a review by a fresh agent before it merges.
 
 ## Tests
 
@@ -658,8 +655,7 @@ Each sub-PR is mergeable and tested on its own; only sub-PR 3 changes the keymap
    picker opens.
 3. **`feat(downloads): ctrl+b d opens a downloads picker`.** The action, `:downloads`, the picker
    kind with listing, live updates, filter, `o`, `shift+o`, `s`, `y`, `shift+y`, `u`, `shift+l`,
-   and `Enter` as open; the segment's end states and announcements; the agent and private tests; C2
-   widened and the new docs/security/21-downloads-picker.md section with D1, D2, D4 and
+   and `Enter` as open; the segment's end states and announcements; the agent and private tests; C2 widened and the new docs/security/21-downloads-picker.md section with D1, D2, D4 and
    D6, reviewed by a fresh agent. Regenerates the bindings docs and the help snapshot, with the
    `ctrl+b ?` screenshot and the e2e baselines.
 4. **`feat(downloads): pause, resume, cancel, retry, remove and delete`.** `p`, `c`, `r`, `d`,

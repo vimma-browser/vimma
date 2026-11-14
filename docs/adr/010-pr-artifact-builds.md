@@ -13,8 +13,8 @@ disk). The repo becomes public (MPL-2.0); until then Actions minutes are limited
 the repository is public, and a standard hosted runner has about 86 GB free in practice. A cold
 full build there takes 113 min and fits with a 16 GB swap file, so the nightly and release
 builds run on hosted runners: spec build-supply-chain, R9, R10 and R15;
-docs/runbook/ci-full-builds.md, "Full
-builds". PRs still use artifact builds: a full build per push would make every PR wait 2 hours.)
+docs/runbook/ci-full-builds.md, "Full builds". PRs still use artifact builds: a full build per push
+would make every PR wait 2 hours.)
 
 ## Decision
 

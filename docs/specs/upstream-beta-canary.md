@@ -212,10 +212,10 @@ known gaps (compiled-in defines); none of #186's failures was one.
 
 **R9. Cost.** The repository is public, so hosted runner minutes are free and uncapped
 (`docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget"). Per tested Beta build:
-detect < 1 min, patch check
-about 2 min, `e2e.yml` about 12 min, report < 1 min, about 16 min in all. Five Beta builds per
-two-week cycle are about 11 runs a month, about 3 hours of runner time; the detect-only runs add
-about 2 hours. One run occupies one hosted runner at a time, of the 20 the free plan allows.
+detect < 1 min, patch check about 2 min, `e2e.yml` about 12 min, report < 1 min, about 16 min in
+all. Five Beta builds per two-week cycle are about 11 runs a month, about 3 hours of runner time;
+the detect-only runs add about 2 hours. One run occupies one hosted runner at a time, of the 20 the
+free plan allows.
 
 ## Design
 
@@ -404,8 +404,8 @@ The canary reads public Mozilla data and the repository, and writes only issues.
   mode passes.
 
 `docs/security/10-firefox-updates.md` §10 gains rules for the canary: G9 (no write access beyond
-issues, no secrets,
-no PR, no push) and G10 (no report from an unverified Beta tarball), each linked to its tests.
+issues, no secrets, no PR, no push) and G10 (no report from an unverified Beta tarball), each linked
+to its tests.
 
 ## Tests
 

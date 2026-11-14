@@ -3,14 +3,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // The site permissions picker (`:site`, docs/specs/site-permissions.md;
-// docs/security/19-site-permissions.md §19). It reads and changes the selected tab's site
-// permissions through Firefox's SitePermissions, the module behind Page Info's Permissions tab and
-// the identity panel, with Page Info's list and Page Info's rules for what is locked; only a pop-up
-// block, which SitePermissions cannot store, goes to the permission manager (writePermission). It
-// is the only Vimma code that changes a site permission (tools/security chrome-source test): the
-// pop-up blocked bar and `:popups` (host/popup-ops.mjs) change the pop-up permission through
-// setSitePopups here, so a block from either is the block `:site` shows. Both refuse in the agent
-// workspace.
+// docs/security/19-site-permissions.md §19).
+// It reads and changes the selected tab's site permissions through Firefox's SitePermissions,
+// the module behind Page Info's Permissions tab and the identity panel, with Page Info's list and
+// Page Info's rules for what is locked; only a pop-up block, which SitePermissions cannot store,
+// goes to the permission manager (writePermission). It is the only Vimma code that changes a
+// site permission (tools/security chrome-source test): the pop-up blocked bar and `:popups`
+// (host/popup-ops.mjs) change the pop-up permission through setSitePopups here, so a block from
+// either is the block `:site` shows. Both refuse in the agent workspace.
 
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { permissionItems, permissionPlan, permissionTitle } from "../core/sitepermissions.mjs";

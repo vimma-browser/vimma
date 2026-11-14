@@ -166,10 +166,9 @@ browser's blocker and permission, answers the bar, and runs a row. `ui/picker.mj
    key answers the bar, and when the keys come to count.
 7. **Refused in the agent workspace.** No key answers the bar and the picker does not open in an
    agent-container tab (`WorkspaceStore.isAgentContainer`), because pages there get no
-   permissions (`docs/security/12-agents.md` M10) and allow would grant one. The host checks again
-   when a
-   row runs, so that a tab moved into the agent workspace while the picker was open grants
-   nothing.
+   permissions (`docs/security/12-agents-mcp.md` M10) and allow would grant one. The host checks
+   again when a row runs, so that a tab moved into the agent workspace while the picker was open
+   grants nothing.
 8. **Rows run on the page they were listed for.** The picker closes when the selected tab
    changes, and a row runs only while the browser it was read from is still selected, so that a
    row never acts on another page's blocker.

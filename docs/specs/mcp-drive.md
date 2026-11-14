@@ -483,7 +483,7 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
 | **An agent disturbs the user's own find or hints** in the same window.                                                                                   | The agent's find uses the tab's `finder`, and its hint collection is keyed by its own browser (D11, D12). A tab the user is typing in is `in-use` (D13).                                                                                                                                                                                                                                                                                        |
 | **An agent talks the user into full control.**                                                                                                           | The tools make full control unnecessary for showing and moving around a page; the instructions tell the model not to ask for it (D21); while MCP is on, both full-control questions say it reaches every workspace and that agents can use it (D22, D23).                                                                                                                                                                                       |
 
-### docs/security/12-agents.md (§12, rules added by the sub-PR that builds each)
+### docs/security/12-agents-mcp.md (§12, rules added by the sub-PR that builds each)
 
 Each rule enters `docs/security/` with links to its tests in the sub-PR that implements it,
 because the page links every rule to a test that exists (`tools/security/check-doc-links.mjs` (Since

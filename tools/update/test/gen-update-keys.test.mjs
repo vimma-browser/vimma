@@ -21,7 +21,7 @@ const ROOT = new URL("../../../", import.meta.url).pathname;
 
 /**
  * A self-signed RSA-4096 certificate made with openssl, as the offline ceremony makes the
- * secondary (docs/runbook/ci-update-signing-keys-and-the-update-host.md step 4).
+ * secondary (docs/runbook/ci-update-keys-and-update-host.md step 4).
  * @param {string} dir
  * @param {string} file
  * @param {string} cn
@@ -159,9 +159,8 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
 
   it("the repository: update-keys.mjs is what the committed certificates give", async () => {
     const certs = join(ROOT, CERT_DIR);
-    // The KMS-signed certificate is committed
-    // (docs/runbook/ci-update-signing-keys-and-the-update-host.md step 5b): a missing one is a move
-    // that forgot this check, not a tree from before the ceremony.
+    // The KMS-signed certificate is committed (docs/runbook/ci-update-keys-and-update-host.md step
+    // 5b): a missing one is a move that forgot this check, not a tree from before the ceremony.
     for (const f of ["primary.der", "secondary.der"]) {
       expect(existsSync(join(certs, f)), f).toBe(true);
     }
@@ -171,10 +170,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
       .update(readFileSync(join(certs, "primary.der")))
       .digest("hex");
     expect(
-      readFileSync(
-        join(ROOT, "docs/runbook/ci-update-signing-keys-and-the-update-host.md"),
-        "utf8",
-      ),
+      readFileSync(join(ROOT, "docs/runbook/ci-update-keys-and-update-host.md"), "utf8"),
     ).toContain(sha);
   }, 60_000);
 });

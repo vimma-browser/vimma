@@ -9,14 +9,14 @@
 # Publishing a release starts `start`, which only starts this workflow again on main with the
 # tag (workflow_dispatch), as update-publish.yml does. The release event's run executes this file
 # as the tag has it, and anyone with write access can create a tag on an unmerged commit with an
-# edited copy (docs/security/14-build-and-release-supply-chain.md, B6 and B11); so `start` holds no
-# secret and no environment and may only start a workflow, and the push runs only from main's copy,
-# in the homebrew environment, which accepts main alone. `start` dispatches the push when vimma.rb
-# is already on the published release (a draft published after its macOS files); otherwise
-# release.yml's macos-tap job dispatches it once the macOS files land on the published release.
+# edited copy (docs/security/14-build-and-release-supply-chain.md, B6 and B11); so `start` holds no secret and no environment and
+# may only start a workflow, and the push runs only from main's copy, in the homebrew
+# environment, which accepts main alone. `start` dispatches the push when vimma.rb is already on
+# the published release (a draft published after its macOS files); otherwise release.yml's
+# macos-tap job dispatches it once the macOS files land on the published release.
 # Nothing runs until RELEASE_ENABLED and MACOS_RELEASE_ENABLED are `true`; skipped (green, with a
-# notice) until the HOMEBREW_TAP_SSH_KEY secret exists. Retry: gh workflow run homebrew.yml -f
-# tag=vX.Y.Z (docs/runbook/ci-release-packages.md, "Release packages").
+# notice) until the HOMEBREW_TAP_SSH_KEY secret exists. Retry: gh workflow run homebrew.yml
+# -f tag=vX.Y.Z (docs/runbook/ci-release-packages.md, "Release packages").
 name: homebrew
 
 # `released`, as update-publish.yml has: a full release, or a pre-release promoted to one. Not
@@ -68,8 +68,8 @@ jobs:
           # The macOS files usually reach the release after it is published, and then
           # release.yml's macos-tap starts the push; a draft published after them has the cask now.
           # The release's metadata, never the file: GitHub counts any request for a release file,
-          # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download
-          # counts"). A draft answers 404 here, as at its download URLs.
+          # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download counts"). A draft
+          # answers 404 here, as at its download URLs.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
           case "$code" in
@@ -98,9 +98,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: {}
-    # Holds HOMEBREW_TAP_SSH_KEY; its only deployment ref is main
-    # (docs/runbook/ci-release-packages.md, "Release packages", step 7), so no tag and no other
-    # branch can read the key, whatever its copy of this file says.
+    # Holds HOMEBREW_TAP_SSH_KEY; its only deployment ref is main (docs/runbook/ci-release-packages.md, "Release
+    # packages", step 7), so no tag and no other branch can read the key, whatever its copy of
+    # this file says.
     environment: homebrew
     env:
       KEY_SET: ${{ secrets.HOMEBREW_TAP_SSH_KEY != '' }}

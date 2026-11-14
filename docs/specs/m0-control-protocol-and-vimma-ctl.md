@@ -375,7 +375,7 @@ Spec: [vimma-mcp](vimma-mcp.md) (decisions 2-4), ADR-019. Fixtures:
   `cancelled`; no other error has a `reason`. (Since changed: a `busy` denial for a used-up
   per-connection rate also carries `retryAfter`, the milliseconds until the next call is
   allowed, when the connection's vimma-ctl is at least as new as Vimma, and its message names
-  the limit; see [security.md](../security/12-agents.md) M20 and M32.)
+  the limit; see [security.md](../security/12-agents-mcp.md) M20 and M32.)
 - **Agent commands** (role `agent` only; `agent-hello` must come first, and only once):
 
   | Command        | `args`                                                     | `result`                                                                         |
@@ -568,8 +568,7 @@ it was added.
 - `docs/guide.md`, "Scripting with vimma-ctl": the commands, the pref, exit codes; "Agents
   (MCP)" for protocol 2's agent side.
 - `docs/security/01-control-socket.md` §1 holds the socket's rules to their tests; ADR-007, ADR-011
-  and
-  ADR-019 record the choices.
+  and ADR-019 record the choices.
 - Each protocol change is a `CHANGELOG.md` line in the release that ships it.
 
 ## Delivery

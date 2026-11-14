@@ -9,9 +9,9 @@
 // a picker over the bar's other options (open one pop-up, stop showing the bar, settings), run
 // through Firefox's PopupAndRedirectBlockerObserver. Nothing blocked: a notice. In the agent
 // workspace no key answers the bar and the picker refuses: nothing is granted
-// (docs/security/12-agents.md M10). A mistaken n is undone from :popups, without the bar: allow the
-// site, or reset it. The bar names its keys too, in a line beside its button, as the permission
-// prompts do.
+// (docs/security/12-agents-mcp.md M10). A mistaken n is undone from :popups, without the bar: allow
+// the site, or reset it.
+// The bar names its keys too, in a line beside its button, as the permission prompts do.
 
 "use strict";
 

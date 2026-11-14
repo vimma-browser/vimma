@@ -13,8 +13,7 @@
 # read the repository; `compare`, on a fresh runner, reads that run's results.json and the
 # previous run's artifact and writes the diff and the issue text, with read permissions only;
 # `report` checks out nothing and runs only gh on that issue text. Page text reaches it only as
-# inert code spans (tools/sites/diff.ts; docs/security/17-site-compatibility-workflow.md, "Site
-# compatibility workflow").
+# inert code spans (tools/sites/diff.ts; docs/security/17-site-compatibility-workflow.md, "Site compatibility workflow").
 name: sites
 
 on:

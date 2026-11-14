@@ -573,8 +573,7 @@ import` needs the empty repository to apply patches inside `engine/`, and `mach`
     to that path: the toolchains come from the same organisation whose release key it trusts, and
     a stronger check would mean verifying Taskcluster's chain-of-trust signatures, which `mach`
     does not do and which would be a project of its own.
-    `docs/security/11-out-of-scope-and-trust-boundaries.md` §11 names the
-    toolchains as trusted.
+    `docs/security/11-out-of-scope-and-trust-boundaries.md` §11 names the toolchains as trusted.
 
 ### npm packages
 
@@ -744,9 +743,9 @@ New surface:
   announcement and keep every revocation.
 
 New section for `docs/security/14-build-and-release-supply-chain.md`, **§14. Build and release
-supply chain** (`release.yml`,
-`nightly.yml`), with **Reach:** Mozilla's archive and Taskcluster, the npm registry, this
-repository, and GitHub's hosted runners. Each rule links its tests (Tests, below):
+supply chain** (`release.yml`, `nightly.yml`), with **Reach:** Mozilla's archive and Taskcluster,
+the npm registry, this repository, and GitHub's hosted runners. Each rule links its tests (Tests,
+below):
 
 - B1. Nothing is **ever** built from a Firefox source tarball unless its SHA-512 is listed in a
   `SHA512SUMS` carrying a good signature by a valid signing subkey of Mozilla's release key
@@ -915,10 +914,9 @@ No mochitest or e2e scenario: nothing in the browser changes.
 - `docs/security/`: §14 with B1 to B7 and their test links; G4 amended; §11 gains "Build
   infrastructure".
 - `docs/runbook/ci-full-builds.md`, "Full builds (`nightly.yml`, `release.yml`)" (already says they
-  run on
-  GitHub-hosted runners, with the self-hosted label as a known gap): the measured time and disk
-  from sub-PR 4, the disk guard, `sha_pinning_required`, the steps to switch both builds on, and
-  the `build` environment with the steps to move the secret into it; the known-gap paragraph
+  run on GitHub-hosted runners, with the self-hosted label as a known gap): the measured time and
+  disk from sub-PR 4, the disk guard, `sha_pinning_required`, the steps to switch both builds on,
+  and the `build` environment with the steps to move the secret into it; the known-gap paragraph
   goes; a new
   "Mozilla's release key" section (how to update the pinned key from Mozilla's announcement and
   `KEY` file, what the issue from decision 21 asks for); the `engine/.vimma-firefox-version`
@@ -931,8 +929,8 @@ No mochitest or e2e scenario: nothing in the browser changes.
   auto-merged, how to read the `release-path-diff` summary, and that install scripts are off.
 - `docs/review-checklist.md`: the pinned-key line (Security and privacy).
 - Decision 23: `docs/security/14-build-and-release-supply-chain.md` B8;
-  `docs/runbook/ci-full-builds.md`, "Full builds" (the artifact, how to
-  download it, who can); `docs/limits.md`, "Build and CI"; a "Since changed"
+  `docs/runbook/ci-full-builds.md`, "Full builds" (the artifact, how to download it, who can);
+  `docs/limits.md`, "Build and CI"; a "Since changed"
   note in spec m0-pipeline.
 - ADR-021 (new) and the ADR-001 paragraph (sub-PR 2 and sub-PR 1).
 - No `docs/guide.md` or README change: nothing a user does or sees changes.

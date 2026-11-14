@@ -107,8 +107,8 @@ All Firefox paths are in Vimma's engine tree at Firefox 158.0 (`surfer.json`,
   (`uBlock0@raymondhill.net`), AdGuard AdBlocker (`adguardadblocker@adguard.com`) and Privacy
   Badger (`jid1-MnnxcxisBPnSXQ@jetpack`) are all "Recommended" for Firefox.
 - **Vimma's network stance.** Vimma uploads no telemetry (`docs/security/09-privacy-defaults.md`
-  P1). Requests to
-  AMO for add-ons and their updates are kept as in Firefox (`docs/guide.md`, privacy table).
+  P1). Requests to AMO for add-ons and their updates are kept as in Firefox (`docs/guide.md`,
+  privacy table).
 - **Vimma never installs add-ons today.** `docs/security/05-add-ons.md` A1, enforced by `never installs an
 add-on` in `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`,
   ADR-025), which fails on any `getInstallForURL` or `installAddonFromAOM` in Vimma's chrome code.
@@ -259,8 +259,7 @@ search engine is likewise one default for the profile.
   permission prompt. The `never installs an add-on` source test gets one allowed file,
   `setup/SetupHost.sys.mjs`. The implementing PR for installs updates `docs/security/` and
   gets a review by a fresh agent before merging.
-- **Writing a user file.** `docs/security/08-config-toml.md` F1 ("an existing file is never
-  overwritten")
+- **Writing a user file.** `docs/security/08-config-toml.md` F1 ("an existing file is never overwritten")
   becomes: Vimma changes an existing config.toml only from `:route add` (append) and the setup
   summary (decisions 10 and 11), never on a parse error, atomically and keeping the file's
   mode. The implementing PR for the config write updates F1 with links to its tests and gets a

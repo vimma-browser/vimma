@@ -177,8 +177,7 @@ ships.
   with `"enabled":false`, so flipping it back in `about:config` gives a working provider (a bare
   `{"id":"cfr","enabled":false}` would leave a broken one). It shadows upstream's value, so each
   rebase must refresh the copy from `firefox.js` (`docs/runbook/ci-upstream-bumps.md`, Upstream
-  bumps); the
-  mochitest checks only the id and `enabled`.
+  bumps); the mochitest checks only the id and `enabled`.
 - **Build cost**: after `npm run import`, `./mach build` with `--disable-crashreporter` took
   1763 s (29 min, reconfigure plus a large C++/Rust rebuild); no clobber. Prefs in the branding
   file alone need no build in a local tree (`dist/bin` symlinks it); `surfer build --ui` is not

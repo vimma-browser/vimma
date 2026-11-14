@@ -4,14 +4,13 @@
 # the release: release-please tags vX.Y.Z and creates the GitHub Release as a draft, and
 # release-build starts release.yml, which uploads the packages to that draft; the maintainer
 # publishes it. Config:
-# release-please-config.json, .release-please-manifest.json; setup in docs/runbook/ci-releases.md
-# (Releases). The version's single source of truth is surfer.json
-# brands.vimma.release.displayVersion, bumped through extra-files; the Firefox pin (version.version)
-# is never touched. Two post-steps name the Firefox the release is built on (spec firefox-versions):
-# firefox-notes puts it in the release PR's CHANGELOG.md heading, release-title in the release's
-# title and notes. They also carry the hand-written [Unreleased] lines into the release (issue
-# #529): firefox-notes moves them into the release PR's entry, release-title adds them to the
-# release's notes.
+# release-please-config.json, .release-please-manifest.json; setup in docs/runbook/ci-releases.md (Releases).
+# The version's single source of truth is surfer.json brands.vimma.release.displayVersion,
+# bumped through extra-files; the Firefox pin (version.version) is never touched.
+# Two post-steps name the Firefox the release is built on (spec firefox-versions): firefox-notes
+# puts it in the release PR's CHANGELOG.md heading, release-title in the release's title and notes.
+# They also carry the hand-written [Unreleased] lines into the release (issue #529): firefox-notes
+# moves them into the release PR's entry, release-title adds them to the release's notes.
 name: release-please
 
 on:
@@ -182,11 +181,11 @@ jobs:
 
   # Starts release.yml for the draft release-please just created, so its packages are built,
   # signed and uploaded while it is still a draft and publishing it is one click on a finished
-  # release (docs/runbook/ci-release-packages.md, "Release packages"). A draft fires no `release`
-  # event and a GITHUB_TOKEN tag push starts no workflow, but GITHUB_TOKEN may dispatch one; the
-  # dispatch names main, so release.yml runs from main, the identity its signatures carry. It runs
-  # no repository code. If it fails or never runs, the same dispatch by hand is the recovery: gh
-  # workflow run release.yml -f tag=vX.Y.Z.
+  # release (docs/runbook/ci-release-packages.md, "Release packages"). A draft fires no `release` event and a
+  # GITHUB_TOKEN tag push starts no workflow, but GITHUB_TOKEN may dispatch one; the dispatch
+  # names main, so release.yml runs from main, the identity its signatures carry. It runs no
+  # repository code. If it fails or never runs, the same dispatch by hand is the recovery:
+  # gh workflow run release.yml -f tag=vX.Y.Z.
   release-build:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true' && vars.RELEASE_ENABLED == 'true'
@@ -213,10 +212,9 @@ jobs:
   # ruleset is satisfied and no person stands between the bump and the release. It runs after
   # firefox-notes so the pinned head already carries that job's changelog commit. Every check is
   # in tools/release/security-release.mjs decide(); off until AUTO_SECURITY_RELEASE is `true`
-  # (docs/runbook/ci-releases.md, Releases). Reads and the merge go through the release-please
-  # token: a merge made with GITHUB_TOKEN would push to main without starting release-please.yml, so
-  # no release would follow. GITHUB_TOKEN only checks out main's code; the release branch is read as
-  # data.
+  # (docs/runbook/ci-releases.md, Releases). Reads and the merge go through the release-please token: a merge
+  # made with GITHUB_TOKEN would push to main without starting release-please.yml, so no release
+  # would follow. GITHUB_TOKEN only checks out main's code; the release branch is read as data.
   security-release:
     needs: [release-please, firefox-notes]
     if: github.repository == 'vimma-browser/vimma' && github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_SECURITY_RELEASE == 'true'

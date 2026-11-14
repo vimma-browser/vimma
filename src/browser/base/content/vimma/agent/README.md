@@ -20,7 +20,7 @@ the connection; it uses `ctl/VimmaControl.sys.mjs` for the connection itself. `A
 uses `ctl/VimmaControl.sys.mjs` and `ctl/AgentDownloads.sys.mjs` for the CLIs it starts.
 
 **Security:**
-[docs/security/12-agents-built-in-agent.md](../../../../../../docs/security/12-agents-built-in-agent.md)
+[docs/security/12-agents-mcp-built-in-agent.md](../../../../../../docs/security/12-agents-mcp-built-in-agent.md)
 section 12, "The built-in agent".
 
 **Read more:** [builtin-agent](../../../../../../docs/specs/builtin-agent.md),

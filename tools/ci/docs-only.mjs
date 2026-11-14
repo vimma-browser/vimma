@@ -4,9 +4,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Is this pull request docs-only? (Issue #245, docs/runbook/ci-docs-only-pull-requests.md
-// "Docs-only pull requests".) ci.yml and e2e.yml skip their heavy steps and jobs on a docs-only
-// pull request with `if:`, not with a workflow `paths` filter: a required check whose workflow
-// never runs blocks the merge, while a job or step skipped by `if:` reports success.
+// "Docs-only pull requests".)
+// ci.yml and e2e.yml skip their heavy steps and jobs on a docs-only pull request
+// with `if:`, not with a workflow `paths` filter: a required check whose workflow never runs
+// blocks the merge, while a job or step skipped by `if:` reports success.
 //
 //   node tools/ci/docs-only.mjs --event <event> --base <sha> --head <sha>
 //       prints why, and appends docs-only=true|false to $GITHUB_OUTPUT when it is set

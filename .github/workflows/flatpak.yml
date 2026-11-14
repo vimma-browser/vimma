@@ -1,11 +1,10 @@
 # Spec flatpak: build Vimma's Flatpak with flatpak-builder from a release tarball, install it and
 # run it, as Flathub's builder would build the manifest (tools/package/flatpak.mjs). Nothing is
-# published: the Flatpak is not distributed until it is submitted to Flathub
-# (docs/runbook/ci-flatpak.md, "Flatpak"). Pull requests that change the packaging build a stub
-# tarball; a published release is built from its public download URL, pinned to the SHA-256 in its
-# SHA256SUMS and, with signing on, after SHA256SUMS's signature is checked against release.yml's
-# identity. No job holds a secret or more than a read-only token. Retry: gh workflow run flatpak.yml
-# -f tag=vX.Y.Z.
+# published: the Flatpak is not distributed until it is submitted to Flathub (docs/runbook/ci-flatpak.md,
+# "Flatpak"). Pull requests that change the packaging build a stub tarball; a published release
+# is built from its public download URL, pinned to the SHA-256 in its SHA256SUMS and, with signing
+# on, after SHA256SUMS's signature is checked against release.yml's identity. No job holds a
+# secret or more than a read-only token. Retry: gh workflow run flatpak.yml -f tag=vX.Y.Z.
 name: flatpak
 
 on:

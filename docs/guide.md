@@ -128,8 +128,7 @@ The `.deb`, the `.rpm` and the Arch Linux package add Vimma to your application 
 but never make it your default browser on their own
 ([Making Vimma your default browser](#making-vimma-your-default-browser)). Next to the files are `SHA256SUMS`, a CycloneDX SBOM
 (`vimma-X.Y.Z.cdx.json`) and cosign signatures (`*.sigstore.json`); how to check them is in
-[runbook.md](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify
-a release").
+[runbook.md](runbook/ci-release-packages.md#release-packages-releaseyml-spec-m6-packaging) ("Verify a release").
 
 **Updating.** Install the newer release the way you installed this one: on Arch Linux, run the
 install command again; otherwise, install the newer `.deb`, `.rpm`, AppImage or
@@ -2077,8 +2076,7 @@ limit at about 90 seconds a step, and a 35B mixture-of-experts model completed t
 in a run of 35 steps and 17 minutes. The bench ran no model on a GPU and no hosted model,
 so it says nothing about them. To measure your own model on the same ten lists and local shop,
 run the bench from a checkout of the repository with a Vimma build and Xvfb
-([runbook](runbook/testing.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with
-the
+([runbook](runbook/testing.md#the-agent-model-bench-npm-run-agent-bench-spec-builtin-agent)), with the
 endpoint and model of your server:
 
 ```sh

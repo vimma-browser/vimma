@@ -15,9 +15,8 @@ called by `vimma.js`; `runAgentCommand`, which the built-in agent calls too;
 exception.
 
 **Security:** this folder is a trust boundary. Read
-[docs/security/](../../../../../../docs/security/README.md)
-sections 1 and 12 before changing it; a change gets a separate security review, as does one to
-the gate in `host/`.
+[docs/security/](../../../../../../docs/security/README.md) sections 1 and 12 before changing it; a
+change gets a separate security review, as does one to the gate in `host/`.
 
 **Read more:** [An agent's call](../../../../../../docs/architecture/agent-call.md),
 [ADR-019](../../../../../../docs/adr/019-agents-over-mcp.md), [vimma-mcp](../../../../../../docs/specs/vimma-mcp.md).

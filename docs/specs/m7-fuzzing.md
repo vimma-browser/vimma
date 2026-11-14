@@ -26,8 +26,7 @@ routing parsers"), and two more that take the same kind of text:
 | Omarchy `colors.toml` and theme CSS (theme.mjs)                                              | theme authors                           | `test/fuzz/theme.fuzz.test.mjs`           |
 
 Out of scope: Gecko's own parsers (docs/security/11-out-of-scope-and-trust-boundaries.md § Out of
-scope), and the browser-side glue
-that only passes these parsers' results on.
+scope), and the browser-side glue that only passes these parsers' results on.
 
 ## Properties
 

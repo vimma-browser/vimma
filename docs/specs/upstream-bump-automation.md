@@ -275,8 +275,7 @@ artifact (the same conflicts list the PR body carries), finds an open issue with
 ## Security and privacy
 
 The change adds write paths, so `docs/security/10-firefox-updates.md` section 10 gains guarantees
-(numbered after
-the existing G1 to G10) with their tests:
+(numbered after the existing G1 to G10) with their tests:
 
 - Auto-merge is enabled only by `publish` on `main`'s code, only for a non-draft PR whose diff
   passes `bump-diff.mjs`, only with `--match-head-commit`, and only when `AUTO_MERGE_UPSTREAM`

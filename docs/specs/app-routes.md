@@ -323,8 +323,8 @@ Today none of these paths names the right program:
   reads the same attribute.
 - **`vimma-ctl open`** (`tools/vimma-ctl/src/cli.rs:143-147`) opens a URL through the control
   socket. The socket is off by default (docs/security/01-control-socket.md S1), needs the `full`
-  role, and while MCP
-  is on every new `full` connection waits for a `y/N` (S13), so a link would ask each time.
+  role, and while MCP is on every new `full` connection waits for a `y/N` (S13), so a link would ask
+  each time.
 - **One browser registration per workspace** (a desktop file, or on macOS an app bundle, per
   workspace). An app's links follow the system default browser, so this changes the workspace of
   every app at once, which is the problem itself.
@@ -665,8 +665,7 @@ macOS app ─ kAEGetURL ─▶ openURLs: (patch) ─▶ -vimma-from N, or VIMMA_
   be an overridden sender (`:217`); the names are filtered to the token alphabet in native code and
   checked again by `parseAppList`, so no name can carry a comma, a flag or a newline into the
   command line.
-- **docs/security/02-workspace-routing.md.** §2 "Workspace routing": R4 becomes "the names
-  (`-vimma-from`, `VIMMA_FROM`)
+- **docs/security/02-workspace-routing.md.** §2 "Workspace routing": R4 becomes "the names (`-vimma-from`, `VIMMA_FROM`)
   are at most eight tokens of at most 64 characters each, and only select a workspace a rule
   names"; new R7: "a link that arrives as an Apple Event is named only by its sender, when that is
   a running app; an inherited `VIMMA_FROM` never names it; any launch whose URL is an argument

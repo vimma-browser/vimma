@@ -11,8 +11,8 @@ is the maintainer's guide to the same jobs and to what to do when the bump stops
 the behaviour is in [m7-upstream-autopilot](../specs/m7-upstream-autopilot.md) and
 [upstream-bump-automation](../specs/upstream-bump-automation.md); the rules with their tests are G1
 to G15 in [docs/security/10-firefox-updates.md](../security/10-firefox-updates.md) §10; setup and
-switches are in
-[docs/runbook/ci-upstream-bumps.md](../runbook/ci-upstream-bumps.md), "Upstream bumps".
+switches are in [docs/runbook/ci-upstream-bumps.md](../runbook/ci-upstream-bumps.md), "Upstream
+bumps".
 
 ```mermaid
 sequenceDiagram

@@ -458,9 +458,8 @@ Numbered decisions, each with its reason and the alternatives rejected.
 - **Why only the field:** the minimal bar is for typing an address. While the toolbar is hidden
   the status bar already shows the page's address with its registrable domain, `not secure`,
   `private` and the devices in use (decision 12, `docs/security/06-chrome-ui-rendering.md` C3), so
-  the identity chrome
-  around the field would repeat it. A prompt or a panel hanging from those icons asks for the
-  prompt bar (7b), where they show.
+  the identity chrome around the field would repeat it. A prompt or a panel hanging from those icons
+  asks for the prompt bar (7b), where they show.
 - **How:**
   - The items of `#nav-bar` outside `#urlbar-container` get `visibility: hidden`, not collapse
     or `display: none`: they keep their boxes, so `#urlbar-container` sits exactly where it sits
@@ -506,8 +505,7 @@ Numbered decisions, each with its reason and the alternatives rejected.
   focus on one of those icons (b), and a press on the bar while it shows (h).
 - **Why:** a prompt must hang from its icon next to the site's identity and address, as in
   Firefox (decision 11, `docs/security/06-chrome-ui-rendering.md` C3), so the bar shows that
-  attribution exactly while a
-  prompt or the identity panel is up.
+  attribution exactly while a prompt or the identity panel is up.
 - **Rejected:** the full toolbar for prompts, because a prompt needs none of its buttons and a
   larger reveal is a larger target for a page that times one (Security and privacy).
 
@@ -674,11 +672,11 @@ buttons`), shows once the prompt is armed and hides while it is not, as the agen
       `nsIMediaManagerService` states, 1 capturing and 2 paused), priority 2, in
       `--vimma-text-error`. Only the selected tab is read: background tabs, the other pane of a
       split and Firefox's grace period after a stream ends are not shown
-      (docs/security/06-chrome-ui-rendering.md C3). Firefox
-      marks these on the address bar's sharing icons and on the tab; Vimma hides both the tab
-      strip and, here, the address bar. Read from the tab's sharing state
-      (`browser._sharingState`), as `gPermissionPanel.updateSharingIndicator` reads it. `http://` is no longer dropped by `displayUrl` for an `http:`
-      page: the scheme is part of the warning.
+      (docs/security/06-chrome-ui-rendering.md C3). Firefox marks these on the address bar's sharing
+      icons and on the tab; Vimma hides both the tab strip and, here, the address bar. Read from the
+      tab's sharing state (`browser._sharingState`), as `gPermissionPanel.updateSharingIndicator`
+      reads it. `http://` is no longer dropped by `displayUrl` for an `http:` page: the scheme is
+      part of the warning.
     - **Toolbar shown:** the bar is exactly as today, with the same inputs and no new segments.
       This keeps every existing screenshot baseline unchanged.
 13. **Never unable to type an address.**

@@ -13,9 +13,9 @@
  * around the pages and fields on --vimma-bg, borders --vimma-muted, the accent the normal-mode
  * badge's pair. The pages themselves are the document's (decision 12). The colour scheme follows
  * the theme, so a token left alone takes its own light or dark value. Under prefers-contrast and
- * forced colours pdf.js's own high-contrast colours stay. !important: pdf.js sets several of these
- * again inside @media -moz-pref() blocks, which come later in its sheet than this one is ordered.
- * */
+ * forced colours pdf.js's own high-contrast colours stay.
+ * !important: pdf.js sets several of these again inside @media -moz-pref() blocks, which come
+ * later in its sheet than this one is ordered. */
 
 /* pdf.js's sidebar (thumbnails, outline, attachments, layers) and its toggle: Vimma's outline
  * panel is the outline (decision 18). The pref pdfjs.sidebarViewOnLoad = 0 keeps pdf.js from

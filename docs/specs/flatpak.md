@@ -203,8 +203,7 @@ nothing to replace` (the Flatpak among them).
 
 ## Docs and changelog
 
-`docs/runbook/ci-flatpak.md`, "Flatpak": what CI builds and how to submit to Flathub.
-`docs/security/14-build-and-release-supply-chain.md`,
+`docs/runbook/ci-flatpak.md`, "Flatpak": what CI builds and how to submit to Flathub. `docs/security/14-build-and-release-supply-chain.md`,
 B12. `docs/guide.md` and `docs/limits.md` change with sub-PR 2, when users can install it.
 Changelog: `ci: build and run a Flatpak of each release (not yet on Flathub)`.
 

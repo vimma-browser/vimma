@@ -35,6 +35,5 @@ Vimma is maintained by one person in their own time, so these are aims, not guar
 ## Security model
 
 [docs/security/](docs/security/README.md) lists, for each risky part of Vimma, what it may do, what
-it
-must never do, who can reach it, and the tests that enforce each rule. A report that one of
-those rules does not hold is always in scope.
+it must never do, who can reach it, and the tests that enforce each rule. A report that one of those
+rules does not hold is always in scope.

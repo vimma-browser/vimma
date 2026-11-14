@@ -6,10 +6,10 @@
 # Checks the Firefox source tarball a local `npx surfer download` left in .surfer/engine/ against
 # Mozilla's signed SHA512SUMS (verify-sha512.py, ADR-021,
 # docs/security/14-build-and-release-supply-chain.md B1), and records the verified version and hash
-# in engine/.git/vimma-source-verified. Surfer checks no hash or signature, and a contributor's
-# engine/ keeps Surfer's git history, which lanes and restore-patched rely on, so local setup keeps
-# `surfer download` and verifies afterwards; CI and the builds use firefox-source.sh, which verifies
-# before extracting.
+# in engine/.git/vimma-source-verified. Surfer checks no
+# hash or signature, and a contributor's engine/ keeps Surfer's git history, which lanes and
+# restore-patched rely on, so local setup keeps `surfer download` and verifies afterwards; CI and
+# the builds use firefox-source.sh, which verifies before extracting.
 #
 #   npm run verify-source      from the repository root, after `npx surfer download`
 #   verify-source.sh --require  the first step of `npm run import`: refuses an engine/ that was

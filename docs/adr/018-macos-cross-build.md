@@ -58,8 +58,7 @@ tools for such a build.
   (docs/security/14-build-and-release-supply-chain.md, B14).
 - A cold cross build takes about 2 hours 15 minutes on a 4-CPU runner (133 minutes measured,
   `docs/runbook/ci-macos-build.md`, "macOS build"). If it grows past 4 hours, it moves to a larger
-  hosted Linux runner together with the
-  Linux release (build-supply-chain, decision 6).
+  hosted Linux runner together with the Linux release (build-supply-chain, decision 6).
 - An ad hoc app proves nothing about who built it. Gatekeeper refuses it at first start until the
   user allows it under System Settings → Privacy & Security → Open Anyway. A Developer ID release
   opens without that step. Platform passkeys, which need restricted entitlements and a

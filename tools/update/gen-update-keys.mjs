@@ -47,7 +47,7 @@ export function readCertificates(dir) {
     }
     const key = cert.publicKey;
     // The updater reads only the key, but a certificate the key did not sign is not the one the
-    // ceremony made (docs/runbook/ci-update-signing-keys-and-the-update-host.md step 5b).
+    // ceremony made (docs/runbook/ci-update-keys-and-update-host.md step 5b).
     if (!cert.verify(key)) {
       throw new Error(`${file}: not self-signed by its own key`);
     }
@@ -72,7 +72,7 @@ const HEADER = `/* This Source Code Form is subject to the terms of the Mozilla 
  * §6), each as base64 DER SubjectPublicKeyInfo with its id, the first 8 hex digits of the SPKI's
  * SHA-256. Signatures are RSASSA-PKCS1-v1_5 with SHA-384. updates.test.mjs checks each entry
  * (RSA-4096, the id matches, one key per slot) and the primary's SHA-256 against the one
- * recorded in docs/runbook/ci-update-signing-keys-and-the-update-host.md ("Update signing keys").
+ * recorded in docs/runbook/ci-update-keys-and-update-host.md ("Update signing keys").
  *
  * The primary is the Google Cloud KMS key update-primary (key ring vimma-updates, version 1,
  * RSA_SIGN_RAW_PKCS1_4096 in an HSM). Until the offline key ceremony makes the secondary

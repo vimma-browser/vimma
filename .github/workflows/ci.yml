@@ -67,8 +67,7 @@ jobs:
         run: node tools/ci/tree-covered.mjs
 
       # The squash commit's message is new on main (release-please builds the changelog from it,
-      # docs/runbook/ci-releases.md "Releases"), so lint it here when the check job below does not
-      # run.
+      # docs/runbook/ci-releases.md "Releases"), so lint it here when the check job below does not run.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.tree.outputs.skip == 'true'
         with:

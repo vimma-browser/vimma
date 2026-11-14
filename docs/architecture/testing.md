@@ -145,8 +145,7 @@ a hosted Mac it runs `npm test` and the same suite, without `vimma-ctl` (so
 docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"), then
 `npm run mochitest -- --artifact tests/browser/browser_vimma_<name>.js`. A suspected race: the
 same file with `--repeat=N` on two busy CPUs (docs/runbook/testing.md, "Mochitests that send keys to
-a
-page").
+a page").
 
 **Time limit.** The harness stops a file after 45 s, and the rest of the suite with it. A file
 that runs about 15 s on a quiet runner can pass that on a loaded machine, so heavy pages get

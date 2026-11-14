@@ -762,8 +762,7 @@ Written first and seen to fail.
 - **README**: a feature line, "live grep: search the text of every tab in your workspace and jump
   to the match, like Telescope's `live_grep`".
 - **`docs/security/15-live-grep.md`**: §15, rules L1 to L8: the grep messages between the parent and
-  content
-  processes, what the parent accepts from a reply, the private and agent boundaries, and the
+  content processes, what the parent accepts from a reply, the private and agent boundaries, and the
   worker that matches recently closed titles and URLs, each with its test.
 - **`docs/bindings.md`, `bindings.json`, `defaults.toml`**: regenerated with `npm run gen-docs`.
 - **`CHANGELOG.md` [Unreleased]**: "Live grep: `ctrl+b f g` and `:grep` search the text of the

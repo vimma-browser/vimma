@@ -2,11 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Security: docs/security/12-agents.md M62 (issue #1018). What the agent gate keeps from a caller,
-// and what it hands to a reader (its getters, its listeners' events), is its own frozen copy: a
-// caller that changes its request after asking, or a module that changes a label, a question or a
-// log row it read, changes neither what the question shows, what the answer is checked against, nor
-// `:mcp log`.
+// Security: docs/security/12-agents-mcp.md M62 (issue #1018). What the agent gate keeps from a
+// caller, and what it hands to a reader (its getters, its listeners' events), is its own frozen
+// copy: a caller that changes its request after asking, or a module that changes a label, a
+// question or a log row it read, changes neither what the question shows, what the answer is
+// checked against, nor `:mcp log`.
 
 "use strict";
 

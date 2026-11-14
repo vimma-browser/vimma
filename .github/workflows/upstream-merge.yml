@@ -1,7 +1,7 @@
-# Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md
-# G13 and G14. Sets the upstream autopilot's bump PR to auto-merge only once every workflow the PR
-# started has finished green, not only the checks the main ruleset requires: the macOS mochitests,
-# vimma-ctl on macOS and the package checks hold the merge too.
+# Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md G13 and G14.
+# Sets the upstream autopilot's bump PR to auto-merge only once every workflow the PR started has
+# finished green, not only the checks the main ruleset requires: the macOS mochitests, vimma-ctl
+# on macOS and the package checks hold the merge too.
 #
 # Runs each time one of those workflows completes (workflow_run, so main's copy of this file runs,
 # never the branch's) and reads the head's runs and checks again; the last one to finish decides.

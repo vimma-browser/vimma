@@ -143,7 +143,7 @@ two-shop scenario.
    (Since changed: `a` is also neither offered nor applied for a form with a value cut to fit,
    the pressed button's and each chosen option's included, longer than the 1024 characters the
    child reads, as for the rest of what K3 counts as not known whole, because an allowance must
-   not rest on a form Vimma did not read whole; docs/security/12-agents.md M28,
+   not rest on a form Vimma did not read whole; docs/security/12-agents-mcp.md M28,
    [#891](https://github.com/vimma-browser/vimma/issues/891).)
 6. **The pay words are only an extra signal (K6),** because a word list can never be complete,
    so it may add a question but never decide that a step is harmless. Card fields shown in any
@@ -165,10 +165,9 @@ one button on one site. What limits it:
 | **A page trains `a` on a harmless button, then reuses its destination for a consequential form.** | The allowance is checked on every click against K2's secrets and payment signals, and a different button text or path asks again; free text and identity fields under an allowed button are what `a` allows for that one button, by the answer on its question. |
 | **An allowance outlives the task.**                                                               | It ends with the grant and the connection, and is held in memory only.                                                                                                                                                                                          |
 
-`docs/security/12-agents.md` M28 changes: a click that submits a form must ask under a grant when it
-is
-consequential (K2, K3) or not covered by an allowance (K5), and an unasked submission is the only
-one the guard lets through; M33 gains that its question never offers `a`.
+`docs/security/12-agents-mcp.md` M28 changes: a click that submits a form must ask under a grant
+when it is consequential (K2, K3) or not covered by an allowance (K5), and an unasked submission is
+the only one the guard lets through; M33 gains that its question never offers `a`.
 
 ## Tests
 
@@ -206,7 +205,7 @@ never offers a`, the allowance's notice and log outcome, the new grant notice.
 
 - `docs/guide.md`, "Checkpoints: sending a form and paying": which forms ask under a grant, and
   the `a` key.
-- `docs/security/12-agents.md` M28 and M33.
+- `docs/security/12-agents-mcp.md` M28 and M33.
 - `CHANGELOG.md`: written by release-please from the commit.
 
 ## Delivery

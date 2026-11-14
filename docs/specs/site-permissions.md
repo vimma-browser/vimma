@@ -147,10 +147,9 @@ settings`, because, as in Page Info, no single state describes them.
 
 The picker changes what a site may do (camera, microphone, location, notifications), so it is
 in `docs/security/19-site-permissions.md` §19 (rules SP1 to SP5). Only you reach it, with `:site` or
-a key you
-bind. No control-socket or MCP command reaches it, and agent keys cannot. It shows only the
-selected page's permissions, which the site information panel shows already, and stores
-nothing of its own.
+a key you bind. No control-socket or MCP command reaches it, and agent keys cannot. It shows only
+the selected page's permissions, which the site information panel shows already, and stores nothing
+of its own.
 
 ## Tests
 

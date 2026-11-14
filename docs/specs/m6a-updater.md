@@ -44,9 +44,8 @@ restarts on its own.
 - Vimma has no updater. `configs/common/mozconfig` builds with `--disable-updater` (m0-updater),
   so an install stays on the Firefox it shipped with until its owner downloads a new release by
   hand. A Firefox security fix that `main` carries within the deadline
-  `docs/security/10-firefox-updates.md` G2 sets
-  (3 days after a security dot release, 7 after a major) does not reach anyone who installed
-  earlier.
+  `docs/security/10-firefox-updates.md` G2 sets (3 days after a security dot release, 7 after a
+  major) does not reach anyone who installed earlier.
 - Turning the updater back on as Firefox ships it is unsafe for Vimma: a build on the `vimma`
   channel embeds Mozilla's test-signing certificates (Research, "Which certificates"), and the URL
   points at Mozilla's `aus5.mozilla.org`.
@@ -634,9 +633,9 @@ result.)
 (Since changed: sub-PR 4 signs the MAR in `update-publish.yml`'s `mar-sign` job, which
 `release.yml` calls as a reusable workflow, not in an `update-sign` job of `release.yml`,
 because a called job's OIDC token names the called file, so the Workload Identity condition that
-admits `update-publish.yml` on `main` alone
-(docs/runbook/ci-update-signing-keys-and-the-update-host.md, step 7b) admits it unchanged and
-the key gains no new workflow; the job runs no repository code, as the manifest's `sign` does.
+admits `update-publish.yml` on `main` alone (docs/runbook/ci-update-keys-and-update-host.md, step
+7b) admits it unchanged and the key gains no new workflow; the job runs no repository code, as the
+manifest's `sign` does.
 The MAR is built in `package`, not `build`, from the release tarball, because `package` adds
 `vimma-ctl` to that tarball after the build and the MAR must install what the tarball does; the
 build hands over its host `mar`, Mozilla's `make_full_update.sh` and `signmar`
@@ -653,13 +652,12 @@ manifest's `<patch>` follows the release's `SHA256SUMS`, so a release from befor
 its manifest. The nightly sets its channel with `tools/update/channel.mjs` rather than
 `package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
 packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
-none until public nightly releases (decision 23).
-docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys and the
-update host", step 8; docs/security/16-update-check.md UP14. The `nightly` tag is made once and
-never moved, because GitHub may refuse `GITHUB_TOKEN` a
-ref update that brings in workflow changes; the release notes name each build's commit. Besides
-the previous build, the files of the build the published nightly manifest offers stay too, so a
-failed manifest step never leaves installs with a MAR that is gone.)
+none until public nightly releases (decision 23). docs/runbook/ci-update-keys-and-update-host.md,
+"Update signing keys and the update host", step 8; docs/security/16-update-check.md UP14. The
+`nightly` tag is made once and never moved, because GitHub may refuse `GITHUB_TOKEN` a ref update
+that brings in workflow changes; the release notes name each build's commit. Besides the previous
+build, the files of the build the published nightly manifest offers stay too, so a failed manifest
+step never leaves installs with a MAR that is gone.)
 
 (Since changed: the release manifest is published by a workflow of its own,
 `update-publish.yml`, on `release: released`, because a release has no MAR until sub-PR 2 and
@@ -672,9 +670,8 @@ code) and `publish`, whose deploy key is `UPDATES_DEPLOY_KEY` in the environment
 rather than `SITE_DEPLOY_KEY` in `update-site`, names that cannot be confused with
 `vimma-browser/vimma-site`'s. The urgency also counts a `fix(security)` commit and any pull
 request with the `security` label, because a Vimma security fix needs the same prompt restart as
-a Firefox one. docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys and
-the update host", step 7, and
-docs/security/16-update-check.md UP7.)
+a Firefox one. docs/runbook/ci-update-keys-and-update-host.md, "Update signing keys and the update
+host", step 7, and docs/security/16-update-check.md UP7.)
 
 - **Urgency** is computed in `update-sign` by `tools/update/urgency.mjs`: the release is urgent
   when any commit since the previous tag is an `upstream: firefox <version>` bump whose PR carried
@@ -812,8 +809,8 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     `rsa-sign-raw-pkcs1-{2048,3072,4096}`), while the manifest (`SIGNATURE_ALGORITHM` in
     `updates.mjs`) and the MAR (§2) both need SHA-384. The signer hashes with SHA-384 itself and
     sends KMS the DER DigestInfo, so the result is a standard RSASSA-PKCS1-v1_5 SHA-384
-    signature; `docs/runbook/ci-update-signing-keys-and-the-update-host.md`, "Update signing keys
-    and the update host", steps 3 and 6.)
+    signature; `docs/runbook/ci-update-keys-and-update-host.md`, "Update signing keys and the update
+    host", steps 3 and 6.)
 17. **The maintainer generates the cold secondary once, on an offline machine, and keeps its
     private half offline** (paper or a USB stick in a safe), because the secondary matters only
     when the primary is lost or leaked, and an offline copy held by the one person who already
@@ -1243,8 +1240,7 @@ Written first and seen to fail.
   Firefox's own background connections that crash a browser run with
   `MOZ_DISABLE_NONLOCAL_CONNECTIONS` (the address bar's speculative connection, the media plugin
   check at aus5.mozilla.org) are turned off in the scenario's profile; docs/runbook/testing.md,
-  "Updater
-  scenarios".)
+  "Updater scenarios".)
 
 - **Security rehearsal (M6a exit test 2; runs after the release gate lifts, decision 23)**: with
   `AUTO_MERGE_UPSTREAM=all` (spec upstream-bump-automation), `AUTO_SECURITY_RELEASE=true` (spec
@@ -1257,10 +1253,9 @@ Written first and seen to fail.
   (Since changed: until the rehearsal runs, the install side of it is checked by hand after a
   release: the previous release's tarball and AppImage, from its GitHub Release, take the
   published release from `updates.vimma.dev` with the real update key and keep their profile;
-  docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Checking an update on real installs".
-  The rehearsal itself, the release chain
-  with no person acting and a scheduled job that installs and checks the previous release, is
-  still to be run.)
+  docs/runbook/ci-update-keys-and-update-host.md, "Checking an update on real installs". The
+  rehearsal itself, the release chain with no person acting and a scheduled job that installs and
+  checks the previous release, is still to be run.)
 
 ## Docs and changelog
 
@@ -1272,12 +1267,11 @@ Written first and seen to fail.
   "config.toml" gains `[updates]` in "What applies live" and "Schema". `docs/bindings.md` is
   regenerated (`npm run gen-docs`) for the two actions.
 - `docs/runbook/ci-release-packages.md`, "Release packages": the key ceremony and where the public
-  DERs and their
-  hashes are; the chosen key option's setup (environment, OIDC/IAM or secret); `UPDATES_ENABLED`;
-  `SITE_DEPLOY_KEY` (a deploy key with write on the manifest repository only); rotation and the
-  leaked-key procedure; how to pull a bad update (decision 22): publish a newer serial with an
-  empty `<updates/>` through `workflow_dispatch` of `update-publish.yml` (committing the previous
-  `update.xml` again does not work, because the replay rule refuses its older serial).
+  DERs and their hashes are; the chosen key option's setup (environment, OIDC/IAM or secret);
+  `UPDATES_ENABLED`; `SITE_DEPLOY_KEY` (a deploy key with write on the manifest repository only);
+  rotation and the leaked-key procedure; how to pull a bad update (decision 22): publish a newer
+  serial with an empty `<updates/>` through `workflow_dispatch` of `update-publish.yml` (committing
+  the previous `update.xml` again does not work, because the replay rule refuses its older serial).
 - `docs/security/`: the update trust chain and the compromise table above.
 - `docs/limits.md`: no partial MARs; `.deb` has no apt repository; the AppImage keeps its file
   name.

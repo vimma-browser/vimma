@@ -421,8 +421,7 @@ selected pages, and fail the PR when a check that passed on the recording fails.
 ## Docs to update
 
 - `docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget": one paragraph for
-  `sites.yml` (≈ 15-20 min a
-  night, free, never on PRs).
+  `sites.yml` (≈ 15-20 min a night, free, never on PRs).
 - `CONTRIBUTING.md`: `npm run sites` under the test commands.
 - `docs/security/`: the site workflow's issue writes and how untrusted page text is written
   into the issue (sub-PR 2).

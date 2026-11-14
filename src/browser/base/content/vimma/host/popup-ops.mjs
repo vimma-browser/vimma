@@ -54,7 +54,7 @@ const gBrowserOf = (win) => win.gBrowser;
 
 /**
  * Whether the selected tab is in the agent workspace, whose pages get no permissions
- * (docs/security/12-agents.md M10).
+ * (docs/security/12-agents-mcp.md M10).
  * @param {BrowserWindow} win
  */
 export function inAgentTab(win) {

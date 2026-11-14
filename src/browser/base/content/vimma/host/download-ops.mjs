@@ -140,7 +140,7 @@ function aboutOf(win, d) {
   const about = {
     key,
     // The test AgentDownloads applies to every download: its container, its tab's, or the
-    // quarantine folder (docs/security/12-agents.md M11). Asked before vimma.js provides it, it
+    // quarantine folder (docs/security/12-agents-mcp.md M11). Asked before vimma.js provides it, it
     // calls every download an agent's, which the picker refuses to open.
     agent: !!HostServices.isAgentDownload(d),
     workspace: workspaceOf(win, d),

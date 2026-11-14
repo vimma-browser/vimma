@@ -166,7 +166,7 @@ _Pages_ and _extensions_ cannot reach it.
   `vimma-updates`, kept in the `update-publish` environment (deployment branch `main` alone),
   reached only by the push step, to a pinned github.com host key, and **never** forced; nothing is
   pushed unless `UPDATES_ENABLED` is `true`. **⚠ setting:** the environments' branch rules and the
-  Workload Identity condition on `job_workflow_ref` (docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Update signing keys and
+  Workload Identity condition on `job_workflow_ref` (docs/runbook/ci-update-keys-and-update-host.md, "Update signing keys and
   the update host", step 7) are what keep another branch or workflow away from the key; the
   workflow's own `refs/heads/main` guard only stops accidental runs. The signing job also
   refuses a serial outside the last hour, and a dry run's real signature is kept one day, as a
@@ -548,7 +548,7 @@ _Pages_ and _extensions_ cannot reach it.
 **Key custody** (spec §6, decisions 16 and 17): the primary manifest key is a non-exportable
 Google Cloud KMS key that only `update-publish.yml`'s signing jobs on `main`, in the `update-signing` environment, can
 ask to sign, through GitHub OIDC: `sign` and `nightly-sign` for manifests (UP7) and `mar-sign`, called by `release.yml` and `nightly.yml`, for MARs (UP14); the secondary is to be generated and kept offline by the maintainer (not made yet). Their
-setup is in [runbook.md](../runbook/ci-update-signing-keys-and-the-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
+setup is in [runbook.md](../runbook/ci-update-keys-and-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by
 [`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.mjs));

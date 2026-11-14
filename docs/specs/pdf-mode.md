@@ -539,17 +539,16 @@ find: { current, total } }`), sent to the parent on the viewer's events.
     stay bounded. Marks are shared by every workspace of a window kind, because a mark is a
     reading position the user set and tells no page anything; a private window's are its own. Reason: marks are reading positions, and Vimma keeps what it learns about a page in
     memory, as live grep keeps page text (`docs/security/15-live-grep.md` §15). In the private
-    workspace marks
-    live with its windows and go when it closes. zathura saves marks and its jump list per file;
-    Vimma does not, because saving them would keep a list of the PDFs read in the profile, a
-    history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF at its
-    page. Rejected: marks saved per PDF URL in the profile, for that reason. (Since changed: `'x`
-    records the history entry and scrolls to the destination itself, with
+    workspace marks live with its windows and go when it closes. zathura saves marks and its jump
+    list per file; Vimma does not, because saving them would keep a list of the PDFs read in the
+    profile, a history Vimma keeps nowhere else, and Firefox's session restore already reopens a PDF
+    at its page. Rejected: marks saved per PDF URL in the profile, for that reason. (Since changed:
+    `'x` records the history entry and scrolls to the destination itself, with
     `pdfHistory.pushCurrentPosition`, `pdfHistory.push` and `pdfViewer.scrollPageIntoView`, as
-    `goToDestination` does, because `goToDestination` also focuses the page's text layer once it
-    has rendered, and on a busy viewer that focus came after the next key and scrolled the view
-    back to the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set,
-    which is meant for a document's links.)
+    `goToDestination` does, because `goToDestination` also focuses the page's text layer once it has
+    rendered, and on a busy viewer that focus came after the next key and scrolled the view back to
+    the mark. A mark comes back at its zoom even with `pdfjs.ignoreDestinationZoom` set, which is
+    meant for a document's links.)
 12. **Pages are shown as the document draws them.** Vimma does not recolour PDF pages: it adds no
     filter or style to the viewer and sets no `pdfjs.*` colour pref, and `ctrl+r` keeps its
     meaning, reload (decision 5). Reason: a document's colours are its content (figures,
@@ -746,8 +745,7 @@ the adapter touches.
 >   when its tab navigates or closes. `pdf_marks_and_outlines_are_not_written`
 
 (Since changed: decisions 18 to 20 change V7, V8 and V10 and add V12;
-`docs/security/20-pdf-viewer.md`
-section 20 has the rules as they stand.)
+`docs/security/20-pdf-viewer.md` section 20 has the rules as they stand.)
 
 Section 13's page-mode rules apply unchanged. The PR that adds the adapter and the PR that adds
 the outline panel each get a review by a fresh agent before they merge, as every content-actor
@@ -874,8 +872,7 @@ since those describe what a user gets only once the pref is gone.
 2. **feat(pdf): page and match count in the status bar.** The adapter with its principal check
    and contract test, `parsePdfState`, the host's context switch to `pdf`, the status bar's page
    segment and the find count; `docs/security/20-pdf-viewer.md` section 20 (V1 to V6). Needs the
-   fresh-agent
-   review. No binding changes.
+   fresh-agent review. No binding changes.
 3. **feat(keys): zathura's page, zoom and layout keys in the PDF viewer.** `J`, `K`, `gg`, `G`,
    counts, `:{n}`, `H`, `L`, `P`, `ctrl+f`, `+`, `-`, `=`, `zi`, `zI`, `zo`, `zO`, `z0`, `zz`,
    `zZ`, `{n}=`, `a`, `s`, `d`, `D`, `w`, `r`, `R`, `Y`, `F5`, presentation, history entries

@@ -7,8 +7,8 @@
 # signing on, SHA256SUMS against release.yml's signature. Then the one install-source line is
 # switched to `aur` (the variant package.mjs writes to dist/aur/; a test keeps the two equal).
 # Nothing runs until RELEASE_ENABLED is `true`; skipped (green, with a notice) until the
-# AUR_SSH_KEY secret exists. Retry: gh workflow run aur.yml -f tag=vX.Y.Z
-# (docs/runbook/ci-release-packages.md, "Release packages").
+# AUR_SSH_KEY secret exists. Retry: gh workflow run aur.yml -f tag=vX.Y.Z (docs/runbook/ci-release-packages.md,
+# "Release packages").
 name: aur
 
 on:
@@ -40,9 +40,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions: {}
-    # Holds AUR_SSH_KEY; its deployment refs are main and v* tags
-    # (docs/runbook/ci-release-packages.md, "Release packages", step 6), so no workflow on another
-    # branch can read the key.
+    # Holds AUR_SSH_KEY; its deployment refs are main and v* tags (docs/runbook/ci-release-packages.md, "Release
+    # packages", step 6), so no workflow on another branch can read the key.
     environment: aur
     env:
       AUR_KEY_SET: ${{ secrets.AUR_SSH_KEY != '' }}

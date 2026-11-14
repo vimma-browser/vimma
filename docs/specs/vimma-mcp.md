@@ -474,7 +474,7 @@ other lines are from each tool's documentation; sub-PR 4 runs them against real 
       (Since changed: so do keys in hint, copy and element mode, where a hint label and the yank
       type letters (`y`, and with the default `hint_chars` a label starting with `a`, the grant
       key), and the line does not open by itself in them, because one answer can grant a
-      whole task's calls; issue #495, docs/security/12-agents.md M4.)
+      whole task's calls; issue #495, docs/security/12-agents-mcp.md M4.)
 
 14. **No focus stealing.** The question never takes focus from what the user is doing:
     - It opens by itself only when the Vimma window has focus, focus is not in an editable field

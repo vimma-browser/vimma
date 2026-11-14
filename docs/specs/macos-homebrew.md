@@ -333,9 +333,8 @@ This spec builds on [macos-build](macos-build.md) and opens nothing before its r
     so that only a workflow file reviewed onto `main` can write to the tap, and a missing key
     skips the job instead of failing it. No tag may deploy to it, because a tag ruleset restricts
     moving a tag, not creating one (`docs/security/14-build-and-release-supply-chain.md`, B6).
-    Rejected: a personal access token, because a
-    deploy key reaches only the one repository. The tap repository's branch rules allow pushes by
-    the deploy key and pull requests by others.
+    Rejected: a personal access token, because a deploy key reaches only the one repository. The tap
+    repository's branch rules allow pushes by the deploy key and pull requests by others.
 11. **The tap holds only generated files and a README,** so that every cask change is visible in
     this repository's review, and the tap cannot drift from the generator. The tap's own CI,
     `check.yml`, runs the same checks as `cask-check.sh`, `brew style` and an offline
@@ -586,8 +585,8 @@ Homebrew; first open per the caveats; `brew upgrade` to the next release.
 - `docs/security/`: "Homebrew tap" (above), and the update manifest entries for the macOS
   file (decision 16).
 - `docs/guide.md`, "Updates": macOS is checked; the rows for a Homebrew and a `.dmg` install.
-- `docs/runbook/ci-update-signing-keys-and-the-update-host.md`, "Update signing keys and the update
-  host": the `target` input.
+- `docs/runbook/ci-update-keys-and-update-host.md`, "Update signing keys and the update host": the
+  `target` input.
 - `CHANGELOG.md`: "Vimma on macOS shows its own icon" with the icon sub-PR; "Install on macOS
   with Homebrew" with the tap sub-PR.
 - `macos-build.md`: decision 17 and "Not in this spec" point here.

@@ -88,8 +88,7 @@ Two rows of plan §5 and issue #17:
 - **Node pinned exactly** in `.nvmrc` (22.23.3, what CI recorded on); the baseline key carries
   the exact version; no Dependabot ecosystem covers `.nvmrc`, so it is bumped by hand
   (docs/runbook/ci-bench-baseline.md, "Bench baseline"). (Since changed: the bench no longer keys on
-  Node (#342);
-  the pin stays for reproducible CI.)
+  Node (#342); the pin stays for reproducible CI.)
 - **Samples per entry:** `cases` is the per-case median of `samples` (in `baseline.json` now:
   EPYC 7763 30, EPYC 9V74 12, EPYC 9V45 11, Xeon 8573C 5, Xeon 8370C 2). (Since changed: no
   entries since #342; unchanged code read +11.6 % to +12.5 % on every 8370C run against its

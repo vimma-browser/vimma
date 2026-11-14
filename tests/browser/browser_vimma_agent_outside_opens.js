@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security/12-agents.md M24). A tab you did not
-// open inside the agent workspace never takes its container: a link from another app (the remote
-// command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
+// Spec: docs/specs/vimma-mcp.md, decision 42 (docs/security/12-agents-mcp.md M24). A tab you did
+// not open inside the agent workspace never takes its container: a link from another app (the
+// remote command line, BrowserDOMWindow's external open, Firefox's container guess), a URL from the
 // control socket, a new window's first tab, and the container cached for the next start. Such a
 // link opens in the last workspace you used that is not the agent's, and a foreground open switches
 // to it. What you open yourself inside the agent workspace (ctrl+t) stays there.

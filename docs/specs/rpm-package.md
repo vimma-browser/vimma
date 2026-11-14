@@ -109,8 +109,8 @@ whose libraries they install by hand.
    `sha512sum -c` and installing it. Reason: there is no Vimma repository for dnf or zypper, as
    there is none for apt (m6a-updater, decision 20). The manifest lists the `.rpm` as a
    required asset, so every release from this one on carries it; a release before it cannot be
-   re-published from `main` (docs/runbook/ci-update-signing-keys-and-the-update-host.md, "Re-run,
-   pull an update, and serials").
+   re-published from `main` (docs/runbook/ci-update-keys-and-update-host.md, "Re-run, pull an
+   update, and serials").
 9. **Smoke-tested on Fedora 44 and openSUSE Leap 16.0, pinned by digest.** Reason: those are
    the current releases of each, and each run installs the release's current packages, so a
    digest only fixes the base image. Tumbleweed was not chosen, because its rolling repository

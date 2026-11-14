@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// The module scan (docs/security/12-agents.md section 12, "Load positions"): every place a module
-// of vimma/ loads another, eager or lazy, and every string that names the gate's file.
+// The module scan (docs/security/12-agents-mcp.md section 12, "Load positions"): every place a
+// module of vimma/ loads another, eager or lazy, and every string that names the gate's file.
 
 import { posix } from "node:path";
 import type { Reference } from "eslint-scope";

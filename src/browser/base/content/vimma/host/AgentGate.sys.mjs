@@ -20,9 +20,9 @@
 //
 // What the gate keeps from a caller (a label, a request's `what`) is its own frozen copy, taken
 // when it is handed in, and what it hands out (the getters, `grants()`, every listener's event)
-// is frozen too (docs/security/12-agents.md M62): neither a caller that changes its object after
-// asking nor a reader that writes to what it read can change what a question shows, what its answer
-// is checked against, or `:mcp log`.
+// is frozen too (docs/security/12-agents-mcp.md M62): neither a caller that changes its object
+// after asking nor a reader that writes to what it read can change what a question shows, what its
+// answer is checked against, or `:mcp log`.
 
 import { AgentLog, AgentQueue, frozenCopy, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";

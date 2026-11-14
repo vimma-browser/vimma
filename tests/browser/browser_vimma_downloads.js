@@ -989,7 +989,7 @@ add_task(async function test_a_private_window_lists_only_private_downloads() {
 
 add_task(async function test_the_picker_never_opens_an_agent_download() {
   const tab = await pageTab();
-  // A path in the agent's folders makes it an agent download (docs/security/12-agents.md M11).
+  // A path in the agent's folders makes it an agent download (docs/security/12-agents-mcp.md M11).
   const dir = PathUtils.join(PathUtils.profileDir, "vimma-agent-refused");
   await IOUtils.makeDirectory(dir, { ignoreExisting: true });
   const from = `${DIR}file_vimma_plain.html?agent`;

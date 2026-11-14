@@ -70,8 +70,7 @@ Google Safe Browsing (phishing and malware protection) needs an API key, which i
 repository. A build without one works but shows the protection as off. To turn it on, get a free
 key from Google and save it as `~/.config/vimma/keys/safebrowsing` before building
 ([runbook](docs/runbook/ci-google-safe-browsing-key.md#google-safe-browsing-key-spec-m0-safebrowsing-key)).
-Release packages
-are built with a key.
+Release packages are built with a key.
 
 Run it, then press `ctrl+b ?` to see every binding:
 
@@ -370,8 +369,7 @@ Vimma follows a spec-first, test-first loop:
   commits without a body.
 - **Changelog.** release-please writes `CHANGELOG.md` from the Conventional Commits on `main`
   ([docs/runbook/ci-releases.md](docs/runbook/ci-releases.md), Releases), so the squash commit's
-  subject is the changelog
-  line; do not edit the file by hand.
+  subject is the changelog line; do not edit the file by hand.
 - **Screenshot baselines and snapshots.** Never change one without a commit body that says why
   it changed: an updated baseline is a visible change, and the body is how a reviewer knows it
   was meant. `npm run e2e -- --update-baselines` writes new baselines and reminds you of this.
@@ -550,8 +548,7 @@ Vimma.
   change only after the change has merged. `RELEASE_ENABLED` is set, but each
   release is a draft that runs no build until the maintainer publishes it
   ([runbook](docs/runbook/ci-releases.md#releases-release-pleaseyml)). PRs that touch patches,
-  `configs/`,
-  `moz.configure` or branding must report a full-build run
+  `configs/`, `moz.configure` or branding must report a full-build run
   ([ADR-010](docs/adr/010-pr-artifact-builds.md), [runbook](docs/runbook/README.md)).
 - Nightly builds are not published as a release until the repository variable
   `NIGHTLY_RELEASE_ENABLED` is set: each one is a workflow artifact of its run, kept 7 days,
@@ -609,8 +606,7 @@ Vimma.
 - [docs/rebase.md](docs/rebase.md): moving to a new Firefox release.
 - [docs/review-checklist.md](docs/review-checklist.md): what a PR needs before merge.
 - [docs/security/README.md](docs/security/README.md): the security model, a rule per risky component
-  with the
-  tests that enforce it. A change that touches one of those components keeps its rules true
+  with the tests that enforce it. A change that touches one of those components keeps its rules true
   and its test links valid (CI checks them); vulnerabilities are reported as
   [SECURITY.md](SECURITY.md) says.
 - [docs/adr/](docs/adr/) and [docs/specs/](docs/specs/): decisions and feature specs.

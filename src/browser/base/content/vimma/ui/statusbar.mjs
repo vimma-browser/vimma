@@ -392,7 +392,8 @@ export class StatusBar {
 /**
  * The host as the bar shows it and its registrable domain, for truncation that never cuts the
  * latter (docs/security/06-chrome-ui-rendering.md C3). The base domain is counted in labels from
- * the ASCII form Services.eTLD answers in, then taken from the display form, so an IDN host keeps
+ * the
+ * ASCII form Services.eTLD answers in, then taken from the display form, so an IDN host keeps
  * its Unicode. An IP address, or a host without a public suffix, is its own base.
  * @param {any} uri
  * @returns {UrlOrigin | null}

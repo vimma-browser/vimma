@@ -2,8 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-// Packaging and file types (docs/security/12-agents.md section 12): jar.mn and vimma/moz.build as
-// they are today, the file types under vimma/, and that every edge names a tracked, packaged
+// Packaging and file types (docs/security/12-agents-mcp.md section 12): jar.mn and vimma/moz.build
+// as they are today, the file types under vimma/, and that every edge names a tracked, packaged
 // module.
 
 import { folderOf } from "./layer-rules.ts";

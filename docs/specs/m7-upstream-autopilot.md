@@ -116,8 +116,7 @@ One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has 
 About 3 releases a month (one major, one or two dot releases): ≈ 180 + 3 × 30 = **≈ 270 a
 month**, 14 % of the budget (was ≈ 130). Once the repo is public, hosted minutes are free.
 (Since changed: the repository is public, so these minutes cost nothing;
-`docs/runbook/ci-actions-minutes-budget.md`,
-"Actions minutes budget".)
+`docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget".)
 
 ## Tests (written first)
 

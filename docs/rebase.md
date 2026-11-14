@@ -166,10 +166,9 @@ with `-f rebuild=true`.
 Every run also compares the Firefox on `main` with every newer release. A release must be merged
 within **3 days** of its release date if it is a security dot release, **7 days** for a major
 release, **14 days** for a dot release without an advisory (docs/security/10-firefox-updates.md,
-G2). Past that the
-`drift` job opens one issue labelled `security`, "Vimma's Firefox X is past the security drift
-limit", that mentions you, and **fails every run** until `surfer.json` on `main` moves. Merging
-the bump is the fix; close the drift issue then.
+G2). Past that the `drift` job opens one issue labelled `security`, "Vimma's Firefox X is past the
+security drift limit", that mentions you, and **fails every run** until `surfer.json` on `main`
+moves. Merging the bump is the fix; close the drift issue then.
 
 ## 2. Download the new source
 
@@ -441,8 +440,7 @@ listed; `chore` would be hidden, which is why the autopilot does not use it).
 
 Target: **merged within 3 days** of Mozilla's release, enforced by the drift check
 (docs/security/10-firefox-updates.md, G2; ADR-015). A dot release (`X.Y.Z`, e.g. 157.0.2) is a few
-backported
-fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
+backported fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
 <https://www.mozilla.org/security/advisories/>.
 
 | When         | What happens                                                                   |
