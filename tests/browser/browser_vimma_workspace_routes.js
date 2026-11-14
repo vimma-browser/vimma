@@ -933,3 +933,29 @@ add_task(async function route_add_writes_a_rule_and_route_lists_them() {
   route([{ domain: "example.com", workspace: "rt-work" }]);
   tidy();
 });
+
+add_task(async function route_add_says_why_config_toml_refused_the_rule() {
+  const dir = await IOUtils.createUniqueDirectory(PathUtils.tempDir, "vimma-routes");
+  const file = PathUtils.join(dir, "config.toml");
+  const broken = "schema = 2\n[[routes]\n";
+  await IOUtils.writeUTF8(file, broken);
+  await SpecialPowers.pushPrefEnv({ set: [["vimma.config.path", file]] });
+  try {
+    await ConfigHost.reload();
+    await inHome(`${ELSEWHERE}?refused`);
+    await runCommand("route add rt-work");
+    await until(
+      () =>
+        noticeText() ===
+        ":route add: config.toml does not parse now; fix it first (:config shows it)",
+      "the notice says why config.toml took nothing",
+    );
+    Assert.equal(await IOUtils.readUTF8(file), broken, "and the file is as it was");
+  } finally {
+    await SpecialPowers.popPrefEnv();
+    await ConfigHost.reload();
+    await IOUtils.remove(dir, { recursive: true });
+    route([{ domain: "example.com", workspace: "rt-work" }]);
+    tidy();
+  }
+});
