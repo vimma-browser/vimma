@@ -255,10 +255,8 @@ interface nsIPermissionManager {
 interface MozBrowser {
   /** Its current window global's outer window id, undefined while it has none. */
   readonly outerWindowID: number | undefined;
-  docShellIsActive: boolean;
   fullZoom: number;
   stop(): void;
-  readonly frameLoader: { readonly remoteTab: { priorityHint: boolean } | null } | null;
 }
 
 // engine/toolkit/modules/PopupNotifications.sys.mjs (Notification): a browser's notification.
@@ -339,24 +337,8 @@ interface AutoCompletePopupElement extends XULPopupElement {
   readonly popupOpen: boolean;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl (CanonicalBrowsingContext): the members the
-// tests read beyond the product's (types/firefox.d.ts). The tab's back/forward list
-// (engine/docshell/shistory/nsISHistory.idl), null for a context that keeps none.
-interface CanonicalBrowsingContext {
-  readonly sessionHistory: {
-    readonly count: number;
-    /** The current entry's index. */
-    readonly index: number;
-    getEntryAtIndex(index: number): { readonly URI: nsIURI };
-  } | null;
-}
-// The same webidl's BrowsingContext: its sandboxing flags (engine/dom/base/nsSandboxFlags.h).
-interface BrowsingContext {
-  sandboxFlags: number;
-}
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl: its document's global, once it has one.
 interface WindowGlobalParent {
-  readonly isInitialDocument: boolean;
   /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
   getActor(
     name: "Vimma",

@@ -10,6 +10,8 @@
 
 "use strict";
 
+/* global contentPrincipalOf -- from head.js */
+
 const { SitePermissions } = ChromeUtils.importESModule(
   "resource:///modules/SitePermissions.sys.mjs",
 );
@@ -99,7 +101,7 @@ function selectRow(id) {
 const principalOf = (url, tab) =>
   Services.scriptSecurityManager.createContentPrincipal(
     Services.io.newURI(url),
-    tab.linkedBrowser.contentPrincipal.originAttributes,
+    contentPrincipalOf(tab.linkedBrowser).originAttributes,
   );
 /** @param {string} url @param {string} id @param {MozTabbrowserTab} tab */
 const stateOf = (url, id, tab) => SitePermissions.getForPrincipal(principalOf(url, tab), id).state;
@@ -331,7 +333,7 @@ add_task(async function test_a_private_window_keeps_a_popup_block_for_its_sessio
   await BrowserTestUtils.browserLoaded(browser, false, PAGE);
   await SimpleTest.promiseFocus(win);
   await SimpleTest.promiseFocus(browser);
-  const principal = browser.contentPrincipal;
+  const principal = contentPrincipalOf(browser);
   Assert.greater(principal.privateBrowsingId, 0, "a private page");
   const entry = () => Services.perms.getPermissionObject(principal, "popup", true);
   const doc = win.document;

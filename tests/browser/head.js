@@ -14,7 +14,8 @@
 // `await waitForPageKey(...)` or `await pageKeys(browser)`.
 
 /* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey,
-   useShippedSupportBase, openSettingsPane, contextOf, windowGlobalOf, historyOf */
+   useShippedSupportBase, openSettingsPane, contextOf, windowGlobalOf, historyOf, webProgressOf,
+   contentPrincipalOf */
 
 "use strict";
 
@@ -157,6 +158,30 @@ function contextOf(browser) {
   const bc = browser.browsingContext;
   if (!bc) throw new Error("the browser has no browsing context");
   return bc;
+}
+
+/**
+ * The web progress of `browser`'s context; the test fails here when it has none, as a read
+ * through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIWebProgress}
+ */
+function webProgressOf(browser) {
+  const progress = browser.webProgress;
+  if (!progress) throw new Error("the browser has no web progress");
+  return progress;
+}
+
+/**
+ * The principal of the page in `browser`; the test fails here before a remote browser's first
+ * page has committed, as a read through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIPrincipal}
+ */
+function contentPrincipalOf(browser) {
+  const principal = browser.contentPrincipal;
+  if (!principal) throw new Error("the browser has no content principal");
+  return principal;
 }
 
 /**

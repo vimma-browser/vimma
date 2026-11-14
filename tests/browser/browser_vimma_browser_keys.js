@@ -8,7 +8,7 @@
 
 "use strict";
 
-/* global focusContent, recordPageKeys, waitForPageKey -- from head.js */
+/* global focusContent, recordPageKeys, waitForPageKey, webProgressOf -- from head.js */
 /* global ZoomManager, FullZoom -- the browser window's */
 
 const { VimmaHost } = ChromeUtils.importESModule(
@@ -536,6 +536,9 @@ add_task(async function esc_in_normal_mode_stops_a_load_after_the_page() {
   );
   Assert.equal(browser.currentURI.spec, SLOW, "the slow page is shown");
   EventUtils.synthesizeKey("KEY_Escape");
-  await TestUtils.waitForCondition(() => !browser.webProgress.isLoadingDocument, "Esc stopped it");
+  await TestUtils.waitForCondition(
+    () => !webProgressOf(browser).isLoadingDocument,
+    "Esc stopped it",
+  );
   BrowserTestUtils.removeTab(tab);
 });
