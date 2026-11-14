@@ -92,6 +92,8 @@ function workspaceIn(model, id) {
 
 /**
  * SessionStore's state, as much of it as these tests read or write.
+ * It mirrors engine/browser/components/sessionstore: SessionStore.sys.mjs (a window's winData),
+ * TabState.sys.mjs (a tab) and SessionHistory.sys.mjs (its entries).
  * @typedef {{ url: string, triggeringPrincipal_base64?: string }} SessionEntry
  * @typedef {{ entries: SessionEntry[], userContextId?: number,
  *   extData?: Record<string, string> }} SessionTab

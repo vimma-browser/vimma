@@ -526,7 +526,8 @@ add_task(async function marking_a_tab_of_another_split_moves_it_and_ends_that_sp
   );
   Assert.equal(bPanel.style.getPropertyValue("--vimma-pane-w"), "", "b's panel lost S1's size");
   Assert.ok(!bPanel.classList.contains("split-view-panel"), "and its place in a split view");
-  Assert.equal(tab("a").splitview, tab("e").splitview, "a and e share a wrapper");
+  Assert.ok(tab("a").splitview, "a is in a wrapper");
+  Assert.strictEqual(tab("a").splitview, tab("e").splitview, "a and e share a wrapper");
 });
 
 add_task(async function past_max_splits_is_refused_and_nothing_changes() {
@@ -610,6 +611,8 @@ add_task(async function a_workspace_switch_and_a_session_restore_keep_every_spli
   await TestUtils.waitForTick();
   /**
    * SessionStore's state, as much of it as this test reads.
+   * It mirrors engine/browser/components/sessionstore: SessionStore.sys.mjs (a window's winData),
+   * TabState.sys.mjs (a tab) and SessionHistory.sys.mjs (its entries).
    * @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }}
    */
   const state = JSON.parse(SessionStore.getBrowserState());

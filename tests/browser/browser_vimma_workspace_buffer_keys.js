@@ -318,6 +318,8 @@ add_task(async function the_previous_workspace_survives_a_restore() {
   await until(() => saved().alternate === M.id, "the window value saves it");
   /**
    * SessionStore's state, as much of it as this test reads.
+   * It mirrors engine/browser/components/sessionstore: SessionStore.sys.mjs (a window's winData),
+   * TabState.sys.mjs (a tab) and SessionHistory.sys.mjs (its entries).
    * @type {{ windows: { tabs: { entries: { url: string }[] }[] }[] }}
    */
   const state = JSON.parse(SessionStore.getBrowserState());

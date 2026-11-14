@@ -450,6 +450,27 @@ interface nsIScriptError extends nsIConsoleMessage {
   readonly flags: number;
 }
 
+// engine/toolkit/content/widgets/notificationbox.js: a button of a notification, as
+// appendNotification's doc comment lists it and setButtons reads it.
+interface NotificationButton {
+  label?: string;
+  accessKey?: string;
+  "l10n-id"?: string;
+  /** Run with the notification, this button's info, its <button> and the event; false closes. */
+  callback?: (
+    notification: Element,
+    button: NotificationButton,
+    element: Element,
+    event: Event,
+  ) => unknown;
+  link?: string;
+  supportPage?: string;
+  /** The id of a popup to open, anchored to the button, instead of a callback. */
+  popup?: string;
+  telemetry?: string;
+  is?: string;
+  primary?: boolean;
+}
 // engine/toolkit/content/widgets/notificationbox.js (MozElements.NotificationBox): a browser's
 // notification box.
 interface MozNotificationBox {
@@ -461,7 +482,7 @@ interface MozNotificationBox {
   appendNotification(
     type: string,
     notification: { label: string; priority: number },
-    buttons?: unknown[],
+    buttons?: NotificationButton[],
     disableClickJackingDelay?: boolean,
     dismissable?: boolean,
   ): Promise<Element>;
@@ -474,8 +495,9 @@ interface Tabbrowser {
   /** A browser's notification box (the selected browser's without one), made on first use. */
   getNotificationBox(browser?: MozBrowser): MozNotificationBox;
   /**
-   * A browser's .browserContainer (the selected browser's without one): its grandparent, which a
-   * tab's browser always has.
+   * A browser's .browserContainer (the selected browser's without one): its grandparent. Never
+   * null: it reads `parentNode.parentNode`, which throws for a browser with no parent. Its one
+   * caller (split_contract) passes a split tab's browser, which is in its panel.
    */
   getBrowserContainer(browser?: MozBrowser): Element;
   /** The browsers of the active split view's tabs; empty without one. */
@@ -551,6 +573,6 @@ interface BrowserWindow {
   openLinkIn(
     url: string,
     where: string,
-    params: { inBackground?: boolean; triggeringPrincipal?: unknown; userContextId?: number },
+    params: { inBackground?: boolean; triggeringPrincipal?: nsIPrincipal; userContextId?: number },
   ): void;
 }

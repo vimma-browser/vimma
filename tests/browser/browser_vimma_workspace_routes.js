@@ -97,6 +97,9 @@ add_task(async function setup() {
   home = /** @type {ContainedWorkspace} */ (
     WorkspaceStore.addWorkspace({ name: "rt-home", color: "green", icon: "tree" })
   );
+  // The checks that a tab is not in rt-home hold only if rt-home has a container of its own.
+  Assert.greater(work.userContextId ?? 0, 0, "work has a container");
+  Assert.greater(home.userContextId ?? 0, 0, "home has a container");
   registerCleanupFunction(async () => {
     route([]);
     ww().switchTo({ id: known("main").id });
