@@ -17,8 +17,14 @@
 //
 // Every agent request that is answered, runs under a grant or is denied goes into `:mcp log`
 // (docs/specs/mcp-drive.md D14), the last 100, in memory only like the grants.
+//
+// What the gate keeps from a caller (a label, a request's `what`) is its own frozen copy, taken
+// when it is handed in, and what it hands out (the getters, `grants()`, every listener's event)
+// is frozen too (docs/security.md M62): neither a caller that changes its object after asking nor
+// a reader that writes to what it read can change what a question shows, what its answer is
+// checked against, or `:mcp log`.
 
-import { AgentLog, AgentQueue, grantLength, isBuiltinConn } from "../core/agent.mjs";
+import { AgentLog, AgentQueue, frozenCopy, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 
@@ -126,21 +132,27 @@ function cancel(id) {
 
 /** @param {GateEvent} [event] */
 function changed(event) {
+  // One frozen copy for every listener: none can change what the next one hears (M62).
+  const told = event === undefined ? undefined : frozenCopy(event);
   for (const listener of listeners) {
     try {
-      listener(event);
+      listener(told);
     } catch (e) {
       console.error("vimma agent gate:", e);
     }
   }
 }
 
-/** @param {number} id */
+/**
+ * Question `id` as it was asked: its `what` and `label` are the gate's frozen copies (M62).
+ * @param {number} id
+ * @returns {Readonly<Question> | null}
+ */
 const questionOf = (id) => {
   const p = pending.get(id);
   if (!p) return null;
   const { conn, tool, what, label, asked, deadline } = p;
-  return { id, conn, tool, what, label, asked, deadline };
+  return Object.freeze({ id, conn, tool, what, label, asked, deadline });
 };
 
 function askTimeoutMs() {
@@ -208,7 +220,7 @@ export const AgentGate = {
    */
   connect(conn, label, session) {
     queue.connect(conn, { ...(session ? { session } : {}), now: Date.now() });
-    labels.set(conn, { ...label, since: Date.now() });
+    labels.set(conn, frozenCopy({ ...label, since: Date.now() }));
     changed();
   },
 
@@ -236,7 +248,9 @@ export const AgentGate = {
    * was asked about is still so (decision 19).
    * @param {ConnId} conn
    * @param {string} tool  the MCP tool (core AGENT_TOOLS)
-   * @param {object} what  what it touches, for the question: plain data, shown as text
+   * @param {object} asked  what it touches, for the question: plain data, shown as text. The gate
+   *   keeps a frozen copy taken now (M62): the question, the answer's checks and the log use it,
+   *   whatever the caller does to its object afterwards
    * @param {{ always?: boolean, covered?: true | string,
    *   onCancel?: (cancel: () => void) => void }} [options]
    *   `always`: ask even under a grant (a dangerous download, decision 31 d); `covered`: a form
@@ -245,9 +259,10 @@ export const AgentGate = {
    *   withdraw the question unanswered
    * @returns {Promise<Outcome>}
    */
-  request(conn, tool, what, { always = false, covered, onCancel } = {}) {
+  request(conn, tool, asked, { always = false, covered, onCancel } = {}) {
     const label = labels.get(conn);
     if (!label) return Promise.resolve({ allow: false, reason: "busy" });
+    const what = frozenCopy(asked);
     const now = Date.now();
     const admission = queue.ask(conn, tool, now, {
       always,
@@ -432,7 +447,7 @@ export const AgentGate = {
   relabel(conn, client) {
     const label = labels.get(conn);
     if (!label) return;
-    labels.set(conn, { ...label, client });
+    labels.set(conn, frozenCopy({ ...label, client }));
     changed();
   },
 
@@ -452,10 +467,8 @@ export const AgentGate = {
    */
   get waiting() {
     return queue.waiting.flatMap((r) => {
-      const p = pending.get(r.id);
-      if (!p) return [];
-      const { id, conn, tool, what, label, asked, deadline } = p;
-      return [{ id, conn, tool, what, label, asked, deadline }];
+      const q = questionOf(r.id);
+      return q ? [q] : [];
     });
   },
 
@@ -472,7 +485,7 @@ export const AgentGate = {
     changed({ kind: "ran", conn, tool, what, label, until: Math.min(until, grant.until) });
   },
 
-  /** `:mcp log`'s rows, newest first (mcp-drive D14). */
+  /** `:mcp log`'s rows, newest first (mcp-drive D14): frozen, the log's own (M62). */
   get log() {
     return log.entries();
   },
@@ -507,12 +520,14 @@ export const AgentGate = {
     return ranAt;
   },
 
-  /** Grants in force, the one ending first first, with their connection's label. */
+  /** Grants in force, the one ending first first, with their connection's frozen label. */
   grants() {
     return queue.grants(Date.now()).map((g) => ({ ...g, label: labels.get(g.conn) ?? null }));
   },
 
-  /** Agent connections and their labels (`:mcp`, about:vimma); never a full-control question's. */
+  /**
+   * Agent connections' labels, frozen (`:mcp`, about:vimma); never a full-control question's.
+   */
   get connections() {
     return [...labels.entries()].filter(([conn]) => !NOT_AGENTS.has(conn)).map(([, l]) => l);
   },

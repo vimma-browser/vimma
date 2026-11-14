@@ -271,23 +271,62 @@ export const LOG_SIZE = 100;
  */
 
 /**
+ * A deep, frozen copy of plain data, for what the agent gate keeps from a caller and hands to a
+ * reader (security.md M62): nothing either side holds can change what a question showed, what
+ * an answer is checked against or a `:mcp log` row. Each getter is read once, here; a function
+ * is left out (undefined), and an object met again inside itself becomes null.
+ * @template T
+ * @param {T} value
+ * @returns {Readonly<T>}
+ */
+export function frozenCopy(value) {
+  /** @type {WeakSet<object>} */
+  const seen = new WeakSet();
+  /** @param {unknown} v @returns {unknown} */
+  const copy = (v) => {
+    if (typeof v === "function") return undefined;
+    if (v === null || typeof v !== "object") return v;
+    if (seen.has(v)) return null;
+    seen.add(v);
+    /** @type {unknown} */
+    let out;
+    if (Array.isArray(v)) {
+      out = Array.from(v, copy);
+    } else {
+      /** @type {Record<string, unknown>} */
+      const o = {};
+      for (const key of Object.keys(v))
+        o[key] = copy(/** @type {Record<string, unknown>} */ (v)[key]);
+      out = o;
+    }
+    seen.delete(v);
+    return Object.freeze(out);
+  };
+  return /** @type {Readonly<T>} */ (copy(value));
+}
+
+/**
  * The last LOG_SIZE agent calls, asked or under a grant (mcp-drive D14, security.md M23). In
  * memory only, like grants (vimma-mcp decision 22): it would hold the agent workspace's
  * browsing, which nothing writes to disk.
  */
 export class AgentLog {
   constructor() {
-    /** @type {LogEntry[]} oldest first */
+    /** @type {Readonly<LogEntry>[]} oldest first */
     this.rows = [];
   }
 
   /** @param {LogEntry} entry */
   add(entry) {
-    this.rows.push(entry);
+    // Its own frozen row: neither the caller's object nor a reader's can change it (M62).
+    this.rows.push(frozenCopy(entry));
     if (this.rows.length > LOG_SIZE) this.rows.splice(0, this.rows.length - LOG_SIZE);
   }
 
-  /** Newest first. */
+  /**
+   * Newest first: a new array of the log's frozen rows.
+   * @returns {Readonly<LogEntry>[]}
+   */
   entries() {
     return [...this.rows].reverse();
   }
