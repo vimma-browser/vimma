@@ -96,9 +96,61 @@ describe("rewriteSpecifiers", () => {
     expect(rewriteSpecifiers(source, "agent/agent-keys.mjs", layout)).toBe(source);
   });
 
+  const rewrite = (source: string) => rewriteSpecifiers(source, "agent/agent-keys.mjs", layout);
+
+  it("rewrites single- and double-quoted specifiers, bare imports and JSDoc types", () => {
+    expect(rewrite("import { parseKey } from '../keys/keys.mjs';")).toBe(
+      "import { parseKey } from './keys.mjs';",
+    );
+    expect(rewrite('import "../keys/keys.mjs";')).toBe('import "./keys.mjs";');
+    expect(rewrite("/** @param {import('../keys/keys.mjs').Chord} c */")).toBe(
+      "/** @param {import('./keys.mjs').Chord} c */",
+    );
+    expect(rewrite('const m = await import("../keys/keys.mjs");')).toBe(
+      'const m = await import("./keys.mjs");',
+    );
+  });
+
+  it("rewrites a multi-line import, a re-export and an import of index.mjs", () => {
+    expect(rewrite('import {\n  parseKey,\n  formatKey,\n} from "../keys/keys.mjs";')).toBe(
+      'import {\n  parseKey,\n  formatKey,\n} from "./keys.mjs";',
+    );
+    expect(rewrite('export { parseKey } from "../keys/keys.mjs";')).toBe(
+      'export { parseKey } from "./keys.mjs";',
+    );
+    expect(rewrite('import { x } from "../index.mjs";')).toBe('import { x } from "./index.mjs";');
+  });
+
+  it("leaves a regular expression literal alone", () => {
+    const source = "const r = /\\.\\.\\/keys\\/keys\\.mjs/;";
+    expect(rewrite(source)).toBe(source);
+  });
+
+  it("refuses a quoted relative path that is not an import, naming the file and line", () => {
+    for (const [source, line] of [
+      ['// mentions "../keys/keys.mjs"', 1],
+      ["const a = 1;\nconst s = \"see '../keys/keys.mjs' for details\";", 2],
+      ["const t = `../keys/keys.mjs`;", 1],
+      ['const u = new URL("../keys/keys.mjs", import.meta.url);', 1],
+      ['const v = "./nope.js";', 1],
+    ] as const) {
+      expect(() => rewrite(source), source).toThrow(
+        new RegExp(`agent/agent-keys\\.mjs:${line}: .* not an import`),
+      );
+    }
+  });
+
+  it("refuses a dynamic import whose specifier is not a plain string", () => {
+    for (const source of ["await import(`../keys/${name}.mjs`);", "await import(name);"]) {
+      expect(() => rewrite(source), source).toThrow(
+        /agent\/agent-keys\.mjs:1: a dynamic import\(\) of something other than a plain string/,
+      );
+    }
+  });
+
   it("refuses a relative module path that names no file of the package", () => {
     expect(() => rewriteSpecifiers('import "./keys.mjs";', "agent/agent-keys.mjs", layout)).toThrow(
-      /agent\/agent-keys\.mjs: "\.\/keys\.mjs" names agent\/keys\.mjs/,
+      /agent\/agent-keys\.mjs:1: "\.\/keys\.mjs" names agent\/keys\.mjs/,
     );
   });
 });
@@ -152,18 +204,23 @@ describe("syncCore on the real package", () => {
     expect(broken).toEqual([]);
   });
 
-  it("changes nothing in a module but its relative import paths", () => {
+  it("changes no line of a module but its import lines, and keeps their number", () => {
+    // Independent of the rewriter's own pattern: a changed line must be an import, an
+    // export-from, the end of a multi-line import, an @import or a line with import(…).
+    const importLine =
+      /^\s*(import\b|export\b.*\bfrom\s|\}\s*from\s|(\/\*\*|\*)\s*@import\b)|\bimport\(/;
     const out = sync();
-    const layout = coreLayout(filesUnder(SRC));
-    const blank = (text: string) => text.replace(SPECIFIER, "$1…$1");
-    const changed = [...layout]
-      .filter(([from]) => from.endsWith(".mjs"))
-      .filter(
-        ([from, to]) =>
-          blank(readFileSync(join(SRC, from), "utf8")) !==
-          blank(readFileSync(join(out, to), "utf8")),
-      )
-      .map(([from]) => from);
-    expect(changed).toEqual([]);
+    const problems = [...coreLayout(filesUnder(SRC))]
+      .filter(([from]) => from.endsWith(".mjs") && !from.startsWith("vendor/"))
+      .flatMap(([from, to]) => {
+        const before = readFileSync(join(SRC, from), "utf8").split("\n");
+        const after = readFileSync(join(out, to), "utf8").split("\n");
+        if (before.length !== after.length)
+          return [`${from}: ${before.length} -> ${after.length} lines`];
+        return before.flatMap((line, i) =>
+          line !== after[i] && !importLine.test(line) ? [`${from}:${i + 1}: ${line.trim()}`] : [],
+        );
+      });
+    expect(problems).toEqual([]);
   });
 });

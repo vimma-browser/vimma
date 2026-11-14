@@ -34,27 +34,63 @@ export function coreLayout(files) {
   return layout;
 }
 
-/** A relative module path in quotes: an import, a re-export, or a type imported in JSDoc. */
-const SPECIFIER = /(["'])(\.\.?\/[^"'\s]*?\.m?js)\1/g;
+/**
+ * A relative module path where a module is imported: after `from` (an import, an export-from, a
+ * JSDoc `@import`), after a bare `import`, or as the argument of `import(` (a dynamic import, or
+ * a type in JSDoc). Groups: the text before the quote, the quote, the path.
+ */
+const IMPORT_SPECIFIER =
+  /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])(\.\.?\/[^"'\s]+?\.m?js)\2/g;
+
+/** Any quoted relative path to a script, in any quotes, imported or not. */
+const QUOTED_PATH = /(["'`])(\.\.?\/[^"'`\s]*?\.m?js)\1/g;
+
+/** `import(`, whose argument must be a plain string so that the rewrite can see it. */
+const DYNAMIC_IMPORT = /\bimport\s*\(/g;
+const PLAIN_ARGUMENT = /^\s*(["'])[^"'`\n]*\1\s*\)/;
 
 /**
- * A module's text with each relative module path pointed at the file's place in core/. Throws on
- * a relative path that names no file of the package, which would break in the copy.
+ * A module's text with each relative import pointed at the file's place in core/. Only import
+ * positions are rewritten, so text that merely looks like a path, in a string or a comment, is
+ * never changed. Throws, with the file and line, on what the copy could get wrong: an import of
+ * a file the package does not have, a quoted relative path anywhere else (a string, a comment,
+ * `new URL`), and a dynamic import of anything but a plain string.
  * @param {string} text
  * @param {string} file  the module's path relative to packages/vimma-core/src
  * @param {Map<string, string>} layout  from coreLayout
  * @returns {string}
  */
 export function rewriteSpecifiers(text, file, layout) {
+  /** @param {number} offset */
+  const where = (offset) => `sync-core: ${file}:${text.slice(0, offset).split("\n").length}:`;
+  for (const m of text.matchAll(DYNAMIC_IMPORT)) {
+    if (!PLAIN_ARGUMENT.test(text.slice(m.index + m[0].length))) {
+      throw new Error(
+        `${where(m.index)} a dynamic import() of something other than a plain string, which ` +
+          "the flat copy cannot rewrite",
+      );
+    }
+  }
+  /** Offsets of the quotes that open an import's path. */
+  const imports = new Set();
+  for (const m of text.matchAll(IMPORT_SPECIFIER)) imports.add(m.index + (m[1] ?? "").length);
+  for (const m of text.matchAll(QUOTED_PATH)) {
+    if (!imports.has(m.index)) {
+      throw new Error(
+        `${where(m.index)} ${m[0]} is a relative path but not an import; the flat copy would ` +
+          "break it, so reword it or import it",
+      );
+    }
+  }
   const from = layout.get(file) ?? file;
-  return text.replace(SPECIFIER, (_all, quote, spec) => {
+  return text.replace(IMPORT_SPECIFIER, (_all, before, quote, spec, offset) => {
     const target = posix.join(posix.dirname(file), spec);
     const to = layout.get(target);
     if (to === undefined) {
-      throw new Error(`sync-core: ${file}: "${spec}" names ${target}, not a file of the package`);
+      throw new Error(`${where(offset)} "${spec}" names ${target}, not a file of the package`);
     }
     const path = posix.relative(posix.dirname(from), to);
-    return `${quote}${path.startsWith(".") ? path : `./${path}`}${quote}`;
+    return `${before}${quote}${path.startsWith(".") ? path : `./${path}`}${quote}`;
   });
 }
 
