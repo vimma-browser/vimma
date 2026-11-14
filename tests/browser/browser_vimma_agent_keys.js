@@ -24,7 +24,7 @@ const { AgentChat } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 
 const KEY = "sk-test-0123456789-a1b2";

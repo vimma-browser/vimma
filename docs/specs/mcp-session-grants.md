@@ -2,7 +2,7 @@
 
 Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`,
 `statusbar.mjs`, `config.mjs`, `defaults.mjs`, `control.mjs`); `src/browser/base/content/vimma/`
-(`ctl/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/VimmaControl.sys.mjs`,
+(`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/VimmaControl.sys.mjs`,
 `host/agent-ui.mjs`); `tools/vimma-ctl` (`src/mcp.rs`, `src/mcp_serve.rs`, `src/client.rs`) ·
 Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate stays
 in the browser; this spec changes how long one answer lasts). No new dependency.
@@ -92,8 +92,9 @@ A grant lasted `[mcp] grant_minutes` (10 by default, a count up to 480), and eve
   (`conns`), dropped in `disconnect`; `grantLength` turned a bare `a` into `grant_minutes`
   minutes. `ALWAYS_ASK` and the `always` option are what keep the checkpoints asked under any
   grant; this spec does not touch them.
-- `ctl/AgentGate.sys.mjs`: `connect` and `disconnect` are called from `ctl/agent-commands.mjs`
-  (`agent-hello`) and `ctl/VimmaControl.sys.mjs` (`close`). `:mcp off` reaches the gate through
+- `ctl/AgentGate.sys.mjs` (since changed: `host/AgentGate.sys.mjs`, ADR-026): `connect` and
+  `disconnect` are called from `ctl/agent-commands.mjs` (`agent-hello`) and
+  `ctl/VimmaControl.sys.mjs` (`close`). `:mcp off` reaches the gate through
   `apply` in `ctl/VimmaControl.sys.mjs`, which clears `:mcp log` before the server closes the
   agent connections.
 - `tools/vimma-ctl/src/mcp_serve.rs`: one link per process, opened lazily at the first call and

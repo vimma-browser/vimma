@@ -20,7 +20,7 @@
 
 import { AgentLog, AgentQueue, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
-import { McpHost } from "../host/mcp-ops.mjs";
+import { McpHost } from "./mcp-ops.mjs";
 
 /** @import { Answer, ConnId } from "../core/agent.mjs" */
 

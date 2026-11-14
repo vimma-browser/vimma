@@ -1,7 +1,7 @@
 # Spec: mcp-grants
 
 Status: implemented · Area: `packages/vimma-core/src/` (`agent.mjs`, `agent-prompt.mjs`);
-`src/browser/base/content/vimma/` (`ctl/AgentGate.sys.mjs`, `host/agent-ui.mjs`); `tests/e2e`
+`src/browser/base/content/vimma/` (`host/AgentGate.sys.mjs`, `host/agent-ui.mjs`); `tests/e2e`
 · Upstream patches: none · ADR: [ADR-019](../adr/019-agents-over-mcp.md) (unchanged: the gate
 stays in the browser, and this spec changes only what one answer allows). No new dependency.
 
@@ -101,9 +101,9 @@ changed) are already asked separately, whatever is granted.
   and `answer` grants the asked tool and releases the queued calls of that tool (`:368-383`).
   `ALWAYS_ASK` (`:130`) holds `vimma_show`; a request asked with `always` (a submission, a
   dangerous download) asks under any grant and a grant answer to it allows it once (`:364`).
-- `ctl/AgentGate.sys.mjs`: refuses a grant answer for full control, `vimma_show` and a page's
-  download (`:319-326`) and for a dangerous or unscanned download (`:330`); `announce`
-  looks up the grant by connection and tool (`:377`).
+- `ctl/AgentGate.sys.mjs` (since changed: `host/AgentGate.sys.mjs`, ADR-026): refuses a grant
+  answer for full control, `vimma_show` and a page's download (`:319-326`) and for a dangerous
+  or unscanned download (`:330`); `announce` looks up the grant by connection and tool (`:377`).
 - `ctl/agent-commands.mjs`: a submit is asked with `always` (`:925`, `:1103`), `vimma_show` too
   (`:649`).
 - `host/agent-ui.mjs`: `ctrl+b shift+a` with nothing waiting asks `Revoke N agent grants? y/N`

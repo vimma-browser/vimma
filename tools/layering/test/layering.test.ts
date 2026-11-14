@@ -15,9 +15,12 @@ import {
   jarModules,
   layerErrors,
   missingReadmes,
+  patchErrors,
+  restrictedErrors,
   scanModule,
+  treeErrors,
 } from "../layering.ts";
-import { EXCEPTIONS } from "../layers.ts";
+import { EXCEPTIONS, RESTRICTED } from "../layers.ts";
 
 const V = "chrome://browser/content/vimma/";
 
@@ -402,26 +405,25 @@ describe("jarModules", () => {
 });
 
 describe("exceptionErrors", () => {
-  const base = { from: "ui/x.mjs", to: "host/a.mjs", kind: "lazy" as const, reason: "r" };
+  const base = { from: "ui/x.mjs", to: "host/c.mjs", kind: "lazy" as const, reason: "r" };
 
-  test("each exception says whether it stays or goes, and a leaving one names its issue", () => {
+  test("refuses every entry: ADR-026 allows no upward import, whatever its fate or reason", () => {
     expect(
       exceptionErrors([
         { ...base, fate: "stays" },
-        { ...base, to: "host/b.mjs", fate: "goes", issue: 936 },
-        { ...base, to: "host/c.mjs", fate: "goes" },
+        { ...base, to: "host/b.mjs", kind: "eager", fate: "goes", issue: 936 },
       ]),
-    ).toEqual(["exception ui/x.mjs -> host/c.mjs (lazy) goes but names no issue"]);
+    ).toEqual([
+      "exception ui/x.mjs -> host/c.mjs (lazy): ADR-026 allows no upward import; reach the higher folder through a topic, a callback or an interface object (decision 4)",
+      "exception ui/x.mjs -> host/b.mjs (eager): ADR-026 allows no upward import; reach the higher folder through a topic, a callback or an interface object (decision 4)",
+    ]);
+    expect(exceptionErrors([])).toEqual([]);
   });
 
-  test("the list does not grow without a change to ADR-026", () => {
-    // Raising this number is a decision: amend ADR-026's "Exceptions" with the new import and
-    // why it cannot be avoided. Lower it whenever an exception goes.
-    const PINNED = 3;
-    expect(
-      EXCEPTIONS.length,
-      `tools/layering/layers.ts lists ${EXCEPTIONS.length} exceptions, more than the ${PINNED} ADR-026 allows: an upward import needs an ADR change, not just a list entry`,
-    ).toBeLessThanOrEqual(PINNED);
+  test("tools/layering/layers.ts lists no exception", () => {
+    // The last one went in #936. Adding one is not a list edit: it changes ADR-026's decision 5,
+    // exceptionErrors and this test.
+    expect(EXCEPTIONS).toEqual([]);
   });
 });
 
@@ -562,5 +564,199 @@ describe("missingReadmes", () => {
     execFileSync("git", ["init", "-q"], { cwd: root });
     execFileSync("git", ["add", "."], { cwd: root });
     expect(missingReadmes(root)).toEqual(["about", "host"]);
+  });
+});
+
+describe("restrictedErrors", () => {
+  const gate = "host/AgentGate.sys.mjs";
+  const only = {
+    [gate]: {
+      importers: ["host/VimmaHost.sys.mjs", "ctl/VimmaControl.sys.mjs"],
+      review:
+        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    },
+  };
+
+  test("a module may import a restricted one only when it is listed, eagerly or lazily", () => {
+    expect(
+      restrictedErrors(
+        [
+          edge("host/VimmaHost.sys.mjs", gate),
+          edge("ctl/VimmaControl.sys.mjs", gate, "lazy"),
+          edge("host/VimmaHost.sys.mjs", "host/mcp-ops.mjs"),
+        ],
+        only,
+      ),
+    ).toEqual([]);
+  });
+
+  test("a new importer of the agent gate fails, in host/ or a higher folder alike", () => {
+    expect(
+      restrictedErrors(
+        [
+          edge("host/VimmaHost.sys.mjs", gate),
+          edge("ctl/VimmaControl.sys.mjs", gate),
+          edge("host/VimmaParent.sys.mjs", gate, "eager", 7),
+          edge("config/ConfigHost.sys.mjs", gate, "lazy", 12),
+        ],
+        only,
+      ),
+    ).toEqual([
+      "host/VimmaParent.sys.mjs:7: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+      "config/ConfigHost.sys.mjs:12: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+    ]);
+  });
+
+  test("a listed importer that no longer imports it fails, so the list stays exact", () => {
+    expect(restrictedErrors([edge("host/VimmaHost.sys.mjs", gate)], only)).toEqual([
+      "stale importer: ctl/VimmaControl.sys.mjs no longer imports host/AgentGate.sys.mjs; remove it from RESTRICTED in tools/layering/layers.ts",
+    ]);
+  });
+
+  test("the gate's importers are exactly today's seven", () => {
+    // Adding one is a security decision, not a list edit: review the new caller against
+    // docs/security.md section 12 first, then add it here and in layers.ts.
+    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs"]);
+    expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
+      "agent/AgentChat.sys.mjs",
+      "ctl/AgentDownloads.sys.mjs",
+      "ctl/VimmaControl.sys.mjs",
+      "ctl/agent-commands.mjs",
+      "host/VimmaHost.sys.mjs",
+      "host/agent-ui.mjs",
+      "host/mcp-ops.mjs",
+    ]);
+  });
+});
+
+describe("restrictedErrors: a listed importer may not hand the module on", () => {
+  const gate = "host/AgentGate.sys.mjs";
+  const only = {
+    [gate]: {
+      importers: ["host/VimmaHost.sys.mjs"],
+      review:
+        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    },
+  };
+  /** The errors for host/VimmaHost.sys.mjs with this source, its own import included. */
+  function handedOn(source: string): string[] {
+    const { edges, reexports } = scanModule(source, "host/VimmaHost.sys.mjs");
+    return restrictedErrors(edges, only, reexports);
+  }
+  const error = (line: number) =>
+    `host/VimmaHost.sys.mjs:${line}: re-exports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may hold and none may hand on: a new caller of the agent gate needs a security review (docs/security.md section 12)`;
+  const imp = `import { AgentGate } from ${q("./AgentGate.sys.mjs")};`;
+
+  test("export … from, named", () => {
+    expect(handedOn(`export { AgentGate } from ${q("./AgentGate.sys.mjs")};`)).toEqual([error(1)]);
+  });
+
+  test("export * from", () => {
+    expect(handedOn(`export * from ${q("./AgentGate.sys.mjs")};`)).toEqual([error(1)]);
+  });
+
+  test("an imported binding exported again, renamed or not", () => {
+    expect(handedOn(`${imp}\nexport { AgentGate };`)).toEqual([error(2)]);
+    expect(
+      handedOn(
+        `import { AgentGate as G } from ${q("./AgentGate.sys.mjs")};\nexport { G as Gate };`,
+      ),
+    ).toEqual([error(2)]);
+  });
+
+  test("an exported const that is the binding, or an object holding it", () => {
+    expect(handedOn(`${imp}\nexport const gate = AgentGate;`)).toEqual([error(2)]);
+    expect(handedOn(`${imp}\nexport const all = { gate: AgentGate };`)).toEqual([error(2)]);
+  });
+
+  test("a default export of it", () => {
+    expect(handedOn(`${imp}\nexport default AgentGate;`)).toEqual([error(2)]);
+  });
+
+  test("calling it from exported code is not handing it on", () => {
+    expect(
+      handedOn(`${imp}\nexport const Ui = { n() { return AgentGate.waiting.length; } };`),
+    ).toEqual([]);
+  });
+});
+
+describe("importsOf: a URL with a query, a fragment or an upper-case scheme is still an edge", () => {
+  const gate = "host/AgentGate.sys.mjs";
+  test.each([
+    [`ChromeUtils.importESModule("${V}${gate}?x")`, "eager"],
+    [`ChromeUtils.importESModule("${V}${gate}#x")`, "eager"],
+    [`ChromeUtils.importESModule("CHROME://browser/content/vimma/${gate}")`, "eager"],
+    [`ChromeUtils.importESModule("${V}ui/../${gate}")`, "eager"],
+    [`import(${q("./AgentGate.sys.mjs?x")})`, "lazy"],
+  ])("%s", (source, kind) => {
+    expect(found(`${source};`, "host/VimmaParent.sys.mjs")).toEqual([`${gate} (${kind})`]);
+  });
+
+  test("a string that names content/vimma/ but resolves to nothing the check knows is an error", () => {
+    const { problems } = scanModule(
+      `ChromeUtils.importESModule("resource://x/content/vimma/${gate}");`,
+      "host/VimmaParent.sys.mjs",
+    );
+    expect(problems).toEqual([
+      "host/VimmaParent.sys.mjs:1: a string names content/vimma/ but no Vimma module or folder the check can resolve",
+    ]);
+  });
+});
+
+describe("patchErrors", () => {
+  const only = {
+    "host/AgentGate.sys.mjs": {
+      importers: ["host/VimmaHost.sys.mjs"],
+      review:
+        "a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    },
+  };
+  test("an added line of a Firefox patch that names a restricted module fails", () => {
+    expect(
+      patchErrors(
+        [
+          {
+            file: "src/browser/x/a.patch",
+            text: [
+              "--- a/x.sys.mjs",
+              "+++ b/x.sys.mjs",
+              `-  G: "${V}ctl/AgentGate.sys.mjs",`,
+              `+  G: "${V}host/AgentGate.sys.mjs?v",`,
+              `+  S: "${V}workspaces/WorkspaceStore.sys.mjs",`,
+              ` context "${V}host/AgentGate.sys.mjs"`,
+            ].join("\n"),
+          },
+        ],
+        only,
+      ),
+    ).toEqual([
+      "src/browser/x/a.patch:4: names host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import, and a Firefox patch is none of them: a new caller of the agent gate needs a security review (docs/security.md section 12)",
+    ]);
+  });
+});
+
+describe("treeErrors: what npm run layering runs", () => {
+  test("a module the gate's list does not hold fails the whole check", () => {
+    const root = tempDir("vimma-layering-");
+    const vimma = "src/browser/base/content/vimma";
+    const files: Record<string, string> = {
+      "host/README.md": "",
+      "host/AgentGate.sys.mjs": "export const AgentGate = {};\n",
+      "host/VimmaParent.sys.mjs": `import { AgentGate } from ${q("./AgentGate.sys.mjs")};\n`,
+      "jar.mn": [
+        "browser.jar:",
+        "        content/browser/vimma/host/AgentGate.sys.mjs      (host/AgentGate.sys.mjs)",
+        "        content/browser/vimma/host/VimmaParent.sys.mjs    (host/VimmaParent.sys.mjs)",
+      ].join("\n"),
+    };
+    for (const [f, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, vimma, f)), { recursive: true });
+      writeFileSync(join(root, vimma, f), text);
+    }
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    execFileSync("git", ["add", "."], { cwd: root });
+    expect(treeErrors(root).errors).toContain(
+      "host/VimmaParent.sys.mjs:1: imports host/AgentGate.sys.mjs, which only the modules RESTRICTED lists in tools/layering/layers.ts may import: a new caller of the agent gate needs a security review (docs/security.md section 12), then a line there",
+    );
   });
 });

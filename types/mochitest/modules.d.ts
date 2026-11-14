@@ -111,11 +111,11 @@ interface VimmaModules {
   "chrome://browser/content/vimma/ctl/AgentConsole.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentConsole.sys.mjs");
   "chrome://browser/content/vimma/ctl/AgentDownloads.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentDownloads.sys.mjs");
   "chrome://browser/content/vimma/ctl/AgentDrive.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentDrive.sys.mjs");
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentGate.sys.mjs");
   "chrome://browser/content/vimma/ctl/AgentPages.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentPages.sys.mjs");
   "chrome://browser/content/vimma/ctl/AgentShot.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/AgentShot.sys.mjs");
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs");
   "chrome://browser/content/vimma/ctl/agent-commands.mjs": typeof import("../../src/browser/base/content/vimma/ctl/agent-commands.mjs");
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs": typeof import("../../src/browser/base/content/vimma/host/AgentGate.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs": typeof import("../../src/browser/base/content/vimma/host/VimmaHost.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaParent.sys.mjs": typeof import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs");
   "chrome://browser/content/vimma/host/addon-ops.mjs": typeof import("../../src/browser/base/content/vimma/host/addon-ops.mjs");
