@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) (2026-11-14)
+## [Unreleased]
+
+## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) · Firefox 160.0 (2026-11-14)
 
 
 ### Fixed
@@ -17,8 +19,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * pickers tell unloaded tabs apart in private windows, popups and with containers off ([#968](https://github.com/vimma-browser/vimma/issues/968)) ([6dcd228](https://github.com/vimma-browser/vimma/commit/6dcd22845247b6dff021e377667a3ef25258d01e)), closes [#958](https://github.com/vimma-browser/vimma/issues/958)
 * **start:** keep Firefox's new tab process alive when the start page is turned back on ([#978](https://github.com/vimma-browser/vimma/issues/978)) ([e51ee9d](https://github.com/vimma-browser/vimma/commit/e51ee9d273682b2b1cc786f61ca54296de482bb6)), closes [#950](https://github.com/vimma-browser/vimma/issues/950)
 * **start:** keep the Firefox-page latch when a new About process starts as the last one ends ([#991](https://github.com/vimma-browser/vimma/issues/991)) ([5df17ff](https://github.com/vimma-browser/vimma/commit/5df17ff6fd5137a95c38e7a8c0c153ef8c3cfa73)), closes [#984](https://github.com/vimma-browser/vimma/issues/984)
-
-## [Unreleased]
 
 ## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) · Firefox 160.0 (2026-11-12)
 
