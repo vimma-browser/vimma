@@ -197,6 +197,8 @@ interface Window {
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
 interface Tabbrowser {
+  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
+  readonly _switcher: AsyncTabSwitcher | null;
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
@@ -229,6 +231,8 @@ interface nsIPermissionManager {
 // engine/toolkit/content/widgets/browser-custom-element.mjs, and its frame loader
 // (engine/dom/chrome-webidl/FrameLoader.webidl, engine/dom/interfaces/base/nsIRemoteTab.idl)
 interface MozBrowser {
+  /** Its current window global's outer window id, undefined while it has none. */
+  readonly outerWindowID: number | undefined;
   docShellIsActive: boolean;
   fullZoom: number;
   stop(): void;
@@ -348,10 +352,16 @@ interface XPCComponentsUtils {
   ): unknown;
 }
 
-// engine/browser/components/urlbar/content/UrlbarInputBase.mjs (handleRevert) and
-// content/UrlbarView.mjs (the view): the address bar's members the tests use past those types/firefox.d.ts gives the product (harness.d.ts adds
-// them to the test window's gURLBar).
+// engine/browser/components/urlbar/content/UrlbarInputBase.mjs (UrlbarInput extends it) and
+// content/UrlbarView.mjs: the address bar's members the tests use past those types/firefox.d.ts
+// gives the product (harness.d.ts adds them to the test window's gURLBar).
 interface UrlbarInputTestMembers {
+  /** The field's text; setting it sets the text the address bar shows. */
+  value: string;
+  /** The <input> the address bar edits. */
+  readonly inputField: HTMLInputElement;
+  /** The field's text before trimming: the full address of a page. */
+  readonly untrimmedValue: string;
   handleRevert(): void;
   readonly view: {
     /** The selected row's result: a search suggestion's payload has its text. */
@@ -359,3 +369,68 @@ interface UrlbarInputTestMembers {
     readonly selectedElement: Element | null;
   };
 }
+
+// engine/toolkit/components/windowwatcher/nsIPromptService.idl; Services.prompt is its service
+// (engine/toolkit/components/prompts/src/components.conf, js_name "prompt").
+interface nsIPromptService {
+  /** Spins a nested event loop until the dialog closes: true for OK, false for Cancel. */
+  confirm(parent: Window | null, title: string, text: string): boolean;
+}
+interface FirefoxServices {
+  prompt: nsIPromptService;
+}
+
+// engine/toolkit/content/widgets/dialog.js (MozDialog): a chrome dialog's XUL <dialog>, whose
+// buttons are XUL buttons (engine/toolkit/content/widgets/button.js, MozButtonBase `disabled`).
+interface MozDialogElement extends Element {
+  getButton(type: "accept" | "cancel" | "extra1" | "extra2" | "help" | "disclosure"): Element & {
+    disabled: boolean;
+  };
+}
+
+// engine/toolkit/content/widgets/radio.js (MozRadiogroup): the selected <radio>, null for none.
+interface MozRadiogroupElement extends Element {
+  selectedItem: Element | null;
+}
+
+// engine/toolkit/modules/SubDialog.sys.mjs: a sub-dialog, as its "dialogopen" event's
+// `detail.dialog` gives it; the tests read two of its own fields.
+interface SubDialog {
+  /** The URL it opened, null once it closes. */
+  readonly _openedURL: string | null;
+  /** Its frame: a <browser class="dialogFrame"> in the parent process. */
+  readonly _frame: MozBrowser;
+}
+
+// engine/dom/webidl/Window.webidl (chrome-only): the window's WindowGlobalChild, which a content
+// task reaches the frame's actors through; null for a window without a global of its own.
+interface Window {
+  readonly windowGlobalChild: WindowGlobalChild | null;
+}
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl
+interface WindowGlobalChild {
+  getActor(name: string): JSWindowActorChild;
+}
+
+// engine/dom/webidl/Document.webidl (chrome-only): a XUL element, as chrome code makes one.
+interface Document {
+  createXULElement(localName: string, options?: ElementCreationOptions | string): Element;
+}
+
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
+// command on doCommand.
+interface XULElement extends Element {
+  hidden: boolean;
+  doCommand(): void;
+}
+// engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
+// shows the requested tab once its layers are ready.
+interface AsyncTabSwitcher {
+  /** The tab whose layers it waits for, null while it waits for none. */
+  readonly loadingTab: MozTabbrowserTab | null;
+  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
+  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
+}
+// engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
+// (MozXULElement).
+interface MozTabSplitViewWrapper extends XULElement {}

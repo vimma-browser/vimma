@@ -67,6 +67,11 @@ type PaneView = import("../../src/browser/base/content/vimma/split/PaneView.mjs"
  * splits have; Firefox's own type allows a tab without one.
  */
 type PaneTab = Parameters<PaneView["showTabs"]>[1];
+/**
+ * A tab a test opened and splits: a tabbrowser tab, which PaneView takes as a PaneTab (a tab the
+ * test opened has its panel). A test casts the tab it opened to this.
+ */
+type SplitTab = MozTabbrowserTab & PaneTab;
 
 /** A service of the host's registry (host/host-services.mjs ServiceName). */
 type HostServiceName = keyof Parameters<
@@ -132,6 +137,8 @@ type HostHints = NonNullable<ReturnType<VimmaHostApi["_hints"]>>;
 type HostHint = HostHints["hints"][number];
 /** A split's tree of panes (core/panes.mjs Panes); PaneView.panes is null with one pane. */
 type Panes = NonNullable<PaneView["panes"]>;
+/** A split of that tree, with its children and their ratios (core/panes.mjs Split). */
+type PaneSplit = Extract<Panes["root"], { type: "split" }>;
 
 /** A window's live grep (host/grep.mjs); VimmaHost._grep(win) is undefined before VimmaHost starts the window. */
 type GrepSession = import("../../src/browser/base/content/vimma/host/grep.mjs").GrepSession;
@@ -139,3 +146,9 @@ type GrepSession = import("../../src/browser/base/content/vimma/host/grep.mjs").
 /** A group of the address bar's results, as search/UrlbarRows.sys.mjs reads Firefox's. */
 type UrlbarResultGroup =
   import("../../src/browser/base/content/vimma/search/UrlbarRows.sys.mjs").ResultGroup;
+
+/**
+ * A window's state (VimmaHost.sys.mjs WindowState). VimmaHost._state(win) is undefined for a
+ * window VimmaHost has not started; a test whose window it started casts the lookup to this.
+ */
+type HostState = NonNullable<ReturnType<VimmaHostApi["_state"]>>;

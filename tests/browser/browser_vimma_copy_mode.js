@@ -58,7 +58,8 @@ function waitForMode(browser, mode) {
  */
 function selectionIn(target) {
   return SpecialPowers.spawn(target, [], () => {
-    const sel = content.getSelection();
+    // A window with a document has a selection; were it missing, the reads below would throw.
+    const sel = /** @type {Selection} */ (content.getSelection());
     const selCon = docShell
       .QueryInterface(Ci.nsIInterfaceRequestor)
       .getInterface(Ci.nsISelectionDisplay)
@@ -76,34 +77,44 @@ function selectionIn(target) {
   });
 }
 
+/** @typedef {Awaited<ReturnType<typeof selectionIn>>} SelectionState */
+
 /**
  * Waits until the selection in `target` matches `want` (a subset of selectionIn's fields).
  * @param {BrowsingContext | XULBrowserElement} target
- * @param {object} want
+ * @param {Partial<SelectionState>} want
  * @param {string} what
  */
 async function waitForSelection(target, want, what) {
+  /** @type {SelectionState | undefined} */
   let last;
   try {
     await TestUtils.waitForCondition(async () => {
-      last = await selectionIn(target);
-      return Object.entries(want).every(([k, v]) => last[k] === v);
+      const read = await selectionIn(target);
+      last = read;
+      return Object.entries(want).every(
+        ([k, v]) => read[/** @type {keyof SelectionState} */ (k)] === v,
+      );
     }, what);
   } catch {
     // fall through to the assertion, which shows what was there
   }
-  for (const [k, v] of Object.entries(want)) Assert.equal(last[k], v, `${what}: ${k}`);
+  if (!last) throw new Error(`${what}: the selection was never read`);
+  for (const [k, v] of Object.entries(want)) {
+    Assert.equal(last[/** @type {keyof SelectionState} */ (k)], v, `${what}: ${k}`);
+  }
   return last;
 }
 
 /** ctrl+b, then `key`. */
-function prefix(key) {
+function prefix(/** @type {string} */ key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key);
 }
 
+/** The status bar's notice, which Vimma's chrome always has. */
 function notice() {
-  return document.getElementById("vimma-notice");
+  return /** @type {HTMLElement} */ (document.getElementById("vimma-notice"));
 }
 
 add_task(async function v_places_a_visible_caret_at_the_top_of_the_viewport() {
