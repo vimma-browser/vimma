@@ -276,6 +276,17 @@ export class AgentChatWindow {
      * that answers late is drawn only into the list that asked for it (issue #1001).
      */
     this.listed = 0;
+    /** The `listed` count of the model list last shown: a late key deletion reloads only it. */
+    this.modelsAt = -1;
+    /** Counted up by each pick: of picks that wait, only the latest is used (issue #1005). */
+    this.picks = 0;
+    /**
+     * Counted up by each prompt line a picker row opens: it takes focus, so no pick still
+     * waiting is used under it, nor moves focus to the key field (issue #1005).
+     */
+    this.prompted = 0;
+    /** The `listed` count of a model list a key's deletion reloaded: its picks say why. */
+    this.reloadedAt = -1;
     /** The conversation list's filter by title (Behaviour 19), lower case. */
     this.filter = "";
     this.row = 0;
@@ -393,6 +404,8 @@ export class AgentChatWindow {
 
   /** The input, in insert mode. */
   insert() {
+    // Every way out of the key field empties it (security.md M46), a late pick's included.
+    this.clearKey();
     this.view = "chat";
     this.listed++;
     // Drawn first: the input is hidden in the other views, and a hidden field takes no focus.
@@ -600,13 +613,18 @@ export class AgentChatWindow {
     const go = () => {
       // Emptied at once, so a second Enter while the send settles sends nothing twice.
       input.value = "";
+      // A refusal can come a second later (a local server is asked first): a user who left the
+      // transcript meanwhile (a list, the key field) is not pulled into the picker (#1005).
+      const sentAt = this.listed;
       this.services.chat.send(id, text, { ask }).then(
         (/** @type {any} */ r) => {
           if ("refused" in r) {
             if (!input.value) input.value = text;
             // The model is not there: another is picked, and the message waits for it.
-            if (r.pick && this.opened && this.conversation === id) this.open({ view: "models" });
-            this.host.say(`agent: ${r.refused}`, true);
+            const stayed = this.focused && this.conversation === id && this.listed === sentAt;
+            if (r.pick && stayed) this.open({ view: "models" });
+            const kept = r.pick && !stayed ? "; the message is still in the input" : "";
+            this.host.say(`agent: ${r.refused}${kept}`, true);
           }
         },
         (/** @type {any} */ e) => {
@@ -620,14 +638,27 @@ export class AgentChatWindow {
     if (needsKey(chosen)) {
       // A hosted provider without a key for its endpoint: the key first, and the task stays in
       // the input to be sent once it is stored (Behaviour 3).
+      const shownAt = this.listed;
+      // The hint can wait on the keyring. A user who left the transcript meanwhile (another
+      // list, the key field, another conversation, the window closed) gets neither the key
+      // field nor Behaviour 5's notice over what they went to, and nothing is sent: the
+      // message stays in the input, to be sent with Enter again (issue #1005).
+      const left = () => {
+        if (this.listed === shownAt && this.focused) return false;
+        this.host.say(
+          "agent: not sent: the chat was left before its key was read; the message is still in the input",
+        );
+        return true;
+      };
       this.services.keys.hint(chosen.name, chosen.endpoint).then(
         (/** @type {string | null} */ hint) => {
+          if (left()) return;
           if (hint === null) this.askKey(chosen);
           else this.afterKey(id, go);
         },
         (/** @type {any} */ e) => {
           console.error("vimma agent: the key could not be read", e?.name);
-          this.askKey(chosen);
+          if (!left()) this.askKey(chosen);
         },
       );
       return;
@@ -694,8 +725,9 @@ export class AgentChatWindow {
    * conversation's model is selected, and one that is not there is shown as such.
    */
   loadModels() {
-    const listed = ++this.listed;
-    const shown = () => this.opened && this.view === "models" && this.listed === listed;
+    const shownAt = ++this.listed;
+    this.modelsAt = shownAt;
+    const shown = () => this.opened && this.view === "models" && this.listed === shownAt;
     const config = this.services.agentConfig();
     // An agent CLI only while that feature is on (builtin-agent-cli, Delivery).
     const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).filter(
@@ -888,18 +920,41 @@ export class AgentChatWindow {
       this.services.cli.use(info.id, row.cliPick.path);
       provider = listed;
     }
-    if (
-      provider &&
-      needsKey(provider) &&
-      (await this.services.keys.hint(provider.name, provider.endpoint)) === null
-    ) {
-      this.askKey(provider);
-      return;
+    // A key hint can wait on the keyring, and a local model's preparation for up to a minute.
+    // A pick that finds, after such a wait, a later pick of a model made or the list it was made
+    // in left (another list, the key field, the transcript, the window closed) is not used: it
+    // changes neither the view nor the model, since the user has moved on and may be typing a
+    // key in the field the pick would replace; the later pick wins and says its own (#1005).
+    const pickAt = ++this.picks;
+    const shownAt = this.listed;
+    const promptedAt = this.prompted;
+    const stale = () => {
+      if (this.picks !== pickAt) return true;
+      // Focus gone from the window (a page, the address bar, the prompt line) counts as left;
+      // the window losing OS focus to a keyring prompt does not, as activeElement stays.
+      if (this.listed === shownAt && this.prompted === promptedAt && this.focused) return false;
+      const why =
+        shownAt === this.reloadedAt
+          ? "the model list was reloaded after a key was deleted; pick it again"
+          : "the picker was left before it was ready";
+      this.host.say(`agent: ${row.label} not used: ${why}`);
+      return true;
+    };
+    if (provider && needsKey(provider)) {
+      const hint = await this.services.keys.hint(provider.name, provider.endpoint);
+      if (stale()) return;
+      if (hint === null) {
+        this.askKey(provider);
+        return;
+      }
     }
     if (row.local) {
       this.host.say(`agent: preparing ${row.local.model}…`);
       try {
+        // Not cancelled when the pick goes stale: it ends on its own and only makes the copy of
+        // the model the pick asked for (Behaviour 2); the model is then neither used nor loaded.
         const model = await this.services.chat.prepareLocal(row.local.endpoint, row.local.model);
+        if (stale()) return;
         provider = {
           name: row.local.server,
           kind: "openai",
@@ -908,7 +963,10 @@ export class AgentChatWindow {
           vision: false,
         };
       } catch (e) {
-        this.host.say(`agent: ${/** @type {any} */ (e)?.message ?? e}`, true);
+        // A later pick says its own; this one's failure is still the answer to its Enter.
+        if (this.picks === pickAt) {
+          this.host.say(`agent: ${/** @type {any} */ (e)?.message ?? e}`, true);
+        }
         return;
       }
     }
@@ -937,6 +995,7 @@ export class AgentChatWindow {
   askCliModel(cli, path, opts, value) {
     const info = CLIS[cli];
     if (!info) return;
+    this.prompted++;
     const ask = modelPrompt(cli);
     this.host.prompt({
       label: ask.label,
@@ -975,6 +1034,7 @@ export class AgentChatWindow {
    * @param {string} [value]  what was typed before, to correct
    */
   askOtherModel(base, opts, value) {
+    this.prompted++;
     const ask = modelPrompt(base.cli ?? "");
     this.host.prompt({
       label: ask.label,
@@ -1030,7 +1090,7 @@ export class AgentChatWindow {
    * `--version`, only while setup is open on this row, each listed with its path to pick.
    */
   findClis() {
-    const listed = ++this.listed;
+    const shownAt = ++this.listed;
     this.rows = [];
     this.row = 0;
     this.render();
@@ -1039,7 +1099,7 @@ export class AgentChatWindow {
         /** @type {{ cli: string, path: string, label: string, shim: string | null,
          *   problem: string | null }[]} */ found,
       ) => {
-        if (!this.opened || this.view !== "models" || this.listed !== listed) return;
+        if (!this.opened || this.view !== "models" || this.listed !== shownAt) return;
         if (!found.length) {
           this.host.say(`agent: ${this.services.cli.noneFound()}`, true);
           this.loadModels();
@@ -1127,8 +1187,10 @@ export class AgentChatWindow {
   addProvider(kind) {
     const localOnly = !!this.services.agentConfig()?.localOnly;
     /** @param {string} endpoint */
-    const askModel = (endpoint) =>
-      this.host.prompt({
+    const askModel = (endpoint) => {
+      // The prompt line takes focus: no pick still waiting is used under it (#1005).
+      this.prompted++;
+      return this.host.prompt({
         label: "agent model: ",
         value: kind === "anthropic" ? ANTHROPIC_MODEL : "",
         submit: (model) => {
@@ -1146,11 +1208,13 @@ export class AgentChatWindow {
           });
         },
       });
+    };
     if (kind === "anthropic") {
       const refused = checkEndpoint(ANTHROPIC_ENDPOINT, { localOnly });
       if (refused) return this.host.say(`agent: ${refused}`, true);
       return askModel(ANTHROPIC_ENDPOINT);
     }
+    this.prompted++;
     return this.host.prompt({
       label: "agent endpoint (https://…/v1): ",
       submit: (text) => {
@@ -1177,8 +1241,8 @@ export class AgentChatWindow {
     /** @type {HTMLInputElement} */ (this.keyInput).focus();
   }
 
+  /** Esc in the key field: back to the transcript, which empties the field. */
   cancelKey() {
-    this.clearKey();
     this.insert();
   }
 
@@ -1194,7 +1258,10 @@ export class AgentChatWindow {
     // Out of the field at once: it holds the key only while it is typed.
     const key = field.value.trim();
     field.value = "";
-    if (this.storing) return undefined;
+    if (this.storing) {
+      this.host.say("agent: a key is still being stored; enter this one again once it is", true);
+      return undefined;
+    }
     if (!provider) return this.insert();
     if (!key) {
       this.host.say(`agent: ${provider.name} needs an API key`, true);
@@ -1203,6 +1270,10 @@ export class AgentChatWindow {
     // One store at a time: a second Enter while this one runs neither errs nor races it.
     this.storing = true;
     this.keyFor = null;
+    // Login storage can wait on the keyring. A user who leaves the field meanwhile still has
+    // the key stored, as Enter asked, but the view and the conversation's model stay as they
+    // are: they may be typing another provider's key, which the transcript would empty.
+    const shownAt = this.listed;
     let hint;
     try {
       await this.services.keys.set(provider.name, key, provider.endpoint);
@@ -1211,14 +1282,18 @@ export class AgentChatWindow {
       // The error's text is not shown: it could carry what was typed.
       console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
       this.host.say(`agent: the key for ${provider.name} could not be stored`, true);
-      this.keyFor = provider;
+      // Typed again only by a user still in the field.
+      if (this.listed === shownAt) this.keyFor = provider;
       return undefined;
     } finally {
       this.storing = false;
     }
-    this.keyFor = null;
-    this.useProvider(provider);
-    this.insert();
+    // A user who clicked away (a page, the address bar) keeps their focus, and the model too.
+    if (this.listed === shownAt && this.focused) {
+      this.useProvider(provider);
+      this.insert();
+    }
+    // Its provider is kept either way, so that the stored key has one after a restart.
     const note = await this.remember(provider);
     this.host.say(`agent: ${provider.name}: ${hint ?? "key stored"}${note}`, note.startsWith(";"));
     return undefined;
@@ -1229,13 +1304,17 @@ export class AgentChatWindow {
     const p = this.rows[this.row]?.provider;
     if (!p) return;
     this.host.ask(`Delete the API key of ${p.name}? y/N`, () => {
-      const listed = this.listed;
       this.services.keys.delete(p.name).then(
         (/** @type {boolean} */ had) => {
           this.host.say(
             had ? `agent: deleted the key of ${p.name}` : `agent: ${p.name} has no key`,
           );
-          if (this.opened && this.view === "models" && this.listed === listed) this.loadModels();
+          // Any model list shown, a picker opened again since included, since its hints were
+          // read before the key went; setup's agent CLI list is left alone (issue #1001).
+          if (this.opened && this.view === "models" && this.listed === this.modelsAt) {
+            this.reloadedAt = this.listed;
+            this.loadModels();
+          }
         },
         (/** @type {any} */ e) => console.error("vimma agent: deleting the key failed", e?.name),
       );
