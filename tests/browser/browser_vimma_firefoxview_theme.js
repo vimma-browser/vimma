@@ -98,7 +98,8 @@ function nearly(actual, expected, msg) {
   const parse = (/** @type {string} */ s) => (s.match(/\d+/g) ?? []).map(Number);
   const a = parse(actual);
   const e = parse(expected);
-  const ok = a.length >= 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
+  // Three channels on both sides: a token that is not set gives "rgb(NaN, NaN, NaN)", no number.
+  const ok = a.length >= 3 && e.length === 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
   Assert.ok(ok, `${msg} (${actual}, expected ${expected})`);
 }
 
@@ -120,15 +121,23 @@ async function settled(cond, msg) {
   }
 }
 
+/**
+ * Tab Overview's navigation items: <moz-page-nav-button> elements, whose `selected` property
+ * says which view shows (engine/toolkit/content/widgets/moz-page-nav/moz-page-nav.mjs).
+ * @param {Document} doc
+ */
+function navButtons(doc) {
+  const buttons = [...doc.querySelectorAll("moz-page-nav-button")];
+  return /** @type {(HTMLElement & { selected: boolean })[]} */ (buttons);
+}
+
 /** Opens Tab Overview in a tab of its own, as the `:firefox` command or its URL does. */
 async function openTabOverview() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:firefoxview");
   const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
   await until(
     () =>
-      [...doc.querySelectorAll("moz-page-nav-button")].some(
-        (b) => /** @type {any} */ (b).selected && b.shadowRoot?.querySelector("button[selected]"),
-      ),
+      navButtons(doc).some((b) => b.selected && b.shadowRoot?.querySelector("button[selected]")),
     "Tab Overview selects its first view",
   );
   return { tab, doc };
@@ -139,9 +148,7 @@ async function openTabOverview() {
  * @param {Document} doc
  */
 function selectedNavButton(doc) {
-  const host = [...doc.querySelectorAll("moz-page-nav-button")].find(
-    (b) => /** @type {any} */ (b).selected,
-  );
+  const host = navButtons(doc).find((b) => b.selected);
   return /** @type {Element} */ (host?.shadowRoot?.querySelector("button[selected]"));
 }
 
@@ -171,6 +178,7 @@ async function assertTabOverview(label, { tab, doc }) {
   const { width, height } = browser.getBoundingClientRect();
   nearly(
     await pixel(
+      // The page's own global; a read through a missing one throws.
       /** @type {WindowGlobalParent} */ (browser.browsingContext.currentWindowGlobal),
       width - 4,
       height - 4,
@@ -223,8 +231,8 @@ async function assertTabOverview(label, { tab, doc }) {
     tokenColour("--vimma-mode-normal-fg"),
     `${label}: with readable text on it`,
   );
-  const other = [...doc.querySelectorAll("moz-page-nav-button")]
-    .find((b) => !(/** @type {any} */ (b).selected) && !b.hidden)
+  const other = navButtons(doc)
+    .find((b) => !b.selected && !b.hidden)
     ?.shadowRoot?.querySelector("button");
   Assert.equal(
     style(/** @type {Element} */ (other)).color,
@@ -381,6 +389,10 @@ add_task(async function high_contrast_keeps_firefox_colours() {
       () => /** @type {Window} */ (doc.defaultView).matchMedia("(prefers-contrast)").matches,
       "high contrast is on in the page",
     );
+    // The two tokens the checks below compare with: a token that is not set equals no colour.
+    for (const name of ["--vimma-bg", "--vimma-mode-normal"]) {
+      Assert.ok(/^#[0-9a-f]{6}$/i.test(token(name)), `${name} is a colour`);
+    }
     Assert.notEqual(
       style(/** @type {Element} */ (doc.body)).backgroundColor,
       tokenColour("--vimma-bg"),

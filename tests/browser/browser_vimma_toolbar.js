@@ -824,12 +824,19 @@ add_task(async function prompt_keys_arm_on_firefoxs_own_delay() {
       new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
     );
 
+  // When Firefox's delay for a prompt started: null until the prompt shows, which fails here.
+  const shownAt = (/** @type {MozPopupNotification} */ prompt) => {
+    const shown = prompt.notification.timeShown;
+    Assert.ok(shown !== null, "the prompt has shown, so Firefox's delay has a start");
+    return shown;
+  };
+
   // Showing the line must not restart Firefox's delay (a resize of the panel does).
   let n = await ask();
   let at = await hintShows(n);
   await frames();
   Assert.greaterOrEqual(
-    at - n.notification.timeShown,
+    at - shownAt(n),
     DELAY,
     "the keys line shows once Firefox's delay has run, and showing it does not restart it",
   );
@@ -844,7 +851,7 @@ add_task(async function prompt_keys_arm_on_firefoxs_own_delay() {
   window.dispatchEvent(new Event("activate"));
   at = await hintShows(n);
   Assert.greaterOrEqual(
-    at - n.notification.timeShown,
+    at - shownAt(n),
     DELAY,
     "after an activation the keys line waits for Firefox's restarted delay",
   );
@@ -1701,11 +1708,10 @@ add_task(async function revealing_keeps_the_overflow_menu() {
     await window.promiseDocumentFlushed(() => {});
     await until(
       () =>
-        !(
-          /** @type {OverflowableToolbarElement} */ (
-            /** @type {Element} */ ($("nav-bar"))
-          ).overflowable.isHandlingOverflow()
-        ),
+        // `=== false`: a toolbar without its overflow handling is not done with it either.
+        /** @type {OverflowableToolbarElement} */ (
+          /** @type {Element} */ ($("nav-bar"))
+        ).overflowable?.isHandlingOverflow() === false,
       "the overflow check ends",
     );
     return overflowed();

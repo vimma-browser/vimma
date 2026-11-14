@@ -32,20 +32,38 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * A value the test's own lookup found. It changes nothing at run time: a read through a missing
+ * one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** A Vimma dialog (the pickers, the help overlay) by id, null while it is not made. */
+const dialogById = (/** @type {string} */ id) =>
+  /** @type {HTMLDialogElement | null} */ (document.getElementById(id));
+
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ * @param {KeyEventOptions} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
 /** "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it. */
-function rgb(hex) {
+function rgb(/** @type {string} */ hex) {
   const n = parseInt(hex.slice(1), 16);
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 /** "rgb(r, g, b)" → "#rrggbb". */
-function hex(css) {
+function hex(/** @type {string} */ css) {
   const m = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(css);
   Assert.ok(m, `an opaque colour: ${css}`);
   return `#${m
@@ -65,10 +83,15 @@ async function openPage(url = PAGE) {
   return tab;
 }
 
-/** Waits for focus to land on `el()`, keyboard focus, so :focus-visible applies. */
+/**
+ * Waits for focus to land on `el()`, keyboard focus, so :focus-visible applies.
+ * @template {Element} T
+ * @param {() => T | null} el
+ * @param {string} what
+ */
 async function focusedOn(el, what) {
   await until(() => el() && document.activeElement === el(), `${what} takes focus`);
-  const node = /** @type {Element} */ (el());
+  const node = /** @type {T} */ (el());
   Assert.ok(node.matches(":focus-visible"), `${what}: keyboard focus (:focus-visible)`);
   return node;
 }
@@ -76,6 +99,8 @@ async function focusedOn(el, what) {
 /**
  * `node`'s ring: a solid 2px --vimma-focus outline, never the UA's `auto` (painted in the system
  * accent, not in outline-color).
+ * @param {Element} node
+ * @param {string} what
  */
 function expectAquaRing(node, what) {
   const style = getComputedStyle(node);
@@ -88,6 +113,9 @@ function expectAquaRing(node, what) {
 /**
  * The one-line command line and prompts: no ring (the line exists only while focused), and the
  * prompt in front of the caret marks it at 3:1 or better.
+ * @param {Element} input
+ * @param {Element} row  the line's .vimma-cmdline-row
+ * @param {string} what
  */
 function expectNoRingAndAPrompt(input, row, what) {
   const style = getComputedStyle(input);
@@ -113,7 +141,7 @@ add_task(async function setup() {
       "vimma-workspace-picker",
       "vimma-addon-picker",
     ]) {
-      document.getElementById(id)?.close?.();
+      dialogById(id)?.close?.();
     }
     const ww = WindowWorkspaces.get(window);
     const main = WorkspaceStore.definitions.workspaces.find((w) => w.name === "main");
@@ -123,7 +151,9 @@ add_task(async function setup() {
     )) {
       await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
     }
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await SpecialPowers.popPrefEnv();
   });
 });
@@ -142,8 +172,8 @@ add_task(async function side_panel_list_has_a_aqua_ring() {
 });
 
 add_task(async function bookmarks_tree_and_filter_have_aqua_rings() {
-  const model = WindowWorkspaces.get(window).model;
-  const active = model.workspaces.find((w) => w.id === model.active).name;
+  const model = found(found(WindowWorkspaces.get(window)).model);
+  const active = found(model.workspaces.find((w) => w.id === model.active)).name;
   const [folder] = await PlacesUtils.bookmarks.insertTree({
     guid: PlacesUtils.bookmarks.toolbarGuid,
     children: [
@@ -169,7 +199,7 @@ add_task(async function bookmarks_tree_and_filter_have_aqua_rings() {
     "the bookmarks filter",
   );
   expectAquaRing(filter, "bookmarks filter");
-  const box = /** @type {Element} */ (document.getElementById("vimma-bookmarks"));
+  const box = /** @type {HTMLElement} */ (document.getElementById("vimma-bookmarks"));
   while (!box.hidden) {
     EventUtils.synthesizeKey("KEY_Escape");
     await until(() => box.hidden || filter.hidden, "Esc clears the filter, then closes");
@@ -178,12 +208,17 @@ add_task(async function bookmarks_tree_and_filter_have_aqua_rings() {
   gBrowser.removeTab(tab);
 });
 
-/** A picker opened by prefix+`key`: its focused list. */
+/**
+ * A picker opened by prefix+`key`: its focused list.
+ * @param {string} key
+ * @param {string} id  the picker's dialog
+ * @param {string} what
+ */
 async function expectPickerRing(key, id, what) {
   const tab = await openPage();
   prefix(key);
   const list = await focusedOn(() => {
-    const d = /** @type {HTMLDialogElement | null} */ (document.getElementById(id));
+    const d = dialogById(id);
     return d?.open ? d.querySelector("[role=listbox]") : null;
   }, `the ${what}'s list`);
   expectAquaRing(list, what);
@@ -208,7 +243,7 @@ add_task(async function help_overlay_and_its_filter_have_aqua_rings() {
   const tab = await openPage();
   prefix("?", { shiftKey: true });
   const dialog = await focusedOn(() => {
-    const d = /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-help"));
+    const d = dialogById("vimma-help");
     return d?.open ? d : null;
   }, "the help overlay");
   expectAquaRing(dialog, "help overlay");
@@ -219,7 +254,7 @@ add_task(async function help_overlay_and_its_filter_have_aqua_rings() {
   );
   expectAquaRing(input, "help filter");
   EventUtils.synthesizeKey("KEY_Escape");
-  if (document.getElementById("vimma-help")?.open) EventUtils.synthesizeKey("KEY_Escape");
+  if (dialogById("vimma-help")?.open) EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, "the overlay closes");
   gBrowser.removeTab(tab);
 });
@@ -231,7 +266,7 @@ add_task(async function command_line_has_no_ring_and_a_prompt_that_marks_it() {
     () => document.getElementById("vimma-cmdline-input"),
     "the command line",
   );
-  expectNoRingAndAPrompt(input, input.closest(".vimma-cmdline-row"), "command line");
+  expectNoRingAndAPrompt(input, found(input.closest(".vimma-cmdline-row")), "command line");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, "the line closes");
   gBrowser.removeTab(tab);
@@ -244,7 +279,7 @@ add_task(async function rename_prompt_has_no_ring_and_a_prompt_that_marks_it() {
     () => document.getElementById("vimma-rename-input"),
     "the rename prompt",
   );
-  expectNoRingAndAPrompt(input, input.closest(".vimma-cmdline-row"), "rename prompt");
+  expectNoRingAndAPrompt(input, found(input.closest(".vimma-cmdline-row")), "rename prompt");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === tab.linkedBrowser, "the prompt closes");
   gBrowser.removeTab(tab);
@@ -260,15 +295,16 @@ add_task(async function yes_no_question_has_no_ring_and_a_prompt_that_marks_it()
     "a second workspace, so closing one asks",
   );
   const browser = gBrowser.selectedBrowser;
-  await until(() => !browser.webProgress?.isLoadingDocument, "its home tab has loaded");
+  // `=== false`: a browser without its web progress has not loaded either.
+  await until(() => browser.webProgress?.isLoadingDocument === false, "its home tab has loaded");
   await focusContent(browser);
   prefix("D", { shiftKey: true });
   const input = await focusedOn(
     () => document.getElementById("vimma-rename-input"),
     "the y/N question",
   );
-  const row = input.closest(".vimma-cmdline-row");
-  Assert.stringContains(row.textContent, "y/N", "sanity: a y/N question");
+  const row = found(input.closest(".vimma-cmdline-row"));
+  Assert.stringContains(row.textContent ?? "", "y/N", "sanity: a y/N question");
   expectNoRingAndAPrompt(input, row, "y/N question");
   EventUtils.synthesizeKey("KEY_Escape");
   await until(() => document.activeElement === browser, "the question closes");
