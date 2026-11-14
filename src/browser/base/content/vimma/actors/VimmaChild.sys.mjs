@@ -303,11 +303,15 @@ const KEYS_KEPT = 16;
  */
 const isIndex = (n) => Number.isSafeInteger(n) && /** @type {number} */ (n) >= 0;
 
+/** The parent's number for an agent's step, or -1 without one. @param {{ step?: unknown }} asked */
+const stepOf = (asked) => (isIndex(asked.step) ? asked.step : -1);
+
 /**
  * An agent's step that runs after the child's reply (VimmaChild #afterReply): the element of
- * the agent's list it acts on, and its outcome so far.
+ * the agent's list it acts on, the parent's number for the step (-1 for a fill, which the
+ * parent does not number), and its outcome so far.
  * @template {string} T
- * @typedef {{ gen: number, id: number, outcome: "pending" | "skipped" | T }} AgentStep
+ * @typedef {{ gen: number, id: number, step: number, outcome: "pending" | "skipped" | T }} AgentStep
  */
 
 export class VimmaChild extends JSWindowActorChild {
@@ -1201,7 +1205,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (typeof value !== "string" && typeof value !== "boolean") return "changed";
     if (!this.#fillAsAsked(el, asked)) return "changed";
     /** @type {AgentStep<"kept" | "reset">} */
-    const fill = { gen: asked.gen, id: asked.id, outcome: "pending" };
+    const fill = { gen: asked.gen, id: asked.id, step: -1, outcome: "pending" };
     this.#agentFill = fill;
     const until = asked.until;
     this.#afterReply(fill, false, () => {
@@ -1234,7 +1238,8 @@ export class VimmaChild extends JSWindowActorChild {
    * named, by `requestSubmit`, after this reply. No user activation is given: the parent lets
    * through only the submission the question allowed.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, until?: unknown }} asked
+   * @param {{ gen: number, id: number, submit?: any, until?: unknown, step?: unknown }} asked
+   *   `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentSubmit(el, asked) {
@@ -1248,7 +1253,7 @@ export class VimmaChild extends JSWindowActorChild {
     }
     // The parent's wait for a page counts from when this ran (`outcome`, as for a click).
     /** @type {AgentStep<"clicked">} */
-    const sent = { gen: asked.gen, id: asked.id, outcome: "pending" };
+    const sent = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
     this.#agentClick = sent;
     const until = asked.until;
     this.#afterReply(sent, true, () => {
@@ -1286,8 +1291,9 @@ export class VimmaChild extends JSWindowActorChild {
    * through the widget or nsIDOMWindowUtils, so the page gets no user activation. A request
    * whose time is up (`until`, ms since the epoch) clicks nothing: the parent stopped waiting.
    * @param {Element | undefined} el
-   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown }} asked
-   *   `submit`: the method and destination the question named, or null
+   * @param {{ gen: number, id: number, submit?: any, href?: unknown, until?: unknown,
+   *   step?: unknown }} asked  `submit`: the method and destination the question named, or
+   *   null; `step`: the parent's number for this step, said back if it is skipped
    * @returns {"ok" | "gone" | "changed"}
    */
   #agentActivate(el, asked) {
@@ -1295,7 +1301,7 @@ export class VimmaChild extends JSWindowActorChild {
     if (typeof asked.until !== "number" || Date.now() > asked.until) return "gone";
     if (!this.#asAsked(el, asked)) return "changed";
     /** @type {AgentStep<"clicked">} */
-    const click = { gen: asked.gen, id: asked.id, outcome: "pending" };
+    const click = { gen: asked.gen, id: asked.id, step: stepOf(asked), outcome: "pending" };
     this.#agentClick = click;
     this.#agentWatch = null;
     const until = asked.until;
@@ -1487,12 +1493,13 @@ export class VimmaChild extends JSWindowActorChild {
    * process starts for the page: the actor's messages and the page's loads (DocumentChannel)
    * go over the same PContent channel, in order. A page that puts the form back and submits by
    * itself afterwards is then cancelled like any other submission. It names the step, so the
-   * parent can tell the agent its click was skipped after the page went away (issue #1028).
-   * @param {{ gen: number, id: number }} step
+   * parent can tell the agent its click was skipped after the page went away (issue #1028), and
+   * by the parent's own number for it, so that a late one is not taken for a later step's.
+   * @param {{ gen: number, id: number, step: number }} step
    */
-  #skipped({ gen, id }) {
+  #skipped({ gen, id, step }) {
     try {
-      this.sendAsyncMessage("Vimma:AgentSkipped", { gen, id });
+      this.sendAsyncMessage("Vimma:AgentSkipped", { gen, id, step });
     } catch {
       // The actor is going away with its document. For the top frame the mark goes with the
       // page; for a subframe removed this way the allowance stays open until the call ends,

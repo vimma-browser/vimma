@@ -12,6 +12,23 @@
 // page hidden, then the step. Without the back-forward cache the page's window is no longer
 // current from then on, while the child's actor and its document are still the old page's; with
 // it, the hidden page stays current in its own browsing context.
+//
+// What each task proves. The fix has three parts: (a) an element counts as on the page only while
+// the actor's window is current, and nothing is pressed without a window (#onPage, #press); (b)
+// a step still to run when its page fires its trusted pagehide is skipped then, in the system
+// group, and said to the parent while the child can still send (#afterReply); (c) the parent
+// reads that skip by the step's own number at the moment it asks (agentClickOutcome).
+// - test_a_click_a_navigation_overtakes_is_skipped_and_said: (b) and (c); with (a) alone the
+//   parent sees a new window and says the click ran.
+// - test_a_click_on_a_page_going_into_the_bfcache_is_skipped,
+//   test_a_fill_on_a_page_going_into_the_bfcache_sets_nothing and
+//   test_a_hint_click_after_the_page_was_replaced_clicks_nothing: (a); they pass with it alone.
+// - test_a_skipped_submit_in_a_frame_withdraws_the_allowance: (b), for the allowance.
+// - test_a_page_that_stops_its_pagehide_still_has_the_click_skipped: (b) is out of the page's
+//   reach (system group).
+// - test_an_outcome_asked_as_the_page_goes_away_reads_the_skip: (c), the skip read when the
+//   question fails, not when it was sent.
+// - test_a_late_skip_of_an_earlier_step_is_not_the_next_ones: (c), by the step's number.
 
 "use strict";
 
@@ -20,7 +37,7 @@
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
 Services.scriptloader.loadSubScript(getRootDirectory(gTestPath) + "head_vimma_control.js", this);
-// Five agent steps, each with its question and a page load, and a hint click.
+// Seven agent steps, each with its question and a page load, and a hint click.
 requestLongerTimeout(2);
 
 const { VimmaControl } = ChromeUtils.importESModule(
@@ -40,6 +57,9 @@ const { WorkspaceStore } = ChromeUtils.importESModule(
 );
 const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
+);
+const { VimmaActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
 );
 
 const DIR = getRootDirectory(gTestPath).replace(
@@ -177,11 +197,15 @@ function childErrors() {
  * after the navigation (`late` false), or after the navigation has replaced the page (`late`).
  * The child's actor is the old page's either way. The next `PROBE` message says whether that
  * actor's window was still current when the child took the message, and what it answered.
+ * With `system`, the test's own pagehide listener is in the system group, out of reach of a page
+ * that stops its pagehide (`?stop`), as the child's is.
  * @param {any} bc BrowsingContext @param {string} name @param {string | null} op
- * @param {string} next @param {boolean} late
+ * @param {string} next @param {boolean} late @param {boolean} [system]
  */
-function holdInChild(bc, name, op, next, late) {
-  return SpecialPowers.spawn(bc, [name, op, next, late, PROBE], (name, op, next, late, probe) => {
+function holdInChild(bc, name, op, next, late, system = false) {
+  /** @type {[string, string | null, string, boolean, string, boolean]} */
+  const args = [name, op, next, late, PROBE, system];
+  return SpecialPowers.spawn(bc, args, (name, op, next, late, probe, system) => {
     const win = /** @type {any} */ (content);
     const actor = win.windowGlobalChild.getActor("Vimma");
     const receive = actor.receiveMessage;
@@ -212,7 +236,7 @@ function holdInChild(bc, name, op, next, late) {
         win.addEventListener(
           "pagehide",
           () => (late ? Services.tm.dispatchToMainThread(take) : take()),
-          { once: true },
+          { once: true, mozSystemGroup: system },
         );
         win.location.href = next;
       });
@@ -372,6 +396,153 @@ addTidyTask(async function test_a_skipped_submit_in_a_frame_withdraws_the_allowa
   } finally {
     errors.stop();
   }
+});
+
+addTidyTask(async function test_a_page_that_stops_its_pagehide_still_has_the_click_skipped() {
+  Services.prefs.setIntPref(NO_BFCACHE, 0);
+  await mcp(true);
+  const stopping = `${RACE}?stop`;
+  const tab = await openAgentTab(stopping);
+  const browser = tab.linkedBrowser;
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const errors = childErrors();
+  try {
+    await holdInChild(browser.browsingContext, "Vimma:AgentElement", "activate", NEXT, false, true);
+    const probe = probed();
+    const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
+    const r = await askedOnce(c, "agent-activate", { tab: idOf(tab), label: by.Go });
+    await loaded;
+    Assert.deepEqual(
+      await probe,
+      { current: true, threw: "", answer: '"ok"' },
+      "the child answered before the navigation",
+    );
+    Assert.equal(r.error?.message, SKIPPED, "the page could not keep its pagehide from the child");
+    Assert.equal(await storedClicks(browser), null, "the page never got the click");
+    Assert.deepEqual(errors.errors, [], "and the child threw nothing");
+  } finally {
+    errors.stop();
+  }
+});
+
+/**
+ * The target `agent-activate` would click for `label`, without clicking it: the call is
+ * answered "changed" in the parent, before any message to the child.
+ * @param {any} c @param {any} tab @param {string} label
+ * @returns {Promise<any>} HintTarget
+ */
+async function targetOf(c, tab, label) {
+  const activate = VimmaActors.agentActivate;
+  /** @type {any} */
+  let target = null;
+  VimmaActors.agentActivate = async (/** @type {any} */ t) => {
+    target = t;
+    return "changed";
+  };
+  try {
+    const r = await askedOnce(c, "agent-activate", { tab: idOf(tab), label });
+    Assert.ok(!r.ok, "the call that found the target clicked nothing");
+  } finally {
+    VimmaActors.agentActivate = activate;
+  }
+  Assert.ok(target, "the target was found");
+  return target;
+}
+
+addTidyTask(async function test_an_outcome_asked_as_the_page_goes_away_reads_the_skip() {
+  // The order the parent can meet when the skip and the commit are already on their way: it
+  // asks the child how the click went before the skip arrives, and the question fails as the
+  // page goes away, after the skip arrived. The child holds the click until the question has
+  // come, never answers the question, and only then navigates; the click is taken as the page
+  // is hidden, so the child replies, skips it and says so, and its actor is destroyed.
+  Services.prefs.setIntPref(NO_BFCACHE, 0);
+  await mcp(true);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  const target = await targetOf(c, tab, by.Go);
+  await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
+    const win = /** @type {any} */ (content);
+    const actor = win.windowGlobalChild.getActor("Vimma");
+    const receive = actor.receiveMessage;
+    /** @type {any} */
+    let held = null;
+    /** @param {any} msg */
+    actor.receiveMessage = (msg) => {
+      if (msg.name !== "Vimma:AgentElement") return receive.call(actor, msg);
+      if (msg.data?.op === "activate") {
+        return new Promise((resolve) => {
+          held = () => resolve(receive.call(actor, msg));
+        });
+      }
+      if (msg.data?.op === "outcome" && held) {
+        actor.receiveMessage = receive;
+        win.addEventListener("pagehide", held, { once: true });
+        win.location.href = next;
+        return new Promise(() => {});
+      }
+      return receive.call(actor, msg);
+    };
+  });
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
+  const sent = VimmaActors.agentActivate(target, {
+    submit: null,
+    href: null,
+    until: Date.now() + 10000,
+  });
+  const outcome = VimmaActors.agentClickOutcome(target);
+  Assert.equal(await sent, "ok", "the child took the click");
+  Assert.equal(await outcome, "skipped", "the outcome is the skip that came before the failure");
+  await loaded;
+  Assert.equal(await storedClicks(browser), null, "the page never got the click");
+});
+
+addTidyTask(async function test_a_late_skip_of_an_earlier_step_is_not_the_next_ones() {
+  // An earlier step on the same element is refused, as a busy frame's late answer would be; its
+  // skip arrives only after the next step was sent, which clicks and loads a page. That click
+  // happened: the agent is not told nothing was clicked (it might add to a basket twice).
+  Services.prefs.setIntPref(NO_BFCACHE, 0);
+  await mcp(true);
+  const tab = await openAgentTab();
+  const browser = tab.linkedBrowser;
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  await SpecialPowers.spawn(browser.browsingContext, [NEXT], (next) => {
+    const win = /** @type {any} */ (content);
+    const actor = win.windowGlobalChild.getActor("Vimma");
+    const receive = actor.receiveMessage;
+    /** @type {any} */
+    let first = null;
+    /** @param {any} msg */
+    actor.receiveMessage = (msg) => {
+      if (msg.name !== "Vimma:AgentElement" || msg.data?.op !== "activate") {
+        return receive.call(actor, msg);
+      }
+      if (!first) {
+        first = msg.data;
+        return "changed";
+      }
+      actor.receiveMessage = receive;
+      const answer = receive.call(actor, msg);
+      actor.sendAsyncMessage("Vimma:AgentSkipped", {
+        gen: first.gen,
+        id: first.id,
+        step: first.step,
+      });
+      // After the click, which runs in a task the child queued as it answered.
+      Services.tm.dispatchToMainThread(() => (win.location.href = next));
+      return answer;
+    };
+  });
+  const refused = await askedOnce(c, "agent-activate", { tab: idOf(tab), label: by.Go });
+  Assert.ok(!refused.ok, "the first step was refused");
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, NEXT);
+  const r = await askedOnce(c, "agent-activate", { tab: idOf(tab), label: by.Go });
+  await loaded;
+  Assert.ok(r.ok, `the agent is told its click ran (${r.error?.message ?? "ok"})`);
+  Assert.equal(await storedClicks(browser), "1", "the page got the click");
 });
 
 /**

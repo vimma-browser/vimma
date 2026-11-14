@@ -5,7 +5,7 @@
 <!-- Fixture for browser_vimma_agent_click_race.js: a button that counts its clicks in the page
    - and in the tab's session storage, a text field, and a form that sends a hidden value to this
    - page. With `?auto` the form sends itself once the page has loaded, as a page's own script
-   - would. -->
+   - would. With `?stop` the page stops every other listener of its own `pagehide`. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -26,6 +26,9 @@
       });
       if (location.search === "?auto") {
         addEventListener("load", () => document.forms[0].requestSubmit());
+      }
+      if (location.search === "?stop") {
+        addEventListener("pagehide", (e) => e.stopImmediatePropagation(), true);
       }
     </script>
   </body>
