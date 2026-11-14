@@ -2359,8 +2359,8 @@ own process, not a process group.
   and after a crash until the next start, the conversation is on disk in Gemini CLI's folder
   (`docs/limits.md`). The chat window reaches `AgentCli` only through what the host hands it
   from `host/host-services.mjs`, narrowed to `enabled`, `find`, `noneFound` and `use`: neither
-  the window nor any host module can start a CLI through the registry. The conversations reach
-  it there the same way, without `AgentChat.issueTicket` (M51).
+  the window nor any host module can start a CLI through the registry. The host and the window
+  reach `AgentChat` there the same way, without `issueTicket` (M51), `reset` or `prune`.
   [`test_setup_lists_only_found_clis_and_stores_the_path`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_the_cli_service_is_agentcli_without_a_way_to_start_one`](../tests/browser/browser_vimma_host_services.js),
   [`test_the_conversations_service_is_agentchat_without_tickets_or_reset`](../tests/browser/browser_vimma_host_services.js),

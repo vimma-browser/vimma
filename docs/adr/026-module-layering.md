@@ -155,8 +155,9 @@ each without a change in behaviour:
   the same terms. Only `host/` imports the registry, so it does not become a lookup for every
   folder. The object services are served narrowed to the members the host and the window use
   (`AgentKeys` to `hint`, `set` and `delete`, `AgentCli` to setup's four): the registry never
-  hands out the call that returns a key, starts a CLI or issues a conversation's ticket. Asked for before it is provided, no agent CLI is
-  offered, no key is known or stored, `config.toml` counts as refused and is not written.
+  hands out the call that returns a key, starts a CLI or issues a conversation's ticket. Asked
+  for before it is provided, no agent CLI is offered, no key is known or stored, `config.toml`
+  counts as refused and is not written.
   `ui/agent-chat.mjs` imports nothing from `agent/`, `config/` or `host/`.)
 
 The eager cycle between `host/native-swap.mjs` and `host/private-swap.mjs` is gone: `startedUp`,
