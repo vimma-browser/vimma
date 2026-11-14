@@ -24,7 +24,7 @@ const { AgentCli, VIMMA_CTL_PREF, pathPref } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { VimmaControl, ENABLED_PREF } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",

@@ -33,7 +33,7 @@ const { AgentKeys } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
 );
 const { AgentGate } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+  "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
 const { McpHost } = ChromeUtils.importESModule("chrome://browser/content/vimma/host/mcp-ops.mjs");
 const { sinon } = ChromeUtils.importESModule("resource://testing-common/Sinon.sys.mjs");

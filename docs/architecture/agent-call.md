@@ -16,7 +16,7 @@ sequenceDiagram
   participant Ctl as vimma-ctl mcp
   participant Srv as ctl/VimmaControl
   participant Cmd as ctl/agent-commands
-  participant Gate as ctl/AgentGate
+  participant Gate as host/AgentGate
   participant User as Question line
   participant Child as actors/VimmaChild
   Host->>Ctl: tools/call vimma_activate (JSON-RPC on stdin)
@@ -156,7 +156,7 @@ Every refusal outside the gate is written to `:mcp log` through `AgentGate.note`
 
 `ask` in `agent-commands.mjs` calls `AgentGate.request` with the tool name, a plain-data
 description of what the call touches, and `always` set for a submission or a payment. The gate
-(`ctl/AgentGate.sys.mjs`) puts the rules in core's `AgentQueue`
+(`host/AgentGate.sys.mjs`) puts the rules in core's `AgentQueue`
 (`packages/vimma-core/src/agent/agent.mjs`) and adds the clock:
 
 - `queue.ask` answers `run` when the connection's grant covers the call: it runs at once, with a

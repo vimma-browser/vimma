@@ -49,7 +49,7 @@ import {
 import { DEFAULT_CONFIG } from "../core/defaults.mjs";
 import { McpHost } from "../host/mcp-ops.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { AgentGate } from "./AgentGate.sys.mjs";
+import { AgentGate } from "../host/AgentGate.sys.mjs";
 
 /** @import { Refusal, Danger } from "../core/agent-downloads.mjs" */
 

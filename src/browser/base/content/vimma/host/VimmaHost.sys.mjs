@@ -93,7 +93,7 @@ import {
 } from "./private-ops.mjs";
 import { restartAsking, restartOrSay, tabsKeptBy } from "./restart.mjs";
 import { AgentUi } from "./agent-ui.mjs";
-import { AgentGate } from "../ctl/AgentGate.sys.mjs";
+import { AgentGate } from "./AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
 import { AgentPrompt } from "../ui/agent-prompt.mjs";

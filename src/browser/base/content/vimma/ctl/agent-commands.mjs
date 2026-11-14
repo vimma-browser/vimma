@@ -45,7 +45,7 @@ import { AgentAct } from "./AgentAct.sys.mjs";
 import { AgentConsole } from "./AgentConsole.sys.mjs";
 import { AgentDownloads } from "./AgentDownloads.sys.mjs";
 import { AgentDrive } from "./AgentDrive.sys.mjs";
-import { AgentGate } from "./AgentGate.sys.mjs";
+import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 
 /** @import { ConnId } from "../core/agent.mjs" */

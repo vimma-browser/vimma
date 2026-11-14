@@ -495,7 +495,7 @@ add_task(async function agent_question_is_a_named_alertdialog_that_takes_no_focu
     "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
   );
   const { AgentGate } = ChromeUtils.importESModule(
-    "chrome://browser/content/vimma/ctl/AgentGate.sys.mjs",
+    "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
   );
   const { MCP_ENABLED_PREF } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/mcp-ops.mjs",

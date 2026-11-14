@@ -28,11 +28,11 @@ import {
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { isBuiltinConn } from "../core/agent.mjs";
 import { builtinStatus } from "../core/agent-chat.mjs";
-import { AgentGate } from "../ctl/AgentGate.sys.mjs";
+import { AgentGate } from "./AgentGate.sys.mjs";
 import { HostServices } from "./host-services.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 
-/** @import { Question, GateEvent } from "../ctl/AgentGate.sys.mjs" */
+/** @import { Question, GateEvent } from "./AgentGate.sys.mjs" */
 
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils" | "setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
