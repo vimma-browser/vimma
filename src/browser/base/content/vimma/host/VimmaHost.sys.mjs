@@ -1147,23 +1147,28 @@ export const VimmaHost = {
    * What the control socket's `state` reports of `win`'s transient screen (docs/specs/
    * m0-control-protocol-and-vimma-ctl.md, "state"): whether a notice is shown and whether the
    * prompt line is open; the agent chat window's view, how many list rows and transcript entries
-   * it draws, and its question slot; and the status bar's agent segment. All of it as drawn, so
-   * it says what a screenshot would show; counts and flags only, never text, so no page, title
-   * or conversation reaches the socket through them (security.md S9). The chat window never
-   * opens in a private window: `null` there.
+   * it draws, and its question slot; the status bar's agent segment, with whether the agent
+   * question line shows its keys hint (armed); and which `↓` segment the bar draws. All of it as
+   * drawn, so it says what a screenshot would show; counts, flags and fixed words only, never
+   * text, so no page, title, file or conversation reaches the socket through them (security.md
+   * S9). The chat window never opens in a private window: `null` there.
    * @param {BrowserWindow} win
    * @returns {{ notice: boolean, prompt: boolean,
    *   chat: { view: string, rows: number, entries: number,
    *     question: { armed: boolean } | null } | null,
-   *   agent: { waiting: number, ran: boolean } | null }}
+   *   agent: { waiting: number, ran: boolean, armed: boolean } | null,
+   *   downloads: import("../core/downloads.mjs").DownloadSegment["kind"] | null }}
    */
   screen(win) {
     const state = states.get(win);
-    if (!state) return { notice: false, prompt: false, chat: null, agent: null };
+    if (!state) return { notice: false, prompt: false, chat: null, agent: null, downloads: null };
     // As the bar last drew it, not as AgentUi.status() says it will next: the ran dot is
     // dropped at the redraw. Its grant minutes and the built-in agent's budget stay out, as
-    // nothing waits on them.
-    const agent = state.statusBar?.drawnAgent ?? null;
+    // nothing waits on them. `armed` is the line's, as drawn now; the chat window's slot has
+    // its own, in `chat.question`.
+    const drawn = state.statusBar?.drawnAgent ?? null;
+    const agent = drawn ? { ...drawn, armed: state.agentPrompt.hintShown } : null;
+    const downloads = state.statusBar?.drawnDownloads ?? null;
     const notice = !!state.notice.el?.matches(":popover-open");
     const prompt = state.rename.isOpen;
     const ui = state.agentChat;
@@ -1178,7 +1183,7 @@ export const VimmaHost = {
           question: ui.slot.isOpen ? { armed: ui.slot.armed } : null,
         }
       : null;
-    return { notice, prompt, chat, agent };
+    return { notice, prompt, chat, agent, downloads };
   },
 
   /**

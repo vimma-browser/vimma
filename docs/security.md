@@ -95,7 +95,11 @@ only the agent workspace, and every request asks you first (§12).
   draws, whether a question waits in its slot and is armed; the status bar's count of waiting
   questions and its ran dot) and **never** carry text: no notice, prompt, row label, entry,
   question or agent name reaches the socket through them, and `chat` is `null` in a private
-  window, where the chat window never opens.
+  window, where the chat window never opens. Its `agent.armed` flag says only whether the agent
+  question line shows its keys hint (reported only while the bar draws the agent segment), and
+  its `downloads` field only which `↓` segment the status bar draws, as one word of a fixed list
+  (`progress`, `paused`, `done`, `failed`, `blocked`) or `null`; it **never** carries a file's
+  name, size, URL or site, and is `null` in a private window.
   [`control_state_is_read_only`](../tests/browser/browser_vimma_security_invariants.js),
   [`test_state_splits`](../tests/browser/browser_vimma_control.js),
   [`test_state_update`](../tests/browser/browser_vimma_control.js),
@@ -106,7 +110,10 @@ only the agent workspace, and every request asks you first (§12).
   [`vimma_ctl_state_says_whether_a_private_tab_is_loading`](../tests/browser/browser_vimma_private_workspace.js),
   [`notice, prompt, chat and agent, when present, are flags and counts only`](../packages/vimma-core/test/control.test.mjs),
   [`test_state_reports_the_window_and_the_notice_as_drawn`](../tests/browser/browser_vimma_agent_chat.js),
-  [`test_state_names_each_top_level_field`](../tests/browser/browser_vimma_control.js)
+  [`test_state_names_each_top_level_field`](../tests/browser/browser_vimma_control.js),
+  [`agent.armed is a flag, and downloads a word from a closed list or null`](../packages/vimma-core/test/control.test.mjs),
+  [`test_state_reports_the_line_armed_as_drawn`](../tests/browser/browser_vimma_mcp_prompt_guards.js),
+  [`test_state_reports_the_segment_as_drawn`](../tests/browser/browser_vimma_downloads.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
   [`test_server_checks_the_scheme_itself`](../tests/browser/browser_vimma_control.js),

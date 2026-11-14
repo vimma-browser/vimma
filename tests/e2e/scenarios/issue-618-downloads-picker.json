@@ -1,10 +1,11 @@
 {
   "name": "issue-618-downloads-picker",
   "issue": 618,
-  "description": "docs/specs/downloads.md: the fixture page downloads report.txt as it loads; the status bar says `↓ done` and Firefox's downloads panel stays shut (downloads-done.png); ctrl+b d opens the downloads picker over the page with the file under Recent, its state, size, host and end time (downloads-picker.png); Esc closes it, and the picker has cleared the segment's end state. The end time varies between runs, a few digits well inside the 0.5 % screenshot tolerance; the fixture server's port is fixed (28471).",
+  "description": "docs/specs/downloads.md: the fixture page downloads report.txt as it loads; the status bar says `↓ done` and Firefox's downloads panel stays shut (downloads-done.png); ctrl+b d opens the downloads picker over the page with the file under Recent, its state, size, host and end time (downloads-picker.png); Esc closes it, and the picker has cleared the segment's end state. The end time varies between runs, a few digits well inside the 0.5 % screenshot tolerance; the fixture server's port is fixed (28471). Firefox's toolbar downloads button is kept shown (browser.download.autohideButton false), as it is once a download has started: Firefox unhides it on its own schedule, after the status bar says `↓ done`, and no state field reports it.",
   "timeoutSeconds": 60,
   "prefs": {
-    "browser.download.always_ask_before_handling_new_types": false
+    "browser.download.always_ask_before_handling_new_types": false,
+    "browser.download.autohideButton": false
   },
   "steps": [
     {
@@ -29,7 +30,9 @@
       }
     },
     {
-      "sleep": 1.5
+      "wait-for-state": {
+        "downloads": "done"
+      }
     },
     {
       "screenshot": "downloads-done"

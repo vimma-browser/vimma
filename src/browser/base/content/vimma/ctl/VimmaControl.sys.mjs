@@ -395,7 +395,7 @@ const COMMANDS = {
     const hidden = lazy.PrivateBrowsingUtils.isWindowPrivate(win);
     // Named one by one: the validator lets unknown top-level fields through, so a field the host
     // added to screen() later would otherwise reach the socket unchecked (security.md S9).
-    const { notice, prompt, chat, agent } = VimmaHost.screen(win);
+    const { notice, prompt, chat, agent, downloads } = VimmaHost.screen(win);
     return {
       mode: host.mode,
       pending: host.pending.length ? host.pending.join(" ") : null,
@@ -421,6 +421,9 @@ const COMMANDS = {
       prompt,
       chat,
       agent,
+      // Which `↓` segment the bar draws, as a word; a private window's downloads are part of
+      // its browsing, withheld as its URLs and titles are (security.md S9).
+      downloads: hidden ? null : downloads,
     };
   },
 

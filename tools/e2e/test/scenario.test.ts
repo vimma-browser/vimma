@@ -320,17 +320,9 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
     "issue-241-live-grep: live-grep",
     "issue-241-live-grep: live-grep-jump",
     "issue-487-pdf-mode: pdf-outline",
-    "issue-618-downloads-picker: downloads-done",
     "issue-618-downloads-picker: downloads-picker",
     "issue-682-multiple-splits: multiple-splits-panel",
-    "m0-mcp-checkpoints: m0-mcp-checkpoints-pay-question",
-    "m0-mcp-checkpoints: m0-mcp-checkpoints-card-question",
-    "m0-mcp-checkpoints: m0-mcp-checkpoints-hosted-question",
-    "m0-mcp-drive: m0-mcp-drive-keys-question",
     "m0-mcp-drive: m0-mcp-drive-shown",
-    "m0-mcp-forms: m0-mcp-forms-fill-question",
-    "m0-mcp-forms: m0-mcp-forms-submit-question",
-    "m0-mcp-stdio: m0-mcp-stdio-question",
   ];
   const all = loadScenarios(SCENARIOS, {});
 
@@ -358,7 +350,7 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
 
   // #1006: a step under a grant shows its notice (NOTICE_MS) and the ran dot (RAN_MS) from the
   // moment the gate lets it run, before its answer; each screenshot waits for the screen it shows.
-  it.each([
+  it.each<[string, string, Record<string, unknown>]>([
     // After a step under a grant: both gone, the bar back to `◇ agent 10m` or `15m`.
     [
       "m0-mcp-checkpoints",
@@ -372,11 +364,35 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
       "m0-mcp-checkpoints-hosted-allowed",
       { notice: true, agent: { ran: true } },
     ],
+    // A question on the agent line: it opens once no key came for 1.5 s and shows its keys hint
+    // once armed (security.dialog_enable_delay); the bar says `◇ agent 1?` meanwhile.
+    ...[
+      ["m0-mcp-checkpoints", "m0-mcp-checkpoints-pay-question"],
+      ["m0-mcp-checkpoints", "m0-mcp-checkpoints-card-question"],
+      ["m0-mcp-checkpoints", "m0-mcp-checkpoints-hosted-question"],
+      ["m0-mcp-drive", "m0-mcp-drive-keys-question"],
+      ["m0-mcp-forms", "m0-mcp-forms-fill-question"],
+      ["m0-mcp-forms", "m0-mcp-forms-submit-question"],
+      ["m0-mcp-stdio", "m0-mcp-stdio-question"],
+    ].map(([name = "", shot = ""]): [string, string, Record<string, unknown>] => [
+      name,
+      shot,
+      { notice: false, agent: { waiting: 1, armed: true } },
+    ]),
+    // The page's download has ended: the status bar says `↓ done`.
+    ["issue-618-downloads-picker", "downloads-done", { downloads: "done" }],
   ])("%s photographs %s once the screen it shows is drawn", (name, shot, expected) => {
     const steps = all.find((s) => s.name === name)?.steps ?? [];
     const i = steps.findIndex((step) => step.screenshot === shot);
     expect(i).toBeGreaterThan(0);
     expect(steps[i - 1]?.["wait-for-state"]).toEqual(expected);
+  });
+
+  // Firefox unhides its toolbar downloads button on its own schedule, after `↓ done`; state does
+  // not report it, so the scenario keeps it shown from the start, as the baseline shows it.
+  it("issue-618-downloads-picker keeps Firefox's downloads button shown", () => {
+    const scenario = all.find((s) => s.name === "issue-618-downloads-picker");
+    expect(scenario?.prefs?.["browser.download.autohideButton"]).toBe(false);
   });
 });
 
