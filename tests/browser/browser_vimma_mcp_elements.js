@@ -960,3 +960,189 @@ addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_contr
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+// Issue #1055: a `<label>` passes a click on its content on to its control unless the click
+// lands in interactive content, as Gecko decides it (nsContentUtils::IsInInteractiveHTMLContent,
+// from the clicked element up its flattened tree to the nearest HTML label): an `a` with no href
+// is not, and a `label` of another namespace is no label. A click there that presses the label's
+// submit button must ask, also under a grant (security.md M28). Inside a label the list holds
+// only strong targets (hint-collect STRONG), so the click below is on a summary, which is no
+// interactive content outside a details, in a foreign `label`; the other cases are checked on
+// the child's own decision.
+
+/**
+ * A form whose submit button is `#buy`, and a label for it around `kind`'s content: a summary
+ * in a foreign-namespace `label`, or a link.
+ * @param {any} browser @param {string} kind
+ */
+async function labelForBuy(browser, kind) {
+  await SpecialPowers.spawn(browser, [kind], (kind) => {
+    const doc = content.document;
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    const label = doc.createElement("label");
+    label.htmlFor = "buy";
+    if (kind === "foreign") {
+      const wrapper = doc.createElementNS("urn:vimma:test", "label");
+      wrapper.innerHTML = "<summary>Continue</summary>";
+      label.append(wrapper);
+    } else {
+      label.innerHTML = '<a href="#more">Continue</a>';
+    }
+    doc.body.prepend(form, label);
+  });
+}
+
+addTidyTask(async function test_a_click_a_label_passes_on_to_a_submit_asks() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForBuy(tab.linkedBrowser, "foreign");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Continue", "element in the label");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks, under the grant (M28)");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await c.response(id)).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_a_link_in_a_label_keeps_its_click() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForBuy(tab.linkedBrowser, "link");
+  const targets = await VimmaActors.collectHints(tab.linkedBrowser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const link = targets.find((t) => t.info?.text === "Continue");
+  Assert.ok(link, "the link in the label is listed");
+  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (link));
+  Assert.equal(inspected?.alive, true, "it is still there");
+  Assert.ok(!(inspected && "submit" in inspected), "an a with an href keeps the click: no submit");
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// What the child decides for elements no click can land on, or that sit deeper in the label:
+// a hidden input is never rendered, but a script's click on it reaches the label all the same.
+addTidyTask(async function test_label_forwarding_follows_geckos_interactive_content() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    doc.body.prepend(form);
+    /** @type {Record<string, boolean>} */
+    const submits = {};
+    /** @param {string} name @param {string} html @param {string} pick */
+    const check = (name, html, pick) => {
+      const label = doc.createElement("label");
+      label.htmlFor = "buy";
+      label.innerHTML = html;
+      doc.body.append(label);
+      const el = /** @type {Element} */ (label.querySelector(pick));
+      submits[name] = "submit" in actTargetOf(el);
+    };
+    check("hidden input", '<input type="hidden" name="h">', "input");
+    check("text input", '<input name="t">', "input");
+    check("a without href", "<a>Continue</a>", "a");
+    check("a with href", '<a href="#x">Continue</a>', "a");
+    check("span in a with href", '<a href="#x"><span>Continue</span></a>', "span");
+    check("span in a details", "<details><summary><span>More</span></summary></details>", "span");
+    check("img without usemap", '<img alt="x">', "img");
+    check("summary", "<summary>More</summary>", "summary");
+    check("video with controls", "<video controls></video>", "video");
+    const wrapper = doc.createElementNS("urn:vimma:test", "label");
+    const span = doc.createElement("span");
+    wrapper.append(span);
+    const outer = doc.createElement("label");
+    outer.htmlFor = "buy";
+    outer.append(wrapper);
+    doc.body.append(outer);
+    submits["span in a foreign label"] = "submit" in actTargetOf(span);
+    const host = doc.createElement("span");
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = "<span>Continue</span>";
+    const shadowed = doc.createElement("label");
+    shadowed.htmlFor = "buy";
+    shadowed.append(host);
+    doc.body.append(shadowed);
+    const inner = /** @type {Element} */ (root.querySelector("span"));
+    submits["span in a shadow root"] = "submit" in actTargetOf(inner);
+    // Gecko's walk for interactive content stops where the flattened tree ends: at an element
+    // no slot takes, and at a slot's own content while nodes are assigned to it. The label is
+    // still on the click's path, so it passes the click on, a link around them or not.
+    /** @param {string} name @param {string} shadow @param {string} light @param {string} pick */
+    const inLink = (name, shadow, light, pick) => {
+      const label = doc.createElement("label");
+      label.htmlFor = "buy";
+      label.innerHTML = `<a href="#x"><span>${light}</span></a>`;
+      const host = /** @type {Element} */ (label.querySelector("span"));
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = shadow;
+      doc.body.append(label);
+      const el = /** @type {Element} */ (host.querySelector(pick) ?? root.querySelector(pick));
+      submits[name] = "submit" in actTargetOf(el);
+    };
+    inLink("slotted span in a link", '<slot name="s"></slot>', '<span slot="s">Go</span>', "span");
+    inLink(
+      "unslotted span in a link",
+      '<slot name="s"></slot>',
+      '<span slot="t">Go</span>',
+      "span",
+    );
+    inLink(
+      "slot fallback in a link",
+      '<slot><b id="fallback">Go</b></slot>',
+      "<i>Assigned</i>",
+      "#fallback",
+    );
+    // A closed shadow root's slot is on the click's path too (Gecko's GetAssignedSlot), and the
+    // label there passes the click on to the form inside the same tree.
+    const closedHost = doc.createElement("span");
+    closedHost.attachShadow({ mode: "closed" }).innerHTML =
+      '<form action="https://example.com/collect"><button id="buy">Buy</button></form>' +
+      '<label for="buy"><slot></slot></label>';
+    closedHost.innerHTML = "<summary>Continue</summary>";
+    doc.body.append(closedHost);
+    const closedSummary = /** @type {Element} */ (closedHost.querySelector("summary"));
+    submits["summary slotted into a closed shadow root's label"] =
+      "submit" in actTargetOf(closedSummary);
+    return submits;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "hidden input": true,
+      "text input": false,
+      "a without href": true,
+      "a with href": false,
+      "span in a with href": false,
+      "span in a details": false,
+      "img without usemap": true,
+      summary: true,
+      "video with controls": false,
+      "span in a foreign label": true,
+      "span in a shadow root": true,
+      "slotted span in a link": false,
+      "unslotted span in a link": true,
+      "slot fallback in a link": true,
+      "summary slotted into a closed shadow root's label": true,
+    },
+    "a label passes on a click as Gecko does (IsInInteractiveHTMLContent)",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
