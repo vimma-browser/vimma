@@ -121,7 +121,7 @@ export async function popupPickerItems(win) {
     blocker.getBlockedRedirect(),
   ]);
   // The page navigated while Firefox answered: these records are no longer its own.
-  if (!browser.contentPrincipal?.equals(principal)) return [];
+  if (!principal || !browser.contentPrincipal?.equals(principal)) return [];
   listed.set(win, { browser, principal, popups, redirect });
   return popupItems({
     site: siteOf(browser),
