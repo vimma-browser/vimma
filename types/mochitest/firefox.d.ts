@@ -585,3 +585,99 @@ interface XULElement {
   readonly dataset: DOMStringMap;
   click(): void;
 }
+
+// engine/browser/components/tabbrowser/content/browser-allTabsMenu.js: the List All Tabs panel
+// of a browser window. `canOpen` is false while #alltabs-button is not visible;
+// initElements() makes the panel's view from its template.
+interface BrowserWindow {
+  readonly gTabsPanel: {
+    readonly canOpen: boolean;
+    initElements(): void;
+    hideAllTabsPanel(): void;
+  };
+}
+
+// engine/browser/base/content/browser.js (a lazy getter, `new CustomizeMode(window)`) and
+// engine/browser/components/customizableui/CustomizeMode.sys.mjs: the window's customize mode.
+// Both return at once; "customizationready" and "aftercustomization" on gNavToolbox tell the end.
+interface BrowserWindow {
+  readonly gCustomizeMode: {
+    enter(aEntryPoint?: string): void;
+    exit(): void;
+  };
+}
+
+// engine/browser/components/tabbrowser/content/tabs.mjs (MozTabbrowserTabs, the
+// <tabs id="tabbrowser-tabs"> element that gBrowser.tabContainer is): `verticalMode` is true
+// while its orient attribute is "vertical".
+interface MozTabbrowserTabs extends Element {
+  selectedIndex: number;
+  readonly verticalMode: boolean;
+}
+
+// engine/dom/webidl/Window.webidl (the ChromeWindow part): the values of `windowState`.
+interface ChromeWindow {
+  readonly STATE_MAXIMIZED: number;
+  readonly STATE_NORMAL: number;
+  readonly STATE_FULLSCREEN: number;
+}
+
+// engine/dom/interfaces/base/nsIDOMWindowUtils.idl: an element's box as last laid out, without
+// a layout flush.
+interface nsIDOMWindowUtils {
+  getBoundsWithoutFlushing(element: Element): DOMRect;
+}
+
+// engine/xpcom/io/nsIFile.idl: `type` is NORMAL_FILE_TYPE or DIRECTORY_TYPE; `directoryEntries`
+// is an nsIDirectoryEnumerator (engine/xpcom/io/nsIDirectoryEnumerator.idl), which JS iterates
+// as files (engine/xpcom/ds/nsISimpleEnumerator.idl, its JS iterator).
+interface nsIFile {
+  create(type: number, permissions: number, skipAncestors?: boolean): void;
+  remove(recursive: boolean): void;
+  readonly directoryEntries: Iterable<nsIFile>;
+}
+
+// engine/js/xpconnect/idl/xpccomponents.idl (nsIXPCComponents_Utils): a garbage collection and
+// a cycle collection, now.
+interface XPCComponentsUtils {
+  forceGC(): void;
+  forceCC(): void;
+}
+
+// engine/netwerk/base/nsIServerSocket.idl: a listening socket; initWithFilename makes it a Unix
+// domain socket at `path` (`backlog` -1: the default).
+interface nsIServerSocket {
+  initWithFilename(path: nsIFile, permissions: number, backlog: number): void;
+  asyncListen(listener: nsIServerSocketListener): void;
+  close(): void;
+}
+// engine/netwerk/base/nsIServerSocket.idl (nsIServerSocketListener)
+interface nsIServerSocketListener {
+  onSocketAccepted(server: nsIServerSocket, transport: nsISocketTransport): void;
+  onStopListening(server: nsIServerSocket, status: number): void;
+}
+// engine/netwerk/base/nsITransport.idl: a connection's two streams; `reason` is an nsresult.
+interface nsITransport {
+  openInputStream(flags: number, segmentSize: number, segmentCount: number): nsIInputStream;
+  openOutputStream(flags: number, segmentSize: number, segmentCount: number): nsIOutputStream;
+  close(reason: number): void;
+}
+// engine/netwerk/base/nsISocketTransport.idl
+interface nsISocketTransport extends nsITransport {}
+// engine/xpcom/io/nsIInputStream.idl
+interface nsIInputStream extends nsISupports {}
+// engine/xpcom/io/nsIAsyncInputStream.idl: `callback` (nsIInputStreamCallback) is called once,
+// on `target`, when the stream has data or is closed.
+interface nsIAsyncInputStream extends nsIInputStream {
+  asyncWait(
+    callback: { onInputStreamReady(stream: nsIAsyncInputStream): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+}
+// engine/xpcom/io/nsIOutputStream.idl: write() returns the number of bytes written.
+interface nsIOutputStream extends nsISupports {
+  write(buf: string, count: number): number;
+  close(): void;
+}

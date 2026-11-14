@@ -154,3 +154,13 @@ type UrlbarResultGroup =
  * window VimmaHost has not started; a test whose window it started casts the lookup to this.
  */
 type HostState = NonNullable<ReturnType<VimmaHostApi["_state"]>>;
+
+type HyprSwapCore = typeof import("../../src/browser/base/content/vimma/core/hyprswap.mjs");
+/** A window as Hyprland's j/clients lists it (core/hyprswap.mjs Client). */
+type HyprClient = Parameters<HyprSwapCore["planShow"]>[1];
+/**
+ * A plan that swaps or shows (core/hyprswap.mjs ShowPlan, without the refusal). A test that
+ * compares the commands sent with the plan's casts planShow's result to this; a refusal has no
+ * commands, and encoding them throws.
+ */
+type HyprShowPlan = Extract<ReturnType<HyprSwapCore["planShow"]>, { commands: unknown }>;
