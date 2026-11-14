@@ -62,7 +62,7 @@ function focusedTab() {
 /**
  * ctrl+b, then `key` with `mods`.
  * @param {string} key
- * @param {object} [mods]
+ * @param {KeyEventOptions} [mods]
  */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
@@ -89,7 +89,7 @@ async function split(key) {
 /**
  * ctrl+w, then `key` (Vim's window commands, normal mode).
  * @param {string} key
- * @param {object} [mods]
+ * @param {KeyEventOptions} [mods]
  */
 function ctrlW(key, mods = {}) {
   EventUtils.synthesizeKey("w", { ctrlKey: true });

@@ -86,7 +86,7 @@ function ratios() {
 
 /**
  * @param {string} key
- * @param {object} [mods]
+ * @param {KeyEventOptions} [mods]
  */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
@@ -95,7 +95,7 @@ function prefix(key, mods = {}) {
 
 /**
  * @param {string} key
- * @param {object} [mods]
+ * @param {KeyEventOptions} [mods]
  */
 function ctrlW(key, mods = {}) {
   EventUtils.synthesizeKey("w", { ctrlKey: true });

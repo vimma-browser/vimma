@@ -256,7 +256,7 @@ add_task(async function a_reply_answers_its_own_press_not_one_the_page_took_earl
 
 add_task(async function the_address_bar_keys_focus_it() {
   // Firefox's second address bar key: alt+d on Linux, cmd+l on macOS (no alt+d there).
-  for (const [key, mods, name] of /** @type {[string, object, string][]} */ ([
+  for (const [key, mods, name] of /** @type {[string, KeyEventOptions, string][]} */ ([
     ["l", { ctrlKey: true }, "ctrl+l"],
     MAC ? ["l", { metaKey: true }, "cmd+l"] : ["d", { altKey: true }, "alt+d"],
   ])) {

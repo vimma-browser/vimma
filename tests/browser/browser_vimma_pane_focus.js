@@ -82,7 +82,7 @@ function countSelects() {
 
 /**
  * @param {string} key
- * @param {object} [mods]
+ * @param {KeyEventOptions} [mods]
  */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
