@@ -129,7 +129,7 @@ and the SBOM entry. A Rust update that brings a new musl stops that step until t
 
 ```sh
 npm test                 # Vitest: vimma-core and tools (fast, no browser)
-npm run typecheck        # tsc --checkJs: browser code and packages, then tools/, then core tests
+npm run typecheck        # tsc --checkJs: browser code, tools/, core tests, then the mochitests
 npm run lint             # eslint, prettier, wording, spec, architecture and changelog checks
 npm run mochitest -- tests/browser/                       # browser tests on your full build
 npm run mochitest -- tests/browser/browser_vimma_tabstrip.js
@@ -156,6 +156,14 @@ A test that needs a temp dir makes it with `tempDir(prefix)` from `tools/test/te
 which removes it when the test ends, also when it fails. `npm test` runs with a `TMPDIR` of its
 own and fails if a test leaves anything in it. A mochitest removes its temp files in
 `registerCleanupFunction`, and a Rust test drops its temp dir guard.
+
+`npm run typecheck` type-checks the mochitests as it does the rest (`tests/tsconfig.json`), so a
+new test file passes it from its first commit: give a helper's parameters JSDoc types, and where
+Firefox's type is wider than the test knows (an element `getElementById` returns, an about: page's
+document), cast it with `/** @type {...} */ (expr)` rather than adding a guard that changes what
+the test does. The files that still have errors are listed in `tools/test/mochitest-allowlist.txt`;
+fixing one takes it off. After changing a `tests/browser/head*.js` file, run
+`npm run gen-mochitest-head`.
 
 You can also test the front end without a full build. An artifact build puts our front end on
 top of Mozilla's compiled binaries for the same release, and is what PR CI uses

@@ -25,17 +25,25 @@ const NOTICE_ID = "vimma-notice";
 const PROMPT_ID = "vimma-rename";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
+  WorkspaceStore.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  );
 const ww = () => WindowWorkspaces.get(window);
 const active = () => ww().model.active;
-const tabsIn = (/** @type {string} */ id) => ww().model.workspaces.find((w) => w.id === id).tabs;
+const tabsIn = (/** @type {string} */ id) =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id).tabs;
 
-const picker = () => document.getElementById(PICKER_ID);
+const picker = () => /** @type {HTMLDialogElement | null} */ (document.getElementById(PICKER_ID));
 const isOpen = () => !!picker()?.open;
 const rows = () => [...(picker()?.querySelectorAll("[role=option]") ?? [])];
-const cell = (row, name) => row.querySelector(`.vimma-picker-${name}`).textContent;
+const cell = (/** @type {Element} */ row, /** @type {string} */ name) =>
+  /** @type {Element} */ (row.querySelector(`.vimma-picker-${name}`)).textContent;
 const names = () => rows().map((r) => cell(r, "title"));
-const selected = () => picker().querySelector("[role=option][aria-selected=true]");
+/** The selected row; a use while the picker is shut throws, which fails the test. */
+const selected = () =>
+  /** @type {Element} */ (
+    /** @type {HTMLDialogElement} */ (picker()).querySelector("[role=option][aria-selected=true]")
+  );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
 const promptText = () =>
@@ -48,19 +56,21 @@ registerCleanupFunction(async () => {
   if (promptOpen()) EventUtils.synthesizeKey("KEY_Escape");
   ww().switchTo({ id: def("main").id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
-    (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
+    (/** @type {WorkspaceDefinition} */ d) =>
+      d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
-/** ctrl+b, then `key`. */
+/** ctrl+b, then `key`. @param {string} key @param {KeyEventOptions} [mods] */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -80,7 +90,7 @@ async function openPicker() {
   await until(isOpen, "prefix+w opens the workspace picker");
 }
 
-/** Opens a page in the shown workspace and selects it. */
+/** Opens a page in the shown workspace and selects it. @param {string} query */
 async function openPage(query) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${query}`);
   return tab;
@@ -122,14 +132,25 @@ add_task(async function prefix_w_lists_workspaces_with_counts_and_switches() {
   Assert.equal(cell(selected(), "title"), "main", "it opens on the current workspace");
   Assert.ok(rows()[0].classList.contains("vimma-picker-active"), "the current row is marked");
   Assert.equal(cell(rows()[1], "index"), "2", "rows are numbered by place");
-  Assert.ok(!document.getElementById(GOTO_ID)?.open, "the goto picker stays shut");
+  Assert.ok(
+    !(/** @type {HTMLDialogElement | null} */ (document.getElementById(GOTO_ID))?.open),
+    "the goto picker stays shut",
+  );
 
   // Theme tokens, as the goto picker: the dialog takes --vimma-bg-dark.
-  const bg = getComputedStyle(picker()).backgroundColor;
+  const bg = getComputedStyle(/** @type {HTMLDialogElement} */ (picker())).backgroundColor;
   document.documentElement.style.setProperty("--vimma-bg-dark", "rgb(1, 2, 3)");
-  await until(() => getComputedStyle(picker()).backgroundColor === "rgb(1, 2, 3)", "themed");
+  await until(
+    () =>
+      getComputedStyle(/** @type {HTMLDialogElement} */ (picker())).backgroundColor ===
+      "rgb(1, 2, 3)",
+    "themed",
+  );
   document.documentElement.style.removeProperty("--vimma-bg-dark");
-  await until(() => getComputedStyle(picker()).backgroundColor === bg, "and back");
+  await until(
+    () => getComputedStyle(/** @type {HTMLDialogElement} */ (picker())).backgroundColor === bg,
+    "and back",
+  );
 
   EventUtils.synthesizeKey("/");
   EventUtils.sendString("alp");
@@ -189,7 +210,10 @@ add_task(async function m_warns_then_moves_the_current_tab() {
   await until(() => !tab.isConnected, "y moves it: the original closes");
   await until(
     () =>
-      tabsIn(b.id).some((id) => ww().tabOf(id)?.linkedBrowser.currentURI.spec === `${PAGE}?moving`),
+      tabsIn(b.id).some(
+        (/** @type {string} */ id) =>
+          ww().tabOf(id)?.linkedBrowser.currentURI.spec === `${PAGE}?moving`,
+      ),
     "the page reopens in beta",
   );
   Assert.equal(active(), from, "the window stays where it was");
@@ -207,7 +231,10 @@ add_task(async function a_stale_answer_moves_nothing() {
   await until(promptOpen, "m asks");
   // The target changes before the answer: the y stood for "beta", not "gamma".
   WorkspaceStore.renameWorkspace(def("beta").id, "gamma");
-  await until(() => ww().model.workspaces.some((w) => w.name === "gamma"), "renamed");
+  await until(
+    () => ww().model.workspaces.some((/** @type {WorkspaceState} */ w) => w.name === "gamma"),
+    "renamed",
+  );
   EventUtils.synthesizeKey("y");
   await until(() => /nothing was moved/.test(noticeText()), "the answer is refused");
   Assert.ok(tab.isConnected, "the tab stays");

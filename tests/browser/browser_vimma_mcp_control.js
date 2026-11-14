@@ -52,19 +52,25 @@ registerCleanupFunction(async () => {
   await VimmaControl.settled();
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 500);
-const line = () => document.getElementById("vimma-agent-prompt");
-const lineOpen = () => !!line() && !line().hidden;
+/** The line, or null while there is none. */
+const line = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-agent-prompt"));
+const lineOpen = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
 const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
 const hintShown = () => {
-  const hint = line()?.querySelector(".vimma-agent-prompt-hint");
+  const hint = /** @type {HTMLElement | null | undefined} */ (
+    line()?.querySelector(".vimma-agent-prompt-hint")
+  );
   return !!hint && !hint.hidden && hint.textContent !== "";
 };
 const segment = () =>
   document.querySelector('#vimma-statusbar [data-segment="agent"]')?.textContent ?? null;
 const noticeText = () => document.getElementById("vimma-notice")?.textContent ?? "";
-const renamePrompt = () => document.getElementById("vimma-rename");
+/** The rename prompt, or null while there is none. */
+const renamePrompt = () =>
+  /** @type {HTMLElement | null} */ (document.getElementById("vimma-rename"));
 
 async function setSwitches({ control = false, mcp = false }) {
   Services.prefs.setBoolPref(CONTROL, control);
@@ -104,6 +110,7 @@ add_task(async function test_a_window_not_in_front_gets_attention_and_a_notifica
   const alerts = [];
   const cid = MockRegistrar.register("@mozilla.org/alerts-service;1", {
     QueryInterface: ChromeUtils.generateQI(["nsIAlertsService"]),
+    /** @param {{ title: string, text: string, actions?: unknown[] }} alert */
     showAlert(alert) {
       alerts.push(`${alert.title}\n${alert.text}\n${alert.actions?.length ?? 0}`);
     },
@@ -175,13 +182,19 @@ add_task(async function test_full_control_asks_only_while_mcp_is_on() {
     "MCP on: it asks, with the client's code and what it reaches",
   );
   Assert.equal(
-    line().getAttribute("aria-label"),
+    /** @type {HTMLElement} */ (line()).getAttribute("aria-label"),
     lineText(),
     "and its accessible name says it too",
   );
-  Assert.equal(line().querySelector("b")?.textContent, "7F3K", "the code in bold");
   Assert.equal(
-    line().querySelector(".vimma-agent-prompt-hint").textContent,
+    /** @type {HTMLElement} */ (line()).querySelector("b")?.textContent,
+    "7F3K",
+    "the code in bold",
+  );
+  Assert.equal(
+    /** @type {Element} */ (
+      /** @type {HTMLElement} */ (line()).querySelector(".vimma-agent-prompt-hint")
+    ).textContent,
     "y if the code is the one vimma-ctl printed · n deny",
     "with no grant",
   );
@@ -227,9 +240,12 @@ add_task(async function test_control_on_minutes_turns_itself_off() {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("control on 15");
   EventUtils.synthesizeKey("KEY_Enter");
-  await until(() => renamePrompt() && !renamePrompt().hidden, ":control on asks");
+  await until(
+    () => renamePrompt() && !(/** @type {HTMLElement} */ (renamePrompt()).hidden),
+    ":control on asks",
+  );
   Assert.ok(
-    renamePrompt().textContent.includes(
+    /** @type {HTMLElement} */ (renamePrompt()).textContent.includes(
       "Turn on full control (vimma-ctl: keys in this window, every workspace) for 15 min? y/N",
     ),
     "naming the minutes",
@@ -284,10 +300,13 @@ add_task(async function test_control_on_says_it_reaches_beyond_agent_while_mcp_i
     EventUtils.synthesizeKey(":", { shiftKey: true });
     EventUtils.sendString("control on 15");
     EventUtils.synthesizeKey("KEY_Enter");
-    await until(() => renamePrompt() && !renamePrompt().hidden, ":control on asks");
-    const said = renamePrompt().textContent;
+    await until(
+      () => renamePrompt() && !(/** @type {HTMLElement} */ (renamePrompt()).hidden),
+      ":control on asks",
+    );
+    const said = /** @type {HTMLElement} */ (renamePrompt()).textContent;
     EventUtils.synthesizeKey("n");
-    await until(() => renamePrompt().hidden, "n closes it");
+    await until(() => /** @type {HTMLElement} */ (renamePrompt()).hidden, "n closes it");
     Assert.ok(!Services.prefs.getBoolPref(CONTROL, false), "and leaves full control off");
     return said;
   };
@@ -315,7 +334,10 @@ add_task(async function test_control_on_says_it_reaches_beyond_agent_while_mcp_i
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString("control on 15");
   EventUtils.synthesizeKey("KEY_Enter");
-  await until(() => renamePrompt() && !renamePrompt().hidden, ":control on asks");
+  await until(
+    () => renamePrompt() && !(/** @type {HTMLElement} */ (renamePrompt()).hidden),
+    ":control on asks",
+  );
   await setSwitches({ mcp: true });
   await new Promise((r) => setTimeout(r, 150));
   EventUtils.synthesizeKey("y");

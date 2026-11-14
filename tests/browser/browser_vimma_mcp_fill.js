@@ -68,13 +68,16 @@ const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => WindowWorkspaces.get(window);
-const activeName = () => ww().model.workspaces.find((w) => w.id === ww().model.active)?.name;
-const mainId = () => ww().model.workspaces.find((w) => w.name === "main")?.id;
+const activeName = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
+const mainId = () =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 
+/** @param {boolean} on */
 async function mcp(on) {
   Services.prefs.setBoolPref(MCP_ENABLED_PREF, on);
   await VimmaControl.settled();
@@ -253,7 +256,10 @@ addTidyTask(async function test_fill_sets_values_and_fires_input_and_change() {
     // A text area gets no change from setUserInput, as when form autofill fills it.
     if (id !== "bio") Assert.ok(p.events.includes(`${id}:change:trusted`), `${id} got change`);
   }
-  Assert.ok(!p.events.some((e) => e.includes(":keydown:")), "no key event was sent");
+  Assert.ok(
+    !p.events.some((/** @type {string} */ e) => e.includes(":keydown:")),
+    "no key event was sent",
+  );
   Assert.equal(p.gesture, false, "the page got no user activation (M26)");
   Assert.ok(
     AgentGate.log[0].detail.startsWith(`${by.Email} Email = "ada@example.com", `),
@@ -276,7 +282,10 @@ addTidyTask(async function test_fill_never_focuses_the_field() {
   ]);
   Assert.ok(r.ok, "the fill ran");
   const p = await page(tab);
-  Assert.ok(!p.events.some((e) => e.includes(":focus:")), "no field got focus");
+  Assert.ok(
+    !p.events.some((/** @type {string} */ e) => e.includes(":focus:")),
+    "no field got focus",
+  );
   Assert.equal(p.focused, "body", "the page's focus did not move");
   Assert.equal(gBrowser.selectedTab, before.selected, "the window's tab did not change (M25)");
   Assert.equal(activeName(), before.workspace, "nor its workspace");
@@ -434,7 +443,7 @@ addTidyTask(async function test_fill_submit_asks_under_a_grant() {
   Assert.equal(r.result.url, `${PAGE}?q=cats`, "to its destination, with the value");
   Assert.ok(!("blocked" in r.result), "the submission the user allowed was not stopped");
   Assert.ok(
-    AgentGate.grants().every((g) => g.until < Date.now() + 13 * 60_000),
+    AgentGate.grants().every((/** @type {GateGrant} */ g) => g.until < Date.now() + 13 * 60_000),
     "the yes to a submit made no grant of 60 min",
   );
   Assert.ok(
@@ -676,7 +685,7 @@ addTidyTask(async function test_fill_in_use_while_the_user_types() {
   await until(() => gBrowser.selectedTab === tab, "the agent tab is in front");
   await focusContent(tab.linkedBrowser);
   await SpecialPowers.spawn(tab.linkedBrowser, [], () =>
-    content.document.getElementById("q").focus(),
+    /** @type {HTMLElement} */ (content.document.getElementById("q")).focus(),
   );
   await until(() => VimmaHost.status(window).mode === "insert", "the user is in insert mode");
   const r = await c.call("agent-fill", {

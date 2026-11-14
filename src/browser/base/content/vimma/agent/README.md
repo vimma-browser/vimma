@@ -6,7 +6,8 @@ browser. `AgentChat.sys.mjs` runs conversations and their tool calls through the
 keyring; `AgentStore.sys.mjs` stores conversations encrypted in the profile.
 
 **Entry points:** `AgentChat` (created, listed and stopped by the chat window and the agent
-line); `AgentCli.init()`, called by `vimma.js`.
+line, which reaches it through `host/host-services.mjs`, where `vimma.js` puts it);
+`AgentCli.init()`, called by `vimma.js`.
 
 **May import (layer 5, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** everything below it:
 `core/`, the layer 1 and 2 folders, `host/`, `config/` and `ctl/`. Its tools act on pages

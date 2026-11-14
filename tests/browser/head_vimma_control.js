@@ -116,7 +116,7 @@ class Client {
       const i = this.messages.findIndex(pred);
       if (i !== -1) return this.messages.splice(i, 1)[0];
       if (this.closed) return null;
-      await new Promise((resolve) => this.waiters.push(resolve));
+      await /** @type {Promise<void>} */ (new Promise((resolve) => this.waiters.push(resolve)));
     }
   }
 

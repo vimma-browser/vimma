@@ -538,15 +538,26 @@ text that pages, add-ons and bookmarks choose.
   (`ipc:content-shutdown`): the parent checks every principal that process sends against the
   about: module's flags of that moment and kills the process on a mismatch (#950). Nothing else
   clears that: not the end of another content process, and not "no privilegedabout process is
-  alive", since a process still launching is not listed yet. The stand-in only ever falls back
-  to Firefox's own module, never the other way round while Firefox's page may live. **⚠ limit:**
-  a load of Firefox's page whose channel exists when the last privilegedabout process ends, and
-  whose process is picked after, reads the start page's flags then, so that one load can get a
-  process that does not match its page (not tested; the next load matches again). Firefox
-  keeps one privilegedabout process alive, so this needs that process to crash or the keep-alive
-  pref set to 0.
+  alive", since a process still launching is not listed yet. Nor does the end of the last one
+  while one of Firefox's channels it handed out is still loading (#984): the parent opens a
+  document channel as it creates it, keeps it suspended while it picks and launches the page's
+  process, and lets it finish only after that process is alive (`ipc:content-created` comes
+  first), so a page still on its way to a process holds the latch until a privilegedabout
+  process ends after it arrives. Finished channels hold nothing, so the start page still comes
+  back. Page loads that web content starts cannot reach these modules (no `MAKE_LINKABLE`), and
+  a channel only ever keeps the latch, never clears it. The stand-in only ever falls back to
+  Firefox's own module, never the other way round while Firefox's page may live. **⚠ limit:**
+  this rests on the channel staying pending until its process is noted, which is how
+  `DocumentLoadListener` and `ContentParent` work today (not tested with a real launch racing a
+  process's end; the test stands in a suspended channel). If that changed, both orderings it
+  covers would come back: a page in a new process without the latch, killed the next time the
+  pref is turned on, and a load picked after the last process ended reading the start page's
+  flags, which puts Firefox's page in the parent, where it does not work and the web cannot
+  reach it. Firefox keeps one privilegedabout process alive, so either needs that process to
+  crash or the keep-alive pref set to 0.
   [`typed_firefox_pages_open_the_start_page`](../tests/browser/browser_vimma_firefox_surfaces_trim.js),
   [`firefox_flags_stay_until_a_privilegedabout_process_ends`](../tests/browser/browser_vimma_firefox_page_process.js),
+  [`firefox_flags_stay_while_its_page_is_on_its_way`](../tests/browser/browser_vimma_firefox_page_process.js),
   [`turning_the_start_page_on_keeps_firefox_new_tab_alive`](../tests/browser/browser_vimma_firefox_page_process.js)
 
 ## 7. Omarchy hook and the `vimma-open` launcher
@@ -672,10 +683,14 @@ A local file you trust and edit. Spec: [m5-config-load](specs/m5-config-load.md)
   [`never builds code from text: no eval, Function or sandbox evaluation`](../tools/security/test/chrome-source.test.ts),
   [`command, path, args and env in a cli provider are errors with their line`](../packages/vimma-core/test/config-agent.test.mjs)
 - F4. `:route add` **must** write each value as one escaped TOML string, and write nothing when
-  the result would not parse.
+  the result would not parse. The host reaches `ConfigHost.addRoute` only through
+  `host/host-services.mjs`, which `vimma.js` fills (§21, D4); asked before that, it writes
+  nothing.
   [`appendRouteText quotes a workspace name as a TOML string`](../packages/vimma-core/test/routes.test.mjs),
   [`appendRouteText refuses what would not parse, and says why`](../packages/vimma-core/test/routes.test.mjs),
-  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js)
+  [`route_add_creates_a_private_config_toml`](../tests/browser/browser_vimma_security_invariants.js),
+  [`route_add_says_why_config_toml_refused_the_rule`](../tests/browser/browser_vimma_workspace_routes.js),
+  [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js)
 - F5. Reading `config.toml` **never** throws, hangs or changes a built-in prototype; nesting
   deeper than 32 levels is refused; a key, colour or modifier named like an `Object` member
   (`constructor`, `__proto__`) is unknown, never looked up; an accepted config holds only values
@@ -4363,8 +4378,19 @@ referring pages are chosen by the sites the files came from.
   **must** open only an `http:` or `https:` page, never a script,
   `data:` or `file:` address a page chose as its referrer, and **must** open it in the
   download's own container (the window's non-agent one for a history entry), **never** the agent
-  workspace's, even with that workspace on screen: the full referrer may carry a token.
+  workspace's, even with that workspace on screen: the full referrer may carry a token. The
+  picker asks M11's test through `host/host-services.mjs`, because `ctl/` sits above the host
+  (ADR-026): `vimma.js` provides it there before the first window's host starts, and once it is
+  provided nothing can replace it, because the registry is frozen and refuses a second value. Its
+  check that the caller is `vimma.js` only catches mistakes: code that already runs with the
+  system principal can run under that file name. Asked before it is provided, every download
+  counts as an agent's. The registry has no observer topic, control-socket command or agent
+  command, and pages cannot load chrome modules.
   [`test_the_picker_never_opens_an_agent_download`](../tests/browser/browser_vimma_downloads.js),
+  [`test_vimma_js_provided_every_service_before_the_window_started`](../tests/browser/browser_vimma_host_services.js),
+  [`test_only_vimma_js_provides_and_nothing_swaps_a_service`](../tests/browser/browser_vimma_host_services.js),
+  [`test_code_named_vimma_js_still_cannot_replace_a_service`](../tests/browser/browser_vimma_host_services.js),
+  [`test_before_it_is_provided_each_service_does_the_least`](../tests/browser/browser_vimma_host_services.js),
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_u_opens_the_referring_page`](../tests/browser/browser_vimma_downloads.js),
   [`an agent download refuses o, shift+o, u, r and !`](../packages/vimma-core/test/downloads.test.mjs),

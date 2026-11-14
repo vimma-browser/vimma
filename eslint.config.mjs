@@ -134,6 +134,11 @@ export default [
     languageOptions: { globals: { Components: "readonly", Cu: "readonly" } },
   },
   {
+    // Only vimma.js may provide the host's services: the caller's frame, Components.stack.
+    files: ["src/**/vimma/host/host-services.mjs"],
+    languageOptions: { globals: { Components: "readonly" } },
+  },
+  {
     // The first run creates config.toml, but never under a test harness: Cu.isInAutomation.
     files: ["src/**/vimma/config/ConfigHost.sys.mjs"],
     languageOptions: { globals: { Cu: "readonly" } },

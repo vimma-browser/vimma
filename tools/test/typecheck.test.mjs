@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-// `npm run typecheck` (ci.yml's "Typecheck" step) checks three programs under the same strict
+// `npm run typecheck` (ci.yml's "Typecheck" step) checks four programs under the same strict
 // options: the browser code without Node's types (issue #945), tools/ with them, tests included
-// (issue #947), and the core's tests with them (issue #959).
+// (issue #947), the core's tests with them (issue #959), and the browser tests under tests/
+// with the mochitest harness's declarations (issue #959).
 /** @param {string} path */
 const json = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
 
@@ -11,12 +12,15 @@ describe("npm run typecheck", () => {
   const root = json("tsconfig.json");
   const tools = json("tools/tsconfig.json");
   const coreTests = json("packages/vimma-core/test/tsconfig.json");
+  const browserTests = json("tests/tsconfig.json");
 
   it("checks the browser code, tools/ and the core's tests, each with its own tsconfig", () => {
     const script = json("package.json").scripts.typecheck;
     expect(script).toMatch(/\btsc -p tsconfig\.json\b/);
     expect(script).toMatch(/\btsc -p tools\/tsconfig\.json\b/);
     expect(script).toMatch(/\btsc -p packages\/vimma-core\/test\/tsconfig\.json\b/);
+    // tests/tsconfig.json, through the ratchet of tools/test/mochitest-allowlist.txt.
+    expect(script).toMatch(/\bnode tools\/mochitest-typecheck\.ts\b/);
   });
 
   it("keeps Node's types out of the browser code's check", () => {
@@ -67,6 +71,40 @@ describe("npm run typecheck", () => {
   // may be left out (issue #959).
   it("leaves no core test file out", () => {
     expect(coreTests.exclude ?? []).toEqual([]);
+  });
+
+  // The browser tests run in Firefox, not Node: no Node types, the harness's globals from
+  // types/mochitest/ instead, and every file under tests/ that is JavaScript, so a new test is
+  // checked from its first commit. The ratchet list, not an exclude, holds back the files not
+  // fixed yet (tools/mochitest-typecheck.ts).
+  it("checks every JavaScript file under tests/ with the mochitest harness's declarations", () => {
+    expect(browserTests.extends).toBe("../tsconfig.json");
+    expect(browserTests.include).toEqual([
+      "browser/**/*.js",
+      "e2e/**/*.js",
+      "../types/*.d.ts",
+      "../types/mochitest/*.d.ts",
+    ]);
+    expect(browserTests.exclude).toEqual([]);
+    // The harness's declarations stay out of the browser code's check.
+    expect(root.include).toContain("types/*.d.ts");
+    expect(root.include.some((/** @type {string} */ g) => g.includes("mochitest"))).toBe(false);
+  });
+
+  // Each relaxed or added option has its reason; nothing else of the root's may change.
+  it("relaxes only what a mochitest needs, and says why", () => {
+    expect(browserTests.compilerOptions).toEqual({
+      types: [],
+      // findLast and findLastIndex (ES2023), which the Firefox that runs the tests has.
+      target: "es2024",
+      // Each test file runs in a scope of its own, with head.js loaded into it: a file's
+      // top-level names are its own, as a module's are.
+      moduleDetection: "force",
+      // `gBrowser.tabs[1]` and the like: a missing entry throws at its use and fails the test,
+      // so it cannot pass by accident, and a guard at each of the thousands of such reads would
+      // say nothing more.
+      noUncheckedIndexedAccess: false,
+    });
   });
 
   it("pins @types/node to the Node major in .nvmrc", () => {

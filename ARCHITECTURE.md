@@ -188,7 +188,8 @@ API and no Node built-in may be imported there; eslint enforces it. The areas:
 ### `tests/`
 
 - `tests/browser/`: mochitests (`browser_vimma_*.js`), Firefox's browser test framework, run on a
-  real build.
+  real build. `npm run typecheck` checks them too (`tests/tsconfig.json`, the harness's globals
+  in `types/mochitest/`), except the files `tools/test/mochitest-allowlist.txt` still lists.
 - `tests/e2e/`: scenarios driven through the control socket, with screenshot baselines.
 - `tests/contract/`: fixtures for each version of the control protocol, the config, the state
   file and the workspace file, and sample Omarchy themes; vimma-core's tests read them all, and
@@ -255,10 +256,12 @@ both on every import form (`import`, `ChromeUtils.importESModule`, lazy getter m
 ```
 
 A lower layer reaches a higher one through an observer topic, a callback or an interface object
-passed in, as `host/runners.mjs` is passed the host. Fifteen older imports still point upwards:
-the host reading the agent gate and running a few commands of `config/`, `agent/` and `ctl/`
-(`:route add`, `:agent give`, the downloads picker's agent mark); the parent actor reporting to
-the host; the agent chat window driving the agent. Each is listed with its reason in
+passed in, as `host/runners.mjs` is passed the host. The commands of higher folders the host runs
+(`:route add`, `:agent give`, the agent line following the conversations, the downloads
+picker's agent mark) come from `host/host-services.mjs`, which `vimma.js` fills, once,
+before the first window's host starts. Ten older imports still point upwards: the host reading
+the agent gate; the parent actor reporting to the host; the agent chat window driving the
+agent. Each is listed with its reason in
 `tools/layering/layers.ts`, the list can only shrink, and ADR-026 says how each goes. Each
 folder's `README.md` says what it may import.
 
@@ -269,7 +272,7 @@ from it, so the picture, the rule and the code cannot disagree.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/diagrams/modules-dark.svg">
   <source media="(prefers-color-scheme: light)" srcset="docs/assets/diagrams/modules-light.svg">
-  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ to host/, host/ to ctl/, config/ and agent/, and ui/ to host/, config/ and agent/.">
+  <img src="docs/assets/diagrams/modules-light.svg" alt="The imports between the folders under vimma/, each labelled with its ADR-026 layer and drawn in rows from layer 6 at the top to layer 1 at the bottom. Grey arrows point down the layers. Orange arrows are the upward imports ADR-026 still lists: actors/ to host/, host/ to ctl/, and ui/ to host/, config/ and agent/.">
 </picture>
 
 In words, as the code stands:
@@ -281,8 +284,8 @@ In words, as the code stands:
   layer 1's folders has one arrow to the layer, labelled with how many: `about/`, `config/` and
   `host/` import four of them, `ctl/` three.
 - Orange arrows are the upward imports the exception list keeps, folded into one arrow per pair of
-  folders: `actors/` imports `host/`; `host/` imports `ctl/`, and `config/` and `agent/` lazily;
-  `ui/` imports `host/`, `config/` and `agent/` lazily.
+  folders: `actors/` imports `host/`; `host/` imports `ctl/`; `ui/` imports `host/`, `config/`
+  and `agent/` lazily.
 - Folder by folder, `actors/`, `ctl/` and `host/` still form one eager cycle, and every loop in it
   runs through an orange arrow. No two modules import each other eagerly
   (`npm run layering` fails on that), so the cycle exists only between folders, and it closes only

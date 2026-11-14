@@ -34,11 +34,14 @@ const PAGE = "https://example.com/";
 const NOTICE_ID = "vimma-notice";
 
 const def = (/** @type {string} */ name) =>
-  WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
+  WorkspaceStore.definitions.workspaces.find(
+    (/** @type {WorkspaceDefinition} */ w) => w.name === name,
+  );
 const main = () => def("main");
 const ww = () => WindowWorkspaces.get(window);
 const active = () => ww().model.active;
-const modelWs = (/** @type {string} */ id) => ww().model.workspaces.find((w) => w.id === id);
+const modelWs = (/** @type {string} */ id) =>
+  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === id);
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
 const segment = (/** @type {string} */ id) =>
   document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -49,19 +52,22 @@ registerCleanupFunction(async () => {
   await WorkspaceStore.setConfig([]);
   ww().switchTo({ id: main().id });
   for (const w of WorkspaceStore.definitions.workspaces.filter(
-    (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
+    (/** @type {WorkspaceDefinition} */ d) =>
+      d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
   )) {
     await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
   }
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1)
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
 });
 
-/** @param {() => boolean} cond @param {string} msg */
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
 /** `:line` Enter, from the selected page in normal mode. */
+/** @param {string} line */
 async function runCommand(line) {
   const browser = gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
@@ -71,7 +77,7 @@ async function runCommand(line) {
   EventUtils.synthesizeKey("KEY_Enter");
 }
 
-/** Opens `url` in container `ucid`, selected and loaded. */
+/** Opens `url` in container `ucid`, selected and loaded. @param {string} url @param {number} ucid */
 async function openIn(url, ucid) {
   const tab = gBrowser.addTrustedTab(url, { userContextId: ucid });
   gBrowser.selectedTab = tab;
@@ -79,7 +85,7 @@ async function openIn(url, ucid) {
   return tab;
 }
 
-/** A runtime workspace `name`, in the window's model. */
+/** A runtime workspace `name`, in the window's model. @param {string} name */
 async function workspace(name) {
   const d = WorkspaceStore.newWorkspace(name);
   await until(() => !!modelWs(d.id), `${name} is in the window`);
@@ -87,7 +93,7 @@ async function workspace(name) {
 }
 
 /** The definitions file on disk, once it has `cond`. */
-async function savedFile(/** @type {(d: any) => boolean} */ cond, msg) {
+async function savedFile(/** @type {(d: any) => boolean} */ cond, /** @type {string} */ msg) {
   /** @type {any} */
   let data = null;
   await TestUtils.waitForCondition(
@@ -133,12 +139,17 @@ add_task(async function a_container_deleted_by_an_extension_is_replaced_at_once(
   Assert.equal(routed.userContextId, fresh, "ctrl+t opens in the new container");
 
   await savedFile(
-    (d) => d.workspaces.some((w) => w.id === ext.id && w.userContextId === fresh),
+    (d) =>
+      d.workspaces.some(
+        (/** @type {WorkspaceDefinition} */ w) => w.id === ext.id && w.userContextId === fresh,
+      ),
     "the definitions file has the new container",
   );
   await until(() => {
     const snap = JSON.parse(SessionStore.getCustomWindowValue(window, WINDOW_KEY) || "{}");
-    return snap.workspaces?.some((w) => w.id === ext.id && w.container === String(fresh));
+    return snap.workspaces?.some(
+      (/** @type {WorkspaceState} */ w) => w.id === ext.id && w.container === String(fresh),
+    );
   }, "and the window's snapshot");
   BrowserTestUtils.removeTab(routed);
   BrowserTestUtils.removeTab(tab);
@@ -173,7 +184,10 @@ add_task(async function vimmas_own_delete_does_not_bring_the_container_back() {
   await WorkspaceStore.deleteWorkspace(gone.id, { confirmed: true });
   Assert.ok(!def("gone"), "the workspace is gone");
   Assert.equal(publicCount(), count - 1, "and its container, not replaced");
-  Assert.ok(!CIS.getPublicIdentities().some((i) => i.name === "gone"), "no container named gone");
+  Assert.ok(
+    !CIS.getPublicIdentities().some((/** @type {ContextualIdentity} */ i) => i.name === "gone"),
+    "no container named gone",
+  );
 });
 
 add_task(async function containers_off_at_startup_is_a_persistent_status_bar_error() {
@@ -192,7 +206,11 @@ add_task(async function containers_off_at_startup_is_a_persistent_status_bar_err
   try {
     VimmaHost.configure({});
     await until(() => segment("alert") !== null, "the bar shows an error");
-    Assert.stringContains(segment("alert"), "privacy.userContext.enabled", "naming the pref");
+    Assert.stringContains(
+      /** @type {string} */ (segment("alert")),
+      "privacy.userContext.enabled",
+      "naming the pref",
+    );
     EventUtils.synthesizeKey("KEY_Escape");
     await new Promise((r) => setTimeout(r, 300));
     Assert.notEqual(segment("alert"), null, "it stays (not a notice)");
@@ -211,7 +229,11 @@ add_task(async function containers_lost_at_startup_are_a_persistent_status_bar_e
   try {
     VimmaHost.configure({});
     await until(() => segment("alert") !== null, "the bar shows an error");
-    Assert.stringContains(segment("alert"), '"work" lost its container', "naming the workspace");
+    Assert.stringContains(
+      /** @type {string} */ (segment("alert")),
+      '"work" lost its container',
+      "naming the workspace",
+    );
     EventUtils.synthesizeKey("KEY_Escape");
     await new Promise((r) => setTimeout(r, 300));
     Assert.notEqual(segment("alert"), null, "it stays (not a notice)");
@@ -267,7 +289,7 @@ add_task(async function a_number_like_name_is_matched_as_a_name_first() {
   ]);
   await until(() => !!def("2") && !!modelWs(def("2").id) && !!modelWs(def("x").id), "2 and x");
   const place = (/** @type {string} */ name) =>
-    ww().model.workspaces.findIndex((w) => w.name === name) + 1;
+    ww().model.workspaces.findIndex((/** @type {WorkspaceState} */ w) => w.name === name) + 1;
   Assert.notEqual(place("2"), 2, "the workspace named 2 is not at place 2");
   Assert.notEqual(place("x"), 2, "nor is x");
   Assert.equal(place("main"), 1, "main is at place 1");

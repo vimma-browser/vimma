@@ -35,13 +35,17 @@ const ALG = { name: "RSASSA-PKCS1-v1_5", hash: "SHA-384" };
 const TARGET = `${Services.appinfo.OS}_${UpdateUtils.ABI}`;
 const CHANNEL = UpdateUtils.UpdateChannel;
 
+/** @typedef {{ pair: CryptoKeyPair, spki: string, id: string }} TestKey A signing key. */
+/** @type {TestKey} */
 let key;
+/** @type {TestKey} */
 let stranger;
 /** Serials are UTC times, at most a day ahead (decision 33) and above this build's ID. */
 let serial = Number(
   new Date(Date.now() + 6 * 3600 * 1000).toISOString().replace(/\D/g, "").slice(0, 14),
 );
 
+/** @param {() => unknown} cond @param {string} msg */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
@@ -56,7 +60,11 @@ async function makeKey() {
   return { pair, spki: base64Encode(der), id: await spkiKeyId(crypto.subtle, der) };
 }
 
-/** A manifest as the release pipeline writes it, with a complete MAR. @param {object} [o] */
+/**
+ * A manifest as the release pipeline writes it, with a complete MAR.
+ * @param {{ update?: Record<string, string>, patch?: string, size?: number, hash?: string,
+ *   channel?: string, signer?: TestKey, sign?: boolean, at?: string }} [o]
+ */
 async function manifest({
   update = {},
   patch = `${HOST}?redirect=host`,
@@ -92,6 +100,7 @@ async function manifest({
   return body + signatureComment([{ key: signer.id, sig: base64Encode(sig) }]);
 }
 
+/** @param {string} text */
 async function serve(text) {
   const r = await fetch(`${HOST}?set`, { method: "POST", body: text });
   Assert.equal(r.status, 200, "the test host took the manifest");
@@ -114,7 +123,10 @@ async function firefoxCheck() {
 const originalAppinfo = Services.appinfo;
 let restoresAppinfo = false;
 
-/** The update URL Firefox's checker asks, for this process (Mozilla's setUpdateURL). */
+/**
+ * The update URL Firefox's checker asks, for this process (Mozilla's setUpdateURL).
+ * @param {string} url
+ */
 function setUpdateURL(url) {
   Services.appinfo = Object.create(originalAppinfo, {
     updateURL: { configurable: true, enumerable: true, writable: false, value: url },
@@ -127,6 +139,7 @@ function setUpdateURL(url) {
   }
 }
 
+/** @param {string} host */
 function addCookie(host) {
   Services.cookies.add(
     host,
@@ -192,6 +205,7 @@ add_task(async function a_signed_newer_build_is_offered_and_the_request_is_anony
 });
 
 add_task(async function a_manifest_failing_the_rules_never_reaches_firefox() {
+  /** @type {[string, string, RegExp][]} */
   const cases = [
     ["unsigned", await manifest({ sign: false }), /^unsigned/],
     ["signed by another key", await manifest({ signer: stranger }), /^signature: /],
@@ -280,11 +294,12 @@ add_task(async function an_oversized_or_compressed_body_is_refused() {
   setUpdateURL(`${HOST}?firefox=%CHANNEL%`);
 });
 
-/** Reads a system-principal request to `uri` to its end. */
+/** Reads a system-principal request to `uri` to its end. @param {string} uri */
 function load(uri) {
   return new Promise((resolve) => {
     NetUtil.newChannel({ uri, loadUsingSystemPrincipal: true }).asyncOpen({
       onStartRequest() {},
+      /** @param {unknown} _r @param {unknown} stream @param {unknown} _o @param {number} count */
       onDataAvailable(_r, stream, _o, count) {
         NetUtil.readInputStream(stream, count);
       },
@@ -301,7 +316,7 @@ function load(uri) {
 function watchRequests() {
   /** @type {[string, boolean][]} */
   const seen = [];
-  const observe = (subject) => {
+  const observe = (/** @type {nsISupports} */ subject) => {
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
     if (!channel.URI.spec.includes("file_vimma_update_manifest.sjs")) return;
     const query = channel.URI.query;
@@ -380,8 +395,11 @@ const fake = {
   check: firefoxCheck,
 };
 
+/** The status bar's update segment, or null when it shows none. */
 function segment() {
-  return document.querySelector('#vimma-statusbar [data-segment="update"]');
+  return /** @type {HTMLElement | null} */ (
+    document.querySelector('#vimma-statusbar [data-segment="update"]')
+  );
 }
 
 /** A tarball with Firefox's updater, no result from an earlier task, nothing asked yet. */
@@ -395,7 +413,7 @@ async function freshTarball() {
   registerCleanupFunction(() => VimmaUpdates._setFirefox(null));
 }
 
-/** Firefox's updater finished a download or staged it, and says so. */
+/** Firefox's updater finished a download or staged it, and says so. @param {string} stage */
 function stageAs(stage) {
   fake.staged = stage;
   Services.obs.notifyObservers(null, stage === "staged" ? "update-staged" : "update-downloading");
@@ -430,7 +448,7 @@ add_task(async function a_staged_update_shows_on_restart() {
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "downloading");
   stageAs("staged");
   await until(() => segment()?.textContent === "⇡ 9.9.9 on restart", "staged: on restart");
-  Assert.equal(segment().style.color, "var(--vimma-fg-dim)");
+  Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-fg-dim)");
   const info = await VimmaUpdates.describe();
   Assert.deepEqual(info.firefox, { stage: "staged", canApply: true });
   Assert.equal(
@@ -444,7 +462,9 @@ add_task(async function a_staged_update_shows_on_restart() {
       "rendered",
     );
     Assert.equal(
-      browser.contentDocument.getElementById("update-firefox").textContent,
+      /** @type {Element} */ (
+        /** @type {Document} */ (browser.contentDocument).getElementById("update-firefox")
+      ).textContent,
       "downloaded: applies at the next start",
     );
   });
@@ -454,8 +474,10 @@ add_task(async function a_staged_update_shows_on_restart() {
 add_task(async function a_staged_security_update_asks_to_restart() {
   await freshTarball();
   await serve(await manifest({ update: { vimmaUrgency: "security" } }));
-  const line = () => document.getElementById("vimma-update-prompt");
-  const lineShown = () => !!line() && !line().hidden;
+  /** The update question, or null while there is none. */
+  const line = () =>
+    /** @type {HTMLElement | null} */ (document.getElementById("vimma-update-prompt"));
+  const lineShown = () => !!line() && !(/** @type {HTMLElement} */ (line()).hidden);
   const lineText = () => line()?.querySelector(".vimma-agent-prompt-text")?.textContent ?? "";
   const armed = () => !!line()?.querySelector(".vimma-agent-prompt-hint:not([hidden])");
   try {
@@ -467,7 +489,7 @@ add_task(async function a_staged_security_update_asks_to_restart() {
         () => segment()?.textContent === "⇡ 9.9.9 security: :restart",
         "a staged security update in the error colour, naming :restart",
       );
-      Assert.equal(segment().style.color, "var(--vimma-text-error)");
+      Assert.equal(/** @type {HTMLElement} */ (segment()).style.color, "var(--vimma-text-error)");
       UpdateUi._sync();
       await until(lineShown, "the restart question shows once no key came for a moment");
       Assert.equal(
@@ -512,12 +534,13 @@ add_task(async function a_real_download_is_shown_on_restart() {
     Ci.nsIApplicationUpdateService,
   );
   const um = Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
-  const watch = (subject) => {
+  const watch = (/** @type {nsISupports} */ subject) => {
     const channel = subject.QueryInterface(Ci.nsIHttpChannel);
     if (channel.URI.spec === mar) {
       anonymous.push(!!(channel.loadFlags & Ci.nsIRequest.LOAD_ANONYMOUS));
     }
   };
+  /** @type {boolean[]} */
   const anonymous = [];
   Services.obs.addObserver(watch, "http-on-modify-request");
   try {
