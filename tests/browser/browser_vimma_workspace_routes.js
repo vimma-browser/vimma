@@ -35,11 +35,25 @@ const NOTICE_ID = "vimma-notice";
 
 const def = (/** @type {string} */ name) =>
   WorkspaceStore.definitions.workspaces.find((w) => w.name === name);
-const ww = (win = window) => WindowWorkspaces.get(win);
+/**
+ * A window's workspaces, built: every window of these tests has them.
+ * @param {BrowserWindow} [win]
+ */
+const ww = (win = window) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+/**
+ * The name of the shown workspace, one of the window's.
+ * @param {BrowserWindow} [win]
+ */
 const activeName = (win = window) =>
-  ww(win).model.workspaces.find((w) => w.id === ww(win).model.active).name;
+  /** @type {WorkspaceState} */ (
+    ww(win).model.workspaces.find((w) => w.id === ww(win).model.active)
+  ).name;
+/** @param {Window} [win] */
 const noticeText = (win = window) => win.document.getElementById(NOTICE_ID)?.textContent ?? "";
-/** Forgets the last notice's text (a hidden notice keeps it), so a check sees only new ones. */
+/**
+ * Forgets the last notice's text (a hidden notice keeps it), so a check sees only new ones.
+ * @param {Window} [win]
+ */
 const clearNotice = (win = window) => {
   const el = win.document.getElementById(NOTICE_ID);
   if (el) el.textContent = "";
@@ -48,29 +62,52 @@ const clearNotice = (win = window) => {
 /** @param {() => boolean} cond @param {string} msg */
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 50, 100);
 
-/** Resolves with the next tab opened in `win`. */
+/**
+ * Resolves with the next tab opened in `win`.
+ * @param {BrowserWindow} [win]
+ */
 const nextTab = (win = window) =>
-  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then((e) => e.target);
+  BrowserTestUtils.waitForEvent(win.gBrowser.tabContainer, "TabOpen").then(
+    // Tabbrowser fires TabOpen on the new tab.
+    (e) => /** @type {MozTabbrowserTab} */ (e.target),
+  );
+
+/**
+ * A workspace definition these tests know exists.
+ * @param {string} name
+ */
+const known = (name) => /** @type {ContainedWorkspace} */ (def(name));
 
 /** @param {Record<string, string>[]} rules */
 const route = (rules) => WorkspaceRouter.setRoutes(resolveRoutes(rules));
 
-/** Two workspaces, `rt-work` (example.com) and `rt-home` (the rest), `rt-home` shown. */
+/**
+ * Two workspaces, `rt-work` (example.com) and `rt-home` (the rest), `rt-home` shown; each has its
+ * container, as containers are on in the browser tests.
+ * @type {ContainedWorkspace}
+ */
 let work;
+/** @type {ContainedWorkspace} */
 let home;
 
 add_task(async function setup() {
-  work = WorkspaceStore.addWorkspace({ name: "rt-work", color: "blue", icon: "briefcase" });
-  home = WorkspaceStore.addWorkspace({ name: "rt-home", color: "green", icon: "tree" });
+  work = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.addWorkspace({ name: "rt-work", color: "blue", icon: "briefcase" })
+  );
+  home = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.addWorkspace({ name: "rt-home", color: "green", icon: "tree" })
+  );
   registerCleanupFunction(async () => {
     route([]);
-    ww().switchTo({ id: def("main").id });
+    ww().switchTo({ id: known("main").id });
     for (const w of WorkspaceStore.definitions.workspaces.filter(
       (d) => d.name !== "main" && d.id !== WorkspaceStore.agent?.id,
     )) {
       await WorkspaceStore.deleteWorkspace(w.id, { confirmed: true });
     }
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
   });
   route([{ domain: "example.com", workspace: "rt-work" }]);
 });
@@ -85,7 +122,10 @@ async function inHome(url = `${ELSEWHERE}?home`) {
   return tab;
 }
 
-/** `:line` Enter, from the selected page in normal mode. */
+/**
+ * `:line` Enter, from the selected page in normal mode.
+ * @param {string} line
+ */
 async function runCommand(line) {
   const browser = gBrowser.selectedBrowser;
   await until(() => !browser.webProgress?.isLoadingDocument, "the selected page has loaded");
@@ -97,8 +137,10 @@ async function runCommand(line) {
 
 /** Closes every tab but the first, back to main. */
 function tidy() {
-  ww().switchTo({ id: def("main").id });
-  while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+  ww().switchTo({ id: known("main").id });
+  while (gBrowser.tabs.length > 1) {
+    BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 }
 
 add_task(async function the_url_bar_routes_to_the_rules_workspace_and_switches() {
@@ -346,15 +388,22 @@ function runHandlers(cmdLine) {
     try {
       Cc[value].getService(Ci.nsICommandLineHandler).handle(cmdLine);
     } catch (e) {
-      if (e.result === Cr.NS_ERROR_ABORT) throw e;
+      // An XPCOM exception has its nsresult; anything else thrown has none.
+      if (/** @type {{ result?: number }} */ (e).result === Cr.NS_ERROR_ABORT) throw e;
     }
   }
 }
 
-/** `vimma <args>` while Vimma runs: the line the D-Bus remote hands over. */
+/**
+ * `vimma <args>` while Vimma runs: the line the D-Bus remote hands over.
+ * @param {string[]} args
+ */
 async function remote(args) {
   const opened = nextTab();
-  const cmdLine = Cu.createCommandLine(args, null, Ci.nsICommandLine.STATE_REMOTE_AUTO);
+  // An nsISupports in the IDL; the command line's class info gives it nsICommandLine.
+  const cmdLine = /** @type {nsICommandLine} */ (
+    Cu.createCommandLine(args, null, Ci.nsICommandLine.STATE_REMOTE_AUTO)
+  );
   runHandlers(cmdLine);
   const tab = await opened;
   return { tab, cmdLine };
@@ -365,7 +414,7 @@ add_task(async function an_external_link_routes_by_the_app_that_opened_it() {
     { app: "testapp", workspace: "rt-home" },
     { domain: "example.com", workspace: "rt-work" },
   ]);
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: known("main").id });
 
   // vimma-open: `vimma -vimma-from <app> <url>`; the app rule comes first in the file.
   const { tab: fromApp, cmdLine } = await remote(["-vimma-from", "TestApp", `${WORK}?app`]);
@@ -381,9 +430,9 @@ add_task(async function an_external_link_routes_by_the_app_that_opened_it() {
   // A hint that is not a simple name is ignored, even by a rule naming exactly that string
   // (config.toml would refuse such a rule; set here past the check).
   route([{ app: "../../testapp", workspace: "rt-home" }]);
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: known("main").id });
   const { tab: bad } = await remote(["-vimma-from", "../../testapp", `${ELSEWHERE}?bad`]);
-  Assert.equal(bad.userContextId, def("main").userContextId, "not routed: the workspace default");
+  Assert.equal(bad.userContextId, known("main").userContextId, "not routed: the workspace default");
 
   route([{ domain: "example.com", workspace: "rt-work" }]);
   tidy();
@@ -394,7 +443,10 @@ add_task(async function a_new_windows_first_tab_is_routed_with_the_startup_app()
     { app: "coldapp", workspace: "rt-home" },
     { domain: "example.com", workspace: "rt-work" },
   ]);
-  /** A window opened with one URL, as a cold start or an external window open does. */
+  /**
+   * A window opened with one URL, as a cold start or an external window open does.
+   * @param {string} url
+   */
   const openWindow = async (url) => {
     const opened = BrowserTestUtils.waitForNewWindow({ url });
     window.openDialog(AppConstants.BROWSER_CHROME_URL, "_blank", "chrome,all,dialog=no", url);
@@ -466,7 +518,7 @@ add_task(async function an_external_link_matches_by_the_nearest_name() {
     { app: "ghostty", workspace: "rt-work" },
     { app: "herdr", workspace: "rt-home" },
   ]);
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: known("main").id });
   const { tab } = await remote(["-vimma-from", "python3,zsh,herdr,zsh,ghostty", `${ELSEWHERE}?n`]);
   Assert.equal(tab.userContextId, home.userContextId, "herdr is nearer than ghostty: rt-home");
   Assert.deepEqual(WorkspaceRouter.apps, [], "the names end with the command line");
@@ -478,7 +530,7 @@ add_task(async function an_external_link_matches_by_the_nearest_name() {
 
 add_task(async function an_app_list_with_a_bad_name_routes_by_the_rest() {
   route([{ app: "herdr", workspace: "rt-home" }]);
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: known("main").id });
   const { tab } = await remote(["-vimma-from", "py thon,../x,HERDR", `${ELSEWHERE}?bad-name`]);
   Assert.equal(tab.userContextId, home.userContextId, "the names that are tokens still match");
   route([{ domain: "example.com", workspace: "rt-work" }]);
@@ -530,7 +582,7 @@ add_task(async function an_unmatched_external_link_opens_in_the_default_workspac
   route([{ domain: "example.com", workspace: "rt-work" }]);
   defaultTo("rt-home");
   try {
-    ww().switchTo({ id: def("main").id });
+    ww().switchTo({ id: known("main").id });
     const { tab } = await remote([`${ELSEWHERE}?default`]);
     Assert.equal(tab.userContextId, home.userContextId, "no rule, no program: rt-home");
     const { tab: named } = await remote(["-vimma-from", "slack", `${ELSEWHERE}?default-named`]);
@@ -548,7 +600,7 @@ add_task(async function an_unmatched_external_link_opens_in_the_default_workspac
 add_task(async function a_rule_beats_the_default_workspace() {
   defaultTo("rt-home");
   try {
-    ww().switchTo({ id: def("main").id });
+    ww().switchTo({ id: known("main").id });
     const { tab } = await remote([`${WORK}?rule-first`]);
     Assert.equal(tab.userContextId, work.userContextId, "the domain rule: rt-work");
   } finally {
@@ -667,7 +719,12 @@ add_task(async function the_default_workspace_never_applies_in_a_private_window(
     );
     const tab = await opened;
     Assert.equal(tab.userContextId, 0, "a link from another program in a private window");
-    Assert.equal(tab.ownerDocument.defaultView, priv, "stays there, with no container");
+    // The tab's window, compared as a Window (a BrowserWindow is one).
+    Assert.equal(
+      /** @type {Window | null} */ (tab.ownerDocument.defaultView),
+      priv,
+      "stays there, with no container",
+    );
   } finally {
     await BrowserTestUtils.closeWindow(priv);
     defaultTo(null);
@@ -681,12 +738,18 @@ add_task(async function private_windows_are_never_routed() {
   priv.openTrustedLinkIn(`${WORK}?private`, "tab");
   const tab = await opened;
   Assert.equal(tab.userContextId, 0, "the private tab has no container");
-  Assert.equal(tab.ownerDocument.defaultView, priv, "and stays in the private window");
+  // The tab's window, compared as a Window (a BrowserWindow is one).
+  Assert.equal(
+    /** @type {Window | null} */ (tab.ownerDocument.defaultView),
+    priv,
+    "and stays in the private window",
+  );
   Assert.equal(gBrowser.tabs.length, tabs, "nothing opens in the normal window");
   await BrowserTestUtils.closeWindow(priv);
 });
 
 // docs/specs/app-routes.md, decision 14: a tab an app rule placed keeps its names on its host.
+/** @type {Record<string, string>[]} */
 const SIGNIN = [
   { app: "testapp", domain: "example.com", workspace: "rt-home" },
   { domain: "example.com", workspace: "rt-work" },
@@ -713,7 +776,11 @@ function recordNotices(win = window) {
   return { seen, stop: () => observer.disconnect() };
 }
 
-/** Loads `url` in `tab` as the page's own navigation. */
+/**
+ * Loads `url` in `tab` as the page's own navigation.
+ * @param {MozTabbrowserTab} tab
+ * @param {string} url
+ */
 async function navigate(tab, url) {
   const loaded = BrowserTestUtils.browserLoaded(tab.linkedBrowser, false, url);
   await SpecialPowers.spawn(tab.linkedBrowser, [url], (u) => {
@@ -725,7 +792,7 @@ async function navigate(tab, url) {
 /** The app-routed sign-in tab: `testapp` opens example.com, the app rule puts it in rt-home. */
 async function signInTab() {
   route(SIGNIN);
-  ww().switchTo({ id: def("main").id });
+  ww().switchTo({ id: known("main").id });
   const { tab } = await remote(["-vimma-from", "testapp", `${WORK}?signin`]);
   Assert.equal(tab.userContextId, home.userContextId, "the app rule places it in rt-home");
   await until(() => gBrowser.selectedTab === tab, "the tab is shown");
@@ -779,7 +846,9 @@ add_task(async function route_move_keeps_an_app_routed_tab_until_it_leaves_the_h
       gBrowser.tabContainer,
       "TabOpen",
       false,
-      (e) => e.target.userContextId === work.userContextId,
+      // TabOpen's target is the new tab.
+      (/** @type {Event} */ e) =>
+        /** @type {MozTabbrowserTab} */ (e.target).userContextId === work.userContextId,
     );
     await runCommand("route move");
     await moved;
@@ -814,6 +883,24 @@ add_task(async function a_cold_start_app_routed_first_tab_is_not_hinted_back() {
   }
 });
 
+/**
+ * The document of about:vimma in `tab`, once it has rendered: it loads in the parent process,
+ * so its browser has the document.
+ * @param {MozTabbrowserTab} tab
+ */
+function aboutDoc(tab) {
+  return /** @type {Document} */ (tab.linkedBrowser.contentDocument);
+}
+
+/**
+ * The element of about:vimma with this id, which it always renders.
+ * @param {Document} doc
+ * @param {string} id
+ */
+function section(doc, id) {
+  return /** @type {HTMLElement} */ (doc.getElementById(id));
+}
+
 /** Opens about:vimma in a new tab and waits for it to render. */
 async function openAboutVimma() {
   const about = await BrowserTestUtils.openNewForegroundTab(gBrowser, "about:vimma");
@@ -832,7 +919,7 @@ add_task(async function about_vimma_shows_the_last_names_without_the_url() {
   try {
     await signInTab();
     const about = await openAboutVimma();
-    const last = about.linkedBrowser.contentDocument.getElementById("route-last").textContent;
+    const last = section(aboutDoc(about), "route-last").textContent;
     Assert.stringContains(last, "testapp", "the names the link carried");
     Assert.stringContains(last, "rule 1 (rt-home)", "and the rule it matched");
     Assert.ok(!/signin|example\.com/.test(last), "never its URL");
@@ -844,14 +931,14 @@ add_task(async function about_vimma_shows_the_last_names_without_the_url() {
     defaultTo("rt-work");
     await remote(["-vimma-from", "otherapp", `${ELSEWHERE}?unmatched`]);
     const again = await openAboutVimma();
-    const doc = again.linkedBrowser.contentDocument;
+    const doc = aboutDoc(again);
     Assert.stringContains(
-      doc.getElementById("route-last").textContent,
+      section(doc, "route-last").textContent,
       "otherapp → [routing] default_workspace (rt-work)",
       "an unmatched link names the default workspace",
     );
     Assert.stringContains(
-      doc.getElementById("route-default").textContent,
+      section(doc, "route-default").textContent,
       "rt-work",
       "the section shows [routing] default_workspace",
     );
@@ -871,9 +958,9 @@ add_task(async function about_vimma_marks_a_shadowed_rule() {
   ]);
   try {
     const about = await openAboutVimma();
-    const states = [
-      ...about.linkedBrowser.contentDocument.querySelectorAll("#routes tbody tr td:last-child"),
-    ].map((td) => td.textContent);
+    const states = [...aboutDoc(about).querySelectorAll("#routes tbody tr td:last-child")].map(
+      (td) => td.textContent,
+    );
     Assert.deepEqual(
       states,
       ["in force", "shadowed by rule 1", "shadowed by rule 1", "in force"],
@@ -919,11 +1006,11 @@ add_task(async function route_add_writes_a_rule_and_route_lists_them() {
     () => about.linkedBrowser.contentDocument?.documentElement.dataset.ready === "true",
     "about:vimma rendered",
   );
-  const doc = about.linkedBrowser.contentDocument;
+  const doc = aboutDoc(about);
   Assert.ok(about.linkedBrowser.currentURI.spec.startsWith("about:vimma?tab="), "about:vimma");
   Assert.equal(doc.querySelectorAll("#routes tbody tr").length, 1, "one rule listed");
   Assert.ok(
-    doc.getElementById("route-tab").textContent.includes("route 1"),
+    section(doc, "route-tab").textContent.includes("route 1"),
     "and which rule matches the tab :route was typed in",
   );
 

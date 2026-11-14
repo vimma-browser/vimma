@@ -329,6 +329,7 @@ declare var UpdatePopupNotificationsVisibility: BrowserWindow["UpdatePopupNotifi
 declare var isInitialPage: BrowserWindow["isInitialPage"];
 declare var switchToTabHavingURI: BrowserWindow["switchToTabHavingURI"];
 declare var openTrustedLinkIn: BrowserWindow["openTrustedLinkIn"];
+declare var openLinkIn: BrowserWindow["openLinkIn"];
 declare var goQuitApplication: BrowserWindow["goQuitApplication"];
 declare var DownloadURL: BrowserWindow["DownloadURL"];
 declare var gUnifiedExtensions: BrowserWindow["gUnifiedExtensions"];

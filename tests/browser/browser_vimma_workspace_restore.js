@@ -53,11 +53,55 @@ registerCleanupFunction(async () => {
   for (const id of created) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
 });
 
-/** @param {string} name */
+/**
+ * A new workspace, with its container: containers are on in the browser tests.
+ * @param {string} name
+ */
 function workspace(name) {
-  const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
+  const w = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" })
+  );
   created.push(w.id);
   return w;
+}
+
+/**
+ * A window's workspaces, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} win
+ */
+const workspaces = (win) => /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win));
+/**
+ * A window's workspaces once their model is built, as openWindow waits for.
+ * @param {BrowserWindow} win
+ */
+const live = (win) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+/**
+ * A window's split view, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} win
+ */
+const view = (win) => /** @type {PaneView} */ (PaneViews.get(win));
+
+/**
+ * The model's workspace with this id, one the test made.
+ * @param {LiveWorkspaces["model"]} model
+ * @param {string} id
+ */
+function workspaceIn(model, id) {
+  return /** @type {WorkspaceState} */ (model.workspaces.find((w) => w.id === id));
+}
+
+/**
+ * SessionStore's state, as much of it as these tests read or write.
+ * @typedef {{ url: string, triggeringPrincipal_base64?: string }} SessionEntry
+ * @typedef {{ entries: SessionEntry[], userContextId?: number,
+ *   extData?: Record<string, string> }} SessionTab
+ * @typedef {{ tabs: SessionTab[], selected?: number,
+ *   extData?: Record<string, string> }} SessionWindow
+ */
+
+/** @returns {{ windows: SessionWindow[] }} */
+function browserState() {
+  return JSON.parse(SessionStore.getBrowserState());
 }
 
 /** @param {() => boolean} cond @param {string} msg */
@@ -68,31 +112,45 @@ function until(cond, msg) {
 async function openWindow() {
   const win = await BrowserTestUtils.openNewBrowserWindow();
   windows.push(win);
-  await WindowWorkspaces.get(win).ready;
-  await until(() => !!WindowWorkspaces.get(win).model, "the new window has its workspaces");
+  await workspaces(win).ready;
+  await until(() => !!workspaces(win).model, "the new window has its workspaces");
   return win;
 }
 
-/** @param {Window} win @param {string} url */
+/** @param {BrowserWindow} win @param {string} url */
 async function openIn(win, url) {
   const tab = await BrowserTestUtils.openNewForegroundTab(win.gBrowser, url);
   return tab;
 }
 
-/** The model's workspace holding `tab`, by id. */
+/**
+ * The model's workspace holding `tab`, by id.
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab} tab
+ */
 function workspaceOf(win, tab) {
-  const model = WindowWorkspaces.get(win).model;
-  const id = WindowWorkspaces.get(win).idOf(tab);
+  const model = live(win).model;
+  const id = live(win).idOf(tab);
   return model.workspaces.find((w) => w.tabs.includes(id))?.id ?? null;
 }
 
-/** The panel rectangle of `tab`, rounded. */
+/**
+ * The panel rectangle of `tab`, rounded.
+ * @param {Window} win
+ * @param {SplitTab} tab
+ */
 function rect(win, tab) {
-  const r = win.document.getElementById(tab.linkedPanel).getBoundingClientRect();
+  const r = /** @type {Element} */ (
+    win.document.getElementById(tab.linkedPanel)
+  ).getBoundingClientRect();
   return { left: r.left, top: r.top, width: r.width, height: r.height };
 }
 
-/** Restores `winState` into `win`, overwriting its tabs, and waits for SessionStore to finish. */
+/**
+ * Restores `winState` into `win`, overwriting its tabs, and waits for SessionStore to finish.
+ * @param {BrowserWindow} win
+ * @param {SessionWindow} winState
+ */
 async function restoreInto(win, winState) {
   const restored = BrowserTestUtils.waitForEvent(win, "SSWindowRestored");
   SessionStore.setWindowState(win, JSON.stringify({ windows: [winState] }), true);
@@ -104,7 +162,7 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   const A = workspace("rs-a");
   const B = workspace("rs-b");
   const w1 = await openWindow();
-  const ww1 = WindowWorkspaces.get(w1);
+  const ww1 = live(w1);
 
   // A: the start tab, a long page scrolled to 1200, and a renamed tab, selected.
   ww1.switchTo({ id: A.id });
@@ -118,10 +176,11 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   // B: the start tab and a page, side by side; B active, the right pane focused.
   ww1.switchTo({ id: B.id });
   await until(() => w1.gBrowser.selectedTab.userContextId === B.userContextId, "B's start tab");
-  const b0 = w1.gBrowser.selectedTab;
-  const b1 = BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?b1`);
+  // The selected tab and a loaded one: both have their panels.
+  const b0 = /** @type {SplitTab} */ (w1.gBrowser.selectedTab);
+  const b1 = /** @type {SplitTab} */ (BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?b1`));
   await BrowserTestUtils.browserLoaded(b1.linkedBrowser);
-  const view1 = PaneViews.get(w1);
+  const view1 = view(w1);
   Assert.ok(view1.split("vertical", { tab: b1 }).ok, "B is split");
   await until(() => rect(w1, b0).width > 100 && rect(w1, b1).width > 100, "B is laid out");
   const before = { b0: rect(w1, b0), b1: rect(w1, b1) };
@@ -129,7 +188,8 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   Assert.equal(workspaceOf(w1, a1), A.id, "the long page is in A");
   Assert.equal(workspaceOf(w1, b1), B.id, "b1 is in B");
 
-  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
+  // A tab the model names; SessionStore has no value for undefined, which no uuid equals.
+  const uuid = (/** @type {Element | undefined} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
   const uuids = new Map([a1, a2, b0, b1].map((t) => [t, uuid(t)]));
   Assert.ok(
     [...uuids.values()].every((u) => /^[0-9a-f-]{36}$/.test(u)),
@@ -139,7 +199,7 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
 
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
-  const state = JSON.parse(SessionStore.getBrowserState());
+  const state = browserState();
   const winState = state.windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?b1`)),
   );
@@ -152,10 +212,10 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
 
   const w2 = await openWindow();
   await restoreInto(w2, winState);
-  const ww2 = WindowWorkspaces.get(w2);
+  const ww2 = live(w2);
   const model = ww2.model;
   const ids = (/** @type {string} */ id) =>
-    model.workspaces.find((w) => w.id === id).tabs.map((p) => uuid(ww2.tabOf(p)));
+    workspaceIn(model, id).tabs.map((p) => uuid(ww2.tabOf(p)));
   Assert.equal(ids(A.id).length, 3, "A has its three tabs");
   Assert.deepEqual(
     ids(A.id).slice(1),
@@ -166,27 +226,33 @@ add_task(async function gate_2_workspaces_tabs_panes_labels_and_scroll_come_back
   Assert.equal(model.active, B.id, "B is the active workspace");
 
   const byUuid = (/** @type {string} */ u) => w2.gBrowser.tabs.find((t) => uuid(t) === u);
-  const [r1, r2, rb0, rb1] = [a1, a2, b0, b1].map((t) => byUuid(uuids.get(t)));
+  // Each restored tab, found by its uuid: a missing one throws below.
+  const restored = (/** @type {MozTabbrowserTab} */ t) =>
+    /** @type {MozTabbrowserTab} */ (byUuid(uuids.get(t)));
+  const [r1, r2] = [a1, a2].map(restored);
+  // B's tabs show in its split, so they have their panels.
+  const [rb0, rb1] = [b0, b1].map((t) => /** @type {SplitTab} */ (restored(t)));
   Assert.equal(w2.gBrowser.selectedTab, rb1, "B's selected tab is selected");
-  Assert.equal(
-    model.workspaces.find((w) => w.id === A.id).activeTab,
-    uuids.get(a2),
-    "A's selected tab is remembered",
-  );
+  Assert.equal(workspaceIn(model, A.id).activeTab, uuids.get(a2), "A's selected tab is remembered");
   Assert.ok(r1.hidden && r2.hidden, "A's tabs are hidden");
   Assert.ok(!rb0.hidden && !rb1.hidden, "B's tabs are shown");
   Assert.equal(getTabLabel(r2), "notes", "the renamed tab keeps its label");
 
-  const view2 = PaneViews.get(w2);
+  const panes2 = view(w2).panes;
   Assert.deepEqual(
-    leaves(view2.panes ?? { root: { type: "leaf", pane: "p0", tab: "" } }).map((l) => l.tab),
+    panes2 ? leaves(panes2).map((l) => l.tab) : [],
     [rb0.linkedPanel, rb1.linkedPanel],
     "B's pane tree comes back",
   );
   await until(() => {
     const now = { b0: rect(w2, rb0), b1: rect(w2, rb1) };
-    return ["b0", "b1"].every((k) =>
-      ["left", "top", "width", "height"].every((p) => Math.abs(now[k][p] - before[k][p]) <= 1),
+    return /** @type {("b0" | "b1")[]} */ (["b0", "b1"]).every((k) =>
+      /** @type {("left" | "top" | "width" | "height")[]} */ ([
+        "left",
+        "top",
+        "width",
+        "height",
+      ]).every((p) => Math.abs(now[k][p] - before[k][p]) <= 1),
     );
   }, "B's panes have their rectangles (±1 px)");
 
@@ -211,11 +277,11 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   const C = workspace("rs-c");
   const D = workspace("rs-d");
   const w1 = await openWindow();
-  const ww1 = WindowWorkspaces.get(w1);
+  const ww1 = live(w1);
   ww1.switchTo({ id: D.id });
   await until(() => w1.gBrowser.selectedTab.userContextId === D.userContextId, "D's start tab");
   const d1 = await openIn(w1, `${PAGE}?d1`);
-  Assert.ok(PaneViews.get(w1).split("vertical").ok, "D is split, a new start page on the right");
+  Assert.ok(view(w1).split("vertical").ok, "D is split, a new start page on the right");
   await until(() => w1.gBrowser.selectedTab !== d1, "the new pane is focused");
   const d2 = w1.gBrowser.selectedTab;
   await until(() => d2.linkedBrowser.currentURI.spec === START, "it shows the start page");
@@ -223,17 +289,19 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
   await until(() => ww1.model.active === C.id, "C is shown");
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
-  const state = JSON.parse(SessionStore.getBrowserState());
+  const state = browserState();
   const winState = state.windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?d1`)),
   );
+  Assert.ok(winState, "the window is in the browser state");
   await BrowserTestUtils.closeWindow(w1);
 
   const w2 = await openWindow();
   await restoreInto(w2, winState);
-  const ww2 = WindowWorkspaces.get(w2);
+  const ww2 = live(w2);
   await until(() => ww2.model.active === C.id, "C is shown after the restore");
-  const parked = PaneViews.get(w2).parked(D.id);
+  // D was split when the window was saved, so its tree is parked.
+  const parked = /** @type {Panes} */ (view(w2).parked(D.id));
   const right = leaves(parked).find((l) => l.pane === parked.focus);
   const page = w2.gBrowser.tabs.find((t) => t.linkedPanel === right?.tab);
   Assert.ok(page && SessionStore.isTabRestoring(page), "D's start page waits to be restored");
@@ -262,7 +330,7 @@ add_task(async function keys_reach_vimma_while_a_restored_start_page_pane_loads(
       pressed++;
       if (!seen.length) lost++;
     }
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
   }
   w2.removeEventListener("keydown", onKey, true);
   Assert.greater(pressed, 0, "keys were typed while the start page was loading");
@@ -282,7 +350,7 @@ add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
   const E = workspace("rs-e");
   const win = await openWindow();
   await SimpleTest.promiseFocus(win);
-  const ww = WindowWorkspaces.get(win);
+  const ww = live(win);
 
   /** @type {string[]} */
   const seen = [];
@@ -318,7 +386,7 @@ add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
       pressed++;
       if (!seen.length) lost++;
     }
-    await new Promise((r) => Services.tm.dispatchToMainThread(r));
+    await new Promise((r) => Services.tm.dispatchToMainThread(() => r(undefined)));
   }
   win.removeEventListener("keydown", onKey, true);
   Assert.greater(pressed, 0, "keys were typed while the start page was loading");
@@ -333,7 +401,10 @@ add_task(async function keys_reach_vimma_while_a_new_start_page_loads() {
 
 add_task(async function a_newer_window_value_is_left_untouched() {
   for (const id of created.splice(0)) await WorkspaceStore.deleteWorkspace(id, { confirmed: true });
-  const main = WorkspaceStore.definitions.workspaces.find((d) => d.name === "main");
+  // Every profile has main, with its container.
+  const main = /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find((d) => d.name === "main")
+  );
   const newer = JSON.stringify({ schema: 99, active: "x", workspaces: [] });
   const tab = (/** @type {string} */ url) => ({
     entries: [{ url, triggeringPrincipal_base64: E10SUtils.SERIALIZED_SYSTEMPRINCIPAL }],
@@ -345,7 +416,7 @@ add_task(async function a_newer_window_value_is_left_untouched() {
     selected: 2,
     extData: { [WINDOW_KEY]: newer },
   });
-  const ww = WindowWorkspaces.get(win);
+  const ww = workspaces(win);
   Assert.ok(ww.model, "the window has a model");
   // main, and the agent workspace every profile has (docs/specs/vimma-mcp.md decision 8).
   Assert.deepEqual(
@@ -389,7 +460,7 @@ async function wholeWindowRestore() {
   const A = workspace("sb-a");
   const B = workspace("sb-b");
   const w1 = await openWindow();
-  const ww1 = WindowWorkspaces.get(w1);
+  const ww1 = live(w1);
 
   // A: two pages and a tab in no workspace's container (foreign), with the first page selected.
   ww1.switchTo({ id: A.id });
@@ -402,7 +473,7 @@ async function wholeWindowRestore() {
   await BrowserTestUtils.browserLoaded(foreign.linkedBrowser);
   w1.gBrowser.selectedTab = a1;
   await until(
-    () => ww1.model.workspaces.find((w) => w.id === A.id).activeTab === ww1.idOf(a1),
+    () => workspaceIn(ww1.model, A.id).activeTab === ww1.idOf(a1),
     "A's selected tab is its first page",
   );
   Assert.ok(ww1.isForeign(foreign) && workspaceOf(w1, foreign) === A.id, "the foreign tab is A's");
@@ -410,25 +481,27 @@ async function wholeWindowRestore() {
   // B: its start tab and a page, side by side; B active.
   ww1.switchTo({ id: B.id });
   await until(() => w1.gBrowser.selectedTab.userContextId === B.userContextId, "B's start tab");
-  const b0 = w1.gBrowser.selectedTab;
-  const b1 = BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?sb-b1`);
+  // The selected tab and a loaded one: both have their panels.
+  const b0 = /** @type {SplitTab} */ (w1.gBrowser.selectedTab);
+  const b1 = /** @type {SplitTab} */ (BrowserTestUtils.addTab(w1.gBrowser, `${PAGE}?sb-b1`));
   await BrowserTestUtils.browserLoaded(b1.linkedBrowser);
-  Assert.ok(PaneViews.get(w1).split("vertical", { tab: b1 }).ok, "B is split");
+  Assert.ok(view(w1).split("vertical", { tab: b1 }).ok, "B is split");
 
-  const uuid = (/** @type {Element} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
+  const uuid = (/** @type {MozTabbrowserTab} */ t) => SessionStore.getCustomTabValue(t, TAB_KEY);
   const uuids = new Map([a1, a2, foreign, b0, b1].map((t) => [t, uuid(t)]));
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
-  const winState = JSON.parse(SessionStore.getBrowserState()).windows.find((w) =>
+  const winState = browserState().windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?sb-b1`)),
   );
+  Assert.ok(winState, "the window is in the browser state");
   await BrowserTestUtils.closeWindow(w1);
 
   const w2 = await openWindow();
   await restoreInto(w2, winState);
-  const ww2 = WindowWorkspaces.get(w2);
+  const ww2 = live(w2);
   const model = ww2.model;
-  const ws = (/** @type {string} */ id) => model.workspaces.find((w) => w.id === id);
+  const ws = (/** @type {string} */ id) => workspaceIn(model, id);
   Assert.deepEqual(
     ws(A.id).tabs.slice(1),
     [uuids.get(a1), uuids.get(a2), uuids.get(foreign)],
@@ -437,11 +510,12 @@ async function wholeWindowRestore() {
   Assert.equal(ws(A.id).activeTab, uuids.get(a1), "A's selected tab is remembered");
   Assert.deepEqual(ws(B.id).tabs, [uuids.get(b0), uuids.get(b1)], "B's tabs come back");
   Assert.equal(model.active, B.id, "B is the active workspace");
-  const byUuid = (/** @type {string} */ u) => w2.gBrowser.tabs.find((t) => uuid(t) === u);
+  // B's tabs, which show in its split: a missing one throws.
+  const byUuid = (/** @type {string} */ u) =>
+    /** @type {SplitTab} */ (w2.gBrowser.tabs.find((t) => uuid(t) === u));
+  const panes2 = view(w2).panes;
   Assert.deepEqual(
-    leaves(PaneViews.get(w2).panes ?? { root: { type: "leaf", pane: "p0", tab: "" } }).map(
-      (l) => l.tab,
-    ),
+    panes2 ? leaves(panes2).map((l) => l.tab) : [],
     [byUuid(uuids.get(b0)).linkedPanel, byUuid(uuids.get(b1)).linkedPanel],
     "B's pane tree comes back",
   );
@@ -452,10 +526,10 @@ async function wholeWindowRestore() {
 add_task(async function a_failed_reconcile_keeps_the_windows_tabs() {
   const A = workspace("ml-a");
   const win = await openWindow();
-  const ww = WindowWorkspaces.get(win);
+  const ww = live(win);
   ww.switchTo({ id: A.id });
   for (const n of [1, 2, 3]) await openIn(win, `${PAGE}?ml${n}`);
-  const before = ww.model.workspaces.find((w) => w.id === A.id).tabs;
+  const before = workspaceIn(ww.model, A.id).tabs;
   Assert.greater(before.length, 1, "the workspace holds its tabs before the restore");
 
   // A tab opened inside a restore bracket (SessionStore busy, m3 sub-spec 3): its TabOpen is
@@ -471,16 +545,18 @@ add_task(async function a_failed_reconcile_keeps_the_windows_tabs() {
   try {
     win.dispatchEvent(new win.Event("SSWindowStateReady"));
   } finally {
-    delete WorkspaceStore.defaultUserContextId;
+    // Back to the class's own method.
+    Reflect.deleteProperty(WorkspaceStore, "defaultUserContextId");
   }
   Assert.deepEqual(
-    ww.model.workspaces.find((w) => w.id === A.id).tabs,
+    workspaceIn(ww.model, A.id).tabs,
     before,
     "a failed reconcile keeps the workspace's tabs",
   );
 
   // Selecting the stray tab puts it in the model, in the active workspace.
-  win.gBrowser.selectedTab = ww.tabOf(before[0]);
+  // A tab of the model's workspace A, which is open.
+  win.gBrowser.selectedTab = /** @type {MozTabbrowserTab} */ (ww.tabOf(before[0]));
   win.gBrowser.selectedTab = stray;
   await until(() => workspaceOf(win, stray) === A.id, "the selected stray tab joins its workspace");
   await BrowserTestUtils.closeWindow(win);
