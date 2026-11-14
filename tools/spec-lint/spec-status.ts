@@ -24,7 +24,7 @@ import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { REPO } from "../repo.mjs";
+import { REPO } from "../repo.ts";
 import { parseSpec } from "./spec-lint.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

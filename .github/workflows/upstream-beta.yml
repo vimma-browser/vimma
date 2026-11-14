@@ -185,7 +185,7 @@ jobs:
           VERSION: ${{ needs.detect.outputs.version }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          OWNER: JRanne # tools/repo.mjs MAINTAINER: an organization cannot be @-mentioned
+          OWNER: JRanne # tools/repo.ts MAINTAINER: an organization cannot be @-mentioned
           SOURCE_RESULT: ${{ needs.source-check.outputs.result }}
           ARTIFACTS: ${{ needs.source-check.outputs.artifacts }}
           ARTIFACTS_NOTE: ${{ needs.source-check.outputs.artifacts-note }}

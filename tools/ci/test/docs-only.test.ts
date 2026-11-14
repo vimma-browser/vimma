@@ -95,8 +95,7 @@ describe("classify", () => {
 });
 
 describe("MARKDOWN_TESTS", () => {
-  /** @param {string} dir @returns {string[]} */
-  const walk = (dir) =>
+  const walk = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
       if (name === "node_modules" || name === "fixtures") return [];
@@ -116,8 +115,7 @@ describe("MARKDOWN_TESTS", () => {
 });
 
 describe("the command line", () => {
-  /** @param {string} cwd @param {string[]} args */
-  const git = (cwd, ...args) =>
+  const git = (cwd: string, ...args: string[]) =>
     execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_ENV } });
   const GIT_ENV = {
     GIT_AUTHOR_NAME: "t",
@@ -129,7 +127,7 @@ describe("the command line", () => {
   };
 
   /** A repo with a base commit and a head commit from `change`. */
-  function repo(/** @type {(dir: string) => void} */ change) {
+  function repo(change: (dir: string) => void) {
     const dir = tempDir("vimma-docs-only-");
     git(dir, "init", "-q", "-b", "main");
     mkdirSync(join(dir, "docs"));
@@ -146,8 +144,7 @@ describe("the command line", () => {
     return { dir, base, head };
   }
 
-  /** @param {{dir: string, base: string, head: string}} r @param {string} event */
-  function run(r, event = "pull_request") {
+  function run(r: { dir: string; base: string; head: string }, event: string = "pull_request") {
     const output = join(tempDir("vimma-docs-only-out-"), "github-output");
     writeFileSync(output, "");
     const res = spawnSync(
@@ -199,11 +196,9 @@ describe("the command line", () => {
 });
 
 describe("workflow wiring", () => {
-  /** @param {string} name */
-  const workflow = (name) => readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
+  const workflow = (name: string) => readFileSync(join(ROOT, ".github", "workflows", name), "utf8");
 
-  /** @param {string} text @param {string} id */
-  function job(text, id) {
+  function job(text: string, id: string) {
     const body = text.slice(text.indexOf("\njobs:\n") + 7);
     const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
     for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
@@ -211,7 +206,7 @@ describe("workflow wiring", () => {
   }
 
   /** The steps of a job block, each with its name and its `if:` (or ""). */
-  function steps(/** @type {string} */ block) {
+  function steps(block: string) {
     return block
       .split(/^ {6}- /m)
       .slice(1)
@@ -222,11 +217,10 @@ describe("workflow wiring", () => {
       }));
   }
 
-  /** @param {string} block */
-  const jobIf = (block) => /^ {4}if: (.*)/m.exec(block)?.[1] ?? "";
+  const jobIf = (block: string) => /^ {4}if: (.*)/m.exec(block)?.[1] ?? "";
 
   /** The classifier job: least privilege, the script from the base, never from the PR. */
-  function expectChangesJob(/** @type {string} */ text) {
+  function expectChangesJob(text: string) {
     const changes = job(text, "changes");
     expect(changes).toMatch(/^ {4}permissions:\n {6}contents: read\n/m);
     expect(changes).toContain("persist-credentials: false");
@@ -234,8 +228,7 @@ describe("workflow wiring", () => {
     expectClassifyStep(changes);
   }
 
-  /** @param {string} block */
-  function expectClassifyStep(block) {
+  function expectClassifyStep(block: string) {
     const step = steps(block).find((s) => s.text.includes("id: classify"));
     expect(step?.cond).toBe("github.event_name == 'pull_request'");
     expect(step?.text).toContain('git show "$BASE:tools/ci/docs-only.mjs"');
@@ -274,7 +267,7 @@ describe("workflow wiring", () => {
     // npm test includes tools/bench's baseline test, which needs the branch's whole history.
     const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
     expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
-    const at = (/** @type {string} */ s) => names.findIndex((t) => t.includes(s));
+    const at = (s: string) => names.findIndex((t) => t.includes(s));
     const order = [
       "run: npm ci",
       "run: npm test",
@@ -302,7 +295,7 @@ describe("workflow wiring", () => {
     // npm test includes tools/bench's baseline test, which needs the branch's whole history.
     const checkout = names.find((t) => t.includes("actions/checkout@")) ?? "";
     expect(checkout).toMatch(/^ +fetch-depth: 0\b/m);
-    const at = (/** @type {string} */ s) => names.findIndex((t) => t.includes(s));
+    const at = (s: string) => names.findIndex((t) => t.includes(s));
     const order = [
       "run: npm ci",
       "run: npm test",
@@ -330,8 +323,7 @@ describe("workflow wiring", () => {
     expectClassifyStep(check);
     const SKIP = "steps.classify.outputs.docs-only != 'true'";
     const all = steps(check);
-    /** @param {RegExp} re */
-    const step = (re) => {
+    const step = (re: RegExp) => {
       const found = all.find((s) => re.test(s.text));
       if (!found) throw new Error(`no step matching ${re}`);
       return found;
@@ -403,18 +395,13 @@ describe("the classify step, run as the workflows have it", () => {
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_NOSYSTEM: "1",
   };
-  /** @param {string} cwd @param {string[]} args */
-  const git = (cwd, ...args) =>
+  const git = (cwd: string, ...args: string[]) =>
     execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env, ...GIT_ENV } });
 
-  /** @param {string} file @param {string} jobId @param {string} [id] */
-  function classifyScript(file, jobId, id = "classify") {
-    const doc =
-      /** @type {{ jobs: Record<string, { steps: { id?: string, run?: string }[] }> }} */ (
-        load(readFileSync(join(ROOT, ".github", "workflows", file), "utf8"), {
-          schema: CORE_SCHEMA,
-        })
-      );
+  function classifyScript(file: string, jobId: string, id: string = "classify") {
+    const doc = load(readFileSync(join(ROOT, ".github", "workflows", file), "utf8"), {
+      schema: CORE_SCHEMA,
+    }) as { jobs: Record<string, { steps: { id?: string; run?: string }[] }> };
     const run = doc.jobs[jobId]?.steps.find((s) => s.id === id)?.run;
     if (!run) throw new Error(`${file} ${jobId}: no ${id} step`);
     return run;
@@ -426,12 +413,14 @@ describe("the classify step, run as the workflows have it", () => {
    * out, as actions/checkout leaves it. The directories are real paths, as the runner's are:
    * macOS's temporary directory is under /var, a symlink to /private/var, and the classifier
    * runs only when started by its real path (below, "through a symlinked path").
-   * @param {string} script
-   * @param {Record<string, string>} base
-   * @param {Record<string, string>} [head]
-   * @param {string} [runnerTemp] RUNNER_TEMP, a real temporary directory by default
+   * @param runnerTemp RUNNER_TEMP, a real temporary directory by default
    */
-  function runStep(script, base, head = {}, runnerTemp) {
+  function runStep(
+    script: string,
+    base: Record<string, string>,
+    head: Record<string, string> = {},
+    runnerTemp?: string,
+  ) {
     const dir = realpathSync(tempDir("vimma-classify-step-"));
     git(dir, "init", "-q", "-b", "main");
     mkdirSync(join(dir, "docs"));

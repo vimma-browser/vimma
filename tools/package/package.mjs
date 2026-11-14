@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { REPO } from "../repo.mjs";
+import { REPO } from "../repo.ts";
 import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates/updates.mjs";
 import { addCtlComponent } from "./sbom.mjs";
 

@@ -242,7 +242,7 @@ they test.
 | `tools/claude-plugin/`      | The Claude Code plugin whose hooks enforce the repository's contributor rules.                              |
 
 The scripts at the top of `tools/` are the `npm run` entry points (`build.ts`, `start.ts`,
-`mochitest.mjs`, `sync-core.mjs`, `gen-docs.ts` and others).
+`mochitest.ts`, `sync-core.ts`, `gen-docs.ts` and others).
 
 ## Dependency direction
 

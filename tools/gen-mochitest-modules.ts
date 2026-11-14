@@ -8,7 +8,7 @@
 // through this map (VimmaModules), so a test is checked against the product's own JSDoc; any other
 // URL (Firefox's own modules, a URL held in a variable) keeps returning `any`. The map follows
 // src/browser/base/content/vimma/jar.mn, and core/ (one jar.mn line for the whole package) follows
-// the flat copy tools/sync-core.mjs makes of packages/vimma-core/src, which is what the URL serves
+// the flat copy tools/sync-core.ts makes of packages/vimma-core/src, which is what the URL serves
 // and what the product's own `../core/` imports resolve to. tools/test/mochitest-modules.test.ts
 // fails when this file drifts from jar.mn or the package.
 //
@@ -18,7 +18,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { format, resolveConfig } from "prettier";
-import { flatCore } from "./sync-core.mjs";
+import { flatCore } from "./sync-core.ts";
 
 const ROOT = fileURLToPath(new URL("../", import.meta.url));
 const OUT = "types/mochitest/modules.d.ts";

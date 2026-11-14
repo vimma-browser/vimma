@@ -5,17 +5,13 @@
 # decision 7) and are not listed.
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs
-tools/ci/test/docs-only.test.mjs
 tools/ci/test/tree-covered.test.mjs
-tools/ci/tree-covered.mjs
 tools/import/link-update-certs.mjs
 tools/import/relocate-checkout.mjs
 tools/import/restore-patched.mjs
 tools/import/test/link-update-certs.test.mjs
 tools/import/test/relocate-checkout.test.mjs
 tools/import/test/restore-patched.test.mjs
-tools/mach-python.mjs
-tools/mochitest.mjs
 tools/package/cask.mjs
 tools/package/ctl-notices.mjs
 tools/package/flatpak.mjs
@@ -48,8 +44,6 @@ tools/release/test/security-release.test.mjs
 tools/release/test/smoke-check.test.mjs
 tools/release/test/version-line.test.mjs
 tools/release/version-line.mjs
-tools/repo.mjs
-tools/sync-core.mjs
 tools/test/build-supply-chain.test.mjs
 tools/test/build.test.mjs
 tools/test/chrome-css.test.mjs
@@ -60,13 +54,10 @@ tools/test/feature-prefs.test.mjs
 tools/test/fs-race.mjs
 tools/test/fs-races.test.mjs
 tools/test/full-build-workflows.test.mjs
-tools/test/mach-python.test.mjs
-tools/test/mochitest.test.mjs
 tools/test/mozconfig-updater.test.mjs
 tools/test/nightly-workflow.test.mjs
 tools/test/patch-audit-workflow.test.mjs
 tools/test/release-asset-checks.test.mjs
-tools/test/repo.test.mjs
 tools/test/safebrowsing-workflows.test.mjs
 tools/test/self-hosted-runner.test.mjs
 tools/test/site-dispatch-workflow.test.mjs

@@ -2,8 +2,8 @@
 
 Status: implemented · Milestone: M0 · Area: build config
 (`configs/common/mozconfig`), default prefs (`src/browser/branding/vimma/pref/`), CI
-(`.github/workflows/{nightly,release}.yml`), `MozillaServices.sys.mjs`, `tools/mochitest.mjs`,
-`tools/safebrowsing-smoke`
+(`.github/workflows/{nightly,release}.yml`), `MozillaServices.sys.mjs`, `tools/mochitest.mjs`
+(Since changed: `mochitest.ts`, ADR-025), `tools/safebrowsing-smoke`
 Prerequisite: m0-mozilla-services merged (it lists Safe Browsing as a known gap pointing here),
 m0-updater merged (same full rebuild).
 
@@ -122,8 +122,8 @@ booleans, lengths, URL hosts.
 - `browser_vimma_mozilla_services.js`: phishing and malware move out of the always-true "kept"
   list; they are checked here instead (true keyed, false keyless).
 
-`tools/test/mochitest.test.mjs`: the expectation is passed as `--setenv`, from the key file's
-presence or an explicit environment value.
+`tools/test/mochitest.test.mjs` (Since changed: `mochitest.test.ts`, ADR-025): the expectation is
+passed as `--setenv`, from the key file's presence or an explicit environment value.
 `tools/test/safebrowsing-workflows.test.mjs`: the nightly and release `build` jobs write the key
 file with a builtin, never echo the secret, delete the file `if: always()`, and check the result
 (nightly: `VIMMA_EXPECT_SAFEBROWSING_KEY=1`; release: the placeholder grep); no other release job

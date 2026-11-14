@@ -80,7 +80,7 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
    that checkout: `actions/setup-node` runs `npm --version` and `yarn --version` there, and a
    package manager reads its configuration from the current directory (docs/security.md, B18).
    `tools/ci/tree-covered.mjs` runs only on pushes to `main`, from trusted files, and may move
-   with the rest of `tools/ci`.
+   with the rest of `tools/ci`. (Since changed: it moved, as `tools/ci/tree-covered.ts`, #946.)
 
 ## Reasoning
 

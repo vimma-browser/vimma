@@ -82,7 +82,7 @@ export function parseStartArgs(
 
 /**
  * The full build if there is one, else the artifact build, which runs Mozilla's binaries with
- * our front end through XUL_APP_FILE (ADR-010; tools/mochitest.mjs does the same).
+ * our front end through XUL_APP_FILE (ADR-010; tools/mochitest.ts does the same).
  * On macOS both run the launcher inside dist/Vimma.app.
  */
 export function selectBuild({

@@ -411,12 +411,12 @@ describe("the Node a workflow job runs its tools on", () => {
     const cone = { paths: ["tools/mutation"], cone: true };
     expect(kept(".nvmrc", cone)).toBe(true);
     expect(kept("tools/mutation/report.ts", cone)).toBe(true);
-    expect(kept("tools/repo.mjs", cone)).toBe(true);
+    expect(kept("tools/repo.ts", cone)).toBe(true);
     expect(kept("tools/ci/docs-only.mjs", cone)).toBe(false);
-    const exact = { paths: ["tools/ci/tree-covered.mjs", ".nvmrc"], cone: false };
+    const exact = { paths: ["tools/ci/tree-covered.ts", ".nvmrc"], cone: false };
     expect(kept(".nvmrc", exact)).toBe(true);
-    expect(kept("tools/ci/tree-covered.mjs", exact)).toBe(true);
+    expect(kept("tools/ci/tree-covered.ts", exact)).toBe(true);
     expect(kept("tools/ci/docs-only.mjs", exact)).toBe(false);
-    expect(kept(".nvmrc", { paths: ["tools/ci/tree-covered.mjs"], cone: false })).toBe(false);
+    expect(kept(".nvmrc", { paths: ["tools/ci/tree-covered.ts"], cone: false })).toBe(false);
   });
 });

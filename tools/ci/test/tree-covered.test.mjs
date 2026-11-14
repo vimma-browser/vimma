@@ -4,7 +4,7 @@
 
 // Issue #358: a push to main whose tree a successful pull_request run of the same workflow
 // already checked (the usual squash merge) skips that workflow's checks once more.
-// tools/ci/tree-covered.mjs answers; ci.yml, semgrep.yml and pkgbuild.yml gate their jobs on it.
+// tools/ci/tree-covered.ts answers; ci.yml, semgrep.yml and pkgbuild.yml gate their jobs on it.
 // codeql.yml stays ungated: code scanning's default-branch alerts come only from analyses of
 // main (docs/runbook.md, "CI and automation").
 
@@ -25,10 +25,10 @@ import {
   githubApi,
   report,
   workflowFile,
-} from "../tree-covered.mjs";
+} from "../tree-covered.ts";
 
 const ROOT = fileURLToPath(new URL("../../..", import.meta.url));
-const SCRIPT = fileURLToPath(new URL("../tree-covered.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../tree-covered.ts", import.meta.url));
 
 const TREE = "d0af22264eb389dd91ce42e3bdab437b3ab93f91";
 const OTHER = "1111111111111111111111111111111111111111";
@@ -355,7 +355,7 @@ describe("workflow wiring", () => {
       );
       expect(covered).toContain("skip: ${{ steps.tree.outputs.skip }}");
       const step = covered.split(/^ {6}- /m).find((s) => s.includes("id: tree"));
-      expect(step).toContain("node tools/ci/tree-covered.mjs");
+      expect(step).toContain("node tools/ci/tree-covered.ts");
       expect(step).toContain("GH_TOKEN: ${{ github.token }}");
       // The workflow file comes from GITHUB_WORKFLOW_REF: a name typed here could be another's.
       expect(step).not.toContain("WORKFLOW");

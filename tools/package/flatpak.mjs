@@ -15,7 +15,7 @@ import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { REPO } from "../repo.mjs";
+import { REPO } from "../repo.ts";
 import { desktopEntry, sha256File } from "./package.mjs";
 
 const SURFER = JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8"));

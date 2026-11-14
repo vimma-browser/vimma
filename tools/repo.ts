@@ -1,6 +1,6 @@
 /**
  * Where Vimma lives on GitHub. Workflow guards (`github.repository == '…'`), the site dispatch,
- * packaging metadata and the signing identity all name these; tools/test/repo.test.mjs checks
+ * packaging metadata and the signing identity all name these; tools/test/repo.test.ts checks
  * that they agree, so moving the repository again is a change to these constants plus the
  * strings the test points at.
  */
