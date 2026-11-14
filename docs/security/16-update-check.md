@@ -265,7 +265,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`checkSigned takes the target: a Linux manifest is refused for macOS and back`](../../tools/update/test/manifest.test.mjs),
   [`macos-tap starts the macOS update manifest once the .dmg is on a published release`](../../tools/package/test/release-workflow.test.mjs),
   [`a published release whose .dmg is already there starts the macOS manifest too`](../../tools/update/test/update-workflow.test.mjs),
-  [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.mjs)
+  [`fails when the release API answers %i`](../../tools/test/release-asset-checks.test.ts)
 - UP8. A command about:vimma shows **never** installs or replaces anything with a file it has not
   checked: every download uses `curl -f` (an HTTP error stops it) and `--proto =https`, and when
   the signed manifest gives the file's SHA-512, `sha512sum -c` checks it before `apt`, `dnf`,
@@ -515,9 +515,9 @@ _Pages_ and _extensions_ cannot reach it.
   [`is called by release.yml and nightly.yml alone, and mar-sign signs only for those two`](../../tools/update/test/update-workflow.test.mjs),
   [`only sign, mar-sign and nightly-sign mint an OIDC token or name the signing environment`](../../tools/update/test/update-workflow.test.mjs),
   [`signs a nightly's MAR for nightly.yml on main, on the nightly channel`](../../tools/update/test/update-workflow.test.mjs),
-  [`the MAR is signed by update-publish.yml's mar-sign, with this run's MAR`](../../tools/test/nightly-workflow.test.mjs),
-  [`the mar job checks the signed MAR for the nightly channel, against the tarball`](../../tools/test/nightly-workflow.test.mjs),
-  [`the mar job fails, loudly, when the MAR was not signed`](../../tools/test/nightly-workflow.test.mjs),
+  [`the MAR is signed by update-publish.yml's mar-sign, with this run's MAR`](../../tools/test/nightly-workflow.test.ts),
+  [`the mar job checks the signed MAR for the nightly channel, against the tarball`](../../tools/test/nightly-workflow.test.ts),
+  [`the mar job fails, loudly, when the MAR was not signed`](../../tools/test/nightly-workflow.test.ts),
   [`the signing job %s runs no repository code: no checkout, no node, no npm`](../../tools/update/test/update-workflow.test.mjs),
   [`signs the placeholder so that the updater's check accepts it under the KMS key`](../../tools/update/test/update-workflow.test.mjs),
   [`refuses to sign %s`](../../tools/update/test/update-workflow.test.mjs),
@@ -534,8 +534,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`mar fails, loudly, when the MAR was not signed, so a release never stops silently`](../../tools/update/test/pipeline-workflows.test.mjs),
   [`%s runs only by hand on main, here, and with UPDATES_ENABLED or as a dry run`](../../tools/update/test/update-workflow.test.mjs),
   [`mar checks the signed MAR with no secret: same content, the certificates, signmar`](../../tools/update/test/pipeline-workflows.test.mjs),
-  [`packs with the script release.yml uses, on every nightly`](../../tools/test/nightly-workflow.test.mjs),
-  [`packs after the key file is gone, before the MAR is built and anything is uploaded`](../../tools/test/nightly-workflow.test.mjs),
+  [`packs with the script release.yml uses, on every nightly`](../../tools/test/nightly-workflow.test.ts),
+  [`packs after the key file is gone, before the MAR is built and anything is uploaded`](../../tools/test/nightly-workflow.test.ts),
   [`packs signmar's libraries from a relative objdir, which ldd names by absolute path`](../../tools/update/test/mar-tools.test.mjs),
   [`fails, naming it, when a library signmar loads is missing`](../../tools/update/test/mar-tools.test.mjs),
   [`cosign signs the MAR with the other assets, after it is checked`](../../tools/update/test/pipeline-workflows.test.mjs),

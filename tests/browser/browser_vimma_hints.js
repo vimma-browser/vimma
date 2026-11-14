@@ -425,7 +425,9 @@ add_task(async function the_switching_action_selects_the_tab_in_either_case() {
 add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
   const segment = () =>
     document.querySelector('#vimma-statusbar [data-segment="hint"]')?.textContent ?? null;
-  await withPage(PAGE, async () => {
+  // More links in view than the hint alphabet has keys, so that some labels take two keys and
+  // a typed prefix leaves several of them.
+  await withPage(MANY, async () => {
     const hints = await startHints("gF");
     const first = hints.hints[0].label;
     const upper = first.slice(0, -1) + first.slice(-1).toUpperCase();
@@ -434,15 +436,14 @@ add_task(async function the_status_bar_shows_both_outcomes_in_gF() {
       "the bar names both outcomes",
     );
     const long = hints.hints.find((h) => h.label.length > 1);
-    if (long) {
-      const prefix = long.label[0];
-      type(prefix);
-      const next = found(hints.hints.find((h) => h.label.startsWith(prefix))).label;
-      await TestUtils.waitForCondition(
-        () => segment()?.startsWith(`${next} background`),
-        "it follows the typed prefix",
-      );
-    }
+    Assert.ok(long, "some labels have two keys");
+    const prefix = found(long).label[0];
+    type(prefix);
+    const next = found(hints.hints.find((h) => h.label.startsWith(prefix))).label;
+    await TestUtils.waitForCondition(
+      () => segment()?.startsWith(`${next} background`),
+      "it follows the typed prefix",
+    );
     EventUtils.synthesizeKey("KEY_Escape");
     await TestUtils.waitForCondition(() => segment() === null, "gone when hint mode ends");
     await startHints("f");

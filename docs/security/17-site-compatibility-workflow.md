@@ -14,11 +14,11 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   find the open issue), so code that escaped the browser onto its runner could not rewrite the
   issue text. The suite's step turns workflow commands off while it logs page text, so a page
   cannot add annotations or masks to the run.
-  [`the browser job only reads the repository, and holds no token in any step`](../../tools/test/sites-workflow.test.mjs),
-  [`the compare job only reads, and works from the browser job's results.json alone`](../../tools/test/sites-workflow.test.mjs),
-  [`stops workflow commands while the suite logs page text`](../../tools/test/sites-workflow.test.mjs),
-  [`has no secrets, and no permission at the top level`](../../tools/test/sites-workflow.test.mjs),
-  [`runs nightly and by hand, never on a pull request or a push`](../../tools/test/sites-workflow.test.mjs)
+  [`the browser job only reads the repository, and holds no token in any step`](../../tools/test/sites-workflow.test.ts),
+  [`the compare job only reads, and works from the browser job's results.json alone`](../../tools/test/sites-workflow.test.ts),
+  [`stops workflow commands while the suite logs page text`](../../tools/test/sites-workflow.test.ts),
+  [`has no secrets, and no permission at the top level`](../../tools/test/sites-workflow.test.ts),
+  [`runs nightly and by hand, never on a pull request or a push`](../../tools/test/sites-workflow.test.ts)
 - SC2. `issues: write` is **only** in the report job, which checks out nothing and runs no
   repository code: it runs `gh` on the `issue.md` the compare job wrote, passed as `--body-file`.
   The action and issue number reach its script through `env`, never through an expression in the
@@ -26,8 +26,8 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   The report job downloads the compare job's own upload by its artifact id, and runs only when
   that job succeeded, so an artifact of the same name uploaded from the browser job's runner is
   never the one posted.
-  [`issues: write is only in the report job, which checks out and runs no repository code`](../../tools/test/sites-workflow.test.mjs),
-  [`the report job takes the compare job's own upload, by id, only after it succeeded`](../../tools/test/sites-workflow.test.mjs)
+  [`issues: write is only in the report job, which checks out and runs no repository code`](../../tools/test/sites-workflow.test.ts),
+  [`the report job takes the compare job's own upload, by id, only after it succeeded`](../../tools/test/sites-workflow.test.ts)
 - SC3. Text from a page or a check (titles, failure reasons) **never** reaches the issue body
   outside an inline code span, so GitHub renders no mention, issue or commit reference, link,
   image or HTML from it. Each value is put on one line with control and format characters
@@ -80,4 +80,4 @@ runs on `schedule` and `workflow_dispatch` only, never on a pull request.
   [`reads markup inside raw-text elements too, as in <svg>, where they are not raw`](../../tools/sites/test/snapshot.test.ts),
   [`reads CSS escapes and comments before looking for loads`](../../tools/sites/test/snapshot.test.ts),
   [`each have a manifest entry with a licence that allows redistribution`](../../tools/sites/test/snapshot.test.ts),
-  [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../../tools/test/sites-workflow.test.mjs)
+  [`runs the suite only offline, after the e2e scenarios, on the artifact build`](../../tools/test/sites-workflow.test.ts)

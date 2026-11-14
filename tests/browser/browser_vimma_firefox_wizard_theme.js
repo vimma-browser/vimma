@@ -78,12 +78,15 @@ function backgroundUnder(parent, value) {
 
 /**
  * A colour custom property as `el` sees it, resolved to the rgb() form getComputedStyle
- * reports, in `el`'s own colour scheme (light-dark() follows it).
+ * reports, in `el`'s own colour scheme (light-dark() follows it); "" when it is not set.
  * @param {Element} el
  * @param {string} name
  */
 function colourVar(el, name) {
   const value = style(el).getPropertyValue(name).trim();
+  // Without a value the probe would inherit the page's text colour, --vimma-fg in the theme: a
+  // property that is not set is "", which equals no colour.
+  if (!value) return "";
   const doc = el.ownerDocument;
   const probe = doc.createElementNS(XHTML, "div");
   probe.style.color = value;
@@ -119,7 +122,8 @@ function nearly(actual, expected, msg) {
   const parse = (/** @type {string} */ s) => (s.match(/\d+/g) ?? []).map(Number);
   const a = parse(actual);
   const e = parse(expected);
-  const ok = a.length >= 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
+  // Three channels on both sides: a token that is not set gives "rgb(NaN, NaN, NaN)", no number.
+  const ok = a.length >= 3 && e.length === 3 && e.every((v, i) => Math.abs(v - (a[i] ?? -99)) <= 2);
   Assert.ok(ok, `${msg} (${actual}, expected ${expected})`);
 }
 
@@ -180,9 +184,12 @@ async function openWizard() {
         InternalTestingProfileMigrator.testProfile,
         { id: "vimma-second", name: "Second" },
       ]);
-    sandbox.stub(proto, "getResources").callsFake(function () {
-      return resources.call(this, InternalTestingProfileMigrator.testProfile);
-    });
+    sandbox.stub(proto, "getResources").callsFake(
+      /** @this {object} the migrator */
+      function () {
+        return resources.call(this, InternalTestingProfileMigrator.testProfile);
+      },
+    );
     await SpecialPowers.pushPrefEnv({ set: [["browser.migrate.internal-testing.enabled", true]] });
     pushed = true;
     from = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
@@ -190,14 +197,18 @@ async function openWizard() {
     const opened = BrowserTestUtils.waitForNewTab(gBrowser, (url) =>
       url.startsWith("about:preferences"),
     );
-    /** @type {any} */ (document.getElementById("cmd_file_importFromAnotherBrowser")).doCommand();
+    /** @type {XULElement} */ (
+      /** @type {Element} */ (document.getElementById("cmd_file_importFromAnotherBrowser"))
+    ).doCommand();
     tab = await opened;
     await ready;
     const doc = /** @type {Document} */ (tab.linkedBrowser.contentDocument);
-    const dialog = /** @type {Element} */ (doc.getElementById("migrationWizardDialog"));
-    const wizard = /** @type {any} */ (dialog.querySelector("migration-wizard"));
+    const dialog = /** @type {HTMLDialogElement} */ (doc.getElementById("migrationWizardDialog"));
+    const wizard = /** @type {Element} */ (dialog.querySelector("migration-wizard"));
     const shadow = /** @type {ShadowRoot} */ (wizard.openOrClosedShadowRoot);
-    const selector = /** @type {any} */ (shadow.querySelector("#browser-profile-selector"));
+    const selector = /** @type {MigrationWizardSelector} */ (
+      shadow.querySelector("#browser-profile-selector")
+    );
     await until(
       () =>
         selector.selectedPanelItem?.profile?.id === InternalTestingProfileMigrator.testProfile.id,
@@ -210,12 +221,12 @@ async function openWizard() {
 /**
  * The wizard's browser list, opened as a press of its button opens it (on mousedown,
  * migration-wizard.mjs handleEvent).
- * @param {any} selector
+ * @param {MigrationWizardSelector} selector
  * @param {Element} list
  */
 async function openList(selector, list) {
   const shown = BrowserTestUtils.waitForEvent(list, "shown");
-  const win = /** @type {Window} */ (selector.ownerDocument.defaultView);
+  const win = /** @type {Window & typeof globalThis} */ (selector.ownerDocument.defaultView);
   // A mousedown event, not a synthesized press: the release a synthesized press sends would
   // close the list again under a window manager that does not hold popups open. Sent from here
   // it is trusted and counts as a pressed button (nsGlobalWindowInner::sMouseDown) until the
@@ -301,7 +312,7 @@ async function assertWizard(label, w) {
   );
 
   const list = /** @type {Element} */ (shadow.querySelector("panel-list"));
-  const panel = /** @type {any} */ (list.parentElement);
+  const panel = /** @type {XULPopupElement} */ (/** @type {Element} */ (list.parentElement));
   await openList(selector, list);
   Assert.equal(panel.state, "open", `${label}: the browser list is open`);
   Assert.equal(
@@ -372,10 +383,12 @@ add_task(async function import_wizard_follows_the_theme() {
     // Settings keeps the wizard for its next opening, which asks for its state again: its shadow
     // root keeps the one sheet, and the list its colours.
     const sheets = w.shadow.adoptedStyleSheets.length;
-    /** @type {any} */ (w.dialog).close();
-    await until(() => !(/** @type {any} */ (w.dialog).open), "the wizard closed");
-    await /** @type {any} */ (w.doc.defaultView).gMainPane.showMigrationWizardDialog();
-    await until(() => /** @type {any} */ (w.dialog).open, "the wizard opened again");
+    w.dialog.close();
+    await until(() => !w.dialog.open, "the wizard closed");
+    await /** @type {PreferencesWindow} */ (
+      w.doc.defaultView
+    ).gMainPane.showMigrationWizardDialog();
+    await until(() => w.dialog.open, "the wizard opened again");
     Assert.equal(w.shadow.adoptedStyleSheets.length, sheets, "reopened: no second sheet");
     await assertWizard("vimma, reopened", w);
   } finally {
@@ -394,6 +407,10 @@ add_task(async function high_contrast_keeps_the_wizards_colours() {
       "high contrast is on in the page",
     );
     const body = /** @type {Element} */ (w.doc.body);
+    // An unset property makes the probe transparent, which a transparent surface would match.
+    const isSet = (/** @type {Element} */ el, /** @type {string} */ name) =>
+      Assert.ok(style(el).getPropertyValue(name).trim(), `${name} is set on <${el.localName}>`);
+    isSet(body, "--dialog-background-color");
     Assert.equal(
       style(w.dialog).backgroundColor,
       backgroundUnder(body, "var(--dialog-background-color)"),
@@ -405,8 +422,10 @@ add_task(async function high_contrast_keeps_the_wizards_colours() {
       "and the UA's CanvasText",
     );
     const list = /** @type {Element} */ (w.shadow.querySelector("panel-list"));
-    const panel = /** @type {any} */ (list.parentElement);
+    const panel = /** @type {XULPopupElement} */ (/** @type {Element} */ (list.parentElement));
     await openList(w.selector, list);
+    isSet(list, "--button-background-color-active");
+    isSet(list, "--button-background-color-hover");
     // popup.css: the system's Menu, or none on macOS, where the panel draws natively.
     Assert.equal(
       style(panel).getPropertyValue("--panel-background-color").trim(),

@@ -201,5 +201,5 @@ signs the MAR on the nightly channel, `publish` uploads to the rolling `nightly`
 `…/vimma-nightly/update.xml`. On a day when `main` and the Firefox version did not change, the
 `changes` job skips the build and the manifest is re-signed under a new serial, so a nightly install
 never sees a feed older than its 7-day limit (45 days for releases). Tests:
-[nightly-workflow.test.mjs](../../tools/test/nightly-workflow.test.mjs) and
+[nightly-workflow.test.ts](../../tools/test/nightly-workflow.test.ts) and
 [nightly-manifest.test.mjs](../../tools/update/test/nightly-manifest.test.mjs).

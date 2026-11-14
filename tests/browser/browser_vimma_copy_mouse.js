@@ -27,7 +27,7 @@ const START = "chrome://browser/content/vimma/start/start.html";
 
 /**
  * Opens the fixture with content focus in normal mode, then runs `fn`.
- * @param {(browser: XULBrowserElement) => Promise<void>} fn
+ * @param {(browser: MozTabBrowser) => Promise<void>} fn
  */
 async function withPage(fn) {
   await BrowserTestUtils.withNewTab(PAGE, async (browser) => {
@@ -55,7 +55,10 @@ function waitForMode(browser, mode) {
 
 /** @param {XULBrowserElement} browser */
 function selectedText(browser) {
-  return SpecialPowers.spawn(browser, [], () => content.getSelection().toString());
+  // A window that shows a document has its selection.
+  return SpecialPowers.spawn(browser, [], () =>
+    /** @type {Selection} */ (content.getSelection()).toString(),
+  );
 }
 
 /**
@@ -146,7 +149,10 @@ add_task(async function ctrl_c_and_the_context_menu_copy_a_mouse_selection() {
     );
     Assert.equal(VimmaHost._browserMode(browser), "visual", "ctrl+c leaves copy mode on");
     SpecialPowers.clipboardCopyString("something else");
-    const menu = document.getElementById("contentAreaContextMenu");
+    // The page's context menu, a XUL <menupopup> of every browser window.
+    const menu = /** @type {XULPopupElement} */ (
+      /** @type {Element} */ (document.getElementById("contentAreaContextMenu"))
+    );
     const shown = BrowserTestUtils.waitForPopupEvent(menu, "shown");
     await BrowserTestUtils.synthesizeMouse(
       "#words",
@@ -158,7 +164,7 @@ add_task(async function ctrl_c_and_the_context_menu_copy_a_mouse_selection() {
     await shown;
     const hidden = BrowserTestUtils.waitForPopupEvent(menu, "hidden");
     await SimpleTest.promiseClipboardChange("alpha", () =>
-      menu.activateItem(document.getElementById("context-copy")),
+      menu.activateItem(/** @type {Element} */ (document.getElementById("context-copy"))),
     );
     await hidden;
   });
@@ -199,7 +205,9 @@ add_task(async function a_click_without_a_selection_stays_in_normal_mode() {
 add_task(async function a_page_that_selects_by_itself_does_not_enter_copy_mode() {
   await withPage(async (browser) => {
     await SpecialPowers.spawn(browser, [], () => {
-      content.getSelection().selectAllChildren(content.document.getElementById("words"));
+      /** @type {Selection} */ (content.getSelection()).selectAllChildren(
+        /** @type {HTMLElement} */ (content.document.getElementById("words")),
+      );
     });
     await settle(browser);
     Assert.equal(VimmaHost._browserMode(browser), "normal", "a script's selection: normal");
@@ -252,6 +260,10 @@ add_task(async function mouse_selection_works_in_a_split_pane() {
     EventUtils.synthesizeKey("y");
   });
   await waitForMode(right, "normal");
-  while (PaneViews.get(window).panes) PaneViews.get(window).close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  // PaneViews made this window's view when the window opened.
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
+  while (view.panes) view.close();
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });

@@ -34,6 +34,15 @@ function viewerScroll(browser) {
 }
 
 /**
+ * The scroller's position. The callers have waited for the laid-out pages: without them this
+ * throws, as the read of a missing scroller did.
+ * @param {XULBrowserElement} browser
+ */
+async function scrollTop(browser) {
+  return /** @type {{ top: number, max: number }} */ (await viewerScroll(browser)).top;
+}
+
+/**
  * With no click first: focus is in the tab, the tab is in normal mode, `j` and `:` do what they
  * do on any page, and `G` goes to the last page (docs/specs/pdf-mode.md, Behaviour 2).
  * @param {XULBrowserElement} browser
@@ -43,17 +52,17 @@ async function keysWorkAtOnce(browser) {
   Assert.equal(document.activeElement, browser, "focus is in the PDF's tab");
   Assert.equal(VimmaHost.status(window).mode, "normal", "the status bar says NORMAL");
 
-  const start = (await viewerScroll(browser)).top;
+  const start = await scrollTop(browser);
   EventUtils.synthesizeKey("j");
   await TestUtils.waitForCondition(
-    async () => (await viewerScroll(browser)).top > start,
+    async () => (await scrollTop(browser)) > start,
     "j scrolls the PDF down",
   );
   // The fixture has one page, so its last page's top is above where `j` left the view.
-  const scrolled = (await viewerScroll(browser)).top;
+  const scrolled = await scrollTop(browser);
   EventUtils.synthesizeKey("G", { shiftKey: true });
   await TestUtils.waitForCondition(
-    async () => (await viewerScroll(browser)).top < scrolled,
+    async () => (await scrollTop(browser)) < scrolled,
     "G goes to the top of the last page",
   );
   EventUtils.synthesizeKey(":", { shiftKey: true });
@@ -94,19 +103,24 @@ add_task(async function a_pdf_served_as_a_download_takes_the_keys_at_once() {
   const announced = [];
   const { showPanel } = DownloadsPanel;
   const { showEventNotification } = DownloadsIndicatorView;
-  DownloadsPanel.showPanel = function (...args) {
+  DownloadsPanel.showPanel = function (/** @type {unknown[]} */ ...args) {
     announced.push("panel");
     return showPanel.apply(this, args);
   };
-  DownloadsIndicatorView.showEventNotification = function (...args) {
+  DownloadsIndicatorView.showEventNotification = function (/** @type {unknown[]} */ ...args) {
     announced.push(`button ${args[0]}`);
     return showEventNotification.apply(this, args);
   };
-  const panel = document.getElementById("downloadsPanel");
+  // Firefox's downloads panel, a XUL <panel> of every browser window.
+  const panel = /** @type {XULPopupElement} */ (
+    /** @type {Element} */ (document.getElementById("downloadsPanel"))
+  );
   registerCleanupFunction(async () => {
     DownloadsPanel.showPanel = showPanel;
     DownloadsIndicatorView.showEventNotification = showEventNotification;
-    while (gBrowser.tabs.length > 1) BrowserTestUtils.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      BrowserTestUtils.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     if (panel.state === "open" || panel.state === "showing") {
       const hidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
       DownloadsPanel.hidePanel();

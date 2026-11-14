@@ -20,7 +20,9 @@ const CMDLINE_ID = "vimma-cmdline";
 const HELP_ID = "vimma-help";
 
 registerCleanupFunction(() => {
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
 });
 
 /** Opens a new tab the way ctrl+t does and waits for the start page to load in it. */
@@ -30,7 +32,10 @@ async function openStartTab() {
   return loaded;
 }
 
-/** The logo in `browser`'s start page (its colours: browser_vimma_logo_theme.js). */
+/**
+ * The logo in `browser`'s start page (its colours: browser_vimma_logo_theme.js).
+ * @param {XULBrowserElement} browser
+ */
 function logoState(browser) {
   return SpecialPowers.spawn(browser, [], async () => {
     const logo = content.document.querySelector(".vimma-logo");
@@ -81,7 +86,8 @@ add_task(async function new_window_home_page_is_the_start_page() {
   OpenBrowserWindow();
   const win = await opened;
   Assert.equal(win.gBrowser.selectedBrowser.currentURI.spec, START, "a new window opens it");
-  Assert.equal(win.gURLBar.value, "", "and its URL bar is empty");
+  // Its address bar is the same element as this window's, with the same members.
+  Assert.equal(/** @type {typeof gURLBar} */ (win.gURLBar).value, "", "and its URL bar is empty");
   await BrowserTestUtils.closeWindow(win);
   await SpecialPowers.popPrefEnv();
 });
@@ -125,11 +131,14 @@ add_task(async function the_page_shows_the_vimma_and_firefox_versions() {
       () => doc.getElementById("vimma-version")?.textContent,
       "start.mjs has filled in the version",
     );
-    const footer = doc.querySelector("footer");
-    const vimma = doc.getElementById("vimma-version");
-    const firefox = doc.getElementById("firefox-version");
-    const style = (el) => content.getComputedStyle(el);
-    const logo = doc.querySelector(".vimma-logo").getBoundingClientRect();
+    // start.html's parts. A content task has no helpers of the file's, so each lookup is cast
+    // in place; a read through a missing one throws, as it did before.
+    const footer = /** @type {Element} */ (doc.querySelector("footer"));
+    const vimma = /** @type {Element} */ (doc.getElementById("vimma-version"));
+    const firefox = /** @type {Element} */ (doc.getElementById("firefox-version"));
+    /** @param {Element | null} el */
+    const style = (el) => content.getComputedStyle(/** @type {Element} */ (el));
+    const logo = /** @type {Element} */ (doc.querySelector(".vimma-logo")).getBoundingClientRect();
     const box = footer.getBoundingClientRect();
     return {
       footer: footer.textContent.replace(/\s+/g, " ").trim(),
@@ -166,7 +175,9 @@ add_task(async function the_logo_sits_on_the_page_with_no_tile_in_any_scheme() {
   const tab = await openStartTab();
   const state = await SpecialPowers.spawn(tab.linkedBrowser, [], async () => {
     const doc = content.document;
-    const logo = doc.querySelector(".vimma-logo");
+    // getComputedStyle throws for a missing logo, as it did before.
+    const logo = /** @type {Element} */ (doc.querySelector(".vimma-logo"));
+    /** @param {string} scheme */
     const tile = (scheme) => {
       doc.documentElement.style.setProperty("--vimma-color-scheme", scheme);
       return content.getComputedStyle(logo).backgroundColor;

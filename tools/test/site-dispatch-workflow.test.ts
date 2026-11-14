@@ -5,14 +5,14 @@ import { defined } from "./defined.ts";
 // docs/security/14-build-and-release-supply-chain.md B15: site-dispatch.yml holds the
 // vimma-site-dispatch app's key and a release event runs the tag's copy, so its token must reach
 // vimma-site alone and nothing from the event may reach the shell but through env. Text checks,
-// like sites-workflow.test.mjs: no YAML dependency.
+// like sites-workflow.test.ts: no YAML dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/site-dispatch.yml", import.meta.url),
   "utf8",
 );
 
-/** The `with:` block of the step that uses `action`. @param {string} action */
-function withOf(action) {
+/** The `with:` block of the step that uses `action`. */
+function withOf(action: string) {
   const start = text.indexOf(`uses: ${action}@`);
   if (start < 0) throw new Error(`no step uses ${action}`);
   const block = /\n {8}with:\n((?: {10}.+\n)+)/.exec(text.slice(start))?.[1] ?? "";
@@ -23,9 +23,8 @@ function withOf(action) {
 
 /**
  * Every `run:` script's text: a block's lines without the `run: |` line, or a one-line value.
- * @param {string} [source]
  */
-function runScripts(source = text) {
+function runScripts(source: string = text) {
   const blocks = [
     ...source.matchAll(/^( +)(?:- )?run: [|>][-+0-9]*(?: +#.*)?\n((?:\1 {2}.*\n|\n)+)/gm),
   ].map((m) => m[2] ?? "");
@@ -33,8 +32,8 @@ function runScripts(source = text) {
   return [...blocks, ...lines];
 }
 
-/** The text of one job under `jobs:`, up to the next job. @param {string} name */
-function job(name) {
+/** The text of one job under `jobs:`, up to the next job. */
+function job(name: string) {
   const start = text.indexOf(`\n  ${name}:\n`);
   if (start < 0) throw new Error(`no job ${name}`);
   const rest = text.slice(start + 1);
@@ -42,14 +41,14 @@ function job(name) {
   return next < 0 ? rest : rest.slice(0, next + 1);
 }
 
-/** A job's `permissions:` block as name → level. @param {string} jobText */
-function permissionsOf(jobText) {
+/** A job's `permissions:` block as name → level. */
+function permissionsOf(jobText: string) {
   const block = /\n {4}permissions:\n((?: {6}[\w-]+: \w+.*\n)+)/.exec(jobText)?.[1] ?? "";
   return Object.fromEntries([...block.matchAll(/^ {6}([\w-]+): (\w+)/gm)].map((m) => [m[1], m[2]]));
 }
 
-/** A job's `if:` condition, folded onto one line. @param {string} jobText */
-function ifOf(jobText) {
+/** A job's `if:` condition, folded onto one line. */
+function ifOf(jobText: string) {
   const m = /\n {4}if: (?:>-\n((?: {6}.*\n)+)|(.*)\n)/.exec(jobText);
   return (m?.[1] ?? m?.[2] ?? "").replace(/\s+/g, " ").trim();
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 // #647, docs/runbook/ci-release-download-counts-downloads-yml.md "Release download counts": the
-// daily snapshot workflow's shape. Text checks, like spec-status-workflow.test.mjs: no YAML
+// daily snapshot workflow's shape. Text checks, like spec-status-workflow.test.ts: no YAML
 // dependency.
 const text = readFileSync(
   new URL("../../.github/workflows/downloads.yml", import.meta.url),
@@ -10,18 +10,18 @@ const text = readFileSync(
 );
 
 /**
- * @param {string} id a job id
- * @returns {string} that job's YAML block
+ * @param id a job id
+ * @returns that job's YAML block
  */
-function job(id) {
+function job(id: string): string {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
   throw new Error(`no job ${id}`);
 }
 
-/** @param {string} block @returns {string[]} the job's `permissions:` lines, comments dropped */
-function permissions(block) {
+/** @returns the job's `permissions:` lines, comments dropped */
+function permissions(block: string): string[] {
   const m = /^ {4}permissions:\n((?: {6}[a-z-]+: [a-z]+.*\n)+)/m.exec(block);
   if (!m?.[1]) return [];
   return m[1]

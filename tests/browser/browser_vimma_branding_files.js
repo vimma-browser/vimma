@@ -49,6 +49,16 @@ const OVERRIDES = [
 ];
 
 /**
+ * A value the test's own lookup or wait found. It changes nothing at run time: a read through a
+ * missing one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/**
  * @param {string} url
  * @returns {Promise<string>}
  */
@@ -70,7 +80,11 @@ async function format(resources, keys) {
   const messages = await l10n.formatMessages(keys.map(({ id }) => ({ id })));
   return messages.map((message, i) => {
     const attr = keys[i].attr;
-    const value = attr ? message.attributes.find((a) => a.name === attr)?.value : message.value;
+    // Each key is a message of the resources; a read through a missing one, or through a message
+    // without attributes, throws, as it did before.
+    const value = attr
+      ? found(found(message).attributes).find((a) => a.name === attr)?.value
+      : found(message).value;
     return String(value).replace(/[⁨⁩]/g, "");
   });
 }
@@ -112,7 +126,10 @@ add_task(async function product_names_are_neutral() {
 
 add_task(async function settings_home_menu_offers_the_start_page() {
   await BrowserTestUtils.withNewTab("about:preferences#home", async (browser) => {
-    const doc = browser.contentDocument;
+    // Settings loads in the parent process, so the browser has its document.
+    const doc = found(browser.contentDocument);
+    // The choice: a menu item or an option, which has its text as `label`.
+    /** @type {(Element & { label?: string }) | null | undefined} */
     let option;
     await TestUtils.waitForCondition(() => {
       option = doc.querySelector(
@@ -121,7 +138,9 @@ add_task(async function settings_home_menu_offers_the_start_page() {
       );
       return option?.getAttribute("label") || option?.label;
     }, "the Home pane's default choice is translated");
-    const label = option.getAttribute("label") || option.label;
+    // The wait saw it with a label.
+    const choice = found(option);
+    const label = found(choice.getAttribute("label") || choice.label);
     Assert.equal(label.replace(/[⁨⁩]/g, ""), "Start Page (Default)");
   });
 });
@@ -143,12 +162,18 @@ add_task(async function logins_empty_state_shows_no_fox() {
   await BrowserTestUtils.withNewTab("about:logins", async (browser) => {
     const size = await SpecialPowers.spawn(browser, [], async () => {
       const intro = content.document.querySelector("login-intro");
+      /** @type {HTMLImageElement | null | undefined} */
       let img;
       await ContentTaskUtils.waitForCondition(() => {
-        img = intro?.shadowRoot?.querySelector(".illustration");
+        // The illustration is an <img> (aboutLogins.html, login-intro's template).
+        img = /** @type {HTMLImageElement | null | undefined} */ (
+          intro?.shadowRoot?.querySelector(".illustration")
+        );
         return img?.complete;
       }, "the empty state's illustration has loaded");
-      return [img.naturalWidth, img.naturalHeight];
+      // The wait saw it; a content task has none of the file's helpers.
+      const seen = /** @type {HTMLImageElement} */ (img);
+      return [seen.naturalWidth, seen.naturalHeight];
     });
     Assert.deepEqual(size, [1, 1], "about:logins' empty state shows the empty image, not the fox");
   });
@@ -169,25 +194,30 @@ add_task(async function history_import_promo_brought_back_shows_no_kit() {
   });
   await PlacesUtils.history.insert({ url: "https://example.com/", visits: [{ date: new Date() }] });
   await SidebarController.show("viewHistorySidebar");
-  /** @type {any} */
+  /** @type {SidebarHistoryElement | null | undefined} */
   let history;
   await TestUtils.waitForCondition(() => {
     history = SidebarController.browser.contentDocument?.querySelector("sidebar-history");
     return history?.controller && !history.controller.isHistoryPending;
   }, "the History sidebar loads");
+  // The wait saw the sidebar with its controller.
+  const sidebar = found(history);
   // The controller also looks the profile's age up itself, and may overwrite this; the harness
   // profile is new, so both are under 8 days.
-  history.controller.profileAge = 0;
-  /** @type {any} */
+  found(sidebar.controller).profileAge = 0;
+  /** @type {HTMLImageElement | null | undefined} */
   let img;
   await TestUtils.waitForCondition(() => {
-    img = history.shadowRoot
-      .querySelector(".import-history-promo")
-      ?.shadowRoot?.querySelector(".image-container img");
+    img = /** @type {HTMLImageElement | null | undefined} */ (
+      found(sidebar.shadowRoot)
+        .querySelector(".import-history-promo")
+        ?.shadowRoot?.querySelector(".image-container img")
+    );
     return img?.complete;
   }, "the import promo's image has loaded");
+  const promo = found(img);
   Assert.deepEqual(
-    [img.naturalWidth, img.naturalHeight],
+    [promo.naturalWidth, promo.naturalHeight],
     [1, 1],
     "the import promo shows the empty image, not Kit",
   );
@@ -214,13 +244,22 @@ function emptyStates(browser) {
     let states = [];
     await ContentTaskUtils.waitForCondition(() => {
       states = all(content.document).filter(
-        (s) => s.shadowRoot?.querySelector(".image-container img")?.complete,
+        (s) =>
+          /** @type {HTMLImageElement | null | undefined} */ (
+            s.shadowRoot?.querySelector(".image-container img")
+          )?.complete,
       );
       return states.length >= 1;
     }, "Recent browsing shows its empty states");
+    // Each state the filter kept has its shadow root and image container; a content task has
+    // none of the file's helpers, so the casts are in place.
     return states.map((s) => [
       s.className,
-      content.getComputedStyle(s.shadowRoot.querySelector(".image-container")).display,
+      content.getComputedStyle(
+        /** @type {Element} */ (
+          /** @type {ShadowRoot} */ (s.shadowRoot).querySelector(".image-container")
+        ),
+      ).display,
     ]);
   });
 }
@@ -244,7 +283,7 @@ add_task(async function tab_overview_empty_states_leave_no_picture_column() {
 add_task(async function synced_tabs_sidebar_empty_state_has_no_picture() {
   registerCleanupFunction(() => SidebarController.hide());
   await SidebarController.show("viewTabsSidebar");
-  /** @type {any} */
+  /** @type {Element | null | undefined} */
   let container;
   await TestUtils.waitForCondition(() => {
     const doc = SidebarController.browser.contentDocument;
@@ -254,8 +293,10 @@ add_task(async function synced_tabs_sidebar_empty_state_has_no_picture() {
       ?.shadowRoot?.querySelector(".image-container");
     return container;
   }, "the synced tabs sidebar shows its empty state");
+  // The wait saw it, in the sidebar's shown document, which has its window.
+  const box = found(container);
   Assert.equal(
-    container.ownerDocument.defaultView.getComputedStyle(container).display,
+    found(box.ownerDocument.defaultView).getComputedStyle(box).display,
     "none",
     "the sidebar's empty state shows no picture",
   );
@@ -274,7 +315,11 @@ add_task(async function web_pages_keep_the_same_markup() {
       const display = await SpecialPowers.spawn(
         browser,
         [],
-        () => content.getComputedStyle(content.document.querySelector(".image-container")).display,
+        () =>
+          // The page's markup has it; getComputedStyle throws without it, as it did before.
+          content.getComputedStyle(
+            /** @type {Element} */ (content.document.querySelector(".image-container")),
+          ).display,
       );
       Assert.equal(display, "block", "a web page's own markup is left alone");
     },

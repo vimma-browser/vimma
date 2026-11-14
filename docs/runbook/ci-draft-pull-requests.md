@@ -34,5 +34,5 @@ scan ("Once per tree" below).
 
 The release pull request is the reason (below, "Releases"): release-please rebuilds it after
 each merge to `main`, and only the state that is merged is released. Other drafts follow the
-same rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.mjs`
+same rule: mark one ready to get the mochitests on it. `tools/test/draft-pull-requests.test.ts`
 pins the wiring.

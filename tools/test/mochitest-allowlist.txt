@@ -2,8 +2,6 @@
 # (issue #959). Nothing is added here: a new test file is type-checked from its first commit.
 # Each pull request that fixes a file's errors takes it off, and tools/mochitest-typecheck.ts
 # (npm run typecheck) fails until it does.
-tests/browser/browser_vimma_about.js
-tests/browser/browser_vimma_addons.js
 tests/browser/browser_vimma_agent_chat.js
 tests/browser/browser_vimma_agent_cli.js
 tests/browser/browser_vimma_agent_cli_codex.js
@@ -16,41 +14,13 @@ tests/browser/browser_vimma_agent_load_error.js
 tests/browser/browser_vimma_agent_outside_opens.js
 tests/browser/browser_vimma_agent_store.js
 tests/browser/browser_vimma_app_launcher.js
-tests/browser/browser_vimma_app_version.js
-tests/browser/browser_vimma_branding.js
-tests/browser/browser_vimma_branding_files.js
-tests/browser/browser_vimma_config.js
-tests/browser/browser_vimma_content_color_scheme.js
-tests/browser/browser_vimma_copy_motions.js
-tests/browser/browser_vimma_copy_mouse.js
 tests/browser/browser_vimma_downloads.js
-tests/browser/browser_vimma_firefox_coverage.js
 tests/browser/browser_vimma_firefox_page_process.js
-tests/browser/browser_vimma_firefox_wizard_theme.js
-tests/browser/browser_vimma_hints_wizard.js
-tests/browser/browser_vimma_licence.js
 tests/browser/browser_vimma_mcp_downloads.js
-tests/browser/browser_vimma_normal_extras.js
 tests/browser/browser_vimma_omarchy_hook.js
-tests/browser/browser_vimma_password_prompt.js
-tests/browser/browser_vimma_pdf_focus.js
-tests/browser/browser_vimma_pdf_keys.js
-tests/browser/browser_vimma_pdf_look.js
-tests/browser/browser_vimma_pdf_marks.js
-tests/browser/browser_vimma_pdf_outline.js
-tests/browser/browser_vimma_pdf_status.js
-tests/browser/browser_vimma_perf.js
-tests/browser/browser_vimma_popups.js
 tests/browser/browser_vimma_restart.js
 tests/browser/browser_vimma_safebrowsing.js
-tests/browser/browser_vimma_settings_managed.js
-tests/browser/browser_vimma_setup.js
-tests/browser/browser_vimma_site_permissions.js
-tests/browser/browser_vimma_start_page.js
 tests/browser/browser_vimma_system_addons.js
-tests/browser/browser_vimma_vendor_strings.js
-tests/browser/browser_vimma_version_line.js
-tests/browser/browser_vimma_view_source.js
 tests/browser/browser_vimma_wake_lock.js
 tests/browser/file_vimma_agent_sw.js
 tests/browser/head_vimma_agent_model.js
