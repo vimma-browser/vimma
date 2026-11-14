@@ -634,7 +634,8 @@ add_task(async function test_a_command_runs_its_tab_at_foreground_priority() {
 // ---- limits and tab checks on agent commands ------------------------------------------------
 
 /**
- * Run `fn` in the tab's page.
+ * Run `fn` in the tab's page. `fn` takes what `args` holds, which each caller knows; the
+ * helper does not.
  * @param {any} tab @param {any[]} args @param {(...args: any[]) => unknown} fn
  */
 const inPage = (tab, args, fn) => SpecialPowers.spawn(tab.linkedBrowser, args, fn);
