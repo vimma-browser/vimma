@@ -500,13 +500,15 @@ add_task(async function pdf_mode_at_a_fractional_size() {
 // no longer current, whose sizes throw NS_ERROR_UNEXPECTED (FORWARD_TO_OUTER_OR_THROW).
 add_task(async function a_report_due_after_the_window_has_gone_is_dropped() {
   const wb = Services.appShell.createWindowlessBrowser(false);
-  const win = /** @type {Window} */ (wb.document.defaultView);
+  const win = /** @type {Window} */ (wb.document?.defaultView);
   /** @type {string[]} */
   const errors = [];
   const listener = {
     /** @param {nsIConsoleMessage} msg */
     observe(msg) {
-      const text = msg instanceof Ci.nsIScriptError ? `${msg.sourceName} ${msg.errorMessage}` : "";
+      if (!(msg instanceof Ci.nsIScriptError)) return;
+      const err = /** @type {nsIScriptError} */ (msg);
+      const text = `${err.sourceName} ${err.errorMessage}`;
       if (text.includes("pdf-view.mjs")) errors.push(text);
     },
   };
@@ -516,7 +518,13 @@ add_task(async function a_report_due_after_the_window_has_gone_is_dropped() {
     const sent = [];
     const app = { eventBus: { on() {}, off() {} } };
     // The constructor schedules the first report.
-    const view = new PdfView(win, app, (/** @type {object} */ s) => sent.push(s));
+    const view = new PdfView(
+      win,
+      app,
+      (/** @type {object} */ s) => sent.push(s),
+      () => {},
+      () => 0,
+    );
     wb.close();
     await new Promise((r) => setTimeout(r, PDF_STATE_MS * 3));
     view.destroy();

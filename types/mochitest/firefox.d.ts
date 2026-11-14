@@ -496,6 +496,19 @@ interface MozTabSplitViewWrapper extends XULElement {}
 interface nsIConsoleMessage {
   readonly message: string;
 }
+// engine/xpfe/appshell/nsIAppShellService.idl: makes a browser with no window, here a document
+// whose window a test can close (nsIWindowlessBrowser.idl; `document` from nsIWebNavigation.idl,
+// which makes a blank one when there is none and is null only on an unexpected error).
+interface nsIWindowlessBrowser {
+  readonly document: Document | null;
+  close(): void;
+}
+interface nsIAppShellService {
+  createWindowlessBrowser(isChrome?: boolean, chromeMask?: number): nsIWindowlessBrowser;
+}
+interface FirefoxServices {
+  appShell: nsIAppShellService;
+}
 // engine/dom/bindings/nsIScriptError.idl: a script error or warning (`flags` has warningFlag for
 // a warning).
 interface nsIScriptError extends nsIConsoleMessage {
