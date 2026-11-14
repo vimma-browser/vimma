@@ -353,6 +353,7 @@ add_task(async function tab_search_is_a_listbox_whose_focus_follows_ctrl_n_and_c
   // as before.
   const model = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).model;
   const main = /** @type {WorkspaceState} */ (model.workspaces.find((w) => w.id === model.active));
+  Assert.ok(lastAcc.name, "the active option has a name");
   Assert.stringContains(lastAcc.name, `, ${main.name}`, "an option's name says its workspace");
   for (const heading of dialog.querySelectorAll(".vimma-picker-heading")) {
     Assert.equal(heading.getAttribute("role"), "presentation", "a section heading is no option");
@@ -401,6 +402,7 @@ add_task(async function addon_picker_is_a_listbox_that_describes_an_empty_list()
     Assert.ok(role === "option" || role === "none", `a row is an option or nothing: ${role}`);
   }
   if (!list.querySelector("[role=option]")) {
+    Assert.ok(listAcc.description, "the empty list has a description");
     Assert.stringContains(listAcc.description, "No add-ons installed", "the empty list says so");
   }
   EventUtils.synthesizeKey("KEY_Escape");
@@ -424,6 +426,7 @@ add_task(async function side_panel_is_a_named_region_around_a_focused_listbox() 
   expectRole(acc, Role.ROLE_REGION, "Side panel", "side panel");
   const list = found(panel.querySelector("[role=listbox]"));
   const listAcc = await accOf(list, "the side panel's list");
+  Assert.ok(listAcc.name, "the side panel's list has a name");
   Assert.ok(listAcc.name.startsWith("Tabs in "), `the list is named: ${listAcc.name}`);
   await expectActiveRow(list, Role.ROLE_OPTION, "side panel");
   EventUtils.synthesizeKey("KEY_Escape");

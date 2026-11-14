@@ -52,7 +52,8 @@ color15 = "#fadad1"
 `;
 
 const $ = (/** @type {string} */ id) => /** @type {Element} */ (document.getElementById(id));
-const style = (/** @type {Element} */ el) => el.ownerDocument.defaultView.getComputedStyle(el);
+const style = (/** @type {Element} */ el) =>
+  /** @type {Window} */ (el.ownerDocument.defaultView).getComputedStyle(el);
 const token = (/** @type {string} */ name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 
@@ -73,6 +74,8 @@ const tokenColour = (/** @type {string} */ name) => rgb(token(name));
  */
 function colourVar(el, name) {
   const value = style(el).getPropertyValue(name).trim();
+  // Without a value the probe would inherit the window's text colour, --vimma-fg in the theme.
+  Assert.ok(value, `${name} is set on <${el.localName}>`);
   const probe = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
   probe.style.color = value;
   document.documentElement.append(probe);
@@ -96,7 +99,8 @@ function backdrop(/** @type {Element} */ el) {
       : null;
     const bg = style(layer ?? node).backgroundColor;
     if (bg !== "rgba(0, 0, 0, 0)" && bg !== "transparent") return bg;
-    node = node.parentElement ?? /** @type {any} */ (node.getRootNode()).host ?? null;
+    // A shadow root has its host; a document, the root of anything else here, has none.
+    node = node.parentElement ?? /** @type {ShadowRoot} */ (node.getRootNode()).host ?? null;
   }
   return "none";
 }
@@ -184,7 +188,8 @@ async function assertToolbarFollowsTheTheme(label, tab) {
     );
   });
   await shown;
-  const n = /** @type {any} */ (panel.firstElementChild);
+  // The prompt the panel shows; a read through a missing one throws.
+  const n = /** @type {MozPopupNotification} */ (panel.firstElementChild);
   Assert.equal(
     colourVar(panel, "--panel-background-color"),
     surface,

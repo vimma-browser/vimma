@@ -73,17 +73,23 @@ function lightToml() {
 }
 
 /** "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it. */
-function rgb(hex) {
+function rgb(/** @type {string} */ hex) {
   const n = parseInt(hex.slice(1), 16);
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 const token = (/** @type {string} */ name) =>
   getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+// The status bar is in every browser window; getComputedStyle throws without it.
 const barBackground = () =>
-  getComputedStyle(document.getElementById("vimma-statusbar")).backgroundColor;
+  getComputedStyle(/** @type {Element} */ (document.getElementById("vimma-statusbar")))
+    .backgroundColor;
 
-/** Waits until the status bar shows `hex` as its background. */
+/**
+ * Waits until the status bar shows `hex` as its background.
+ * @param {string} hex
+ * @param {string} msg
+ */
 function waitForBar(hex, msg) {
   return TestUtils.waitForCondition(() => barBackground() === rgb(hex), msg, 50, 100);
 }
@@ -156,7 +162,7 @@ async function assertSurfacesFollowTheTheme(label) {
  */
 function assertNoticeFollowsTheTheme(label) {
   VimmaHost.say(window, `${label}: a notice`);
-  const toast = /** @type {Element} */ (document.getElementById("vimma-notice"));
+  const toast = /** @type {HTMLElement} */ (document.getElementById("vimma-notice"));
   Assert.ok(toast?.matches(":popover-open"), `${label}: the notice shows`);
   const style = getComputedStyle(toast);
   const t = (/** @type {string} */ name) => rgb(token(name));
@@ -164,7 +170,7 @@ function assertNoticeFollowsTheTheme(label) {
   Assert.equal(style.color, t("--vimma-fg"), `${label}: notice text`);
   Assert.equal(style.borderTopColor, t("--vimma-muted"), `${label}: notice border`);
   Assert.equal(style.colorScheme, token("--vimma-color-scheme"), `${label}: notice scheme`);
-  /** @type {any} */ (toast).hidePopover();
+  toast.hidePopover();
 }
 
 /**
@@ -210,6 +216,7 @@ async function assertSidePanelFollowsTheTheme(label) {
   );
 }
 
+/** @param {string} target @param {string} link */
 async function ln(target, link) {
   const command = await Subprocess.pathSearch("ln");
   const proc = await Subprocess.call({ command, arguments: ["-sfn", target, link] });
@@ -251,7 +258,9 @@ add_task(async function setup() {
     ],
   });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await SpecialPowers.popPrefEnv();
     await IOUtils.remove(root, { recursive: true });
   });
@@ -273,12 +282,12 @@ add_task(async function the_poll_is_not_a_repeating_timer_a_test_could_be_blamed
       .getService(Ci.nsITimerManager)
       .getTimers()
       .filter(
-        (t) =>
+        (/** @type {nsITimer} */ t) =>
           t.type !== Ci.nsITimer.TYPE_ONE_SHOT &&
           t.type !== Ci.nsITimer.TYPE_ONE_SHOT_LOW_PRIORITY &&
           t.name.includes("theme-host"),
       )
-      .map((t) => `${t.name} ${t.delay}`);
+      .map((/** @type {nsITimer} */ t) => `${t.name} ${t.delay}`);
   Assert.ok(ThemeHost.status.polling, "sanity: the Omarchy theme is polled");
   const busyUntil = Date.now() + 3 * POLL_MS;
   while (Date.now() < busyUntil) {
