@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
+## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) (2026-11-14)
+
+
+### Fixed
+
+* :wsmove reopens the tab in its place, and a model set up with its key keeps vision ([#957](https://github.com/vimma-browser/vimma/issues/957)) ([84b2507](https://github.com/vimma-browser/vimma/commit/84b2507a8197cb76116324f8184ead9428e59785))
+* **agent:** a double Enter no longer sends twice, and unsent text stays in its conversation ([#1016](https://github.com/vimma-browser/vimma/issues/1016)) ([2d0d811](https://github.com/vimma-browser/vimma/commit/2d0d81176b12a7c2bc7a048db98b0228f89fde3b)), closes [#1010](https://github.com/vimma-browser/vimma/issues/1010)
+* **agent:** a late probe no longer replaces the list the agent picker is showing ([#1002](https://github.com/vimma-browser/vimma/issues/1002)) ([c197beb](https://github.com/vimma-browser/vimma/commit/c197beb7509d7e615f98eed43d17cfd08af0a4e5)), closes [#1001](https://github.com/vimma-browser/vimma/issues/1001)
+* **agent:** a slow model pick no longer switches the view or leaves a typed key behind ([#1008](https://github.com/vimma-browser/vimma/issues/1008)) ([7902c4a](https://github.com/vimma-browser/vimma/commit/7902c4af61192f1d1a62e7f20996c783c52d5468)), closes [#1005](https://github.com/vimma-browser/vimma/issues/1005)
+* **agent:** copy a request at the limit into the gate's events ([#1032](https://github.com/vimma-browser/vimma/issues/1032)) ([df22966](https://github.com/vimma-browser/vimma/commit/df22966b453e51f45913ebf2bf3257bb4de4ed7e)), closes [#1027](https://github.com/vimma-browser/vimma/issues/1027)
+* **agent:** skip a click or fill whose page a navigation hides before it runs ([#1036](https://github.com/vimma-browser/vimma/issues/1036)) ([473043d](https://github.com/vimma-browser/vimma/commit/473043db2531412985aa45f1c8b852f71ee4f616)), closes [#1028](https://github.com/vimma-browser/vimma/issues/1028)
+* **agent:** the agent gate keeps and hands out only its own frozen copies ([#1020](https://github.com/vimma-browser/vimma/issues/1020)) ([5c3b834](https://github.com/vimma-browser/vimma/commit/5c3b83483c9d9fc53ae9f2ea579acf97f0280f5c)), closes [#1018](https://github.com/vimma-browser/vimma/issues/1018)
+* pickers tell unloaded tabs apart in private windows, popups and with containers off ([#968](https://github.com/vimma-browser/vimma/issues/968)) ([6dcd228](https://github.com/vimma-browser/vimma/commit/6dcd22845247b6dff021e377667a3ef25258d01e)), closes [#958](https://github.com/vimma-browser/vimma/issues/958)
+* **start:** keep Firefox's new tab process alive when the start page is turned back on ([#978](https://github.com/vimma-browser/vimma/issues/978)) ([e51ee9d](https://github.com/vimma-browser/vimma/commit/e51ee9d273682b2b1cc786f61ca54296de482bb6)), closes [#950](https://github.com/vimma-browser/vimma/issues/950)
+* **start:** keep the Firefox-page latch when a new About process starts as the last one ends ([#991](https://github.com/vimma-browser/vimma/issues/991)) ([5df17ff](https://github.com/vimma-browser/vimma/commit/5df17ff6fd5137a95c38e7a8c0c153ef8c3cfa73)), closes [#984](https://github.com/vimma-browser/vimma/issues/984)
+
 ## [Unreleased]
 
 ## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) · Firefox 160.0 (2026-11-12)
