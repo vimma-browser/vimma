@@ -486,10 +486,11 @@ export const ConfigHost = {
   /**
    * The last read's errors, which kept the file from applying (`[search]`'s, found after it
    * applied, are not among them), and the file they are about: why the agent window has no model
-   * (docs/specs/builtin-agent.md, Behaviour 6).
+   * (docs/specs/builtin-agent.md, Behaviour 6). A method, not a getter, so that vimma.js can hand
+   * the host this function on its own (HostServices).
    * @returns {{ errors: readonly ConfigError[], file: string }}
    */
-  get refused() {
+  refused() {
     return { errors, file: PathUtils.filename(errorsPath || configPath()) };
   },
 
@@ -638,7 +639,8 @@ export const ConfigHost = {
       await IOUtils.remove(tmp, { ignoreAbsent: true }).catch(() => {});
       return { error: `cannot write ${path}` };
     }
-    await this.reload();
+    // ConfigHost, not `this`: vimma.js hands the host this method on its own (HostServices).
+    await ConfigHost.reload();
     return { name: r.name };
   },
 

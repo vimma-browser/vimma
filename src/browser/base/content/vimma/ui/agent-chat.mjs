@@ -10,7 +10,10 @@
 // Every value is set as text (security.md C1): no Markdown, HTML, image or link the model wrote
 // becomes anything but characters. Keys reach it from VimmaHost's capture listener while focus
 // is inside it; they are fixed, as a picker's are, because the window's key in the keymap comes
-// in its own pull request (B13).
+// in its own pull request (B13). The host that builds it hands it the agent's services (the
+// conversations, the agent CLIs, the API keys, config.toml's refusal, setup's write to it and
+// the [agent] providers): ui/ sits below agent/, config/ and host/, and reaches none of them
+// (ADR-026).
 
 import {
   USER_LABEL,
@@ -40,18 +43,8 @@ import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
 import { buildPanelBox, giveFocusBack, rememberFocus } from "./side-panel.mjs";
 
-/**
- * @typedef {"AgentChat" | "AgentCli" | "AgentKeys" | "ConfigHost" | "McpHost"
- *   | "PrivateBrowsingUtils"} LazyName
- */
-const lazy = /** @type {Lazy<LazyName>} */ ({});
+const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
-  // Lazily: AgentChat reaches VimmaHost through the agent commands, and VimmaHost builds this.
-  AgentChat: "chrome://browser/content/vimma/agent/AgentChat.sys.mjs",
-  AgentCli: "chrome://browser/content/vimma/agent/AgentCli.sys.mjs",
-  AgentKeys: "chrome://browser/content/vimma/agent/AgentKeys.sys.mjs",
-  ConfigHost: "chrome://browser/content/vimma/config/ConfigHost.sys.mjs",
-  McpHost: "chrome://browser/content/vimma/host/mcp-ops.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -82,6 +75,96 @@ const SLOT_HINT = "a question waits: answer it here";
 
 /**
  * @typedef {import("../core/config.mjs").AgentProviderConfig} AgentProviderConfig
+ * @typedef {import("../core/config.mjs").AgentConfig} AgentConfig
+ * @typedef {import("../core/config.mjs").ConfigError} ConfigError
+ * @typedef {import("../core/agent-chat.mjs").BudgetStatus} BudgetStatus
+ * @typedef {import("../core/agent-chat.mjs").Transcript} Transcript
+ * @typedef {import("../core/agent-setup.mjs").LocalServer} LocalServer
+ * @typedef {import("../core/agent-setup.mjs").ModelState} ModelState
+ * @typedef {import("../core/agent-setup.mjs").Placement} Placement
+ */
+
+/**
+ * What the window reads of a conversation (agent/AgentChat.sys.mjs's view of one).
+ * @typedef {object} ChatConversation
+ * @property {number} id
+ * @property {string} conn  its gate connection, whose questions the slot shows
+ * @property {string} title
+ * @property {AgentProviderConfig} provider
+ * @property {{ model: string, tools: string[] | null } | null} cli  what its agent CLI reported
+ * @property {boolean} running
+ * @property {boolean} granted
+ * @property {boolean} asking
+ * @property {BudgetStatus | null} budget
+ * @property {number} used  its last use, ms since the epoch
+ */
+
+/**
+ * The built-in agent's conversations, as far as the window drives them (AgentChat).
+ * @typedef {object} ChatConversations
+ * @property {boolean} restored  the stored conversations were read
+ * @property {AgentProviderConfig | null} chosen  the model picked this session
+ * @property {() => Promise<void>} restore
+ * @property {() => ChatConversation[]} list
+ * @property {(id: number) => ChatConversation} get
+ * @property {(o: { provider: AgentProviderConfig }) => ChatConversation} create
+ * @property {(listener: () => void) => void} addListener
+ * @property {(listener: () => void) => void} removeListener
+ * @property {(id: number, text: string, o: { ask: boolean }) =>
+ *   Promise<{ started: true } | { steered: true } | { held: true }
+ *   | { refused: string, pick?: true }>} send
+ * @property {(id: number) => void} stop
+ * @property {(id: number) => string | null} clear  why not, or null
+ * @property {(id: number) => Promise<void>} delete
+ * @property {() => Promise<void>} forgetAll
+ * @property {(id: number) => Readonly<Transcript>} transcript
+ * @property {(id: number, provider: AgentProviderConfig) => string | null} setProvider  why not
+ * @property {(provider: AgentProviderConfig | null) => void} choose
+ * @property {(id: number) => boolean} needsNotice  Behaviour 5's notice comes before a send
+ * @property {(id: number, target: string) => void} confirm  the notice was answered y
+ * @property {(o: { extra?: { server: string, endpoint: string }[] }) => Promise<LocalServer[]>}
+ *   probe  the local model servers, only while the picker is open
+ * @property {(providers: AgentProviderConfig[]) => Promise<Map<string, ModelState>>} modelStates
+ * @property {(endpoint: string, model: string) => Promise<{ model: string }>} prepareLocal
+ * @property {(endpoint: string, model: string) => Promise<Placement | null>} placeLocal
+ */
+
+/**
+ * The agent CLIs, as far as setup and the picker offer them (agent/AgentCli.sys.mjs).
+ * @typedef {object} ChatClis
+ * @property {boolean} enabled  `vimma.agent.cli.enabled`
+ * @property {() => Promise<{ cli: string, path: string, label: string, shim: string | null,
+ *   problem: string | null }[]>} find  a search of PATH, only while setup asks
+ * @property {() => string} noneFound  why setup lists none
+ * @property {(cli: string, path: string) => void} use  the path setup picked, kept as a pref
+ */
+
+/**
+ * The provider API keys, as far as the window asks for and shows them (agent/AgentKeys.sys.mjs):
+ * a stored key's last four characters, a typed key stored, a key deleted. Never the key itself
+ * (docs/security.md M46).
+ * @typedef {object} ChatKeys
+ * @property {(provider: string, endpoint: string) => Promise<string | null>} hint
+ * @property {(provider: string, key: string, endpoint: string) => Promise<void>} set
+ * @property {(provider: string) => Promise<boolean>} delete  whether there was a key
+ */
+
+/**
+ * What the window uses of higher folders, handed over by the host that builds it, which reads
+ * each one when the window calls (host/agent-chat-ops.mjs's CHAT_SERVICES).
+ * @typedef {object} AgentChatServices
+ * @property {ChatConversations} chat
+ * @property {ChatClis} cli
+ * @property {ChatKeys} keys
+ * @property {() => { errors: readonly ConfigError[], file: string }} configRefused  the errors
+ *   that kept config.toml from applying, and the file they are about (Behaviour 6)
+ * @property {(provider: AgentProviderConfig, opts: { makeDefault: boolean }) =>
+ *   Promise<{ name: string } | { error: string }>} addAgentProvider  setup's write of a
+ *   provider to config.toml (B12)
+ * @property {() => AgentConfig | null} agentConfig  `[agent]` in force, null before the read
+ */
+
+/**
  * @typedef {object} AgentChatHost
  * @property {(question: string, yes: () => void) => void} ask  a y/N on the prompt line
  * @property {(text: string, error?: boolean) => void} say  a notice
@@ -112,32 +195,34 @@ const el = (doc, tag, className, text = "") => {
 /**
  * A name for a provider set up in the window: `base`, or with a number when config.toml has a
  * provider of that name already, so its key (stored by name) and the file agree.
- * @param {string} base
+ * @param {AgentChatServices} services @param {string} base
  */
-function freeName(base) {
-  const taken = new Set(
-    (lazy.McpHost.agentConfig?.providers ?? []).map((/** @type {any} */ p) => p.name),
-  );
+function freeName(services, base) {
+  const taken = new Set((services.agentConfig()?.providers ?? []).map((p) => p.name));
   let name = base;
   for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
   return name;
 }
 
-/** Why there is no model when config.toml was refused, else null (Behaviour 6). */
-function refused() {
-  const { errors, file } = lazy.ConfigHost.refused;
+/**
+ * Why there is no model when config.toml was refused, else null (Behaviour 6).
+ * @param {AgentChatServices} services
+ */
+function refused(services) {
+  const { errors, file } = services.configRefused();
   return noModelReason(errors, file);
 }
 
 /**
  * The model picked this session (Behaviour 7), else the provider `[agent] default` names, else
  * the first configured, else none (setup).
+ * @param {AgentChatServices} services
  */
-function defaultProvider() {
-  const config = lazy.McpHost.agentConfig;
+function defaultProvider(services) {
+  const config = services.agentConfig();
   const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
   return (
-    lazy.AgentChat.chosen ??
+    services.chat.chosen ??
     providers.find((p) => p.name === config?.default) ??
     providers[0] ??
     null
@@ -145,10 +230,14 @@ function defaultProvider() {
 }
 
 export class AgentChatWindow {
-  /** @param {BrowserWindow} win @param {AgentChatHost} host */
-  constructor(win, host) {
+  /**
+   * @param {BrowserWindow} win @param {AgentChatHost} host
+   * @param {AgentChatServices} services  the agent's, from the host
+   */
+  constructor(win, host, services) {
     this.win = win;
     this.host = host;
+    this.services = services;
     /** @type {HTMLElement | null} */
     this.box = null;
     /** @type {HTMLElement[]} the header's two lines */
@@ -217,7 +306,7 @@ export class AgentChatWindow {
   get conn() {
     if (!this.opened || this.conversation === null) return null;
     try {
-      return lazy.AgentChat.get(this.conversation).conn;
+      return this.services.chat.get(this.conversation).conn;
     } catch {
       return null;
     }
@@ -234,23 +323,23 @@ export class AgentChatWindow {
       this.host.say("the built-in agent works in a normal window");
       return false;
     }
-    if (!lazy.AgentChat.restored) {
+    if (!this.services.chat.restored) {
       // The stored conversations are read (and decrypted) only when the window first opens,
       // so a user who never opens it is never asked for the keyring (B15).
-      lazy.AgentChat.restore().then(() => this.open({ conversation, view, then }));
+      this.services.chat.restore().then(() => this.open({ conversation, view, then }));
       return true;
     }
-    const known = new Set(lazy.AgentChat.list().map((/** @type {any} */ c) => c.id));
+    const known = new Set(this.services.chat.list().map((/** @type {any} */ c) => c.id));
     if (conversation !== undefined) this.conversation = conversation;
     if (this.conversation === null || !known.has(this.conversation)) {
-      const last = lazy.AgentChat.list().at(-1);
+      const last = this.services.chat.list().at(-1);
       this.conversation = last ? last.id : this.create();
     }
     const box = this.box ?? this.build();
     if (!this.opened) {
       this.opener = rememberFocus(this.win);
       this.opened = true;
-      lazy.AgentChat.addListener(this.onChange);
+      this.services.chat.addListener(this.onChange);
     }
     box.hidden = false;
     this.clearKey();
@@ -271,16 +360,16 @@ export class AgentChatWindow {
 
   /** A new conversation with the default provider, or null when none is set up. */
   create() {
-    const provider = defaultProvider();
+    const provider = defaultProvider(this.services);
     if (!provider) return null;
-    return lazy.AgentChat.create({ provider }).id;
+    return this.services.chat.create({ provider }).id;
   }
 
   close() {
     this.clearKey();
     if (!this.opened) return;
     this.opened = false;
-    lazy.AgentChat.removeListener(this.onChange);
+    this.services.chat.removeListener(this.onChange);
     const box = /** @type {HTMLElement} */ (this.box);
     giveFocusBack(this.win, box, this.opener);
     this.opener = null;
@@ -311,7 +400,7 @@ export class AgentChatWindow {
 
   /** No model to act with: the setup hint, or the error that kept config.toml from applying. */
   sayNoModel() {
-    const why = refused();
+    const why = refused(this.services);
     this.host.say(noModelNotice(why), why !== null);
   }
 
@@ -328,13 +417,13 @@ export class AgentChatWindow {
   /** `s`, `:agent stop` (Behaviour 16). */
   stop() {
     if (this.conversation === null) return;
-    lazy.AgentChat.stop(this.conversation);
+    this.services.chat.stop(this.conversation);
   }
 
   /** `C`, `:agent clear` (Behaviour 22). */
   clear() {
     if (this.conversation === null) return;
-    const refused = lazy.AgentChat.clear(this.conversation);
+    const refused = this.services.chat.clear(this.conversation);
     if (refused) this.host.say(`agent: ${refused}`);
   }
 
@@ -343,8 +432,8 @@ export class AgentChatWindow {
    * goes, with every file of the store.
    */
   async forgetAll() {
-    await lazy.AgentChat.restore();
-    const n = lazy.AgentChat.list().length;
+    await this.services.chat.restore();
+    const n = this.services.chat.list().length;
     if (!n) {
       this.host.say("agent: there are no conversations");
       return;
@@ -352,7 +441,7 @@ export class AgentChatWindow {
     this.host.ask(`Delete all ${n} agent conversation${n === 1 ? "" : "s"}? y/N`, () => {
       this.conversation = null;
       if (this.opened) this.close();
-      lazy.AgentChat.forgetAll().then(
+      this.services.chat.forgetAll().then(
         () => this.host.say(`agent: deleted ${n} conversation${n === 1 ? "" : "s"}`),
         (/** @type {any} */ e) => {
           console.error("vimma agent: forget all failed", e?.name);
@@ -503,7 +592,7 @@ export class AgentChatWindow {
     const go = () => {
       // Emptied at once, so a second Enter while the send settles sends nothing twice.
       input.value = "";
-      lazy.AgentChat.send(id, text, { ask }).then(
+      this.services.chat.send(id, text, { ask }).then(
         (/** @type {any} */ r) => {
           if ("refused" in r) {
             if (!input.value) input.value = text;
@@ -519,11 +608,11 @@ export class AgentChatWindow {
         },
       );
     };
-    const chosen = lazy.AgentChat.get(id).provider;
+    const chosen = this.services.chat.get(id).provider;
     if (needsKey(chosen)) {
       // A hosted provider without a key for its endpoint: the key first, and the task stays in
       // the input to be sent once it is stored (Behaviour 3).
-      lazy.AgentKeys.hint(chosen.name, chosen.endpoint).then(
+      this.services.keys.hint(chosen.name, chosen.endpoint).then(
         (/** @type {string | null} */ hint) => {
           if (hint === null) this.askKey(chosen);
           else this.afterKey(id, go);
@@ -543,10 +632,10 @@ export class AgentChatWindow {
    * @param {number} id @param {() => void} go
    */
   afterKey(id, go) {
-    if (lazy.AgentChat.needsNotice(id)) {
-      const provider = lazy.AgentChat.get(id).provider;
+    if (this.services.chat.needsNotice(id)) {
+      const provider = this.services.chat.get(id).provider;
       this.host.ask(sendNotice(provider), () => {
-        lazy.AgentChat.confirm(id, noticeTarget(provider));
+        this.services.chat.confirm(id, noticeTarget(provider));
         go();
       });
       return;
@@ -597,13 +686,13 @@ export class AgentChatWindow {
    * conversation's model is selected, and one that is not there is shown as such.
    */
   loadModels() {
-    const config = lazy.McpHost.agentConfig;
+    const config = this.services.agentConfig();
     // An agent CLI only while that feature is on (builtin-agent-cli, Delivery).
     const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []).filter(
-      (p) => p.kind !== "cli" || lazy.AgentCli.enabled,
+      (p) => p.kind !== "cli" || this.services.cli.enabled,
     );
     const current =
-      this.conversation === null ? null : lazy.AgentChat.get(this.conversation).provider;
+      this.conversation === null ? null : this.services.chat.get(this.conversation).provider;
     /** @type {Map<string, string>} key hints, which arrive one by one */
     const hints = new Map();
     let first = true;
@@ -660,7 +749,7 @@ export class AgentChatWindow {
         0,
         { label: "add: Anthropic (Messages API)", detail: "api key", add: "anthropic" },
         { label: "add: OpenAI-compatible endpoint", detail: "https:// and api key", add: "openai" },
-        ...(lazy.AgentCli.enabled
+        ...(this.services.cli.enabled
           ? [
               {
                 label: `add: agent CLI (${Object.values(CLIS)
@@ -687,7 +776,7 @@ export class AgentChatWindow {
     draw(null, null);
     for (const p of providers) {
       if (!needsKey(p)) continue;
-      lazy.AgentKeys.hint(p.name, p.endpoint).then(
+      this.services.keys.hint(p.name, p.endpoint).then(
         (/** @type {string | null} */ hint) => {
           hints.set(`${p.name} · ${p.model}`, hint ?? "no key · Enter adds one");
           const row = this.rows.find((r) => r.provider === p);
@@ -704,12 +793,12 @@ export class AgentChatWindow {
     const asked = [...providers, ...(current ? [current] : [])];
     const locals = asked.filter((p) => p.kind === "openai" && isLocalEndpoint(p.endpoint));
     // An agent CLI's program: its path pref set and its file still passing C4's checks.
-    const clis = asked.filter((p) => p.kind === "cli" && lazy.AgentCli.enabled);
+    const clis = asked.filter((p) => p.kind === "cli" && this.services.cli.enabled);
     Promise.all([
-      lazy.AgentChat.probe({
+      this.services.chat.probe({
         extra: locals.map((p) => ({ server: p.name, endpoint: p.endpoint })),
       }),
-      lazy.AgentChat.modelStates([...locals, ...clis]),
+      this.services.chat.modelStates([...locals, ...clis]),
     ]).then(
       ([found, states]) => {
         if (!this.opened || this.view !== "models") return;
@@ -725,7 +814,8 @@ export class AgentChatWindow {
    */
   loadList() {
     const now = Date.now();
-    this.rows = lazy.AgentChat.list()
+    this.rows = this.services.chat
+      .list()
       .filter((/** @type {any} */ c) =>
         (c.title || "New conversation").toLowerCase().includes(this.filter),
       )
@@ -776,7 +866,7 @@ export class AgentChatWindow {
       // names only which CLI it is and its model.
       const info = CLIS[row.cliPick.cli];
       if (!info) return;
-      const listed = (lazy.McpHost.agentConfig?.providers ?? []).find(
+      const listed = (this.services.agentConfig()?.providers ?? []).find(
         (/** @type {AgentProviderConfig} */ p) => p.kind === "cli" && p.cli === info.id,
       );
       // A CLI config.toml lists keeps its model; only a new one asks for it.
@@ -784,13 +874,13 @@ export class AgentChatWindow {
         this.askCliModel(info.id, row.cliPick.path, { makeDefault });
         return;
       }
-      lazy.AgentCli.use(info.id, row.cliPick.path);
+      this.services.cli.use(info.id, row.cliPick.path);
       provider = listed;
     }
     if (
       provider &&
       needsKey(provider) &&
-      (await lazy.AgentKeys.hint(provider.name, provider.endpoint)) === null
+      (await this.services.keys.hint(provider.name, provider.endpoint)) === null
     ) {
       this.askKey(provider);
       return;
@@ -798,7 +888,7 @@ export class AgentChatWindow {
     if (row.local) {
       this.host.say(`agent: preparing ${row.local.model}…`);
       try {
-        const model = await lazy.AgentChat.prepareLocal(row.local.endpoint, row.local.model);
+        const model = await this.services.chat.prepareLocal(row.local.endpoint, row.local.model);
         provider = {
           name: row.local.server,
           kind: "openai",
@@ -816,11 +906,11 @@ export class AgentChatWindow {
     if (row.local) {
       const { endpoint, model } = provider;
       // After the pick, since loading a large model takes a minute.
-      lazy.AgentChat.placeLocal(endpoint, model).then(
-        (/** @type {import("../core/agent-setup.mjs").Placement | null} */ placement) => {
+      this.services.chat
+        .placeLocal(endpoint, model)
+        .then((/** @type {import("../core/agent-setup.mjs").Placement | null} */ placement) => {
           if (placement) this.host.say(`agent: ${placementText(model, placement)}`);
-        },
-      );
+        });
     }
   }
 
@@ -849,10 +939,10 @@ export class AgentChatWindow {
           this.askCliModel(cli, path, opts, text);
           return;
         }
-        lazy.AgentCli.use(cli, path);
+        this.services.cli.use(cli, path);
         this.usePicked(
           {
-            name: freeName(info.bin),
+            name: freeName(this.services, info.bin),
             kind: "cli",
             cli,
             endpoint: "",
@@ -906,7 +996,7 @@ export class AgentChatWindow {
     // config.toml changes only for setup (no provider yet) or when asked with D (B12); an
     // agent CLI setup found is listed there, as a hosted provider added here is, so that it is
     // in the picker after a restart.
-    const setup = !(lazy.McpHost.agentConfig?.providers ?? []).length;
+    const setup = !(this.services.agentConfig()?.providers ?? []).length;
     if (!makeDefault && !setup) {
       if (addedCli) {
         this.remember(picked).then((note) => {
@@ -932,14 +1022,14 @@ export class AgentChatWindow {
     this.rows = [];
     this.row = 0;
     this.render();
-    lazy.AgentCli.find().then(
+    this.services.cli.find().then(
       (
         /** @type {{ cli: string, path: string, label: string, shim: string | null,
          *   problem: string | null }[]} */ found,
       ) => {
         if (!this.opened || this.view !== "models") return;
         if (!found.length) {
-          this.host.say(`agent: ${lazy.AgentCli.noneFound()}`, true);
+          this.host.say(`agent: ${this.services.cli.noneFound()}`, true);
           this.loadModels();
           return;
         }
@@ -971,7 +1061,7 @@ export class AgentChatWindow {
    * @returns {Promise<string>} what the notice adds: "" when nothing was written
    */
   async remember(provider, { makeDefault = false } = {}) {
-    const config = lazy.McpHost.agentConfig;
+    const config = this.services.agentConfig();
     const providers = /** @type {AgentProviderConfig[]} */ (config?.providers ?? []);
     const listed = providers.find(
       (p) =>
@@ -984,7 +1074,7 @@ export class AgentChatWindow {
     if (listed && (!asDefault || config?.default === listed.name)) {
       return asDefault ? " · already [agent] default" : "";
     }
-    const r = await lazy.ConfigHost.addAgentProvider(provider, { makeDefault: asDefault });
+    const r = await this.services.addAgentProvider(provider, { makeDefault: asDefault });
     if ("error" in r) return `; not saved to config.toml (${r.error})`;
     return asDefault ? " · saved to config.toml as [agent] default" : " · saved to config.toml";
   }
@@ -996,23 +1086,23 @@ export class AgentChatWindow {
    */
   useProvider(provider) {
     if (this.conversation === null) {
-      this.conversation = lazy.AgentChat.create({ provider }).id;
-      lazy.AgentChat.choose(provider);
+      this.conversation = this.services.chat.create({ provider }).id;
+      this.services.chat.choose(provider);
       return true;
     }
-    const now = lazy.AgentChat.get(this.conversation).provider;
+    const now = this.services.chat.get(this.conversation).provider;
     if (
       now.endpoint !== provider.endpoint ||
       now.model !== provider.model ||
       now.name !== provider.name
     ) {
-      const refused = lazy.AgentChat.setProvider(this.conversation, provider);
+      const refused = this.services.chat.setProvider(this.conversation, provider);
       if (refused) {
         this.host.say(`agent: ${refused}`, true);
         return false;
       }
     }
-    lazy.AgentChat.choose(provider);
+    this.services.chat.choose(provider);
     return true;
   }
 
@@ -1023,14 +1113,17 @@ export class AgentChatWindow {
    * @param {"anthropic" | "openai"} kind
    */
   addProvider(kind) {
-    const localOnly = !!lazy.McpHost.agentConfig?.localOnly;
+    const localOnly = !!this.services.agentConfig()?.localOnly;
     /** @param {string} endpoint */
     const askModel = (endpoint) =>
       this.host.prompt({
         label: "agent model: ",
         value: kind === "anthropic" ? ANTHROPIC_MODEL : "",
         submit: (model) => {
-          const name = freeName(kind === "anthropic" ? "anthropic" : new URL(endpoint).hostname);
+          const name = freeName(
+            this.services,
+            kind === "anthropic" ? "anthropic" : new URL(endpoint).hostname,
+          );
           if (!model.trim()) return this.host.say("agent: a model name is needed", true);
           return this.askKey({
             name,
@@ -1099,8 +1192,8 @@ export class AgentChatWindow {
     this.keyFor = null;
     let hint;
     try {
-      await lazy.AgentKeys.set(provider.name, key, provider.endpoint);
-      hint = await lazy.AgentKeys.hint(provider.name, provider.endpoint);
+      await this.services.keys.set(provider.name, key, provider.endpoint);
+      hint = await this.services.keys.hint(provider.name, provider.endpoint);
     } catch (e) {
       // The error's text is not shown: it could carry what was typed.
       console.error("vimma agent: the key could not be stored", /** @type {any} */ (e)?.name);
@@ -1123,7 +1216,7 @@ export class AgentChatWindow {
     const p = this.rows[this.row]?.provider;
     if (!p) return;
     this.host.ask(`Delete the API key of ${p.name}? y/N`, () => {
-      lazy.AgentKeys.delete(p.name).then(
+      this.services.keys.delete(p.name).then(
         (/** @type {boolean} */ had) => {
           this.host.say(
             had ? `agent: deleted the key of ${p.name}` : `agent: ${p.name} has no key`,
@@ -1140,7 +1233,7 @@ export class AgentChatWindow {
     if (row?.id === undefined) return;
     const id = row.id;
     this.host.ask(`Delete "${row.label}"? y/N`, () => {
-      lazy.AgentChat.delete(id);
+      this.services.chat.delete(id);
       if (this.conversation === id) this.conversation = null;
       this.loadList();
     });
@@ -1159,15 +1252,15 @@ export class AgentChatWindow {
     const c =
       this.conversation === null
         ? null
-        : lazy.AgentChat.list().find((/** @type {any} */ x) => x.id === this.conversation);
-    const config = lazy.McpHost.agentConfig;
+        : this.services.chat.list().find((/** @type {any} */ x) => x.id === this.conversation);
+    const config = this.services.agentConfig();
     const lines = chatHeader({
       provider: c?.provider ?? null,
       granted: !!c?.granted,
       asking: !!c?.asking,
       localOnly: !!config?.localOnly,
       budget: c?.running ? c.budget : null,
-      refused: c ? null : refused(),
+      refused: c ? null : refused(this.services),
       cli: c?.cli ?? null,
     });
     this.head.forEach((h, i) => (h.textContent = lines[i] ?? ""));
@@ -1213,15 +1306,15 @@ export class AgentChatWindow {
     }
     log.setAttribute("role", "log");
     if (!c) {
-      const { file } = lazy.ConfigHost.refused;
+      const { file } = this.services.configRefused();
       log.replaceChildren(
-        ...noModelLines(refused(), file).map((line) =>
+        ...noModelLines(refused(this.services), file).map((line) =>
           el(doc, "div", "vimma-agent-chat-empty", line),
         ),
       );
       this.drawn = -1;
     } else {
-      const t = lazy.AgentChat.transcript(c.id);
+      const t = this.services.chat.transcript(c.id);
       const key = t.version * 1000 + Math.max(this.entry, -1) + 1;
       if (key !== this.drawn || this.drawnId !== c.id) {
         const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
