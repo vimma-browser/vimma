@@ -119,6 +119,12 @@ describe("rewriteSpecifiers", () => {
       'export { parseKey } from "./keys.mjs";',
     );
     expect(rewrite('import { x } from "../index.mjs";')).toBe('import { x } from "./index.mjs";');
+    expect(rewrite('export * as k from "../keys/keys.mjs";')).toBe(
+      'export * as k from "./keys.mjs";',
+    );
+    expect(rewrite('import { parseKey }\n  from\n  "../keys/keys.mjs";')).toBe(
+      'import { parseKey }\n  from\n  "./keys.mjs";',
+    );
   });
 
   it("leaves a regular expression literal alone", () => {
@@ -133,6 +139,16 @@ describe("rewriteSpecifiers", () => {
       ["const t = `../keys/keys.mjs`;", 1],
       ['const u = new URL("../keys/keys.mjs", import.meta.url);', 1],
       ['const v = "./nope.js";', 1],
+      // An import's words inside a string are text, not an import.
+      [`export const msg = "copied from '../keys/keys.mjs'";`, 1],
+      [`export const m2 = () => "import('../keys/keys.mjs')";`, 1],
+      [`const s = "import from '../keys/keys.mjs'";`, 1],
+      [`const r = "run import '../keys/keys.mjs' now";`, 1],
+      ["const x = `x from '../keys/keys.mjs'`;", 1],
+      // A relative path to anything but a module, which the flat copy would leave pointing nowhere.
+      ['const q = "../keys/keys.mjs?v=1";', 1],
+      ['const j = "../keys/data.json";', 1],
+      ['const k = "../keys/keys";', 1],
     ] as const) {
       expect(() => rewrite(source), source).toThrow(
         new RegExp(`agent/agent-keys\\.mjs:${line}: .* not an import`),
@@ -204,22 +220,50 @@ describe("syncCore on the real package", () => {
     expect(broken).toEqual([]);
   });
 
-  it("changes no line of a module but its import lines, and keeps their number", () => {
-    // Independent of the rewriter's own pattern: a changed line must be an import, an
-    // export-from, the end of a multi-line import, an @import or a line with import(…).
-    const importLine =
-      /^\s*(import\b|export\b.*\bfrom\s|\}\s*from\s|(\/\*\*|\*)\s*@import\b)|\bimport\(/;
+  it("changes no line of a module but the path inside an import, and keeps their number", () => {
+    // Independent of the rewriter: each changed line is split at its quotes, and the two lines
+    // may differ only in a whole string that follows `from`, `import` or `import(` outside any
+    // other string, and that names the same module in the package and in the copy.
     const out = sync();
-    const problems = [...coreLayout(filesUnder(SRC))]
+    const layout = coreLayout(filesUnder(SRC));
+    const sourceOf = new Map([...layout].map(([from, to]) => [to, from]));
+    /** Why `after` (in the copy `to`) is not `before` (in the package file `from`) with only an import path changed, or null. */
+    const onlyImportPath = (before: string, after: string, from: string, to: string) => {
+      const a = before.split(/(["'`])/);
+      const b = after.split(/(["'`])/);
+      if (a.length !== b.length) return "a different number of quotes";
+      let open: string | null = null;
+      for (let i = 0; i < a.length; i++) {
+        const token = a[i] ?? "";
+        if (token === b[i]) {
+          if (i % 2 === 1) open = open === null ? token : open === token ? null : open;
+          continue;
+        }
+        if (i % 2 === 1) return `quote ${token} became ${b[i]}`;
+        const opened = a[i - 1] ?? "";
+        const imported =
+          open === opened &&
+          opened !== "`" &&
+          a[i + 1] === opened &&
+          /(^|[^\w$.])(from|import)\s*\(?\s*$/.test(a[i - 2] ?? "");
+        if (!imported) return `${token} changed outside an import`;
+        const inPackage = posix.join(posix.dirname(from), token);
+        const inCopy = sourceOf.get(posix.join(posix.dirname(to), b[i] ?? ""));
+        if (inPackage !== inCopy) return `${token} became ${b[i]}, another module`;
+      }
+      return null;
+    };
+    const problems = [...layout]
       .filter(([from]) => from.endsWith(".mjs") && !from.startsWith("vendor/"))
       .flatMap(([from, to]) => {
         const before = readFileSync(join(SRC, from), "utf8").split("\n");
         const after = readFileSync(join(out, to), "utf8").split("\n");
         if (before.length !== after.length)
           return [`${from}: ${before.length} -> ${after.length} lines`];
-        return before.flatMap((line, i) =>
-          line !== after[i] && !importLine.test(line) ? [`${from}:${i + 1}: ${line.trim()}`] : [],
-        );
+        return before.flatMap((line, i) => {
+          const why = line === after[i] ? null : onlyImportPath(line, after[i] ?? "", from, to);
+          return why ? [`${from}:${i + 1}: ${why}`] : [];
+        });
       });
     expect(problems).toEqual([]);
   });

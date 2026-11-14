@@ -42,8 +42,14 @@ export function coreLayout(files) {
 const IMPORT_SPECIFIER =
   /(\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)(["'])(\.\.?\/[^"'\s]+?\.m?js)\2/g;
 
-/** Any quoted relative path to a script, in any quotes, imported or not. */
-const QUOTED_PATH = /(["'`])(\.\.?\/[^"'`\s]*?\.m?js)\1/g;
+/**
+ * Any quoted relative path, in any quotes, imported or not: a module, a query string, a data file,
+ * a path without an extension.
+ */
+const QUOTED_PATH = /(["'`])(\.\.?\/[^"'`\n]*)\1/g;
+
+/** A string on one line: its quote, its text, and its closing quote ("" when the line ends first). */
+const STRING_ON_LINE = /(["'`])(?:\\.|(?!\1).)*?(\1|$)/g;
 
 /** `import(`, whose argument must be a plain string so that the rewrite can see it. */
 const DYNAMIC_IMPORT = /\bimport\s*\(/g;
@@ -52,9 +58,16 @@ const PLAIN_ARGUMENT = /^\s*(["'])[^"'`\n]*\1\s*\)/;
 /**
  * A module's text with each relative import pointed at the file's place in core/. Only import
  * positions are rewritten, so text that merely looks like a path, in a string or a comment, is
- * never changed. Throws, with the file and line, on what the copy could get wrong: an import of
- * a file the package does not have, a quoted relative path anywhere else (a string, a comment,
- * `new URL`), and a dynamic import of anything but a plain string.
+ * never changed: an import's words inside a string opened earlier on the same line are text too.
+ * Throws, with the file and line, on what the copy could get wrong: an import of a file the
+ * package does not have, a quoted relative path anywhere else (a string, a comment, `new URL`,
+ * a data file), and a dynamic import of anything but a plain string. The check and the rewrite
+ * use the same set of import positions, so they cannot disagree.
+ *
+ * Limits: a string is read on its own line, so an apostrophe earlier on an import's line (a
+ * comment saying "don't") makes the import look like text and the sync fails, loudly; and a
+ * string or template literal that spans lines is not seen from its later lines, so an import's
+ * words on such a later line would be taken for an import. No module has either today.
  * @param {string} text
  * @param {string} file  the module's path relative to packages/vimma-core/src
  * @param {Map<string, string>} layout  from coreLayout
@@ -71,9 +84,16 @@ export function rewriteSpecifiers(text, file, layout) {
       );
     }
   }
+  /** @param {number} at  true when `at` sits inside a string opened earlier on its line */
+  const inString = (at) => {
+    const line = text.slice(text.lastIndexOf("\n", at - 1) + 1, at);
+    return [...line.matchAll(STRING_ON_LINE)].some((q) => q[2] === "");
+  };
   /** Offsets of the quotes that open an import's path. */
   const imports = new Set();
-  for (const m of text.matchAll(IMPORT_SPECIFIER)) imports.add(m.index + (m[1] ?? "").length);
+  for (const m of text.matchAll(IMPORT_SPECIFIER)) {
+    if (!inString(m.index)) imports.add(m.index + (m[1] ?? "").length);
+  }
   for (const m of text.matchAll(QUOTED_PATH)) {
     if (!imports.has(m.index)) {
       throw new Error(
@@ -83,7 +103,9 @@ export function rewriteSpecifiers(text, file, layout) {
     }
   }
   const from = layout.get(file) ?? file;
-  return text.replace(IMPORT_SPECIFIER, (_all, before, quote, spec, offset) => {
+  return text.replace(IMPORT_SPECIFIER, (all, before, quote, spec, offset) => {
+    // Not an import (inside a string): the check above has already refused its path.
+    if (!imports.has(offset + before.length)) return all;
     const target = posix.join(posix.dirname(file), spec);
     const to = layout.get(target);
     if (to === undefined) {
