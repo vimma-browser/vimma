@@ -8,7 +8,6 @@ interface VimmaModules {
   "chrome://browser/content/vimma/about/about.mjs": typeof import("../../src/browser/base/content/vimma/about/about.mjs");
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs": typeof import("../../src/browser/base/content/vimma/actors/VimmaActors.sys.mjs");
   "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs": typeof import("../../src/browser/base/content/vimma/actors/VimmaChild.sys.mjs");
-  "chrome://browser/content/vimma/actors/VimmaParent.sys.mjs": typeof import("../../src/browser/base/content/vimma/actors/VimmaParent.sys.mjs");
   "chrome://browser/content/vimma/actors/agent-fields.mjs": typeof import("../../src/browser/base/content/vimma/actors/agent-fields.mjs");
   "chrome://browser/content/vimma/actors/block.mjs": typeof import("../../src/browser/base/content/vimma/actors/block.mjs");
   "chrome://browser/content/vimma/actors/caret.mjs": typeof import("../../src/browser/base/content/vimma/actors/caret.mjs");
@@ -118,6 +117,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs": typeof import("../../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs");
   "chrome://browser/content/vimma/ctl/agent-commands.mjs": typeof import("../../src/browser/base/content/vimma/ctl/agent-commands.mjs");
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs": typeof import("../../src/browser/base/content/vimma/host/VimmaHost.sys.mjs");
+  "chrome://browser/content/vimma/host/VimmaParent.sys.mjs": typeof import("../../src/browser/base/content/vimma/host/VimmaParent.sys.mjs");
   "chrome://browser/content/vimma/host/addon-ops.mjs": typeof import("../../src/browser/base/content/vimma/host/addon-ops.mjs");
   "chrome://browser/content/vimma/host/agent-chat-ops.mjs": typeof import("../../src/browser/base/content/vimma/host/agent-chat-ops.mjs");
   "chrome://browser/content/vimma/host/agent-ui.mjs": typeof import("../../src/browser/base/content/vimma/host/agent-ui.mjs");
