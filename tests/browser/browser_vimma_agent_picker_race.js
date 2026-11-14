@@ -21,6 +21,9 @@
 const { AgentChatWindow } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ui/agent-chat.mjs",
 );
+const { RenamePrompt } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ui/rename-prompt.mjs",
+);
 
 /**
  * A promise with its resolve and reject, for an answer the test gives when it chooses.
@@ -108,10 +111,12 @@ const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
  * store, key deletion and local model preparation is a promise the test resolves; the host's
  * prompts, questions and notices, the models used and the messages sent are recorded. Every
  * question is answered y.
- * @param {{ providers: object[], notice?: boolean }} opts  the [agent] providers the services
- *   report; `notice`: the conversation's first send needs Behaviour 5's notice
+ * @param {{ providers: object[], notice?: boolean, sendWaits?: boolean,
+ *   prompt?: (o: Prompt) => void }} opts  the [agent] providers the services report; `notice`:
+ *   the conversation's first send needs Behaviour 5's notice; `sendWaits`: each send's answer is
+ *   a promise the test resolves (in `sendAnswers`); `prompt`: also hands each prompt to this
  */
-function fakeWindow({ providers, notice = false }) {
+function fakeWindow({ providers, notice = false, sendWaits = false, prompt }) {
   const conversation = {
     id: 1,
     conn: "fake",
@@ -142,6 +147,8 @@ function fakeWindow({ providers, notice = false }) {
   const places = [];
   /** @type {string[]} */
   const sends = [];
+  /** @type {Deferred<object>[]} */
+  const sendAnswers = [];
   /** @type {object[]} */
   const chosen = [];
   let confirmed = false;
@@ -165,7 +172,10 @@ function fakeWindow({ providers, notice = false }) {
       confirm: () => (confirmed = true),
       send: (/** @type {number} */ _id, /** @type {string} */ text) => {
         sends.push(text);
-        return Promise.resolve({ started: true });
+        if (!sendWaits) return Promise.resolve({ started: true });
+        const d = /** @type {Deferred<object>} */ (deferred());
+        sendAnswers.push(d);
+        return d.promise;
       },
       prepareLocal: () => {
         const d = /** @type {Deferred<{ model: string }>} */ (deferred());
@@ -233,7 +243,10 @@ function fakeWindow({ providers, notice = false }) {
     give() {},
     copy() {},
     rearm() {},
-    prompt: (/** @type {Prompt} */ o) => prompts.push(o),
+    prompt: (/** @type {Prompt} */ o) => {
+      prompts.push(o);
+      prompt?.(o);
+    },
     changed() {},
   };
   const chat = new AgentChatWindow(window, host, /** @type {any} */ (services));
@@ -249,6 +262,7 @@ function fakeWindow({ providers, notice = false }) {
     prepares,
     places,
     sends,
+    sendAnswers,
     prompts,
     said,
     asked,
@@ -504,10 +518,9 @@ add_task(async function test_every_way_out_of_the_key_field_empties_it() {
       Assert.equal(f.chat.keyFor, keyFor, `${how}: the field is for no key typed before`);
       f.chat.askKey(ANTHROPIC);
       Assert.equal(keyField(f.chat).value, "", `after ${how} the field opens empty`);
-      Assert.ok(
-        !(/** @type {any} */ (keyField(f.chat)).editor?.canUndo),
-        `after ${how} nothing typed before comes back with an undo`,
-      );
+      const editor = /** @type {any} */ (keyField(f.chat)).editor;
+      Assert.ok(editor, `after ${how} the field has its editor`);
+      Assert.ok(!editor.canUndo, `after ${how} nothing typed before comes back with an undo`);
       press(f.chat, "Escape");
     }
     info("leaving the key field: the window goes with the browser window");
@@ -801,6 +814,228 @@ add_task(async function test_a_key_deleted_as_the_picker_opens_again_is_shown_go
       () => hostedRow(f.chat)?.detail === "no key · Enter adds one",
       "the row says there is no key",
     );
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+/** The notice for a pick whose model list was reloaded after a key was deleted. */
+const RELOADED = (/** @type {string} */ label) =>
+  `agent: ${label} not used: the model list was reloaded after a key was deleted; pick it again`;
+const STILL_STORING = "agent: a key is still being stored; enter this one again once it is";
+
+/** Resolves after the window's timers of 0 ms (the prompt's focusout check) have run. */
+const afterTimers = () => new Promise((r) => window.setTimeout(r, 10));
+
+add_task(async function test_a_refused_send_opens_the_picker_only_if_the_user_stayed() {
+  const REFUSED = { refused: "small is gone; pick another model", pick: true };
+  /** @returns {ReturnType<typeof fakeWindow>} */
+  const sent = () => {
+    const f = fakeWindow({ providers: [LOCAL], sendWaits: true });
+    f.chat.open();
+    /** @type {HTMLTextAreaElement} */ (f.chat.input).value = "hello";
+    press(f.chat, "Enter");
+    Assert.deepEqual(f.sends, ["hello"], "the message goes to the conversation's model");
+    return f;
+  };
+  /** @param {ReturnType<typeof fakeWindow>} f */
+  const input = (f) => /** @type {HTMLTextAreaElement} */ (f.chat.input).value;
+
+  info("the user stays: the picker opens for another model, as before");
+  let f = sent();
+  try {
+    f.sendAnswers[0].resolve(REFUSED);
+    await afterWindow([f.sendAnswers[0].promise]);
+    Assert.equal(f.chat.view, "models", "the picker opens");
+    Assert.equal(input(f), "hello", "the message is back in the input");
+    Assert.equal(f.said.at(-1), "agent: small is gone; pick another model", "and it is said");
+  } finally {
+    f.chat.destroy();
+  }
+
+  info("the user sets up Anthropic and types its key before the refusal answers");
+  f = sent();
+  try {
+    press(f.chat, "Escape");
+    press(f.chat, "m");
+    selectRow(f.chat, (r) => r.add === "anthropic");
+    press(f.chat, "Enter");
+    f.prompts.at(-1)?.submit("claude-test");
+    typeKey(f.chat, "sk-ant-half");
+
+    f.sendAnswers[0].resolve(REFUSED);
+    await afterWindow([f.sendAnswers[0].promise]);
+    Assert.equal(f.chat.view, "key", "the picker does not open over the key field");
+    Assert.equal(keyField(f.chat).value, "sk-ant-half", "which keeps what was typed");
+    Assert.equal(f.chat.keyFor?.name, "anthropic", "for its provider");
+    Assert.equal(document.activeElement, f.chat.keyInput, "and keeps focus");
+    Assert.equal(input(f), "hello", "the message is back in the input");
+    Assert.equal(
+      f.said.at(-1),
+      "agent: small is gone; pick another model; the message is still in the input",
+      "and the user is told",
+    );
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_prompt_opened_from_the_picker_ends_a_pick_still_waiting() {
+  const rename = new RenamePrompt(window, { apply() {} });
+  const f = fakeWindow({ providers: [LOCAL, HOSTED], prompt: (o) => rename.prompt(o) });
+  try {
+    f.chat.open({ view: "models" });
+    f.probes[0].resolve(OLLAMA);
+    f.states[0].resolve(new Map());
+    await until(() => drawn(f.chat).includes("ollama · llama"), "the probe's models are listed");
+    selectRow(f.chat, (r) => r.label === "hosted · big");
+    press(f.chat, "Enter");
+    Assert.equal(f.hints.length, 2, "the pick reads its provider's key hint");
+
+    info("while it waits, add: Anthropic opens the prompt line");
+    selectRow(f.chat, (r) => r.add === "anthropic");
+    press(f.chat, "Enter");
+    Assert.ok(rename.isOpen, "add: Anthropic asks for its model on the prompt line");
+    Assert.equal(document.activeElement, rename.input, "which has focus");
+
+    f.hints[1].resolve(null);
+    await afterWindow([f.hints[1].promise]);
+    await afterTimers();
+    Assert.equal(f.chat.view, "models", "the hosted pick opens no key field");
+    Assert.equal(f.chat.keyFor, null, "asks for no key");
+    Assert.ok(rename.isOpen, "the prompt line stays open");
+    Assert.equal(document.activeElement, rename.input, "and keeps focus");
+    Assert.deepEqual(f.chosen, [], "no model is used");
+    Assert.equal(f.said.at(-1), NOT_USED("hosted · big"), "and the user is told");
+
+    f.prompts.at(-1)?.submit("claude-test");
+    Assert.equal(f.chat.keyFor?.name, "anthropic", "the prompt's model asks for its own key");
+  } finally {
+    rename.close({ restoreFocus: false });
+    rename.el?.remove();
+    f.chat.destroy();
+  }
+
+  info("a local model prepared while the prompt line is open is not used");
+  const g = fakeWindow({ providers: [LOCAL] });
+  try {
+    g.chat.open({ view: "models" });
+    g.probes[0].resolve(OLLAMA);
+    g.states[0].resolve(new Map());
+    await until(() => drawn(g.chat).includes("ollama · llama"), "the probe's models are listed");
+    selectRow(g.chat, (r) => r.label === "ollama · llama");
+    press(g.chat, "Enter");
+    selectRow(g.chat, (r) => r.add === "anthropic");
+    press(g.chat, "Enter");
+    Assert.equal(g.prompts.at(-1)?.label, "agent model: ", "the prompt line asks");
+    g.prepares[0].resolve({ model: "llama" });
+    await afterWindow([g.prepares[0].promise]);
+    Assert.equal(g.chat.view, "models", "the transcript does not open under the prompt");
+    Assert.deepEqual(g.chosen, [], "the model is not used");
+    Assert.deepEqual(g.places, [], "nor loaded");
+  } finally {
+    g.chat.destroy();
+  }
+});
+
+add_task(async function test_a_second_key_entered_while_one_is_stored_is_said_dropped() {
+  const f = fakeWindow({ providers: [LOCAL] });
+  try {
+    f.chat.open();
+    f.chat.askKey(ANTHROPIC);
+    typeKey(f.chat, "sk-ant-one");
+    press(f.chat, "Enter");
+    Assert.equal(f.sets.length, 1, "the first key goes to login storage");
+    EventUtils.sendString("sk-ant-two");
+    press(f.chat, "Enter");
+    Assert.equal(keyField(f.chat).value, "", "the second leaves the field at once");
+    Assert.equal(f.sets.length, 1, "but is not stored over the first");
+    Assert.equal(f.said.at(-1), STILL_STORING, "and the user is told");
+    Assert.ok(!f.said.some((s) => s.includes("sk-ant")), "no notice holds the key's text");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(
+  async function test_a_send_whose_key_hint_fails_asks_for_the_key_only_if_the_user_stayed() {
+    /** @returns {ReturnType<typeof fakeWindow>} */
+    const waiting = () => {
+      const f = fakeWindow({ providers: [HOSTED] });
+      f.chat.open();
+      /** @type {HTMLTextAreaElement} */ (f.chat.input).value = "hello";
+      press(f.chat, "Enter");
+      Assert.equal(f.hints.length, 1, "the send reads the provider's key hint first");
+      return f;
+    };
+    info("the user stays: the key field opens");
+    let f = waiting();
+    try {
+      f.hints[0].reject(new Error("keyring"));
+      await afterRefusal(f.hints[0].promise);
+      Assert.equal(f.chat.view, "key", "the key field asks for the key");
+      Assert.equal(f.chat.keyFor, HOSTED, "of the conversation's provider");
+      Assert.deepEqual(f.sends, [], "and nothing is sent");
+    } finally {
+      f.chat.destroy();
+    }
+    info("the user opened the picker meanwhile");
+    f = waiting();
+    try {
+      press(f.chat, "Escape");
+      press(f.chat, "m");
+      f.hints[0].reject(new Error("keyring"));
+      await afterRefusal(f.hints[0].promise);
+      Assert.equal(f.chat.view, "models", "the key field does not open over the picker");
+      Assert.equal(f.chat.keyFor, null, "and asks for no key");
+      Assert.deepEqual(f.sends, [], "nothing is sent");
+      Assert.ok(f.said.includes(NOT_SENT), "and the user is told");
+    } finally {
+      f.chat.destroy();
+    }
+  },
+);
+
+add_task(async function test_a_failed_preparation_replaced_by_a_later_pick_says_nothing() {
+  const f = fakeWindow({ providers: [LOCAL, HOSTED] });
+  try {
+    f.chat.open({ view: "models" });
+    f.hints[0].resolve("key stored · ends …abcd");
+    f.probes[0].resolve(OLLAMA);
+    f.states[0].resolve(new Map());
+    await until(() => drawn(f.chat).includes("ollama · llama"), "the probe's models are listed");
+    selectRow(f.chat, (r) => r.label === "ollama · llama");
+    press(f.chat, "Enter");
+    selectRow(f.chat, (r) => r.label === "hosted · big");
+    press(f.chat, "Enter");
+    f.prepares[0].reject(new Error("out of disk"));
+    await afterRefusal(f.prepares[0].promise);
+    Assert.ok(!f.said.some((s) => s.includes("out of disk")), "the replaced pick says nothing");
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    Assert.deepEqual(f.chosen, [HOSTED], "the later pick is used");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_pick_on_a_list_reloaded_after_a_key_deletion_says_so() {
+  const f = fakeWindow({ providers: [LOCAL, HOSTED] });
+  try {
+    f.chat.open({ view: "models" });
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    selectRow(f.chat, (r) => r.label === "hosted · big");
+    press(f.chat, "Enter");
+    Assert.equal(f.hints.length, 2, "the pick reads its provider's key hint");
+    press(f.chat, "x");
+    f.deletes[0].resolve(true);
+    await afterWindow([f.deletes[0].promise]);
+    Assert.equal(f.hints.length, 3, "the deletion reloads the model list");
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    Assert.deepEqual(f.chosen, [], "the pick made before the deletion is not used");
+    Assert.equal(f.said.at(-1), RELOADED("hosted · big"), "and the notice says why");
   } finally {
     f.chat.destroy();
   }

@@ -280,6 +280,13 @@ export class AgentChatWindow {
     this.modelsAt = -1;
     /** Counted up by each pick: of picks that wait, only the latest is used (issue #1005). */
     this.picks = 0;
+    /**
+     * Counted up by each prompt line a picker row opens: it takes focus, so no pick still
+     * waiting is used under it, nor moves focus to the key field (issue #1005).
+     */
+    this.prompted = 0;
+    /** The `listed` count of a model list a key's deletion reloaded: its picks say why. */
+    this.reloadedAt = -1;
     /** The conversation list's filter by title (Behaviour 19), lower case. */
     this.filter = "";
     this.row = 0;
@@ -606,13 +613,18 @@ export class AgentChatWindow {
     const go = () => {
       // Emptied at once, so a second Enter while the send settles sends nothing twice.
       input.value = "";
+      // A refusal can come a second later (a local server is asked first): a user who left the
+      // transcript meanwhile (a list, the key field) is not pulled into the picker (#1005).
+      const sentAt = this.listed;
       this.services.chat.send(id, text, { ask }).then(
         (/** @type {any} */ r) => {
           if ("refused" in r) {
             if (!input.value) input.value = text;
             // The model is not there: another is picked, and the message waits for it.
-            if (r.pick && this.opened && this.conversation === id) this.open({ view: "models" });
-            this.host.say(`agent: ${r.refused}`, true);
+            const stayed = this.opened && this.conversation === id && this.listed === sentAt;
+            if (r.pick && stayed) this.open({ view: "models" });
+            const kept = r.pick && !stayed ? "; the message is still in the input" : "";
+            this.host.say(`agent: ${r.refused}${kept}`, true);
           }
         },
         (/** @type {any} */ e) => {
@@ -915,10 +927,15 @@ export class AgentChatWindow {
     // key in the field the pick would replace; the later pick wins and says its own (#1005).
     const pickAt = ++this.picks;
     const shownAt = this.listed;
+    const promptedAt = this.prompted;
     const stale = () => {
       if (this.picks !== pickAt) return true;
-      if (this.listed === shownAt) return false;
-      this.host.say(`agent: ${row.label} not used: the picker was left before it was ready`);
+      if (this.listed === shownAt && this.prompted === promptedAt) return false;
+      const why =
+        shownAt === this.reloadedAt
+          ? "the model list was reloaded after a key was deleted; pick it again"
+          : "the picker was left before it was ready";
+      this.host.say(`agent: ${row.label} not used: ${why}`);
       return true;
     };
     if (provider && needsKey(provider)) {
@@ -976,6 +993,7 @@ export class AgentChatWindow {
   askCliModel(cli, path, opts, value) {
     const info = CLIS[cli];
     if (!info) return;
+    this.prompted++;
     const ask = modelPrompt(cli);
     this.host.prompt({
       label: ask.label,
@@ -1014,6 +1032,7 @@ export class AgentChatWindow {
    * @param {string} [value]  what was typed before, to correct
    */
   askOtherModel(base, opts, value) {
+    this.prompted++;
     const ask = modelPrompt(base.cli ?? "");
     this.host.prompt({
       label: ask.label,
@@ -1164,6 +1183,7 @@ export class AgentChatWindow {
    * @param {"anthropic" | "openai"} kind
    */
   addProvider(kind) {
+    this.prompted++;
     const localOnly = !!this.services.agentConfig()?.localOnly;
     /** @param {string} endpoint */
     const askModel = (endpoint) =>
@@ -1233,7 +1253,10 @@ export class AgentChatWindow {
     // Out of the field at once: it holds the key only while it is typed.
     const key = field.value.trim();
     field.value = "";
-    if (this.storing) return undefined;
+    if (this.storing) {
+      this.host.say("agent: a key is still being stored; enter this one again once it is", true);
+      return undefined;
+    }
     if (!provider) return this.insert();
     if (!key) {
       this.host.say(`agent: ${provider.name} needs an API key`, true);
@@ -1283,6 +1306,7 @@ export class AgentChatWindow {
           // Any model list shown, a picker opened again since included, since its hints were
           // read before the key went; setup's agent CLI list is left alone (issue #1001).
           if (this.opened && this.view === "models" && this.listed === this.modelsAt) {
+            this.reloadedAt = this.listed;
             this.loadModels();
           }
         },

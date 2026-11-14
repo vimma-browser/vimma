@@ -2187,13 +2187,15 @@ for the user.
   key means entering it again. Any way out of the field (Esc, closing the window or the
   browser window, another view or conversation, another provider's key field) empties it and
   forgets which provider it was for, leaving nothing to bring back with an undo. A model pick,
-  a send or a key's store that answers after the user left the list or the field it came from
-  (a key hint can wait on the keyring, a local model's preparation for a minute) **must not**
-  switch the view, so it never opens the key field over another view nor leaves the field the
-  user is typing in: the pick is not used, the message is not sent, and the stored key changes
-  no conversation's model; of two picks, the later is used. A provider that needs a key and
-  has none for
-  its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
+  a send, a send's refusal or a key's store that answers after the user left the list or the
+  field it came from (a key hint can wait on the keyring, a local model's preparation for a
+  minute; a prompt line a picker row opens counts as leaving the list) **must not** switch the
+  view or move focus, so it never opens the key field or the picker over another view nor
+  leaves the field or the prompt the user is typing in: the pick is not used, the message is
+  not sent (or, refused, stays in the input), and the stored key changes no conversation's
+  model; of two picks, the later is used. A second key entered while one is being stored is
+  not stored, and a notice without its text says so. A provider that needs a key and has none
+  for its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
   deletes a key after a `y`. The window reaches the keys only through what the host hands it
   from `host/host-services.mjs`: `AgentKeys` narrowed to `hint`, `set` and `delete`, never the
@@ -2215,6 +2217,12 @@ for the user.
   [`test_a_pick_left_before_its_key_hint_opens_no_key_field`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_key_stored_after_the_field_was_left_switches_nothing`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_key_deleted_as_the_picker_opens_again_is_shown_gone`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_refused_send_opens_the_picker_only_if_the_user_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_prompt_opened_from_the_picker_ends_a_pick_still_waiting`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_second_key_entered_while_one_is_stored_is_said_dropped`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_send_whose_key_hint_fails_asks_for_the_key_only_if_the_user_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_failed_preparation_replaced_by_a_later_pick_says_nothing`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_on_a_list_reloaded_after_a_key_deletion_says_so`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,
