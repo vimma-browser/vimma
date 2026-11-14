@@ -93,48 +93,4 @@ export const EXCEPTIONS: Exception[] = [
     fate: "goes",
     issue: 936,
   },
-
-  // The agent chat window, built by the host, reaches the agent's services itself.
-  {
-    from: "ui/agent-chat.mjs",
-    to: "agent/AgentChat.sys.mjs",
-    kind: "lazy",
-    reason: "the chat window drives conversations, and the host does not pass it the agent yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "ui/agent-chat.mjs",
-    to: "agent/AgentCli.sys.mjs",
-    kind: "lazy",
-    reason: "the chat window offers the agent CLIs, and the host does not pass them in yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "ui/agent-chat.mjs",
-    to: "agent/AgentKeys.sys.mjs",
-    kind: "lazy",
-    reason:
-      "the chat window says where an API key comes from, and the host does not pass that in yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "ui/agent-chat.mjs",
-    to: "config/ConfigHost.sys.mjs",
-    kind: "lazy",
-    reason:
-      "the chat window says when config.toml was refused, and the host does not pass that in yet",
-    fate: "goes",
-    issue: 936,
-  },
-  {
-    from: "ui/agent-chat.mjs",
-    to: "host/mcp-ops.mjs",
-    kind: "lazy",
-    reason: "the chat window reads the [agent] providers, and the host does not pass them in yet",
-    fate: "goes",
-    issue: 936,
-  },
 ];

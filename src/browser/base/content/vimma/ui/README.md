@@ -9,8 +9,10 @@ follows the theme.
 
 **May import (layer 1, [ADR-026](../../../../../../docs/adr/026-module-layering.md)):** `core/` only. A widget
 renders what it is given and reports through the callbacks it is passed; it does not reach back
-into the host. `agent-chat.mjs` reaches `agent/`, `config/` and `host/mcp-ops.mjs` lazily,
-listed in `tools/layering/layers.ts` until the host passes those services in.
+into the host. The agent chat window (`agent-chat.mjs`) is passed the agent's services by the
+host that builds it (`AgentChatServices`: the conversations, the agent CLIs, the API keys,
+`config.toml`'s refusal and setup's write to it, the `[agent]` providers); it imports nothing
+from `agent/`, `config/` or `host/`, and not `host/host-services.mjs` either.
 
 **Read more:** [Config and theme](../../../../../../docs/architecture/config-and-theme.md); the chrome UI rules
 in [docs/security.md](../../../../../../docs/security.md) section 6.

@@ -12,6 +12,33 @@ import { moveTabQuestion } from "../core/workspacedefs.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { HostServices } from "./host-services.mjs";
+import { McpHost } from "./mcp-ops.mjs";
+
+/** @import { AgentChatServices } from "../ui/agent-chat.mjs" */
+
+/**
+ * What the chat window (ui/agent-chat.mjs) uses of the agent, config.toml and `[agent]`, which
+ * the host hands it when it builds it: ui/ may import none of those folders (ADR-026). Each is
+ * read from the registry (or from McpHost, in host/) at the moment the window calls, never kept.
+ * @type {Readonly<AgentChatServices>}
+ */
+export const CHAT_SERVICES = Object.freeze({
+  get chat() {
+    return HostServices.agentChat;
+  },
+  get cli() {
+    return HostServices.agentCli;
+  },
+  get keys() {
+    return HostServices.agentKeys;
+  },
+  configRefused: () => HostServices.configRefused(),
+  addAgentProvider: (
+    /** @type {Parameters<AgentChatServices["addAgentProvider"]>[0]} */ provider,
+    /** @type {{ makeDefault: boolean }} */ opts,
+  ) => HostServices.addAgentProvider(provider, opts),
+  agentConfig: () => McpHost.agentConfig,
+});
 
 /** What a tab is called in the transcript: its label, on one line, cut. @param {any} tab */
 const tabTitle = (tab) =>
