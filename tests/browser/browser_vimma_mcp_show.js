@@ -65,12 +65,15 @@ const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = (/** @type {BrowserWindow} */ win = window) =>
   win.gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
 const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
-const ww = (/** @type {BrowserWindow} */ win = window) => WindowWorkspaces.get(win);
+const ww = (/** @type {BrowserWindow} */ win = window) =>
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
 const activeName = (/** @type {BrowserWindow} */ win = window) =>
   ww(win).model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww(win).model.active)
     ?.name;
 const mainId = () =>
-  ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id;
+  /** @type {string} */ (
+    ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.name === "main")?.id
+  );
 const noticeText = (/** @type {BrowserWindow} */ win = window) =>
   win.document.getElementById(NOTICE_ID)?.textContent ?? "";
 /** The line, or null while there is none. */
@@ -109,12 +112,12 @@ async function agentClient(name = "example-agent") {
 /** The oldest waiting question, once there is one. */
 async function question() {
   await until(() => AgentGate.waiting.length > 0, "a question waits");
-  return AgentGate.waiting[0];
+  return /** @type {AskedQuestion} */ (AgentGate.waiting[0]);
 }
 
 /**
  * `agent-show` of `tab`, answered with `answer` through the gate.
- * @param {any} c @param {any} tab @param {object} [answer]
+ * @param {any} c @param {any} tab @param {GateAnswer} [answer]
  */
 async function show(c, tab, answer = { kind: "once" }) {
   const id = c.request("agent-show", { tab: idOf(tab) });
@@ -152,7 +155,7 @@ add_task(async function test_show_switches_to_the_agent_tab_and_ctrl_caret_retur
   const page = gBrowser.selectedTab;
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("v");
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   await until(() => view.panes && leaves(view.panes).length === 2, "main has two panes");
   const pane = gBrowser.selectedTab;
   Assert.notEqual(pane, page, "the new pane has focus");
@@ -349,7 +352,7 @@ add_task(async function test_show_a_pane_of_an_agent_split_in_a_window_behind() 
   await focusContent(gBrowser.selectedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("v");
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   await until(() => view.panes && leaves(view.panes).length === 2, "the agent split has two panes");
   const pane = gBrowser.selectedTab;
   Assert.notEqual(pane, tab, "the new pane has focus");

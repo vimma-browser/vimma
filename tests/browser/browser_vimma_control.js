@@ -378,7 +378,7 @@ add_task(async function test_send_keys_and_state() {
   Assert.equal(result.pending, null, "nothing pending");
   Assert.equal(
     result.workspace,
-    WindowWorkspaces.get(window).status().name,
+    /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).status().name,
     "the active workspace's name (m3-workspaces 7)",
   );
   Assert.equal(typeof result.workspace, "string", "a name, not null, now that workspaces exist");
@@ -425,7 +425,7 @@ add_task(async function test_send_keys_and_state() {
 add_task(async function test_state_panes() {
   await enable();
   const client = await session();
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   const left = gBrowser.selectedTab;
   Assert.ok(view.split("vertical").ok, "split right");
   await TestUtils.waitForCondition(() => view.panes, "the split is laid out");
@@ -473,7 +473,7 @@ add_task(async function test_state_panes() {
 add_task(async function test_state_splits() {
   await enable();
   const client = await session();
-  const view = PaneViews.get(window);
+  const view = /** @type {PaneView} */ (PaneViews.get(window));
   const state = async (/** @type {number} */ id) => {
     const { result } = await client.request(id, "state");
     const v = validateMessage(
@@ -493,9 +493,16 @@ add_task(async function test_state_splits() {
   const [a, b, c, d, lone] = tabs;
   Assert.deepEqual((await state(1)).splits, [], "splits is there, none yet");
 
-  Assert.ok(view.showTabs([a, b], a).ok, "S1: a | b");
+  // Loaded tabs, each with its panel: PaneView's own tab type.
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([a, b]), /** @type {PaneTab} */ (a)).ok,
+    "S1: a | b",
+  );
   gBrowser.selectedTab = lone;
-  Assert.ok(view.showTabs([c, d], d).ok, "S2: c | d, made on a lone tab");
+  Assert.ok(
+    view.showTabs(/** @type {PaneTab[]} */ ([c, d]), /** @type {PaneTab} */ (d)).ok,
+    "S2: c | d, made on a lone tab",
+  );
   await TestUtils.waitForCondition(() => view.splits.shown === 2, "S2 shows");
   const before = view.splits;
   const firefox = () => ({
@@ -574,7 +581,7 @@ add_task(async function test_state_update() {
     usable: true,
     canApply: true,
     busy: true,
-    staged: "staged",
+    staged: /** @type {UpdateStage} */ ("staged"),
     /** @param {string} buildId */
     stage(buildId) {
       return buildId === "20991231000000" ? this.staged : "none";
@@ -1020,7 +1027,11 @@ add_task(async function test_reload_theme() {
     // the built-in vimma palette, in the variant the window's colour scheme picks
     const light = window.matchMedia("(prefers-color-scheme: light)").matches;
     const { dark, light: lightPalette } = BUILTIN_THEMES.vimma;
-    return barBackground() === rgb((light ? lightPalette : dark).dark_background);
+    // The vimma theme has a light variant.
+    return (
+      barBackground() ===
+      rgb((light ? /** @type {typeof dark} */ (lightPalette) : dark).dark_background)
+    );
   }, "back to the built-in theme");
   await IOUtils.remove(dir, { recursive: true });
 });

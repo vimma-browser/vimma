@@ -358,7 +358,7 @@ add_task(async function update_command_says_restart_once_replaced() {
   await freshInstall();
   await serve(await manifest());
   await checkAndReplace();
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageOffer} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.stage, "staged");
   Assert.equal(info.offer.steps.commands.length, 0, "nothing left to run");
   Assert.ok(info.offer.steps.text.includes("Restart Vimma"), info.offer.steps.text);
@@ -386,7 +386,7 @@ add_task(async function a_wrong_hash_leaves_the_file_alone() {
   Assert.deepEqual(await partFiles(), [], "the part file is removed");
   const status = VimmaUpdates.status();
   Assert.equal(status.stage, "none");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.reason, "the AppImage's SHA-512 does not match the signed manifest");
   Assert.ok(info.offer.steps.commands[0].includes("sha512sum -c"), "the steps to do it by hand");
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "an offer, not staged");
@@ -398,7 +398,7 @@ add_task(async function a_larger_download_than_signed_is_refused() {
   await checkAndReplace();
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
   Assert.deepEqual(await partFiles(), [], "the part file is removed");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.ok(/signed manifest says/.test(info.appImage.reason), info.appImage.reason);
 });
 
@@ -413,7 +413,7 @@ add_task(async function an_unwritable_directory_falls_back_to_the_steps() {
   }
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the AppImage is unchanged");
   Assert.deepEqual(await downloads(), [], "nothing was downloaded");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.ok(
     info.appImage.reason.startsWith("cannot write next to the AppImage"),
     info.appImage.reason,
@@ -505,7 +505,7 @@ add_task(async function a_symlinked_appimage_is_not_replaced() {
   }
   Assert.ok(file.isSymlink(), "the link is still a link");
   Assert.equal(await IOUtils.readUTF8(appImage), OLD, "the file it names is unchanged");
-  const info = await VimmaUpdates.describe();
+  const info = /** @type {AppImageRefusal} */ (await VimmaUpdates.describe());
   Assert.equal(info.appImage.reason, "cannot read $APPIMAGE: $APPIMAGE is a symbolic link");
   await IOUtils.remove(link);
 });

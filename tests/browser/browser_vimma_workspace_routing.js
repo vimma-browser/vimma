@@ -24,8 +24,10 @@ const system = () => Services.scriptSecurityManager.getSystemPrincipal();
 
 /** The workspace the app starts with when nothing is configured. */
 const main = () =>
-  WorkspaceStore.definitions.workspaces.find(
-    (/** @type {WorkspaceDefinition} */ w) => w.name === "main",
+  /** @type {ContainedWorkspace} */ (
+    WorkspaceStore.definitions.workspaces.find(
+      (/** @type {WorkspaceDefinition} */ w) => w.name === "main",
+    )
   );
 
 /** @type {string[]} */
@@ -34,7 +36,8 @@ const created = [];
 function workspace(name) {
   const w = WorkspaceStore.addWorkspace({ name, color: "blue", icon: "briefcase" });
   created.push(w.id);
-  return w;
+  // Containers are on: the workspace has its own.
+  return /** @type {ContainedWorkspace} */ (w);
 }
 
 registerCleanupFunction(async () => {

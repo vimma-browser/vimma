@@ -371,7 +371,12 @@ function tabLoading(win, tab) {
   return browser.browsingContext?.currentWindowGlobal?.isInitialDocument ?? true;
 }
 
-/** @type {Record<string, (args: any) => object>} */
+/**
+ * Each command's own return type is kept (`_commands` exposes them to the tests); `run` looks a
+ * command up by name through the Record type.
+ * @typedef {Record<string, (args: any) => object>} Commands
+ */
+/** @satisfies {Commands} */
 const COMMANDS = {
   "send-keys"({ keys }) {
     // The validator has already parsed every chord; parse again for the values.
@@ -882,7 +887,7 @@ class Connection {
     }
     this.running = true;
     try {
-      const result = await COMMANDS[command]?.(m.args);
+      const result = await /** @type {Commands} */ (COMMANDS)[command]?.(m.args);
       this.respond(id, { result });
     } catch (e) {
       if (e instanceof ControlError) {

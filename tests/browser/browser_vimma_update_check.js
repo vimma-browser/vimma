@@ -168,7 +168,7 @@ add_task(async function setup() {
 add_task(async function newer_build_is_offered_and_the_request_is_anonymous() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());
-  const r = await VimmaUpdates.check();
+  const r = /** @type {OfferedUpdate} */ (await VimmaUpdates.check());
   Assert.equal(r.outcome, "offer", r.reason ?? "");
   Assert.equal(r.offer.displayVersion, "9.9.9");
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "the status bar says so");
@@ -227,7 +227,7 @@ add_task(async function refusals_show_after_three_in_a_row() {
   ];
   for (const [text, reason] of cases) {
     await serve(text);
-    const r = await VimmaUpdates.check();
+    const r = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
     Assert.equal(r.outcome, "refused");
     Assert.ok(reason.test(r.reason), r.reason);
   }
@@ -241,7 +241,7 @@ add_task(async function replay_is_refused_and_downgrade_offers_nothing() {
   Assert.equal((await VimmaUpdates.check()).outcome, "offer");
   await until(() => segment()?.textContent === "⇡ 9.9.9 available", "the refusals are over");
   await serve(await manifest({ at: String(serial - 5) }));
-  const replay = await VimmaUpdates.check();
+  const replay = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
   Assert.equal(replay.outcome, "refused");
   Assert.ok(replay.reason.startsWith("replay: "), replay.reason);
   const same = {
@@ -294,7 +294,7 @@ add_task(async function the_vimma_version_running_is_never_offered() {
 add_task(async function a_host_that_does_not_answer_is_quiet() {
   await serve("");
   for (let i = 0; i < 4; i++) {
-    const r = await VimmaUpdates.check();
+    const r = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
     Assert.equal(r.outcome, "unreachable");
     Assert.ok(r.reason.includes("404"), r.reason);
   }
@@ -494,7 +494,7 @@ add_task(async function the_url_may_name_only_platform_and_channel() {
   await fetch(`${HOST}?reset`);
   for (const url of [`${HOST}?v=%VERSION%`, `${HOST}?os=%OS_VERSION%`, `${HOST}?b=%BUILD_ID%`]) {
     await SpecialPowers.pushPrefEnv({ set: [["vimma.update.url", url]] });
-    const r = await VimmaUpdates.check();
+    const r = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
     Assert.equal(r.outcome, "unreachable", url);
     Assert.ok(r.reason.includes("may not use %"), r.reason);
     await SpecialPowers.popPrefEnv();
@@ -502,7 +502,7 @@ add_task(async function the_url_may_name_only_platform_and_channel() {
   await SpecialPowers.pushPrefEnv({
     set: [["vimma.update.url", "ftp://example.com/update.xml"]],
   });
-  const r = await VimmaUpdates.check();
+  const r = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
   Assert.ok(r.reason.includes("not an https URL"), r.reason);
   await SpecialPowers.popPrefEnv();
   Assert.deepEqual(await requests(), [], "no request left");
@@ -636,7 +636,7 @@ add_task(async function update_runs_while_checks_are_held() {
 
 add_task(async function a_serial_from_the_future_is_refused() {
   await serve(await manifest({ at: "20991231000000" }));
-  const r = await VimmaUpdates.check();
+  const r = /** @type {RefusedUpdate} */ (await VimmaUpdates.check());
   Assert.equal(r.outcome, "refused");
   Assert.ok(r.reason.startsWith("future: "), r.reason);
   VimmaUpdates._reset();

@@ -43,6 +43,9 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   `tools/vimma-ctl/src/mcp/instructions.rs`.
 - `npm run gen-mochitest-head`: regenerate `types/mochitest/head.d.ts`, the type check's
   declarations of the shared mochitest helpers, after changing a `tests/browser/head*.js` file.
+- `npm run gen-mochitest-modules`: regenerate `types/mochitest/modules.d.ts`, which types
+  `ChromeUtils.importESModule` for each of Vimma's `chrome://` module URLs in the mochitests,
+  after adding, moving or removing a module in `jar.mn` or vimma-core.
 - `npm run gen-update-keys`: regenerate the pinned update keys
   (`packages/vimma-core/src/updates/update-keys.mjs`) after changing the updater's certificates
   (`configs/updater/*.der`).

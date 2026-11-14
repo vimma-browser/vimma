@@ -168,7 +168,7 @@ server.start(-1);
 const PORT = server.identity.primaryPort;
 const PROVIDER = {
   name: "scripted",
-  kind: "openai",
+  kind: /** @type {"openai"} */ ("openai"),
   endpoint: `http://127.0.0.1:${PORT}/v1`,
   model: "scripted",
   vision: false,

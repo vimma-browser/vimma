@@ -58,12 +58,18 @@ const PAGE = `${getRootDirectory(gTestPath).replace(
 const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
 const notice = () => document.getElementById("vimma-notice")?.textContent ?? "";
 /** The window the host built for this browser window. */
-const hostChat = () => VimmaHost._state(window).agentChat;
+const hostChat = () =>
+  /** @type {NonNullable<ReturnType<typeof VimmaHost._state>>} */ (VimmaHost._state(window))
+    .agentChat;
 /** @param {{ view?: "chat" | "models" | "list" }} [opts] */
 const openChat = (opts = {}) =>
   new Promise((resolve) => hostChat().open({ ...opts, then: () => resolve(undefined) }));
+// `[agent]` without localOnly, keepDays and keepResults, which AgentChat reads as false, null
+// and null when they are left out.
 const SCRIPTED_ONLY = () =>
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(
+    /** @type {AgentConfig} */ ({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] }),
+  );
 
 /** Closes the host's chat window and forgets every conversation and the session's choice. */
 function tidyChat() {
@@ -76,7 +82,9 @@ add_setup(async () => {
   OSKeyStoreTestUtils.setup();
   registerCleanupFunction(() => OSKeyStoreTestUtils.cleanup());
   const saved = McpHost.agentConfig;
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] });
+  McpHost.configureAgent(
+    /** @type {AgentConfig} */ ({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER] }),
+  );
   registerCleanupFunction(() => {
     for (const c of AgentChat.list()) AgentChat.delete(c.id);
     McpHost.configureAgent(saved);
@@ -87,7 +95,7 @@ add_task(async function test_give_hands_over_an_agent_tab_but_never_anothers() {
   const id = AgentChat.create({ provider: PROVIDER }).id;
   const other = AgentChat.create({ provider: PROVIDER }).id;
   const agent = /** @type {any} */ (WorkspaceStore.agent);
-  const ww = WindowWorkspaces.get(window);
+  const ww = /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
   const home = ww.model.active;
   ww.switchTo({ id: agent.id });
   try {
@@ -147,7 +155,13 @@ add_task(async function test_each_windows_status_bar_follows_the_conversations_u
 add_task(async function test_a_new_conversation_takes_the_agent_default_then_the_sessions_pick() {
   tidyChat();
   const second = { ...PROVIDER, name: "second" };
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "second", providers: [PROVIDER, second] });
+  McpHost.configureAgent(
+    /** @type {AgentConfig} */ ({
+      ...AGENT_DEFAULTS,
+      default: "second",
+      providers: [PROVIDER, second],
+    }),
+  );
   try {
     await openChat();
     const chat = hostChat();
@@ -196,6 +210,7 @@ add_task(async function test_the_picker_offers_agent_clis_only_while_they_are_on
 
 add_task(async function test_the_picker_shows_a_keys_end_and_x_deletes_it_after_y() {
   tidyChat();
+  /** @type {AgentProviderConfig} */
   const hosted = {
     name: "hosted",
     kind: "openai",
@@ -204,7 +219,13 @@ add_task(async function test_the_picker_shows_a_keys_end_and_x_deletes_it_after_
     vision: false,
   };
   await AgentKeys.set(hosted.name, "sk-test-0000a1b2", hosted.endpoint);
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: "scripted", providers: [PROVIDER, hosted] });
+  McpHost.configureAgent(
+    /** @type {AgentConfig} */ ({
+      ...AGENT_DEFAULTS,
+      default: "scripted",
+      providers: [PROVIDER, hosted],
+    }),
+  );
   const row = () =>
     hostChat().rows.findIndex(
       (/** @type {{ provider?: { name: string } }} */ r) => r.provider?.name === "hosted",
@@ -241,7 +262,13 @@ add_task(async function test_the_picker_shows_a_keys_end_and_x_deletes_it_after_
 add_task(async function test_the_window_uses_the_services_the_host_hands_it() {
   // A window built with services of the test's own: everything it says comes from them, and
   // from no module it would reach by itself.
-  McpHost.configureAgent({ ...AGENT_DEFAULTS, default: null, providers: [] });
+  McpHost.configureAgent(
+    /** @type {AgentConfig} */ ({
+      ...AGENT_DEFAULTS,
+      default: /** @type {string | null} */ (null),
+      providers: /** @type {AgentProviderConfig[]} */ ([]),
+    }),
+  );
   // A file of its own, in case a write went past the services to config.toml.
   const file = PathUtils.join(PathUtils.tempDir, "vimma-agent-chat-services.toml");
   await SpecialPowers.pushPrefEnv({
@@ -250,6 +277,7 @@ add_task(async function test_the_window_uses_the_services_the_host_hands_it() {
       ["vimma.config.path", file],
     ],
   });
+  /** @type {AgentProviderConfig} */
   const hosted = {
     name: "fake-hosted",
     kind: "openai",
@@ -349,10 +377,7 @@ add_task(async function test_the_window_uses_the_services_the_host_hands_it() {
       "which says they are on",
     );
     await until(
-      () =>
-        chat.rows.find(
-          (/** @type {{ provider: unknown, detail?: string }} */ r) => r.provider === hosted,
-        )?.detail === "key stored · ends …fake",
+      () => chat.rows.find((r) => r.provider === hosted)?.detail === "key stored · ends …fake",
       "the provider's key comes from the host's keys",
     );
   } finally {
