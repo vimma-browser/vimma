@@ -60,7 +60,8 @@ let spawn = runDetached;
 let relaunchPath = /** @type {string | null} */ (null);
 
 /** The test hooks below work only in automation (`Cu.isInAutomation`), never in a release. */
-const inAutomation = () => /** @type {any} */ (globalThis).Cu?.isInAutomation === true;
+const inAutomation = () =>
+  /** @type {{ Cu?: { isInAutomation?: unknown } }} */ (globalThis).Cu?.isInAutomation === true;
 
 /** Services, with the members this module uses that the typings leave out. */
 const services = Services;

@@ -31,7 +31,7 @@ const { PrivateBrowsingUtils } = ChromeUtils.importESModule(
 /** @type {WeakMap<object, { windowId: number, state: PdfState }>} by <browser> */
 const states = new WeakMap();
 
-/** @type {Set<(browser: any) => void>} */
+/** @type {Set<(browser: MozBrowser) => void>} */
 const listeners = new Set();
 
 /**
@@ -99,7 +99,7 @@ const outlines = new WeakMap();
 /** @type {WeakMap<object, number>} by <browser>: the window global asked for its outline */
 const asked = new WeakMap();
 
-/** @type {Set<(browser: any, outline: PdfOutline | null) => void>} */
+/** @type {Set<(browser: MozBrowser, outline: PdfOutline | null) => void>} */
 const outlineListeners = new Set();
 
 /**
@@ -114,7 +114,7 @@ Services.obs.addObserver(() => marks.private.clear(), "last-pb-context-exited");
 
 /**
  * The marks of `browser`'s kind of window.
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 const marksFor = (browser) => {
   const win = browser?.ownerDocument?.defaultView;
@@ -122,8 +122,15 @@ const marksFor = (browser) => {
 };
 
 /**
+ * The <browser> a top context is in: in the parent, its embedder element.
+ * @param {CanonicalBrowsingContext | null} bc
+ * @returns {MozBrowser | null}
+ */
+const topBrowser = (bc) => /** @type {MozBrowser | null} */ (bc?.embedderElement ?? null);
+
+/**
  * The top document's window global when it is the pdf.js viewer, from the parent's view.
- * @param {any} browser  a tab's <browser>
+ * @param {MozBrowser | null} browser  a tab's <browser>
  */
 function viewerGlobal(browser) {
   const wg = browser?.browsingContext?.currentWindowGlobal;
@@ -137,14 +144,14 @@ function viewerGlobal(browser) {
 
 /**
  * The viewers' actors that took the token sheet, to send it again on a theme change (V12).
- * @type {Set<any>}
+ * @type {Set<JSWindowActorParent>}
  */
 const themed = new Set();
 
 /** A theme change: each viewer still showing its document gets the new token sheet. */
 function pushTheme() {
   for (const actor of themed) {
-    const browser = actor.browsingContext?.embedderElement;
+    const browser = topBrowser(actor.browsingContext);
     if (!browser || viewerGlobal(browser) !== actor.manager) {
       themed.delete(actor);
       continue;
@@ -182,7 +189,7 @@ export const PdfOps = {
   /**
    * The keymap context for `browser`: `pdf` while its top document is the pdf.js viewer
    * (ADR-024). Never from a report of the child, and never for a viewer in a frame (V2).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {Context}
    */
   context(browser) {
@@ -191,7 +198,7 @@ export const PdfOps = {
 
   /**
    * The viewer's last state for `browser`'s current document, or null.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {PdfState | null}
    */
   state(browser) {
@@ -204,15 +211,15 @@ export const PdfOps = {
    * A state message from a VimmaParent. Taken only from the actor of the top document's current
    * window global, when that document is the viewer (V2); a record out of bounds clears the
    * state (V6).
-   * @param {any} actor  the VimmaParent
+   * @param {JSWindowActorParent} actor  the VimmaParent
    * @param {unknown} data
    */
   onState(actor, data) {
     const bc = actor.browsingContext;
     if (!bc || bc.parent) return;
-    const browser = bc.embedderElement;
+    const browser = topBrowser(bc);
     const wg = viewerGlobal(browser);
-    if (!wg || wg !== actor.manager) return;
+    if (!browser || !wg || wg !== actor.manager) return;
     const state = parsePdfState(data);
     const old = states.get(browser);
     // Another document, or another PDF pdf.js opened in the same viewer: the outline read from
@@ -243,7 +250,7 @@ export const PdfOps = {
   /**
    * Sends the viewer in `browser` one operation (V7): a name and a number, to the actor of the
    * top document only when the parent itself sees the pdf.js viewer there (V2).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {string} op  one of PDF_OPS
    * @param {number} [n]
    * @returns {boolean} false when `browser` does not show the PDF viewer
@@ -294,7 +301,7 @@ export const PdfOps = {
    * inside the PDF the tab shows (decision 9), or null. pdf.js records its jumps with pushState
    * while Vimma takes the keys in chrome, so the entries carry no user interaction, and goBack /
    * goForward would skip them all (browser.navigation.requireUserInteraction).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {number} delta  -1 back, 1 forward; any other step is not a jump
    * @returns {number | null}
    */
@@ -315,13 +322,13 @@ export const PdfOps = {
   /**
    * `m{c}` (decision 11): asks the viewer where its view is and keeps that as mark `c` of the
    * document, in memory only (V11).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {string} c  a letter or digit
    * @returns {Promise<boolean>} false when nothing was kept
    */
   async setMark(browser, c) {
     const wg = viewerGlobal(browser);
-    const key = wg && pdfDocumentKey(wg.documentURI.spec);
+    const key = wg && pdfDocumentKey(wg.documentURI?.spec ?? "");
     if (!wg || !key || !isPdfMarkChar(c)) return false;
     /** @type {unknown} */
     let raw;
@@ -345,13 +352,13 @@ export const PdfOps = {
   /**
    * `'{c}` (decision 11): sends the viewer mark `c` of its document as an `XYZ` destination,
    * which pdf.js records as a jump (decision 9).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {string} c
    * @returns {"went" | "none" | "not-pdf"}
    */
   goToMark(browser, c) {
     const wg = viewerGlobal(browser);
-    const key = wg && pdfDocumentKey(wg.documentURI.spec);
+    const key = wg && pdfDocumentKey(wg.documentURI?.spec ?? "");
     if (!wg || !key) return "not-pdf";
     const all = marksFor(browser);
     const mine = all.get(key);
@@ -373,8 +380,8 @@ export const PdfOps = {
    * The page an internal link of the PDF goes to, for `F` (decision 16): asked of the viewer
    * that labelled it, by the hint's own generation and index, never by its URL (V7); 0 when
    * `target` is not a link of `browser`'s viewer or does not resolve.
-   * @param {any} browser
-   * @param {{ gen: number, id: number, bc: any, wg: any }} target  a hint target
+   * @param {MozBrowser} browser
+   * @param {{ gen: number, id: number, bc: CanonicalBrowsingContext, wg: WindowGlobalParent }} target  a hint target
    * @returns {Promise<number>}
    */
   async linkPage(browser, target) {
@@ -396,7 +403,7 @@ export const PdfOps = {
   },
 
   /**
-   * @param {(browser: any) => void} fn  called after a tab's PDF state changes
+   * @param {(browser: MozBrowser) => void} fn  called after a tab's PDF state changes
    * @returns {() => void} unsubscribe
    */
   subscribe(fn) {
@@ -409,7 +416,7 @@ export const PdfOps = {
    * the parent's own view, never the viewer's count of the PDFs it opened, which a compromised
    * viewer could raise to have its outline read and shown again (V8). Null unless it is the
    * viewer with a state.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {string | null}
    */
   documentKey(browser) {
@@ -420,20 +427,20 @@ export const PdfOps = {
   /**
    * The token sheet for a VimmaParent's `Vimma:PdfTheme` (decision 20, V12): only for the actor
    * of the top viewer's current window global, which then gets every later theme change too.
-   * @param {any} actor  the VimmaParent
+   * @param {JSWindowActorParent} actor  the VimmaParent
    * @returns {string | null}
    */
   theme(actor) {
     const bc = actor.browsingContext;
     if (!bc || bc.parent) return null;
-    if (viewerGlobal(bc.embedderElement) !== actor.manager) return null;
+    if (viewerGlobal(topBrowser(bc)) !== actor.manager) return null;
     themed.add(actor);
     return ThemeHost.css;
   },
 
   /**
    * A VimmaParent went with its document: no more theme changes for it.
-   * @param {any} actor
+   * @param {JSWindowActorParent} actor
    */
   dropActor(actor) {
     themed.delete(actor);
@@ -442,7 +449,7 @@ export const PdfOps = {
   /**
    * The outline of `browser`'s current document, once read, or null. An outline of a document
    * the tab has left is dropped here (V11).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {PdfOutline | null}
    */
   outline(browser) {
@@ -455,7 +462,7 @@ export const PdfOps = {
 
   /**
    * Drops `browser`'s outline and any outline asked for: its tab left the document (V11).
-   * @param {any} browser
+   * @param {MozBrowser} browser
    */
   forget(browser) {
     outlines.delete(browser);
@@ -468,7 +475,7 @@ export const PdfOps = {
    * viewer's principal, which triggers the load, with no referrer and no fixup. A load with the
    * system principal would look typed (no Sec-Fetch-Site, SameSite=Strict cookies sent) and could
    * be routed to another workspace.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {string} url
    * @returns {boolean} false when refused
    */
@@ -495,7 +502,7 @@ export const PdfOps = {
   /**
    * Asks the viewer in `browser` for its outline, on the user's key (V8); the answer comes to
    * the outline listeners. An outline already read is not asked for again.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {boolean} false when `browser` does not show the PDF viewer
    */
   askOutline(browser) {
@@ -510,15 +517,15 @@ export const PdfOps = {
    * current document, and only after the parent asked that document for it (V8). It is parsed
    * against the page count the parent holds; an outline outside its bounds is dropped whole,
    * and the listeners hear null.
-   * @param {any} actor  the VimmaParent
+   * @param {JSWindowActorParent} actor  the VimmaParent
    * @param {unknown} data
    */
   onOutline(actor, data) {
     const bc = actor.browsingContext;
     if (!bc || bc.parent) return;
-    const browser = bc.embedderElement;
+    const browser = topBrowser(bc);
     const wg = viewerGlobal(browser);
-    if (!wg || wg !== actor.manager || asked.get(browser) !== wg.innerWindowId) return;
+    if (!browser || !wg || wg !== actor.manager || asked.get(browser) !== wg.innerWindowId) return;
     asked.delete(browser);
     const state = this.state(browser);
     const outline = state ? parsePdfOutline(data, state.pages) : null;
@@ -534,7 +541,7 @@ export const PdfOps = {
   },
 
   /**
-   * @param {(browser: any, outline: PdfOutline | null) => void} fn  called with an outline asked
+   * @param {(browser: MozBrowser, outline: PdfOutline | null) => void} fn  called with an outline asked
    *   for on the user's key, or null when it was malformed
    * @returns {() => void} unsubscribe
    */
@@ -590,15 +597,15 @@ const PDF_ACTIONS = Object.freeze({
 
 /**
  * The host's runners for the PDF viewer's actions.
- * @param {(browser: any, text: string) => void} notice
- * @returns {Record<string, (browser: any, action: { count?: number }) => void>}
+ * @param {(browser: MozBrowser, text: string) => void} notice
+ * @returns {Record<string, (browser: MozBrowser, action: { count?: number }) => void>}
  */
 export function pdfRunners(notice) {
   return {
     ...Object.fromEntries(
       Object.entries(PDF_ACTIONS).map(([id, [op, sign = 1]]) => [
         id,
-        (/** @type {any} */ browser, /** @type {{ count?: number }} */ action) => {
+        (/** @type {MozBrowser} */ browser, /** @type {{ count?: number }} */ action) => {
           // Zoom steps carry their direction; every other count is a count (0 for none).
           const count = action.count ?? 0;
           const n = op === "zoom" ? sign * (count || 1) : count;

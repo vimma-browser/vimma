@@ -65,6 +65,25 @@ export const BROWSER_KEYS = Object.freeze({
 export const NO_DEVTOOLS = "Developer tools are off in this browser";
 
 /**
+ * The XUL element `id` of `win`'s document (a `<command>`, a `<key>`), or null without one or
+ * when it is not a XUL element: only those have doCommand (XULElement.webidl).
+ * @param {BrowserWindow} win
+ * @param {string} id
+ * @returns {XULElement | null}
+ */
+export function xulElementById(win, id) {
+  const el = win.document.getElementById(id);
+  return el && isXulElement(el) ? el : null;
+}
+
+/**
+ * @param {Element} el
+ * @returns {el is XULElement}
+ */
+const isXulElement = (el) =>
+  typeof (/** @type {Partial<XULElement>} */ (el).doCommand) === "function";
+
+/**
  * Runs the window's `<command>` `id` as Firefox's key would: nothing when it is disabled
  * (Reader View on a page that has none, Stop with nothing loading).
  * @param {BrowserWindow} win
@@ -72,7 +91,7 @@ export const NO_DEVTOOLS = "Developer tools are off in this browser";
  * @returns {boolean} whether it ran
  */
 export function runCommand(win, id) {
-  const el = /** @type {any} */ (win.document.getElementById(id));
+  const el = xulElementById(win, id);
   if (!el || el.getAttribute("disabled") === "true") return false;
   el.doCommand();
   return true;
@@ -86,7 +105,7 @@ export function runCommand(win, id) {
  * @returns {boolean} false when the window has no such key
  */
 export function runKey(win, id) {
-  const el = /** @type {any} */ (win.document.getElementById(id));
+  const el = xulElementById(win, id);
   if (!el) return false;
   const disabled = el.getAttribute("disabled");
   if (disabled !== null) el.removeAttribute("disabled");
@@ -120,7 +139,6 @@ export function toggleCaretBrowsing(win) {
   const SHORTCUT = "accessibility.browsewithcaret_shortcut.enabled";
   const WARN = "accessibility.warn_on_browsewithcaret";
   const ON = "accessibility.browsewithcaret";
-  const { Services } = /** @type {any} */ (globalThis);
   if (!Services.prefs.getBoolPref(SHORTCUT, true) || caretPrompts.has(win)) return;
   const on = Services.prefs.getBoolPref(ON, false);
   if (Services.prefs.getBoolPref(WARN, true) && !on) {
@@ -129,22 +147,20 @@ export function toggleCaretBrowsing(win) {
     let pressed;
     try {
       caretPrompts.add(win);
-      const [title, message, checkbox] = /** @type {any} */ (
-        win
-      ).gBrowser.tabLocalization.formatValuesSync([
+      const [title, message, checkbox] = win.gBrowser.tabLocalization.formatValuesSync([
         "tabbrowser-confirm-caretbrowsing-title",
         "tabbrowser-confirm-caretbrowsing-message",
         "tabbrowser-confirm-caretbrowsing-checkbox",
       ]);
       pressed = prompt.confirmEx(
         win,
-        title,
-        message,
+        title ?? null,
+        message ?? null,
         prompt.STD_YES_NO_BUTTONS | prompt.BUTTON_POS_1_DEFAULT,
         null,
         null,
         null,
-        checkbox,
+        checkbox ?? null,
         check,
       );
     } catch {
@@ -240,7 +256,7 @@ export function browserRunners(say) {
 export function openSettings(win, url) {
   const w = win;
   const system = Services.scriptSecurityManager.getSystemPrincipal();
-  const tab = w.gBrowser.visibleTabs.find((/** @type {any} */ t) =>
+  const tab = w.gBrowser.visibleTabs.find((t) =>
     /^about:(preferences|settings)$/.test(t.linkedBrowser.currentURI.specIgnoringRef),
   );
   if (!tab) {

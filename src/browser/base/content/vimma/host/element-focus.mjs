@@ -11,7 +11,7 @@
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { NO_TEXT, NOTHING_TO_YANK, yankedText } from "./copy-mode.mjs";
 
-/** @import { HintTarget } from "../actors/VimmaActors.sys.mjs" */
+/** @import { FrameRef, HintTarget } from "../actors/VimmaActors.sys.mjs" */
 /** @import { HintOverlay } from "../ui/hint-overlay.mjs" */
 /** @import { BlockMoved } from "../core/hints.mjs" */
 /** @typedef {{ x: number, y: number, width: number, height: number }} Rect */
@@ -23,9 +23,9 @@ export const NO_HIGHLIGHT = "no highlight: the page marks this block unselectabl
 
 /**
  * @typedef {object} ElementSession
- * @property {any} browser  the <browser> the block is in
+ * @property {MozBrowser} browser  the <browser> the block is in
  * @property {HintTarget} target  the label's target: its frame, collection and id
- * @property {[{ bc: any, wg: any }, ...{ bc: any, wg: any }[]]} chain  the block's frame,
+ * @property {[FrameRef, ...FrameRef[]]} chain  the block's frame, with the document it had,
  *   then each frame around it
  * @property {string} kind
  * @property {number} length
@@ -41,7 +41,7 @@ export const NO_HIGHLIGHT = "no highlight: the page marks this block unselectabl
  * @property {HintOverlay} overlay  the window's hint layer, which draws the outline too
  * @property {(text: string) => void} notify  the window's notice
  * @property {() => void} changed  the mode or the status bar's segment changed
- * @property {(browser: any, mode: "normal" | "visual") => void} setMode  the tab's page mode
+ * @property {(browser: MozBrowser, mode: "normal" | "visual") => void} setMode  the tab's page mode
  */
 
 /** One window's element focus. */
@@ -71,7 +71,7 @@ export class ElementFocus {
   /**
    * A label chose `target`: the frame keeps its block and the outline is drawn. The mode is
    * ELEMENT at once, so keys typed meanwhile are this mode's; the frame takes them in order.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @param {HintTarget} target
    */
   async start(browser, target) {
@@ -182,8 +182,8 @@ export class ElementFocus {
    * page went away (`gone`). Only the frames of the chain, with the documents they had, for the
    * collection the block came from, are heard.
    * @param {"moved" | "gone"} what
-   * @param {any} bc  the reporting frame
-   * @param {any} wg  its WindowGlobalParent
+   * @param {CanonicalBrowsingContext} bc  the reporting frame
+   * @param {WindowGlobalParent} wg  its WindowGlobalParent
    * @param {unknown} gen
    */
   onReport(what, bc, wg, gen) {
@@ -196,7 +196,7 @@ export class ElementFocus {
 
   /**
    * A frame's document went away (VimmaParent): a focus in it or inside it ends.
-   * @param {any} wg  the WindowGlobalParent
+   * @param {WindowGlobalParent} wg  the WindowGlobalParent
    */
   onFrameGone(wg) {
     if (this.session?.chain.some((f) => f.wg === wg)) this.leave();

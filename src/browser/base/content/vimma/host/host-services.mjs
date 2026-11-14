@@ -29,8 +29,8 @@
  * @property {(listener: () => void) => void} removeListener
  * @property {() => void} stopAll
  * @property {() => { id: number, running: boolean, budget: BudgetStatus | null }[]} list
- * @property {(tab: any) => number | null} ownerOf  the conversation that owns a tab, or null
- * @property {(id: number, tab: any, title: string) => void} give
+ * @property {(tab: MozTabbrowserTab) => number | null} ownerOf  the conversation that owns a tab, or null
+ * @property {(id: number, tab: MozTabbrowserTab, title: string) => void} give
  * @typedef {HostChatService & ChatConversations} AgentChatService
  */
 
@@ -38,9 +38,10 @@
  * @typedef {object} Services
  * @property {AgentChatService} agentChat  agent/AgentChat.sys.mjs's `AgentChat`, served as the
  *   members the host and the chat window use only
- * @property {(download: any) => boolean} isAgentDownload  ctl/AgentDownloads.sys.mjs's test
- *   (docs/security/12-agents-mcp.md M11): the downloads picker opens, retries, unblocks and follows
- *   none
+ * @property {(download: { source: { userContextId?: number, browsingContextId?: number },
+ *   target: { path?: string, partFilePath?: string | null } }) => boolean} isAgentDownload
+ *   ctl/AgentDownloads.sys.mjs's test (docs/security/12-agents-mcp.md M11): the downloads picker
+ *   opens, retries, unblocks and follows none
  * @property {(rule: { domain: string, workspace: string }) => Promise<string | null>} addRoute
  *   config/ConfigHost.sys.mjs's: appends a `[[routes]]` rule and reads the file again; why not,
  *   or null
