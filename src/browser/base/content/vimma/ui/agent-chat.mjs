@@ -621,7 +621,7 @@ export class AgentChatWindow {
           if ("refused" in r) {
             if (!input.value) input.value = text;
             // The model is not there: another is picked, and the message waits for it.
-            const stayed = this.opened && this.conversation === id && this.listed === sentAt;
+            const stayed = this.focused && this.conversation === id && this.listed === sentAt;
             if (r.pick && stayed) this.open({ view: "models" });
             const kept = r.pick && !stayed ? "; the message is still in the input" : "";
             this.host.say(`agent: ${r.refused}${kept}`, true);
@@ -644,7 +644,7 @@ export class AgentChatWindow {
       // field nor Behaviour 5's notice over what they went to, and nothing is sent: the
       // message stays in the input, to be sent with Enter again (issue #1005).
       const left = () => {
-        if (this.listed === shownAt) return false;
+        if (this.listed === shownAt && this.focused) return false;
         this.host.say(
           "agent: not sent: the chat was left before its key was read; the message is still in the input",
         );
@@ -930,7 +930,9 @@ export class AgentChatWindow {
     const promptedAt = this.prompted;
     const stale = () => {
       if (this.picks !== pickAt) return true;
-      if (this.listed === shownAt && this.prompted === promptedAt) return false;
+      // Focus gone from the window (a page, the address bar, the prompt line) counts as left;
+      // the window losing OS focus to a keyring prompt does not, as activeElement stays.
+      if (this.listed === shownAt && this.prompted === promptedAt && this.focused) return false;
       const why =
         shownAt === this.reloadedAt
           ? "the model list was reloaded after a key was deleted; pick it again"
@@ -1183,11 +1185,12 @@ export class AgentChatWindow {
    * @param {"anthropic" | "openai"} kind
    */
   addProvider(kind) {
-    this.prompted++;
     const localOnly = !!this.services.agentConfig()?.localOnly;
     /** @param {string} endpoint */
-    const askModel = (endpoint) =>
-      this.host.prompt({
+    const askModel = (endpoint) => {
+      // The prompt line takes focus: no pick still waiting is used under it (#1005).
+      this.prompted++;
+      return this.host.prompt({
         label: "agent model: ",
         value: kind === "anthropic" ? ANTHROPIC_MODEL : "",
         submit: (model) => {
@@ -1205,11 +1208,13 @@ export class AgentChatWindow {
           });
         },
       });
+    };
     if (kind === "anthropic") {
       const refused = checkEndpoint(ANTHROPIC_ENDPOINT, { localOnly });
       if (refused) return this.host.say(`agent: ${refused}`, true);
       return askModel(ANTHROPIC_ENDPOINT);
     }
+    this.prompted++;
     return this.host.prompt({
       label: "agent endpoint (https://…/v1): ",
       submit: (text) => {
@@ -1283,7 +1288,8 @@ export class AgentChatWindow {
     } finally {
       this.storing = false;
     }
-    if (this.listed === shownAt) {
+    // A user who clicked away (a page, the address bar) keeps their focus, and the model too.
+    if (this.listed === shownAt && this.focused) {
       this.useProvider(provider);
       this.insert();
     }

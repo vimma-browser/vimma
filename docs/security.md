@@ -2189,11 +2189,13 @@ for the user.
   forgets which provider it was for, leaving nothing to bring back with an undo. A model pick,
   a send, a send's refusal or a key's store that answers after the user left the list or the
   field it came from (a key hint can wait on the keyring, a local model's preparation for a
-  minute; a prompt line a picker row opens counts as leaving the list) **must not** switch the
-  view or move focus, so it never opens the key field or the picker over another view nor
-  leaves the field or the prompt the user is typing in: the pick is not used, the message is
-  not sent (or, refused, stays in the input), and the stored key changes no conversation's
-  model; of two picks, the later is used. A second key entered while one is being stored is
+  minute; a prompt line a picker row opens, and focus moving out of the window to a page, the
+  address bar or anywhere else, count as leaving; the browser window losing OS focus, as to a
+  keyring prompt, does not) **must not** switch the view or move focus, so it never opens the
+  key field or the picker over another view nor takes focus from the field, prompt or page the
+  user is typing in: the pick is not used, the message is not sent (or, refused, stays in the
+  input), each with a notice, and the stored key changes no conversation's model; of two
+  picks, the later is used. A second key entered while one is being stored is
   not stored, and a notice without its text says so. A provider that needs a key and has none
   for its endpoint **must** be asked for it, and `AgentChat.send` **must** refuse it, before any
   request is sent; an endpoint **must not** carry a query or a fragment; `x` in the picker
@@ -2223,6 +2225,11 @@ for the user.
   [`test_a_send_whose_key_hint_fails_asks_for_the_key_only_if_the_user_stayed`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_failed_preparation_replaced_by_a_later_pick_says_nothing`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_a_pick_on_a_list_reloaded_after_a_key_deletion_says_so`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_answering_after_focus_left_the_window_takes_no_focus`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_pick_whose_browser_window_lost_os_focus_is_still_used`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_send_or_refusal_answering_after_focus_left_moves_nothing`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_key_stored_after_focus_left_the_window_takes_no_focus`](../tests/browser/browser_vimma_agent_picker_race.js),
+  [`test_a_refused_add_provider_leaves_a_waiting_pick_alone`](../tests/browser/browser_vimma_agent_picker_race.js),
   [`an endpoint with a query or a fragment is refused`](../packages/vimma-core/test/agent-providers.test.mjs)
 - M47. A stored conversation **must** hold only the user's messages, each task's final reply and
   Vimma's own task summaries (with its title, provider, model and times), never a tool result,

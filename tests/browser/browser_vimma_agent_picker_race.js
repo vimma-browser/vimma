@@ -112,11 +112,12 @@ const until = (cond, msg) => TestUtils.waitForCondition(cond, msg, 20, 250);
  * prompts, questions and notices, the models used and the messages sent are recorded. Every
  * question is answered y.
  * @param {{ providers: object[], notice?: boolean, sendWaits?: boolean,
- *   prompt?: (o: Prompt) => void }} opts  the [agent] providers the services report; `notice`:
+ *   prompt?: (o: Prompt) => void, localOnly?: boolean }} opts  the [agent] providers the services report; `notice`:
  *   the conversation's first send needs Behaviour 5's notice; `sendWaits`: each send's answer is
- *   a promise the test resolves (in `sendAnswers`); `prompt`: also hands each prompt to this
+ *   a promise the test resolves (in `sendAnswers`); `prompt`: also hands each prompt to this;
+ *   `localOnly`: config.toml's [agent] local_only
  */
-function fakeWindow({ providers, notice = false, sendWaits = false, prompt }) {
+function fakeWindow({ providers, notice = false, sendWaits = false, prompt, localOnly = false }) {
   const conversation = {
     id: 1,
     conn: "fake",
@@ -226,7 +227,7 @@ function fakeWindow({ providers, notice = false, sendWaits = false, prompt }) {
     },
     configRefused: () => ({ errors: [], file: "fake.toml" }),
     addAgentProvider: async () => ({ error: "the test keeps config.toml" }),
-    agentConfig: () => ({ default: null, localOnly: false, providers }),
+    agentConfig: () => ({ default: null, localOnly, providers }),
   };
   /** @type {Prompt[]} */
   const prompts = [];
@@ -824,8 +825,11 @@ const RELOADED = (/** @type {string} */ label) =>
   `agent: ${label} not used: the model list was reloaded after a key was deleted; pick it again`;
 const STILL_STORING = "agent: a key is still being stored; enter this one again once it is";
 
-/** Resolves after the window's timers of 0 ms (the prompt's focusout check) have run. */
-const afterTimers = () => new Promise((r) => window.setTimeout(r, 10));
+/**
+ * Resolves after a 0 ms timer queued now has run: after the prompt's focusout check, which a
+ * focus change queues as a 0 ms timer before this one (timers of one delay run in order).
+ */
+const afterTimers = () => new Promise((r) => window.setTimeout(r, 0));
 
 add_task(async function test_a_refused_send_opens_the_picker_only_if_the_user_stayed() {
   const REFUSED = { refused: "small is gone; pick another model", pick: true };
@@ -933,6 +937,7 @@ add_task(async function test_a_prompt_opened_from_the_picker_ends_a_pick_still_w
     Assert.equal(g.chat.view, "models", "the transcript does not open under the prompt");
     Assert.deepEqual(g.chosen, [], "the model is not used");
     Assert.deepEqual(g.places, [], "nor loaded");
+    Assert.equal(g.said.at(-1), NOT_USED("ollama · llama"), "and the user is told");
   } finally {
     g.chat.destroy();
   }
@@ -1036,6 +1041,232 @@ add_task(async function test_a_pick_on_a_list_reloaded_after_a_key_deletion_says
     await afterWindow([f.hints[1].promise]);
     Assert.deepEqual(f.chosen, [], "the pick made before the deletion is not used");
     Assert.equal(f.said.at(-1), RELOADED("hosted · big"), "and the notice says why");
+  } finally {
+    f.chat.destroy();
+  }
+});
+
+/** What the address bar holds. */
+const addressBar = () => /** @type {string} */ (/** @type {any} */ (gURLBar).value);
+
+/**
+ * Moves focus out of the chat window to the address bar and types there, as a user who clicks
+ * into a field elsewhere does; returns what the address bar holds.
+ * @param {string} text
+ */
+function typeElsewhere(text) {
+  gURLBar.focus();
+  EventUtils.sendString(text);
+  return addressBar();
+}
+
+/** @param {string} what */
+function assertFocusStaysElsewhere(what) {
+  Assert.equal(
+    document.activeElement,
+    /** @type {any} */ (gURLBar).inputField,
+    `${what}: focus stays in the address bar`,
+  );
+}
+
+function revertAddressBar() {
+  const bar = /** @type {any} */ (gURLBar);
+  bar.handleRevert();
+  bar.view.close();
+  bar.blur();
+}
+
+add_task(async function test_a_pick_answering_after_focus_left_the_window_takes_no_focus() {
+  /**
+   * The picker on LOCAL, HOSTED and ollama, with `label` picked and focus gone elsewhere.
+   * @param {string} label
+   * @param {string | null} hint  HOSTED's key hint as the picker opens
+   */
+  const pickedThenAway = async (label, hint) => {
+    const f = fakeWindow({ providers: [LOCAL, HOSTED] });
+    f.chat.open({ view: "models" });
+    f.hints[0].resolve(hint);
+    f.probes[0].resolve(OLLAMA);
+    f.states[0].resolve(new Map());
+    await until(() => drawn(f.chat).includes("ollama · llama"), "the probe's models are listed");
+    selectRow(f.chat, (r) => r.label === label);
+    press(f.chat, "Enter");
+    Assert.equal(document.activeElement, f.chat.log, "the picker keeps focus after Enter");
+    Assert.ok(f.chat.focused, "and the window counts as focused");
+    Assert.equal(typeElsewhere("abc"), "abc", "the user types in the address bar");
+    return f;
+  };
+  /**
+   * @param {ReturnType<typeof fakeWindow>} f @param {string} label @param {string} what
+   */
+  const assertUntouched = (f, label, what) => {
+    assertFocusStaysElsewhere(what);
+    Assert.equal(f.chat.view, "models", `${what}: the view stays`);
+    Assert.equal(f.chat.keyFor, null, `${what}: no key is asked for`);
+    Assert.deepEqual(f.chosen, [], `${what}: the model is not used`);
+    Assert.deepEqual(f.places, [], `${what}: nor loaded`);
+    Assert.equal(f.said.at(-1), NOT_USED(label), `${what}: and the user is told`);
+    EventUtils.sendString("def");
+    Assert.equal(addressBar(), "abcdef", `${what}: what is typed next stays in the address bar`);
+    Assert.equal(keyField(f.chat).value, "", `${what}: none of it in the key field`);
+    Assert.equal(
+      /** @type {HTMLTextAreaElement} */ (f.chat.input).value,
+      "",
+      `${what}: nor in the chat input`,
+    );
+  };
+
+  info("a hosted model whose key hint says there is no key");
+  let f = await pickedThenAway("hosted · big", "no key");
+  try {
+    f.hints[1].resolve(null);
+    await afterWindow([f.hints[1].promise]);
+    assertUntouched(f, "hosted · big", "no key");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+
+  info("a hosted model whose key is there");
+  f = await pickedThenAway("hosted · big", "key stored · ends …abcd");
+  try {
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    assertUntouched(f, "hosted · big", "a stored key");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+
+  info("a local model prepared after focus left");
+  f = await pickedThenAway("ollama · llama", "key stored · ends …abcd");
+  try {
+    f.prepares[0].resolve({ model: "llama" });
+    await afterWindow([f.prepares[0].promise]);
+    assertUntouched(f, "ollama · llama", "a local model");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_pick_whose_browser_window_lost_os_focus_is_still_used() {
+  const f = fakeWindow({ providers: [LOCAL, HOSTED] });
+  /** @type {any} */
+  let other = null;
+  try {
+    f.chat.open({ view: "models" });
+    f.hints[0].resolve("key stored · ends …abcd");
+    selectRow(f.chat, (r) => r.label === "hosted · big");
+    press(f.chat, "Enter");
+    info("another window takes OS focus, as a keyring prompt does, while the hint is read");
+    other = await BrowserTestUtils.openNewBrowserWindow();
+    Assert.ok(!document.hasFocus(), "the browser window has lost OS focus");
+    Assert.equal(document.activeElement, f.chat.log, "its focused element is still the picker");
+    Assert.ok(f.chat.focused, "so the chat window still counts as focused");
+    f.hints[1].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[1].promise]);
+    Assert.deepEqual(f.chosen, [HOSTED], "the pick is used");
+    Assert.equal(f.chat.view, "chat", "and the transcript shows, as before");
+  } finally {
+    if (other) await BrowserTestUtils.closeWindow(other);
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_send_or_refusal_answering_after_focus_left_moves_nothing() {
+  info("a send whose key hint answers after focus left");
+  const f = fakeWindow({ providers: [HOSTED], notice: true });
+  try {
+    f.chat.open();
+    /** @type {HTMLTextAreaElement} */ (f.chat.input).value = "hello";
+    press(f.chat, "Enter");
+    typeElsewhere("abc");
+    f.hints[0].resolve("key stored · ends …abcd");
+    await afterWindow([f.hints[0].promise]);
+    assertFocusStaysElsewhere("a late hint");
+    Assert.deepEqual(f.asked, [], "no notice is asked");
+    Assert.deepEqual(f.sends, [], "nothing is sent");
+    Assert.equal(
+      /** @type {HTMLTextAreaElement} */ (f.chat.input).value,
+      "hello",
+      "the message stays in the input",
+    );
+    Assert.ok(f.said.includes(NOT_SENT), "and the user is told");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+
+  info("a refusal that answers after focus left");
+  const g = fakeWindow({ providers: [LOCAL], sendWaits: true });
+  try {
+    g.chat.open();
+    /** @type {HTMLTextAreaElement} */ (g.chat.input).value = "hello";
+    press(g.chat, "Enter");
+    typeElsewhere("abc");
+    g.sendAnswers[0].resolve({ refused: "small is gone; pick another model", pick: true });
+    await afterWindow([g.sendAnswers[0].promise]);
+    assertFocusStaysElsewhere("a late refusal");
+    Assert.equal(g.chat.view, "chat", "the picker does not open");
+    Assert.equal(
+      /** @type {HTMLTextAreaElement} */ (g.chat.input).value,
+      "hello",
+      "the message is back in the input",
+    );
+    Assert.equal(
+      g.said.at(-1),
+      "agent: small is gone; pick another model; the message is still in the input",
+      "and the user is told",
+    );
+    EventUtils.sendString("def");
+    Assert.equal(addressBar(), "abcdef", "what is typed next stays in the address bar");
+  } finally {
+    revertAddressBar();
+    g.chat.destroy();
+  }
+});
+
+add_task(async function test_a_key_stored_after_focus_left_the_window_takes_no_focus() {
+  const f = fakeWindow({ providers: [LOCAL] });
+  try {
+    f.chat.open();
+    f.chat.askKey(ANTHROPIC);
+    typeKey(f.chat, "sk-ant-one");
+    press(f.chat, "Enter");
+    typeElsewhere("abc");
+    f.sets[0].resolve();
+    await afterWindow([f.sets[0].promise]);
+    f.hints[0].resolve("key stored · ends …-one");
+    await until(() => f.said.some((s) => s.startsWith("agent: anthropic:")), "it is said");
+    assertFocusStaysElsewhere("a late store");
+    Assert.deepEqual(f.chosen, [], "the conversation's model is left as it was");
+    Assert.notEqual(f.chat.view, "chat", "the transcript does not open");
+    EventUtils.sendString("def");
+    Assert.equal(addressBar(), "abcdef", "what is typed next stays in the address bar");
+    Assert.ok(!f.said.some((s) => s.includes("sk-ant")), "no notice holds the key's text");
+  } finally {
+    revertAddressBar();
+    f.chat.destroy();
+  }
+});
+
+add_task(async function test_a_refused_add_provider_leaves_a_waiting_pick_alone() {
+  const f = fakeWindow({ providers: [LOCAL], localOnly: true });
+  try {
+    f.chat.open({ view: "models" });
+    f.probes[0].resolve(OLLAMA);
+    f.states[0].resolve(new Map());
+    await until(() => drawn(f.chat).includes("ollama · llama"), "the probe's models are listed");
+    selectRow(f.chat, (r) => r.label === "ollama · llama");
+    press(f.chat, "Enter");
+    selectRow(f.chat, (r) => r.add === "anthropic");
+    press(f.chat, "Enter");
+    Assert.deepEqual(f.prompts, [], "local_only refuses Anthropic before any prompt");
+    f.prepares[0].resolve({ model: "llama" });
+    await afterWindow([f.prepares[0].promise]);
+    Assert.equal(f.chosen.length, 1, "the waiting pick is used");
+    Assert.ok(!f.said.some((s) => s.includes("not used")), "with no notice that it was not");
   } finally {
     f.chat.destroy();
   }
