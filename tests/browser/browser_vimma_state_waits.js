@@ -245,9 +245,13 @@ function holdJumps(win = window) {
   const ask = session.ask;
   /** @type {((reply?: unknown) => void)[]} */
   const waiting = [];
-  session.ask = (/** @type {any} */ bc, /** @type {any} */ data, /** @type {string} */ name) =>
+  session.ask = (
+    /** @type {unknown} */ bc,
+    /** @type {unknown} */ data,
+    /** @type {string} */ name,
+  ) =>
     name === "Vimma:GrepJump"
-      ? new Promise((resolve) => waiting.push(resolve)).then((/** @type {any} */ reply) =>
+      ? new Promise((resolve) => waiting.push(resolve)).then((/** @type {unknown} */ reply) =>
           reply === undefined ? ask.call(session, bc, data, name) : reply,
         )
       : ask.call(session, bc, data, name);

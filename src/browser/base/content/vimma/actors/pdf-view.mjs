@@ -858,8 +858,23 @@ export class PdfView {
       doc: this.#generation,
       drawn: this.#drawn(),
       ops: this.#ops(),
-      width: this.#win.innerWidth,
-      height: this.#win.innerHeight,
+      ...this.#size(),
+    };
+  }
+
+  /**
+   * The viewer's size in whole device pixels, the one unit the parent can compare it in: a
+   * system caller gets the unrounded CSS size (nsGlobalWindowOuter's GetInnerSize), fractional
+   * at a fractional desktop scale or full zoom, and the content's scale is the desktop scale
+   * times the full zoom snapped to whole app units per device pixel, which the parent does not
+   * see.
+   */
+  #size() {
+    const win = this.#win;
+    const ratio = win.devicePixelRatio;
+    return {
+      width: Math.round(win.innerWidth * ratio),
+      height: Math.round(win.innerHeight * ratio),
     };
   }
 

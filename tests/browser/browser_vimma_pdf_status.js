@@ -103,6 +103,32 @@ add_task(async function the_adapter_matches_the_shipped_pdfjs() {
       { container: true, page: true, drawn: true, canvas: true },
       "the viewer's container and pages, and a drawn page with its canvas",
     );
+    // A page drawing again (a zoom) does not match `drawn` until it is done: pdf.js marks it
+    // with both `data-loaded` and `loadingIcon` meanwhile, so neither name can change unseen.
+    const midway = await SpecialPowers.spawn(browser, [PDFJS_DOM], async (sel) => {
+      const page = content.document.querySelector(sel.page.replace("{n}", "1"));
+      /** @type {boolean[]} whether the page matched `drawn` while marked as drawing */
+      const seen = [];
+      const watch = new content.MutationObserver(() => {
+        if (page?.hasAttribute("data-loaded") && page.classList.contains("loadingIcon")) {
+          seen.push(!!page.matches(sel.drawn));
+        }
+      });
+      if (page)
+        watch.observe(page, { attributes: true, attributeFilter: ["class", "data-loaded"] });
+      content.wrappedJSObject.PDFViewerApplication.pdfViewer.currentScaleValue = "2";
+      await ContentTaskUtils.waitForCondition(
+        () => seen.length > 0 && page?.matches(sel.drawn),
+        "the page draws again at the new zoom",
+      );
+      watch.disconnect();
+      return seen;
+    });
+    Assert.ok(midway.length > 0, "the page was marked as drawing with data-loaded and loadingIcon");
+    Assert.ok(
+      midway.every((drawn) => !drawn),
+      "a page marked as drawing does not match drawn",
+    );
   });
 });
 
@@ -398,4 +424,49 @@ add_task(async function pdf_mode_writes_no_pdfjs_prefs() {
     .getChildList("pdfjs.")
     .filter((name) => Services.prefs.prefHasUserValue(name));
   Assert.deepEqual(after, before, "opening a PDF in the PDF mode writes no pdfjs.* pref");
+});
+
+// At a fractional desktop scale and a full zoom other than 100 %, the viewer's size is not a
+// whole number of CSS pixels: PDF mode keeps its page state (the status bar's page, the
+// outline, `G`) and `state.pdf` still turns drawn (#1006).
+add_task(async function pdf_mode_at_a_fractional_size() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["vimma.ui.pdf_outline.hidden", true],
+      ["layout.css.devPixelsPerPx", "1.5"],
+    ],
+  });
+  try {
+    await withPdf(async (browser) => {
+      browser.fullZoom = 1.1;
+      const size = await SpecialPowers.spawn(browser, [], () => [
+        content.innerWidth,
+        content.innerHeight,
+      ]);
+      Assert.ok(
+        size.some((v) => !Number.isInteger(v)),
+        `the viewer's size is not whole CSS pixels (${size})`,
+      );
+      await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+      Assert.ok(PdfOps.state(browser), "the viewer's state is kept");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the first page is drawn",
+      );
+      Assert.ok(PdfOps.askOutline(browser), "the outline is asked for");
+      await TestUtils.waitForCondition(
+        () => !!PdfOps.outline(browser)?.entries.length,
+        "the outline is read",
+      );
+      Assert.ok(PdfOps.run(browser, "last", 0), "G goes to the last page");
+      Assert.deepEqual(PdfOps.drawn(browser), { drawn: false }, "the last page is to come");
+      await TestUtils.waitForCondition(() => segment("page").includes("6/6"), "the last page");
+      await TestUtils.waitForCondition(
+        () => PdfOps.drawn(browser)?.drawn === true,
+        "the last page is drawn",
+      );
+    });
+  } finally {
+    await SpecialPowers.popPrefEnv();
+  }
 });

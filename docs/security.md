@@ -4362,7 +4362,7 @@ bindings, so it is accepted here.
   (categories Cc and Cf: bidirectional overrides and isolates, zero-width characters), and the
   status bar **must** draw it as text. The record's `drawn` flag and size are read by the
   adapter from the viewer's DOM and window through Xrays (from the current page outward, each
-  page's `data-loaded` attribute and `loadingIcon` class; `innerWidth`, `innerHeight`), its
+  page's `data-loaded` attribute and `loadingIcon` class; `innerWidth`, `innerHeight` and `devicePixelRatio`), its
   operation count is the actor's own, and they feed only the control socket's `state.pdf` flag
   (S9).
   [`pdf state outside its bounds is dropped`](../packages/vimma-core/test/pdf.test.mjs),

@@ -44,7 +44,7 @@ const sentOps = new WeakMap();
 
 /**
  * Sends the viewer's actor one operation, and counts it.
- * @param {any} wg  the viewer's window global (viewerGlobal)
+ * @param {WindowGlobalParent} wg  the viewer's window global (viewerGlobal)
  * @param {object} msg  a parsed operation (parsePdfOp)
  */
 function sendOp(wg, msg) {
@@ -224,19 +224,19 @@ export const PdfOps = {
    * shows it now (core pdfDrawn): its last report says so, came after every operation sent to
    * it, and was made at the tab's present size, so neither a key just sent nor a resize under
    * way reads as drawn. One flag: never the page, the page count, the title or the outline.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    * @returns {{ drawn: boolean } | null}
    */
   drawn(browser) {
     const wg = viewerGlobal(browser);
     if (!wg) return null;
     const sent = sentOps.get(wg) ?? 0;
-    // The tab's size in the viewer's CSS pixels, as its window's innerWidth and innerHeight
-    // measure it: the browser element's, divided by the tab's full zoom.
-    const zoom = Number(browser.fullZoom) > 0 ? Number(browser.fullZoom) : 1;
+    // The tab's size in device pixels, as the viewer reports its own (pdf-view.mjs, #size):
+    // device pixels are the same on both sides at any desktop scale and full zoom.
+    const ratio = browser.ownerDocument?.defaultView?.devicePixelRatio ?? 1;
     const box = browser.getBoundingClientRect();
-    const width = Math.round(box.width / zoom);
-    const height = Math.round(box.height / zoom);
+    const width = Math.round(box.width * ratio);
+    const height = Math.round(box.height * ratio);
     return { drawn: pdfDrawn(this.state(browser), { sent, width, height }) };
   },
 

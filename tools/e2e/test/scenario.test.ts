@@ -316,15 +316,22 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
   // photographs instead (`wait-for-state` on the field of `state` that reports it; #1006).
   const all = loadScenarios(SCENARIOS, {});
 
-  it("no screenshot follows a sleep", () => {
-    const afterSleep = all.flatMap((s) =>
-      s.steps.flatMap((step, i) =>
-        step.screenshot && s.steps[i - 1]?.sleep !== undefined
-          ? [`${s.name}: ${step.screenshot}`]
-          : [],
-      ),
+  // Not only the step right before: a wait, then a sleep or a key, then the screenshot would
+  // photograph the screen a time after the key all the same.
+  it("each screenshot waits on state after the last sleep and the last key before it", () => {
+    const last = (steps: (typeof all)[number]["steps"], i: number, key: string) => {
+      for (let j = i - 1; j >= 0; j--) if (Object.hasOwn(steps[j] ?? {}, key)) return j;
+      return -1;
+    };
+    const unwaited = all.flatMap((s) =>
+      s.steps.flatMap((step, i) => {
+        if (!step.screenshot) return [];
+        const wait = last(s.steps, i, "wait-for-state");
+        const ok = wait >= 0 && wait > last(s.steps, i, "sleep") && wait > last(s.steps, i, "keys");
+        return ok ? [] : [`${s.name}: ${step.screenshot}`];
+      }),
     );
-    expect(afterSleep).toEqual([]);
+    expect(unwaited).toEqual([]);
   });
 
   it("m0-agent-cli photographs each screen once its notice is gone", () => {

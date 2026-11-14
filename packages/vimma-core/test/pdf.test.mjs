@@ -62,15 +62,28 @@ describe("parsePdfState", () => {
       ["no document count", { ...good, doc: undefined }],
       ["a document count that is not a count", { ...good, doc: -1 }],
       ["a document count as a string", { ...good, doc: "1" }],
+    ])("%s", (_name, raw) => {
+      expect(parsePdfState(raw)).toBeNull();
+    });
+  });
+
+  // The fields only `state.pdf` reads (#1006) can never take away the page state PDF mode
+  // needs (the status bar's page, find, the outline, marks, `F`): unusable ones only make the
+  // report not drawn.
+  describe("a report whose drawing fields are unusable keeps its page and is not drawn", () => {
+    test.each([
       ["no drawn flag", { ...good, drawn: undefined }],
       ["a drawn flag that is not a boolean", { ...good, drawn: 1 }],
       ["no count of operations", { ...good, ops: undefined }],
       ["a count of operations that is not a count", { ...good, ops: -1 }],
-      ["a fractional width", { ...good, width: 10.5 }],
+      ["a fractional width", { ...good, width: 1040.5 }],
       ["a width beyond any screen", { ...good, width: 1e9 }],
       ["no height", { ...good, height: undefined }],
+      ["none of them", { page: 3, pages: 12, label: "", find: { current: 0, total: 0 }, doc: 1 }],
     ])("%s", (_name, raw) => {
-      expect(parsePdfState(raw)).toBeNull();
+      const s = parsePdfState(raw);
+      expect(s).toMatchObject({ page: 3, pages: 12, label: "", doc: 1, drawn: false });
+      expect(pdfDrawn(s, { sent: 0, width: 1040, height: 700 })).toBe(false);
     });
   });
 

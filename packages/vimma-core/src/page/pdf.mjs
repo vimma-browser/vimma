@@ -23,10 +23,11 @@ const MAX_MATCHES = 10_000_000;
  * @property {{ current: number, total: number }} find  the find controller's count, 0/0 for none
  * @property {number} doc       which document the viewer shows: pdf.js can open another PDF in
  *   the same viewer, with no navigation, and what the parent read from the last one goes (V11)
- * @property {boolean} drawn    pdf.js had finished drawing every page in view (`state.pdf`)
+ * @property {boolean} drawn    pdf.js had finished drawing every page in view (`state.pdf`);
+ *   false when the report's drawing fields are missing or out of bounds
  * @property {number} ops       how many operations the viewer's actor had received from Vimma
- * @property {number} width     the viewer's size then, in device pixels, so a report from before
- * @property {number} height    a resize is not taken for one after it
+ * @property {number} width     the viewer's size then, in whole device pixels, so a report
+ * @property {number} height    from before a resize is not taken for one after it
  */
 
 /** Larger than any screen, in device pixels. */
@@ -72,31 +73,45 @@ export function parsePdfState(raw) {
   const { current, total } = /** @type {Record<string, unknown>} */ (find);
   if (!intIn(total, 0, MAX_MATCHES) || !intIn(current, 0, total)) return null;
   if (!intIn(r.doc, 0, Number.MAX_SAFE_INTEGER)) return null;
-  const { drawn, ops, width, height } = r;
-  if (typeof drawn !== "boolean" || !intIn(ops, 0, Number.MAX_SAFE_INTEGER)) return null;
-  if (!intIn(width, 0, MAX_SIZE) || !intIn(height, 0, MAX_SIZE)) return null;
   return Object.freeze({
     page,
     pages,
     label: stripInvisible(label).trim(),
     find: Object.freeze({ current, total }),
     doc: r.doc,
-    drawn,
-    ops,
-    width,
-    height,
+    ...drawing(r),
   });
+}
+
+/**
+ * The report's drawing fields, which only `state.pdf` reads (#1006): all four in bounds, else a
+ * report that is not drawn. They never cost the record itself, so a size or count the viewer
+ * reports oddly cannot take away the page state PDF mode runs on.
+ * @param {Record<string, unknown>} r
+ * @returns {{ drawn: boolean, ops: number, width: number, height: number }}
+ */
+function drawing({ drawn, ops, width, height }) {
+  if (
+    typeof drawn !== "boolean" ||
+    !intIn(ops, 0, Number.MAX_SAFE_INTEGER) ||
+    !intIn(width, 0, MAX_SIZE) ||
+    !intIn(height, 0, MAX_SIZE)
+  ) {
+    return { drawn: false, ops: 0, width: 0, height: 0 };
+  }
+  return { drawn, ops, width, height };
 }
 
 /**
  * Whether the viewer has drawn every page in view as the tab shows it now (`state.pdf`, #1006):
  * its last report says so, came after every operation Vimma sent it, and was made at the size
  * the tab has now; a report from before a resize (the outline opening beside the document) says
- * nothing of the pages drawn after it. Each side rounds its size to device pixels on its own,
- * so a pixel apart is the same size.
+ * nothing of the pages drawn after it. Sizes are in device pixels, the one unit both sides
+ * share at any desktop scale and full zoom (the viewer's CSS pixels follow the zoom, snapped by
+ * the engine); each side rounds its own, so a pixel apart is the same size.
  * @param {PdfState | null} state  the last report
  * @param {{ sent: number, width: number, height: number }} now  the operations sent to the
- *   viewer's document, and its tab's size in device pixels
+ *   viewer's document, and its tab's size in whole device pixels
  */
 export function pdfDrawn(state, { sent, width, height }) {
   if (!state?.drawn || state.ops < sent) return false;

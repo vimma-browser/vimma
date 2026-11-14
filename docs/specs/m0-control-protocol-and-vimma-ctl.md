@@ -318,7 +318,9 @@ false` in place of `hidden`. `panes` keeps its meaning: the shown split, else th
   operation Vimma sent the viewer (a page, zoom, layout or outline key; the operation's key
   turns it `false` as the key is handled), and it was made at the size the tab has now, so a
   resize under way (the outline opening beside the document) reads as not drawn until the
-  viewer has drawn at the new size. The viewer reports at most once per 100 ms (security.md
+  viewer has drawn at the new size. Scroll keys (`j`, `k` and the like, and the page turns they
+  make in presentation mode) are not operations: right after one, `drawn` can still show the
+  report from before it, until the viewer reports the pages it starts drawing. The viewer reports at most once per 100 ms (security.md
   section 20, V5), so `true` comes up to that long after the drawing ends. One flag: never the
   page, the page count, the document's title or URL, or the outline. It is `null` in a private
   window, because its documents are part of its browsing. Added without a version bump;

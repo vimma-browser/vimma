@@ -634,6 +634,15 @@ interface MozBrowser extends Element {
   focus(): void;
   reload(): void;
   loadURI(uri: nsIURI, params: { triggeringPrincipal: unknown }): void;
+  /** The page's full zoom, 1 at 100 % (the fullZoom getter and setter). */
+  fullZoom: number;
+}
+
+// engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowGlobalParent): the parts Vimma uses
+// of a document's window global in the parent.
+interface WindowGlobalParent {
+  readonly innerWindowId: number;
+  getActor(name: string): JSWindowActorParent;
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
