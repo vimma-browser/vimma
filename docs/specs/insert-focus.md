@@ -1,7 +1,7 @@
 # Spec: insert-focus
 
 Status: implemented · Area: `host/VimmaHost.sys.mjs`, `host/page-ops.mjs`,
-`actors/VimmaActors.sys.mjs`, `actors/VimmaParent.sys.mjs`, `actors/VimmaChild.sys.mjs` · Upstream
+`actors/VimmaActors.sys.mjs`, `host/VimmaParent.sys.mjs`, `actors/VimmaChild.sys.mjs` · Upstream
 patches: none · ADR: none
 
 Issues: [#165](https://github.com/vimma-browser/vimma/issues/165),
@@ -73,7 +73,8 @@ explicit `i` ([m1-actor-insert-scroll](m1-actor-insert-scroll.md), "Per-browser 
   new document in the browsing context and stays the same across `history.pushState`.
 - **Vimma.** The child reports `focusin` for the focused element and `recheck` on a `focusout`
   with no related target (`actors/VimmaChild.sys.mjs`, `handleEvent`); the parent takes reports
-  only from `Services.focus.focusedContentBrowsingContext` (`actors/VimmaParent.sys.mjs`).
+  only from `Services.focus.focusedContentBrowsingContext` (`actors/VimmaParent.sys.mjs`; since
+  changed: `host/VimmaParent.sys.mjs`, ADR-026).
 
 ## Design
 

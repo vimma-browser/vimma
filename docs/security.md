@@ -2516,7 +2516,7 @@ own process, not a process group.
   [`test_stop_closes_the_connection_before_the_signal`](../tests/browser/browser_vimma_agent_cli_run.js),
   [`test_cli_that_ignores_sigterm_is_killed_and_takes_no_step`](../tests/browser/browser_vimma_agent_cli_run.js)
 
-## 13. Page modes (`actors/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
+## 13. Page modes (`host/VimmaParent.sys.mjs`, `host/VimmaHost.sys.mjs`, `host/edit-keys.mjs`)
 
 Whether a key is Vimma's or the page's depends on the tab's mode, which the content actor's focus
 reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
@@ -2611,6 +2611,13 @@ reports move. Specs: [m1-actor-insert-scroll](specs/m1-actor-insert-scroll.md),
   leaves the keys to the page.
   [`j_scrolls_the_cookie_settings_list_not_the_page_behind`](../tests/browser/browser_vimma_insert_scroll.js),
   [`j_scrolls_the_page_past_a_fixed_element_that_is_no_scrolling_layer`](../tests/browser/browser_vimma_insert_scroll.js)
+- K9. A normal tab **must** have the actor's parent side (`host/VimmaParent.sys.mjs`), where
+  content-process messages enter the parent process: without it every page report would be
+  dropped in silence. It loads from the URL `vimma.js` hands `VimmaActors.register`, which
+  **must** refuse, before registering anything, a URL that is not a `host/` system module, and
+  `npm run layering` fails on a URL in the tree that names no tracked, packaged module.
+  [`a_tabs_focus_report_reaches_the_host_through_the_parent_actor`](../tests/browser/browser_vimma_security_invariants.js),
+  [`the_parent_actors_url_is_checked_before_it_is_registered`](../tests/browser/browser_vimma_security_invariants.js)
 
 ## 14. Build and release supply chain (`release.yml`, `aur.yml`, `homebrew.yml`, `nightly.yml`, `macos.yml`, `flatpak.yml`, `site-dispatch.yml`)
 
