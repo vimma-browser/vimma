@@ -124,7 +124,8 @@ each without a change in behaviour:
   `workspaces/WindowWorkspaces.sys.mjs` saves and restores tab labels from `host/tab-labels.mjs`;
   the labels move to `workspaces/`, which saves the rest of the snapshot. Both moves change a
   `chrome://` URL that mochitests import, so each comes with its test edits in its own pull
-  request. (Since changed: the key log is `host/key-log.mjs`; 16 exceptions remain.)
+  request. (Since changed: both moves are done; the key log is `host/key-log.mjs` and the labels
+  are `workspaces/tab-labels.mjs`.)
 - **The host runs commands of higher folders** (lazy: `host/VimmaHost.sys.mjs`,
   `host/agent-chat-ops.mjs` and `host/agent-ui.mjs` → `agent/AgentChat.sys.mjs`;
   `host/download-ops.mjs` → `ctl/AgentDownloads.sys.mjs`; `host/route-ops.mjs` →
