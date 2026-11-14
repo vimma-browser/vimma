@@ -27,6 +27,7 @@
 import { AgentLog, AgentQueue, frozenCopy, grantLength, isBuiltinConn } from "../core/agent.mjs";
 import { FULL_CONTROL, PAGE_CLIENT, SHOW_TOOL, isCheckpoint } from "../core/agent-prompt.mjs";
 import { McpHost } from "./mcp-ops.mjs";
+import { fieldsOf } from "./browser-ops.mjs";
 
 /** @import { Answer, ConnId, Resolution } from "../core/agent.mjs" */
 
@@ -110,18 +111,6 @@ function record(conn, tool, what, outcome, why) {
     outcome,
     ...(why ? { why } : {}),
   });
-}
-
-/**
- * The fields of a question's `what` (what the tool asked about, from the agent's call), none for
- * anything but an object; each is checked where it is read.
- * @param {unknown} what
- * @returns {{ readonly [name: string]: unknown }}
- */
-export function fieldsOf(what) {
-  return what !== null && typeof what === "object"
-    ? /** @type {{ readonly [name: string]: unknown }} */ (what)
-    : {};
 }
 
 /** Connections that are not an agent's: no grant, and not listed. */

@@ -343,9 +343,13 @@ interface Window {
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
 declare class JSWindowActorParent {
-  /** Null before the actor is set up and once its context is gone; throws once it is destroyed. */
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager, before it is set up and once it is cleared, rather than give null
+   * (engine/dom/ipc/jsactor/JSWindowActorParent.cpp, GetBrowsingContext).
+   */
   readonly browsingContext: CanonicalBrowsingContext | null;
-  /** Its document's window global; null before the actor is set up. */
+  /** Its document's window global; null before the actor is set up and once it is cleared. */
   readonly manager: WindowGlobalParent | null;
   sendAsyncMessage(name: string, data?: unknown): void;
   /** The child's answer, from a content process that may be compromised: checked by the caller. */
@@ -763,8 +767,10 @@ interface WindowGlobalParent {
 }
 
 // A tab's <browser>. A lazy one answers currentURI from session data (Tabbrowser.sys.mjs,
-// createLazyBrowser's getters); a live one is remote or has a docshell. Either way currentURI
-// and finder are set.
+// createLazyBrowser's getters); a live one reads its webNavigation's. currentURI is assumed
+// non-null for a live tab, though the getter gives null without a webNavigation
+// (browser-custom-element.mjs, `get currentURI`); host/ reads it with `?.` all the same. The
+// finder is set either way.
 interface MozTabBrowser extends MozBrowser {
   readonly currentURI: nsIURI;
   readonly finder: MozFinder;

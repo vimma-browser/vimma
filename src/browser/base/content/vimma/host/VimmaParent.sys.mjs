@@ -10,6 +10,7 @@ import { parseDescriptor } from "../core/editable.mjs";
 import { VimmaHost } from "./VimmaHost.sys.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { PdfOps } from "./pdf-ops.mjs";
+import { fieldsOf } from "./browser-ops.mjs";
 
 /** @import { InsertTrigger } from "../core/editable.mjs" */
 
@@ -23,17 +24,6 @@ const BLOCK_REPORTS = new Map([
 ]);
 
 /**
- * A message's fields, from a content process that may be compromised: an object's own and
- * inherited properties, none for anything else. Each is checked where it is read.
- * @param {unknown} data
- * @returns {{ readonly [name: string]: unknown }}
- */
-const fieldsOf = (data) =>
-  data !== null && typeof data === "object"
-    ? /** @type {{ [name: string]: unknown }} */ (data)
-    : {};
-
-/**
  * @param {unknown} trigger
  * @returns {trigger is InsertTrigger}
  */
@@ -42,7 +32,16 @@ const isTrigger = (trigger) => typeof trigger === "string" && TRIGGERS.has(trigg
 export class VimmaParent extends JSWindowActorParent {
   /** @param {{ name: string, data: unknown }} msg */
   receiveMessage(msg) {
-    // Set while the actor gets messages; checked so a message after its end does nothing.
+    if (msg.name === "Vimma:AgentSkipped") {
+      // An agent's click or submit was skipped in this frame (docs/specs/mcp-forms.md F16;
+      // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,
+      // a forged one can only take an allowance away, and say its own frame's click was skipped.
+      // First, so that no check of the actor's own state comes before taking it away.
+      VimmaActors.agentSkipped(this.browsingContext, this.manager, msg.data);
+      return undefined;
+    }
+    // An actor that gets a message has its manager, and browsingContext throws rather than give
+    // null without one (JSWindowActorParent.cpp): this check only narrows the declared types.
     const bc = this.browsingContext;
     const wg = this.manager;
     if (!bc || !wg) return undefined;
@@ -66,13 +65,6 @@ export class VimmaParent extends JSWindowActorParent {
     if (msg.name === "Vimma:PdfOutline") {
       // Taken only after the user's Tab, from the same actor, and parsed (V8).
       PdfOps.onOutline(this, msg.data);
-      return undefined;
-    }
-    if (msg.name === "Vimma:AgentSkipped") {
-      // An agent's click or submit was skipped in this frame (docs/specs/mcp-forms.md F16;
-      // security.md M28): the tab's allowed submission is withdrawn. From any frame of the tab,
-      // a forged one can only take an allowance away, and say its own frame's click was skipped.
-      VimmaActors.agentSkipped(bc, wg, msg.data);
       return undefined;
     }
     if (!MESSAGES.has(msg.name)) return undefined;

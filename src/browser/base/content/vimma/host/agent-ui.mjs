@@ -28,7 +28,8 @@ import {
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { isBuiltinConn } from "../core/agent.mjs";
 import { builtinStatus } from "../core/agent-chat.mjs";
-import { AgentGate, fieldsOf } from "./AgentGate.sys.mjs";
+import { AgentGate } from "./AgentGate.sys.mjs";
+import { fieldsOf } from "./browser-ops.mjs";
 import { HostServices } from "./host-services.mjs";
 import { McpHost } from "./mcp-ops.mjs";
 

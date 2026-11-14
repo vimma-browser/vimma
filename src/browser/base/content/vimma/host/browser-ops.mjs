@@ -65,6 +65,19 @@ export const BROWSER_KEYS = Object.freeze({
 export const NO_DEVTOOLS = "Developer tools are off in this browser";
 
 /**
+ * The fields of a value that came from outside the parent's own code (a content process's
+ * message, an agent's call, a thrown value): an object's own and inherited properties, none for
+ * anything else. Each is checked where it is read.
+ * @param {unknown} value
+ * @returns {{ readonly [name: string]: unknown }}
+ */
+export function fieldsOf(value) {
+  return value !== null && typeof value === "object"
+    ? /** @type {{ readonly [name: string]: unknown }} */ (value)
+    : {};
+}
+
+/**
  * The XUL element `id` of `win`'s document (a `<command>`, a `<key>`), or null without one or
  * when it is not a XUL element: only those have doCommand (XULElement.webidl).
  * @param {BrowserWindow} win
@@ -257,14 +270,14 @@ export function openSettings(win, url) {
   const w = win;
   const system = Services.scriptSecurityManager.getSystemPrincipal();
   const tab = w.gBrowser.visibleTabs.find((t) =>
-    /^about:(preferences|settings)$/.test(t.linkedBrowser.currentURI.specIgnoringRef),
+    /^about:(preferences|settings)$/.test(t.linkedBrowser.currentURI?.specIgnoringRef ?? ""),
   );
   if (!tab) {
     w.openTrustedLinkIn(url, "tab");
     return;
   }
   w.gBrowser.selectedTab = tab;
-  if (url.includes("#") && tab.linkedBrowser.currentURI.spec !== url) {
+  if (url.includes("#") && tab.linkedBrowser.currentURI?.spec !== url) {
     tab.linkedBrowser.loadURI(Services.io.newURI(url), { triggeringPrincipal: system });
   }
 }

@@ -364,9 +364,10 @@ export const MOVE_OUT_REFUSED = PRIVATE_REFUSALS["move-out-of-private"];
 async function moveIntoPrivate(win, tab) {
   const ssm = Services.scriptSecurityManager;
   const browser = tab.linkedBrowser;
-  const url = browser.currentURI.spec;
+  // The getter gives null for a browser without a webNavigation.
+  const url = browser.currentURI?.spec;
   const page = browser.contentPrincipal;
-  if (!page) return "this tab's page cannot be reopened";
+  if (!url || !page) return "this tab's page cannot be reopened";
   const attrs = { privateBrowsingId: 1, userContextId: 0 };
   const principal = page.isContentPrincipal
     ? ssm.principalWithOA(page, attrs)
