@@ -123,7 +123,6 @@ const sectionTitle = (row) =>
     .textContent;
 
 /** A plain page, focused, with its keys recorded, in insert mode (`i`: no text field). */
-
 async function insertModePage() {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PLAIN);
   const browser = tab.linkedBrowser;

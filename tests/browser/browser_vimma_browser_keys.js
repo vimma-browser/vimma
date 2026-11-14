@@ -477,7 +477,6 @@ add_task(async function ctrl_q_asks_as_firefoxs_quit_shortcut() {
   EventUtils.synthesizeKey("q", { ctrlKey: true });
   await TestUtils.waitForCondition(() => source !== null, "a quit was requested");
   Assert.equal(source, "shortcut", "as the shortcut, so Firefox asks first when set to");
-
   Assert.ok(!window.closed, "the cancelled quit keeps the browser");
   BrowserTestUtils.removeTab(tab);
 });
@@ -533,7 +532,6 @@ add_task(async function esc_in_normal_mode_stops_a_load_after_the_page() {
   await TestUtils.waitForCondition(
     () =>
       !(/** @type {Element} */ (document.getElementById("Browser:Stop")).hasAttribute("disabled")),
-
     "Stop is on",
   );
   Assert.equal(browser.currentURI.spec, SLOW, "the slow page is shown");

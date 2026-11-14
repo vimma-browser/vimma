@@ -387,7 +387,6 @@ add_task(async function insert_editing_false_keeps_ctrl_m_as_mute_in_a_field() {
     await fill(browser, "area", "one");
     await TestUtils.waitForCondition(() => VimmaHost._browserMode(browser) === "insert", "i");
     const tab = /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(browser));
-
     EventUtils.synthesizeKey("m", { ctrlKey: true });
     Assert.ok(await waitForPageKey(browser, ["m"]), "the page got ctrl+m");
     await TestUtils.waitForCondition(() => tab.muted, "ctrl+m mutes the tab, after the page");

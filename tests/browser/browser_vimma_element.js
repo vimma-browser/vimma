@@ -1004,7 +1004,6 @@ function selectedBlock(browser) {
 async function selectsBlock(browser, keys, id, check) {
   type(keys);
   let last = /** @type {Awaited<ReturnType<typeof selectedBlock>> | null} */ (null);
-
   await TestUtils.waitForCondition(async () => {
     last = await selectedBlock(browser);
     return last.id === id && check(last.text);

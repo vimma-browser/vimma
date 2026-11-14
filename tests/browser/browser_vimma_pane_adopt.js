@@ -57,38 +57,73 @@ function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 200);
 }
 
+/**
+ * A browser window's workspaces once they are built, which openWindow waits for.
+ * @param {BrowserWindow} win
+ */
+const live = (win) => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
+
 async function openWindow() {
   const win = await BrowserTestUtils.openNewBrowserWindow();
   windows.push(win);
-  await WindowWorkspaces.get(win).ready;
-  await until(() => !!WindowWorkspaces.get(win).model, "the new window has its workspaces");
+  // VimmaHost starts every new browser window's workspaces.
+  const workspaces = () => /** @type {WindowWorkspacesImpl} */ (WindowWorkspaces.get(win));
+  await workspaces().ready;
+  await until(() => !!workspaces().model, "the new window has its workspaces");
   return win;
 }
 
-/** Shows workspace `ws` in `win` and returns its selected tab once it is in its container. */
+/**
+ * Shows workspace `ws` in `win` and returns its selected tab once it is in its container.
+ * @param {BrowserWindow} win
+ * @param {WorkspaceDefinition} ws
+ */
 async function show(win, ws) {
-  WindowWorkspaces.get(win).switchTo({ id: ws.id });
-  await until(() => WindowWorkspaces.get(win).model.active === ws.id, `${ws.name} shows`);
+  live(win).switchTo({ id: ws.id });
+  await until(() => live(win).model.active === ws.id, `${ws.name} shows`);
   await until(() => win.gBrowser.selectedTab.userContextId === ws.userContextId, "its tab");
   return win.gBrowser.selectedTab;
 }
 
-/** A loaded background tab of the shown workspace. */
+/**
+ * A loaded background tab of the shown workspace.
+ * @param {BrowserWindow} win
+ * @param {string} query
+ */
 async function page(win, query) {
   const tab = BrowserTestUtils.addTab(win.gBrowser, `${PAGE}?${query}`);
   await BrowserTestUtils.browserLoaded(tab.linkedBrowser);
   return tab;
 }
 
-/** ctrl+b, then `key`, in `win`. */
+/**
+ * ctrl+b, then `key`, in `win`.
+ * @param {Window} win
+ * @param {string} key
+ */
 function prefix(win, key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true }, win);
   EventUtils.synthesizeKey(key, {}, win);
 }
 
-/** The shown tree's tabs in reading order, and the focused pane's tab. */
+/**
+ * The window's split view, which VimmaHost made when it started the window.
+ * @param {BrowserWindow} win
+ */
+const view = (win) => /** @type {PaneView} */ (PaneViews.get(win));
+
+/**
+ * The window's panes, which a test reads while they are split.
+ * @param {BrowserWindow} win
+ */
+const panesOf = (win) => /** @type {Panes} */ (view(win).panes);
+
+/**
+ * The shown tree's tabs in reading order, and the focused pane's tab.
+ * @param {BrowserWindow} win
+ */
 function shown(win) {
-  const panes = PaneViews.get(win).panes;
+  const panes = view(win).panes;
   if (!panes) return { tabs: [], focus: null };
   const order = leaves(panes);
   const byPanel = (/** @type {string} */ id) => win.gBrowser.tabs.find((t) => t.linkedPanel === id);
@@ -98,28 +133,47 @@ function shown(win) {
   };
 }
 
-/** The panel rectangle of `tab`. */
+/**
+ * The panel rectangle of `tab`, a loaded tab, which has its panel.
+ * @param {Window} win
+ * @param {MozTabbrowserTab} tab
+ */
 function rect(win, tab) {
-  return win.document.getElementById(tab.linkedPanel).getBoundingClientRect();
+  const panel = win.document.getElementById(/** @type {string} */ (tab.linkedPanel));
+  return /** @type {Element} */ (panel).getBoundingClientRect();
 }
 
+/** @param {Window} win */
 function contentWidth(win) {
-  return win.document.getElementById("tabbrowser-tabpanels").getBoundingClientRect().width;
+  const panels = /** @type {Element} */ (win.document.getElementById("tabbrowser-tabpanels"));
+  return panels.getBoundingClientRect().width;
 }
 
-/** The notice's text while it shows, else null. */
+/**
+ * The notice's text while it shows, else null.
+ * @param {Window} win
+ */
 function notice(win) {
   const n = win.document.getElementById(NOTICE_ID);
   return n?.matches(":popover-open") ? n.textContent : null;
 }
 
-/** The workspace (id) of `tab` in `win`'s model. */
+/**
+ * The workspace (id) of `tab` in `win`'s model.
+ * @param {BrowserWindow} win
+ * @param {MozTabbrowserTab} tab
+ */
 function workspaceOf(win, tab) {
   const uuid = SessionStore.getCustomTabValue(tab, "vimma-tab");
-  return workspaceOfTab(WindowWorkspaces.get(win).model, uuid)?.id;
+  return workspaceOfTab(live(win).model, uuid)?.id;
 }
 
-/** Every tab of `tabs` is in one wrapper of just them, and their docshells are active. */
+/**
+ * Every tab of `tabs` is in one wrapper of just them, and their docshells are active.
+ * @param {Window} win
+ * @param {MozTabbrowserTab[]} tabs
+ * @param {string} what
+ */
 async function assertLive(win, tabs, what) {
   const wrapper = tabs[0].splitview;
   Assert.ok(
@@ -142,12 +196,15 @@ add_task(async function a_split_made_by_firefox_becomes_panes_the_keys_work_on()
   win.gBrowser.selectedTab = a1;
 
   // Firefox's own entry point (its keyboard shortcut and the URL-bar button run it).
-  win.document.getElementById("Browser:AddTabSplitView").doCommand();
+  // A XUL <command>, which getElementById types as an HTML element.
+  /** @type {XULElement} */ (
+    /** @type {Element} */ (win.document.getElementById("Browser:AddTabSplitView"))
+  ).doCommand();
   const other = win.gBrowser.selectedTab;
   Assert.notEqual(other, a1, "Firefox opened and selected its second tab");
   await until(() => shown(win).tabs.length === 2, "the split is adopted");
   Assert.deepEqual(shown(win).tabs, [a1, other], "its tabs side by side, in its order");
-  Assert.equal(PaneViews.get(win).panes.root.axis, "x", "as a row");
+  Assert.equal(/** @type {PaneSplit} */ (panesOf(win).root).axis, "x", "as a row");
   Assert.equal(shown(win).focus, other, "focus on the selected tab");
   await assertLive(win, [a1, other], "adopted");
   const half = contentWidth(win) / 2;
@@ -163,13 +220,13 @@ add_task(async function a_split_made_by_firefox_becomes_panes_the_keys_work_on()
   await until(() => win.gBrowser.selectedTab === a1, "ctrl+b h selects the left pane");
   Assert.equal(shown(win).focus, a1, "and focuses it");
   prefix(win, "z");
-  await until(() => !!PaneViews.get(win).panes.zoom, "ctrl+b z zooms it");
+  await until(() => !!panesOf(win).zoom, "ctrl+b z zooms it");
   await until(() => Math.abs(rect(win, a1).width - 2 * half) <= 2, "to the whole width");
   prefix(win, "z");
-  await until(() => !PaneViews.get(win).panes.zoom, "and back");
+  await until(() => !panesOf(win).zoom, "and back");
 
   await show(win, B);
-  Assert.equal(PaneViews.get(win).panes, null, "B has no panes");
+  Assert.equal(view(win).panes, null, "B has no panes");
   await show(win, A);
   Assert.deepEqual(shown(win).tabs, [a1, other], "A's adopted split is kept across switches");
   Assert.equal(shown(win).focus, a1, "with its focus");
@@ -193,13 +250,15 @@ add_task(async function an_extensions_split_keeps_its_shares_one_per_workspace_a
   // As an extension would: the public API, and the share Firefox's splitter stores.
   const wrapper = gBrowser.addTabSplitView([t1, t2], { insertBefore: t1 });
   const width = contentWidth(win);
-  const panel = win.document.getElementById(t1.linkedPanel);
+  const panel = /** @type {Element} */ (
+    win.document.getElementById(/** @type {string} */ (t1.linkedPanel))
+  );
   panel.setAttribute("width", String(Math.round(width * 0.6)));
   await until(() => shown(win).tabs.length === 2, "the extension's split is adopted");
   Assert.equal(t1.splitview, wrapper, "into the same wrapper");
   Assert.deepEqual(shown(win).tabs, [t1, t2], "in its order");
   Assert.equal(shown(win).focus, t2, "focus on the selected tab");
-  const ratios = PaneViews.get(win).panes.root.ratios;
+  const ratios = /** @type {PaneSplit} */ (panesOf(win).root).ratios;
   Assert.ok(Math.abs(ratios[0] - 0.6) < 0.01, `the left share is the splitter's (${ratios[0]})`);
   await until(
     () => Math.abs(rect(win, t1).width - rect(win, t2).width * 1.5) <= 3,
@@ -217,8 +276,8 @@ add_task(async function an_extensions_split_keeps_its_shares_one_per_workspace_a
   Assert.equal(gBrowser.selectedTab, t2, "and still shows");
 
   // Firefox's "separate tabs" (its tab context menu and footer run this).
-  t2.splitview.unsplitTabs("menu_separate");
-  await until(() => PaneViews.get(win).panes === null, "a dissolved split closes its panes");
+  /** @type {MozTabSplitViewWrapper} */ (t2.splitview).unsplitTabs("menu_separate");
+  await until(() => view(win).panes === null, "a dissolved split closes its panes");
   await until(() => !t1.splitview && !t2.splitview, "and stays dissolved");
   Assert.equal(gBrowser.selectedTab, t2, "the selected tab stays");
   await BrowserTestUtils.closeWindow(win);
@@ -239,7 +298,7 @@ add_task(async function a_split_across_workspaces_is_undone_with_a_notice() {
   gBrowser.addTabSplitView([a1, b1], { insertBefore: a1 });
   await until(() => !a1.splitview && !b1.splitview, "the split across workspaces is undone");
   Assert.ok(notice(win)?.includes("different workspaces"), "the notice says why");
-  Assert.equal(PaneViews.get(win).panes, null, "no panes");
+  Assert.equal(view(win).panes, null, "no panes");
   Assert.equal(workspaceOf(win, a1), A.id, "a1 stays in A");
   Assert.equal(workspaceOf(win, b1), B.id, "b1 stays in B");
   Assert.ok(b1.hidden && !a1.hidden, "B's tab stays hidden, A's shows");
@@ -259,6 +318,11 @@ add_task(async function a_restored_firefox_split_with_no_saved_panes_is_adopted(
 
   await TabStateFlusher.flushWindow(w1);
   await TestUtils.waitForTick();
+  /**
+   * As much of the session's state as the test reads.
+   * @type {{ windows: { tabs: { entries: { url: string }[], splitViewId?: number }[],
+   *   extData: Record<string, string> }[] }}
+   */
   const state = JSON.parse(SessionStore.getBrowserState());
   const winState = state.windows.find((w) =>
     w.tabs.some((t) => t.entries.some((e) => e.url === `${PAGE}?r2`)),
@@ -279,7 +343,8 @@ add_task(async function a_restored_firefox_split_with_no_saved_panes_is_adopted(
   const byQuery = (/** @type {string} */ q) =>
     w2.gBrowser.tabs.find((t) => t.linkedBrowser.currentURI.spec === `${PAGE}?${q}`);
   await until(() => !!byQuery("r1") && !!byQuery("r2"), "both tabs are back");
-  const [s1, s2] = [byQuery("r1"), byQuery("r2")];
+  // Both found: the wait above saw them.
+  const [s1, s2] = /** @type {MozTabbrowserTab[]} */ ([byQuery("r1"), byQuery("r2")]);
   await until(() => shown(w2).tabs.length === 2, "the restored split is adopted");
   Assert.deepEqual(shown(w2).tabs, [s1, s2], "in its order");
   Assert.equal(shown(w2).focus, s2, "focus on the selected tab");

@@ -46,12 +46,6 @@ tests/browser/browser_vimma_mcp_downloads.js
 tests/browser/browser_vimma_multiple_splits.js
 tests/browser/browser_vimma_normal_extras.js
 tests/browser/browser_vimma_omarchy_hook.js
-tests/browser/browser_vimma_pane_adopt.js
-tests/browser/browser_vimma_pane_focus.js
-tests/browser/browser_vimma_pane_keys.js
-tests/browser/browser_vimma_pane_layouts.js
-tests/browser/browser_vimma_pane_swap_resize.js
-tests/browser/browser_vimma_pane_workspaces.js
 tests/browser/browser_vimma_password_prompt.js
 tests/browser/browser_vimma_pdf_focus.js
 tests/browser/browser_vimma_pdf_keys.js

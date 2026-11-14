@@ -27,20 +27,30 @@ const PAGE = "https://example.com/";
 const START = "chrome://browser/content/vimma/start/start.html";
 const NOTICE_ID = "vimma-notice";
 
+/** The window's split view, which VimmaHost made when it started the window. */
 function view() {
-  return PaneViews.get(window);
+  return /** @type {PaneView} */ (PaneViews.get(window));
+}
+
+/** The split's panes, which a test reads while its panes are split. */
+function panes() {
+  return /** @type {Panes} */ (view().panes);
 }
 
 /** Leaves of the window's pane tree (1 without a split). */
 function paneCount() {
-  return view().panes ? leaves(view().panes).length : 1;
+  const p = view().panes;
+  return p ? leaves(p).length : 1;
 }
 
 /** The tab shown in each pane, in reading order. */
 function paneTabs() {
   const p = view().panes;
   if (!p) return [gBrowser.selectedTab];
-  return leaves(p).map((l) => gBrowser.tabs.find((t) => t.linkedPanel === l.tab));
+  // Each pane shows a tab of the window.
+  return leaves(p).map(
+    (l) => /** @type {MozTabbrowserTab} */ (gBrowser.tabs.find((t) => t.linkedPanel === l.tab)),
+  );
 }
 
 function focusedTab() {
@@ -49,7 +59,11 @@ function focusedTab() {
   return leaf ? gBrowser.tabs.find((t) => t.linkedPanel === leaf.tab) : gBrowser.selectedTab;
 }
 
-/** ctrl+b, then `key` with `mods`. */
+/**
+ * ctrl+b, then `key` with `mods`.
+ * @param {string} key
+ * @param {object} [mods]
+ */
 function prefix(key, mods = {}) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
@@ -58,6 +72,7 @@ function prefix(key, mods = {}) {
 /**
  * ctrl+b `key` (v or -) and the new pane's tab, once its start page has loaded: a key sent to
  * a pane whose document is still being replaced is lost (Firefox's focus, not ours).
+ * @param {string} key
  */
 async function split(key) {
   prefix(key);
@@ -71,14 +86,19 @@ async function split(key) {
   return tab;
 }
 
-/** ctrl+w, then `key` (Vim's window commands, normal mode). */
+/**
+ * ctrl+w, then `key` (Vim's window commands, normal mode).
+ * @param {string} key
+ * @param {object} [mods]
+ */
 function ctrlW(key, mods = {}) {
   EventUtils.synthesizeKey("w", { ctrlKey: true });
   EventUtils.synthesizeKey(key, mods);
 }
 
+/** The status bar's notice, which Vimma's chrome always has. */
 function notice() {
-  return document.getElementById(NOTICE_ID);
+  return /** @type {HTMLElement} */ (document.getElementById(NOTICE_ID));
 }
 
 function noticeShown() {
@@ -86,6 +106,7 @@ function noticeShown() {
   return !!n && n.matches(":popover-open") && BrowserTestUtils.isVisible(n);
 }
 
+/** @param {string} id */
 function segText(id) {
   return (
     document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -93,15 +114,22 @@ function segText(id) {
   );
 }
 
+/**
+ * @param {() => unknown} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
 function nextFrame() {
-  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(undefined))));
 }
 
-/** An example.com tab, selected and focused, its keys recorded, in normal mode. */
+/**
+ * An example.com tab, selected and focused, its keys recorded, in normal mode.
+ * @param {string} name
+ */
 async function openPage(name) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${name}`);
   await recordPageKeys(tab.linkedBrowser);
@@ -110,7 +138,10 @@ async function openPage(name) {
   return tab;
 }
 
-/** Presses z (unbound) in `tab`'s page; every key it saw, ending with "z". */
+/**
+ * Presses z (unbound) in `tab`'s page; every key it saw, ending with "z".
+ * @param {MozTabbrowserTab} tab
+ */
 async function pageKeysThenZ(tab) {
   if (gBrowser.selectedTab !== tab) await BrowserTestUtils.switchTab(gBrowser, tab);
   await focusContent(tab.linkedBrowser);
@@ -119,7 +150,11 @@ async function pageKeysThenZ(tab) {
   return pageKeys(tab.linkedBrowser);
 }
 
-/** Focus moved to `tab`'s pane: selected, its browser focused, URL bar and status bar follow. */
+/**
+ * Focus moved to `tab`'s pane: selected, its browser focused, URL bar and status bar follow.
+ * @param {MozTabbrowserTab} tab
+ * @param {string} what
+ */
 async function assertFocused(tab, what) {
   Assert.equal(focusedTab(), tab, `${what}: core's focus is on the pane`);
   Assert.equal(gBrowser.selectedTab, tab, `${what}: its tab is selected`);
@@ -139,7 +174,9 @@ async function assertFocused(tab, what) {
 
 async function reset() {
   while (view().panes) view().close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   view().max = PANES_MAX_DEFAULT;
   notice()?.hidePopover?.();
   await nextFrame();
@@ -192,20 +229,20 @@ add_task(async function z_zooms_and_unzooms_and_focus_keys_keep_zoomed_away_pane
   prefix("z");
   await nextFrame();
   await TestUtils.waitForTick();
-  Assert.equal(view().panes.zoom, view().panes.focus, "ctrl+b z zooms the focused pane");
+  Assert.equal(panes().zoom, panes().focus, "ctrl+b z zooms the focused pane");
   Assert.ok(a.linkedBrowser.docShellIsActive, "the zoomed pane is live");
   Assert.ok(!b.linkedBrowser.docShellIsActive, "the zoomed-away pane is not");
 
   prefix("h"); // no pane left of a: nothing moves, the zoom stays
   await nextFrame();
   await TestUtils.waitForTick();
-  Assert.equal(view().panes.zoom, view().panes.focus, "a focus key with no target keeps zoom");
+  Assert.equal(panes().zoom, panes().focus, "a focus key with no target keeps zoom");
   Assert.ok(!b.linkedBrowser.docShellIsActive, "and does not wake the zoomed-away pane");
   Assert.equal(document.activeElement, a.linkedBrowser, "a keeps focus");
 
   prefix("z");
   await nextFrame();
-  Assert.equal(view().panes.zoom, null, "ctrl+b z again unzooms");
+  Assert.equal(panes().zoom, null, "ctrl+b z again unzooms");
   Assert.ok(b.linkedBrowser.docShellIsActive, "both panes are live again");
   Assert.deepEqual(await pageKeysThenZ(a), ["z"], "the page saw neither ctrl+b nor z");
   await reset();
@@ -224,7 +261,7 @@ add_task(async function z_keeps_an_in_process_zoomed_away_pane_asleep_with_no_ta
   prefix("z");
   await nextFrame();
   await TestUtils.waitForTick();
-  Assert.equal(view().panes.zoom, view().panes.focus, "ctrl+b z zooms the focused pane");
+  Assert.equal(panes().zoom, panes().focus, "ctrl+b z zooms the focused pane");
   Assert.ok(a.linkedBrowser.docShellIsActive, "the zoomed pane is live");
   Assert.ok(!b.linkedBrowser.docShellIsActive, "the zoomed-away start page stays asleep");
   await reset();
@@ -259,7 +296,7 @@ add_task(async function x_on_the_last_pane_of_a_pinned_tab_follows_tab_close() {
   const a = await openPage("a");
   const pinned = await openPage("pinned");
   // Decision 11 unpins it in a window with workspaces; this checks the guard other windows keep.
-  WindowWorkspaces.get(window).unpinsPinnedTabs = false;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = false;
   gBrowser.pinTab(pinned);
   Assert.equal(gBrowser.selectedTab, pinned, "sanity: the pinned tab is selected");
   await focusContent(pinned.linkedBrowser);
@@ -272,7 +309,7 @@ add_task(async function x_on_the_last_pane_of_a_pinned_tab_follows_tab_close() {
     "and selects the first unpinned tab, as tab.close does",
   );
   gBrowser.unpinTab(pinned);
-  WindowWorkspaces.get(window).unpinsPinnedTabs = true;
+  /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window)).unpinsPinnedTabs = true;
   Assert.ok(a.isConnected, "sanity");
   await reset();
 });
@@ -323,9 +360,9 @@ add_task(async function ctrl_w_family_moves_focus_and_zooms_in_normal_mode_with_
   await assertFocused(a, "ctrl+b h");
   await until(() => VimmaHost.status(window).mode === "normal", "a is in normal mode");
   ctrlW("o");
-  Assert.equal(view().panes.zoom, view().panes.focus, "ctrl+w o zooms");
+  Assert.equal(panes().zoom, panes().focus, "ctrl+w o zooms");
   ctrlW("o");
-  Assert.equal(view().panes.zoom, null, "and unzooms");
+  Assert.equal(panes().zoom, null, "and unzooms");
   Assert.ok(a.isConnected && b.isConnected, "ctrl+w closed no tab");
   Assert.deepEqual(await pageKeysThenZ(a), ["z"], "a's page saw neither ctrl+w nor l / o");
   await reset();

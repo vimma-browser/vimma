@@ -260,7 +260,6 @@ add_task(async function protocol_permission_n_cancels_y_opens() {
   await until(() => lineShows(w, "y open link · n cancel"), "the line names the keys");
   // The "always allow" checkbox is no text field: the keys answer from it.
   /** @type {HTMLInputElement} */ (w.document.getElementById("remember")).focus();
-
   press("n", w);
   await gone(w);
   await wait(100);
@@ -392,7 +391,6 @@ add_task(async function download_n_cancels_y_saves() {
     /** @type {Element} */ (w.document.getElementById("mode"))
   );
   mode.selectedItem = w.document.getElementById("save");
-
   closed = BrowserTestUtils.windowClosed(w);
   press("y", w);
   await closed;

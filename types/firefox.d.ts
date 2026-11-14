@@ -669,7 +669,8 @@ interface MozTabbrowserTab extends Element {
 interface MozTabSplitViewWrapper extends Element {
   readonly splitViewId: number;
   readonly tabs: MozTabbrowserTab[];
-  unsplitTabs(): void;
+  /** `trigger` names what asked, for Firefox's telemetry (its menu passes "menu_separate"). */
+  unsplitTabs(trigger?: string | null): void;
 }
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs: a browser window's gBrowser.

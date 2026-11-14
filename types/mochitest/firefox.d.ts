@@ -197,6 +197,8 @@ interface Window {
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
 interface Tabbrowser {
+  /** The tab switch in progress (an AsyncTabSwitcher), null when none is. */
+  readonly _switcher: object | null;
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
@@ -229,6 +231,8 @@ interface nsIPermissionManager {
 // engine/toolkit/content/widgets/browser-custom-element.mjs, and its frame loader
 // (engine/dom/chrome-webidl/FrameLoader.webidl, engine/dom/interfaces/base/nsIRemoteTab.idl)
 interface MozBrowser {
+  /** Its current window global's outer window id, undefined while it has none. */
+  readonly outerWindowID: number | undefined;
   docShellIsActive: boolean;
   fullZoom: number;
   stop(): void;
@@ -344,16 +348,17 @@ interface XPCComponentsUtils {
   ): unknown;
 }
 
-// engine/browser/components/urlbar/content/UrlbarInput.mjs and UrlbarView.sys.mjs: the address
-// bar's members the tests use past those types/firefox.d.ts gives the product (harness.d.ts adds
-// them to the test window's gURLBar).
+// engine/browser/components/urlbar/content/UrlbarInputBase.mjs (UrlbarInput extends it) and
+// content/UrlbarView.mjs: the address bar's members the tests use past those types/firefox.d.ts
+// gives the product (harness.d.ts adds them to the test window's gURLBar).
 interface UrlbarInputTestMembers {
-  /** The field's text; setting it sets the text as the address bar shows it (UrlbarInputBase.mjs). */
+  /** The field's text; setting it sets the text the address bar shows. */
   value: string;
-  /** The <input> the address bar edits (UrlbarInputBase.mjs). */
+  /** The <input> the address bar edits. */
   readonly inputField: HTMLInputElement;
+  /** The field's text before trimming: the full address of a page. */
+  readonly untrimmedValue: string;
   handleRevert(): void;
-
   readonly view: {
     /** The selected row's result: a search suggestion's payload has its text. */
     readonly selectedResult: { readonly payload: { readonly suggestion?: string } } | null;
@@ -407,3 +412,13 @@ interface WindowGlobalChild {
 interface Document {
   createXULElement(localName: string, options?: ElementCreationOptions | string): Element;
 }
+
+// engine/dom/chrome-webidl/XULElement.webidl: a XUL element, such as a <command>, which runs its
+// command on doCommand.
+interface XULElement extends Element {
+  hidden: boolean;
+  doCommand(): void;
+}
+// engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
+// (MozXULElement).
+interface MozTabSplitViewWrapper extends XULElement {}

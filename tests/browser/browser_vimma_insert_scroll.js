@@ -317,7 +317,6 @@ add_task(async function insert_mode_is_per_tab() {
         gBrowser,
         /** @type {MozTabbrowserTab} */ (gBrowser.getTabForBrowser(first)),
       );
-
       await focusContent(first);
       await waitForMode(first, "insert");
       EventUtils.synthesizeKey("j");
@@ -452,7 +451,6 @@ function sendReport(bc, data) {
   return SpecialPowers.spawn(bc, [data], async (d) => {
     // A page's window has its global.
     const child = /** @type {WindowGlobalChild} */ (content.windowGlobalChild);
-
     await child.getActor("Vimma").sendQuery("Vimma:Focus", d);
   });
 }
