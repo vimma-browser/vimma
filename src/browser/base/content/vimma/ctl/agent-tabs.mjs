@@ -7,7 +7,7 @@
 // enumerated), and of those only the ones its connection may see (docs/specs/builtin-agent.md
 // B17). Also the check after the user's yes that the tab and URL are still the ones asked about
 // (decision 19). Nothing here asks the user: agent-commands.mjs asks through AgentGate first and
-// calls these before and after.
+// calls these before and after. It is its one importer (RESTRICTED in tools/layering/layers.ts).
 
 import { isBuiltinConn } from "../core/agent.mjs";
 import { workspaceOfTab } from "../core/workspaces.mjs";
@@ -56,7 +56,7 @@ export function own(tab, conn) {
  * @param {Tab} tab
  * @returns {ConnId | null}
  */
-function ownerOf(tab) {
+export function ownerOf(tab) {
   /** @type {Set<Tab>} */
   const seen = new Set();
   for (let t = /** @type {Tab | null | undefined} */ (tab); t && !seen.has(t); t = t.openerTab) {
@@ -235,24 +235,13 @@ export function stillAsAsked(asked, id, url, conn) {
 }
 
 /**
- * Tab ownership for the built-in agent (B17): giving a tab to a conversation (Behaviour 17),
- * and a deleted conversation's tabs going back to no one.
+ * A deleted conversation's tabs go back to no one (B17).
+ * @param {ConnId} conn
  */
-export const AgentTabOwners = {
-  /** @param {Tab} tab @param {ConnId} conn */
-  give(tab, conn) {
-    own(tab, conn);
-  },
-  /** @param {Tab} tab @returns {ConnId | null} */
-  ownerOf(tab) {
-    return ownerOf(tab);
-  },
-  /** @param {ConnId} conn */
-  forget(conn) {
-    for (const ref of ownedBy.get(conn) ?? []) {
-      const tab = ref.deref();
-      if (tab && owners.get(tab) === conn) owners.delete(tab);
-    }
-    ownedBy.delete(conn);
-  },
-};
+export function forgetOwners(conn) {
+  for (const ref of ownedBy.get(conn) ?? []) {
+    const tab = ref.deref();
+    if (tab && owners.get(tab) === conn) owners.delete(tab);
+  }
+  ownedBy.delete(conn);
+}

@@ -8,7 +8,9 @@ one workspace, **agent**, through the control socket's `agent` role. Spec:
 tabs an agent reaches (`isAgentTab`, `findAgentTab`, tab ownership; M2) and checks after the yes
 that the tab and URL are still those asked about (`stillAsAsked`; M8). `agent-tabs.mjs` and
 `ctl/agent-errors.mjs` (the refusals) never import the gate: they are called before and after the
-question, never in its place.
+question, never in its place. `agent-tabs.mjs` is restricted too (`RESTRICTED` in
+`tools/layering/layers.ts`): `agent-commands.mjs` is its one importer and hands none of it on, so
+the built-in agent reaches tab ownership only through `AgentTabOwners` there.
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this

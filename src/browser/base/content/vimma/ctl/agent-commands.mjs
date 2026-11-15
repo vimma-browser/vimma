@@ -54,23 +54,25 @@ import { AgentGate } from "../host/AgentGate.sys.mjs";
 import { AgentShot } from "./AgentShot.sys.mjs";
 import { AgentError, denied } from "./agent-errors.mjs";
 import {
-  AgentTabOwners,
   agentPrincipal,
   agentTabs,
   agentUri,
   agentWorkspace,
   describeTab,
   findAgentTab,
+  forgetOwners,
   isAgentTab,
   normalWindows,
-  own,
+  // Renamed: fill's handler has a local `own` (a form's own submit), which would shadow it.
+  own as ownTab,
+  ownerOf,
   siteOfTab,
   stillAsAsked,
   tabId,
   tabUrl,
 } from "./agent-tabs.mjs";
 
-export { AgentError, AgentTabOwners };
+export { AgentError };
 
 /** @import { ConnId, LogOutcome } from "../core/agent.mjs" */
 /** @import { AgentArgs, AgentCommand } from "../core/control.mjs" */
@@ -762,7 +764,7 @@ const COMMANDS = {
       }),
     );
     // Not for a conversation deleted while the open ran: its tab would belong to no one alive.
-    if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) own(tab, conn);
+    if (isBuiltinConn(conn) && AgentGate.isConnected(conn)) AgentTabOwners.give(tab, conn);
     AgentDownloads.openedBy(tab.linkedBrowser, conn, uri.spec);
     if (!elements) return opened(win, tab, 0);
     // The page it waits for loads at foreground priority, as on a tab the command names.
@@ -1596,6 +1598,27 @@ export function builtinHello(conn, state, label) {
   state.agent = { ...label };
   AgentGate.connect(conn, state.agent);
 }
+
+/**
+ * Tab ownership for the built-in agent (B17): giving a tab to a conversation (Behaviour 17),
+ * and a deleted conversation's tabs going back to no one. It stays here, not in agent-tabs.mjs,
+ * so that the tab model has one importer (tools/layering/layers.ts, RESTRICTED): the built-in
+ * agent reaches ownership through these three calls only.
+ */
+export const AgentTabOwners = {
+  /** @param {Tab} tab @param {ConnId} conn */
+  give(tab, conn) {
+    ownTab(tab, conn);
+  },
+  /** @param {Tab} tab @returns {ConnId | null} */
+  ownerOf(tab) {
+    return ownerOf(tab);
+  },
+  /** @param {ConnId} conn */
+  forget(conn) {
+    forgetOwners(conn);
+  },
+};
 
 /**
  * Each command's result, as its handler gives it.

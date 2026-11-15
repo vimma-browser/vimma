@@ -642,7 +642,7 @@ describe("restrictedErrors", () => {
   test("the gate's importers are exactly today's seven", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
     // docs/security/12-agents-mcp.md section 12 first, then add it here and in layers.ts.
-    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs"]);
+    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs", "ctl/agent-tabs.mjs"]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
       "ctl/AgentDownloads.sys.mjs",
@@ -652,6 +652,20 @@ describe("restrictedErrors", () => {
       "host/agent-ui.mjs",
       "host/mcp-ops.mjs",
     ]);
+  });
+  test("the agent tab model has one importer, agent-commands.mjs, and a new one fails", () => {
+    // ctl/agent-tabs.mjs decides which tabs an agent reaches and re-checks a tab after the yes
+    // (M2, M8): another caller could give a conversation a tab or skip the re-check.
+    const tabs = "ctl/agent-tabs.mjs";
+    expect(RESTRICTED[tabs]?.importers).toEqual(["ctl/agent-commands.mjs"]);
+    const errors = restrictedErrors(
+      [edge("ctl/agent-commands.mjs", tabs), edge("ctl/AgentAct.sys.mjs", tabs, "eager", 9)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === tabs)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ctl\/AgentAct\.sys\.mjs:9: imports ctl\/agent-tabs\.mjs, which only/,
+    );
   });
 });
 
