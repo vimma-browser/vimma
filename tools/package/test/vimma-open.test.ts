@@ -24,17 +24,14 @@ import { defined } from "../../test/defined.ts";
 
 const LAUNCHER = fileURLToPath(new URL("../vimma-open.sh", import.meta.url));
 
-/** @type {string} */
-let dir;
-/** @type {string} */
-let proc;
+let dir: string;
+let proc: string;
 
 /**
  * A fake vimma: its arguments one per line, then VIMMA_FROM, written to `calls` in one rename
  * (it runs detached, so the test waits for the file). While `hold` exists it does not exit.
- * @param {string} to
  */
-function fakeVimma(to) {
+function fakeVimma(to: string) {
   writeFileSync(
     to,
     `#!/bin/sh
@@ -59,30 +56,24 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-/** @param {number} ms */
-const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const pause = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
 /**
  * The fake vimma's call, once it has made it (it runs detached from the launcher).
- * @returns {{ args: string[], from: string }}
  */
-function waitForCall() {
+function waitForCall(): { args: string[]; from: string } {
   const file = join(dir, "calls");
   for (let i = 0; i < 200 && !existsSync(file); i++) pause(25);
   const lines = readFileSync(file, "utf8").trimEnd().split("\n");
-  const from = /** @type {string} */ (lines.pop());
+  const from = lines.pop() as string;
   return { args: lines, from };
 }
 
 /**
  * A fake /proc/<pid>: `stat` (with the comm in parentheses, at most 15 bytes, as the kernel
  * writes it), `comm` and, when given, an `exe` link.
- * @param {number} pid
- * @param {string} comm
- * @param {number} ppid
- * @param {string} [exe]
  */
-function processEntry(pid, comm, ppid, exe) {
+function processEntry(pid: number, comm: string, ppid: number, exe?: string) {
   const d = join(proc, String(pid));
   mkdirSync(d);
   const name = comm.slice(0, 15);
@@ -94,11 +85,9 @@ function processEntry(pid, comm, ppid, exe) {
 /**
  * A chain of processes, farthest first: `chain(1, ["ghostty", "zsh"])` makes ghostty (pid 100,
  * parent 1) and zsh (101, parent 100). Returns the nearest one's pid.
- * @param {number} top  the farthest process's parent
- * @param {string[]} names
- * @param {number} [from]
+ * @param top the farthest process's parent
  */
-function chain(top, names, from = 100) {
+function chain(top: number, names: string[], from: number = 100) {
   let parent = top;
   names.forEach((name, i) => {
     processEntry(from + i, name, parent);
@@ -109,11 +98,15 @@ function chain(top, names, from = 100) {
 
 /**
  * Runs the launcher as if its parent were `ppid`, and returns the fake vimma's call.
- * @param {string[]} args
- * @param {{ ppid?: number, env?: Record<string, string>, launcher?: string }} [options]
- * @returns {{ args: string[], from: string, status: number | null }}
  */
-function run(args, { ppid = 0, env = {}, launcher = LAUNCHER } = {}) {
+function run(
+  args: string[],
+  {
+    ppid = 0,
+    env = {},
+    launcher = LAUNCHER,
+  }: { ppid?: number; env?: Record<string, string>; launcher?: string } = {},
+): { args: string[]; from: string; status: number | null } {
   rmSync(join(dir, "calls"), { force: true });
   const r = spawnSync("/bin/sh", [launcher, ...args], {
     env: {
@@ -130,10 +123,8 @@ function run(args, { ppid = 0, env = {}, launcher = LAUNCHER } = {}) {
 
 /**
  * The names a link from `ppid` carries (`-vimma-from`), or null when it carries none.
- * @param {number} ppid
- * @param {Record<string, string>} [env]
  */
-function names(ppid, env = {}) {
+function names(ppid: number, env: Record<string, string> = {}) {
   const { args, from } = run([LINK], { ppid, env });
   if (args[0] !== "-vimma-from") {
     expect(from).toBe("VIMMA_FROM=unset");
@@ -336,14 +327,14 @@ describe("vimma-open", () => {
 
   it("never passes a name that is not a simple token, and keeps the names before it", () => {
     processEntry(1, "systemd", 0);
-    for (const [pid, comm] of /** @type {[number, string][]} */ ([
+    for (const [pid, comm] of [
       [800, "My App"],
       [801, "../../etc"],
       [802, "-x"],
       [803, "a;rm -rf ~"],
       [804, "ä"],
       [805, "a,b"],
-    ])) {
+    ] as [number, string][]) {
       processEntry(pid, comm, 1);
       expect(run([LINK], { ppid: pid }).args, comm).toEqual([LINK]);
     }
@@ -414,9 +405,8 @@ describe("vimma-open", () => {
 
   /**
    * Runs the launcher with `args` and returns its status and stderr, checking that it ran nothing.
-   * @param {string[]} args
    */
-  function refused(args) {
+  function refused(args: string[]) {
     const r = spawnSync("/bin/sh", [LAUNCHER, ...args], {
       env: { PATH: "/usr/bin:/bin", VIMMA_OPEN_PROC: proc, VIMMA_BIN: join(dir, "vimma") },
       encoding: "utf8",
@@ -591,11 +581,11 @@ const PYTHON = spawnSync("/bin/sh", ["-c", "command -v python3"], {
 
 describe.skipIf(process.platform !== "linux" || !PYTHON)("vimma-open with real processes", () => {
   /**
-   * @param {string[]} stubs  farthest first, each a stub that runs the rest of its arguments
-   * @param {string[]} command  what the nearest stub runs
-   * @param {Record<string, string>} [scripts]  more executables for `bin`, by name
+   * @param stubs farthest first, each a stub that runs the rest of its arguments
+   * @param command what the nearest stub runs
+   * @param scripts more executables for `bin`, by name
    */
-  function runChain(stubs, command, scripts = {}) {
+  function runChain(stubs: string[], command: string[], scripts: Record<string, string> = {}) {
     const bin = join(dir, "bin");
     mkdirSync(bin, { recursive: true });
     for (const [name, body] of Object.entries(scripts)) {

@@ -29,12 +29,12 @@ packages, signs and publishes all of it without me, once I have enabled it.
 
 ## Scope
 
-- `tools/package/package.mjs`: from the `./mach package` tarball, writes the release tarball,
+- `tools/package/package.ts`: from the `./mach package` tarball, writes the release tarball,
   the AppImage, the `.deb`, the AUR `PKGBUILD` + `.SRCINFO` + `vimma-vimma.desktop`, and
   `SHA256SUMS`.
-- `tools/package/sbom.mjs`: a CycloneDX 1.6 JSON SBOM from `surfer.json`, `engine/Cargo.lock`,
+- `tools/package/sbom.ts`: a CycloneDX 1.6 JSON SBOM from `surfer.json`, `engine/Cargo.lock`,
   the vendored crates' `Cargo.toml`, every `moz.yaml` in the engine tree and our vendored
-  smol-toml; `validate-sbom.mjs` checks it against the official CycloneDX 1.6 JSON schema.
+  smol-toml; `validate-sbom.ts` checks it against the official CycloneDX 1.6 JSON schema.
 - `tools/package/fetch-appimagetool.sh`: downloads appimagetool and the AppImage runtime, pinned
   by version and SHA-256.
 - `.github/workflows/release.yml`: build → package (+ smoke install) → sign → upload → AUR push,
@@ -53,7 +53,7 @@ where makepkg exists). (Since changed: the PKGBUILD is built and installed on Ar
 ## Artifacts and names
 
 `V` is `brands.vimma.release.displayVersion` in `surfer.json`, which release-please bumps
-(runbook, Releases); the tag is `vV`. `package.mjs --tag` refuses a tag that is not exactly `vV`,
+(runbook, Releases); the tag is `vV`. `package.ts --tag` refuses a tag that is not exactly `vV`,
 so a release can never carry packages of another version. Firefox's version (`version.version`)
 appears in no file name; it is in `vimma --version`'s About dialog line and the SBOM.
 
@@ -69,12 +69,12 @@ appears in no file name; it is in `vimma --version`'s About dialog line and the 
 
 A SemVer pre-release (`0.2.0-rc.1`, nightlies) becomes `0.2.0~rc.1` in the `.deb` (sorts before
 `0.2.0`). The AUR gets releases only: `pkgbuild()` refuses a pre-release (its `pkgver` could not
-hold the hyphen its download URL needs), `package.mjs` writes no AUR files for one, and
+hold the hyphen its download URL needs), `package.ts` writes no AUR files for one, and
 `release.yml` accepts `vX.Y.Z` tags only. (Since changed: `PKGBUILD` and `SRCINFO` are release
 assets in `SHA256SUMS`, and the AUR gets `PKGBUILD` and `.SRCINFO` only; [Arch Linux without the
 AUR](#arch-linux-without-the-aur).)
 
-`package.mjs` reads `RemotingName` from the tarball's `application.ini` for `StartupWMClass`
+`package.ts` reads `RemotingName` from the tarball's `application.ini` for `StartupWMClass`
 (today `vimma-vimma`, see Findings) and refuses a tarball without `vimma/vimma` or with an
 `application.ini` whose `Name` is not `Vimma`.
 
@@ -140,7 +140,7 @@ runtime; without it appimagetool downloads the latest one at build time, which i
 | `dpkg-deb`                                          | GPL-2.0+ (system tool on `ubuntu-24.04`, not shipped)                                                   | preinstalled                                                                                                                                                                                                                                       |
 | `desktop-file-validate`                             | GPL-2.0+ (system tool, tests only)                                                                      | `apt-get install desktop-file-utils` in the package job                                                                                                                                                                                            |
 | cosign 3.0.6 via `sigstore/cosign-installer` v4.1.2 | Apache-2.0                                                                                              | action pinned by SHA; it verifies the cosign binary it downloads                                                                                                                                                                                   |
-| SBOM generator                                      | ours (MPL-2.0)                                                                                          | `tools/package/sbom.mjs`                                                                                                                                                                                                                           |
+| SBOM generator                                      | ours (MPL-2.0)                                                                                          | `tools/package/sbom.ts`                                                                                                                                                                                                                            |
 | ajv 8.20.0 (schema validation)                      | MIT                                                                                                     | npm devDependency; it was already in the lockfile through eslint, now direct (no new package)                                                                                                                                                      |
 | CycloneDX 1.6.2 JSON schemas, SPDX list 3.24.0      | Apache-2.0; CC0-1.0                                                                                     | vendored in `tools/package/vendor/`, sources and SHA-256 in its README                                                                                                                                                                             |
 
@@ -172,7 +172,7 @@ Licences: a single id is looked up case-insensitively in the SPDX License List 3
 version CycloneDX 1.6.2's `spdx.schema.json` enumerates) and written in SPDX's spelling
 (`libpng` → `Libpng`); an expression is kept only if every id and exception is on the list
 (operators upper-cased, the old `MIT/Apache-2.0` form becomes `MIT OR Apache-2.0`); anything
-else becomes `license.name`. `validate-sbom.mjs` validates against the official schema in the
+else becomes `license.name`. `validate-sbom.ts` validates against the official schema in the
 tests and in the `build` job, so an invalid SBOM fails the release.
 
 It lists what the source tree vendors, a superset of what is linked into the shipped binary
@@ -188,7 +188,7 @@ packages are dev tools only and never ship, so they are not listed.
 
 **Keyless**: there is no secret to leak, and the signature proves the file came from
 `release.yml` in `vimma-browser/vimma`, run for a `vX.Y.Z` tag or from `main`. Users verify with
-`--certificate-identity-regexp` `IDENTITY_REGEXP` (`package.mjs`; anchored, exact repo, only
+`--certificate-identity-regexp` `IDENTITY_REGEXP` (`package.ts`; anchored, exact repo, only
 `refs/tags/vX.Y.Z` or `refs/heads/main`) and `--certificate-oidc-issuer
 https://token.actions.githubusercontent.com`; a test keeps the runbook's command equal to it.
 (Since changed: `IDENTITY_REGEXP` accepts only `refs/heads/main`, since `release.yml` runs only
@@ -222,7 +222,7 @@ runs when the release is published; docs/runbook.md, "Release packages".)
 Every job has `if: vars.RELEASE_ENABLED == 'true' && github.repository == 'vimma-browser/vimma' &&
 (github.event_name == 'release' || github.ref == 'refs/heads/main')` (manual runs too: the
 runner and secrets must be ready first). Top-level `permissions: {}`.
-`tools/package/test/release-workflow.test.mjs` checks the gate on every job, that only `sign`
+`tools/package/test/release-workflow.test.ts` checks the gate on every job, that only `sign`
 has `id-token: write` and only `publish` `contents: write`, and that there is no PR or push
 trigger.
 
@@ -237,7 +237,7 @@ offline outside builds.**
 | Job       | Runner                    | Permissions       | Gate                       | Does                                                                                                                                                                        |
 | --------- | ------------------------- | ----------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `build`   | self-hosted `vimma-build` | `contents: read`  | `RELEASE_ENABLED`          | checkout the tag, check tag = `vV`, fresh objdir + cache, `npm run import`, `surfer build`, `--version` and `application.ini` checks, `./mach package`, SBOM + schema check |
-| `package` | `ubuntu-24.04`            | `contents: read`  | `RELEASE_ENABLED`          | `fetch-appimagetool.sh`, `package.mjs`, `desktop-file-validate`, smoke: `apt install ./vimma_V_amd64.deb`, `vimma --version`, AppImage `--version`                          |
+| `package` | `ubuntu-24.04`            | `contents: read`  | `RELEASE_ENABLED`          | `fetch-appimagetool.sh`, `package.ts`, `desktop-file-validate`, smoke: `apt install ./vimma_V_amd64.deb`, `vimma --version`, AppImage `--version`                           |
 | `sign`    | `ubuntu-24.04`            | `id-token: write` | + `SIGNING_ENABLED`        | cosign keyless bundles for every asset and `SHA256SUMS`                                                                                                                     |
 | `publish` | `ubuntu-24.04`            | `contents: write` | `RELEASE_ENABLED`          | `gh release upload <tag> … --clobber` (assets, `SHA256SUMS`, bundles when signed); appends the third-party notice to the notes                                              |
 | `aur`     | `ubuntu-24.04`            | none              | + `AUR_SSH_KEY` secret set | clone `ssh://aur@aur.archlinux.org/vimma-bin.git`, replace `PKGBUILD`, `.SRCINFO`, `vimma-vimma.desktop`, commit, push                                                      |
@@ -375,7 +375,7 @@ latest-release badge in the aqua accent, `color=2cf5d2`.)
 
 ## Tests (write first)
 
-`tools/package/test/package.test.mjs` (Vitest), against a fake `./mach package` tarball built in
+`tools/package/test/package.test.ts` (Vitest), against a fake `./mach package` tarball built in
 a temp dir (`vimma/vimma` shell stub, `vimma-bin`, `application.ini`, `libxul.so`,
 `browser/chrome/icons/default/default*.png`), `tar -cJf`:
 
@@ -403,7 +403,7 @@ a temp dir (`vimma/vimma` shell stub, `vimma-bin`, `application.ini`, `libxul.so
   fields match it, and equal `makepkg --printsrcinfo` when makepkg exists.
 - `SHA256SUMS`: one line per artifact, `sha256sum -c` passes in the output dir.
 
-`tools/package/test/sbom.test.mjs`: fixture `Cargo.lock`, vendored `Cargo.toml`s and
+`tools/package/test/sbom.test.ts`: fixture `Cargo.lock`, vendored `Cargo.toml`s and
 `moz.yaml`s: registry crates get purl, hash and licence; path crates are left out; git crates get
 their VCS URL; `moz.yaml` licence lists become `OR`-free `licenses` arrays; the document has
 `bomFormat`, `specVersion` 1.6, `serialNumber` as `urn:uuid:`, the Vimma metadata component;
@@ -411,12 +411,12 @@ licence ids in SPDX's spelling (`libpng` → `Libpng`), expressions canonicalise
 a name; moz.yaml versions without the date; smol-toml listed; the document validates against
 the official CycloneDX 1.6 schema, which rejects `license.id: "libpng"`.
 
-`package.test.mjs` also: `IDENTITY_REGEXP` accepts `release.yml` at `refs/tags/vX.Y.Z` and
+`package.test.ts` also: `IDENTITY_REGEXP` accepts `release.yml` at `refs/tags/vX.Y.Z` and
 `refs/heads/main` only (not other branches, pre-release tags, PR refs, other workflows or
 repos) and is what the runbook's `cosign verify-blob` uses; `RUNTIME_RELEASE` is the one
 `fetch-appimagetool.sh` pins; the third-party release notes name it.
 
-`release-workflow.test.mjs`: the gates and permissions above. Workflow: actionlint clean.
+`release-workflow.test.ts`: the gates and permissions above. Workflow: actionlint clean.
 
 ## Findings
 

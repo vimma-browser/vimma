@@ -18,8 +18,7 @@ import { tempDir } from "../../test/temp-dir.mjs";
 // hardened runtime with Vimma's production entitlements, notarised and stapled, then packed into a
 // new .dmg; and the check a hosted Mac runs on the result.
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
-/** @param {string} path */
-const read = (path) => readFileSync(join(repo, path), "utf8");
+const read = (path: string) => readFileSync(join(repo, path), "utf8");
 const UNPACK = join(repo, "tools/package/macos-dmg-unpack.sh");
 const SIGN = join(repo, "tools/package/macos-sign-app.sh");
 const PACK = join(repo, "tools/package/macos-dmg-pack.sh");
@@ -31,11 +30,9 @@ const API_KEY = '{"issuer_id":"never-on-a-command-line"}';
 
 /**
  * The plist keys of an entitlements file, each with its value as written.
- * @param {string} xml
  */
-function entitlements(xml) {
-  /** @type {Record<string, string>} */
-  const keys = {};
+function entitlements(xml: string) {
+  const keys: Record<string, string> = {};
   // comments removed until none is left, so a removal cannot join two halves into a new one
   let body = xml;
   for (let before = ""; before !== body;) {
@@ -92,10 +89,11 @@ describe("Vimma's production entitlements (configs/macos/entitlements)", () => {
 
 /**
  * A Vimma.app as mach package lays it out, with its helpers, under `dir/name`.
- * @param {string} dir
- * @param {{ stapled?: boolean, links?: Record<string, string> }} [options]
  */
-function appTree(dir, { stapled = false, links = {} } = {}) {
+function appTree(
+  dir: string,
+  { stapled = false, links = {} }: { stapled?: boolean; links?: Record<string, string> } = {},
+) {
   const app = join(dir, "Vimma.app");
   for (const f of [...APP_FILES, ...(stapled ? ["Contents/CodeResources"] : [])]) {
     mkdirSync(join(app, f, ".."), { recursive: true });
@@ -129,9 +127,8 @@ const PLISTS = {
 
 /**
  * An XML Info.plist naming `exe` as the bundle's executable, as mach package writes it.
- * @param {string} exe
  */
-function plist(exe) {
+function plist(exe: string) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -149,10 +146,11 @@ function plist(exe) {
  * Stub disk-image tools (dmg, hfsplus, newfs_hfs) in `dir/dmg-tools`, logging each call to
  * `dir/log`. `dmg extract` + `hfsplus extractall` lay out a volume with one Vimma.app, the window
  * art and the Applications link, as mach package makes it.
- * @param {string} dir
- * @param {{ stapled?: boolean, buildFails?: boolean }} [options]
  */
-function dmgTools(dir, { stapled = false, buildFails = false } = {}) {
+function dmgTools(
+  dir: string,
+  { stapled = false, buildFails = false }: { stapled?: boolean; buildFails?: boolean } = {},
+) {
   const log = join(dir, "log");
   const tools = join(dir, "dmg-tools");
   mkdirSync(tools);
@@ -161,7 +159,7 @@ function dmgTools(dir, { stapled = false, buildFails = false } = {}) {
     ...ART,
     ...(stapled ? ["Vimma.app/Contents/CodeResources"] : []),
   ];
-  const tool = (/** @type {string} */ name, /** @type {string} */ body) => {
+  const tool = (name: string, body: string) => {
     writeFileSync(join(tools, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\n${body}`);
     chmodSync(join(tools, name), 0o755);
   };
@@ -184,28 +182,21 @@ if [ "$2" = addall ]; then (cd "$3" && find . -name CodeResources | sort) > "${l
 
 /**
  * Runs a script with a clean environment; undefined values are left out.
- * @param {string} script
- * @param {string[]} args
- * @param {string} dir
- * @param {Record<string, string | undefined>} env
  */
-function run(script, args, dir, env) {
+function run(script: string, args: string[], dir: string, env: Record<string, string | undefined>) {
   const tmp = join(dir, "tmp");
   mkdirSync(tmp);
-  /** @type {Record<string, string>} */
-  const clean = { PATH: process.env.PATH ?? "", TMPDIR: tmp };
+  const clean: Record<string, string> = { PATH: process.env.PATH ?? "", TMPDIR: tmp };
   for (const [k, v] of Object.entries(env)) if (v !== undefined) clean[k] = v;
   const result = spawnSync(script, args, { encoding: "utf8", env: clean });
   return { ...result, tmp };
 }
 
-/** @param {string} log */
-const lines = (log) => readFileSync(log, "utf8").trim().split("\n");
+const lines = (log: string) => readFileSync(log, "utf8").trim().split("\n");
 
 // Job macos-unpack: the handed-over disk-image tools run here, with no secret on the runner.
 describe("macos-dmg-unpack.sh", () => {
-  /** @param {string} dir @param {Record<string, string | undefined>} env */
-  const unpack = (dir, env) => {
+  const unpack = (dir: string, env: Record<string, string | undefined>) => {
     writeFileSync(join(dir, "in.dmg"), "ad hoc dmg\n");
     return run(UNPACK, [join(dir, "in.dmg"), join(dir, "volume")], dir, env);
   };
@@ -250,8 +241,7 @@ describe("macos-dmg-unpack.sh", () => {
 // macos-build writes it for the app mach built; macos-notarise recomputes it from what
 // macos-unpack handed over and refuses a difference, before any credential exists.
 describe("macos-app-manifest.sh", () => {
-  /** @param {string} app */
-  const manifest = (app) =>
+  const manifest = (app: string) =>
     spawnSync(MANIFEST, [app], { encoding: "utf8", env: { PATH: process.env.PATH ?? "" } });
 
   it("lists every entry with its type, executable bit and SHA-256, sorted bytewise", () => {
@@ -263,7 +253,7 @@ describe("macos-app-manifest.sh", () => {
     chmodSync(join(app, "Contents/MacOS/vimma"), 0o755);
     writeFileSync(join(app, "Contents/Resources/a b@2x.png"), "png\n");
     chmodSync(join(app, "Contents/Resources/a b@2x.png"), 0o644);
-    const sha = (/** @type {string} */ s) => createHash("sha256").update(s).digest("hex");
+    const sha = (s: string) => createHash("sha256").update(s).digest("hex");
     const { status, stdout, stderr } = manifest(app);
     expect(stderr).toBe("");
     expect(status).toBe(0);
@@ -338,18 +328,21 @@ describe("macos-app-manifest.sh", () => {
 describe("macos-sign-app.sh", () => {
   /**
    * A stub rcodesign in `dir`, logging to `dir/log`, and the credential files.
-   * @param {string} dir
-   * @param {{ team?: string, subject?: string, notaryFails?: boolean, signFails?: boolean,
-   *   staples?: boolean }} [options]
    */
   function rcodesignStub(
-    dir,
+    dir: string,
     {
       team = TEAM,
       subject = `Developer ID Application: Vimma (${TEAM})`,
       notaryFails = false,
       signFails = false,
       staples = true,
+    }: {
+      team?: string;
+      subject?: string;
+      notaryFails?: boolean;
+      signFails?: boolean;
+      staples?: boolean;
     } = {},
   ) {
     const log = join(dir, "log");
@@ -392,21 +385,20 @@ esac
     };
   }
 
-  /**
-   * @param {Parameters<typeof rcodesignStub>[1]} [options]
-   * @param {Parameters<typeof appTree>[1]} [tree]
-   */
-  const setup = (options, tree) => {
+  const setup = (
+    options?: Parameters<typeof rcodesignStub>[1],
+    tree?: Parameters<typeof appTree>[1],
+  ) => {
     const dir = tempDir("vimma-sign-");
     const app = appTree(dir, tree);
     return { dir, app, ...rcodesignStub(dir, options) };
   };
 
   it("checks the certificate is a Developer ID Application of APPLE_TEAM_ID before signing", () => {
-    for (const [options, message] of /** @type {const} */ ([
+    for (const [options, message] of [
       [{ team: "ZZZZZ99999" }, /team/i],
       [{ subject: `Apple Development: Vimma (${TEAM})` }, /Developer ID Application/],
-    ])) {
+    ] as const) {
       const { dir, app, log, env } = setup(options);
       const { status, stdout, stderr } = run(SIGN, [app], dir, env);
       expect(status).not.toBe(0);
@@ -421,8 +413,7 @@ esac
     const sign = lines(log).find((l) => l.startsWith("rcodesign sign ")) ?? "";
     const args = sign.split(" ").slice(2);
     expect(args.at(-1)).toBe(app);
-    /** @param {string} flag */
-    const values = (flag) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
+    const values = (flag: string) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
     expect(values("--p12-file")).toEqual([env.APPLE_P12_FILE]);
     expect(values("--p12-password-file")).toEqual([env.APPLE_P12_PASSWORD_FILE]);
     // Developer ID, a secure timestamp and the hardened runtime on every Mach-O, or rcodesign
@@ -502,8 +493,7 @@ esac
   // read or write a file outside it, such as the credentials. A chain of links that each look
   // harmless as text (x -> ., then x/x/../..) still gets out.
   it("refuses a symlink that leaves the app, before rcodesign runs", () => {
-    /** @type {Record<string, string>[]} */
-    const cases = [
+    const cases: Record<string, string>[] = [
       { "Contents/MacOS/escape": "/etc/hosts" },
       { "Contents/MacOS/escape": "../../../secrets/p12-password" },
       { "Contents/MacOS/escape": "../../.." },
@@ -521,8 +511,10 @@ esac
   // An installed Vimma.app on Firefox 158.0.1 has no symlink in the bundle;
   // its frameworks are flat. So any link is refused, inside or out.
   it("refuses every symlink, even one that stays inside the app, and an app that is a link", () => {
-    /** @type {Record<string, string>[]} */
-    const cases = [{ "Contents/MacOS/link-to-xul": "XUL" }, { "Contents/up": "MacOS" }];
+    const cases: Record<string, string>[] = [
+      { "Contents/MacOS/link-to-xul": "XUL" },
+      { "Contents/up": "MacOS" },
+    ];
     for (const links of cases) {
       const { dir, app, log, env } = setup(undefined, { links });
       const { status, stderr } = run(SIGN, [app], dir, env);
@@ -595,8 +587,7 @@ esac
       "Contents/Resources/vimma-ctl-licenses/README.txt",
       "Contents/_CodeSignature/CodeResources",
     ];
-    /** @type {Record<string, string>} */
-    const helpers = {
+    const helpers: Record<string, string> = {
       "gpu-helper.app": "Vimma GPU Helper",
       "media-plugin-helper.app": "Vimma Media Plugin Helper",
       "plugin-container.app": "plugin-container",
@@ -628,8 +619,7 @@ esac
     ]);
     const args = readFileSync(`${log}.args.sign`, "utf8").trimEnd().split("\n");
     expect(args.at(-1)).toBe(app);
-    /** @param {string} flag */
-    const values = (flag) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
+    const values = (flag: string) => args.flatMap((a, i) => (args[i - 1] === flag ? [a] : []));
     expect(new Set(values("--code-signature-flags"))).toEqual(
       new Set([
         "Contents/MacOS/plugin-container.app:runtime",
@@ -677,8 +667,7 @@ esac
   });
 
   it("refuses a CFBundleExecutable with a / or .., and a binary Info.plist", () => {
-    /** @type {Array<string | Buffer>} */
-    const plists = [
+    const plists: Array<string | Buffer> = [
       plist("../../../secrets/p12-password"),
       plist("MacOS/../vimma"),
       plist(".."),
@@ -761,10 +750,11 @@ esac
 
 // Job macos-pack: the handed-over tools again, after the secrets' job has ended.
 describe("macos-dmg-pack.sh", () => {
-  /**
-   * @param {{ stapled?: boolean, art?: string[], buildFails?: boolean }} [options]
-   */
-  const pack = ({ stapled = true, art = ART, buildFails = false } = {}) => {
+  const pack = ({
+    stapled = true,
+    art = ART,
+    buildFails = false,
+  }: { stapled?: boolean; art?: string[]; buildFails?: boolean } = {}) => {
     const dir = tempDir("vimma-pack-");
     const { log, tools } = dmgTools(dir, { buildFails });
     const volume = join(dir, "volume");
@@ -844,10 +834,6 @@ describe("macos-developer-id-check.sh", () => {
   ].join("\n");
   const ACCEPTED = `accepted\nsource=Notarized Developer ID\norigin=Developer ID Application: Vimma (${TEAM})`;
 
-  /**
-   * @param {{ app?: string, nested?: string, spctl?: string, spctlStatus?: number,
-   *   staple?: number, verify?: number, expected?: string }} [out]
-   */
   function check({
     app = SIGNED(),
     nested = SIGNED(),
@@ -856,6 +842,14 @@ describe("macos-developer-id-check.sh", () => {
     staple = 0,
     verify = 0,
     expected = TEAM,
+  }: {
+    app?: string;
+    nested?: string;
+    spctl?: string;
+    spctlStatus?: number;
+    staple?: number;
+    verify?: number;
+    expected?: string;
   } = {}) {
     const dir = tempDir("vimma-devid-check-");
     const bundle = join(dir, "Vimma.app");
@@ -864,7 +858,7 @@ describe("macos-developer-id-check.sh", () => {
     mkdirSync(join(bundle, "Contents/MacOS/plugin-container.app"));
     writeFileSync(join(dir, "app.txt"), app);
     writeFileSync(join(dir, "nested.txt"), nested);
-    const stub = (/** @type {string} */ name, /** @type {string} */ body) => {
+    const stub = (name: string, body: string) => {
       writeFileSync(join(dir, name), `#!/bin/sh\necho "${name} $*" >> "${dir}/log"\n${body}`);
       chmodSync(join(dir, name), 0o755);
     };

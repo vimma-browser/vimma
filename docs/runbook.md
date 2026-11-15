@@ -1418,7 +1418,7 @@ and `background.png`, in `configs/branding/vimma/`) from `configs/branding/vimma
 and the Icon Composer source `configs/macos/AppIcon.icon/icon.json`, and fails if they differ
 (spec [macos-homebrew](specs/macos-homebrew.md), decision 13). `actool`, which compiles
 `Assets.car`, ships only with Xcode, not the Command Line Tools. After changing the logo or the
-icon source, either run `node tools/package/macos-icons.mjs` on a Mac with Xcode, or push and
+icon source, either run `node tools/package/macos-icons.ts` on a Mac with Xcode, or push and
 copy the files from the run's `macos-icons` artifact, which also holds their renderings:
 
 ```sh
@@ -1429,14 +1429,14 @@ cp /tmp/macos-icons/{Assets.car,firefox.icns,document.icns,disk.icns,background.
 
 The `.dmg` window's layout, `configs/branding/vimma/dsstore`, is the `.DS_Store` Finder writes,
 so no job can regenerate it byte for byte (it records dates and the disk image's location).
-After changing `DMG_LAYOUT` in `tools/package/macos-icons.mjs` or the background, run
+After changing `DMG_LAYOUT` in `tools/package/macos-icons.ts` or the background, run
 `tools/package/macos-dsstore.sh --out "$RUNNER_TEMP/dsstore"` on a GitHub-hosted `macos-15`
 runner (a short-lived workflow on the branch that uploads the file as an artifact, with
 `contents: read` and pinned actions, removed again before merge) and commit the downloaded file.
 It lays out a scratch disk image in Finder through AppleScript, which the hosted image allows
 without a prompt, and copies the `.DS_Store`. A developer's Mac is not used, because Finder
 records the machine's per-user temp-dir hash and volume UUIDs in the file.
-`tools/package/test/macos.test.mjs` checks that it places `Vimma.app` and the Applications link
+`tools/package/test/macos.test.ts` checks that it places `Vimma.app` and the Applications link
 where `DMG_LAYOUT` says, shows the background from the Vimma volume, and names no home directory.
 
 `actool` names the catalog's flattened fallback images with a fresh UUID and writes them anew on
@@ -1468,7 +1468,7 @@ build used 44 GB of the runner's disk, the 16 GB swap file included, and left 42
 `macos-ctl` builds `vimma-ctl` on a hosted Mac from the tag's commit (spec
 [ship-vimma-ctl](specs/ship-vimma-ctl.md)); `macos-build` builds as `macos.yml` does, from the release tag's commit and with the Safe
 Browsing key, and renders the Homebrew cask `vimma.rb` for the `.dmg`
-(`tools/package/cask.mjs`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
+(`tools/package/cask.ts`), with that `vimma-ctl` signed into `Vimma.app/Contents/MacOS`;
 `macos-smoke` checks the `.dmg` on a hosted Mac against the tag, runs the e2e smoke scenarios
 through the app's own `vimma-ctl`, and installs it through the cask (`tools/package/cask-check.sh`); `macos-sign` signs both and
 `SHA256SUMS-macos` with cosign while `SIGNING_ENABLED` is `true`; `macos-publish` uploads them
@@ -1932,7 +1932,7 @@ maintainer's one click.
   too, since `tools/vimma-ctl/build.rs` reads it (spec ship-vimma-ctl). The release
   PR bumps it through `extra-files` (jsonpath `$.brands.vimma.release.displayVersion`), plus
   `.release-please-manifest.json`, which must always match it (tested in
-  `tools/package/test/release-workflow.test.mjs`). The Firefox pin `version.version` is never
+  `tools/package/test/release-workflow.test.ts`). The Firefox pin `version.version` is never
   touched; `upstream.yml` owns it. Release type `simple`: there is no root `version.txt`, so
   nothing else is written.
 - **Bumps** (`release-please-config.json`, spec release-versioning): every release bumps the
@@ -2192,7 +2192,7 @@ same call as the manual re-run, so one path is exercised every time.
 | `vimma-X.Y.Z-x86_64.AppImage`           | AppImage (appimagetool 1.9.1, runtime 20251108, both pinned)                                                                    |
 | `vimma_X.Y.Z_amd64.deb`                 | `/usr/lib/vimma`, `/usr/bin/vimma`, desktop file, icons                                                                         |
 | `vimma-X.Y.Z-1.x86_64.rpm`              | the same layout as the `.deb`, for Fedora and openSUSE                                                                          |
-| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.mjs`)                                                                                   |
+| `vimma-X.Y.Z.cdx.json`                  | CycloneDX 1.6 SBOM (`tools/package/sbom.ts`)                                                                                    |
 | `PKGBUILD`                              | `vimma-bin` for Arch Linux; its only source is the tarball                                                                      |
 | `SRCINFO`                               | its `.SRCINFO` (GitHub renames an asset with a leading period)                                                                  |
 | `vimma-X.Y.Z-linux-x86_64.complete.mar` | the complete MAR Firefox's updater applies to a tarball install, signed with the update key (while `UPDATES_ENABLED` is `true`) |
@@ -2202,7 +2202,7 @@ same call as the manual re-run, so one path is exercised every time.
 Jobs: `build` (read-only token and the Safe Browsing key; first checks that the tag is
 `vX.Y.Z` and that its commit is on `main`) → `ctl` (`vimma-ctl` from the same commit, static for
 `x86_64-unknown-linux-musl`; read-only token, no secret; spec
-[ship-vimma-ctl](specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.mjs` writes
+[ship-vimma-ctl](specs/ship-vimma-ctl.md); then `tools/package/ctl-notices.ts` writes
 `vimma-ctl-licenses/`, the notices of musl, Rust's standard library and LLVM's libunwind, from
 that toolchain, and `vimma-ctl`'s SBOM entry) → `package` (AppImage, `.deb`, `.rpm`, `PKGBUILD`,
 the AUR variant, checksums, each with `vimma-ctl` and `vimma-ctl-licenses/` next to `vimma`, and
@@ -2230,20 +2230,20 @@ tools/package/fetch-appimagetool.sh /tmp/ait
 (cd tools/vimma-ctl && rustup target add x86_64-unknown-linux-musl &&
   cargo build --release --locked --target x86_64-unknown-linux-musl)
 mkdir ctl && cp tools/vimma-ctl/target/x86_64-unknown-linux-musl/release/vimma-ctl ctl/
-node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+node tools/package/ctl-notices.ts --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
   --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
-node tools/package/sbom.mjs --engine engine --out /tmp/vimma.cdx.json
-node tools/package/package.mjs --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
+node tools/package/sbom.ts --engine engine --out /tmp/vimma.cdx.json
+node tools/package/package.ts --tarball engine/obj-x86_64-pc-linux-gnu/dist/vimma-*.tar.xz \
   --ctl ctl/vimma-ctl --ctl-licenses ctl/vimma-ctl-licenses \
   --sbom /tmp/vimma.cdx.json --ctl-component ctl/vimma-ctl.cdx.json \
   --out dist --maintainer 'Name <email>' --appimagetool /tmp/ait/appimagetool \
   --runtime /tmp/ait/runtime-x86_64 --no-deb   # dpkg-deb only exists on Debian/Ubuntu
-node tools/package/validate-sbom.mjs dist/vimma-*.cdx.json
+node tools/package/validate-sbom.ts dist/vimma-*.cdx.json
 tools/package/arch-smoke.sh dist "$(node tools/release/version-line.mjs)"   # needs docker
 tools/package/rpm-smoke.sh dist "$(node tools/release/version-line.mjs)"    # needs docker
 ```
 
-`package.mjs` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
+`package.ts` builds the `.rpm` with `rpmbuild` (on Arch, the `rpm-tools` package; on
 Debian and Ubuntu, `rpm`); without it, pass `--no-rpm`. `rpmbuild` reads the binaries'
 requirements as sonames, which Fedora and openSUSE both provide, and the spec it is given keeps
 the libraries Vimma bundles out of them (spec [rpm-package](specs/rpm-package.md)).
@@ -2266,7 +2266,7 @@ would turn the check off for every tap on the machine. When a run fails with "Re
 cask ... from untrusted tap", the trust step did not run: check that `brew commands --quiet` on
 that Homebrew lists `trust`.
 
-**The two `PKGBUILD`s.** `package.mjs` writes one `vimma-bin` PKGBUILD in two variants that
+**The two `PKGBUILD`s.** `package.ts` writes one `vimma-bin` PKGBUILD in two variants that
 differ in one line, the install source it records in `/opt/vimma/is-packaged-app`:
 `dist/PKGBUILD` (`vimma-package=pkgbuild-release`) is the release asset that Arch users
 download with `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO
@@ -2347,7 +2347,7 @@ neither needs another file.
      the checks `tools/package/cask-check.sh` runs here, but on the latest stable Homebrew and
      the whole tap, so a new Homebrew audit rule can turn the tap red before the `cask` job here. It is not a required check in the ruleset, so
      `homebrew.yml`'s push lands first and the check then runs on it. When it fails on `main`,
-     the pushed cask came from a release: fix `tools/package/cask.mjs` here and ship a fixed
+     the pushed cask came from a release: fix `tools/package/cask.ts` here and ship a fixed
      release, since `homebrew.yml` never replaces a newer cask with an older one. Its one action,
      `Homebrew/actions/setup-homebrew`, is pinned by commit SHA with its tag in a comment, and
      the tap has no Dependabot: bump it by hand from Homebrew's releases.
@@ -2432,7 +2432,7 @@ only by `workflow_dispatch` and refuses any other branch, and every signed relea
 included, was signed so.
 The issuer pins GitHub Actions' OIDC. Checking `SHA256SUMS`'s signature and then `sha256sum -c`
 covers every file; each asset also has its own `<file>.sigstore.json`, verified the same way.
-The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps the two equal.
+The regexp is `IDENTITY_REGEXP` in `tools/package/package.ts`, and a test keeps the two equal.
 
 **What the maintainer sees on a release** (from `0.1.2` on):
 
@@ -2444,7 +2444,7 @@ The regexp is `IDENTITY_REGEXP` in `tools/package/package.mjs`, and a test keeps
    a little over two hours (2 h 12 min for `v0.1.1`). The draft has no files until its `publish` job, near the end,
    uploads them all and edits the notes: an "Updating" section goes above the changelog and the
    third-party notice below it, each once (a re-run finds the heading). Both come from
-   `tools/package/package.mjs` (`dist/notes/`). The update steps are there on every release,
+   `tools/package/package.ts` (`dist/notes/`). The update steps are there on every release,
    with or without macOS: the Mac update notice of 0.1.6 shows a Linux command and links to these
    notes, and the macOS jobs upload the `.dmg` after this edit.
 3. When the run is green, the draft lists the tarball, AppImage, `.deb`, `.rpm`, SBOM, `PKGBUILD`,
@@ -2525,7 +2525,7 @@ counts to estimate what users downloaded.
 
 ### Flatpak (`flatpak.yml`, spec flatpak)
 
-`tools/package/flatpak.mjs` writes the Flatpak manifest `dev.vimma.browser.json` and the four
+`tools/package/flatpak.ts` writes the Flatpak manifest `dev.vimma.browser.json` and the four
 files it names (launcher, desktop file, metainfo, icon); the manifest repackages a release
 tarball on `org.freedesktop.Platform` 25.08. `tools/package/flatpak-smoke.sh` builds it with
 flatpak-builder in a privileged Fedora container, installs it, and checks the version line,
@@ -2549,7 +2549,7 @@ Vimma is not on Flathub yet (issue #465).
   find one, take the current ones from
   `flatpak remote-info flathub runtime/org.freedesktop.Platform/x86_64/25.08` (and `…Sdk…`) and
   update the script in a pull request. A new runtime branch (26.08) changes `RUNTIME_VERSION` in
-  `flatpak.mjs` and `RUNTIME` in the script together; a test keeps them equal.
+  `flatpak.ts` and `RUNTIME` in the script together; a test keeps them equal.
 
 **Submitting to Flathub** (issue #465; only once its other items are done, and only when the
 maintainer decides to list Vimma):
@@ -2559,13 +2559,13 @@ bars a manifest with AI-generated or AI-assisted
 content, even disclosed, and bars AI tools from opening the submission pull request or writing
 its description, commit messages, comments or replies. Other AI-generated material in the app
 or its packaging must be disclosed in the pull request, naming the parts and the extent. Since
-`tools/package/flatpak.mjs` was written with AI help, its generated manifest cannot be submitted
+`tools/package/flatpak.ts` was written with AI help, its generated manifest cannot be submitted
 as it is: a person writes the submitted manifest by hand (the generated one and step 2's lint
 can serve as research), and does steps 3 and 4 by hand.
 
 1. Generate the files for the release to submit, with the tarball's SHA-256 from its
    `SHA256SUMS` and the release's date:
-   `node tools/package/flatpak.mjs --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
+   `node tools/package/flatpak.ts --out flathub --version X.Y.Z --date YYYY-MM-DD --sha256 <hex>`.
 2. Build and lint them as Flathub does, on a machine with Flatpak:
    `flatpak install flathub org.flatpak.Builder`, then
    `flatpak run --command=flathub-build org.flatpak.Builder --install flathub/dev.vimma.browser.json`
@@ -2573,7 +2573,7 @@ can serve as research), and does steps 3 and 4 by hand.
    `--disable-rofiles-fuse` before the manifest),
    `flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest flathub/dev.vimma.browser.json`
    and `flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo`. Fix every
-   error in `flatpak.mjs`, not in the generated files. Expect one warning,
+   error in `flatpak.ts`, not in the generated files. Expect one warning,
    `runtime-update-available-to-org.freedesktop.Platform-26.08`, while Mozilla's Flatpak stays
    on 25.08. The metainfo links its screenshots at the release's tag
    (`docs/assets/screenshots/README.md`), so submit a release whose tag has

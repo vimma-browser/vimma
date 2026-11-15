@@ -88,7 +88,7 @@ settings and the `main` ruleset read through the GitHub API.
 | Status bar               | no version                                 | (none: `vimma/ui/` has no version string)               | none                                                                                                 |
 | GitHub Release title     | `v0.1.1`                                   | release-please `BaseStrategy.buildRelease`              | none                                                                                                 |
 
-`tools/package/test/package.test.mjs` uses `Vimma Vimma 0.1.0` only as the output of a fake
+`tools/package/test/package.test.ts` uses `Vimma Vimma 0.1.0` only as the output of a fake
 binary. `docs/rebase.md` §4, `docs/runbook.md` "Smoke check", `docs/limits.md` and ADR-010's table
 quote the same string.
 
@@ -383,7 +383,7 @@ Written first and seen to fail.
 - `pins the merge to the release PR's head commit`
 - `fails when the variable is on and RELEASE_PLEASE_TOKEN is missing`
 
-**vitest, workflow tests** (`tools/package/test/release-workflow.test.mjs`)
+**vitest, workflow tests** (`tools/package/test/release-workflow.test.ts`)
 
 - `release-please.yml grants nothing by default and each job only what it needs`
 - `only release-title holds contents: write from GITHUB_TOKEN besides release-please` (the

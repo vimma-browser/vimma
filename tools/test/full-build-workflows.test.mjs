@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 // Spec build-supply-chain, decisions 3 to 10 and rules B1 (builds) and B2: the nightly, the
 // release and the macOS cross build (spec macos-build, decision 6) build on GitHub-hosted runners from Firefox source that firefox-source.sh verified and
 // extracted in the same job, and restore nothing from the Actions cache. Text checks, like
-// release-workflow.test.mjs: no YAML dependency.
+// release-workflow.test.ts: no YAML dependency.
 const DIR = new URL("../../.github/workflows/", import.meta.url);
 /** @param {string} name */
 const workflow = (name) => readFileSync(new URL(name, DIR), "utf8");

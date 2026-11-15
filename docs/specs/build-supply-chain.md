@@ -182,10 +182,10 @@ for most of the 12.5 minutes `docs/runbook.md` records for `surfer download`; wi
 **R5. What runs in the release build job, and whether it needs install scripts.** From
 `package-lock.json` at `main` (7fc0226; the lockfile is unchanged since 30bf67e):
 
-- The build job runs `tools/package/package.mjs`, `tools/sync-core.mjs` (Since changed:
+- The build job runs `tools/package/package.ts`, `tools/sync-core.mjs` (Since changed:
   `sync-core.ts`, ADR-025), `tools/version-files/version-files.mjs` (Since changed:
-  `version-files.ts`, ADR-025), `tools/import/restore-patched.mjs` and `tools/package/sbom.mjs`
-  (Node built-ins only), `tools/package/validate-sbom.mjs` (imports `ajv`), and Surfer (`download`,
+  `version-files.ts`, ADR-025), `tools/import/restore-patched.mjs` and `tools/package/sbom.ts`
+  (Node built-ins only), `tools/package/validate-sbom.ts` (imports `ajv`), and Surfer (`download`,
   `config brand`, `import`, `build`).
 - **Surfer 1.14.9** has 22 direct dependencies: `@resvg/resvg-js` 1.4.0, `async-icns` 1.0.2,
   `axios` 1.20.0, `chalk` 4.1.2, `cli-progress` 3.12.0, `commander` 6.2.1, `execa` 5.1.1,
@@ -904,7 +904,7 @@ the `build` environment instead of a repository secret), `tools/test/upstream-wo
 `firefox-source.sh`), `tools/test/sites-workflow.test.mjs` (the SHA512SUMS check is
 `firefox-source.sh`; its
 hosted-runner assertion moves into `self-hosted-runner.test.mjs`),
-`tools/package/test/release-workflow.test.mjs` (the release build job's runner and checkout).
+`tools/package/test/release-workflow.test.ts` (the release build job's runner and checkout).
 
 No mochitest or e2e scenario: nothing in the browser changes.
 

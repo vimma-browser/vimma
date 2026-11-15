@@ -332,7 +332,7 @@ nightly --prerelease`), and its schedule does nothing until the repository varia
 
 - The compile-time channel stays `vimma` for both (it also picks the certificates and, through
   `MOZ_APP_REMOTINGNAME`, the desktop file ID `vimma-vimma`; m6-packaging). The nightly tarball
-  gets its channel at packaging time: `package.mjs --channel nightly` rewrites
+  gets its channel at packaging time: `package.ts --channel nightly` rewrites
   `defaults/pref/channel-prefs.js` and `update-settings.ini` inside it. Updates never touch those
   files, so a nightly install stays nightly and a release install never accepts a nightly MAR
   (error 22).
@@ -649,7 +649,7 @@ that only the signature changed and that `signmar -v` and `mar.mjs verify` accep
 committed certificates, and adds it to `SHA256SUMS`, which cosign signs as before; the
 manifest's `<patch>` follows the release's `SHA256SUMS`, so a release from before the MAR keeps
 its manifest. The nightly sets its channel with `tools/update/channel.mjs` rather than
-`package.mjs --channel`, because it uploads `./mach package`'s tarball and runs none of the
+`package.ts --channel`, because it uploads `./mach package`'s tarball and runs none of the
 packaging, and it builds its MAR as a check of the release's step but signs, keeps and offers
 none until public nightly releases (decision 23). docs/runbook.md, "Update signing keys and the
 update host", step 8; docs/security.md UP14. The `nightly` tag is made once and never moved, because GitHub may refuse `GITHUB_TOKEN` a
@@ -689,7 +689,7 @@ docs/security.md UP7.)
   when the file is unchanged.
 
 **`nightly.yml`** splits into `build` (the full-build runner, `contents: read`, as today plus
-`VIMMA_UPDATES=1`, `package.mjs --channel nightly`, and the MAR with channel ID `vimma-nightly`),
+`VIMMA_UPDATES=1`, `package.ts --channel nightly`, and the MAR with channel ID `vimma-nightly`),
 then the same `update-sign` and `update-publish` jobs (shared as a reusable workflow
 `update-publish.yml`) writing `…/vimma-nightly/update.xml`, and `publish` (`ubuntu-24.04`,
 `contents: write`) for the rolling `nightly` release. Nightly MARs point at the `nightly` tag's
@@ -702,7 +702,7 @@ above therefore start only when public nightly releases do (decision 23).
 
 (Since changed: delivered as decisions 42 and 43 say, behind the repository variable
 `NIGHTLY_RELEASE_ENABLED`. The nightly keeps `./mach package` and `channel.mjs` rather than
-`package.mjs --channel nightly`, as the note on `mar-sign` above says. Its `build` job keeps the
+`package.ts --channel nightly`, as the note on `mar-sign` above says. Its `build` job keeps the
 MAR, with a zeroed placeholder, named `vimma-nightly-<buildID>-linux-x86_64.complete.mar`;
 `mar-sign` (the job `release.yml` calls) signs it, choosing the channel `vimma-nightly` from its
 caller, `nightly.yml` on `main`; `mar` checks it as `release.yml`'s does and writes a
@@ -861,7 +861,7 @@ mar` needs the host `mar` tool from the same objdir. Nothing here can ship befor
     would wait on a decision unrelated to it.
 24. **A `vimma-bin` built from the release's PKGBUILD gets the exact command as its hint**:
     `:update` shows `curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`,
-    the command that installed it (`PKGBUILD_INSTALL_COMMAND` in `tools/package/package.mjs`),
+    the command that installed it (`PKGBUILD_INSTALL_COMMAND` in `tools/package/package.ts`),
     because rerunning it is the whole update and the user may not remember where it came from
     (since changed: the command is now `mkdir -p ~/.cache/vimma-build && cd ~/.cache/vimma-build && curl -fLO https://github.com/vimma-browser/vimma/releases/latest/download/PKGBUILD && makepkg -si`, which works from any directory; described in
     docs/guide.md, "Arch Linux");
@@ -1169,9 +1169,9 @@ Written first and seen to fail.
 - **Tools** `tools/update/test/manifest.test.mjs`: XML from fixtures (attributes, sizes, hashes,
   nightly names, empty `<updates/>`), urgency from fixture commit logs (a `security`-labelled bump,
   an unknown-advisory bump, none), signing round trip with a test key, the deploy commit touching
-  only `updates/**`. `tools/package/test/package.test.mjs`: `is-packaged-app` and its content in
+  only `updates/**`. `tools/package/test/package.test.ts`: `is-packaged-app` and its content in
   AppDir, `.deb` and PKGBUILD, absent from the tarball; `--channel nightly` rewrites both channel
-  files. `release-workflow.test.mjs` / a new `update-workflow.test.mjs`: gates, environments, that
+  files. `release-workflow.test.ts` / a new `update-workflow.test.mjs`: gates, environments, that
   only `update-sign` gets the key or `id-token` among the new jobs, only `update-publish` the site
   key, the build job gets neither, no pull-request trigger.
   `tools/branding/test/branding-prefs.test.mjs` (Since changed: `branding-prefs.test.ts`, ADR-025):
@@ -1345,7 +1345,7 @@ tested:
    security update `⇡ 0.3.1 security: :restart` and the restart question. A tarball Vimma
    cannot write keeps the offer and `:update`'s commands, which then say that the directory's
    owner has to run them (Behaviour 2).)
-4. **Packaging and pipeline** (`package.mjs`, `tools/update/`, `release.yml`, `nightly.yml`,
+4. **Packaging and pipeline** (`package.ts`, `tools/update/`, `release.yml`, `nightly.yml`,
    `update-publish.yml`): workflow tests and a dry run. Lands after the
    build-supply-chain implementation, whose full builds this extends (decision 4).
    (Since changed: delivered as §7's note on `mar-sign` says; the nightly's signed MAR, its manifest

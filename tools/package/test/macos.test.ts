@@ -14,14 +14,13 @@ import { fileURLToPath } from "node:url";
 import { defined } from "../../test/defined.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { jobs, parseWorkflow } from "../../test/workflow-runners.mjs";
-import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.mjs";
-import { readDsStore } from "./dsstore.mjs";
+import { DMG_LAYOUT, FILES, catalogSummary, outDirOf } from "../macos-icons.ts";
+import { readDsStore } from "./dsstore.ts";
 
 // Spec macos-build, sub-PRs 3 and 4: an arm64 macOS build cross-compiled on a GitHub-hosted Linux
 // runner, ad hoc signed with rcodesign, packed as a .dmg and checked on a hosted Mac.
 const repo = fileURLToPath(new URL("../../../", import.meta.url));
-/** @param {string} path */
-const read = (path) => readFileSync(join(repo, path), "utf8");
+const read = (path: string) => readFileSync(join(repo, path), "utf8");
 const SCRIPT = join(repo, "tools/package/macos-dmg.sh");
 
 describe("configs/*/mozconfig", () => {
@@ -58,10 +57,15 @@ describe("fetch-rcodesign.sh", () => {
  * A stub `mach` and `rcodesign` in `dir`, logging their arguments to `dir/log`. `apps` is how many
  * .app bundles the stub unpack_dmg writes; `art` lists the window art and volume icon files it
  * writes beside them, where mach package puts them on the volume.
- * @param {string} dir
- * @param {{ apps?: number, signFails?: boolean, art?: string[] }} [options]
  */
-function stubs(dir, { apps = 1, signFails = false, art = DMG_ART } = {}) {
+function stubs(
+  dir: string,
+  {
+    apps = 1,
+    signFails = false,
+    art = DMG_ART,
+  }: { apps?: number; signFails?: boolean; art?: string[] } = {},
+) {
   const log = join(dir, "log");
   const mach = join(dir, "mach");
   writeFileSync(
@@ -93,11 +97,13 @@ esac
 }
 
 /**
- * @param {string} dir
- * @param {{ mach: string, rcodesign: string }} tools
- * @param {Record<string, string>} [env] more environment, such as VIMMA_CTL
+ * @param env more environment, such as VIMMA_CTL
  */
-function sign(dir, { mach, rcodesign }, env = {}) {
+function sign(
+  dir: string,
+  { mach, rcodesign }: { mach: string; rcodesign: string },
+  env: Record<string, string> = {},
+) {
   const tmp = join(dir, "tmp");
   mkdirSync(tmp);
   const result = spawnSync(SCRIPT, [join(dir, "in.dmg"), join(dir, "out/Vimma.dmg")], {
@@ -164,9 +170,8 @@ describe("macos-dmg.sh", () => {
 
   /**
    * A Mac vimma-ctl and its notices, as the macos-ctl job uploads them.
-   * @param {string} dir
    */
-  const macCtl = (dir) => {
+  const macCtl = (dir: string) => {
     const ctl = join(dir, "ctl");
     mkdirSync(join(ctl, "vimma-ctl-licenses/licenses"), { recursive: true });
     writeFileSync(join(ctl, "vimma-ctl"), "#!/bin/sh\n");
@@ -206,8 +211,9 @@ describe("macos-dmg.sh", () => {
       const tools = stubs(dir);
       mkdirSync(join(dir, "out"));
       const { VIMMA_CTL } = macCtl(dir);
-      /** @type {Record<string, string>} */
-      const env = licenses ? { VIMMA_CTL, VIMMA_CTL_LICENSES: licenses } : { VIMMA_CTL };
+      const env: Record<string, string> = licenses
+        ? { VIMMA_CTL, VIMMA_CTL_LICENSES: licenses }
+        : { VIMMA_CTL };
       const { status, stderr } = sign(dir, tools, env);
       expect(status, String(licenses)).not.toBe(0);
       expect(stderr).toMatch(/VIMMA_CTL_LICENSES/);
@@ -259,13 +265,11 @@ describe("macos.yml", () => {
   const all = jobs(text);
   const build = all.get("build") ?? {};
   const smoke = all.get("smoke") ?? {};
-  /** @param {Record<string, unknown>} job */
-  const steps = (job) =>
-    /** @type {Array<Record<string, any>>} */ (Array.isArray(job.steps) ? job.steps : []);
-  /** @param {Record<string, unknown>} job @param {string} name */
-  const step = (job, name) => steps(job).find((s) => String(s.name ?? "").startsWith(name)) ?? {};
-  /** @param {Record<string, unknown>} job @param {string} needle */
-  const index = (job, needle) => {
+  const steps = (job: Record<string, unknown>) =>
+    (Array.isArray(job.steps) ? job.steps : []) as Array<Record<string, any>>;
+  const step = (job: Record<string, unknown>, name: string) =>
+    steps(job).find((s) => String(s.name ?? "").startsWith(name)) ?? {};
+  const index = (job: Record<string, unknown>, needle: string) => {
     const i = steps(job).findIndex((s) => JSON.stringify(s).includes(needle));
     expect(i, needle).toBeGreaterThan(-1);
     return i;
@@ -277,7 +281,7 @@ describe("macos.yml", () => {
 
   // Decision 13: its own workflow, weekly, by hand, and on pull requests that touch it.
   it("runs weekly, by hand and on pull requests that touch the macOS build", () => {
-    const on = /** @type {Record<string, any>} */ (doc.on);
+    const on = doc.on as Record<string, any>;
     expect(Object.keys(on).sort()).toEqual(["pull_request", "schedule", "workflow_dispatch"]);
     expect(on.schedule).toHaveLength(1);
     expect(on.pull_request.paths.sort()).toEqual([
@@ -289,7 +293,7 @@ describe("macos.yml", () => {
       "tools/package/macos-app-check.sh",
       "tools/package/macos-dmg-check.sh",
       "tools/package/macos-dmg.sh",
-      "tools/package/macos-icons.mjs",
+      "tools/package/macos-icons.ts",
       "tools/package/render-icon.swift",
     ]);
   });
@@ -418,7 +422,7 @@ describe("macos.yml", () => {
     const run = steps(icons)
       .map((s) => s.run ?? "")
       .join("\n");
-    expect(run).toContain("node tools/package/macos-icons.mjs --check");
+    expect(run).toContain("node tools/package/macos-icons.ts --check");
   });
 
   // The first green cross build's job took 133 minutes (docs/runbook.md, "macOS build").
@@ -434,11 +438,11 @@ describe("macos.yml", () => {
 // unless src/ overrides it.
 describe("macOS icons", () => {
   const branding = "configs/branding/vimma";
-  /** @param {string} path */
-  const bytes = (path) => readFileSync(join(repo, path));
+  /***/
+  const bytes = (path: string) => readFileSync(join(repo, path));
   const surfer = JSON.parse(read("surfer.json"));
 
-  it("macos-icons.mjs writes to --out, the branding folder, or a scratch folder for --check", () => {
+  it("macos-icons.ts writes to --out, the branding folder, or a scratch folder for --check", () => {
     expect(outDirOf(["--out", "/x"], "/w")).toBe("/x");
     expect(outDirOf(["--check"], "/w")).toBe(join("/w", "out"));
     expect(outDirOf([], "/w")).toBe(join(repo, branding));
@@ -462,10 +466,10 @@ describe("macOS icons", () => {
 
   it("the Icon Composer source lays the Vimma mark on the brand background, for macOS", () => {
     const icon = JSON.parse(read("configs/macos/AppIcon.icon/icon.json"));
-    const layers = icon.groups.flatMap((/** @type {any} */ g) => g.layers);
-    expect(layers.map((/** @type {any} */ l) => l["image-name"])).toEqual(["vimma-mark.png"]);
+    const layers = icon.groups.flatMap((g: any) => g.layers);
+    expect(layers.map((l: any) => l["image-name"])).toEqual(["vimma-mark.png"]);
     const [r, g, b] = (surfer.brands.vimma.backgroundColor.match(/[0-9a-f]{2}/gi) ?? []).map(
-      (/** @type {string} */ h) => (parseInt(h, 16) / 255).toFixed(5),
+      (h: string) => (parseInt(h, 16) / 255).toFixed(5),
     );
     expect(icon.fill).toEqual({ solid: `srgb:${r},${g},${b},1.00000` });
     expect(icon["supported-platforms"].squares).toEqual(["macOS"]);
@@ -511,11 +515,10 @@ describe("macOS icons", () => {
 // configs/branding/vimma over Firefox's unofficial ones, whose dsstore lays out "Nightly.app".
 describe("macOS dmg window art", () => {
   const branding = "configs/branding/vimma";
-  /** @param {string} path */
-  const bytes = (path) => readFileSync(join(repo, path));
+  const bytes = (path: string) => readFileSync(join(repo, path));
   const { window, icons, iconSize } = DMG_LAYOUT;
 
-  it("macos-icons.mjs generates the background and volume icon, so --check covers them", () => {
+  it("macos-icons.ts generates the background and volume icon, so --check covers them", () => {
     expect(FILES).toEqual(expect.arrayContaining(["background.png", "disk.icns"]));
   });
 
@@ -542,11 +545,10 @@ describe("macOS dmg window art", () => {
 
   describe("dsstore", () => {
     const records = () => readDsStore(bytes(`${branding}/dsstore`));
-    /** @param {string} name @param {string} code */
-    const value = (name, code) => {
+    const value = (name: string, code: string) => {
       const found = records().filter((r) => r.name === name && r.code === code);
       expect(found, `${name} ${code}`).toHaveLength(1);
-      return /** @type {Buffer} */ (found[0]?.value);
+      return found[0]?.value as Buffer;
     };
 
     it("places Vimma.app and the Applications link where the background expects them", () => {
@@ -617,10 +619,11 @@ describe("macos-dmg-check.sh", () => {
   // com.apple.FinderInfo of a folder whose Finder flags (bytes 8 and 9) have kHasCustomIcon,
   // as `xattr -px` prints it.
   const CUSTOM_ICON = "00 00 00 00 00 00 00 00 04 00 00 00 00 00 00 00\n" + "00 ".repeat(16);
-  /**
-   * @param {{ replace?: Record<string, string>, omit?: string, finderInfo?: string }} [volume]
-   */
-  function check({ replace = {}, omit, finderInfo = CUSTOM_ICON } = {}) {
+  function check({
+    replace = {},
+    omit,
+    finderInfo = CUSTOM_ICON,
+  }: { replace?: Record<string, string>; omit?: string; finderInfo?: string } = {}) {
     const dir = tempDir("vimma-dmg-check-");
     const volume = join(dir, "Vimma");
     mkdirSync(join(volume, "Vimma.app"), { recursive: true });
@@ -681,10 +684,7 @@ describe("macos-dmg-check.sh", () => {
 // publish a dmg that shows Firefox's icon or carries Surfer's bundle identifier.
 describe("macos-app-check.sh", () => {
   const CHECK = join(repo, "tools/package/macos-app-check.sh");
-  /**
-   * @param {{ names: string[], id: string }} app
-   */
-  function check({ names, id }) {
+  function check({ names, id }: { names: string[]; id: string }) {
     const dir = tempDir("vimma-app-check-");
     const assets = [{ AssetStorageVersion: "Xcode" }, ...names.map((Name) => ({ Name }))];
     const assetutil = join(dir, "assetutil");
@@ -736,9 +736,8 @@ describe("macos-app-check.sh", () => {
 
 // actool names each flattened fallback image with a fresh UUID and renders it to different bytes
 // on every run; the layer image, colours and icon stack it compiles from are stable.
-describe("macos-icons.mjs catalogSummary", () => {
-  /** @param {string} uuid @param {string} digest @param {string} mark */
-  const catalog = (uuid, digest, mark) => [
+describe("macos-icons.ts catalogSummary", () => {
+  const catalog = (uuid: string, digest: string, mark: string) => [
     { AssetStorageVersion: "Xcode 26.6", Timestamp: Number(uuid.length) },
     {
       AssetType: "Icon Image",

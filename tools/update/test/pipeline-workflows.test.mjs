@@ -4,7 +4,7 @@
 // update key signs), checked with the committed certificates and Mozilla's signmar, and listed
 // in SHA256SUMS, which release.yml's cosign signature covers. The nightly builds its MAR too, as
 // a check of the release's MAR step, and neither signs nor uploads it until public nightly
-// releases start (decision 23). The workflows are read as text, as release-workflow.test.mjs
+// releases start (decision 23). The workflows are read as text, as release-workflow.test.ts
 // reads release.yml.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -227,7 +227,7 @@ describe("release.yml: the updater and the complete MAR", () => {
     );
   });
 
-  it("lists the MAR in SHA256SUMS, sorted by name as package.mjs writes it", () => {
+  it("lists the MAR in SHA256SUMS, sorted by name as package.ts writes it", () => {
     const run = runOf(job("mar"), "Add the MAR to SHA256SUMS");
     const dir = tempDir("vimma-mar-sums-");
     for (const d of ["dist", "mar-signed"]) mkdirSync(join(dir, d));

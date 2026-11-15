@@ -6,7 +6,7 @@
 // `shell:`, `env:` or `working-directory:`, or a job key such as `defaults:` or `container:`, is a
 // change to the golden file, which review reads. The workflow's own top-level keys and `env:`,
 // which every job inherits, are fixed too. Returns the problems found, empty when all is as it
-// must be; release-workflow.test.mjs checks the job and mutations of it.
+// must be; release-workflow.test.ts checks the job and mutations of it.
 import { readFileSync } from "node:fs";
 import { CORE_SCHEMA, load } from "js-yaml";
 
@@ -19,9 +19,8 @@ const WORKFLOW_ENV = { TAG: "${{ inputs.tag }}" };
 /**
  * The job's text as compared: the comment lines that open the next job are dropped, trailing
  * whitespace is trimmed and each pinned commit is replaced by `<pinned>`.
- * @param {string} block
  */
-export function normaliseJob(block) {
+export function normaliseJob(block: string) {
   const lines = block.split("\n");
   // only the comment and blank lines at the very end belong to the next job; a comment followed
   // by anything else stays, so nothing can hide behind one
@@ -34,18 +33,15 @@ export function normaliseJob(block) {
 }
 
 /**
- * @param {string} block the job's YAML block, as release-workflow.test.mjs's jobs() gives it
- * @param {string} workflow the whole release.yml
- * @returns {string[]}
+ * @param block the job's YAML block, as release-workflow.test.ts's jobs() gives it
+ * @param workflow the whole release.yml
  */
-export function notariseJobProblems(block, workflow) {
-  /** @type {string[]} */
-  const problems = [];
+export function notariseJobProblems(block: string, workflow: string): string[] {
+  const problems: string[] = [];
   // Each action is pinned to a commit, and to the one release.yml uses for it everywhere, so the
   // golden copy, which ignores the commit, cannot hide a different one; Dependabot moves them all
   // together.
-  /** @type {Map<string, Set<string>>} */
-  const elsewhere = new Map();
+  const elsewhere: Map<string, Set<string>> = new Map();
   for (const m of workflow.matchAll(/uses: ([^@\s]+)@(\S+)/g)) {
     const shas = elsewhere.get(m[1] ?? "") ?? new Set();
     shas.add(m[2] ?? "");
@@ -71,7 +67,7 @@ export function notariseJobProblems(block, workflow) {
         `${JSON.stringify(got[line])}, want ${JSON.stringify(want[line])}`,
     );
   }
-  const parsed = /** @type {Record<string, unknown>} */ (load(workflow, { schema: CORE_SCHEMA }));
+  const parsed = load(workflow, { schema: CORE_SCHEMA }) as Record<string, unknown>;
   const keys = Object.keys(parsed);
   if (keys.join(",") !== WORKFLOW_KEYS.join(",")) {
     problems.push(`the workflow's top-level keys are ${keys.join(", ")}`);
@@ -85,20 +81,15 @@ export function notariseJobProblems(block, workflow) {
 /**
  * The jobs whose environment is macos-sign, read from the parsed workflow, so the
  * `environment: { name: ... }` form and a quoted name count as well.
- * @param {string} workflow
- * @returns {string[]}
  */
-export function macosSignJobs(workflow) {
-  const parsed = /** @type {{ jobs: Record<string, { environment?: unknown }> }} */ (
-    load(workflow, { schema: CORE_SCHEMA })
-  );
+export function macosSignJobs(workflow: string): string[] {
+  const parsed = load(workflow, { schema: CORE_SCHEMA }) as {
+    jobs: Record<string, { environment?: unknown }>;
+  };
   return Object.entries(parsed.jobs)
     .filter(([, job]) => {
       const env = job.environment;
-      const name =
-        env !== null && typeof env === "object"
-          ? /** @type {{ name?: unknown }} */ (env).name
-          : env;
+      const name = env !== null && typeof env === "object" ? (env as { name?: unknown }).name : env;
       return typeof name === "string" && name.trim() === "macos-sign";
     })
     .map(([id]) => id);

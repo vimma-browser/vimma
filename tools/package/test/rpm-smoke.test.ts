@@ -5,16 +5,13 @@ import { readFileSync } from "node:fs";
 // Spec rpm-package: the .rpm is installed with dnf on Fedora and with zypper on openSUSE, in
 // containers pinned by digest, on every pull request that changes the packaging code (a stub
 // tarball, pkgbuild.yml) and on the release build before anything is signed (release.yml).
-const read = (/** @type {string} */ path) =>
-  readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
+const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
 const script = read("tools/package/rpm-smoke.sh");
 
 /**
  * A job's YAML block.
- * @param {string} text
- * @param {string} id
  */
-function job(text, id) {
+function job(text: string, id: string) {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
   for (let i = 0; i < parts.length; i += 2) if (parts[i] === id) return parts[i + 1] ?? "";
@@ -57,7 +54,7 @@ describe("rpm-smoke.sh", () => {
   });
 
   it("packages a stub tarball with --stub, without the .deb", () => {
-    expect(script).toMatch(/package\.mjs" --tarball .* --no-deb/s);
+    expect(script).toMatch(/package\.ts" --tarball .* --no-deb/s);
   });
 });
 

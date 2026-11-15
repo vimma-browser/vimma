@@ -6,11 +6,11 @@
  * binary (spec ship-vimma-ctl), so whatever updates the browser updates the client with it.
  *
  * Usage:
- *   node tools/package/package.mjs --tarball <vimma-*.linux-x86_64.tar.xz> --ctl <vimma-ctl>
+ *   node tools/package/package.ts --tarball <vimma-*.linux-x86_64.tar.xz> --ctl <vimma-ctl>
  *     --ctl-licenses <dir> --out <dir> --maintainer "Name <email>" [--tag vX.Y.Z]
  *     [--repo vimma-browser/vimma] [--sbom <file> --ctl-component <file>]
  *     [--appimagetool <path> --runtime <path>] [--no-deb] [--no-rpm]
- * --ctl-licenses and --ctl-component are what tools/package/ctl-notices.mjs writes for --ctl.
+ * --ctl-licenses and --ctl-component are what tools/package/ctl-notices.ts writes for --ctl.
  * Without --appimagetool no AppImage is built (its AppDir still is, in the work dir).
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
  */
@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.ts";
 import { PKGBUILD_INSTALL_COMMAND } from "../../packages/vimma-core/src/updates/updates.mjs";
-import { addCtlComponent } from "./sbom.mjs";
+import { addCtlComponent } from "./sbom.ts";
 
 /** SemVer with an optional pre-release, as version-files.mjs accepts (plan §7). */
 const SEMVER = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
@@ -54,7 +54,7 @@ const LAUNCHER_NAME = `${APP}-open`;
 
 /** The control client (spec ship-vimma-ctl), installed next to the `vimma` binary. */
 const CTL_NAME = `${APP}-ctl`;
-/** Its notices (#516), from tools/package/ctl-notices.mjs, in a directory next to it. */
+/** Its notices (#516), from tools/package/ctl-notices.ts, in a directory next to it. */
 const CTL_LICENSES = `${CTL_NAME}-licenses`;
 /** What the static Linux vimma-ctl's notices must hold: it links musl and Rust's std. */
 export const CTL_LICENSE_FILES = ["README.txt", "rust-std-COPYRIGHT.html", "musl-COPYRIGHT"];
@@ -133,15 +133,16 @@ const DEB_DEPENDS = [
   "libxtst6",
 ];
 
-/** @typedef {{ version?: { version?: unknown }, brands?: Record<string, { release?: { displayVersion?: unknown } }> }} SurferConfig */
+export type SurferConfig = {
+  version?: { version?: unknown };
+  brands?: Record<string, { release?: { displayVersion?: unknown } }>;
+};
 
 /**
  * The release version: surfer.json brands.vimma.release.displayVersion (release-please bumps it).
- * @param {SurferConfig} config
- * @param {string} [tag] the release tag; must be exactly `v<version>`
- * @returns {string}
+ * @param tag the release tag; must be exactly `v<version>`
  */
-export function releaseVersion(config, tag) {
+export function releaseVersion(config: SurferConfig, tag?: string): string {
   const version = config.brands?.vimma?.release?.displayVersion;
   if (typeof version !== "string" || !SEMVER.test(version)) {
     throw new Error(
@@ -156,14 +157,14 @@ export function releaseVersion(config, tag) {
   return version;
 }
 
-/** @param {string} version SemVer; a pre-release sorts before its release with `~` in dpkg */
-export const debVersion = (version) => version.replace("-", "~");
+/** @param version SemVer; a pre-release sorts before its release with `~` in dpkg */
+export const debVersion = (version: string) => version.replace("-", "~");
 
 /**
  * rpm allows no `-` in a Version, and sorts `~` before the release as dpkg does (rpm 4.10+).
- * @param {string} version SemVer
+ * @param version SemVer
  */
-export const rpmVersion = (version) => version.replace("-", "~");
+export const rpmVersion = (version: string) => version.replace("-", "~");
 
 /** The .rpm's Release: every Vimma version is packaged once. */
 const RPM_RELEASE = "1";
@@ -171,9 +172,8 @@ const RPM_RELEASE = "1";
 /**
  * The AUR gets releases only: release.yml accepts vX.Y.Z tags only, and a pre-release would need
  * a pkgver without its hyphen but a download URL with it.
- * @param {string} version
  */
-function aurVersion(version) {
+function aurVersion(version: string) {
   if (version.includes("-")) throw new Error(`AUR: ${version} is a pre-release; releases only`);
   return version;
 }
@@ -236,10 +236,8 @@ MPL-2.0; the CycloneDX SBOM lists the other components.
 /**
  * The update steps release.yml puts at the top of the release notes. Vimma 0.1.6 on a Mac shows
  * the Linux tarball command in its update notice; the notes are the one page it links to.
- * @param {string} version
- * @param {string} repo
  */
-export function updatingNotes(version, repo) {
+export function updatingNotes(version: string, repo: string) {
   return `### Updating
 
 - **macOS:** \`brew upgrade --cask vimma\`, or download \`${APP}-${version}-macos-aarch64.dmg\`
@@ -249,8 +247,7 @@ export function updatingNotes(version, repo) {
 `;
 }
 
-/** @param {string} version */
-export function artifactNames(version) {
+export function artifactNames(version: string) {
   return {
     tarball: `${APP}-${version}-linux-x86_64.tar.xz`,
     appimage: `${APP}-${version}-x86_64.AppImage`,
@@ -267,14 +264,10 @@ export function artifactNames(version) {
 
 /**
  * INI as Firefox writes application.ini: `[Section]`, `Key=Value`, `#` and `;` comments.
- * @param {string} text
- * @returns {Record<string, Record<string, string>>}
  */
-export function parseIni(text) {
-  /** @type {Record<string, Record<string, string>>} */
-  const ini = {};
-  /** @type {Record<string, string> | undefined} */
-  let section;
+export function parseIni(text: string): Record<string, Record<string, string>> {
+  const ini: Record<string, Record<string, string>> = {};
+  let section: Record<string, string> | undefined;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith(";")) continue;
@@ -290,10 +283,9 @@ export function parseIni(text) {
 }
 
 /**
- * @param {string} appDir the packaged app dir (the tarball's vimma/)
- * @returns {{ name: string, remotingName: string }}
+ * @param appDir the packaged app dir (the tarball's vimma/)
  */
-export function readAppIni(appDir) {
+export function readAppIni(appDir: string): { name: string; remotingName: string } {
   const app = parseIni(readFileSync(join(appDir, "application.ini"), "utf8")).App ?? {};
   if (!app.Name || !app.RemotingName) {
     throw new Error(`${appDir}/application.ini has no [App] Name or RemotingName`);
@@ -303,12 +295,17 @@ export function readAppIni(appDir) {
 
 /**
  * The vimma.desktop file shared by the AppImage, the .deb, the .rpm and the PKGBUILD.
- * @param {{ wmClass: string, launcher?: string }} options wmClass: application.ini RemotingName
+ * @param options wmClass: application.ini RemotingName
  *   (also Wayland app_id); launcher: the installed vimma-open's absolute path, for a package that
  *   installs the entry (the AppImage's is rewritten to the .AppImage by whatever integrates it).
- * @returns {string}
  */
-export function desktopEntry({ wmClass, launcher }) {
+export function desktopEntry({
+  wmClass,
+  launcher,
+}: {
+  wmClass: string;
+  launcher?: string;
+}): string {
   // Firefox's GNOME shell service finds its own entry by comparing the Exec program, looked up
   // on PATH, with MOZ_APP_LAUNCHER (which Vimma sets at startup to the vimma-open next to its
   // binary): only an absolute Exec matches, so Make Default sets this entry and not a userapp-
@@ -342,15 +339,12 @@ export function desktopEntry({ wmClass, launcher }) {
 
 /**
  * Structural checks for when desktop-file-validate is not installed.
- * @param {string} text
- * @returns {string[]} problems, empty when fine
+ * @returns problems, empty when fine
  */
-export function checkDesktopEntry(text) {
+export function checkDesktopEntry(text: string): string[] {
   const errors = [];
-  /** @type {Map<string, Map<string, string>>} */
-  const groups = new Map();
-  /** @type {Map<string, string> | undefined} */
-  let group;
+  const groups: Map<string, Map<string, string>> = new Map();
+  let group: Map<string, string> | undefined;
   for (const line of text.split("\n")) {
     if (!line || line.startsWith("#")) continue;
     const header = /^\[(.+)\]$/.exec(line);
@@ -414,18 +408,24 @@ export function appRun() {
   ].join("\n");
 }
 
-/** @param {string} maintainer */
-function checkMaintainer(maintainer) {
+function checkMaintainer(maintainer: string) {
   if (!/^[^<>\n]+ <[^<>\s]+@[^<>\s]+>$/.test(maintainer)) {
     throw new Error(`maintainer must be "Name <email>", got: ${JSON.stringify(maintainer)}`);
   }
 }
 
 /**
- * @param {{ version: string, maintainer: string, installedKiB: number }} options
- * @returns {string} DEBIAN/control
+ * @returns DEBIAN/control
  */
-export function debControl({ version, maintainer, installedKiB }) {
+export function debControl({
+  version,
+  maintainer,
+  installedKiB,
+}: {
+  version: string;
+  maintainer: string;
+  installedKiB: number;
+}): string {
   checkMaintainer(maintainer);
   return [
     `Package: ${APP}`,
@@ -487,12 +487,20 @@ License: MPL-2.0
  * where package names would differ between them. The libraries Vimma bundles in /usr/lib/vimma
  * are neither offered to the system (a dnf or zypper resolve could pick Vimma's libnss3.so for
  * another package) nor required from it.
- * @param {{ version: string, maintainer: string, stage: string, bundled: string[] }} options
  *   stage: the absolute path of the staged root; bundled: the base names of the shared libraries
  *   under it
- * @returns {string}
  */
-export function rpmSpec({ version, maintainer, stage, bundled }) {
+export function rpmSpec({
+  version,
+  maintainer,
+  stage,
+  bundled,
+}: {
+  version: string;
+  maintainer: string;
+  stage: string;
+  bundled: string[];
+}): string {
   checkMaintainer(maintainer);
   // rpm expands macros in tag values, so a % in Packager could run a command in rpmbuild.
   if (maintainer.includes("%"))
@@ -507,7 +515,7 @@ export function rpmSpec({ version, maintainer, stage, bundled }) {
   // A regex as rpm reads it after macro expansion, which turns `\\` into one backslash. Each name
   // ends at the `(` that starts its soname's qualifiers, so libnss3.so matches
   // `libnss3.so(NSS_3.2)(64bit)` and not libnss3.so.1.
-  const escape = (/** @type {string} */ name) => name.replace(/[.+]/g, (c) => `\\\\${c}`);
+  const escape = (name: string) => name.replace(/[.+]/g, (c) => `\\\\${c}`);
   const names = [...new Set(bundled)].sort().map(escape);
   const icons = ICON_SIZES.map(
     (size) => `/usr/share/icons/hicolor/${size}x${size}/apps/${APP}.png`,
@@ -558,12 +566,9 @@ export function rpmSpec({ version, maintainer, stage, bundled }) {
 
 /**
  * The base names of the shared libraries in `dir` and below, as the ELF scan names them.
- * @param {string} dir
- * @returns {string[]}
  */
-function sharedLibraries(dir) {
-  /** @type {string[]} */
-  const libs = [];
+function sharedLibraries(dir: string): string[] {
+  const libs: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) libs.push(...sharedLibraries(join(dir, entry.name)));
     else if (/\.so(?:\.|$)/.test(entry.name)) libs.push(entry.name);
@@ -577,8 +582,8 @@ function sharedLibraries(dir) {
  * for the PKGBUILD downloaded from the release, `aur` for the copy pushed to the AUR. The .deb,
  * the .rpm and the AppImage carry `deb`, `rpm` and `appimage` (packageMarker); the tarball
  * carries none.
- * @typedef {"pkgbuild-release" | "aur"} InstallSource
  */
+export type InstallSource = "pkgbuild-release" | "aur";
 const INSTALL_SOURCES = ["pkgbuild-release", "aur"];
 
 /**
@@ -590,9 +595,8 @@ export const PACKAGED_APP_FILE = "is-packaged-app";
 
 /**
  * The marker's content for a package type, the line the PKGBUILD's package() also writes.
- * @param {"deb" | "rpm" | "appimage" | InstallSource} type
  */
-export function packageMarker(type) {
+export function packageMarker(type: "deb" | "rpm" | "appimage" | InstallSource) {
   return `vimma-package=${type}\n`;
 }
 
@@ -602,10 +606,16 @@ export function packageMarker(type) {
  */
 export { PKGBUILD_INSTALL_COMMAND };
 
-/**
- * @typedef {{ version: string, maintainer: string, repo: string, tarballSha256: string,
- *   desktop: string, desktopId: string, launcher: string, installSource: InstallSource }} AurInput
- */
+export type AurInput = {
+  version: string;
+  maintainer: string;
+  repo: string;
+  tarballSha256: string;
+  desktop: string;
+  desktopId: string;
+  launcher: string;
+  installSource: InstallSource;
+};
 
 const AUR_DEPENDS = [
   "alsa-lib",
@@ -625,9 +635,8 @@ const AUR_OPTDEPENDS = [
 /**
  * `repo` and `desktopId` go into double-quoted shell words that makepkg runs (as root when
  * pacman installs), so only the characters a GitHub `owner/name` and a desktop file ID use pass.
- * @param {AurInput} input
  */
-function checkShellWords(input) {
+function checkShellWords(input: AurInput) {
   if (!/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(input.repo)) {
     throw new Error(`repo must be owner/name, got: ${JSON.stringify(input.repo)}`);
   }
@@ -636,8 +645,7 @@ function checkShellWords(input) {
   }
 }
 
-/** @param {AurInput} input */
-function aurSource(input) {
+function aurSource(input: AurInput) {
   checkShellWords(input);
   const v = aurVersion(input.version);
   const url = `https://github.com/${input.repo}/releases/download/v${v}/${APP}-${v}-linux-x86_64.tar.xz`;
@@ -647,11 +655,8 @@ function aurSource(input) {
 /**
  * `content` as a quoted here-document writing `target`: nothing in it is expanded, and it must
  * end with a newline and contain no line equal to the delimiter, which would end it early.
- * @param {string} target
- * @param {string} delimiter
- * @param {string} content
  */
-function heredoc(target, delimiter, content) {
+function heredoc(target: string, delimiter: string, content: string) {
   if (!content.endsWith("\n")) throw new Error(`${delimiter}: content must end with a newline`);
   if (content.split("\n").includes(delimiter)) {
     throw new Error(`content has a line ${delimiter}, which would end its here-document`);
@@ -663,21 +668,18 @@ function heredoc(target, delimiter, content) {
  * The vimma-bin PKGBUILD, installing the release tarball to /opt/vimma. Its only source is the
  * tarball; the desktop file and vimma-open are written inline, so the PKGBUILD alone installs
  * Vimma (spec m6-packaging, "Arch Linux without the AUR").
- * @param {AurInput} input
- * @returns {string}
  */
-export function pkgbuild(input) {
+export function pkgbuild(input: AurInput): string {
   checkMaintainer(input.maintainer);
   checkShellWords(input);
   if (!INSTALL_SOURCES.includes(input.installSource)) {
     throw new Error(`unknown install source: ${String(input.installSource)}`);
   }
-  /** @param {string[]} items */
-  const list = (items) => items.map((s) => `'${s}'`).join(" ");
+  const list = (items: string[]) => items.map((s) => `'${s}'`).join(" ");
   const desktopPath = `$pkgdir/usr/share/applications/${input.desktopId}.desktop`;
   const launcherPath = `$pkgdir/opt/${APP}/${LAUNCHER_NAME}`;
   return `# Maintainer: ${input.maintainer}
-# Generated by tools/package/package.mjs in ${input.repo} (spec m6-packaging); edit it there.
+# Generated by tools/package/package.ts in ${input.repo} (spec m6-packaging); edit it there.
 # Install or update from the latest release (it builds in ~/.cache/vimma-build):
 #   ${PKGBUILD_INSTALL_COMMAND}
 pkgname=${APP}-bin
@@ -717,10 +719,8 @@ ${heredoc(desktopPath, "VIMMA_DESKTOP_EOF", input.desktop)}  chmod 644 "${deskto
 
 /**
  * .SRCINFO for the PKGBUILD above, in makepkg --printsrcinfo's order and format.
- * @param {AurInput} input
- * @returns {string}
  */
-export function srcinfo(input) {
+export function srcinfo(input: AurInput): string {
   const { file, url } = aurSource(input);
   const fields = [
     ["pkgdesc", DESCRIPTION],
@@ -742,43 +742,33 @@ export function srcinfo(input) {
   return `pkgbase = ${APP}-bin\n${body}\n\npkgname = ${APP}-bin\n`;
 }
 
-/** @param {string} path */
-export const sha256File = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+export const sha256File = (path: string) =>
+  createHash("sha256").update(readFileSync(path)).digest("hex");
 
 /**
- * @param {string[]} files
- * @returns {string} `sha256sum` output for the files, by base name, sorted
+ * @returns `sha256sum` output for the files, by base name, sorted
  */
-export function sha256sums(files) {
+export function sha256sums(files: string[]): string {
   return files
     .map((file) => `${sha256File(file)}  ${basename(file)}\n`)
     .sort((a, b) => (a.slice(66) < b.slice(66) ? -1 : 1))
     .join("");
 }
 
-/**
- * @param {string} path
- * @param {string} content
- * @param {number} mode
- */
-function writeFile(path, content, mode = 0o644) {
+function writeFile(path: string, content: string, mode: number = 0o644) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o755 });
   writeFileSync(path, content);
   chmodSync(path, mode);
 }
 
-/**
- * @param {string} from
- * @param {string} to
- */
-function installFile(from, to) {
+function installFile(from: string, to: string) {
   mkdirSync(dirname(to), { recursive: true, mode: 0o755 });
   copyFileSync(from, to);
   chmodSync(to, 0o644);
 }
 
-/** @param {string} to  where vimma-open goes, executable */
-function installLauncher(to) {
+/** @param to where vimma-open goes, executable */
+function installLauncher(to: string) {
   installFile(LAUNCHER, to);
   chmodSync(to, 0o755);
 }
@@ -786,10 +776,8 @@ function installLauncher(to) {
 /**
  * vimma-ctl as release.yml's ctl job built it, into the unpacked app next to `vimma`, so every
  * package below and the release tarball carry it (spec ship-vimma-ctl).
- * @param {string | undefined} from
- * @param {string} to
  */
-function installCtl(from, to) {
+function installCtl(from: string | undefined, to: string) {
   if (!from) throw new Error(`--ctl: the ${CTL_NAME} binary to ship is required`);
   const stat = existsSync(from) ? statSync(from) : null;
   if (!stat?.isFile() || !(stat.mode & 0o111)) {
@@ -801,23 +789,17 @@ function installCtl(from, to) {
 }
 
 /**
- * vimma-ctl's notices as ctl-notices.mjs wrote them in the ctl job, next to the binary (#516):
+ * vimma-ctl's notices as ctl-notices.ts wrote them in the ctl job, next to the binary (#516):
  * the static binary links musl and Rust's standard library, whose MIT terms ask for their
  * notices in every copy. Files 0644 and directories 0755, as download-artifact keeps no modes.
- * @param {string | undefined} from
- * @param {string} to
  */
-function installCtlLicenses(from, to) {
+function installCtlLicenses(from: string | undefined, to: string) {
   if (!from) throw new Error(`--ctl-licenses: the ${CTL_LICENSES} directory to ship is required`);
   for (const file of CTL_LICENSE_FILES) {
     if (!existsSync(join(from, file))) throw new Error(`--ctl-licenses ${from}: no ${file}`);
   }
   if (existsSync(to)) throw new Error(`the mach tarball already has ${APP}/${CTL_LICENSES}`);
-  /**
-   * @param {string} src
-   * @param {string} dest
-   */
-  const copy = (src, dest) => {
+  const copy = (src: string, dest: string) => {
     mkdirSync(dest, { mode: 0o755 });
     chmodSync(dest, 0o755);
     for (const entry of readdirSync(src, { withFileTypes: true })) {
@@ -839,10 +821,9 @@ export const gnuTar = () =>
  * group 0, so it unpacks as mach's did; with GNU tar, which builds every release, names are
  * sorted too, so its listing does not depend on the runner's file system. bsdtar, for the tests
  * on a Mac, has no sort option.
- * @param {string} extract the directory holding `vimma/`
- * @param {string} to
+ * @param extract the directory holding `vimma/`
  */
-export function packTarball(extract, to) {
+export function packTarball(extract: string, to: string) {
   const owner = gnuTar()
     ? ["--sort=name", "--owner=0", "--group=0", "--numeric-owner"]
     : ["--uid", "0", "--gid", "0", "--numeric-owner"];
@@ -851,22 +832,16 @@ export function packTarball(extract, to) {
 
 /**
  * `cp -a` keeps modes and symlinks of the packaged app exactly as mach made them.
- * @param {string} appDir
- * @param {string} to
  */
-function copyApp(appDir, to) {
+function copyApp(appDir: string, to: string) {
   mkdirSync(dirname(to), { recursive: true, mode: 0o755 });
   execFileSync("cp", ["-a", appDir, to]);
 }
 
 /**
  * hicolor icons and the desktop file under <root>/usr/share.
- * @param {string} root
- * @param {string} brandDir
- * @param {string} desktop
- * @param {string} desktopId
  */
-function installShare(root, brandDir, desktop, desktopId) {
+function installShare(root: string, brandDir: string, desktop: string, desktopId: string) {
   writeFile(join(root, `usr/share/applications/${desktopId}.desktop`), desktop);
   for (const size of ICON_SIZES) {
     installFile(
@@ -882,10 +857,8 @@ function installShare(root, brandDir, desktop, desktopId) {
 
 /**
  * Installed-Size in KiB, as dpkg-gencontrol counts it: each file rounded up, symlinks as 1.
- * @param {string} dir
- * @returns {number}
  */
-function installedKiB(dir) {
+function installedKiB(dir: string): number {
   let total = 0;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const path = join(dir, entry.name);
@@ -900,27 +873,41 @@ function installedKiB(dir) {
  * `ctl` and `ctlLicenses` are optional in the type only: packageRelease checks both itself and
  * throws when either is missing, so a caller that lost one is refused rather than shipping a
  * release without the client.
- * @typedef {{
- *   tarball: string, ctl?: string, ctlLicenses?: string, outDir: string, config: SurferConfig,
- *   maintainer: string, repo: string, brandDir: string, tag?: string, sbom?: string,
- *   ctlComponent?: string, appimagetool?: string,
- *   runtime?: string, buildDeb?: boolean, buildRpm?: boolean, workDir?: string,
- * }} PackageOptions
  */
+export type PackageOptions = {
+  tarball: string;
+  ctl?: string;
+  ctlLicenses?: string;
+  outDir: string;
+  config: SurferConfig;
+  maintainer: string;
+  repo: string;
+  brandDir: string;
+  tag?: string;
+  sbom?: string;
+  ctlComponent?: string;
+  appimagetool?: string;
+  runtime?: string;
+  buildDeb?: boolean;
+  buildRpm?: boolean;
+  workDir?: string;
+};
 
-/**
- * @typedef {{ version: string, files: string[], appDir: string, debRoot: string,
- *   rpmRoot: string, aurDir: string }} PackageResult
- */
+export type PackageResult = {
+  version: string;
+  files: string[];
+  appDir: string;
+  debRoot: string;
+  rpmRoot: string;
+  aurDir: string;
+};
 
 /**
  * Every release file from one `./mach package` tarball; see the file comment. The AppDir and the
  * deb and rpm roots are built in `workDir`, which stays; without one they are built in a temp dir
  * that is removed before this returns or throws, and `appDir`/`debRoot`/`rpmRoot` no longer exist.
- * @param {PackageOptions} options
- * @returns {PackageResult}
  */
-export function packageRelease(options) {
+export function packageRelease(options: PackageOptions): PackageResult {
   if (options.workDir) return packageIn(options.workDir, options);
   const work = mkdtempSync(join(tmpdir(), "vimma-package-"));
   try {
@@ -931,11 +918,9 @@ export function packageRelease(options) {
 }
 
 /**
- * @param {string} work scratch dir for the extracted tarball, the AppDir and the package roots
- * @param {PackageOptions} options
- * @returns {PackageResult}
+ * @param work scratch dir for the extracted tarball, the AppDir and the package roots
  */
-function packageIn(work, options) {
+function packageIn(work: string, options: PackageOptions): PackageResult {
   const version = releaseVersion(options.config, options.tag);
   checkMaintainer(options.maintainer);
   const names = artifactNames(version);
@@ -981,8 +966,7 @@ function packageIn(work, options) {
     throw new Error("--sbom needs --ctl-component: the SBOM lists the vimma-ctl every package has");
   }
 
-  /** @type {string[]} */
-  const files = [];
+  const files: string[] = [];
   const tarball = join(out, names.tarball);
   packTarball(extract, tarball);
   chmodSync(tarball, 0o644);
@@ -1113,8 +1097,7 @@ function packageIn(work, options) {
   const aurDir = join(out, "aur");
   rmSync(aurDir, { recursive: true, force: true });
   if (!version.includes("-")) {
-    /** @type {Omit<AurInput, "installSource">} */
-    const aur = {
+    const aur: Omit<AurInput, "installSource"> = {
       version,
       maintainer: options.maintainer,
       repo: options.repo,
@@ -1172,7 +1155,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     !values.maintainer
   ) {
     console.error(
-      "usage: package.mjs --tarball <file> --ctl <vimma-ctl> --ctl-licenses <dir> --out <dir> " +
+      "usage: package.ts --tarball <file> --ctl <vimma-ctl> --ctl-licenses <dir> --out <dir> " +
         "--maintainer 'Name <email>' …",
     );
     process.exit(2);

@@ -124,7 +124,7 @@ function targetOf(os) {
 }
 
 /**
- * A target's release file names, as tools/package/package.mjs and release.yml write them.
+ * A target's release file names, as tools/package/package.ts and release.yml write them.
  * @param {string} version
  * @param {Os} [os]
  * @returns {Partial<Record<AssetKind, string>>}

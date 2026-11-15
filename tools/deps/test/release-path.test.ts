@@ -162,7 +162,7 @@ describe("release path", () => {
         }
       }
     }
-    // Surfer through npx and npm run import, ajv through validate-sbom.mjs.
+    // Surfer through npx and npm run import, ajv through validate-sbom.ts.
     expect(packages).toContain("@zen-browser/surfer");
     expect(packages).toContain("ajv");
     expect([...packages].filter((p) => !ROOTS.includes(p))).toEqual([]);

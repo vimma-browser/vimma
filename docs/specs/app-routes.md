@@ -5,7 +5,7 @@ here and not yet scheduled · Area: `packages/vimma-core/src/routes.mjs`,
 `packages/vimma-core/src/config.mjs`; `src/browser/base/content/vimma/`
 (`workspaces/WorkspaceRouter.sys.mjs`, `workspaces/WindowWorkspaces.sys.mjs`,
 `host/route-ops.mjs`, `about/AboutVimma.sys.mjs`, `about/about.mjs`); `tools/package/vimma-open.sh`,
-`tools/package/package.mjs`, `tools/package/cask.mjs`, the macOS bundle manifest; `tools/e2e/`;
+`tools/package/package.ts`, `tools/package/cask.ts`, the macOS bundle manifest; `tools/e2e/`;
 `.github/workflows/macos.yml`; `docs/guide.md`, `docs/security.md`, `docs/limits.md` · Upstream
 patches: one new, `src/toolkit/xre/MacApplicationDelegate-mm.patch` (its ADR-003 register line is
 in decision 11) · ADR: none. No new dependency.
@@ -717,7 +717,7 @@ workspace name`; `[routing] refuses an unknown key and a name that is not a work
   `[routing] needs schema 2`.
 - **Fuzz, `packages/vimma-core/test/fuzz/routes.fuzz.test.mjs`:** `parseAppList returns only tokens,
 at most eight, never two equal neighbours`.
-- **Shell, `tools/package/test/vimma-open.test.mjs`** (a fake `/proc` on Linux and a fake `ps` on
+- **Shell, `tools/package/test/vimma-open.test.ts`** (a fake `/proc` on Linux and a fake `ps` on
   macOS, as `VIMMA_OPEN_PROC` does today):
   - `BROWSER=vimma-open through CPython's webbrowser names the chain`: a process chain standing in
     for Ghostty and herdr (`ghostty` → `zsh` → `herdr` → `zsh`, as stub executables) runs

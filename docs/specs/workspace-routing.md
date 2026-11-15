@@ -286,7 +286,7 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
   a later one, and none after a private first window; private windows never routed;
   `:route add` appends and the rule applies; `:route` and about:vimma list the rules and the
   match.
-- Shell (`tools/package/test/vimma-open.test.mjs`): fake `/proc` trees: xdg-open → slack,
+- Shell (`tools/package/test/vimma-open.test.ts`): fake `/proc` trees: xdg-open → slack,
   sh → xdg-open → nvim, gio, a portal (unknown), systemd (unknown), the AppImage runtime, a bad
   name, a name with a newline, a loop, flags passed through, a single flag refused, an
   inherited `VIMMA_FROM` dropped, the sibling binary.
@@ -311,14 +311,14 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
     and about:vimma already lists config state. It shows the tab's host, never its URL; the `:bug` report has only the rule count.
   - core `locateKeys` now indexes `[[array]]` tables, so `routes[2].url` errors carry their own
     line; `toml.test.mjs`'s array-table path gains the index the parsed value always had.
-  - Packaging: `vimma-open` lives in `tools/package/vimma-open.sh`; `package.mjs` installs it
+  - Packaging: `vimma-open` lives in `tools/package/vimma-open.sh`; `package.ts` installs it
     next to `vimma` in the AppImage (AppRun runs it), the .deb (`/usr/bin/vimma-open`) and the
     AUR package (a third source file with its SHA-256; `release.yml` pushes it and the .deb smoke
     test checks it). The desktop entry's `Exec` is `vimma-open %u`; its actions stay `vimma`.
   - The startup app comes from `VIMMA_FROM` as planned; `-vimma-from` at a cold start is logged
     by x-default as an unrecognized flag and its value skipped, which is harmless.
 - **Tests:** Vitest `routes.test.mjs` (30), plus `cmdline`, `actions`, `config`, `toml`; red
-  first (the module missing), then green. `vimma-open.test.mjs` (12, fake `/proc`): red (no
+  first (the module missing), then green. `vimma-open.test.ts` (12, fake `/proc`): red (no
   script), green. Mochitest `browser_vimma_workspace_routes.js` (10 tasks, 60 checks): the
   first run of the implementation had 10 unexpected (the `openLinkIn` copy above, a stale
   notice in the test, a private-window helper), then green; whole `tests/browser/` green.

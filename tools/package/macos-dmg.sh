@@ -9,7 +9,7 @@
 #   RCODESIGN  rcodesign to run (default: rcodesign on PATH)
 #   VIMMA_CTL  a vimma-ctl built for the Mac, put next to vimma in Contents/MacOS before signing
 #              (spec ship-vimma-ctl); release.yml sets it, the weekly macOS build does not
-#   VIMMA_CTL_LICENSES  its notices from tools/package/ctl-notices.mjs, required with VIMMA_CTL
+#   VIMMA_CTL_LICENSES  its notices from tools/package/ctl-notices.ts, required with VIMMA_CTL
 #              (#516); they go into Contents/Resources, since Contents/MacOS holds only code
 #   VIMMA_APP_MANIFEST  where to write the signed app's manifest (macos-app-manifest.sh); release.yml
 #              sets it for a Developer ID release only
@@ -54,7 +54,7 @@ if [ -n "${VIMMA_CTL:-}" ]; then
     exit 1
   }
   [ -n "${VIMMA_CTL_LICENSES:-}" ] && [ -f "$VIMMA_CTL_LICENSES/README.txt" ] || {
-    echo "macos-dmg.sh: VIMMA_CTL_LICENSES must name vimma-ctl's notices (ctl-notices.mjs)" >&2
+    echo "macos-dmg.sh: VIMMA_CTL_LICENSES must name vimma-ctl's notices (ctl-notices.ts)" >&2
     exit 1
   }
   cp -R "$VIMMA_CTL_LICENSES" "$app/Contents/Resources/vimma-ctl-licenses"

@@ -1,6 +1,6 @@
 // update-publish.yml (docs/specs/m6a-updater.md §7; docs/runbook.md, "Update signing keys and
 // the update host"): a published release gets a signed update manifest on updates.vimma.dev.
-// The workflow is read as text, as release-workflow.test.mjs reads release.yml, and its signing
+// The workflow is read as text, as release-workflow.test.ts reads release.yml, and its signing
 // step is run here with a stand-in for gcloud that signs the way Cloud KMS's raw PKCS#1 key
 // does, so the bytes it writes are checked by the verifier the browser runs.
 import { describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ import { generateKeyPairSync } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { IDENTITY_REGEXP } from "../../package/package.mjs";
+import { IDENTITY_REGEXP } from "../../package/package.ts";
 import {
   base64Encode,
   spkiKeyId,

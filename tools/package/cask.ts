@@ -6,7 +6,7 @@
  * as Casks/vimma.rb, so users install with `brew install --cask vimma-browser/tap/vimma`.
  *
  * Usage:
- *   node tools/package/cask.mjs --dmg <vimma-X.Y.Z-macos-aarch64.dmg> --out <vimma.rb>
+ *   node tools/package/cask.ts --dmg <vimma-X.Y.Z-macos-aarch64.dmg> --out <vimma.rb>
  *     [--tag vX.Y.Z] [--repo vimma-browser/vimma] [--notarised]
  * The version is surfer.json brands.vimma.release.displayVersion; --tag must be exactly v<that>.
  * --notarised is for a dmg that macos-pack packed after macos-notarise signed its app with Vimma's
@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { REPO } from "../repo.ts";
-import { releaseVersion, sha256File } from "./package.mjs";
+import { releaseVersion, sha256File } from "./package.ts";
 
 const SURFER = JSON.parse(readFileSync(new URL("../../surfer.json", import.meta.url), "utf8"));
 
@@ -42,18 +42,14 @@ const ADHOC_CAVEATS = `
   EOS
 `;
 
-/**
- * @typedef {{ version: string, dmgSha256: string, repo: string, notarised?: boolean }} CaskInput
- */
+export type CaskInput = { version: string; dmgSha256: string; repo: string; notarised?: boolean };
 
 /**
  * The cask text. Each value goes into a Ruby string, so only a release version, a lowercase
  * SHA-256 and a GitHub `owner/name` pass. Releases only: release.yml accepts vX.Y.Z tags, and
  * the tap, like the AUR, gets no pre-release.
- * @param {CaskInput} input
- * @returns {string}
  */
-export function cask({ version, dmgSha256, repo, notarised = false }) {
+export function cask({ version, dmgSha256, repo, notarised = false }: CaskInput): string {
   if (/^\d+\.\d+\.\d+-/.test(version)) {
     throw new Error(`cask: ${version} is a pre-release; releases only`);
   }
@@ -112,7 +108,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     },
   });
   try {
-    if (!values.dmg || !values.out) throw new Error("usage: cask.mjs --dmg <file> --out <file>");
+    if (!values.dmg || !values.out) throw new Error("usage: cask.ts --dmg <file> --out <file>");
     const version = releaseVersion(SURFER, values.tag);
     const text = cask({
       version,

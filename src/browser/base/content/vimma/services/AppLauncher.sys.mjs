@@ -24,11 +24,11 @@ const ENV = "MOZ_APP_LAUNCHER";
 
 /**
  * The packages install it next to the binary, and their desktop entry's Exec names it by that
- * path (tools/package/package.mjs), so links from other apps keep going through it to routing.
+ * path (tools/package/package.ts), so links from other apps keep going through it to routing.
  */
 const LAUNCHER = "vimma-open";
 
-/** How the package was installed (tools/package/package.mjs, PACKAGED_APP_FILE). */
+/** How the package was installed (tools/package/package.ts, PACKAGED_APP_FILE). */
 const MARKER = "is-packaged-app";
 const APPIMAGE = /^vimma-package=appimage\s*$/m;
 

@@ -17,7 +17,7 @@
 # and neither can a fork or a pull request. A manual run executes the release.yml of the branch
 # it is started on, so every job requires main; that guard stops accidental runs, while the
 # real control is the signature: it names release.yml at refs/heads/main, the one identity users
-# verify, which no other branch's workflow can obtain (tools/package/test/release-workflow.test.mjs).
+# verify, which no other branch's workflow can obtain (tools/package/test/release-workflow.test.ts).
 name: release
 
 on:
@@ -121,7 +121,7 @@ jobs:
         run: |
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
-            import { releaseVersion } from "./tools/package/package.mjs";
+            import { releaseVersion } from "./tools/package/package.ts";
             const config = JSON.parse(readFileSync("surfer.json", "utf8"));
             console.log("Vimma " + releaseVersion(config, process.env.TAG));'
 
@@ -244,8 +244,8 @@ jobs:
 
       - name: SBOM (CycloneDX), checked against the official 1.6 schema
         run: |
-          node tools/package/sbom.mjs --engine engine --out "release/vimma-${TAG#v}.cdx.json"
-          node tools/package/validate-sbom.mjs "release/vimma-${TAG#v}.cdx.json"
+          node tools/package/sbom.ts --engine engine --out "release/vimma-${TAG#v}.cdx.json"
+          node tools/package/validate-sbom.ts "release/vimma-${TAG#v}.cdx.json"
 
       - name: Stop the release compiler cache
         if: always()
@@ -308,7 +308,7 @@ jobs:
       # libunwind), and its SBOM entry, from the toolchain that built it (#516).
       - name: Notices and SBOM entry for vimma-ctl
         run: |
-          node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
+          node tools/package/ctl-notices.ts --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \
             --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -358,7 +358,7 @@ jobs:
           name: mar-tools
           path: mar-tools
 
-      # For validate-sbom.mjs (ajv), which checks the SBOM once vimma-ctl is in it.
+      # For validate-sbom.ts (ajv), which checks the SBOM once vimma-ctl is in it.
       - name: npm ci
         run: npm ci --ignore-scripts
 
@@ -376,13 +376,13 @@ jobs:
           tarball=$(echo build/vimma-*.en-US.linux-x86_64.tar.xz)
           # download-artifact does not keep the mode
           chmod 755 ctl/vimma-ctl
-          node tools/package/package.mjs --tarball "$tarball" --ctl ctl/vimma-ctl \
+          node tools/package/package.ts --tarball "$tarball" --ctl ctl/vimma-ctl \
             --ctl-licenses ctl/vimma-ctl-licenses --out dist --tag "$TAG" \
             --maintainer "$MAINTAINER" --repo "$GITHUB_REPOSITORY" --sbom "build/vimma-$v.cdx.json" \
             --ctl-component ctl/vimma-ctl.cdx.json \
             --appimagetool "$RUNNER_TEMP/appimagetool/appimagetool" \
             --runtime "$RUNNER_TEMP/appimagetool/runtime-x86_64"
-          node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"
+          node tools/package/validate-sbom.ts "dist/vimma-$v.cdx.json"
           (cd dist && sha256sum -c SHA256SUMS)
 
       - name: Smoke test the .deb and the AppImage
@@ -401,7 +401,7 @@ jobs:
           grep -qx 'Exec=/usr/lib/vimma/vimma-open %u' /usr/share/applications/vimma-vimma.desktop
           # The update check's install type (spec m6a-updater §3): a .deb is updated by apt, an
           # AppImage by a new AppImage; only the unmarked tarball is told to unpack over itself.
-          type=$(node tools/package/install-type.mjs /usr/lib/vimma)
+          type=$(node tools/package/install-type.ts /usr/lib/vimma)
           [ "$type" = deb ] || { echo "::error::.deb: install type $type"; exit 1; }
           # A separate assignment, so a tar failure stops the step under bash -e.
           listing=$(tar -tJf "./dist/vimma-$v-linux-x86_64.tar.xz")
@@ -424,7 +424,7 @@ jobs:
             || { echo "::error::AppImage as vimma-ctl: wrong version"; exit 1; }
           (cd "$RUNNER_TEMP" && "$appimage" --appimage-extract > /dev/null)
           # Without $APPIMAGE, so the type comes from the AppDir's marker alone (decision 34).
-          type=$(env -u APPIMAGE node tools/package/install-type.mjs "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")
+          type=$(env -u APPIMAGE node tools/package/install-type.ts "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")
           [ "$type" = appimage ] || { echo "::error::AppImage: install type $type"; exit 1; }
 
       # dnf on Fedora and zypper on openSUSE, each in a container pinned by digest (spec
@@ -604,7 +604,7 @@ jobs:
           diff -r --no-dereference "$from_mar" "$from_tarball/vimma"
           echo "$MAR installs the $(find "$from_mar" -type f | wc -l) files of the release tarball"
 
-      # The sums file package.mjs wrote, with the MAR's line, in its order (by name).
+      # The sums file package.ts wrote, with the MAR's line, in its order (by name).
       - name: Add the MAR to SHA256SUMS
         run: |
           mkdir -p release-mar
@@ -622,7 +622,7 @@ jobs:
           if-no-files-found: error
 
   # cosign keyless: the certificate names this workflow at refs/heads/main (IDENTITY_REGEXP in
-  # tools/package/package.mjs). It runs no repository code. With UPDATES_ENABLED it waits for
+  # tools/package/package.ts). It runs no repository code. With UPDATES_ENABLED it waits for
   # the checked MAR and signs it and the SHA256SUMS that lists it; a failed MAR stops it, so a
   # release never goes out signed without the MAR its manifest would offer.
   sign:
@@ -811,7 +811,7 @@ jobs:
       # provides libc and the unwinder. The release SBOM describes the Linux packages only.
       - name: Notices for vimma-ctl
         run: |
-          node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses
+          node tools/package/ctl-notices.ts --out ctl/vimma-ctl-licenses
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -897,7 +897,7 @@ jobs:
         run: |
           node --input-type=module -e '
             import { readFileSync } from "node:fs";
-            import { releaseVersion } from "./tools/package/package.mjs";
+            import { releaseVersion } from "./tools/package/package.ts";
             const config = JSON.parse(readFileSync("surfer.json", "utf8"));
             console.log("Vimma " + releaseVersion(config, process.env.TAG));'
 
@@ -978,7 +978,7 @@ jobs:
           rm -rf release-macos && mkdir release-macos
           dmg="vimma-${TAG#v}-macos-aarch64.dmg"
           tools/package/macos-dmg.sh "$MOZ_OBJDIR"/dist/vimma-*.en-US.mac.dmg "release-macos/$dmg"
-          node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
+          node tools/package/cask.ts --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
           (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
           if [ -n "$VIMMA_APP_MANIFEST" ]; then
             echo "manifest_sha256=$(sha256sum < "$VIMMA_APP_MANIFEST" | cut -d " " -f 1)" >> "$GITHUB_OUTPUT"
@@ -1264,7 +1264,7 @@ jobs:
       - name: The cask and checksums for the signed dmg
         run: |
           dmg="vimma-${TAG#v}-macos-aarch64.dmg"
-          node tools/package/cask.mjs --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
+          node tools/package/cask.ts --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb
           (cd release-macos && sha256sum "$dmg" vimma.rb > SHA256SUMS-macos && cat SHA256SUMS-macos)
           {
             echo "### macOS: Developer ID, notarised and stapled"

@@ -5,8 +5,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.mjs";
-import { macosSignJobs, notariseJobProblems } from "./notarise-job.mjs";
+import { CTL_LICENSE_FILES, IDENTITY_REGEXP, pkgbuild, srcinfo } from "../package.ts";
+import { macosSignJobs, notariseJobProblems } from "./notarise-job.ts";
 
 // release.yml's gates (spec m6-packaging; docs/runbook.md, "Release packages"). It starts only
 // by workflow_dispatch: release-please.yml's release-build job starts it for the draft release it
@@ -20,28 +20,25 @@ const text = readFileSync(
   "utf8",
 );
 
-/** @returns {Map<string, string>} job id -> its YAML block */
-function jobs() {
+/** @returns job id -> its YAML block */
+function jobs(): Map<string, string> {
   const body = text.slice(text.indexOf("\njobs:\n") + 7);
   const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
-  /** @type {Map<string, string>} */
-  const map = new Map();
+  const map: Map<string, string> = new Map();
   for (let i = 0; i < parts.length; i += 2) map.set(parts[i] ?? "", parts[i + 1] ?? "");
   return map;
 }
 
 /**
  * The `on:` block of a workflow.
- * @param {string} file
  */
-const triggersOf = (file) => file.slice(file.indexOf("\non:\n"), file.indexOf("\npermissions:"));
+const triggersOf = (file: string) =>
+  file.slice(file.indexOf("\non:\n"), file.indexOf("\npermissions:"));
 
 /**
  * The `run:` script of the step called `name` in `block`, unindented.
- * @param {string} block
- * @param {string} name
  */
-function runOf(block, name) {
+function runOf(block: string, name: string) {
   const start = block.indexOf(`- name: ${name}\n`);
   expect(start, name).toBeGreaterThan(-1);
   const rest = block.slice(start + 1);
@@ -53,8 +50,7 @@ function runOf(block, name) {
   return lines.map((l) => l.replace(/^ {10}/, "")).join("\n");
 }
 
-/** @param {string} block */
-function condition(block) {
+function condition(block: string) {
   const match = /^ {4}if: (>-\n(?: {6}.*\n)+|.*\n)/m.exec(block);
   return (match?.[1] ?? "").replace(/^>-\n/, "").replace(/\s+/g, " ").trim();
 }
@@ -204,11 +200,11 @@ describe("release.yml", () => {
 
   /**
    * Runs the publish job's notes step against a stub `gh` that keeps the release body in a file,
-   * with `dist/notes/` as tools/package/package.mjs writes it.
-   * @param {string} body the release notes before the step
-   * @param {number} [runs] how many times the step runs, as re-runs of the job do
+   * with `dist/notes/` as tools/package/package.ts writes it.
+   * @param body the release notes before the step
+   * @param runs how many times the step runs, as re-runs of the job do
    */
-  const editNotes = (body, runs = 1) => {
+  const editNotes = (body: string, runs: number = 1) => {
     const dir = mkdtempSync(join(tmpdir(), "release-notes-"));
     try {
       const work = join(dir, "work");
@@ -307,8 +303,7 @@ esac
     });
 
     it("macos-build stops at the same measured limit as macos.yml's build", () => {
-      const limit = (/** @type {string} */ block) =>
-        /^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1];
+      const limit = (block: string) => /^ {4}timeout-minutes: (\d+)$/m.exec(block)?.[1];
       const weekly = readFileSync(
         new URL("../../../.github/workflows/macos.yml", import.meta.url),
         "utf8",
@@ -340,7 +335,7 @@ esac
       expect(pack).toContain('dmg="vimma-${TAG#v}-macos-aarch64.dmg"');
       // the Homebrew cask pins the dmg's SHA-256 and is listed beside it (spec macos-homebrew)
       expect(pack).toContain(
-        'node tools/package/cask.mjs --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
+        'node tools/package/cask.ts --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
       );
       expect(pack).toContain('sha256sum "$dmg" vimma.rb > SHA256SUMS-macos');
       expect(block.match(/GH_TOKEN: \$\{\{ github\.token \}\}/g)).toHaveLength(1);
@@ -531,7 +526,7 @@ esac
       // A compromised build could hand over a tool that waits for the key: the job with the
       // secrets downloads only the unpacked volume, as data, and runs only the pinned rcodesign.
       // It must equal its golden copy (tools/package/test/macos-notarise.golden.txt), so any change
-      // to it is a change to that file, which review reads (tools/package/test/notarise-job.mjs).
+      // to it is a change to that file, which review reads (tools/package/test/notarise-job.ts).
       it("the macos-sign job runs no binary of the build: only the pinned rcodesign", () => {
         expect(notariseJobProblems(notarise, text)).toEqual([]);
         expect(notarise).not.toMatch(
@@ -541,9 +536,8 @@ esac
 
       /**
        * A mutation of the job, or of the whole workflow when `where` is "workflow".
-       * @type {Array<[string, (b: string) => string, RegExp, ("job" | "workflow")?]>}
        */
-      const MUTATIONS = [
+      const MUTATIONS: Array<[string, (b: string) => string, RegExp, ("job" | "workflow")?]> = [
         [
           "another action",
           (b) =>
@@ -898,7 +892,7 @@ esac
         expect(step).toContain('tools/package/macos-dmg-pack.sh volume "release-macos/$dmg"');
         const cask = runOf(pack, "The cask and checksums for the signed dmg");
         expect(cask).toContain(
-          'node tools/package/cask.mjs --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
+          'node tools/package/cask.ts --notarised --tag "$TAG" --dmg "release-macos/$dmg" --out release-macos/vimma.rb',
         );
         expect(cask).toContain('sha256sum "$dmg" vimma.rb > SHA256SUMS-macos');
         expect(cask).toContain("$GITHUB_STEP_SUMMARY");
@@ -1023,7 +1017,7 @@ esac
       const block = all.get("ctl") ?? "";
       const notices = runOf(block, "Notices and SBOM entry for vimma-ctl");
       expect(notices).toContain(
-        "node tools/package/ctl-notices.mjs --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \\\n" +
+        "node tools/package/ctl-notices.ts --target x86_64-unknown-linux-musl --binary ctl/vimma-ctl \\\n" +
           "  --out ctl/vimma-ctl-licenses --component ctl/vimma-ctl.cdx.json",
       );
       expect(block.indexOf("- name: Check the binary")).toBeLessThan(
@@ -1037,7 +1031,7 @@ esac
       const pack = runOf(block, "Package");
       expect(pack).toContain("--ctl-licenses ctl/vimma-ctl-licenses");
       expect(pack).toContain("--ctl-component ctl/vimma-ctl.cdx.json");
-      expect(pack).toContain('node tools/package/validate-sbom.mjs "dist/vimma-$v.cdx.json"');
+      expect(pack).toContain('node tools/package/validate-sbom.ts "dist/vimma-$v.cdx.json"');
       expect(block).toMatch(/- name: npm ci\n {8}run: npm ci --ignore-scripts\n/);
       const smoke = runOf(block, "Smoke test the .deb and the AppImage");
       expect(smoke).toContain("test -s /usr/lib/vimma/vimma-ctl-licenses/musl-COPYRIGHT");
@@ -1047,7 +1041,7 @@ esac
     it("the Mac vimma-ctl's notices go into the app and the smoke check finds them", () => {
       const ctl = all.get("macos-ctl") ?? "";
       expect(runOf(ctl, "Notices for vimma-ctl")).toContain(
-        "node tools/package/ctl-notices.mjs --out ctl/vimma-ctl-licenses",
+        "node tools/package/ctl-notices.ts --out ctl/vimma-ctl-licenses",
       );
       expect(ctl).toContain("uses: actions/setup-node@");
       expect(all.get("macos-build")).toContain(
@@ -1141,14 +1135,14 @@ esac
     expect(script).not.toMatch(/-e PORT=/);
   });
 
-  // #516: package.mjs refuses vimma-ctl without its notices, so the pull-request stub brings
+  // #516: package.ts refuses vimma-ctl without its notices, so the pull-request stub brings
   // every file it requires, and the installed package must carry them.
   it.each(["arch-smoke.sh", "rpm-smoke.sh"])(
     "%s packages its stub with vimma-ctl's notices",
     (name) => {
       const script = readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
       const stub = script.slice(script.indexOf('if [ "${1:-}" = "--stub" ]; then'));
-      expect(stub).toMatch(/package\.mjs" .*--ctl-licenses "\$work\/vimma-ctl-licenses"/s);
+      expect(stub).toMatch(/package\.ts" .*--ctl-licenses "\$work\/vimma-ctl-licenses"/s);
       for (const file of CTL_LICENSE_FILES)
         expect(stub, file).toContain(`vimma-ctl-licenses/${file}`);
       const lib = name === "arch-smoke.sh" ? "/opt/vimma" : "/usr/lib/vimma";
@@ -1186,8 +1180,7 @@ describe("aur.yml", () => {
     const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
     for (let i = 0; i < parts.length; i += 2) all.set(parts[i] ?? "", parts[i + 1] ?? "");
   }
-  /** @param {string} id */
-  const job = (id) => /** @type {string} */ (all.get(id) ?? "");
+  const job = (id: string) => (all.get(id) ?? "") as string;
 
   it("has the aur job and its failure report", () => {
     expect([...all.keys()]).toEqual(["aur", "failure"]);
@@ -1273,10 +1266,8 @@ describe("aur.yml", () => {
       desktopId: "vimma-vimma",
       launcher: '#!/bin/sh\nexec vimma "$@"\n',
     };
-    /** @type {"pkgbuild-release"} */
-    const release = "pkgbuild-release";
-    /** @param {string} pkg */
-    const variant = (pkg) => {
+    const release: "pkgbuild-release" = "pkgbuild-release";
+    const variant = (pkg: string) => {
       const dir = mkdtempSync(join(tmpdir(), "aur-variant-"));
       try {
         writeFileSync(join(dir, "PKGBUILD"), pkg);
@@ -1294,7 +1285,7 @@ describe("aur.yml", () => {
       }
     };
 
-    it("turns the release's PKGBUILD into the one package.mjs writes for the AUR", () => {
+    it("turns the release's PKGBUILD into the one package.ts writes for the AUR", () => {
       const out = variant(pkgbuild({ ...input, installSource: release }));
       expect(out.pkgbuild).toBe(pkgbuild({ ...input, installSource: "aur" }));
       expect(out.srcinfo).toBe(srcinfo({ ...input, installSource: "aur" }));
@@ -1331,8 +1322,7 @@ describe("homebrew.yml", () => {
     const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
     for (let i = 0; i < parts.length; i += 2) all.set(parts[i] ?? "", parts[i + 1] ?? "");
   }
-  /** @param {string} id */
-  const job = (id) => /** @type {string} */ (all.get(id) ?? "");
+  const job = (id: string) => (all.get(id) ?? "") as string;
   const FETCH = "Download the published release's cask";
 
   it("has the start job, the homebrew job and its failure report", () => {
@@ -1418,9 +1408,18 @@ describe("homebrew.yml", () => {
   /**
    * Runs the start step with stub `curl` and `gh`; curl answers the release API with a published
    * release that has vimma.rb when `cask` is true and lacks it otherwise, and gh logs its arguments.
-   * @param {{ tag?: string, cask?: boolean, release?: string, macos?: string }} options
    */
-  const startWith = ({ tag = "v0.1.11", cask = true, release = "true", macos = "true" }) => {
+  const startWith = ({
+    tag = "v0.1.11",
+    cask = true,
+    release = "true",
+    macos = "true",
+  }: {
+    tag?: string;
+    cask?: boolean;
+    release?: string;
+    macos?: string;
+  }) => {
     const dir = mkdtempSync(join(tmpdir(), "homebrew-start-"));
     try {
       execFileSync("mkdir", ["-p", join(dir, "bin")]);
@@ -1530,9 +1529,8 @@ describe("homebrew.yml", () => {
   /**
    * Runs the download step against a stub `curl` that serves `files` (name -> content) and 404s
    * the rest.
-   * @param {Record<string, string>} files
    */
-  const fetchWith = (files) => {
+  const fetchWith = (files: Record<string, string>) => {
     const dir = mkdtempSync(join(tmpdir(), "homebrew-fetch-"));
     try {
       const served = join(dir, "served");
@@ -1657,14 +1655,13 @@ describe("homebrew.yml", () => {
     /**
      * Runs the push step against a bare repository standing in for the tap: `git clone` of the
      * tap's URL is redirected to it.
-     * @param {string | null} tapCask the tap's Casks/vimma.rb before the push, null for none
-     * @param {string} tag
+     * @param tapCask the tap's Casks/vimma.rb before the push, null for none
      */
-    const push = (tapCask, tag) => {
+    const push = (tapCask: string | null, tag: string) => {
       const dir = mkdtempSync(join(tmpdir(), "homebrew-push-"));
       try {
         const bare = join(dir, "tap.git");
-        const git = (/** @type {string[]} */ ...args) =>
+        const git = (...args: string[]) =>
           execFileSync("git", args, { cwd: dir, stdio: "pipe", encoding: "utf8" });
         git("init", "-q", "--bare", "-b", "main", bare);
         git("clone", "-q", bare, "seed");
@@ -1753,8 +1750,7 @@ describe("homebrew.yml", () => {
 
 // release-please's bumps and the release gate (spec release-versioning).
 describe("release-please-config.json", () => {
-  /** @param {string} path */
-  const json = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
+  const json = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
   const config = json("../../../release-please-config.json");
   const manifest = json("../../../.release-please-manifest.json");
   const surfer = json("../../../surfer.json");
@@ -1800,15 +1796,12 @@ describe("release-please-config.json", () => {
 // `vimma --version` prints `Vimma <vimma> · Firefox <firefox>` (spec firefox-versions): every smoke
 // check takes the expected line from tools/release/version-line.mjs, never its own copy of it.
 describe("--version smoke checks", () => {
-  /** @param {string} name */
-  const workflow = (name) =>
+  const workflow = (name: string) =>
     readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
   /**
    * The `run:` block of the step called `name`.
-   * @param {string} file
-   * @param {string} name
    */
-  const step = (file, name) => {
+  const step = (file: string, name: string) => {
     const start = file.indexOf(`- name: ${name}\n`);
     expect(start, name).toBeGreaterThan(-1);
     const rest = file.slice(start + 1);
@@ -1836,11 +1829,11 @@ describe("--version smoke checks", () => {
   // docs/specs/m6a-updater.md §3: the install types the update check gives the built packages.
   it("the .deb and AppImage smoke test checks each install type, and the tarball's lack of one", () => {
     const smoke = step(workflow("release.yml"), "Smoke test the .deb and the AppImage");
-    expect(smoke).toContain("type=$(node tools/package/install-type.mjs /usr/lib/vimma)\n");
+    expect(smoke).toContain("type=$(node tools/package/install-type.ts /usr/lib/vimma)\n");
     expect(smoke).toContain('[ "$type" = deb ] || {');
     expect(smoke).toMatch(/--appimage-extract/);
     expect(smoke).toContain(
-      'type=$(env -u APPIMAGE node tools/package/install-type.mjs "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")\n',
+      'type=$(env -u APPIMAGE node tools/package/install-type.ts "$RUNNER_TEMP/squashfs-root/usr/lib/vimma")\n',
     );
     expect(smoke).toContain('[ "$type" = appimage ] || {');
     expect(smoke).toContain('listing=$(tar -tJf "./dist/vimma-$v-linux-x86_64.tar.xz")\n');
@@ -1857,15 +1850,13 @@ describe("--version smoke checks", () => {
 // build job fixes MOZ_BUILD_DATE before its first mach call, and a packaged build whose binary
 // and application.ini disagree fails before anything is published.
 describe("one build ID per build", () => {
-  /** @param {string} name */
-  const workflow = (name) =>
+  const workflow = (name: string) =>
     readFileSync(new URL(`../../../.github/workflows/${name}`, import.meta.url), "utf8");
   const FIX = "- name: Fix the build ID for every mach call\n";
   const SET = 'echo "MOZ_BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> "$GITHUB_ENV"';
   const all = jobs();
 
-  /** @param {string} block @param {string} label */
-  const fixedBeforeBuild = (block, label) => {
+  const fixedBeforeBuild = (block: string, label: string) => {
     const fix = block.indexOf(FIX);
     expect(fix, label).toBeGreaterThan(-1);
     expect(block.slice(fix, block.indexOf("\n      - ", fix + 1))).toContain(SET);
@@ -1922,10 +1913,9 @@ describe("release-please.yml", () => {
     const parts = body.split(/^ {2}([a-z][a-z0-9-]*):\n/m).slice(1);
     for (let i = 0; i < parts.length; i += 2) all.set(parts[i] ?? "", parts[i + 1] ?? "");
   }
-  /** @param {string} id */
-  const job = (id) => /** @type {string} */ (all.get(id) ?? "");
-  /** @param {string} id job id -> its `permissions:` entries, comments dropped */
-  const permissions = (id) => {
+  const job = (id: string) => (all.get(id) ?? "") as string;
+  /** @param id job id -> its `permissions:` entries, comments dropped */
+  const permissions = (id: string) => {
     const match = /^ {4}permissions:\n((?: {6}.*\n)+)/m.exec(job(id));
     return (match?.[1] ?? "")
       .split("\n")

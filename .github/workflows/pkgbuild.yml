@@ -90,7 +90,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # package.mjs and version-line.mjs use Node's built-in modules only: no npm install.
+      # package.ts and version-line.mjs use Node's built-in modules only: no npm install.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -109,7 +109,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # package.mjs and version-line.mjs use Node's built-in modules only: no npm install.
+      # package.ts and version-line.mjs use Node's built-in modules only: no npm install.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
@@ -134,7 +134,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # cask.mjs uses Node's built-in modules only: no npm install.
+      # cask.ts uses Node's built-in modules only: no npm install.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .nvmrc
