@@ -237,7 +237,7 @@ jobs:
 
       - name: Artifact build (tools/artifact-build)
         id: artifact-build
-        run: node tools/artifact-build/artifact-build.mjs
+        run: node tools/artifact-build/artifact-build.ts
 
       # browser_vimma_control.js runs the vimma-ctl built above (target/debug) against the live
       # server; without it the task skips, and VIMMA_REQUIRE_CTL=1 makes that skip a failure.
@@ -416,7 +416,7 @@ jobs:
         run: npm run import
 
       - name: Artifact build (tools/artifact-build)
-        run: node tools/artifact-build/artifact-build.mjs
+        run: node tools/artifact-build/artifact-build.ts
 
       # Headless. browser_vimma_control.js skips here: this job builds no vimma-ctl.
       # Tests that cannot pass on macOS carry skip-if = ["os == 'mac'"] with an issue in

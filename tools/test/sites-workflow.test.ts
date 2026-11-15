@@ -81,7 +81,7 @@ describe("site-compat workflow (sites.yml)", () => {
   it("checks the Firefox tarball against Mozilla's SHA512SUMS before building", () => {
     // firefox-source.sh verifies the tarball before Surfer unpacks it (firefox-source.test.mjs).
     expect(text).toContain("tools/upstream/firefox-source.sh");
-    expect(text.indexOf("firefox-source.sh")).toBeLessThan(text.indexOf("artifact-build.mjs"));
+    expect(text.indexOf("firefox-source.sh")).toBeLessThan(text.indexOf("artifact-build.ts"));
   });
 
   it("runs the suite on the artifact build and uploads the report even when it fails", () => {

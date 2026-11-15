@@ -850,7 +850,7 @@ With the sub-PRs:
 Each sub-PR is independently mergeable and tested. Sub-PRs 1 and 2 need no Mac, no money and no
 full build.
 
-1. **`ci(macos): front-end tests on a mac runner`** (built). `artifact-build.mjs` picks the
+1. **`ci(macos): front-end tests on a mac runner`** (built). `artifact-build.mjs` (Since changed: `artifact-build.ts`, ADR-025) picks the
    namespace and `.app` layout by platform; `mochitest.mjs` and `start.mjs` learn the macOS paths and skip
    `/proc/locks` on macOS. A new `macos-15` job in `e2e.yml`: `npm ci`, Vitest, artifact build,
    the mochitests headless, and a `df` line recording the free disk. Not required at first

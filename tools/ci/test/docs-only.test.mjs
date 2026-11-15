@@ -280,7 +280,7 @@ describe("workflow wiring", () => {
       "run: npm test",
       "tools/upstream/firefox-source.sh",
       "run: npm run import",
-      "node tools/artifact-build/artifact-build.mjs",
+      "node tools/artifact-build/artifact-build.ts",
       "npm run mochitest -- --artifact",
     ].map(at);
     expect(order.every((i) => i >= 0)).toBe(true);
@@ -308,7 +308,7 @@ describe("workflow wiring", () => {
       "run: npm test",
       "tools/upstream/firefox-source.sh",
       "run: npm run import",
-      "node tools/artifact-build/artifact-build.mjs",
+      "node tools/artifact-build/artifact-build.ts",
       "npm run mochitest -- --artifact",
     ].map(at);
     expect(order.every((i) => i >= 0)).toBe(true);

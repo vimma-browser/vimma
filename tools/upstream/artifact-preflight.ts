@@ -19,7 +19,7 @@
 import { appendFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { TREES, indexNamespace, indexTask } from "../artifact-build/artifact-build.mjs";
+import { TREES, indexNamespace, indexTask } from "../artifact-build/artifact-build.ts";
 import { githubOutputText } from "./detect.ts";
 
 const INDEX_URL = "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/";

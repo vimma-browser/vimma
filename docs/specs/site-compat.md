@@ -54,7 +54,7 @@ runner is not used (decision 10).
 - `e2e.yml` (the required "mochitest (artifact build)" check) runs on `ubuntu-24.04`, a
   standard hosted runner. It builds `vimma-ctl` (`cargo build --locked`), downloads the Firefox
   source tarball (checked against Mozilla's `SHA512SUMS`), runs `npm run import`, makes an
-  **artifact build** (`tools/artifact-build/artifact-build.mjs`: our front end on Mozilla's
+  **artifact build** (`tools/artifact-build/artifact-build.mjs`, since changed: `artifact-build.ts`, ADR-025: our front end on Mozilla's
   compiled binaries for that exact release, ADR-010), then runs the mochitests and
   `npm run e2e -- --artifact` (`.github/workflows/e2e.yml:91-147`). No secret, read-only
   token.

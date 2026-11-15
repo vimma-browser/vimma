@@ -178,7 +178,7 @@ top of Mozilla's compiled binaries for the same release, and is what PR CI uses
 
 ```sh
 npm run import
-node tools/artifact-build/artifact-build.mjs    # ~25 s warm; first run downloads 163 MB
+node tools/artifact-build/artifact-build.ts    # ~25 s warm; first run downloads 163 MB
 npm run mochitest -- --artifact tests/browser/
 ```
 
@@ -205,7 +205,7 @@ Mac is not supported.
 npm ci
 tools/upstream/firefox-source.sh                # download, verify, unpack into engine/
 npm run import
-node tools/artifact-build/artifact-build.mjs    # Mozilla's macosx64-aarch64 build
+node tools/artifact-build/artifact-build.ts    # Mozilla's macosx64-aarch64 build
 npm run mochitest -- --artifact tests/browser/  # headless
 ```
 
