@@ -83,13 +83,13 @@ only the agent workspace, and every request asks you first (§12).
   document's title or URL, or the outline, and is `null` in a private window. The viewer's own
   report of its drawing (section 20, V6) only ever turns that flag; a viewer that lies about it
   (its drawing, size or zoom) changes when a script's wait ends, nothing else. Reading the mode
-  writes nothing: a resize mode left with no panes is reported as the page's mode, and its flag
-  is cleared where the panes change (the last pane closes, the split hides), never by a read;
-  the status bar's own bookkeeping (the update segment's timer) does not run for `state`. The one
-  write left on the path is bookkeeping that changes no selection, mode, focus, page activity or
-  split wrapper: in a window whose address bar has not been focused yet, the first `state` read
-  starts listening to the bar's query controller, as that first focus would, so that
-  `state.urlbar` can tell a query under way; reading starts no query and changes no text.
+  writes nothing: a resize mode left with no panes is reported as the mode it would be without
+  resize, and its flag is cleared where the panes change (the last pane closes, the split hides),
+  never by a read; the status bar's own bookkeeping (the update segment's timer) does not run for
+  `state`. The one write left on the path is bookkeeping that changes no selection, mode, focus,
+  page activity or split wrapper: in a window whose address bar has not been focused yet, the
+  first `state` read starts listening to the bar's query controller, as that first focus would,
+  so that `state.urlbar` can tell a query under way; reading starts no query and changes no text.
   [`state_leaves_a_stale_resize_mode_as_it_found_it`](../../tests/browser/browser_vimma_control_state_read.js),
   [`resize_mode_ends_when_the_last_pane_closes_or_the_split_hides`](../../tests/browser/browser_vimma_pane_swap_resize.js),
   [`control_state_is_read_only`](../../tests/browser/browser_vimma_security_invariants.js),
