@@ -12,10 +12,9 @@ describe.each(Array.from({ length: CONFIG_SCHEMA_VERSION }, (_, i) => i + 1))(
   "config schema v%i",
   (version) => {
     const dir = new URL(`config/v${version}/`, contract);
-    /** @param {string} name */
-    const read = (name) => readFileSync(new URL(name, dir), "utf8");
-    /** @type {Record<string, { line: number, path: string, suggestion: string | null }[]>} */
-    const expected = JSON.parse(read("expected-errors.json"));
+    const read = (name: string) => readFileSync(new URL(name, dir), "utf8");
+    const expected: Record<string, { line: number; path: string; suggestion: string | null }[]> =
+      JSON.parse(read("expected-errors.json"));
     const invalid = readdirSync(dir).filter((f) => /^invalid-.*\.toml$/.test(f));
 
     test("valid.toml parses without errors", () => {
@@ -46,8 +45,7 @@ describe.each(Array.from({ length: CONFIG_SCHEMA_VERSION }, (_, i) => i + 1))(
 );
 
 describe("Omarchy colors.toml", () => {
-  /** @param {string} name */
-  const read = (name) => readFileSync(new URL(`theme/${name}`, contract), "utf8");
+  const read = (name: string) => readFileSync(new URL(`theme/${name}`, contract), "utf8");
 
   test.each(["tokyo-night.colors.toml", "light.colors.toml"])("%s is valid", (name) => {
     expect(parseOmarchyColors(read(name)).errors).toEqual([]);

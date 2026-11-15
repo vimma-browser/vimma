@@ -9,6 +9,7 @@
   const win = /** @type {BrowserWindow} */ (/** @type {unknown} */ (window));
 
   // First: nothing may start Firefox's shell service before it knows its launcher (#855).
+  // browser-before-ui-startup has normally done it already (jar.mn): then this is a no-op.
   const { AppLauncher } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/services/AppLauncher.sys.mjs",
   );

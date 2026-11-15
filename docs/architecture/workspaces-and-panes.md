@@ -222,7 +222,7 @@ a link with `-vimma-from`, for rules with `app`
 [browser_vimma_workspace_routes.js](../../tests/browser/browser_vimma_workspace_routes.js),
 [browser_vimma_workspace_routes_external.js](../../tests/browser/browser_vimma_workspace_routes_external.js),
 [browser_vimma_workspace_routes_windows.js](../../tests/browser/browser_vimma_workspace_routes_windows.js),
-[routes.test.mjs](../../packages/vimma-core/test/routes.test.mjs), and R1 onwards in
+[routes.test.ts](../../packages/vimma-core/test/routes.test.ts), and R1 onwards in
 security.md §2.
 
 ## The private workspace

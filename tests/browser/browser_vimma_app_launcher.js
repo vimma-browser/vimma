@@ -152,6 +152,26 @@ add_task(async function test_startup_named_the_launcher_before_anything_else_sta
   }
 });
 
+// `vimma -setDefaultBrowser` is handled by BrowserContentHandler while the command line runs,
+// before any window; final-ui-startup (BrowserGlue's browser-before-ui-startup) comes just
+// before that (nsAppRunner.cpp, XRE_mainRun), so AppLauncher starts the shell service there.
+
+add_task(async function test_the_launcher_is_named_before_the_command_line_runs() {
+  const entry = Services.catMan.getCategoryEntry(
+    "browser-before-ui-startup",
+    "chrome://browser/content/vimma/services/AppLauncher.sys.mjs",
+  );
+  Assert.equal(
+    entry,
+    "AppLauncher.beforeUIStartup",
+    "BrowserGlue starts it before the command line",
+  );
+  Assert.equal(AppLauncher.firstCaller, "before-ui-startup", "and it ran there, before any window");
+  const before = AppLauncher.init();
+  Assert.equal(AppLauncher.beforeUIStartup(), before, "once per process, whoever comes first");
+  Assert.equal(AppLauncher.init(), before);
+});
+
 // On Omarchy, GIO's http handler is Omarchy's router (hyprland-mimeapps.list), which opens the
 // browser mimeapps.list names; the native check compares the router's command with Vimma's and
 // says "not default" even after `xdg-settings set default-web-browser vimma-vimma.desktop`.

@@ -31,14 +31,14 @@ describe("parseToml", () => {
   });
 
   test("nesting deeper than MAX_DEPTH, by dotted keys, headers or values, is refused at its line", () => {
-    const deep = (/** @type {number} */ n) => "a.".repeat(n - 1) + "a";
+    const deep = (n: number) => "a.".repeat(n - 1) + "a";
     expect(parseToml(`x = 1\n${deep(MAX_DEPTH)} = 1\n`).ok).toBe(true);
-    for (const [text, line] of /** @type {const} */ ([
+    for (const [text, line] of [
       [`x = 1\n${deep(MAX_DEPTH + 1)} = 1\n`, 2],
       [`x = 1\n[${deep(MAX_DEPTH + 1)}]\n`, 2],
       [`x = 1\n[[${deep(MAX_DEPTH)}]]\n`, 2],
       [`x = 1\n[${deep(MAX_DEPTH - 1)}]\nb = [[1]]\n`, 3],
-    ])) {
+    ] as const) {
       const r = parseToml(text);
       expect(r.ok, text).toBe(false);
       expect(!r.ok && r.error).toMatchObject({ line, message: expect.stringMatching(/deeper/) });
@@ -55,7 +55,7 @@ describe("parseToml", () => {
 
   test("a __proto__ key does not pollute prototypes", () => {
     const r = parseToml('[__proto__]\npolluted = "yes"\n');
-    expect(/** @type {any} */ ({}).polluted).toBeUndefined();
+    expect(({} as any).polluted).toBeUndefined();
     expect(r.ok).toBe(true);
   });
 });
@@ -182,8 +182,7 @@ suggest = true
 new_tab = ["prefix+c"]
 `;
 
-/** @param {string} text */
-const parsed = (text) => {
+const parsed = (text: string) => {
   const r = parseToml(text);
   if (!r.ok) throw new Error(r.error.message);
   return r.value;
@@ -252,7 +251,7 @@ describe("setTomlKeys", () => {
     const r = setTomlKeys(FILE, edits);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    const before = /** @type {any} */ (parsed(FILE));
+    const before = parsed(FILE) as any;
     expect(parsed(r.text)).toEqual({
       ...before,
       search: { ...before.search, default: 'Duck "Go"\\', added: "x" },
