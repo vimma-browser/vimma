@@ -699,3 +699,35 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`every checkout a pull request runs sets persist-credentials: false, but the listed ones`](../../tools/test/checkout-credentials.test.ts),
   [`a listed checkout runs only after a job that no pull request event starts`](../../tools/test/checkout-credentials.test.ts),
   [`follows a reusable workflow that a pull request workflow calls`](../../tools/test/checkout-credentials.test.ts)
+- B20. Every dependency **must** come from a lockfile, by its hash. `npm ci` is the only npm
+  install that any tracked file runs or tells a person or an agent to run: workflows, scripts,
+  `package.json`, runbooks, contributor and agent instructions and the Claude plugin alike, and
+  **never** npm's install or update commands, in any spelling npm accepts. npx and `npm exec` run
+  only a binary of a devDependency, as the lockfile records it, never with `--yes` or `--package`;
+  npx spawned from code passes `--no` first, since without a terminal npm assumes `--yes`. The
+  `dlx` runners of pnpm and Yarn and Bun's runner are never used, nor a download piped to a shell,
+  packages from pip without their hashes (`--require-hashes`) or crates installed from Cargo
+  without their lockfile, and every cargo command a workflow runs passes `--locked`. Every `uses:`
+  of a workflow or composite action is a file of this repository, an action at a full 40-character
+  commit or a Docker image by digest. `package-lock.json` is version 3 and every entry is resolved
+  from `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's dependency
+  `is-apple-silicon`, a git dependency pinned to commit `5f75501` without a hash (spec, R5), which
+  nothing in Surfer's `dist/` loads; the test fails if it moves off that commit. No `package.json`
+  names a dependency by git, URL, path, tag or a range wider than a caret, and the repository
+  holds one lockfile and one `.npmrc`, which sets nothing but `ignore-scripts`. The test reads
+  every file git tracks, so a new file is held to this without being listed; a line that names a
+  command only to forbid it, or a command run in another repository, is allowed by an explicit
+  list in the test, which fails when a listed line is gone. System packages from the runner's
+  distribution (`apt-get`, `brew`, `dnf`) are signed by their distribution and outside this rule.
+  [`no tracked file installs a package outside the lockfile or pipes a download to a shell`](../../tools/test/supply-chain.test.ts),
+  [`refuses %s`](../../tools/test/supply-chain.test.ts),
+  [`allows %s`](../../tools/test/supply-chain.test.ts),
+  [`reads an npx call from code whose arguments span lines`](../../tools/test/supply-chain.test.ts),
+  [`the prose allowances each still match a line, so none outlives its text`](../../tools/test/supply-chain.test.ts),
+  [`every cargo command a workflow runs keeps to Cargo.lock`](../../tools/test/supply-chain.test.ts),
+  [`every action, reusable workflow and composite action step is pinned by full commit`](../../tools/test/supply-chain.test.ts),
+  [`every package comes from registry.npmjs.org with a sha512 integrity, but the one listed`](../../tools/test/supply-chain.test.ts),
+  [`refuses an entry with %s`](../../tools/test/supply-chain.test.ts),
+  [`the git exception holds only while it stays at its commit`](../../tools/test/supply-chain.test.ts),
+  [`no package.json names a dependency by git, URL, path, tag or bundle`](../../tools/test/supply-chain.test.ts),
+  [`one lockfile and one .npmrc, which sets no other registry`](../../tools/test/supply-chain.test.ts)
