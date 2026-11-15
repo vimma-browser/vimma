@@ -81,7 +81,7 @@ const SKIPPED = "the element changed as it was clicked; nothing was clicked";
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const mainId = () =>
   /** @type {string} */ (
