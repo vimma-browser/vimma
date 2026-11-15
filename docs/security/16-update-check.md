@@ -19,12 +19,12 @@ _Pages_ and _extensions_ cannot reach it.
   (`core/update-keys.mjs`); keys from the pref `vimma.update.testKeys` count only when
   `Cu.isInAutomation`. An unsigned, altered or otherwise signed manifest offers nothing, and a
   build with no pinned key refuses every manifest.
-  [`a key that is not pinned is refused, even with a valid signature`](../../packages/vimma-core/test/updates.test.mjs),
-  [`one flipped byte in the body fails`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a signature over the body without the domain prefix fails`](../../packages/vimma-core/test/updates.test.mjs),
-  [`no pinned key at all refuses every manifest (before the key ceremony)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`every pinned key is an RSA-4096 SPKI whose id matches, one per slot`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a signature made as Cloud KMS makes it (raw PKCS#1 over a SHA-384 DigestInfo) verifies`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a key that is not pinned is refused, even with a valid signature`](../../packages/vimma-core/test/updates.test.ts),
+  [`one flipped byte in the body fails`](../../packages/vimma-core/test/updates.test.ts),
+  [`a signature over the body without the domain prefix fails`](../../packages/vimma-core/test/updates.test.ts),
+  [`no pinned key at all refuses every manifest (before the key ceremony)`](../../packages/vimma-core/test/updates.test.ts),
+  [`every pinned key is an RSA-4096 SPKI whose id matches, one per slot`](../../packages/vimma-core/test/updates.test.ts),
+  [`a signature made as Cloud KMS makes it (raw PKCS#1 over a SHA-384 DigestInfo) verifies`](../../packages/vimma-core/test/updates.test.ts),
   [`refusals_show_after_three_in_a_row`](../../tests/browser/browser_vimma_update_check.js)
 - UP2. A verified manifest is **never** accepted for another channel or platform, with a serial
   older than one this profile accepted or than the running build's ID (replay), or with a serial
@@ -34,16 +34,16 @@ _Pages_ and _extensions_ cannot reach it.
   `MOZ_BUILD_DATE` and fail a package whose two differ. Withholding updates or serving an old
   manifest for long is what a compromised host can still do; the feed's age shows after 45 days
   (7 for nightly).
-  [`channel and target mismatches are refused`](../../packages/vimma-core/test/updates.test.mjs),
-  [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../../packages/vimma-core/test/updates.test.mjs),
-  [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.mjs),
-  [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.mjs),
+  [`channel and target mismatches are refused`](../../packages/vimma-core/test/updates.test.ts),
+  [`replay: a serial below the one accepted, or below this build, is refused; equal is accepted`](../../packages/vimma-core/test/updates.test.ts),
+  [`downgrade: an older or equal build is no offer, not an error`](../../packages/vimma-core/test/updates.test.ts),
+  [`the Vimma version already running is no offer, whatever its build ID`](../../packages/vimma-core/test/updates.test.ts),
   [`the_vimma_version_running_is_never_offered`](../../tests/browser/browser_vimma_update_check.js),
   [`a packaged build ID that differs from the binary's is a problem`](../../tools/release/test/build-id.test.mjs),
   [`release.yml's Linux and macOS builds fix MOZ_BUILD_DATE before they build`](../../tools/package/test/release-workflow.test.mjs),
-  [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a release feed older than 45 days and a nightly one older than 7 are stale`](../../packages/vimma-core/test/updates.test.ts),
   [`replay_is_refused_and_downgrade_offers_nothing`](../../tests/browser/browser_vimma_update_check.js),
-  [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a serial more than a day ahead of the clock is refused; up to a day is accepted`](../../packages/vimma-core/test/updates.test.ts),
   [`a_serial_from_the_future_is_refused`](../../tests/browser/browser_vimma_update_check.js)
 - UP3. A check **never** sends cookies, a referrer, the user's languages or anything that
   identifies the install: the request is an anonymous, uncached GET with an empty
@@ -76,12 +76,12 @@ _Pages_ and _extensions_ cannot reach it.
   [`startup_checks_when_due_and_not_when_fresh`](../../tests/browser/browser_vimma_update_notices.js),
   [`a_source_build_checks_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_with_errors_still_turns_checks_off`](../../tests/browser/browser_vimma_update_check.js),
-  [`a file with errors: a readable check = false holds; else the config in force, or held`](../../packages/vimma-core/test/updates.test.mjs),
-  [`an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a file with errors: a readable check = false holds; else the config in force, or held`](../../packages/vimma-core/test/updates.test.ts),
+  [`an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)`](../../packages/vimma-core/test/updates.test.ts),
   [`an_unreadable_check_never_undoes_an_opt_out_stated_in_a_broken_file`](../../tests/browser/browser_vimma_update_check.js),
-  [`a file that parses but has errors checks as a valid file would (#741)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`:update runs while checks are held, never past a stated opt-out`](../../packages/vimma-core/test/updates.test.mjs),
-  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.mjs),
+  [`a file that parses but has errors checks as a valid file would (#741)`](../../packages/vimma-core/test/updates.test.ts),
+  [`:update runs while checks are held, never past a stated opt-out`](../../packages/vimma-core/test/updates.test.ts),
+  [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.ts),
   [`an_opt_out_under_a_misspelt_table_never_turns_checks_on`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_that_parses_with_errors_still_checks`](../../tests/browser/browser_vimma_update_check.js),
   [`update_runs_while_checks_are_held`](../../tests/browser/browser_vimma_update_check.js)
@@ -93,10 +93,10 @@ _Pages_ and _extensions_ cannot reach it.
   paths, never from free text in the manifest; a saved result (the pref `vimma.update.last`) is
   checked the same way when read back.
   [`an_oversized_or_compressed_bomb_response_is_refused`](../../tests/browser/browser_vimma_update_check.js),
-  [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.mjs),
-  [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.mjs),
-  [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.mjs),
+  [`an oversized manifest is refused before any crypto`](../../packages/vimma-core/test/updates.test.ts),
+  [`shellQuote leaves plain paths alone and quotes the rest`](../../packages/vimma-core/test/updates.test.ts),
+  [`tarball: quit, download and check it, then unpack over the install's parent, quoted`](../../packages/vimma-core/test/updates.test.ts),
+  [`a pinned key that is not a valid SPKI refuses, never throws`](../../packages/vimma-core/test/updates.test.ts),
   [`a_damaged_saved_result_is_dropped_not_thrown`](../../tests/browser/browser_vimma_update_check.js)
 - UP6. A package manager's install (the `.deb`, the `.rpm`, the release `PKGBUILD`, the AUR's
   `vimma-bin`)
@@ -119,9 +119,9 @@ _Pages_ and _extensions_ cannot reach it.
   **⚠ limit:** Vimma 0.1.6 on a Mac calls itself a tarball install and shows the Linux tarball
   command for a macOS offer, without a hash (the macOS manifest names no tarball); the guide
   tells those users not to run it (decision 21).
-  [`homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`a Caskroom and an /Applications path change nothing on Linux`](../../packages/vimma-core/test/updates.test.mjs),
+  [`homebrew: brew upgrade --cask vimma (macos-homebrew decision 8)`](../../packages/vimma-core/test/updates.test.ts),
+  [`dmg: the release page and the drag, with no command (macos-homebrew decision 19)`](../../packages/vimma-core/test/updates.test.ts),
+  [`a Caskroom and an /Applications path change nothing on Linux`](../../packages/vimma-core/test/updates.test.ts),
   [`macos_installs_get_their_own_steps`](../../tests/browser/browser_vimma_update_check.js)
   The Flatpak ([flatpak](../specs/flatpak.md) decision 10; marker `vimma-package=flatpak`) gets
   only `flatpak update dev.vimma.browser`, in `:update`, the security question's steps and the
@@ -130,7 +130,7 @@ _Pages_ and _extensions_ cannot reach it.
   its `/app` is read-only and Flathub's build, not the release's files, is what it runs. The
   marker outranks `$APPIMAGE`, which a Flatpak started from an AppImage's process inherits, so a
   Flatpak is never handed the AppImage's replacement (UP10).
-  [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`flatpak: flatpak update, with no download (spec flatpak, decision 10)`](../../packages/vimma-core/test/updates.test.ts),
   [`is flatpak, whose update hint is flatpak update, never the tarball's unpack`](../../tools/package/test/flatpak.test.mjs),
   [`flatpak_gets_flatpak_update`](../../tests/browser/browser_vimma_update_check.js),
   [`a Flatpak names flatpak update, for an ordinary and a security release`](../../packages/vimma-core/test/update-notices.test.mjs),
@@ -281,11 +281,11 @@ _Pages_ and _extensions_ cannot reach it.
   digits, and a saved result keeps only well-formed ones. **⚠ limit:** the release `PKGBUILD`'s
   command still fetches `latest/download/PKGBUILD` without a hash of its own; `makepkg` checks
   the tarball against the SHA-256 that `PKGBUILD` pins.
-  [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.mjs),
-  [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.mjs),
-  [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.mjs),
-  [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`every download fails on an HTTP error and refuses anything but https (V-07)`](../../packages/vimma-core/test/updates.test.ts),
+  [`rpm: download and check it, then install it with dnf or zypper`](../../packages/vimma-core/test/updates.test.ts),
+  [`the checked commands run: a matching file installs, a different one stops before`](../../packages/vimma-core/test/updates.test.ts),
+  [`reads each package's size and SHA-512 (the release pipeline's asset elements)`](../../packages/vimma-core/test/updates.test.ts),
+  [`offerAssets keeps only well-formed entries (a saved result read back)`](../../packages/vimma-core/test/updates.test.ts),
   [`update_command_opens_the_steps`](../../tests/browser/browser_vimma_update_check.js)
 - UP9. The security update question (`Show the update command? (y/N)`) is **never** answered by
   a key pressed before it armed: keys count only `security.dialog_enable_delay` (1,000 ms) after
@@ -457,7 +457,7 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_real_download_under_way_holds_the_next_check`](../../tests/browser/browser_vimma_update_verify.js),
   [`no_check_before_the_install_type_is_known`](../../tests/browser/browser_vimma_update_verify.js),
   [`update_checks_a_tarball_through_firefoxs_updater`](../../tests/browser/browser_vimma_update_verify.js),
-  [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../../packages/vimma-core/test/updates.test.mjs)
+  [`refuses two <patch> elements, so Firefox can pick no MAR the download rule misses`](../../packages/vimma-core/test/updates.test.ts)
 
 - UP14. A complete MAR is **only** signed by `update-publish.yml`'s `mar-sign` job, which
   `release.yml` or `nightly.yml` run from `main` calls (`workflow_call`), and **only** for that
@@ -565,7 +565,7 @@ ask to sign, through GitHub OIDC: `sign` and `nightly-sign` for manifests (UP7) 
 setup is in [docs/runbook/ci-update-keys-and-update-host.md](../runbook/ci-update-keys-and-update-host.md#update-signing-keys-and-the-update-host-spec-m6a-updater).
 The primary's public key is pinned in `update-keys.mjs` (its SHA-256 is recorded in the runbook
 and checked by
-[`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.mjs));
+[`the shipped primary: exactly one, RSA-4096, the recorded key, verifies RSASSA-PKCS1-v1_5 SHA-384`](../../packages/vimma-core/test/updates.test.ts));
 the secondary is pinned in a later release, an ordinary one whose manifest the primary signs.
 Firefox's updater embeds the same keys as self-signed certificates, the secondary slot holding the
 primary's again until then (decision 39; runbook step 5b, UP12).
