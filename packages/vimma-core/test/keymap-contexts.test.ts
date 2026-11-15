@@ -10,8 +10,7 @@ import { formatKey, parseBinding, parseKey } from "../src/keys/keys.mjs";
 // Keymap contexts (docs/specs/pdf-mode.md decision 4, docs/adr/024-keymap-contexts.md): the `pdf`
 // trie of normal mode is normal's bindings with [modal.pdf] merged over them.
 
-/** @param {import("../src/keys/keymap.mjs").TrieNode} root @param {string} seq */
-function lookup(root, seq) {
+function lookup(root: import("../src/keys/keymap.mjs").TrieNode, seq: string) {
   let node = root;
   for (const k of seq.split(" ")) {
     const next = node.children.get(formatKey(parseKey(k)));
@@ -28,11 +27,8 @@ function defaultPdfKeys() {
   return pdf;
 }
 
-/**
- * A binding's chords as canonical text; a binding here has no prefix or leader.
- * @param {string} text
- */
-function sequenceText(text) {
+/** A binding's chords as canonical text; a binding here has no prefix or leader. */
+function sequenceText(text: string) {
   return parseBinding(text)
     .map((e) => {
       if ("special" in e) throw new Error(`${text}: unexpected <${e.special}>`);
@@ -125,10 +121,10 @@ describe("keymap contexts", () => {
       block.push(m[1]);
     }
     const pdf = Object.fromEntries(
-      block.map((l) => /** @type {[string, string]} */ (JSON.parse(`[${l.replace(" = ", ",")}]`))),
+      block.map((l) => JSON.parse(`[${l.replace(" = ", ",")}]`) as [string, string]),
     );
     const km = compileKeymap({ modal: { pdf } });
-    for (const [key, action] of /** @type {const} */ ([
+    for (const [key, action] of [
       ["d", "pdf_dual_page"],
       ["r", "pdf_rotate"],
       ["H", "pdf_page_top"],
@@ -137,7 +133,7 @@ describe("keymap contexts", () => {
       ["F", "show_link_target"],
       ["ctrl+f", "pdf_screen_down"],
       ["f5", "pdf_presentation"],
-    ])) {
+    ] as const) {
       expect(lookup(km.trie("normal", "pdf"), key), key).toBe(action);
     }
   });
@@ -235,9 +231,7 @@ describe("dispatcher with a context", () => {
 
   test("an unknown context is an error", () => {
     const d = createDispatcher(km());
-    expect(() => d.dispatch("normal", parseKey("j"), /** @type {any} */ ("nope"))).toThrow(
-      /unknown context/,
-    );
+    expect(() => d.dispatch("normal", parseKey("j"), "nope" as any)).toThrow(/unknown context/);
   });
 });
 

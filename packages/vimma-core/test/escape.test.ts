@@ -5,23 +5,20 @@ import { createDispatcher } from "../src/keys/dispatcher.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
-/** @import { EscapeResult } from "../src/keys/escape.mjs" */
+import type { Mode } from "../src/keys/modes.mjs";
+import type { EscapeResult } from "../src/keys/escape.mjs";
 
-/**
- * @param {string} id
- * @param {Mode} mode
- */
-const action = (id, mode, extra = {}) => ({ kind: "action", action: { id }, mode, ...extra });
-/**
- * The mode Esc leaves for; a pass has none.
- * @param {EscapeResult} r
- */
-const modeOf = (r) => (r.kind === "pass" ? undefined : r.mode);
+const action = (id: string, mode: Mode, extra = {}) => ({
+  kind: "action",
+  action: { id },
+  mode,
+  ...extra,
+});
+/** The mode Esc leaves for; a pass has none. */
+const modeOf = (r: EscapeResult) => (r.kind === "pass" ? undefined : r.mode);
 
 describe("resolveEscape", () => {
-  /** @type {Array<[Mode, ReturnType<typeof action>]>} */
-  const idle = [
+  const idle: Array<[Mode, ReturnType<typeof action>]> = [
     ["insert", action("mode.normal", "normal", { blur: true })],
     ["visual", action("mode.normal", "normal", { collapseSelection: true })],
     ["command", action("command.cancel", "normal")],
@@ -39,8 +36,7 @@ describe("resolveEscape", () => {
     expect(resolveEscape({ mode, pending: true })).toEqual({ kind: "cancel", mode });
   });
 
-  /** @type {Array<[Mode, Mode]>} */
-  const overlays = [
+  const overlays: Array<[Mode, Mode]> = [
     ["help", "insert"],
     ["panel", "visual"],
     ["help", "normal"],
@@ -49,7 +45,7 @@ describe("resolveEscape", () => {
     expect(modeOf(resolveEscape({ mode, previous }))).toBe(previous);
   });
 
-  test.each(/** @type {Mode[]} */ (["command", "hint", "insert", "visual"]))(
+  test.each(["command", "hint", "insert", "visual"] as Mode[])(
     "Given %s, then previous is ignored and Esc goes to normal",
     (mode) => {
       expect(modeOf(resolveEscape({ mode, previous: "insert" }))).toBe("normal");
@@ -57,10 +53,8 @@ describe("resolveEscape", () => {
   );
 
   test("an unknown mode or previous mode throws", () => {
-    expect(() => resolveEscape({ mode: /** @type {any} */ ("prefix") })).toThrow(/unknown mode/);
-    expect(() => resolveEscape({ mode: "help", previous: /** @type {any} */ ("bogus") })).toThrow(
-      /unknown mode/,
-    );
+    expect(() => resolveEscape({ mode: "prefix" as any })).toThrow(/unknown mode/);
+    expect(() => resolveEscape({ mode: "help", previous: "bogus" as any })).toThrow(/unknown mode/);
   });
 
   test("the result is frozen", () => {

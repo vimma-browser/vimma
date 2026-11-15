@@ -3,37 +3,21 @@ import { createDispatcher } from "../src/keys/dispatcher.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
 import { chordFromEvent, formatKey, parseKey } from "../src/keys/keys.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
-/** @import { Chord } from "../src/keys/keys.mjs" */
-/** @import { DispatchResult } from "../src/keys/dispatcher.mjs" */
+import type { Mode } from "../src/keys/modes.mjs";
+import type { Chord } from "../src/keys/keys.mjs";
+import type { DispatchResult } from "../src/keys/dispatcher.mjs";
 
-/**
- * Feed space-separated chords; return all results.
- * @param {ReturnType<typeof createDispatcher>} d
- * @param {Mode} mode
- * @param {string} keys
- */
-function feed(d, mode, keys) {
+/** Feed space-separated chords; return all results. */
+function feed(d: ReturnType<typeof createDispatcher>, mode: Mode, keys: string) {
   return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
 }
-/**
- * @template T
- * @param {T[]} arr
- */
-const last = (arr) => arr[arr.length - 1];
-/** @param {Parameters<typeof compileKeymap>[0]} [cfg] */
-const make = (cfg) => createDispatcher(compileKeymap(cfg));
-/**
- * The id of the action a result runs, if it runs one.
- * @param {DispatchResult | undefined} r
- */
-const actionId = (r) => (r?.kind === "action" ? r.action.id : undefined);
-/**
- * The chord a keydown makes, failing the test where it makes none.
- * @param {Chord | null} chord
- * @returns {Chord}
- */
-const made = (chord) => {
+const last = <T>(arr: T[]) => arr[arr.length - 1];
+const make = (cfg?: Parameters<typeof compileKeymap>[0]) => createDispatcher(compileKeymap(cfg));
+/** The id of the action a result runs, if it runs one. */
+const actionId = (r: DispatchResult | undefined) =>
+  r?.kind === "action" ? r.action.id : undefined;
+/** The chord a keydown makes, failing the test where it makes none. */
+const made = (chord: Chord | null): Chord => {
   if (chord === null) throw new Error("the keydown made no chord");
   return chord;
 };
@@ -236,13 +220,13 @@ describe("dispatcher (spec acceptance criteria)", () => {
   });
 
   test("ctrl+b ) switches workspace in every mode", () => {
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
+    for (const mode of ["normal", "insert", "visual", "panel"] as const) {
       expect(actionId(last(feed(make(), mode, "ctrl+b )")))).toBe("workspace.next");
     }
   });
 
   test("ctrl+b ( and ctrl+b ) go to the previous and next workspace in every mode", () => {
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
+    for (const mode of ["normal", "insert", "visual", "panel"] as const) {
       expect(last(feed(make(), mode, "ctrl+b ("))).toEqual({
         kind: "action",
         action: { id: "workspace.previous" },
@@ -270,7 +254,7 @@ describe("dispatcher (spec acceptance criteria)", () => {
   });
 
   test("ctrl+i and ctrl+u no longer switch workspace in any mode", () => {
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel"])) {
+    for (const mode of ["normal", "insert", "visual", "panel"] as const) {
       for (const key of ["ctrl+i", "ctrl+u"]) {
         const id = actionId(feed(make(), mode, key)[0]);
         expect(id === "workspace.next" || id === "workspace.previous", `${mode} ${key}`).toBe(
@@ -338,7 +322,7 @@ describe("dispatcher (spec acceptance criteria)", () => {
   });
 
   test("an unknown mode is rejected", () => {
-    expect(() => make().dispatch(/** @type {any} */ ("bogus"), parseKey("j"))).toThrow(/mode/);
+    expect(() => make().dispatch("bogus" as any, parseKey("j"))).toThrow(/mode/);
   });
 });
 
@@ -539,12 +523,10 @@ describe("element focus keys (docs/specs/element-focus.md, decision 7)", () => {
 // Workspaces as Vim buffers: ctrl+^ (ctrl+6) for the alternate, ]w / [w to step, and the
 // prefix forms that work in every mode.
 describe("workspace keys like Vim's buffer keys", () => {
-  const action = (/** @type {Mode} */ mode, /** @type {string} */ keys) =>
-    last(feed(make(), mode, keys));
+  const action = (mode: Mode, keys: string) => last(feed(make(), mode, keys));
   const alternate = { kind: "action", action: { id: "workspace.last" } };
 
-  /** @type {Array<[Mode, string]>} */
-  const alternates = [
+  const alternates: Array<[Mode, string]> = [
     ["normal", "ctrl+^"],
     ["normal", "ctrl+6"],
     ["normal", "ctrl+b ^"],
@@ -573,13 +555,12 @@ describe("workspace keys like Vim's buffer keys", () => {
     expect(action("insert", "]")).toEqual({ kind: "pass" });
   });
 
-  /**
-   * A GTK keydown: `key` typed on physical key `code`.
-   * @param {string} key
-   * @param {string} code
-   * @param {Record<string, boolean>} [mods]
-   */
-  const ev = (key, code, { altGraph = false, ...mods } = {}) => ({
+  /** A GTK keydown: `key` typed on physical key `code`. */
+  const ev = (
+    key: string,
+    code: string,
+    { altGraph = false, ...mods }: Record<string, boolean> = {},
+  ) => ({
     key,
     code,
     ctrlKey: false,
@@ -587,13 +568,12 @@ describe("workspace keys like Vim's buffer keys", () => {
     shiftKey: false,
     metaKey: false,
     ...mods,
-    getModifierState: (/** @type {string} */ m) => m === "AltGraph" && altGraph,
+    getModifierState: (m: string) => m === "AltGraph" && altGraph,
   });
 
   test("the keydowns US and Finnish layouts send reach the same actions", () => {
     const d = make();
-    const press = (/** @type {ReturnType<typeof ev>} */ e) =>
-      d.dispatch("normal", made(chordFromEvent(e)));
+    const press = (e: ReturnType<typeof ev>) => d.dispatch("normal", made(chordFromEvent(e)));
     // US: ctrl+shift+6 is "^" with shift (GTK keeps the shifted keyval under ctrl).
     expect(press(ev("^", "Digit6", { ctrlKey: true, shiftKey: true }))).toEqual(alternate);
     // Any layout: ctrl+6 is "6".
@@ -632,8 +612,7 @@ describe("workspace keys like Vim's buffer keys", () => {
 describe("dispatcher hot path", () => {
   test("the trie is looked up when the mode or context changes, not on every key", () => {
     const keymap = compileKeymap();
-    /** @type {string[]} */
-    const lookups = [];
+    const lookups: string[] = [];
     const d = createDispatcher({
       ...keymap,
       trie: (mode, context) => {
@@ -652,10 +631,8 @@ describe("dispatcher hot path", () => {
   test("an unknown mode or context is rejected after a valid key too", () => {
     const d = make();
     feed(d, "normal", "j");
-    expect(() => d.dispatch(/** @type {any} */ ("bogus"), parseKey("j"))).toThrow(/unknown mode/);
-    expect(() => d.dispatch("normal", parseKey("j"), /** @type {any} */ ("nope"))).toThrow(
-      /unknown context/,
-    );
+    expect(() => d.dispatch("bogus" as any, parseKey("j"))).toThrow(/unknown mode/);
+    expect(() => d.dispatch("normal", parseKey("j"), "nope" as any)).toThrow(/unknown context/);
     expect(d.dispatch("normal", parseKey("j"))).toEqual({
       kind: "action",
       action: { id: "scroll.down" },

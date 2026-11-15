@@ -2,8 +2,10 @@
   "extends": "../../../tsconfig.json",
   "compilerOptions": {
     "types": ["node"],
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["**/*.mjs", "../bench/**/*.mjs"],
+  "include": ["**/*.mjs", "**/*.ts", "../bench/**/*.mjs"],
   "exclude": []
 }

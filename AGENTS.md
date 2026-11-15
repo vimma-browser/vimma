@@ -30,8 +30,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   with Node's), then over the mochitests and their helpers (`tests/tsconfig.json`, with the
   harness's globals from `types/mochitest/`), then over the `.sjs` handlers in `tests/browser/`
   (`tools/sjs-typecheck.ts`, with httpd.js's sandbox globals from `types/sjs/`).
-  `tools/` is moving to TypeScript that Node runs unbuilt (ADR-025); the code Firefox loads and
-  `packages/vimma-core` stay JavaScript with JSDoc.
+  `tools/` and vimma-core's tests are moving to TypeScript that Node runs unbuilt (ADR-025); the
+  code Firefox loads and `packages/vimma-core/src` stay JavaScript with JSDoc.
 - `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`),
   spec-lint, and arch-lint (`ARCHITECTURE.md` names every `vimma/` folder, `tools/` folder and
   workflow).
@@ -141,6 +141,7 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   Node code under `tools/` is written as `.ts`; Rust, shell and Python stay as they are (ADR-025;
   `tools/test/mjs-ratchet.test.ts` fails on a new `.mjs`, `.js` or `.cjs` file).
   The hooks of `tools/claude-plugin` (`hooks/`) stay `.mjs`; its tests are `.ts`.
+  `packages/vimma-core/test/` is under the same ratchet: its tests move to `.ts` (#1114).
 - `tests/browser`: mochitests; `tests/e2e`: socket scenarios and baselines; `tests/contract`:
   protocol fixtures.
 - `docs/`: `README.md` (the index), `guide.md` (users), `security/`, `limits.md`, `runbook/`,

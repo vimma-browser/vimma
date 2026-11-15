@@ -7,8 +7,7 @@ import {
 
 // docs/specs/page-suggestions.md decision 4: what counts as an open suggestion list.
 
-/** @param {Partial<import("../src/keys/suggestions.mjs").PopupSnapshot>} [p] */
-const popup = (p = {}) => ({
+const popup = (p: Partial<import("../src/keys/suggestions.mjs").PopupSnapshot> = {}) => ({
   role: "listbox",
   rendered: true,
   visible: true,
@@ -16,8 +15,12 @@ const popup = (p = {}) => ({
   ...p,
 });
 
-/** @param {Partial<import("../src/keys/suggestions.mjs").FieldSnapshot>} [f] */
-const field = (f = {}) => ({ role: "", expanded: "", popups: [], ...f });
+const field = (f: Partial<import("../src/keys/suggestions.mjs").FieldSnapshot> = {}) => ({
+  role: "",
+  expanded: "",
+  popups: [],
+  ...f,
+});
 
 describe("suggestionListOpen", () => {
   test("an ARIA 1.2 combobox, expanded, with a visible popup", () => {
