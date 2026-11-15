@@ -9,23 +9,15 @@ import {
   KeyNotationError,
 } from "../src/keys/keys.mjs";
 
-/** @import { Chord } from "../src/keys/keys.mjs" */
+import type { Chord } from "../src/keys/keys.mjs";
 
-/**
- * The chord a keydown makes, failing the test where it makes none.
- * @param {Chord | null} chord
- * @returns {Chord}
- */
-const made = (chord) => {
+/** The chord a keydown makes, failing the test where it makes none. */
+const made = (chord: Chord | null): Chord => {
   if (chord === null) throw new Error("the keydown made no chord");
   return chord;
 };
 
-/**
- * @param {string} key
- * @param {Partial<Chord>} [mods]
- */
-const chord = (key, mods = {}) => ({
+const chord = (key: string, mods: Partial<Chord> = {}) => ({
   key,
   ctrl: false,
   alt: false,
@@ -187,11 +179,7 @@ describe("displayBinding", () => {
 });
 
 describe("chordFromEvent", () => {
-  /**
-   * @param {string} key
-   * @param {Partial<Parameters<typeof chordFromEvent>[0]>} [mods]
-   */
-  const ev = (key, mods = {}) => ({
+  const ev = (key: string, mods: Partial<Parameters<typeof chordFromEvent>[0]> = {}) => ({
     key,
     ctrlKey: false,
     altKey: false,
@@ -225,13 +213,20 @@ describe("chordFromEvent", () => {
 // docs/specs/key-handling-batch.md § 3: a character typed with Option (macOS) or AltGr (Linux,
 // Windows) is that character, as shift is folded for printable characters.
 describe("chordFromEvent: Option and AltGr characters", () => {
-  /**
-   * @param {string} key
-   * @param {string} code
-   * @param {{ ctrlKey?: boolean, altKey?: boolean, shiftKey?: boolean, metaKey?: boolean,
-   *   altGraph?: boolean }} [mods]
-   */
-  const ev = (key, code, { altGraph, ...mods } = {}) => ({
+  const ev = (
+    key: string,
+    code: string,
+    {
+      altGraph,
+      ...mods
+    }: {
+      ctrlKey?: boolean;
+      altKey?: boolean;
+      shiftKey?: boolean;
+      metaKey?: boolean;
+      altGraph?: boolean;
+    } = {},
+  ) => ({
     key,
     code,
     ctrlKey: false,
@@ -239,11 +234,9 @@ describe("chordFromEvent: Option and AltGr characters", () => {
     shiftKey: false,
     metaKey: false,
     ...mods,
-    /** @param {string} m */
-    getModifierState: (m) => m === "AltGraph" && !!altGraph,
+    getModifierState: (m: string) => m === "AltGraph" && !!altGraph,
   });
-  /** @param {string} key @param {string} code @param {object} mods */
-  const plain = (key, code, mods) => ({
+  const plain = (key: string, code: string, mods: object) => ({
     key,
     code,
     ctrlKey: false,
@@ -252,8 +245,7 @@ describe("chordFromEvent: Option and AltGr characters", () => {
     metaKey: false,
     ...mods,
   });
-  /** @param {Parameters<typeof chordFromEvent>[0]} e */
-  const text = (e) => formatKey(made(chordFromEvent(e)));
+  const text = (e: Parameters<typeof chordFromEvent>[0]) => formatKey(made(chordFromEvent(e)));
 
   test.each([
     // macOS sets AltGraph with every Option press (widget/cocoa nsCocoaUtils.mm), and altKey.

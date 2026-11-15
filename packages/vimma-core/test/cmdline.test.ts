@@ -14,21 +14,16 @@ import {
   parseSettingsCommand,
 } from "../src/keys/cmdline.mjs";
 import { ACTIONS, getAction } from "../src/keys/actions.mjs";
-/** @import { History } from "../src/keys/cmdline.mjs" */
+import type { History } from "../src/keys/cmdline.mjs";
 
-/**
- * The error a command line gives; throws when it gives none.
- * @param {string} text
- * @param {Parameters<typeof parseCommandLine>[1]} [options]
- */
-const errorOf = (text, options) => {
+/** The error a command line gives; throws when it gives none. */
+const errorOf = (text: string, options?: Parameters<typeof parseCommandLine>[1]) => {
   const r = parseCommandLine(text, options);
   if (r.kind !== "error") throw new Error(`${text} parsed as ${r.kind}`);
   return r.error;
 };
 
-/** @param {string} command @param {string} id @param {{ arg?: number, text?: string }} [extra] */
-const run = (command, id, extra = {}) => ({
+const run = (command: string, id: string, extra: { arg?: number; text?: string } = {}) => ({
   kind: "run",
   command,
   action: { id, ...(extra.arg !== undefined ? { arg: extra.arg } : {}) },
@@ -270,8 +265,8 @@ describe("command table", () => {
 });
 
 describe("completeCommandLine", () => {
-  /** @param {string} text @param {{ limit?: number }} [opts] */
-  const values = (text, opts) => completeCommandLine(text, opts).candidates.map((c) => c.value);
+  const values = (text: string, opts?: { limit?: number }) =>
+    completeCommandLine(text, opts).candidates.map((c) => c.value);
 
   test("tab → tabnew, tabrename, tabsearch first, then actions", () => {
     const v = values(":tab");
@@ -449,8 +444,7 @@ describe("parseBookmarksToolbarCommand: :bookmarkstoolbar [show|hide|newtab]", (
 });
 
 describe("history", () => {
-  /** @param {History} h @param {string[]} lines */
-  const push = (h, ...lines) => lines.reduce(pushHistory, h);
+  const push = (h: History, ...lines: string[]) => lines.reduce(pushHistory, h);
 
   test("push trims, drops empty lines, dedupes to newest, honours limit", () => {
     let h = push(createHistory({ limit: 3 }), "a", "  ", " b ", "c", "a");
@@ -557,7 +551,7 @@ describe("workspace commands like Vim's buffer commands", () => {
 
   test("Tab completes workspace names after :ws, :workspace, :wd, :wsdelete and :wsmove", () => {
     const names = ["work", "personal", "my ws"];
-    const complete = (/** @type {string} */ line) =>
+    const complete = (line: string) =>
       completeCommandLine(line, { args: { workspace: names } }).candidates;
     expect(complete(":ws ").map((c) => c.value)).toEqual(["ws work", "ws personal", "ws my ws"]);
     expect(complete(":ws per").map((c) => c.value)).toEqual(["ws personal"]);
