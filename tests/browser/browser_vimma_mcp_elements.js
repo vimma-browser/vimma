@@ -1146,3 +1146,134 @@ addTidyTask(async function test_label_forwarding_follows_geckos_interactive_cont
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+// Issue #1067: with dom.shadowdom.referenceTarget.enabled, a label's `for` or its first labelable
+// descendant can name a shadow host whose shadow root forwards to an element inside it
+// (Element::ResolveReferenceTarget). Gecko clicks or focuses that inner element, but the label's
+// `control` is retargeted to the host (HTMLLabelElement::GetControlForBindings), which is no
+// submit button and no field. The child must judge the inner element: a submit there asks
+// (security.md M28), a text field there is refused (F9).
+const REFERENCE_TARGET_PREF = "dom.shadowdom.referenceTarget.enabled";
+
+/**
+ * Adds a form with a submit button `#buy` inside a shadow root of a host `#shop`, the root's
+ * reference target that button, and a label for the host; `mode` is the root's.
+ * @param {any} browser @param {"open" | "closed"} mode
+ */
+async function labelForShadowBuy(browser, mode) {
+  await SpecialPowers.spawn(browser, [mode], (mode) => {
+    const doc = content.document;
+    const host = doc.createElement("span");
+    host.id = "shop";
+    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    root.innerHTML =
+      '<form action="https://example.com/collect"><input name="note" value="kept">' +
+      '<button id="buy">Buy</button></form>';
+    root.referenceTarget = "buy";
+    const label = doc.createElement("label");
+    label.htmlFor = "shop";
+    label.textContent = "Continue";
+    doc.body.prepend(host, label);
+  });
+}
+
+addTidyTask(async function test_a_label_for_a_reference_target_submit_asks() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForShadowBuy(tab.linkedBrowser, "closed");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Continue", "element in the label");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  /** @type {any} */
+  let reply = null;
+  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
+  Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the inner form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await replied).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_label_forwarding_follows_reference_targets() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const FORM =
+      '<form action="https://example.com/collect"><input name="note" value="kept">' +
+      '<button id="buy">Buy</button><input id="text" name="t"></form>';
+    let n = 0;
+    /**
+     * A host in the page whose shadow root (of `mode`) holds FORM and forwards to `target`.
+     * @param {string} target @param {"open" | "closed"} [mode]
+     */
+    const hostFor = (target, mode = "open") => {
+      const host = doc.createElement("span");
+      host.id = `host${++n}`;
+      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      root.innerHTML = FORM;
+      root.referenceTarget = target;
+      return host;
+    };
+    /** @param {Element} label */
+    const clickIn = (label) => {
+      label.append(doc.createElement("summary"));
+      doc.body.append(label);
+      const out = actTargetOf(/** @type {Element} */ (label.querySelector(":scope > summary")));
+      return out.submit ? "submit" : (out.field ?? "plain");
+    };
+    /** @param {Element} host */
+    const forHost = (host) => {
+      doc.body.append(host);
+      const label = doc.createElement("label");
+      label.htmlFor = host.id;
+      return clickIn(label);
+    };
+    /** @type {Record<string, string>} */
+    const got = {};
+    got["for an open root's submit"] = forHost(hostFor("buy"));
+    got["for a closed root's submit"] = forHost(hostFor("buy", "closed"));
+    got["for a root's text field"] = forHost(hostFor("text"));
+    got["for a root whose target is missing"] = forHost(hostFor("nothing"));
+    // A shadow root that forwards to another host, whose root forwards to its submit button.
+    const outer = doc.createElement("span");
+    outer.id = "outer";
+    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const inner = hostFor("buy", "closed");
+    inner.id = "inner";
+    outerRoot.append(inner);
+    outerRoot.referenceTarget = "inner";
+    got["for a chain of roots to a submit"] = forHost(outer);
+    // No `for`: the first labelable descendant, after its reference target is resolved.
+    const wrapping = doc.createElement("label");
+    wrapping.append(hostFor("buy"));
+    got["around a host forwarding to a submit"] = clickIn(wrapping);
+    return got;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "for an open root's submit": "submit",
+      "for a closed root's submit": "submit",
+      "for a root's text field": "text",
+      "for a root whose target is missing": "plain",
+      "for a chain of roots to a submit": "submit",
+      "around a host forwarding to a submit": "submit",
+    },
+    "a label's control is judged after its reference target, as Gecko clicks it",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});

@@ -781,9 +781,12 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`fill_values_with_invisible_characters_are_tool_errors`](../../tools/vimma-ctl/src/mcp/args.rs),
   [`vimma_fill: each field and value in the question, how many in the notice`](../../packages/vimma-core/test/agent-prompt.test.mjs)
 - M28. A click that submits a form (a submit button or a submit or image input in a form whose
-  method is not `dialog`, the element itself, the button it is in or its label's control)
-  **must** ask every time without a grant, and under a grant when it is consequential
-  ([mcp-consequence](../specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
+  method is not `dialog`, the element itself, the button it is in or its label's control, judged
+  as the element Gecko clicks: where shadow roots forward the label's control with a reference
+  target (`dom.shadowdom.referenceTarget.enabled`, off by default), the element they forward it
+  to, not the shadow host the label's `control` property returns; a chain the child cannot
+  follow to an element refuses the click) **must** ask every time without a grant, and under a
+  grant when it is consequential ([mcp-consequence](../specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
   a password, payment card, one-time-code or file field, an identity field (an autocomplete
   name of a person's name, contact, address, birth date, username or organisation, one form
   autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
@@ -890,6 +893,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   button's script sends with `fetch`, also from a cancelled submission's `submit` listener: such a
   button is an ordinary click (mcp-forms F17).
   [`test_submit_asks_under_a_grant`](../../tests/browser/browser_vimma_mcp_submit.js),
+  [`test_a_label_for_a_reference_target_submit_asks`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_label_forwarding_follows_reference_targets`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_a_skipped_submit_in_a_frame_withdraws_the_allowance`](../../tests/browser/browser_vimma_agent_click_race.js),
   [`test_basket_form_runs_under_a_grant`](../../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_message_form_asks_under_a_grant`](../../tests/browser/browser_vimma_mcp_checkpoint.js),
@@ -948,10 +953,12 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
 - M29. `agent-activate` **must** refuse, before anything is asked, a link to another site than
   the tab's (by registrable domain, mcp-drive D18; the agent follows it with `vimma_keys`, which
   asks as `vimma_open`), a link that is not http, https or `javascript:`, a text field, a select,
-  an editable root, a file field (also through its `<label>`), a disabled control and a label
-  of `f`'s link list. A click that loads a page takes a slot of the open rate (M3), and no click
-  is made while that rate is used up.
+  an editable root, a file field (each also through its `<label>`, judged past a shadow root's
+  reference target as in M28), a disabled control and a label of `f`'s link list. A click that
+  loads a page takes a slot of the open rate (M3), and no click is made while that rate is used
+  up.
   [`test_activate_refuses_fields_files_disabled_and_other_sites`](../../tests/browser/browser_vimma_mcp_activate.js),
+  [`test_label_forwarding_follows_reference_targets`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_activate_never_follows_a_link_moved_elsewhere_or_an_svg_link`](../../tests/browser/browser_vimma_mcp_activate.js),
   [`a gone element, a field, a select, a file field, a disabled control are refused`](../../packages/vimma-core/test/agent-act.test.mjs),
   [`a link to another site is refused: vimma_keys follows it (M29)`](../../packages/vimma-core/test/agent-act.test.mjs),
