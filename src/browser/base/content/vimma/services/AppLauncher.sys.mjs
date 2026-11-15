@@ -239,8 +239,11 @@ function safely(check) {
 /**
  * @param {nsIGIOService | null} gio
  * @param {string} own
- * @returns {nsIGIOMimeApp | null} the installed entry whose Exec program, found as the shell
- *   finds it, is `own` (the first GIO lists); null under Flatpak, or when there is none
+ * @returns {nsIGIOMimeApp | null} the first desktop entry GIO lists whose Exec program, found as
+ *   the shell finds it, is `own`, as Firefox's own Make Default takes it: usually the package's,
+ *   but a user entry in ~/.local/share/applications that runs `own` (extra arguments and all)
+ *   comes first, which only a program that could write mimeapps.list itself can place there
+ *   (security §11); null under Flatpak, or when there is none
  */
 function ownEntry(gio, own) {
   if (!gio || gio.isRunningUnderFlatpak) {
@@ -357,11 +360,11 @@ export const AppLauncher = {
   },
 
   /**
-   * Makes Settings' Make Default set the package's own entry, the installed one whose Exec program
-   * is vimma-open's path, as it does when the shell service starts with that path
+   * Makes Settings' Make Default set the package's own entry, the first one GIO lists whose Exec
+   * program is vimma-open's path (ownEntry: a user entry that runs it comes first), as it does when the shell service starts with that path
    * (nsGNOMEShellService::SetDefaultBrowser), for a shell service that started with another
-   * command. Without such an entry, or where a policy forbids Make Default, Firefox's own method
-   * runs. Only the user's press reaches it: Settings' button and the startup prompt's.
+   * command. Without such an entry, under Flatpak, or where a policy forbids Make Default,
+   * Firefox's own method runs. Only the user's press reaches it: Settings' button and the startup prompt's.
    *
    * @param {{ setDefaultBrowser: Function, _attemptedSetDefaultThisSession?: boolean }} target
    *   ShellService, whose proxy returns its internal object's methods before the native service's

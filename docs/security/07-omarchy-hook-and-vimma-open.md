@@ -65,9 +65,10 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   `vimma-open` next to the binary (the tarball, a build from source) nothing is set. When something
   starts the shell service first (the profile service making a dedicated default profile on a
   first start, `vimma -setDefaultBrowser`), it has taken another command; Vimma reports that in
-  the console, and Make default then asks GIO for the installed entry whose `Exec` program is
-  that `vimma-open` and sets it, for what Firefox's own button sets, or runs Firefox's method
-  when there is none or a policy forbids it. The default-browser check then also counts that
+  the console, and Make default then asks GIO for the first desktop entry it lists whose `Exec` program is
+  that `vimma-open` (usually the package's; a user entry in `~/.local/share/applications` that
+  runs it, with any arguments, comes first, as for Firefox's own button, see §11) and sets it, for what Firefox's own button sets, or runs Firefox's method
+  when there is none, under Flatpak, or when a policy forbids it. The default-browser check then also counts that
   entry when GIO names it for both http and https, by the same exact-path match, with a quoted
   or escaped program never matching. **⚠ limit:** `vimma -setDefaultBrowser` sets the default
   before Vimma's window starts, so it keeps Firefox's behaviour (a `userapp-` entry for the
@@ -95,6 +96,7 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`test_make_default_sets_the_package_entry_after_a_late_start`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_without_the_package_entry_make_default_keeps_firefox_s_way`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_policy_against_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_under_flatpak_make_default_is_left_to_firefox`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_late_start_counts_the_package_entry_as_the_default`](../../tests/browser/browser_vimma_app_launcher.js),
   [`never counts a quoted or escaped program, which it does not parse`](../../packages/vimma-core/test/default-browser.test.mjs),
   [`names each package's installed vimma-open by its absolute path in the desktop entry`](../../tools/package/test/package.test.mjs)

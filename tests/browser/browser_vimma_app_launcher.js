@@ -440,9 +440,9 @@ function fakeGio(installed) {
 }
 
 /**
- * @param {{ installed?: string, allowed?: boolean }} options
+ * @param {{ installed?: string, allowed?: boolean, flatpak?: boolean }} options
  */
-async function setDefaultLate({ installed = OWN, allowed = true } = {}) {
+async function setDefaultLate({ installed = OWN, allowed = true, flatpak = false } = {}) {
   /** @type {unknown[][]} */
   const original = [];
   /** @type {Record<string, unknown>} */
@@ -454,6 +454,7 @@ async function setDefaultLate({ installed = OWN, allowed = true } = {}) {
     },
   };
   const gio = fakeGio(installed);
+  gio.isRunningUnderFlatpak = flatpak;
   AppLauncher.wrapSetDefault(target, OWN, {
     gio: () => /** @type {nsIGIOService} */ (/** @type {unknown} */ (gio)),
     allowed: () => allowed,
@@ -500,6 +501,12 @@ add_task(async function test_a_policy_against_make_default_is_left_to_firefox() 
   const { original, calls } = await setDefaultLate({ allowed: false });
   Assert.deepEqual(calls, [], "GIO is not asked");
   Assert.deepEqual(original, [[false]], "Firefox's method refuses it as it always does");
+});
+
+add_task(async function test_under_flatpak_make_default_is_left_to_firefox() {
+  const { original, calls } = await setDefaultLate({ flatpak: true });
+  Assert.deepEqual(calls, [], "GIO's entries are the sandbox's: none is looked up or set");
+  Assert.deepEqual(original, [[false]], "Firefox's own method runs");
 });
 
 add_task(async function test_a_late_start_counts_the_package_entry_as_the_default() {
