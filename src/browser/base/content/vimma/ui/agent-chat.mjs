@@ -865,7 +865,7 @@ export class AgentChatWindow {
    * @param {"anthropic" | "openai"} kind
    */
   addProvider(kind) {
-    addProvider(this, kind);
+    return addProvider(this, kind);
   }
 
   /**

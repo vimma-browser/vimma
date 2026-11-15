@@ -646,6 +646,7 @@ describe("restrictedErrors", () => {
       "host/AgentGate.sys.mjs",
       "ctl/agent-tabs.mjs",
       "ui/agent-chat-key.mjs",
+      "ui/agent-chat-models.mjs",
     ]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
@@ -687,6 +688,20 @@ describe("restrictedErrors", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(
       /^ui\/agent-prompt\.mjs:4: imports ui\/agent-chat-key\.mjs, which only/,
+    );
+  });
+  test("the model setup has one importer, the chat window, and a new one fails", () => {
+    // ui/agent-chat-models.mjs adds hosted providers (checkEndpoint's endpoint rules) and writes
+    // a picked provider to config.toml (B12): another caller could skip the check or the write.
+    const models = "ui/agent-chat-models.mjs";
+    expect(RESTRICTED[models]?.importers).toEqual(["ui/agent-chat.mjs"]);
+    const errors = restrictedErrors(
+      [edge("ui/agent-chat.mjs", models), edge("ui/agent-chat-view.mjs", models, "eager", 5)],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === models)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ui\/agent-chat-view\.mjs:5: imports ui\/agent-chat-models\.mjs, which only/,
     );
   });
 });
