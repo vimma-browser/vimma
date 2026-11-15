@@ -121,7 +121,9 @@ interface VimmaModules {
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs": typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs");
   "chrome://browser/content/vimma/ctl/agent-commands.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-commands.mjs");
   "chrome://browser/content/vimma/ctl/agent-errors.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-errors.mjs");
+  "chrome://browser/content/vimma/ctl/agent-steps.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-steps.mjs");
   "chrome://browser/content/vimma/ctl/agent-tabs.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-tabs.mjs");
+  "chrome://browser/content/vimma/ctl/agent-waits.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-waits.mjs");
   "chrome://browser/content/vimma/host/AgentGate.sys.mjs": typeof import("../src/browser/base/content/vimma/host/AgentGate.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs": typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaParent.sys.mjs": typeof import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs");
@@ -179,6 +181,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/split/layout.mjs": typeof import("../src/browser/base/content/vimma/split/layout.mjs");
   "chrome://browser/content/vimma/start/StartPage.sys.mjs": typeof import("../src/browser/base/content/vimma/start/StartPage.sys.mjs");
   "chrome://browser/content/vimma/start/start.mjs": typeof import("../src/browser/base/content/vimma/start/start.mjs");
+  "chrome://browser/content/vimma/ui/agent-chat-key.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-key.mjs");
   "chrome://browser/content/vimma/ui/agent-chat-view.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-view.mjs");
   "chrome://browser/content/vimma/ui/agent-chat.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat.mjs");
   "chrome://browser/content/vimma/ui/agent-prompt.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-prompt.mjs");

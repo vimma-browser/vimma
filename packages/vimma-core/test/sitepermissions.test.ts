@@ -10,15 +10,11 @@ import { parseCommandLine } from "../src/keys/cmdline.mjs";
 import { getAction } from "../src/keys/actions.mjs";
 import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 
-/** @import { PermissionRecord } from "../src/ui/sitepermissions.mjs" */
+import type { PermissionRecord } from "../src/ui/sitepermissions.mjs";
 
 const { UNKNOWN, ALLOW, BLOCK, PROMPT } = PERMISSION_STATE;
 
-/**
- * @param {Partial<PermissionRecord>} over
- * @returns {PermissionRecord}
- */
-const rec = (over = {}) => ({
+const rec = (over: Partial<PermissionRecord> = {}): PermissionRecord => ({
   id: "camera",
   label: "Use the camera",
   state: UNKNOWN,
@@ -59,7 +55,7 @@ describe("permissionItems", () => {
   });
 
   test("says how long a setting lasts and when it cannot be changed", () => {
-    const detail = (/** @type {Partial<PermissionRecord>} */ over) =>
+    const detail = (over: Partial<PermissionRecord>) =>
       permissionItems([rec({ set: true, state: ALLOW, stateLabel: "Allow", ...over })])[0]?.detail;
     expect(detail({})).toBe("Allow");
     expect(detail({ scope: "temporary" })).toBe("Allow · temporary");
@@ -165,7 +161,7 @@ describe("permissionPlan", () => {
 
   test("a locked row changes nothing", () => {
     const policy = rec({ set: true, scope: "policy", locked: true });
-    for (const op of /** @type {const} */ (["allow", "block", "reset", "next"])) {
+    for (const op of ["allow", "block", "reset", "next"] as const) {
       expect(permissionPlan(policy, op)).toEqual({
         type: "refuse",
         text: "Use the camera is set by policy",

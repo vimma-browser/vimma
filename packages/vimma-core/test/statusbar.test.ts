@@ -18,19 +18,21 @@ import { THEME_TOKENS } from "../src/config/theme.mjs";
 import { hintKey, hintStatus, startHints } from "../src/page/hints.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 
-/**
- * @import { Announced, Segment, SecurityLevel, StatusInput, UrlOrigin }
- *   from "../src/ui/statusbar.mjs"
- */
+import type {
+  Announced,
+  Segment,
+  SecurityLevel,
+  StatusInput,
+  UrlOrigin,
+} from "../src/ui/statusbar.mjs";
 
 const base = {
-  mode: /** @type {const} */ ("normal"),
+  mode: "normal" as const,
   workspace: { name: "work", index: 1, color: "blue" },
   tab: { index: 2, count: 5, title: "GitHub", url: "https://github.com/" },
 };
 
-/** @param {Segment[]} segs */
-const texts = (segs) => Object.fromEntries(segs.map((s) => [s.id, s.text]));
+const texts = (segs: Segment[]) => Object.fromEntries(segs.map((s) => [s.id, s.text]));
 
 describe("status bar segments", () => {
   test("mode, workspace, tab position, title and host", () => {
@@ -60,7 +62,7 @@ describe("status bar segments", () => {
       if (s.bg) expect(names.has(s.bg), s.bg).toBe(true);
     }
     for (const t of Object.values(WORKSPACE_COLOR_TOKENS)) expect(names.has(t), t).toBe(true);
-    for (const mode of /** @type {const} */ ([
+    for (const mode of [
       "insert",
       "visual",
       "command",
@@ -68,9 +70,9 @@ describe("status bar segments", () => {
       "element",
       "help",
       "panel",
-    ])) {
+    ] as const) {
       const m = statusSegments({ mode })[0];
-      expect(names.has(/** @type {string} */ (m?.bg))).toBe(true);
+      expect(names.has(m?.bg as string)).toBe(true);
     }
   });
 
@@ -127,7 +129,7 @@ describe("status bar segments", () => {
   });
 
   test("f's and F's hint modes, and hint mode before its labels, have no hint segment", () => {
-    for (const action of /** @type {const} */ (["hint.follow", "hint.element"])) {
+    for (const action of ["hint.follow", "hint.element"] as const) {
       const segs = statusSegments({ mode: "hint", hint: { action, label: "sd" } });
       expect(segs.some((s) => s.id === "hint")).toBe(false);
     }
@@ -157,8 +159,8 @@ describe("status bar segments", () => {
 
   test("the hint segment is cut at its end", () => {
     const input = {
-      mode: /** @type {const} */ ("hint"),
-      hint: { action: /** @type {const} */ ("hint.follow_new_tab"), label: "sd" },
+      mode: "hint" as const,
+      hint: { action: "hint.follow_new_tab" as const, label: "sd" },
     };
     const fitted = fitStatus(statusSegments(input), 20);
     const hint = fitted.find((s) => s.id === "hint");
@@ -167,12 +169,9 @@ describe("status bar segments", () => {
   });
 
   test("starting gF's hints announces both outcomes once", () => {
-    /** @type {Announced} */
-    let last = { mode: "normal", notFound: null };
-    /** @type {string[]} */
-    const said = [];
-    /** @param {Parameters<typeof statusAnnouncement>[1]} input */
-    const speak = (input) => {
+    let last: Announced = { mode: "normal", notFound: null };
+    const said: string[] = [];
+    const speak = (input: Parameters<typeof statusAnnouncement>[1]) => {
       const r = statusAnnouncement(last, input);
       if (r.text !== null) said.push(r.text);
       last = r.last;
@@ -239,8 +238,7 @@ describe("status bar segments", () => {
 
   // docs/specs/multiple-splits.md behaviour 9, decision 14.
   test("several splits: the shown one's label leads, a lone tab counts the hidden ones", () => {
-    /** @param {StatusInput["pane"]} pane */
-    const pane = (pane) => statusSegments({ ...base, pane });
+    const pane = (pane: StatusInput["pane"]) => statusSegments({ ...base, pane });
     expect(texts(pane({ index: 1, count: 3, split: 2, splits: 3 })).pane).toBe("S2 pane 1/3");
     expect(texts(pane({ index: 1, count: 3, split: 1, splits: 1 })).pane).toBe("pane 1/3");
     expect(texts(pane({ index: 1, count: 3 })).pane).toBe("pane 1/3");
@@ -305,7 +303,7 @@ describe("status bar segments", () => {
   // docs/specs/builtin-agent.md Behaviour 35: the built-in agent's running tasks, unless a
   // question waits, which comes first.
   test("the agent segment shows the built-in agent's running tasks", () => {
-    const at = (/** @type {StatusInput["agent"]} */ agent) =>
+    const at = (agent: StatusInput["agent"]) =>
       statusSegments({ ...base, agent }).find((s) => s.id === "agent");
     const builtin = "◇ built-in 14/60 · 212k tok";
     expect(at({ waiting: 0, minutes: Infinity, ran: true, builtin })).toMatchObject({
@@ -318,7 +316,7 @@ describe("status bar segments", () => {
 
   // docs/specs/vimma-mcp.md decision 24: glyph and word carry it without colour.
   test("the agent segment: ◇ agent, ◇ agent 2?, ◇ agent 14m, ◇ agent · in cyan, on the right", () => {
-    const at = (/** @type {StatusInput["agent"]} */ agent) =>
+    const at = (agent: StatusInput["agent"]) =>
       statusSegments({ ...base, agent }).find((s) => s.id === "agent");
     expect(at(null)).toBeUndefined();
     expect(at({ waiting: 0, minutes: null, ran: false })).toMatchObject({
@@ -343,7 +341,7 @@ describe("status bar segments", () => {
   // The control socket's state.agent.ran reads this mark from the drawn segment (#1006), not its
   // background, so that a background for another reason never reads as the dot.
   test("the agent segment marks the ran dot itself, and fitting keeps the mark", () => {
-    const at = (/** @type {StatusInput["agent"]} */ agent) =>
+    const at = (agent: StatusInput["agent"]) =>
       statusSegments({ ...base, agent }).find((s) => s.id === "agent");
     expect(at({ waiting: 0, minutes: 14, ran: true })?.dot).toBe(true);
     expect(at({ waiting: 0, minutes: 14, ran: false })?.dot).toBe(false);
@@ -359,7 +357,7 @@ describe("status bar segments", () => {
 
   test("the agent segment gives way just after the workspace's", () => {
     const all = statusSegments({ ...base, agent: { waiting: 1, minutes: null, ran: false } });
-    const p = (/** @type {string} */ id) => /** @type {Segment} */ (all.find((s) => s.id === id));
+    const p = (id: string) => all.find((s) => s.id === id) as Segment;
     expect(p("agent").priority).toBeGreaterThan(p("workspace").priority);
     expect(p("agent").priority).toBeLessThan(p("tab").priority);
     // Narrow: the URL and title go before it, the workspace stays longer.
@@ -456,8 +454,7 @@ describe("truncation", () => {
         fc.array(seg, { maxLength: 8 }),
         fc.integer({ min: 1, max: 120 }),
         (modeText, rest, width) => {
-          /** @type {Segment[]} */
-          const segs = [
+          const segs: Segment[] = [
             {
               id: "mode",
               text: modeText,
@@ -469,7 +466,7 @@ describe("truncation", () => {
               cut: "end",
             },
             ...rest.map((r, i) => ({ id: `s${i}`, fg: "--vimma-fg", bg: null, ...r })),
-          ].map((s) => /** @type {Segment} */ (s));
+          ].map((s) => s as Segment);
           const out = fitStatus(segs, width);
           expect(statusWidth(out)).toBeLessThanOrEqual(width);
           if (statusWidth(segs) <= width) expect(out).toBe(segs);
@@ -521,8 +518,7 @@ describe("status bar with the toolbar hidden", () => {
     });
   });
 
-  /** @type {Array<[SecurityLevel | undefined]>} */
-  const quiet = [["secure"], ["neutral"], [undefined]];
+  const quiet: Array<[SecurityLevel | undefined]> = [["secure"], ["neutral"], [undefined]];
   test.each(quiet)("nothing for a %s page", (security) => {
     const segs = statusSegments({ ...hidden, ...(security ? { security } : {}) });
     expect(segs.some((s) => s.id === "security")).toBe(false);
@@ -605,7 +601,7 @@ describe("the URL keeps its registrable domain while the toolbar is hidden", () 
     url: SPOOF.replace("https://", ""),
     origin: { host: SPOOF_HOST, base: "evil.example" },
   };
-  const hiddenInput = { mode: /** @type {const} */ ("normal"), toolbarHidden: true, tab: spoofTab };
+  const hiddenInput = { mode: "normal" as const, toolbarHidden: true, tab: spoofTab };
 
   test.each([[80], [120], [160]])("the reviewer's spoof URL at %i columns", (width) => {
     const url = texts(renderStatusBar(hiddenInput, width)).url;
@@ -657,11 +653,7 @@ describe("the URL keeps its registrable domain while the toolbar is hidden", () 
   // a URL with no host is cut at its end, never in the middle, while the toolbar is hidden.
   const BLOB_HOST = "accounts.google.com.secure-login-verification-session-0123456789.evil.example";
   test.each([[50], [80], [120]])("blob:, view-source: and no host at %i columns", (width) => {
-    /**
-     * @param {string} url
-     * @param {UrlOrigin | null} [origin]
-     */
-    const at = (url, origin) =>
+    const at = (url: string, origin?: UrlOrigin | null) =>
       texts(
         renderStatusBar(
           {
@@ -703,7 +695,7 @@ describe("the URL keeps its registrable domain while the toolbar is hidden", () 
           const host = [...subs, base].join(".");
           const url = `${host}/${path}`;
           const input = {
-            mode: /** @type {const} */ ("normal"),
+            mode: "normal" as const,
             toolbarHidden: true,
             tab: { index: 1, count: 1, title, url, origin: { host, base } },
           };

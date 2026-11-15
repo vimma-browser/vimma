@@ -30,7 +30,7 @@ describe("help table", () => {
     // An explicit sidebar list, so the leader binding does not hang on the defaults.
     const km = compileKeymap({ keys: { toggle_sidebar: ["prefix+b", "<leader>n"] } });
     const rows = bindingTable(km);
-    const keys = (/** @type {string} */ name) => rows.find((r) => r.name === name)?.bindings;
+    const keys = (name: string) => rows.find((r) => r.name === name)?.bindings;
     expect(keys("show_keybinds")).toContain("ctrl+b ?");
     expect(keys("toggle_sidebar")).toEqual(["ctrl+b b", "space n"]);
     expect(keys("close_tab")).toEqual(["ctrl+b shift+x", "ctrl+f4", "x"]);
@@ -145,7 +145,7 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
         if (k.mode) expect([...MODES, "pdf"]).toContain(k.mode);
       }
     }
-    const keysOf = (/** @type {string} */ name) =>
+    const keysOf = (name: string) =>
       data.groups.flatMap((g) => g.actions).find((a) => a.name === name)?.keys;
     expect(keysOf("help_close")).toContainEqual({ keys: "esc", chords: ["esc"], mode: "help" });
     // The PDF viewer's bindings carry their context like a mode (docs/specs/pdf-mode.md).
@@ -168,7 +168,7 @@ describe("bindingsJson (docs/bindings.json, mirrored by vimma.dev)", () => {
 // docs/specs/firefox-keys.md decisions 3 and 7.
 describe("Firefox's keys in the overlay", () => {
   const rows = bindingTable(compileKeymap());
-  const row = (/** @type {string} */ name) => rows.find((r) => r.name === name);
+  const row = (name: string) => rows.find((r) => r.name === name);
 
   test("Browser comes after Page, Developer tools after it", () => {
     const groups = [...new Set(rows.map((r) => r.group))];
