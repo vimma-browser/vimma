@@ -28,8 +28,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
   no Node types), then over `tools/`, tests included (`tools/tsconfig.json`, with Node's),
   then over `packages/vimma-core`'s tests (`packages/vimma-core/test/tsconfig.json`,
   with Node's), then over the mochitests and their helpers (`tests/tsconfig.json`, with the
-  harness's globals from `types/mochitest/`), where only the files listed in
-  `tools/test/mochitest-allowlist.txt` may still have errors and a fixed file comes off the list.
+  harness's globals from `types/mochitest/`), then over the `.sjs` handlers in `tests/browser/`
+  (`tools/sjs-typecheck.ts`, with httpd.js's sandbox globals from `types/sjs/`).
   `tools/` is moving to TypeScript that Node runs unbuilt (ADR-025); the code Firefox loads and
   `packages/vimma-core` stay JavaScript with JSDoc.
 - `npm run lint`: eslint, prettier, the Markdown and comment wording checks (`tools/md-wording`),

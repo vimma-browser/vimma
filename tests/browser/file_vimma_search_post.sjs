@@ -11,6 +11,7 @@ const BinaryInputStream = Components.Constructor(
   "setInputStream",
 );
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const stream = new BinaryInputStream(request.bodyInputStream);
   const body = stream.available() ? stream.readBytes(stream.available()) : "";

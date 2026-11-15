@@ -17,6 +17,7 @@ const BinaryInputStream = Components.Constructor(
 const MANIFEST = "vimma-update-manifest";
 const LOG = "vimma-update-log";
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   // Firefox's checker adds force=1 to a check started by hand (browser_vimma_update_verify.js).
   const query = request.queryString.replace(/&force=1$/, "");
@@ -39,6 +40,7 @@ function handleRequest(request, response) {
     response.write("ok");
     return;
   }
+  /** @type {Record<string, string>} */
   const headers = {};
   const names = request.headers;
   while (names.hasMoreElements()) {
