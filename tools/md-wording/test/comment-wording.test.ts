@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { commentStyle, findCommentWording } from "../comment-wording.ts";
+import { PLAN_REF_PENDING, commentStyle, findCommentWording } from "../comment-wording.ts";
 
 const phrases = (src: string, style: "slash" | "hash" = "slash") =>
   findCommentWording(src, style).map((f) => f.phrase.toLowerCase());
@@ -80,6 +80,29 @@ describe("findCommentWording", () => {
 
   test("a marker without a reason exempts nothing", () => {
     expect(phrases("// Review of #4. process-wording:")).toEqual(["review of #4"]);
+  });
+});
+
+describe("references to the retired plan.md", () => {
+  test.each([
+    ["// What Esc does (plan §2).", "plan §"],
+    ["/** Plan §5: the whole suite stays under 5 minutes. */", "plan §"],
+    ["# See plan.md §4 for the Sunday run.", "plan.md §"],
+    ["// at plan §4's 0.5 % tolerance", "plan §"],
+  ])("flags %j", (src, phrase) => {
+    const style = src.startsWith("#") ? "hash" : "slash";
+    expect(phrases(src, style)).toEqual([phrase]);
+  });
+
+  test("a file left for a follow-up pull request is not checked for them yet", () => {
+    const [pending] = PLAN_REF_PENDING;
+    expect(pending).toBeDefined();
+    expect(findCommentWording("// The commands of plan §2.", "slash", pending)).toEqual([]);
+    expect(findCommentWording("// Review of #4.", "slash", pending)).toHaveLength(1);
+  });
+
+  test("other plans and sections are not references to it", () => {
+    expect(phrases("// The split plan (§3 of the spec) and a test plan.")).toEqual([]);
   });
 });
 
