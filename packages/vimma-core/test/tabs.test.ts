@@ -95,8 +95,7 @@ describe("tabIds", () => {
   test("find takes a tab's panel, or the id it had while unloaded", () => {
     const ids = tabIds();
     const loaded = { linkedPanel: "panel-1-2" };
-    /** @type {{ linkedPanel: string | null }} */
-    const lazy = { linkedPanel: null };
+    const lazy: { linkedPanel: string | null } = { linkedPanel: null };
     const other = { linkedPanel: null };
     const tabs = [loaded, other, lazy];
     tabs.forEach((t) => ids.idOf(t));
@@ -122,7 +121,7 @@ describe("tabIds: a missing id", () => {
     const neverListed = { linkedPanel: null };
     ids.idOf(listed);
     const tabs = [loaded, listed, neverListed];
-    expect(ids.find(tabs, /** @type {string} */ (/** @type {unknown} */ (id)))).toBeUndefined();
+    expect(ids.find(tabs, id as unknown as string)).toBeUndefined();
   });
 });
 

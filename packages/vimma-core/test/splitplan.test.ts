@@ -12,14 +12,15 @@ import {
   toggleZoom,
 } from "../src/panes/panes.mjs";
 
-/** @import { Panes } from "../src/panes/panes.mjs" */
-/** @import { SplitGroupState, SplitPlan } from "../src/panes/splitplan.mjs" */
+import type { Panes } from "../src/panes/panes.mjs";
+import type { SplitGroupState, SplitPlan } from "../src/panes/splitplan.mjs";
 
-/**
- * @param {Partial<SplitGroupState>} [s]
- * @returns {SplitGroupState}
- */
-const group = (s = {}) => ({ members: [], active: [], hidden: [], ...s });
+const group = (s: Partial<SplitGroupState> = {}): SplitGroupState => ({
+  members: [],
+  active: [],
+  hidden: [],
+  ...s,
+});
 
 const EMPTY = {
   join: [],
@@ -31,22 +32,15 @@ const EMPTY = {
   showVisually: [],
 };
 
-/**
- * Splits right repeatedly: x[t0, t1, …].
- * @param {string[]} tabs
- * @returns {Panes}
- */
-function across(tabs) {
-  let p = createPanes(/** @type {string} */ (tabs[0]));
+/** Splits right repeatedly: x[t0, t1, …]. */
+function across(tabs: string[]): Panes {
+  let p = createPanes(tabs[0] as string);
   for (const t of tabs.slice(1)) p = split(p, p.focus, "vertical", t);
   return p;
 }
 
-/**
- * @param {Panes | null} panes
- * @param {string[]} [extra] hidden tabs of the workspace
- */
-const ws = (panes, extra = []) => ({
+/** `extra`: hidden tabs of the workspace. */
+const ws = (panes: Panes | null, extra: string[] = []) => ({
   tabs: [...(panes ? leaves(panes).map((l) => l.tab) : []), ...extra],
   panes,
 });
@@ -55,11 +49,8 @@ const ws = (panes, extra = []) => ({
  * What Firefox and the host end up with after the host applies `plan` in order: membership
  * (a rebuild keeps the remaining members in order and appends the joiners; fewer than two
  * members dissolve the wrapper), then the moveBefore sequence, then the flags.
- * @param {SplitGroupState} cur
- * @param {SplitPlan} plan
- * @returns {SplitGroupState}
  */
-function apply(cur, plan) {
+function apply(cur: SplitGroupState, plan: SplitPlan): SplitGroupState {
   let members = cur.members.slice();
   if (plan.leave.length || plan.join.length) {
     members = [...members.filter((t) => !plan.leave.includes(t)), ...plan.join];
@@ -185,7 +176,7 @@ describe("planSplit", () => {
       }
     })();
     expect(err).toBeInstanceOf(PlanError);
-    expect(/** @type {PlanError} */ (err).code).toBe("cross-workspace");
+    expect((err as PlanError).code).toBe("cross-workspace");
   });
 
   test("a group state listing a member twice is bad-state", () => {
@@ -225,14 +216,13 @@ const workspaceArb = fc
       const leaf = ls[("pick" in o ? o.pick : 0) % ls.length];
       if (!leaf) throw new Error("a pane tree has a leaf");
       const target = leaf.pane;
-      if (o.op === "split" && free.length)
-        p = split(p, target, o.dir, /** @type {string} */ (free[0]));
+      if (o.op === "split" && free.length) p = split(p, target, o.dir, free[0] as string);
       else if (o.op === "close" && ls.length > 1) p = closePane(p, target);
       else if (o.op === "swap") p = swap(p, o.dir);
       else if (o.op === "focus") p = focus(p, o.dir);
       else if (o.op === "zoom") p = toggleZoom(p);
       else if (o.op === "replace" && free.length) {
-        p = setPaneTab(p, target, /** @type {string} */ (free[o.tab % free.length]));
+        p = setPaneTab(p, target, free[o.tab % free.length] as string);
       }
     }
     return { tabs: TABS, panes: p };
@@ -249,8 +239,7 @@ const currentArb = fc
     group({ members: members.length < 2 ? [] : members, active, hidden }),
   );
 
-/** @param {{ tabs: string[], panes: Panes | null }} w */
-function target(w) {
+function target(w: { tabs: string[]; panes: Panes | null }) {
   const tabs = w.panes ? leaves(w.panes).map((l) => l.tab) : [];
   const members = tabs.length >= 2 ? tabs : [];
   const zoom = w.panes?.zoom ? leaves(w.panes).find((l) => l.pane === w.panes?.zoom)?.tab : null;
@@ -259,8 +248,7 @@ function target(w) {
   return { tabs, members, hidden, active };
 }
 
-/** @param {SplitPlan} plan */
-const size = (plan) => Object.values(plan).reduce((n, ops) => n + ops.length, 0);
+const size = (plan: SplitPlan) => Object.values(plan).reduce((n, ops) => n + ops.length, 0);
 
 describe("planSplit properties", () => {
   test("applying the plan yields the target: members, reading order, zoom, docshells", () => {
