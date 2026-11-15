@@ -141,7 +141,7 @@ const MAX_LINK_HASH = 8192;
 /**
  * Firefox's own test for the pdf.js viewer (nsContentUtils::IsPDFJS): its scheme and its origin
  * without the container suffix, so it holds in every workspace (V1).
- * @param {any} principal  an nsIPrincipal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 export function isPdfJsPrincipal(principal) {
   try {
@@ -153,6 +153,32 @@ export function isPdfJsPrincipal(principal) {
   } catch {
     return false;
   }
+}
+
+/**
+ * `v` when it is an object (a function too), else null. Only that is checked: the caller casts it
+ * to the PdfJs shape it expects (types/pdfjs.d.ts), whose members all stay unknown until read and
+ * checked.
+ * @param {unknown} v
+ * @returns {object | null}
+ */
+function objectOr(v) {
+  return (typeof v === "object" && v !== null) || typeof v === "function" ? v : null;
+}
+
+/**
+ * Calls the viewer's method `name` of `self` as `self[name](...args)` does, or throws when it is no
+ * function, which fails the operation that needed it. The result is the viewer's: unknown (V4).
+ * @template {string} K
+ * @param {PdfJs.Members<K>} self
+ * @param {NoInfer<K>} name
+ * @param {...unknown} args
+ * @returns {unknown}
+ */
+function invoke(self, name, ...args) {
+  const fn = self[name];
+  if (typeof fn !== "function") throw new TypeError(`pdf.js has no ${name}()`);
+  return Reflect.apply(fn, self, args);
 }
 
 /** @param {() => unknown} read @returns {number} NaN unless pdf.js gave a number */
@@ -175,10 +201,15 @@ function str(read) {
   }
 }
 
+/**
+ * An outline entry as the parent gets it (parsePdfOutline): primitives only (V8).
+ * @typedef {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string }} OutlineEntry
+ */
+
 export class PdfView {
-  /** @type {any} the viewer's PDFViewerApplication, waived */
+  /** @type {PdfJs.App} the viewer's PDFViewerApplication, waived */
   #app;
-  /** @type {any} the viewer's document, through Xrays */
+  /** @type {Document} the viewer's document, through Xrays */
   #doc;
   /** The spread `d` goes back to, and the scroll mode `w` goes back to (decision 8). */
   /** @type {number} */
@@ -198,13 +229,13 @@ export class PdfView {
   /**
    * The outline as last read: the message for the parent, and each entry's target, which stays
    * here (V7, V8). null until the user's first Tab.
-   * @type {{ message: { entries: object[], truncated: boolean }, targets: any[] } | null}
+   * @type {{ message: { entries: OutlineEntry[], truncated: boolean }, targets: unknown[] } | null}
    */
   #outline = null;
   #readingOutline = false;
   /** Counts the documents pdf.js opens in this viewer, so the parent drops an old outline. */
   #generation = 0;
-  /** @type {any} */
+  /** @type {number | null} */
   #timer = null;
   #find = { current: 0, total: 0 };
   /** @type {[string, Function][]} */
@@ -222,7 +253,7 @@ export class PdfView {
 
   /**
    * The adapter for an actor's document, or null when it is not the top-level pdf.js viewer.
-   * @param {any} actor   the VimmaChild
+   * @param {JSWindowActorChild} actor   the VimmaChild
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} [sendOutline]
    * @param {() => number} [ops]  how many operations the actor has received
@@ -233,19 +264,24 @@ export class PdfView {
     if (actor.browsingContext.parent) return null;
     const doc = actor.document;
     if (!isPdfJsPrincipal(doc?.nodePrincipal)) return null;
+    const win = actor.contentWindow;
+    if (!win) return null;
+    /** @type {unknown} */
     let app;
     try {
-      app = Cu.waiveXrays(actor.contentWindow).PDFViewerApplication;
+      // Waived, the window shows what the viewer's script set on it: unknown until checked.
+      const waived = /** @type {{ readonly [name: string]: unknown }} */ (Cu.waiveXrays(win));
+      app = waived.PDFViewerApplication;
     } catch {
       return null;
     }
     if (!app || typeof app !== "object") return null;
-    return new PdfView(actor.contentWindow, app, send, sendOutline, ops);
+    return new PdfView(win, /** @type {PdfJs.App} */ (app), send, sendOutline, ops);
   }
 
   /**
    * @param {Window} win  the viewer's window, through Xrays
-   * @param {any} app
+   * @param {PdfJs.App} app  waived
    * @param {(state: object) => void} send
    * @param {(outline: object) => void} sendOutline
    * @param {() => number} ops
@@ -269,7 +305,7 @@ export class PdfView {
     // pdf.js calls these with its own event objects; Cu.exportFunction keeps the arguments
     // behind Xrays (V3, V4).
     const onState = Cu.exportFunction(() => this.schedule(), win);
-    const onCount = Cu.exportFunction((/** @type {any} */ evt) => this.#onCount(evt), win);
+    const onCount = Cu.exportFunction((/** @type {unknown} */ evt) => this.#onCount(evt), win);
     // pdf.js can open another PDF in the same viewer: the outline read goes with the old one,
     // and the parent learns of it from the next state message (V11).
     const onDocument = Cu.exportFunction(() => {
@@ -279,7 +315,7 @@ export class PdfView {
       this.schedule();
     }, win);
     try {
-      this.#app.eventBus.on("documentloaded", onDocument);
+      invoke(this.#part("eventBus"), "on", "documentloaded", onDocument);
       this.#listeners.push(["documentloaded", onDocument]);
     } catch {
       // no event bus: nothing to forget
@@ -287,7 +323,7 @@ export class PdfView {
     for (const name of EVENTS) {
       const fn = name.startsWith("updatefind") ? onCount : onState;
       try {
-        this.#app.eventBus.on(name, fn);
+        invoke(this.#part("eventBus"), "on", name, fn);
         this.#listeners.push([name, fn]);
       } catch {
         // a viewer without its event bus reports nothing
@@ -296,12 +332,26 @@ export class PdfView {
     this.schedule();
   }
 
-  /** @param {any} evt  through Xrays: only own data properties are visible */
+  /**
+   * One of PDFViewerApplication's parts, waived; throws when the viewer has no such object, which
+   * fails the operation that needed it. Its getter is the viewer's, and may throw too.
+   * @template {keyof PdfJs.Parts} K
+   * @param {K} name
+   * @returns {PdfJs.Parts[K]}
+   */
+  #part(name) {
+    const part = objectOr(this.#app[name]);
+    if (!part) throw new TypeError(`pdf.js has no ${name}`);
+    return /** @type {PdfJs.Parts[K]} */ (part);
+  }
+
+  /** @param {unknown} evt  through Xrays: only own data properties are visible */
   #onCount(evt) {
     let current = NaN;
     let total = NaN;
     try {
-      const m = evt?.matchesCount;
+      const e = /** @type {PdfJs.FindEvent | null} */ (objectOr(evt));
+      const m = /** @type {PdfJs.MatchesCount | null} */ (objectOr(e?.matchesCount));
       current = typeof m?.current === "number" ? m.current : NaN;
       total = typeof m?.total === "number" ? m.total : NaN;
     } catch {
@@ -327,13 +377,12 @@ export class PdfView {
     const { op, n } = msg;
     const app = this.#app;
     // pdf.js's live values, or nothing happens: a viewer without its document (or a hostile
-    // getter) gives no number to compute from.
+    // getter) gives no number to compute from. Its parts are read inside the try below: a getter
+    // that throws fails this operation, not the report that follows it.
     const page = num(() => app.page);
     const pages = num(() => app.pagesCount);
     const live = (/** @type {number[]} */ ...v) => v.every(Number.isFinite);
     try {
-      // Inside the try: a getter that throws fails this operation, not the report after it.
-      const viewer = app.pdfViewer;
       switch (op) {
         case "next":
         case "prev":
@@ -346,12 +395,12 @@ export class PdfView {
           // A jump: goToPage records it in the history first (decision 9).
           if (!live(page, pages)) return false;
           this.#settle();
-          app.pdfLinkService.goToPage(pdfPageTarget(op, n, page, pages));
+          invoke(this.#part("pdfLinkService"), "goToPage", pdfPageTarget(op, n, page, pages));
           return true;
         case "jump":
           // Before a search hit moves the view: ctrl+o comes back here (decision 9).
           this.#settle();
-          app.pdfHistory.pushCurrentPosition();
+          invoke(this.#part("pdfHistory"), "pushCurrentPosition");
           return true;
         case "page_top":
         case "page_bottom":
@@ -368,6 +417,7 @@ export class PdfView {
         // A zoom keeps the place pdf.js last recorded, which can be a frame old: settled first,
         // a zoom right after a page key (`3J150=`) stays on the new page.
         case "zoom": {
+          const viewer = this.#part("pdfViewer");
           const scale = num(() => viewer.currentScale);
           if (!live(scale)) return false;
           this.#settle();
@@ -376,18 +426,19 @@ export class PdfView {
         }
         case "scale":
           this.#settle();
-          viewer.currentScale = pdfZoomPercent(n);
+          this.#part("pdfViewer").currentScale = pdfZoomPercent(n);
           return true;
         case "fit_page":
           this.#settle();
-          viewer.currentScaleValue = "page-fit";
+          this.#part("pdfViewer").currentScaleValue = "page-fit";
           return true;
         case "fit_width":
           this.#settle();
-          viewer.currentScaleValue = "page-width";
+          this.#part("pdfViewer").currentScaleValue = "page-width";
           return true;
         case "dual":
         case "first_alone": {
+          const viewer = this.#part("pdfViewer");
           const next = pdfSpread(
             op === "dual" ? "dual" : "first_alone",
             num(() => viewer.spreadMode),
@@ -398,6 +449,7 @@ export class PdfView {
           return true;
         }
         case "single": {
+          const viewer = this.#part("pdfViewer");
           const next = pdfScrollMode(
             num(() => viewer.scrollMode),
             this.#previousScroll,
@@ -407,6 +459,7 @@ export class PdfView {
           return true;
         }
         case "rotate": {
+          const viewer = this.#part("pdfViewer");
           const rotation = num(() => viewer.pagesRotation);
           if (!live(rotation)) return false;
           viewer.pagesRotation = pdfRotation(rotation, n);
@@ -427,15 +480,26 @@ export class PdfView {
           const at = msg.at;
           if (!at || !live(pages) || at.page > pages) return false;
           const dest = [at.page - 1, { name: "XYZ" }, at.left, at.top, at.scale];
-          const history = app.pdfHistory;
+          const viewer = this.#part("pdfViewer");
+          // A viewer without its history scrolls without recording the jump; one whose history
+          // is no object fails the mark.
+          const raw = app.pdfHistory;
           this.#settle();
-          history?.pushCurrentPosition();
-          history?.push(
-            Cu.cloneInto({ namedDest: null, explicitDest: dest, pageNumber: at.page }, this.#win),
-          );
+          if (raw !== null && raw !== undefined) {
+            const history = /** @type {PdfJs.History | null} */ (objectOr(raw));
+            if (!history) throw new TypeError("pdf.js has no pdfHistory");
+            invoke(history, "pushCurrentPosition");
+            invoke(
+              history,
+              "push",
+              Cu.cloneInto({ namedDest: null, explicitDest: dest, pageNumber: at.page }, this.#win),
+            );
+          }
           // A mark comes back at its zoom (decision 11), whatever pdfjs.ignoreDestinationZoom
           // says for a link.
-          viewer.scrollPageIntoView(
+          invoke(
+            viewer,
+            "scrollPageIntoView",
             Cu.cloneInto(
               { pageNumber: at.page, destArray: dest, ignoreDestinationZoom: false },
               this.#win,
@@ -448,7 +512,7 @@ export class PdfView {
           // A viewer that claims presentation without being full screen gets nothing to exit.
           if (this.presenting()) {
             if (this.#doc.fullscreenElement) this.#doc.exitFullscreen().catch(() => {});
-          } else app.requestPresentationMode();
+          } else invoke(app, "requestPresentationMode");
           return true;
       }
     } catch (e) {
@@ -475,14 +539,14 @@ export class PdfView {
     }, OUTLINE_READ_MS);
     // A read under way when pdf.js opens another PDF is the old document's: dropped (V11).
     const generation = this.#generation;
-    const done = Cu.exportFunction((/** @type {any} */ items) => {
+    const done = Cu.exportFunction((/** @type {unknown} */ items) => {
       if (generation === this.#generation) this.#onOutline(items);
       else this.#readingOutline = false;
     }, this.#win);
     const failed = Cu.exportFunction(() => {
       this.#readingOutline = false;
     }, this.#win);
-    if (!this.#then(() => this.#app.pdfDocument.getOutline(), done, failed)) {
+    if (!this.#then(() => invoke(this.#part("pdfDocument"), "getOutline"), done, failed)) {
       this.#readingOutline = false;
     }
   }
@@ -491,16 +555,16 @@ export class PdfView {
    * Calls `read` (a pdf.js method that returns a promise) and passes the callbacks to the
    * promise's own `then`, seen through Xrays: a viewer's object with a `then` of its own is a
    * plain object there, whose functions Xrays do not show.
-   * @param {() => any} read
+   * @param {() => unknown} read
    * @param {Function} done  made with Cu.exportFunction
    * @param {Function} failed
    * @returns {boolean} whether the callbacks were passed on
    */
   #then(read, done, failed) {
     try {
-      const promise = Cu.unwaiveXrays(read());
-      if (typeof promise?.then !== "function") return false;
-      promise.then(done, failed);
+      const promise = /** @type {PdfJs.Thenable | null} */ (objectOr(Cu.unwaiveXrays(read())));
+      if (!promise) return false;
+      invoke(promise, "then", done, failed);
       return true;
     } catch {
       return false;
@@ -511,48 +575,55 @@ export class PdfView {
    * The outline tree from pdf.js, read through Xrays (V4): only the fields Vimma shows, as
    * primitives, bounded as the parent bounds them (parsePdfOutline), and each entry's target
    * kept here.
-   * @param {any} items
+   * @param {unknown} items  through Xrays
    */
   #onOutline(items) {
     const pages = num(() => this.#app.pagesCount);
-    /** @type {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string }[]} */
+    /** @type {OutlineEntry[]} */
     const entries = [];
-    /** @type {any[]} */
+    /** @type {unknown[]} */
     const targets = [];
     /** @type {[number, string][]} entries whose destination is a name, resolved below */
     const named = [];
     let truncated = false;
     // Items visited, not entries kept: a sparse array with a huge length stops here too.
     let visited = 0;
-    /** @param {any} list @param {number} level */
-    const walk = (list, level) => {
+    /** @param {unknown} value  through Xrays @param {number} level */
+    const walk = (value, level) => {
+      const list =
+        /** @type {{ readonly [i: number]: unknown, readonly length: unknown } | null} */ (
+          objectOr(value)
+        );
       const length = num(() => list?.length);
       for (let i = 0; i < length; i++) {
         if (entries.length >= OUTLINE_MAX_ENTRIES || ++visited > OUTLINE_MAX_ENTRIES) {
           truncated = true;
           return;
         }
-        let item;
+        /** @type {unknown} */
+        let value;
         try {
-          item = list[i];
+          value = list?.[i];
         } catch {
           continue;
         }
-        if (!item || typeof item !== "object") continue;
-        const entry = this.#entry(item, level, pages);
-        if (typeof entry.target === "string" && entry.kind === "dest") {
-          named.push([entries.length, entry.target]);
+        if (!value || typeof value !== "object") continue;
+        const item = /** @type {PdfJs.OutlineItem} */ (value);
+        const { entry, target } = this.#entry(item, level, pages);
+        if (typeof target === "string" && entry.kind === "dest") {
+          named.push([entries.length, target]);
         }
-        targets.push(entry.target);
-        delete entry.target;
+        targets.push(target);
         entries.push(entry);
-        let children;
+        /** @type {unknown} */
+        let children = null;
         try {
           children = item.items;
         } catch {
-          children = null;
+          // no children
         }
-        if (num(() => children?.length) > 0) {
+        const kids = /** @type {{ readonly length?: unknown } | null} */ (objectOr(children));
+        if (num(() => kids?.length) > 0) {
           if (level >= OUTLINE_MAX_DEPTH) truncated = true;
           else walk(children, level + 1);
         }
@@ -571,11 +642,13 @@ export class PdfView {
       return;
     }
     // Named destinations resolve to pages through the document's table, in one call.
-    const resolved = Cu.exportFunction((/** @type {any} */ dests) => {
+    const resolved = Cu.exportFunction((/** @type {unknown} */ value) => {
+      const dests = /** @type {{ readonly [name: string]: unknown } | null} */ (objectOr(value));
       for (const [index, name] of named) {
         try {
           const dest = dests && Object.hasOwn(dests, name) ? dests[name] : null;
-          /** @type {any} */ (entries[index]).page = this.#pageOf(dest, pages);
+          const entry = entries[index];
+          if (entry) entry.page = this.#pageOf(dest, pages);
         } catch {
           // stays 0: not resolved
         }
@@ -583,18 +656,20 @@ export class PdfView {
       finish();
     }, this.#win);
     const failed = Cu.exportFunction(finish, this.#win);
-    if (!this.#then(() => this.#app.pdfDocument.getDestinations(), resolved, failed)) finish();
+    const read = () => invoke(this.#part("pdfDocument"), "getDestinations");
+    if (!this.#then(read, resolved, failed)) finish();
   }
 
   /**
    * One outline item, as pdf.js's outline view reads it (`_bindLink`): its kind, by the first of
    * url, action, attachment, layer change and destination it has.
-   * @param {any} item  through Xrays
+   * @param {PdfJs.OutlineItem} item  through Xrays
    * @param {number} level
    * @param {number} pages
+   * @returns {{ entry: OutlineEntry, target: unknown }} the target stays in this process (V8)
    */
   #entry(item, level, pages) {
-    /** @param {string} key */
+    /** @param {keyof PdfJs.OutlineItem} key @returns {unknown} */
     const get = (key) => {
       try {
         return item[key];
@@ -607,15 +682,16 @@ export class PdfView {
     const url = get("url");
     const action = get("action");
     const dest = get("dest");
-    /** @type {{ title: string, level: number, page: number, kind: string, collapsed: boolean, url?: string, target?: any }} */
+    /** @type {OutlineEntry} */
     const entry = {
       title: typeof title === "string" ? title.slice(0, OUTLINE_MAX_TITLE) : "",
       level,
       page: 0,
       kind: "none",
       collapsed: typeof count === "number" && count < 0,
-      target: null,
     };
+    /** @type {unknown} */
+    let target = null;
     if (typeof url === "string" && url) {
       // A longer URL is no link Vimma opens (V8): the entry stays, with nothing to follow.
       if (url.length <= OUTLINE_MAX_URL) {
@@ -625,34 +701,34 @@ export class PdfView {
     } else if (typeof action === "string" && action) {
       if (OUTLINE_ACTIONS.has(action)) {
         entry.kind = "action";
-        entry.target = action;
+        target = action;
       }
     } else if (get("attachment") && typeof get("attachment") === "object") {
       entry.kind = "attachment";
     } else if (get("setOCGState") && typeof get("setOCGState") === "object") {
       entry.kind = "ocg";
-      entry.target = get("setOCGState");
+      target = get("setOCGState");
     } else if (typeof dest === "string" || (dest && typeof dest === "object")) {
       entry.kind = "dest";
-      entry.target = dest;
+      target = dest;
       if (typeof dest !== "string") entry.page = this.#pageOf(dest, pages);
     }
-    return entry;
+    return { entry, target };
   }
 
   /**
    * The page an explicit destination points at, as pdf.js resolves its current outline item: a
    * page reference it has seen, or a page index; 0 when it does not resolve.
-   * @param {any} dest  through Xrays
+   * @param {unknown} dest  through Xrays
    * @param {number} pages
    */
   #pageOf(dest, pages) {
     let page = NaN;
     try {
-      const ref = dest?.[0];
+      const ref = /** @type {{ readonly 0?: unknown } | null} */ (objectOr(dest))?.[0];
       if (typeof ref === "number") page = ref + 1;
       else if (ref && typeof ref === "object") {
-        page = num(() => this.#app.pdfDocument.cachedPageNumber(ref));
+        page = num(() => invoke(this.#part("pdfDocument"), "cachedPageNumber", ref));
       }
     } catch {
       // not resolved
@@ -669,14 +745,14 @@ export class PdfView {
   #follow(index) {
     const entries = this.#outline?.message.entries;
     const target = this.#outline?.targets[index];
-    const kind = /** @type {any} */ (entries?.[index])?.kind;
+    const kind = entries?.[index]?.kind;
     if (target === undefined || target === null) return false;
-    const link = this.#app.pdfLinkService;
+    const link = this.#part("pdfLinkService");
     this.#settle();
     // goToDestination records a history entry first (decision 9).
-    if (kind === "dest") link.goToDestination(target);
-    else if (kind === "action") link.executeNamedAction(target);
-    else if (kind === "ocg") link.executeSetOCGState(target);
+    if (kind === "dest") invoke(link, "goToDestination", target);
+    else if (kind === "action") invoke(link, "executeNamedAction", target);
+    else if (kind === "ocg") invoke(link, "executeSetOCGState", target);
     else return false;
     return true;
   }
@@ -691,7 +767,7 @@ export class PdfView {
    */
   #settle() {
     try {
-      this.#app.pdfViewer.update();
+      invoke(this.#part("pdfViewer"), "update");
     } catch {
       // a viewer without its document: nothing to record
     }
@@ -703,12 +779,15 @@ export class PdfView {
    * (parsePdfPosition).
    */
   position() {
-    const viewer = this.#app.pdfViewer;
+    /** @type {PdfJs.Viewer | null} */
+    let viewer = null;
+    /** @type {PdfJs.Location | null} */
     let location = null;
     // A mark set right after a key that scrolled is where the view is now.
     this.#settle();
     try {
-      location = viewer._location;
+      viewer = this.#part("pdfViewer");
+      location = /** @type {PdfJs.Location | null} */ (objectOr(viewer._location));
     } catch {
       // no position: the parent drops the record
     }
@@ -716,7 +795,7 @@ export class PdfView {
       page: num(() => location?.pageNumber),
       left: num(() => location?.left),
       top: num(() => location?.top),
-      scale: num(() => viewer.currentScale),
+      scale: num(() => viewer?.currentScale),
     };
   }
 
@@ -768,12 +847,13 @@ export class PdfView {
     if (typeof dest !== "string") return answer(0);
     lazy.setTimeout(() => answer(0), LINK_PAGE_MS);
     const resolved = Cu.exportFunction(
-      (/** @type {any} */ explicit) => answer(this.#pageOf(explicit, pages)),
+      (/** @type {unknown} */ explicit) => answer(this.#pageOf(explicit, pages)),
       this.#win,
     );
     const failed = Cu.exportFunction(() => answer(0), this.#win);
     const name = /** @type {string} */ (dest);
-    if (!this.#then(() => this.#app.pdfDocument.getDestination(name), resolved, failed)) {
+    const read = () => invoke(this.#part("pdfDocument"), "getDestination", name);
+    if (!this.#then(read, resolved, failed)) {
       answer(0);
     }
     return undefined;
@@ -808,7 +888,7 @@ export class PdfView {
   /** Whether pdf.js shows its presentation mode (decision 15). */
   presenting() {
     try {
-      return this.#app.pdfViewer.isInPresentationMode === true;
+      return this.#part("pdfViewer").isInPresentationMode === true;
     } catch {
       return false;
     }
@@ -864,7 +944,7 @@ export class PdfView {
       page: num(() => app.page),
       pages: num(() => app.pagesCount),
       // Bounded here too, so that a hostile viewer cannot push a huge string over IPC (V4).
-      label: str(() => app.pdfViewer.currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
+      label: str(() => this.#part("pdfViewer").currentPageLabel).slice(0, PDF_MAX_LABEL + 1),
       find: { current: this.#find.current, total: this.#find.total },
       doc: this.#generation,
       drawn: this.#drawn() && this.#scale() === this.#seenScale,
@@ -984,7 +1064,7 @@ export class PdfView {
     }
     for (const [name, fn] of this.#listeners) {
       try {
-        this.#app.eventBus.off(name, fn);
+        invoke(this.#part("eventBus"), "off", name, fn);
       } catch {
         // the viewer went with its document
       }
