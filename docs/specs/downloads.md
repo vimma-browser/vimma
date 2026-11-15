@@ -566,9 +566,11 @@ Written first and seen to fail.
 - `picker.test.mjs`: `a download row's keys give a download effect; / types them`;
   `shift+d, c and ! close the picker before their effect`;
   `the highlight stays on its download when rows move`.
-- `actions.test.mjs`: `downloads_picker is downloads.picker, in Browser, on prefix+d`.
+- `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025):
+  `downloads_picker is downloads.picker, in Browser, on prefix+d`.
 - `agent-keys.test.mjs`: `downloads.picker is not an agent key action`.
-- `cmdline.test.mjs`: `:downloads runs downloads.picker`.
+- `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025):
+  `:downloads runs downloads.picker`.
 - `help.test.mjs` snapshot: the new row.
 - `tools/security/test/chrome-source.test.mjs` (Since changed: `chrome-source.test.ts`, ADR-025):
   `opens and reveals downloads only through Firefox's Download, from download-ops`.

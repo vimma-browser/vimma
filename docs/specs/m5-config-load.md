@@ -119,13 +119,14 @@ spec's Limits "`:config` (open the file in a tab)"; the choices below are ours.
   write to the config folder; `IOUtils.writeUTF8(…, { mode: "create" })` never overwrites a
   file. A failure to create shows a notice (`VimmaHost.say`).
 
-Tests: `config-source.test.mjs` (paths, the template), `cmdline.test.mjs` (`:source <path>`,
-`:config`); `browser_vimma_config.js` `colon_source_a_path_replaces_the_config_and_reports_that_file`
-and `colon_config_opens_the_file_and_creates_it_from_the_template`. Red: both browser tasks
-timed out (`:source work.toml loads`; no new tab), the Vitest cases failed (`not a command`,
-`formatConfigTemplate is not a function`). Green: config, theme and about 158/158; 19 repeats
-of config and theme on two busy CPUs, 2241/2241. Mutation: dropping `sourced = null` in the
-poll's read fails "config.toml is the file in force again"; reverted.
+Tests: `config-source.test.mjs` (paths, the template), `cmdline.test.mjs` (Since changed:
+`cmdline.test.ts`, ADR-025) (`:source <path>`, `:config`); `browser_vimma_config.js`
+`colon_source_a_path_replaces_the_config_and_reports_that_file` and
+`colon_config_opens_the_file_and_creates_it_from_the_template`. Red: both browser tasks timed out
+(`:source work.toml loads`; no new tab), the Vitest cases failed (`not a command`,
+`formatConfigTemplate is not a function`). Green: config, theme and about 158/158; 19 repeats of
+config and theme on two busy CPUs, 2241/2241. Mutation: dropping `sourced = null` in the poll's read
+fails "config.toml is the file in force again"; reverted.
 
 Issue #66 (`browser_vimma_theme.js` flaked in CI): a real race in `theme-host.mjs`. A check
 reading the old Omarchy path when the path pref changed went on to record and apply that

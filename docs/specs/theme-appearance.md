@@ -88,7 +88,8 @@ Decisions:
 
 ## Tests (written first)
 
-- **Vitest** (`theme.test.mjs`, `config-v2.test.mjs`, `cmdline.test.mjs`):
+- **Vitest** (`theme.test.mjs`, `config-v2.test.mjs`, `cmdline.test.mjs` (Since changed:
+  `cmdline.test.ts`, ADR-025)):
   - without an Omarchy file there is no warning (was "Omarchy theme not found");
   - `appearance = "dark"` with `scheme: "light"` gives the dark tokens and the reverse; `"system"`
     (and absent) follows `scheme`; `[theme.colors] mode` wins over `appearance`; Tokyo Night with

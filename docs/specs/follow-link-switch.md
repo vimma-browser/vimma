@@ -259,7 +259,8 @@ Written first and seen to fail.
   `f's and F's hints ignore case and never switch`;
   `a last key without upper case does not switch` (charset `"asdf;"`, label ending in `;`);
   `HINT_ACTIONS lists hint.follow_new_tab_fg`.
-- `actions.test.mjs`: `follow_link_new_tab_fg is hint.follow_new_tab_fg, in Hints, unbound`.
+- `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025):
+  `follow_link_new_tab_fg is hint.follow_new_tab_fg, in Hints, unbound`.
 - `agent-keys.test.mjs`: `hint.follow_new_tab_fg is refused with hint.follow_new_tab's reason`;
   `an upper-case character after f is not part of the label`.
 - `statusbar.test.mjs`: `gF's hint mode shows the background and go-there keys`;

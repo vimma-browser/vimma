@@ -185,7 +185,8 @@ modifiers. Alt alone with `AltGraph` false (Linux, Windows) is always a genuine 
 
 ## Tests
 
-Vitest: `keys.test.mjs` (Option/AltGr cases), `firefox-keys.test.mjs` (chords of `<key>`
-elements, the plan for default, list, "all", enable), `config-v2.test.mjs` (`[firefox]`,
-`insert_editing`), `sidepanel.test.mjs` (`panel.close_tab`). Mochitests:
-`browser_vimma_firefox_keys.js`, `browser_vimma_edit_keys.js`, `browser_vimma_side_panel.js`.
+Vitest: `keys.test.mjs` (Since changed: `keys.test.ts`, ADR-025) (Option/AltGr cases),
+`firefox-keys.test.mjs` (chords of `<key>` elements, the plan for default, list, "all", enable),
+`config-v2.test.mjs` (`[firefox]`, `insert_editing`), `sidepanel.test.mjs` (`panel.close_tab`).
+Mochitests: `browser_vimma_firefox_keys.js`, `browser_vimma_edit_keys.js`,
+`browser_vimma_side_panel.js`.

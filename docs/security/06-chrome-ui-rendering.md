@@ -125,11 +125,11 @@ text that pages, add-ons and bookmarks choose.
   add-on's button between the toolbar and the extensions menu, and private-window access is
   asked in the install prompt, not here. No other notice of that panel takes the keys (the
   update notices' main button restarts the browser).
-  [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`doorhangerKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`permission_prompts_answer_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_arm_on_firefoxs_own_delay`](../../tests/browser/browser_vimma_toolbar.js),
   [`prompt_keys_leave_live_grep_and_find_their_keys`](../../tests/browser/browser_vimma_toolbar.js),
-  [`KEY_KEEPING_MODES`](../../packages/vimma-core/test/modes.test.mjs),
+  [`KEY_KEEPING_MODES`](../../packages/vimma-core/test/modes.test.ts),
   [`prompt_keys_leave_hint_copy_and_element_mode_their_keys`](../../tests/browser/browser_vimma_toolbar.js),
   [`the_addon_install_prompt_answers_y_and_n`](../../tests/browser/browser_vimma_toolbar.js),
   [`the_addon_installed_notice_answers_p_and_y`](../../tests/browser/browser_vimma_toolbar.js),
@@ -153,7 +153,7 @@ text that pages, add-ons and bookmarks choose.
   `Services.perms.addFromPrincipal` (SitePermissions removes a block instead of recording it),
   which keeps it for the private session only in a private window (PermissionManager forces
   `EXPIRE_SESSION` for private principals).
-  [`popupBarKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`popupBarKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`y_answers_only_once_the_bar_is_armed_and_allows_the_site`](../../tests/browser/browser_vimma_popups.js),
   [`n_blocks_the_site_and_esc_only_closes_the_bar`](../../tests/browser/browser_vimma_popups.js),
   [`keys_typed_in_a_field_or_the_command_line_are_theirs`](../../tests/browser/browser_vimma_popups.js),
@@ -168,7 +168,7 @@ text that pages, add-ons and bookmarks choose.
   nothing. They **never** answer from the dialog's own text fields, and press Firefox's own
   buttons, so a button Firefox keeps disabled stays so. A page can open a dialog under a typing
   hand; the wait is what keeps that typing from answering it.
-  [`dialogKey`](../../packages/vimma-core/test/prompt-keys.test.mjs),
+  [`dialogKey`](../../packages/vimma-core/test/prompt-keys.test.ts),
   [`leave_page_n_stays_y_leaves`](../../tests/browser/browser_vimma_dialog_keys.js),
   [`prompt_field_types`](../../tests/browser/browser_vimma_dialog_keys.js)
 - The external protocol questions over a tab (`permissionDialog.xhtml`, "Allow this site to

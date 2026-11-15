@@ -220,10 +220,11 @@ parts are in `core/pageurl.mjs`.
 - `gf` is Firefox's `ctrl+u` (`BrowserCommands.viewSource`) on the focused pane's browser.
 
 Skipped: `zi` / `zo` / `z0` (page zoom). Binding them makes `z` a prefix, and `z` is the
-unbound key eight mochitests and `dispatcher.test.mjs` press to prove a key reaches the page;
-moving all of them is churn across files other work touches. `ctrl+plus` / `ctrl+minus` /
-`ctrl+0` already zoom. Tests: `pageurl.test.mjs`, `keymap.test.mjs` (bindings, `y` prefix, `z`
-unbound) and `browser_vimma_normal_extras.js` (each key, refusals, a split, insert mode).
+unbound key eight mochitests and `dispatcher.test.mjs` (Since changed: `dispatcher.test.ts`,
+ADR-025) press to prove a key reaches the page; moving all of them is churn across files other work
+touches. `ctrl+plus` / `ctrl+minus` / `ctrl+0` already zoom. Tests: `pageurl.test.mjs`,
+`keymap.test.mjs` (Since changed: `keymap.test.ts`, ADR-025) (bindings, `y` prefix, `z` unbound) and
+`browser_vimma_normal_extras.js` (each key, refusals, a split, insert mode).
 
 ## Limits
 

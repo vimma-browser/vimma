@@ -48,7 +48,7 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   message from a content process can ask for it. The content actor's `Vimma:Edit` **must** run only the three editor commands
   (`INSERT_EDIT_COMMANDS`), never Enter. A compromised content process that claims insert mode
   (K1) gets an `Enter` in place of its own `ctrl+j`, which it could synthesize itself.
-  [`Enter is no editor command: the content actor never takes it`](../../packages/vimma-core/test/editable.test.mjs),
+  [`Enter is no editor command: the content actor never takes it`](../../packages/vimma-core/test/editable.test.ts),
   [`a_page_that_takes_ctrl_j_keeps_it`](../../tests/browser/browser_vimma_edit_keys.js),
   [`a_late_reply_presses_no_enter_in_another_tab`](../../tests/browser/browser_vimma_edit_keys.js),
   [`ctrl_j_m_submit_a_single_line_inputs_form_with_a_trusted_enter`](../../tests/browser/browser_vimma_edit_keys.js)
@@ -66,7 +66,7 @@ reports move. Specs: [m1-actor-insert-scroll](../specs/m1-actor-insert-scroll.md
   "no list", and no message from a content process can ask for a key. A page, or a compromised
   content process, can at most turn the user's own `ctrl+n` into an arrow key in itself, which it
   could do by handling `ctrl+n`.
-  [`suggestionListOpen`](../../packages/vimma-core/test/suggestions.test.mjs),
+  [`suggestionListOpen`](../../packages/vimma-core/test/suggestions.test.ts),
   [`ctrl_n_and_ctrl_p_move_an_aria_combobox`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_pressed_arrow_key_runs_no_vimma_binding`](../../tests/browser/browser_vimma_page_suggestions.js),
   [`a_page_that_takes_ctrl_n_keeps_it`](../../tests/browser/browser_vimma_page_suggestions.js),

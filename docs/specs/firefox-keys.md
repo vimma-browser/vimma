@@ -649,13 +649,14 @@ Each is its own keymap PR, in this order, one open at a time:
     function keys and every keyset but no d row, `enable` keeps a chord on and drops its default
     binding, an explicit list keeps its meaning; `pageFirst(chord)` per row, V for an unknown
     chord and for prefix sequences.
-  - `keymap.test.mjs`: an `f5` / `shift+f12` `[keys]` binding is global; a `:` value compiles to a
-    command binding, an unknown command word is an error at its line with a suggestion;
-    `enable` on a user-bound chord is an error at the `enable` line.
+  - `keymap.test.mjs` (Since changed: `keymap.test.ts`, ADR-025): an `f5` / `shift+f12` `[keys]`
+    binding is global; a `:` value compiles to a command binding, an unknown command word is an
+    error at its line with a suggestion; `enable` on a user-bound chord is an error at the `enable`
+    line.
   - `config.test.mjs` (+ `config-v2`, fuzz arbitrary): the new `enable` validation (`"esc"`
     valid, `"x"` not); the default resolves to `"all"`; no migration step was added.
-  - `cmdline.test.mjs`: `:firefox <id>` parses to `firefox.command` with its text; completion
-    over the ids the host supplies.
+  - `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025): `:firefox <id>` parses to
+    `firefox.command` with its text; completion over the ids the host supplies.
   - `help.test.mjs`: the new groups and rows; the "Commands" and "Firefox (on in config.toml)"
     groups from supplied rows, empty and hidden by default.
   - Snapshots re-recorded with a line each: `help.test.mjs.snap` (the new rows and keys),

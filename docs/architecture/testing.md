@@ -75,7 +75,7 @@ the schema allows.
 **Where.** The fast-check properties in `packages/vimma-core/test/fuzz/` go through `harness.mjs`:
 in every Vitest run they use a fixed seed (`FIXED_SEED`), so a red run is red again on a re-run, and
 `RUNS` (100) cases times each property's `weight`, which takes most to 500, 1000 or 2000 cases and a
-slow one to 20. `properties.test.mjs` holds more properties of the key notation and the dispatcher.
+slow one to 20. `properties.test.ts` holds more properties of the key notation and the dispatcher.
 On the Rust side, `tools/vimma-ctl/tests/protocol_props.rs` and `mcp_props.rs` use proptest and run
 with `cargo test`. `fuzz.yml` runs both sets every night (02:41 UTC) from a random seed with many
 more cases; a failure uploads the seed and the failing cases and opens or comments on one issue

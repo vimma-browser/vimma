@@ -1173,7 +1173,8 @@ Written first and seen to fail.
   the `y/N` prompt once per session and its 24 h re-ask; install-type detection; the version line
   (`Vimma 0.3.1 · Firefox 158.0.1`, `0.3.1-nightly.20261028031500`).
   `config.test.mjs`: `[updates] check`, wrong type, schema 1 → "is new in schema 2";
-  `cmdline.test.mjs`: `:update`, `:restart`; `actions.test.mjs`: both actions have no default key
+  `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025): `:update`, `:restart`;
+  `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025): both actions have no default key
   and appear in help. Snapshots (`defaults.toml`, help) are re-recorded with a changelog line.
 - **Tools** `tools/update/test/manifest.test.mjs`: XML from fixtures (attributes, sizes, hashes,
   nightly names, empty `<updates/>`), urgency from fixture commit logs (a `security`-labelled bump,

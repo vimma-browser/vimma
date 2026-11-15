@@ -236,10 +236,11 @@ boundaries. [docs/README.md](docs/README.md) says which document covers what. Th
 
 ## TypeScript in tools/
 
-Code Firefox loads (`src/`) and `packages/vimma-core` are JavaScript with JSDoc types
+Code Firefox loads (`src/`) and `packages/vimma-core/src` are JavaScript with JSDoc types
 ([ADR-004](docs/adr/004-javascript-jsdoc.md)). The Node-side tools under `tools/` move to
 TypeScript that Node runs as it is ([ADR-025](docs/adr/025-typescript-for-tools.md)), one area (a
-folder of `tools/`) per pull request. `npm run typecheck`, `npm run lint` and `npm test` treat a
+folder of `tools/`) per pull request, and so do vimma-core's tests (`packages/vimma-core/test/`,
+#1114), one group of test files per pull request; new core tests are written as `.ts`. `npm run typecheck`, `npm run lint` and `npm test` treat a
 `.ts` file as they treat a `.mjs` one, and also type-check `.ts` tests. Write only syntax Node can
 erase (`tsc` rejects the rest), `import type` for a type-only import, and the real file name in a
 relative import: `./x.ts`. New Node code under `tools/` is written as `.ts`; Rust, shell and Python
@@ -248,7 +249,8 @@ from `tools/test/mjs-allowlist.txt`; a script a browser page loads is a `.js` fi
 folder, which it does not count. `ERR_UNKNOWN_FILE_EXTENSION` for a `.ts` file, from any tool,
 means the Node running it is older than `package.json`'s `engines`: use `.nvmrc`'s.
 
-Moving an area, in a pull request that does only this (`Part of #946`). The hooks of
+Moving an area, in a pull request that does only this (`Part of #946`, or `Part of #1114` for
+vimma-core's tests). The hooks of
 `tools/claude-plugin` (`hooks/`) stay `.mjs` (ADR-025 says why); its tests are `.ts`.
 
 1. **Callers first.** Find every way the area is reached before renaming:

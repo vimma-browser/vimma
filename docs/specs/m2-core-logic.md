@@ -348,7 +348,8 @@ Tab labels (`tablabels.test.mjs`):
   `readTabLabels` never throws on any value and returns only normalised labels;
   `readTabLabels(writeTabLabels(l))` round-trips.
 
-Actions (`actions.test.mjs`): the audit table above holds for `compileKeymap()`.
+Actions (`actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025)): the audit table above
+holds for `compileKeymap()`.
 
 Coverage stays ≥ 90 % lines/branches/functions/statements.
 
