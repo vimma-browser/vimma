@@ -4,10 +4,8 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-packages/vimma-core/test/a11y.test.mjs
 packages/vimma-core/test/addons.test.mjs
 packages/vimma-core/test/appimage-update.test.mjs
-packages/vimma-core/test/blocks.test.mjs
 packages/vimma-core/test/bookmarks-toolbar.test.mjs
 packages/vimma-core/test/bookmarks.test.mjs
 packages/vimma-core/test/budget.mjs
@@ -16,7 +14,6 @@ packages/vimma-core/test/control.test.mjs
 packages/vimma-core/test/ctl-version.test.mjs
 packages/vimma-core/test/default-browser.test.mjs
 packages/vimma-core/test/downloads.test.mjs
-packages/vimma-core/test/find.test.mjs
 packages/vimma-core/test/firefox-keys.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
@@ -31,13 +28,8 @@ packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
 packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
-packages/vimma-core/test/grep.test.mjs
 packages/vimma-core/test/guide-agent-examples.test.mjs
 packages/vimma-core/test/help.test.mjs
-packages/vimma-core/test/hints.test.mjs
-packages/vimma-core/test/motions.test.mjs
-packages/vimma-core/test/pageurl.test.mjs
-packages/vimma-core/test/pdf.test.mjs
 packages/vimma-core/test/pdfoutline.test.mjs
 packages/vimma-core/test/picker.test.mjs
 packages/vimma-core/test/popups.test.mjs
