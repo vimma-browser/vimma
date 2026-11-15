@@ -46,7 +46,11 @@ function fill(id, ...body) {
   section.replaceChildren(/** @type {Element} */ (section.firstElementChild), ...body);
 }
 
-const win = /** @type {BrowserWindow} */ (window.browsingContext.topChromeWindow);
+// about:vimma loads in the parent process (AboutVimma's module does not ask for a content one),
+// where every context is canonical.
+const win = /** @type {BrowserWindow} */ (
+  /** @type {CanonicalBrowsingContext} */ (window.browsingContext).topChromeWindow
+);
 
 /** What each install type is called on the page (docs/specs/m6a-updater.md §3). */
 const INSTALL_TYPES = /** @type {Record<string, string>} */ ({

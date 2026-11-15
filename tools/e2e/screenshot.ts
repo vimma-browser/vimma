@@ -1,5 +1,5 @@
 // Screenshots for e2e scenarios (spec m0-e2e-harness): capture from the harness's Xvfb, compare
-// with tests/e2e/baselines/<name>.png at plan §4's 0.5 % tolerance, write the actual and a diff
+// with tests/e2e/baselines/<name>.png at a 0.5 % tolerance, write the actual and a diff
 // image on a mismatch. Baselines change only with --update-baselines and a commit body saying why.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +8,7 @@ import { decodePng, encodePng } from "./png.ts";
 import { decodeXwd } from "./xwd.ts";
 import type { Image } from "./png.ts";
 
-/** Plan §4: screenshot diffs with 0.5 % tolerance (share of pixels that may differ). */
+/** Screenshot diffs with 0.5 % tolerance (share of pixels that may differ). */
 export const MAX_DIFF_RATIO = 0.005;
 /** A pixel differs when any RGBA channel differs by more than this (absorbs rounding). */
 export const CHANNEL_TOLERANCE = 2;

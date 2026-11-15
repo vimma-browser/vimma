@@ -67,7 +67,7 @@ describe("the commitlint CLI", () => {
   const run = (input: string) =>
     spawnSync(process.execPath, [cliPath], { cwd: root, input, encoding: "utf8" });
 
-  it("finds commitlint.config.mjs and exits 1 on a bodyless feat", () => {
+  it("finds commitlint.config.ts and exits 1 on a bodyless feat", () => {
     const bad = run("feat: x\n");
     expect(bad.status, bad.stdout + bad.stderr).toBe(1);
     expect(bad.stdout + bad.stderr).toMatch(/body-required-for-types/);

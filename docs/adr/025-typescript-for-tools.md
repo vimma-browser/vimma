@@ -68,11 +68,23 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 6. JavaScript with JSDoc stays, as ADR-004 decided, for everything Firefox loads
    (`src/browser/base/content/vimma/`) and for `packages/vimma-core`, which `npm run sync-core`
    copies into the browser unbuilt. A test fails when a `.ts` file is tracked outside `tools/`.
+   (Since changed: two repository-root configs are TypeScript too, and the test names them.
+   `vitest.config.ts` is bundled by Vite and `commitlint.config.ts` is loaded through jiti, a
+   dependency of `@commitlint/load`, so neither needs Node's type stripping; `tools/tsconfig.json`
+   type-checks both and eslint lints them as it lints `tools/`. `eslint.config.mjs` stays: eslint
+   10 loads a TypeScript config only through jiti, which it lists as an optional peer the
+   repository does not declare, or behind its `unstable_native_nodejs_ts_config` flag, which every
+   command and editor would have to pass. `stryker.config.mjs` stays: Stryker 10 finds and reads
+   only `.json`, `.js`, `.mjs` and `.cjs` configs.)
 7. One exception inside `tools/`: the hooks of `tools/claude-plugin` stay `.mjs`. Claude Code and
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
    does not block, so the guard would stop guarding without a word. The plugin moves only with a
-   plan that fails closed on such a Node, after a security review.
+   plan that fails closed on such a Node, after a security review. (Since changed: the exception
+   now applies to the hooks only, `tools/claude-plugin/hooks/`. The plugin's tests are `.ts`: only
+   Vitest runs them, on the Node `.nvmrc` pins, and they still spawn the `.mjs` hooks.
+   `tools/test/mjs-ratchet.test.ts` fails on a file under `hooks/` that is not `.mjs` or
+   `hooks.json`.)
    A second exception: the guards that workflows run from the base branch, `tools/ci/docs-only.mjs`
    and `tools/ci/key-guard.mjs`, and key-guard's test, which the guard's `GUARD_PATHS` names, stay
    `.mjs`. They judge a pull request inside its checkout, so they run on the runner image's own

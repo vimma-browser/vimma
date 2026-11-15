@@ -301,7 +301,8 @@ describe("parseConfig: errors carry line numbers", () => {
   });
 
   test("an error on an alias names the alias the user wrote, at its line", () => {
-    // plan §2 writes prev_workspace; compileKeymap reports the canonical previous_workspace
+    // prev_workspace is an alias (spec m0-core-dispatcher); compileKeymap's canonical name is
+    // previous_workspace
     const e = oneError(toml("schema = 1", "", "[keys]", 'prev_workspace = ["prefix+n"]'));
     expect(e).toMatchObject({ line: 4, path: "keys.prev_workspace" });
     expect(e.message).not.toMatch(/previous_workspace/);
