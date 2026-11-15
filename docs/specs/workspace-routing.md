@@ -274,18 +274,17 @@ WindowWorkspaces: TabOpen/TabSelect (switch or notice), location changes (hint)
   (`[[routes]]` located), subdomains and label boundaries, `*.` globs, IDN both ways, ports, IP
   literals, `about:`/`file:` only by `url`, app tokens, precedence by file order, skipped unknown
   workspaces, `appendRouteText`'s refusals.
-- Mochitests (`browser_vimma_workspace_routes.js`): the URL bar and `:open` route to another
-  workspace (foreground: switch, no "opened in"; the blank tab closed); a background open says
-  where and does not switch; `:open` in the target workspace stays in the tab (no loop, no new
-  tab); a page's scripted ctrl- and middle-click (through ClickHandler), `target=_blank`,
-  `window.open` and a page's `openLinkIn` stay in the page's container, also in no container;
-  a redirect inside a tab stays; an explicit container stays;
-  same-tab navigation stays and hints, `:route move` moves; an external link through the
-  command-line path with `-vimma-from` (app rule) and without (domain rule); an invalid app name
-  is ignored even by a rule naming exactly it; a new window's first tab with `VIMMA_FROM`, not
-  a later one, and none after a private first window; private windows never routed;
-  `:route add` appends and the rule applies; `:route` and about:vimma list the rules and the
-  match.
+- Mochitests (`browser_vimma_workspace_routes.js`, split into `_external.js` and `_windows.js`,
+  #1089): the URL bar and `:open` route to another workspace (foreground: switch, no "opened in";
+  the blank tab closed); a background open says where and does not switch; `:open` in the target
+  workspace stays in the tab (no loop, no new tab); a page's scripted ctrl- and middle-click
+  (through ClickHandler), `target=_blank`, `window.open` and a page's `openLinkIn` stay in the
+  page's container, also in no container; a redirect inside a tab stays; an explicit container
+  stays; same-tab navigation stays and hints, `:route move` moves; an external link through the
+  command-line path with `-vimma-from` (app rule) and without (domain rule); an invalid app name is
+  ignored even by a rule naming exactly it; a new window's first tab with `VIMMA_FROM`, not a later
+  one, and none after a private first window; private windows never routed; `:route add` appends and
+  the rule applies; `:route` and about:vimma list the rules and the match.
 - Shell (`tools/package/test/vimma-open.test.mjs`): fake `/proc` trees: xdg-open → slack,
   sh → xdg-open → nvim, gio, a portal (unknown), systemd (unknown), the AppImage runtime, a bad
   name, a name with a newline, a loop, flags passed through, a single flag refused, an
