@@ -254,8 +254,6 @@ interface Window {
 
 // engine/browser/components/tabbrowser/Tabbrowser.sys.mjs
 interface Tabbrowser {
-  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
-  readonly _switcher: AsyncTabSwitcher | null;
   readonly splitViews: MozTabSplitViewWrapper[];
   pinTab(tab: MozTabbrowserTab, options?: { metricsContext?: unknown }): void;
   discardBrowser(tab: MozTabbrowserTab, forceDiscard?: boolean): boolean;
@@ -542,14 +540,6 @@ interface XULElement extends Element, ElementCSSInlineStyle {
   hidden: boolean;
   doCommand(): void;
   focus(options?: FocusOptions): void;
-}
-// engine/browser/components/tabbrowser/AsyncTabSwitcher.sys.mjs: a tab switch in progress, which
-// shows the requested tab once its layers are ready.
-interface AsyncTabSwitcher {
-  /** The tab whose layers it waits for, null while it waits for none. */
-  readonly loadingTab: MozTabbrowserTab | null;
-  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
-  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
 }
 // engine/browser/components/tabbrowser/content/tabsplitview.mjs: the wrapper is a XUL element
 // (MozXULElement).

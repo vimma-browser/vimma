@@ -26,7 +26,7 @@ import {
   AGENT_LOOKS,
 } from "../src/workspaces/workspacedefs.mjs";
 
-const fixture = (/** @type {string} */ name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`../../../tests/contract/workspaces/v1/${name}`, import.meta.url), "utf8");
 
 /** A deterministic id minter: ws-1, ws-2, … */
@@ -35,22 +35,23 @@ function minter() {
   return () => `ws-${++n}`;
 }
 
-/** @param {() => unknown} fn */
-function defsError(fn) {
+function defsError(fn: () => unknown) {
   try {
     fn();
   } catch (e) {
     expect(e).toBeInstanceOf(DefinitionsError);
-    return /** @type {DefinitionsError} */ (e);
+    return e as DefinitionsError;
   }
   throw new Error("expected a DefinitionsError");
 }
 
-/**
- * @param {string} name
- * @param {Partial<{ color: string, icon: string, home: string }>} [o]
- */
-const cfg = (name, o = {}) => ({ name, color: "gray", icon: "circle", autofill: true, ...o });
+const cfg = (name: string, o: Partial<{ color: string; icon: string; home: string }> = {}) => ({
+  name,
+  color: "gray",
+  icon: "circle",
+  autofill: true,
+  ...o,
+});
 
 describe("contract fixtures, schema v1", () => {
   test("valid.json reads and stays as written", () => {
@@ -310,7 +311,7 @@ describe("planContainers", () => {
   ];
 
   test("adopts by stored id and name, updates drifted looks, creates for missing or reused", () => {
-    expect(planContainers(/** @type {any} */ (defs), identities)).toEqual({
+    expect(planContainers(defs as any, identities)).toEqual({
       adopt: ["a", "b"],
       update: ["b"],
       create: ["c", "d"],
@@ -332,7 +333,7 @@ describe("planContainers", () => {
         },
       ],
     };
-    expect(planContainers(/** @type {any} */ (d), identities).create).toEqual(["p"]);
+    expect(planContainers(d as any, identities).create).toEqual(["p"]);
   });
 });
 
@@ -421,13 +422,13 @@ describe("workspace lifecycle", () => {
 
   test("the close question says what goes: data for runtime ones, tabs only for config", () => {
     const [work, shop] = twoKinds().workspaces;
-    expect(closeWorkspaceQuestion(/** @type {any} */ (shop), 4)).toBe(
+    expect(closeWorkspaceQuestion(shop as any, 4)).toBe(
       'Close "shop" (4 tabs) and delete its cookies and site data? y/N',
     );
-    expect(closeWorkspaceQuestion(/** @type {any} */ (shop), 1)).toBe(
+    expect(closeWorkspaceQuestion(shop as any, 1)).toBe(
       'Close "shop" (1 tab) and delete its cookies and site data? y/N',
     );
-    expect(closeWorkspaceQuestion(/** @type {any} */ (work), 2)).toBe(
+    expect(closeWorkspaceQuestion(work as any, 2)).toBe(
       'Close the 2 tabs of "work"? It stays, as it is in config.toml. y/N',
     );
   });
@@ -488,7 +489,7 @@ describe("bookmarksFolder", () => {
     const linked = withBookmarksFolder(base(), "ws-1", "abcdefghijkl");
     expect(readDefinitions(JSON.stringify(linked))).toEqual(linked);
     const bad = structuredClone(linked);
-    /** @type {any} */ (bad.workspaces[0]).bookmarksFolder = 12;
+    (bad.workspaces[0] as any).bookmarksFolder = 12;
     expect(defsError(() => readDefinitions(bad)).path).toBe("workspaces[0].bookmarksFolder");
   });
 
@@ -532,8 +533,7 @@ describe("deleteBookmarksQuestion", () => {
 // reconcile ensures it, last.
 describe("the agent workspace", () => {
   const agent = { agent: "agent" };
-  const names = (/** @type {{ workspaces: { name: string }[] }} */ d) =>
-    d.workspaces.map((w) => w.name);
+  const names = (d: { workspaces: { name: string }[] }) => d.workspaces.map((w) => w.name);
 
   test("an empty file gives main, then agent (cyan, fingerprint, runtime); created names it", () => {
     const r = reconcileDefinitions(emptyDefinitions(), [], minter(), agent);
@@ -640,11 +640,11 @@ describe("the agent workspace", () => {
 
   test("its close question says it stays with its logins; its move question warns", () => {
     const d = reconcileDefinitions(emptyDefinitions(), [], minter(), agent).definitions;
-    const a = /** @type {any} */ (d.workspaces[1]);
+    const a = d.workspaces[1] as any;
     expect(closeWorkspaceQuestion(a, 2, agent)).toBe(
       'Close the 2 tabs of "agent"? It stays, with its cookies and logins (:mcp forget clears them). y/N',
     );
-    expect(closeWorkspaceQuestion(/** @type {any} */ (d.workspaces[0]), 2, agent)).toBe(
+    expect(closeWorkspaceQuestion(d.workspaces[0] as any, 2, agent)).toBe(
       'Close "main" (2 tabs) and delete its cookies and site data? y/N',
     );
     expect(moveTabQuestion("agent", agent)).toBe(

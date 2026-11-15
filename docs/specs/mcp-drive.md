@@ -105,7 +105,8 @@ The user is asked once, for minutes, and after that nothing confines what the ke
   command asks through `AgentGate.request` (`ask`, `:195-209`), then checks that the tab and URL
   are still as asked (`stillAsAsked`, `:215-228`; vimma-mcp decision 19). `agent-open` loads with
   a null principal in the agent container (`:184-186`, `:429-456`) and takes one slot of the
-  per-connection open rate (`:426-428`).
+  per-connection open rate (`:426-428`). (Since changed: the tab model, `stillAsAsked` and
+  `agentPrincipal` are in `ctl/agent-tabs.mjs`, issue #1108.)
 - **Agent pages** (`ctl/AgentPages.sys.mjs:5-21`): pages in the agent container get no
   permission prompt, no pop-up (`SANDBOXED_AUXILIARY_NAVIGATION`, `:34-39`), no external app,
   and their downloads are asked and quarantined (vimma-mcp decisions 30, 31). They apply to any

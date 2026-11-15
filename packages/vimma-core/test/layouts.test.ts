@@ -37,32 +37,24 @@ import { parseKey } from "../src/keys/keys.mjs";
 import { createWorkspaces } from "../src/workspaces/workspaces.mjs";
 import { readSnapshot, toSnapshot } from "../src/workspaces/snapshot.mjs";
 
-/**
- * The workspace state a snapshot restores to, without its tab renames.
- * @param {unknown} input
- * @param {Parameters<typeof readSnapshot>[1]} [options]
- */
-const stateOf = (input, options) => readSnapshot(input, options).state;
+/** The workspace state a snapshot restores to, without its tab renames. */
+const stateOf = (input: unknown, options?: Parameters<typeof readSnapshot>[1]) =>
+  readSnapshot(input, options).state;
 
-/** @param {any} node @returns {string} */
-function shape(node) {
+function shape(node: any): string {
   return node.type === "leaf" ? node.pane : `${node.axis}[${node.children.map(shape).join(",")}]`;
 }
 
-/** @param {any} node @returns {number[][]} every split's ratios, depth first */
-function ratios(node) {
+/** Every split's ratios, depth first. */
+function ratios(node: any): number[][] {
   return node.type === "leaf" ? [] : [node.ratios.slice(), ...node.children.flatMap(ratios)];
 }
 
 const WIDE = { x: 0, y: 0, width: 1280, height: 740 };
 const TALL = { x: 0, y: 0, width: 600, height: 1000 };
 
-/**
- * `n` panes p1..pn showing t1..tn side by side, focus on `focus` (default p1).
- * @param {number} n
- * @param {string} [focus]
- */
-function row(n, focus) {
+/** `n` panes p1..pn showing t1..tn side by side, focus on `focus` (default p1). */
+function row(n: number, focus?: string) {
   const s = createRow(Array.from({ length: n }, (_, i) => `t${i + 1}`));
   return focus ? focusPane(s, focus) : s;
 }
@@ -74,11 +66,11 @@ function lShape() {
   return split(s, "p2", "horizontal", "t3");
 }
 
-const close = (/** @type {number[][]} */ got, /** @type {number[][]} */ want) => {
+const close = (got: number[][], want: number[][]) => {
   expect(got.length).toBe(want.length);
   got.forEach((r, i) => {
-    expect(r.length).toBe(/** @type {number[]} */ (want[i]).length);
-    r.forEach((v, j) => expect(v).toBeCloseTo(/** @type {number} */ (want[i]?.[j]), 9));
+    expect(r.length).toBe((want[i] as number[]).length);
+    r.forEach((v, j) => expect(v).toBeCloseTo(want[i]?.[j] as number, 9));
   });
 };
 
@@ -102,7 +94,7 @@ describe("LAYOUTS and cycling", () => {
     expect(nextLayout("even-horizontal")).toBe("even-vertical");
     expect(nextLayout("tiled")).toBe("dwindle");
     expect(nextLayout("dwindle")).toBe("even-horizontal");
-    expect(nextLayout(/** @type {any} */ ("bogus"))).toBe("even-horizontal");
+    expect(nextLayout("bogus" as any)).toBe("even-horizontal");
   });
 
   test("isLayoutName", () => {
@@ -213,7 +205,7 @@ describe("arrange: the trees", () => {
   });
 
   test("an unknown name throws", () => {
-    expect(() => arrange(row(2), /** @type {any} */ ("grid"))).toThrow(/layout/);
+    expect(() => arrange(row(2), "grid" as any)).toThrow(/layout/);
   });
 
   test("a bad mainSize throws", () => {
@@ -226,8 +218,7 @@ describe("arrange: focus, zoom, mru, tabs", () => {
   test.each(LAYOUTS)("%s keeps every pane with its tab, the focus and the MRU order", (name) => {
     const s = focusPane(lShape(), "p1");
     const t = arrange(s, name);
-    const tabs = (/** @type {any} */ x) =>
-      Object.fromEntries(leaves(x).map((l) => [l.pane, l.tab]));
+    const tabs = (x: any) => Object.fromEntries(leaves(x).map((l) => [l.pane, l.tab]));
     expect(tabs(t)).toEqual(tabs(s));
     expect(t.focus).toBe("p1");
     expect(t.mru).toEqual(s.mru);
@@ -269,10 +260,8 @@ describe("arrange: round trips", () => {
   test("cycling: six presses come back to even-horizontal, and every later round is the same", () => {
     for (const n of [2, 3, 4]) {
       let s = row(n, "p2");
-      /** @param {any} t */
-      const round = (t) => {
-        /** @type {string[]} */
-        const seen = [];
+      const round = (t: any) => {
+        const seen: string[] = [];
         for (let i = 0; i < LAYOUTS.length; i++) {
           t = arrange(t, nextLayout(t.layout), { area: WIDE });
           seen.push(`${t.layout} ${shape(t.root)}`);
@@ -313,12 +302,12 @@ describe("arrange: round trips", () => {
   test("a preset's tree survives the snapshot, with its name", () => {
     const s = arrange(row(4, "p2"), "main-vertical");
     let ws = createWorkspaces([{ name: "a", container: "c1" }]);
-    const w = /** @type {any} */ (ws.workspaces[0]);
+    const w = ws.workspaces[0] as any;
     ws = {
       ...ws,
       workspaces: [{ ...w, tabs: ["t1", "t2", "t3", "t4"], activeTab: "t2", panes: s }],
     };
-    const back = /** @type {any} */ (stateOf(JSON.stringify(toSnapshot(/** @type {any} */ (ws)))));
+    const back = stateOf(JSON.stringify(toSnapshot(ws as any))) as any;
     const p = back.workspaces[0].panes;
     expect(shape(p.root)).toBe(shape(s.root));
     expect(p.layout).toBe("main-vertical");
@@ -363,8 +352,7 @@ describe("dwindleDirection", () => {
 
   test("ctrl+b enter from 1 to 4 panes spirals: side by side, stacked, side by side", () => {
     let s = createPanes("t1");
-    /** @type {string[]} */
-    const dirs = [];
+    const dirs: string[] = [];
     for (let i = 2; i <= 4; i++) {
       const d = dwindleDirection(s, WIDE);
       dirs.push(d);
@@ -384,7 +372,7 @@ describe("dwindleDirection", () => {
 describe("property: any tree, any preset", () => {
   const opArb = fc.record({
     pick: fc.nat(),
-    dir: fc.constantFrom(/** @type {const} */ ("vertical"), /** @type {const} */ ("horizontal")),
+    dir: fc.constantFrom("vertical" as const, "horizontal" as const),
   });
 
   test("same leaves, canonical, focus kept, and the snapshot reads it back", () => {
@@ -398,7 +386,7 @@ describe("property: any tree, any preset", () => {
           let n = 1;
           for (const op of ops) {
             const ls = leaves(s);
-            const target = /** @type {any} */ (ls[op.pick % ls.length]).pane;
+            const target = (ls[op.pick % ls.length] as any).pane;
             const next = split(s, target, op.dir, `t${n + 1}`, { max: 16 });
             if (next !== s) n++;
             s = next;
@@ -420,14 +408,14 @@ describe("property: any tree, any preset", () => {
           expect(t.focus).toBe(s.focus);
           const tabs = leaves(t).map((l) => l.tab);
           const ws = createWorkspaces([{ name: "a", container: "c1" }]);
-          const w = /** @type {any} */ (ws.workspaces[0]);
+          const w = ws.workspaces[0] as any;
           const focusTab = leaves(t).find((l) => l.pane === t.focus)?.tab;
           const doc = {
             ...ws,
             workspaces: [{ ...w, tabs, activeTab: focusTab, panes: t }],
           };
           // readSnapshot checks canonical form, ratios summing to 1, unique panes and tabs
-          const back = /** @type {any} */ (stateOf(toSnapshot(/** @type {any} */ (doc))));
+          const back = stateOf(toSnapshot(doc as any)) as any;
           expect(shape(back.workspaces[0].panes.root)).toBe(shape(t.root));
           for (const r of ratios(t.root)) for (const v of r) expect(v).toBeGreaterThan(0.0999);
         },
@@ -437,15 +425,15 @@ describe("property: any tree, any preset", () => {
 });
 
 describe("actions, keys and :layout", () => {
-  /** @param {string} keys space-separated chords, in normal mode */
-  const dispatched = (keys) => {
+  /** `keys`: space-separated chords, in normal mode. */
+  const dispatched = (keys: string) => {
     const d = createDispatcher(compileKeymap());
     return keys
       .split(" ")
       .map((k) => d.dispatch("normal", parseKey(k)))
       .at(-1);
   };
-  const act = (/** @type {string} */ id) => ({ kind: "action", action: { id } });
+  const act = (id: string) => ({ kind: "action", action: { id } });
 
   test("ctrl+b enter is a new pane, ctrl+b space the next layout", () => {
     expect(dispatched("ctrl+b enter")).toEqual(act("pane.new"));
@@ -497,8 +485,7 @@ describe("actions, keys and :layout", () => {
   });
 
   test("Tab completes the six preset names after :layout, without the host's help", () => {
-    const values = (/** @type {string} */ line) =>
-      completeCommandLine(line).candidates.map((c) => c.value);
+    const values = (line: string) => completeCommandLine(line).candidates.map((c) => c.value);
     expect(values(":layout ")).toEqual(LAYOUTS.map((n) => `layout ${n}`));
     expect(values(":layout main")).toEqual(["layout main-vertical", "layout main-horizontal"]);
     expect(values(":layout til")[0]).toBe("layout tiled");
@@ -512,10 +499,10 @@ describe("actions, keys and :layout", () => {
 
 // docs/specs/m4-side-panel-multiselect.md: the side panel's marked tabs shown together.
 describe("showTogether", () => {
-  /** @param {any} node @returns {string} the tree with each leaf's tab */
-  const tabsOf = (node) =>
+  /** The tree with each leaf's tab. */
+  const tabsOf = (node: any): string =>
     node.type === "leaf" ? node.tab : `${node.axis}[${node.children.map(tabsOf).join(",")}]`;
-  const focusTab = (/** @type {any} */ s) => leaves(s).find((l) => l.pane === s.focus)?.tab;
+  const focusTab = (s: any) => leaves(s).find((l) => l.pane === s.focus)?.tab;
 
   test.each([
     [["a", "b"], "x[a,b]"],
@@ -589,12 +576,12 @@ describe("showTogether", () => {
     expect(new Set(leaves(s).map((l) => l.pane)).size).toBe(4);
     expect(s.next).toBeGreaterThan(4);
     let ws = createWorkspaces([{ name: "w", container: "1" }]);
-    const w = /** @type {any} */ (ws.workspaces[0]);
+    const w = ws.workspaces[0] as any;
     ws = {
       ...ws,
       workspaces: [{ ...w, tabs: ["a", "b", "c", "d"], activeTab: "a", panes: s }],
     };
-    const back = /** @type {any} */ (stateOf(toSnapshot(ws)).workspaces[0]).panes;
+    const back = (stateOf(toSnapshot(ws)).workspaces[0] as any).panes;
     expect(back.layout).toBe("main-horizontal");
     expect(tabsOf(back.root)).toBe(tabsOf(s.root));
   });
@@ -608,10 +595,10 @@ describe("showTogether", () => {
 
 // docs/specs/side-panel-unsplit.md decision 15: removals keep the shape, an addition re-arranges.
 describe("repane", () => {
-  /** @param {any} node @returns {string} the tree with each leaf's tab */
-  const tabsOf = (node) =>
+  /** The tree with each leaf's tab. */
+  const tabsOf = (node: any): string =>
     node.type === "leaf" ? node.tab : `${node.axis}[${node.children.map(tabsOf).join(",")}]`;
-  const focusTab = (/** @type {any} */ s) => leaves(s).find((l) => l.pane === s.focus)?.tab;
+  const focusTab = (s: any) => leaves(s).find((l) => l.pane === s.focus)?.tab;
   /** A dwindle of t1..t4, resized by hand, layout "dwindle" stored, focus on t2's pane. */
   const resized = () => {
     let s = arrange(row(4), "dwindle", { area: WIDE });
@@ -643,7 +630,7 @@ describe("repane", () => {
   });
 
   test("an added tab re-arranges the whole set, as showTogether", () => {
-    const options = { focus: "t2", area: WIDE, mode: /** @type {const} */ ("dwindle") };
+    const options = { focus: "t2", area: WIDE, mode: "dwindle" as const };
     const s = repane(resized(), ["t1", "t2", "t5"], options);
     const want = showTogether(["t1", "t2", "t5"], { ...options, preset: "dwindle" });
     expect(tabsOf(s.root)).toBe(tabsOf(want.root));

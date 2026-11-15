@@ -300,7 +300,7 @@ export class WindowWorkspacesImpl {
       view.onChange = () => this.#scheduleSave();
       // Decision 14: only the shown workspace's tabs go into its panes; another workspace's tab
       // switches (#onSelect), and a switch or restore selects tabs of its own.
-      view.accepts = (/** @type {any} */ tab) => {
+      view.accepts = (tab) => {
         const model = this.#model;
         if (!model || this.#switching || this.#pending) return false;
         return workspaceOfTab(model, this.#idOf(tab))?.id === model.active;
@@ -308,7 +308,7 @@ export class WindowWorkspacesImpl {
       // Splits made outside Vimma (M4 sub-spec 6): adopted into the workspace their tabs are in,
       // unsplit with a notice when those are several (decision 14).
       view.adoption = {
-        workspaceOf: (/** @type {any} */ tab) => {
+        workspaceOf: (tab) => {
           const model = this.#model;
           return model ? workspaceOfTab(model, this.#idOf(tab))?.id : undefined;
         },
@@ -463,7 +463,7 @@ export class WindowWorkspacesImpl {
     const view = PaneViews.get(this.#win);
     // Out of the split first: closing its pane keeps its tab (pane.close); a split Vimma has
     // not adopted is undone.
-    view?.release(/** @type {any} */ (tab));
+    view?.release(tab);
     if (tab.splitview) tab.splitview.unsplitTabs();
     if (from.id === model.active && from.tabs.length === 1) {
       this.#openHome(from.id, Number(from.container));

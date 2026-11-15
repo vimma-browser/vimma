@@ -64,7 +64,7 @@ registerCleanupFunction(async () => {
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = (/** @type {BrowserWindow} */ win = window) =>
   win.gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = (/** @type {BrowserWindow} */ win = window) =>
   /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(win));
 const activeName = (/** @type {BrowserWindow} */ win = window) =>

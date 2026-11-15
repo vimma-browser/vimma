@@ -30,6 +30,7 @@ const buildJob = (name: string): string => {
 
 const SURFER = "@zen-browser/surfer";
 
+// supply-chain-guard: fixtures
 /**
  * Every package runner in a workflow that could fetch a package it does not find locally. npx
  * and npm exec are allowed only as `--no --`; pnpm dlx, yarn dlx and bunx always fetch.
@@ -48,6 +49,7 @@ function fetchingRunners(text: string): string[] {
   }
   return out;
 }
+// supply-chain-guard: end
 
 /**
  * Runs dependabot-automerge.yml's "Decide" step as GitHub would, with the given metadata.
@@ -123,6 +125,7 @@ describe("build supply chain: npm", () => {
     }
   });
 
+  // supply-chain-guard: fixtures
   it("no workflow lets npx fetch a package", () => {
     const dir = new URL(".github/workflows/", root);
     for (const name of readdirSync(dir)) {
@@ -156,6 +159,7 @@ describe("build supply chain: npm", () => {
     expect(npx(["--no", "--", "tsc", "--version"])).toMatch(/^Version \d/);
     expect(npx(["--no", "tsc", "--version"])).not.toMatch(/^Version \d/);
   });
+  // supply-chain-guard: end
 
   it("surfer.json lists no add-ons", () => {
     // Surfer downloads add-ons from addons.mozilla.org or GitHub with no hash check (spec, R3).
