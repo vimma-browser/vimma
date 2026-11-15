@@ -202,10 +202,10 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   that always ask (M11, M13, M19, M28, M33); another connection's grant **never** covers it. A
   waiting call a grant releases **must** be logged as run under the grant, and the grant's
   notice **must** count it, since the user never saw it asked.
-  [`test_one_grant_covers_every_tool_of_its_connection`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_one_grant_covers_every_tool_of_its_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`a grant covers every tool of its connection, not another connection's`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`a grant lets the connection's queued calls of every tool run, not an always-ask one`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`test_queued_calls_a_grant_releases_show_as_granted`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_queued_calls_a_grant_releases_show_as_granted`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`an_agents_question_reaches_the_user_and_the_answer_reaches_the_agent`](../../tests/browser/browser_vimma_security_invariants.js)
 - M62. The agent gate **must** keep its own frozen copy of what a caller hands it (a
   connection's label, a request's `what`), taken when it is handed in, and hand out only frozen
@@ -260,12 +260,12 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   rate before its question as well as after it, so an open over the rate is never asked (issue
   #693); opens asked at once for the last slot can still be refused after a yes, since only the
   count after the question takes the slot.
-  [`test_denials_timeouts_queue_and_mute`](../../tests/browser/browser_vimma_mcp_agent.js),
-  [`test_a_used_up_open_rate_refuses_before_asking`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_denials_timeouts_queue_and_mute`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
+  [`test_a_used_up_open_rate_refuses_before_asking`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`two connections sending 5 each: 4 of each wait in order, the 5th of each is busy`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`three denials in a row mute a connection for 60 s, without asking`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`no sequence of events breaks the queue's limits or resolves a request twice`](../../packages/vimma-core/test/fuzz/agent.fuzz.test.mjs),
-  [`test_grants_cannot_flood`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_grants_cannot_flood`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`at most OPEN_RATE.max opens per connection in any OPEN_RATE.ms window`](../../packages/vimma-core/test/agent-gate.test.mjs)
 - M4. The question **never** opens by itself while you type, are in a field, or have another
   prompt open, never takes focus, is armed only after `security.dialog_enable_delay` (1 s), a
@@ -310,12 +310,12 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`revoke ends a parked grant too`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`turning MCP off ends the parked grants and those of the open connections`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`agent-hello: a session id of 32 to 128 lowercase hex characters`](../../packages/vimma-core/test/control-v2.test.mjs),
-  [`test_a_reconnect_of_the_same_session_keeps_its_grant`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_a_reconnect_of_the_same_session_keeps_its_grant`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`grant_minutes 0: a bare a lasts the whole connection, a count is still minutes`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`grants end on revoke and on disconnect, and are listed shortest first`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`a connection holds at most one grant`](../../packages/vimma-core/test/agent-gate.test.mjs),
   [`the length: a count, or the default for a bare a, capped at grant_max_minutes`](../../packages/vimma-core/test/agent-gate.test.mjs),
-  [`test_one_grant_covers_every_tool_of_its_connection`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_one_grant_covers_every_tool_of_its_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_a_count_and_a_grant_minutes_shown_in_the_status_bar`](../../tests/browser/browser_vimma_mcp_prompt.js),
   [`test_agent_role_has_its_own_switch`](../../tests/browser/browser_vimma_mcp_agent.js)
 - M6. `agent-open` **must** load only http and https, in the agent container, never routed and
@@ -441,7 +441,7 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   [`decoders_never_panic_and_accept_only_the_schema`](../../tools/vimma-ctl/tests/protocol_props.rs)
 - M14. `agent-cancel` (MCP's `notifications/cancelled`) **must** withdraw only a question its own
   connection is still waiting on, and **never** asks or counts towards the connection's limit
-  of 4 requests at once. [`test_agent_cancel_withdraws_one_waiting_question`](../../tests/browser/browser_vimma_mcp_agent.js),
+  of 4 requests at once. [`test_agent_cancel_withdraws_one_waiting_question`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`a_cancelled_call_withdraws_its_question_and_gets_no_response`](../../tools/vimma-ctl/tests/mcp.rs)
 - M15. `vimma-ctl mcp` **must** connect only with the `agent` role, take the token only from the
   discovery file, and refuse a tool's bad arguments (a non-http(s) URL, a URL over 65,536
@@ -1230,6 +1230,6 @@ the page's own and can carry tokens it put there; they come only from the agent'
   so an older or a lying client gets every check any other gets. A `ctl` that is not a Vimma
   version **must** be refused with the rest of the hello. The discovery file's `version` is
   Vimma's own version, which the `welcome` gives any client anyway.
-  [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_an_older_vimma_ctl_gets_a_notice_and_still_works`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`says older for a client that names no version: it predates the check`](../../packages/vimma-core/test/ctl-version.test.mjs),
   [`is optional, and refused with the whole hello when it is not a version`](../../packages/vimma-core/test/ctl-version.test.mjs)
