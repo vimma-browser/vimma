@@ -10,9 +10,10 @@ import { describe, expect, it } from "vitest";
 // ADR-025 decision 1: new Node code under tools/ is TypeScript, and the .mjs files there move to
 // .ts area by area (#946). mjs-allowlist.txt lists the .mjs files still waiting: a new .mjs, .js
 // or .cjs file fails here, and so does a listed file that is gone, so each move takes its files
-// off the list. Outside the rule: tools/claude-plugin and the guards workflows run from the base
-// branch (BASE_GUARDS), which stay .mjs (decision 7), and a script a browser page loads, which is a
-// .js file in a fixtures/ folder.
+// off the list. Outside the rule: the hooks of tools/claude-plugin and the guards workflows run
+// from the base branch (BASE_GUARDS), which stay .mjs (decision 7), and a script a browser page
+// loads, which is a .js file in a fixtures/ folder. The plugin's tests are inside the rule: only
+// Vitest runs them, on the engines' Node.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const LIST = new URL("mjs-allowlist.txt", import.meta.url);
 
@@ -37,10 +38,23 @@ const BASE_GUARDS = [
 
 /** Whether a tracked path is JavaScript that Node runs under tools/, which the rule covers. */
 function nodeJavaScript(p: string): boolean {
-  if (!p.startsWith("tools/") || p.startsWith("tools/claude-plugin/")) return false;
+  if (!p.startsWith("tools/") || p.startsWith("tools/claude-plugin/hooks/")) return false;
   if (BASE_GUARDS.includes(p)) return false;
   if (p.endsWith(".js") && p.includes("/fixtures/")) return false; // a script a page loads
   return /\.(?:mjs|cjs|js)$/.test(p);
+}
+
+const NOT_MJS = "is a hook file that is not .mjs: hooks stay .mjs (ADR-025, decision 7)";
+
+/**
+ * The plugin's hooks run on each contributor's own Node, where a .ts file fails open (decision 7):
+ * everything under hooks/ is .mjs, but for hooks.json, which tells Claude Code what to run.
+ */
+function hookErrors(tracked: string[]): string[] {
+  return tracked
+    .filter((p) => p.startsWith("tools/claude-plugin/hooks/"))
+    .filter((p) => !p.endsWith(".mjs") && p !== "tools/claude-plugin/hooks/hooks.json")
+    .map((p) => `${p} ${NOT_MJS}`);
 }
 
 /** What breaks the ratchet: Node JavaScript under tools/ off the list, a listed file gone. */
@@ -81,6 +95,38 @@ describe("the .mjs files left under tools/ (ADR-025, #946)", () => {
 
   it("leaves tools/claude-plugin's hooks out: they stay .mjs (decision 7)", () => {
     expect(ratchetErrors(["tools/claude-plugin/hooks/guard.mjs"], [])).toEqual([]);
+  });
+
+  it("sees the plugin's tests: only Vitest runs them, on the engines' Node", () => {
+    expect(ratchetErrors(["tools/claude-plugin/test/plugin.test.mjs"], [])).toEqual([
+      "tools/claude-plugin/test/plugin.test.mjs is new: write it as .ts (ADR-025)",
+    ]);
+  });
+
+  it("fails on a hook file that is not .mjs, but not on hooks.json", () => {
+    expect(
+      hookErrors([
+        "tools/claude-plugin/hooks/lib/x.ts",
+        "tools/claude-plugin/hooks/x.js",
+        "tools/claude-plugin/hooks/hooks.json",
+        "tools/claude-plugin/hooks/lib/guard.mjs",
+        "tools/claude-plugin/test/plugin.test.ts",
+      ]),
+    ).toEqual([
+      `tools/claude-plugin/hooks/lib/x.ts ${NOT_MJS}`,
+      `tools/claude-plugin/hooks/x.js ${NOT_MJS}`,
+    ]);
+  });
+
+  it("finds only .mjs files and hooks.json under tools/claude-plugin/hooks", () => {
+    const tracked = execFileSync("git", ["ls-files", "-z", "--", "tools/claude-plugin/hooks"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    })
+      .split("\0")
+      .filter(Boolean);
+    expect(tracked).toContain("tools/claude-plugin/hooks/hooks.json");
+    expect(hookErrors(tracked)).toEqual([]);
   });
 
   it("leaves the base-branch guards out: they stay .mjs (decision 7)", () => {
