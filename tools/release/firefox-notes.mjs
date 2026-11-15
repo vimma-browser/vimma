@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { FIREFOX, surferVersions } from "../version-files/version-files.ts";
 
-/** Mozilla's advisory page for an ID such as `MFSA 2026-106` (tools/upstream/releases.mjs). */
+/** Mozilla's advisory page for an ID such as `MFSA 2026-106` (tools/upstream/releases.ts). */
 const ADVISORIES = "https://www.mozilla.org/en-US/security/advisories/";
 const MFSA_ID = /^MFSA (\d{4}-\d+)$/;
 

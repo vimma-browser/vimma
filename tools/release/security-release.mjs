@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 export const REPOSITORY = "vimma-browser/vimma";
 export const RELEASE_BRANCH = "release-please--branches--main";
-/** The autopilot's squash subject (tools/upstream/autopilot-body.mjs prTitle). */
+/** The autopilot's squash subject (tools/upstream/autopilot-body.ts prTitle). */
 const BUMP_SUBJECT = /^upstream: firefox (\d+(?:\.\d+)+)(?: |$)/;
 /** release-please's PR title with `include-component-in-tag` off. */
 const RELEASE_TITLE = /^chore\(main\): release \d+\.\d+\.\d+$/;

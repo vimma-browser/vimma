@@ -134,7 +134,7 @@ describe("suiteResults", () => {
   });
 });
 
-describe("node tools/upstream/suite-results.mjs", () => {
+describe("node tools/upstream/suite-results.ts", () => {
   it("writes suite-results.json from the steps context and exits 1 when a suite failed", () => {
     const dir = tempDir("suite-results-");
     writeFileSync(join(dir, "mochitest.tbpl.log"), LOG);
