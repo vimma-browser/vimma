@@ -77,14 +77,14 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`test_one_changed_byte_in_sha512sums_fails_the_signature`](../../tools/upstream/test_verify_sha512.py),
   [`test_missing_signature_or_gpgv_cannot_check_and_exits_two`](../../tools/upstream/test_verify_sha512.py),
   [`test_pinned_key_is_mozillas_primary_with_the_compromised_subkey_revoked`](../../tools/upstream/test_verify_sha512.py),
-  [`a SHA512SUMS without a good signature fails before engine/ is touched`](../../tools/upstream/test/firefox-source.test.mjs),
-  [`the source check fails on a SHA512SUMS whose signature is not good`](../../tools/upstream/test/source-check.test.mjs),
+  [`a SHA512SUMS without a good signature fails before engine/ is touched`](../../tools/upstream/test/firefox-source.test.ts),
+  [`the source check fails on a SHA512SUMS whose signature is not good`](../../tools/upstream/test/source-check.test.ts),
   [`test_a_signed_message_in_place_of_a_detached_signature_fails`](../../tools/upstream/test_verify_sha512.py),
-  [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.mjs),
-  [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.mjs),
+  [`fails a tampered tarball`](../../tools/upstream/test/verify-source.test.ts),
+  [`--require refuses an engine/ never verified, or verified for another version`](../../tools/upstream/test/verify-source.test.ts),
   [`npm run import refuses an engine/ whose source was never verified`](../../tools/test/upstream-workflow.test.ts),
   [`every verify-sha512.py call passes a signature`](../../tools/test/upstream-workflow.test.ts),
-  [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.mjs),
+  [`refuses a surfer.json with a version.candidate, before anything is fetched`](../../tools/upstream/test/firefox-source.test.ts),
   [`fails a changed key file without the label`](../../tools/ci/test/key-guard.test.mjs),
   [`fails a change to any of the guard's own files without the label, and passes it with`](../../tools/ci/test/key-guard.test.mjs),
   [`passes the pull request that first adds the guard to a base without one`](../../tools/ci/test/key-guard.test.mjs),
@@ -96,7 +96,7 @@ of the same commit read it too, so a tree without it could not be released anywa
   same job from the tarball it verified, and **never** restores a tree, an objdir or a compiler
   cache from the Actions cache; a release **must** build in a fresh objdir with an empty
   compiler cache.
-  [`a tarball already on disk is verified again and engine/ is extracted from it afresh`](../../tools/upstream/test/firefox-source.test.mjs),
+  [`a tarball already on disk is verified again and engine/ is extracted from it afresh`](../../tools/upstream/test/firefox-source.test.ts),
   [`no workflow reads or writes engine/.vimma-firefox-version`](../../tools/test/full-build-workflows.test.ts),
   [`the build jobs check out clean and restore nothing from the Actions cache`](../../tools/test/full-build-workflows.test.ts),
   [`a release builds in a fresh objdir with an empty compiler cache`](../../tools/test/full-build-workflows.test.ts)

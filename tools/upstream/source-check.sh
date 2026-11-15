@@ -16,7 +16,7 @@
 # patch applies, the artifact preflight. Writes patch-check.json, patch-check.md and
 # patch-audit.txt in the current directory, and to $GITHUB_OUTPUT (when set) result=ok|fail|norun
 # and, after the preflight, artifacts and artifacts-note. Once the tarball is verified it also
-# writes the pref refresh (upstream-prefs.mjs --write-diff, spec upstream-bump-automation):
+# writes the pref refresh (upstream-prefs.ts --write-diff, spec upstream-bump-automation):
 # prefs-refresh.patch and prefs-refresh.json, and prefs=current|refreshed|unresolved; and the fuzz
 # re-export (reexport.py, sub-PR 3): reexport/reexport.json and the re-exported patches. $GITHUB_STEP_SUMMARY gets the summary.
 #
@@ -75,7 +75,7 @@ case "$status" in
     }
     if [ "$status" -eq 0 ]; then result=ok; else result=fail; fi
     # Only from a verified tarball (G4). An absent file reads as empty: unresolved, not guessed.
-    node "$here/upstream-prefs.mjs" --firefox-js "$scratch/upstream/browser/app/profile/firefox.js" \
+    node "$here/upstream-prefs.ts" --firefox-js "$scratch/upstream/browser/app/profile/firefox.js" \
       --all-js "$scratch/upstream/modules/libpref/init/all.js" \
       --write-diff prefs-refresh.patch --json prefs-refresh.json --github-output "$output"
     # Exit 1 (a failed patch, or a refused re-export) is reported in reexport.json, not here.
@@ -102,5 +102,5 @@ python3 "$here/patch-audit.py" > patch-audit.txt || true
 
 # Are Mozilla's artifacts for this revision indexed (in the tree sourcestamp.txt names)?
 if [ "$result" = ok ]; then
-  node "$here/artifact-preflight.mjs" patch-check.json --github-output "$output"
+  node "$here/artifact-preflight.ts" patch-check.json --github-output "$output"
 fi

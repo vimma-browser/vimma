@@ -8,7 +8,7 @@
  * "Upstream App"; docs/security/10-firefox-updates.md, G14) and stores its client ID and private
  * key where upstream.yml reads them.
  *
- *   node tools/upstream/create-app.mjs [--org vimma-browser] [--repo vimma]
+ *   node tools/upstream/create-app.ts [--org vimma-browser] [--repo vimma]
  *     [--name vimma-upstream-autopilot] [--env upstream-autopilot]
  *
  * Open the printed local address and confirm on GitHub. The private key goes from GitHub's answer
@@ -19,14 +19,14 @@
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 
 /**
- * @param {string} redirectUrl where GitHub sends the browser back with the one-time code
- * @param {string} [name]
+ * @param redirectUrl where GitHub sends the browser back with the one-time code
  */
-export function manifest(redirectUrl, name = "vimma-upstream-autopilot") {
+export function manifest(redirectUrl: string, name = "vimma-upstream-autopilot") {
   return {
     name,
     url: "https://github.com/vimma-browser/vimma",
@@ -39,8 +39,7 @@ export function manifest(redirectUrl, name = "vimma-upstream-autopilot") {
   };
 }
 
-/** @param {string} s */
-function attr(s) {
+function attr(s: string) {
   return s
     .replaceAll("&", "&amp;")
     .replaceAll('"', "&quot;")
@@ -51,11 +50,9 @@ function attr(s) {
 
 /**
  * The page that posts the manifest to GitHub, as the manifest flow requires a form post.
- * @param {object} m the manifest
- * @param {string} state
- * @param {string} org
+ * @param m the manifest
  */
-export function formPage(m, state, org) {
+export function formPage(m: object, state: string, org: string) {
   const action = `https://github.com/organizations/${encodeURIComponent(org)}/settings/apps/new?state=${encodeURIComponent(state)}`;
   return `<!doctype html>
 <meta charset="utf-8">
@@ -69,19 +66,14 @@ export function formPage(m, state, org) {
 
 /**
  * Deployment policies besides the branch main: any of them would let another ref read the key.
- * @param {{ name: string, type: string }[]} list
  */
-export function otherPolicies(list) {
+export function otherPolicies(list: { name: string; type: string }[]) {
   return list
     .filter((p) => !(p.name === "main" && p.type === "branch"))
     .map((p) => `${p.type} ${p.name}`);
 }
 
-/**
- * @param {string[]} args
- * @param {string} [input]
- */
-function gh(args, input) {
+function gh(args: string[], input?: string) {
   return execFileSync("gh", args, {
     input,
     encoding: "utf8",
@@ -91,10 +83,9 @@ function gh(args, input) {
 
 /**
  * The environment the key lives in: deployable only from main, as site-dispatch is.
- * @param {string} nwo owner/repo
- * @param {string} env
+ * @param nwo owner/repo
  */
-function ensureEnvironment(nwo, env) {
+function ensureEnvironment(nwo: string, env: string) {
   gh([
     "api",
     "-X",
@@ -108,8 +99,7 @@ function ensureEnvironment(nwo, env) {
   const policies = JSON.parse(
     gh(["api", `repos/${nwo}/environments/${env}/deployment-branch-policies`]),
   );
-  /** @type {{ name: string, type: string }[]} */
-  const list = policies.branch_policies ?? [];
+  const list: { name: string; type: string }[] = policies.branch_policies ?? [];
   if (!list.some((p) => p.name === "main" && p.type === "branch")) {
     gh([
       "api",
@@ -137,16 +127,16 @@ async function main() {
       env: { type: "string", default: "upstream-autopilot" },
     },
   });
-  const org = /** @type {string} */ (values.org);
+  const org = values.org as string;
   const nwo = `${org}/${values.repo}`;
-  const env = /** @type {string} */ (values.env);
+  const env = values.env as string;
   const state = randomBytes(16).toString("hex");
   // Before the App exists, so a refused environment leaves nothing to clean up.
   ensureEnvironment(nwo, env);
 
   const server = createServer((req, res) => {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
-    const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+    const port = (server.address() as AddressInfo).port;
     if (url.pathname === "/") {
       const m = manifest(`http://127.0.0.1:${port}/callback`, values.name);
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -187,7 +177,7 @@ async function main() {
     server.closeAllConnections();
   });
   server.listen(0, "127.0.0.1", () => {
-    const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
+    const port = (server.address() as AddressInfo).port;
     console.log(`Open http://127.0.0.1:${port}/ and confirm on GitHub.`);
   });
 }

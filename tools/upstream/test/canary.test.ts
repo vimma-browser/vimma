@@ -3,29 +3,31 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
-import { BODY_LIMIT, currentBeta, decide, render, title } from "../canary.mjs";
+import { BODY_LIMIT, currentBeta, decide, render, title } from "../canary.ts";
+import type { Artifact } from "../canary.ts";
 
 // Spec upstream-beta-canary, B1–B7: what the Beta canary tests and what it writes to its issue.
 // The fixtures are real: product-details on 2026-10-14, `tools/upstream/source-check.sh 159.0b1`
 // on main's patches (moz-build.patch fails), and suite-results.json of e2e.yml run 38560795339
 // (159.0b1 with Firefox 158's patch set: 14 sidebar-theme checks and one e2e screenshot).
-/** @param {string} name */
-const fixture = (name) => readFileSync(new URL(`fixtures/canary/${name}`, import.meta.url), "utf8");
+const fixture = (name: string) =>
+  readFileSync(new URL(`fixtures/canary/${name}`, import.meta.url), "utf8");
 const versions159 = fixture("firefox_versions-159.0b1.json");
 const patchCheck = JSON.parse(fixture("patch-check-159.0b1.json"));
 const suites = JSON.parse(fixture("suite-results-159.0b1.json"));
 
-/** @param {Record<string, string>} over */
-const versions = (over) => JSON.stringify({ ...JSON.parse(versions159), ...over });
+const versions = (over: Record<string, string>) =>
+  JSON.stringify({ ...JSON.parse(versions159), ...over });
 const now = new Date("2026-10-14T12:00:00Z");
 const REPO_ID = 1411511592;
 
 /**
  * An artifact as GitHub's Actions API lists it.
- * @param {string} name @param {{ days?: number, branch?: string, id?: number, expired?: boolean,
- *   headRepo?: number }} [o]
  */
-const artifact = (name, o = {}) => ({
+const artifact = (
+  name: string,
+  o: { days?: number; branch?: string; id?: number; expired?: boolean; headRepo?: number } = {},
+) => ({
   id: o.id ?? 1,
   name,
   expired: o.expired ?? false,
@@ -39,14 +41,12 @@ const artifact = (name, o = {}) => ({
 });
 
 /**
- * @param {Record<string, import("../canary.mjs").Artifact[]>} byName artifacts the API returns
- *   for each exact name
+ * @param byName artifacts the API returns for each exact name
  */
-const listing = (byName) => async (/** @type {string} */ name) => byName[name] ?? [];
+const listing = (byName: Record<string, Artifact[]>) => async (name: string) => byName[name] ?? [];
 
 const RUN = "https://github.com/vimma-browser/vimma/actions/runs/1";
-/** @param {Partial<Parameters<typeof render>[0]>} over */
-const renderWith = (over = {}) =>
+const renderWith = (over: Partial<Parameters<typeof render>[0]> = {}) =>
   render({
     version: "159.0b1",
     repo: "vimma-browser/vimma",
@@ -79,7 +79,7 @@ const green = {
 const passingPatches = {
   ...patchCheck,
   ok: true,
-  patches: patchCheck.patches.filter((/** @type {{ imports: boolean }} */ p) => p.imports),
+  patches: patchCheck.patches.filter((p: { imports: boolean }) => p.imports),
 };
 
 describe("canary detect (B1, B2)", () => {
@@ -220,7 +220,7 @@ describe("canary render (B5–B7)", () => {
       `[\`aaaaaaaaaaaa\`](https://github.com/vimma-browser/vimma/commit/${"a".repeat(40)})`,
     );
     expect(state).toMatchObject({ version: "159.0b1", major: 159, sha: "a".repeat(40) });
-    expect(state.items.map((/** @type {{ key: string }} */ i) => i.key)).toEqual([
+    expect(state.items.map((i: { key: string }) => i.key)).toEqual([
       "patch src/browser/base/moz-build.patch",
     ]);
   });
@@ -253,10 +253,10 @@ describe("canary render (B5–B7)", () => {
     );
     expect(issue.body).toContain("### e2e scenarios: 1 of 8 failed");
     expect(issue.body).toContain("m3-private-workspace: 0.59 % of pixels differ (max 0.5 %)");
-    const keys = state.items.map((/** @type {{ key: string }} */ i) => i.key);
+    const keys = state.items.map((i: { key: string }) => i.key);
     expect(keys).toContain("check branding");
     expect(keys).toContain("e2e m3-private-workspace");
-    expect(keys.filter((/** @type {string} */ k) => k.startsWith("mochitest "))).toHaveLength(14);
+    expect(keys.filter((k: string) => k.startsWith("mochitest "))).toHaveLength(14);
   });
 
   it("updates the open issue and comments what is new and what is fixed", () => {
@@ -350,7 +350,7 @@ describe("canary render (B5–B7)", () => {
 
   it("hands the report job the released major, whose issues it closes (B7)", () => {
     // The report job closes them and links the tracking issue (it holds the issue token):
-    // tools/test/upstream-beta-workflow.test.mjs, "closes issues of released versions".
+    // tools/test/upstream-beta-workflow.test.ts, "closes issues of released versions".
     expect(currentBeta(versions({ LATEST_FIREFOX_VERSION: "159.0" })).releasedMajor).toBe(159);
   });
 
@@ -365,12 +365,10 @@ describe("canary render (B5–B7)", () => {
     expect(issue.body).toMatch(
       /Suites \| did not run: Mozilla's build of this Beta is not available \(not in the Taskcluster index\)/,
     );
-    expect(state.items.map((/** @type {{ key: string }} */ i) => i.key)).toEqual(["artifacts no"]);
+    expect(state.items.map((i: { key: string }) => i.key)).toEqual(["artifacts no"]);
     // the e2e job ended without a report (a timeout): that is a finding too
     const lost = renderWith({ patchCheck: passingPatches, testResult: "failure" });
-    expect(lost.state.items.map((/** @type {{ key: string }} */ i) => i.key)).toEqual([
-      "suites no-report",
-    ]);
+    expect(lost.state.items.map((i: { key: string }) => i.key)).toEqual(["suites no-report"]);
   });
 
   it("fences test output and cuts the body to 60,000 characters", () => {
@@ -409,7 +407,7 @@ describe("canary CLI", () => {
     const r = spawnSync(
       process.execPath,
       [
-        fileURL("../canary.mjs"),
+        fileURL("../canary.ts"),
         "render",
         "--version",
         "159.0b1",
@@ -462,12 +460,11 @@ describe("canary CLI", () => {
   });
 });
 
-/** @param {string} text @returns {string} the Markdown outside fenced blocks */
-function outsideFences(text) {
+/** @returns the Markdown outside fenced blocks */
+function outsideFences(text: string): string {
   return text.replace(/^(`{4,})text\n[^]*?\n\1$/gm, "");
 }
 
-/** @param {string} rel */
-function fileURL(rel) {
+function fileURL(rel: string) {
   return new URL(rel, import.meta.url).pathname;
 }

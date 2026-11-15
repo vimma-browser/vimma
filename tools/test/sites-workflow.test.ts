@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
-import { STEPS } from "../upstream/suite-results.mjs";
+import { STEPS } from "../upstream/suite-results.ts";
 
 // docs/specs/site-compat.md, decision 1: the live site suite's workflow. It must never run on a
 // pull request or gate a merge, must stay on a free standard runner, and holds no secret. Text

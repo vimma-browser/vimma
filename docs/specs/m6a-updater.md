@@ -268,7 +268,8 @@ appVersion="1.23.2b" buildID=…>` with one complete MAR from the GitHub Release
   a bump whose patches had to be re-exported always waits for a person (its Behaviour 5 and 6, and
   its decisions 10 and 15). A bump for a Firefox release with an advisory, or whose advisories
   could not be read, carries the labels `upstream` and `security` (`tools/upstream/detect.mjs:87`,
-  G3: unknown counts as security), and its subject lists the advisories, `upstream: firefox 158.0
+  since changed: `detect.ts`, ADR-025, G3: unknown counts as security), and its subject lists the
+  advisories, `upstream: firefox 158.0
 (MFSA 2026-106)` (firefox-versions decision 9).
 - Spec firefox-versions (merged) owns the release half of the security path: with
   `AUTO_SECURITY_RELEASE` on, a merged security bump sets the open release PR to auto-merge, and
@@ -675,9 +676,10 @@ host", step 7, and docs/security/16-update-check.md UP7.)
 
 - **Urgency** is computed in `update-sign` by `tools/update/urgency.mjs`: the release is urgent
   when any commit since the previous tag is an `upstream: firefox <version>` bump whose PR carried
-  the `security` label, the same classification `tools/upstream/detect.mjs` applies (unknown
-  counts as security, G3) and spec firefox-versions keys its automatic release on. The advisory
-  IDs in those subjects (firefox-versions decision 9) go into `vimmaAdvisories`.
+  the `security` label, the same classification `tools/upstream/detect.mjs` (since changed:
+  `detect.ts`, ADR-025) applies (unknown counts as security, G3) and spec firefox-versions keys its
+  automatic release on. The advisory IDs in those subjects (firefox-versions decision 9) go into
+  `vimmaAdvisories`.
 - **Direct push, not a PR**, to the manifest repository, because a PR would need a merge, a
   manual step. The deploy key can write only that repository, and the commit touches only the
   `updates/` tree. A CI check there cannot stop a bad push, because Cloudflare deploys without

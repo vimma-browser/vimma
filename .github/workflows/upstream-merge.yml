@@ -50,7 +50,7 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
 
-      # main's merge-ready.mjs, never the bump branch's.
+      # main's merge-ready.ts, never the bump branch's.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -78,7 +78,7 @@ jobs:
             > "$RUNNER_TEMP/runs.json"
           gh api --paginate --slurp "$repo/commits/$HEAD/check-runs?per_page=100" \
             > "$RUNNER_TEMP/checks.json"
-          node tools/upstream/merge-ready.mjs --pulls "$RUNNER_TEMP/pulls.json" \
+          node tools/upstream/merge-ready.ts --pulls "$RUNNER_TEMP/pulls.json" \
             --runs "$RUNNER_TEMP/runs.json" --checks "$RUNNER_TEMP/checks.json" --head "$HEAD" \
             > "$RUNNER_TEMP/ready.json"
           ready=$(jq -r .ready "$RUNNER_TEMP/ready.json")

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { checkBumpDiff } from "../bump-diff.mjs";
-import { CFR, SB_LISTS } from "../upstream-prefs.mjs";
+import { checkBumpDiff } from "../bump-diff.ts";
+import { CFR, SB_LISTS } from "../upstream-prefs.ts";
 
 // Spec upstream-bump-automation, decision 8: the diff a bump may auto-merge with, line by line.
 const OURS = "src/browser/branding/vimma/pref/firefox-branding.js";
-const surfer = (/** @type {string} */ v, extra = {}) =>
+const surfer = (v: string, extra = {}) =>
   JSON.stringify({ name: "Vimma", version: { product: "firefox", version: v }, ...extra }, null, 2);
 const base = surfer("158.0");
 const head = surfer("158.0.1");
@@ -17,8 +17,7 @@ const surferHunk = [
   '-    "version": "158.0"',
   '+    "version": "158.0.1"',
 ].join("\n");
-/** @param {string} name @param {string} from @param {string} to */
-const prefHunk = (name, from, to) =>
+const prefHunk = (name: string, from: string, to: string) =>
   [
     `diff --git a/${OURS} b/${OURS}`,
     "index 3333333..4444444 100644",

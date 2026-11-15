@@ -178,13 +178,13 @@ describe("upstream autopilot workflow", () => {
     expect(block).toContain("artifacts: ${{ steps.check.outputs.artifacts }}");
     expect(source).toContain(`patch-check.py" --tarball - --drain`);
     expect(source).toContain("patch-audit.py");
-    expect(source).toContain(`artifact-preflight.mjs" patch-check.json`);
+    expect(source).toContain(`artifact-preflight.ts" patch-check.json`);
   });
 
   it("falls back to a compare link when Actions may not open PRs", () => {
     const block = job(upstream, "publish");
     expect(block).toContain('grep -qi "not permitted to create or approve pull requests"');
-    expect(block).toContain("autopilot-body.mjs");
+    expect(block).toContain("autopilot-body.ts");
     expect(block).toContain("body fallback");
   });
 
@@ -399,7 +399,7 @@ describe("e2e.yml Beta mode", () => {
     const write = step(e2e, "suite-results");
     expect(write).toContain(`if: "!cancelled() && steps.mode.outputs.beta == 'true'"`);
     expect(write).toContain("STEPS: ${{ toJSON(steps) }}");
-    expect(write).toContain("node tools/upstream/suite-results.mjs");
+    expect(write).toContain("node tools/upstream/suite-results.ts");
     const upload = e2e.slice(e2e.indexOf("id: suite-results"));
     expect(upload).toMatch(
       /- name: Upload suite-results\.json[^]*?if: "!cancelled\(\) && steps\.mode\.outputs\.beta == 'true'"[^]*?name: suite-results\n/,
@@ -414,7 +414,7 @@ describe("e2e.yml Beta mode", () => {
     );
     const block = step(e2e, "suite-results");
     expect(block).toContain("FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}");
-    /** @param exit suite-results.mjs's status */
+    /** @param exit suite-results.ts's status */
     const run = (exit: number, flag: string) => {
       const tmp = tempDir("e2e-findings-");
       writeFileSync(join(tmp, "node"), `#!/bin/sh\nexit ${exit}\n`, { mode: 0o755 });
@@ -455,7 +455,7 @@ describe("pref refresh in the upstream autopilot", () => {
     expect(source).toContain("--extract browser/app/profile/firefox.js");
     expect(source).toContain("--extract modules/libpref/init/all.js");
     const verify = source.indexOf('python3 "$here/verify-sha512.py"');
-    const refresh = source.indexOf('node "$here/upstream-prefs.mjs"');
+    const refresh = source.indexOf('node "$here/upstream-prefs.ts"');
     expect(refresh).toBeGreaterThan(verify);
     expect(source).toContain("--write-diff prefs-refresh.patch");
   });
@@ -485,7 +485,7 @@ describe("pref refresh in the upstream autopilot", () => {
     expect(apply).not.toContain("secrets");
     // The refresh lands before the import and the strict check, which still runs.
     expect(e2e.indexOf("id: prefs-refresh")).toBeLessThan(e2e.indexOf("run: npm run import"));
-    expect(e2e).toContain("run: node tools/upstream/upstream-prefs.mjs\n");
+    expect(e2e).toContain("run: node tools/upstream/upstream-prefs.ts\n");
   });
 
   it("publish commits the refreshed lines with the bump and lists them in the body", () => {
@@ -534,7 +534,7 @@ describe("auto-merge in the upstream autopilot", () => {
     const decide = step(upstream, "pr");
     expect(decide).toContain("AUTO_MERGE: ${{ vars.AUTO_MERGE_UPSTREAM }}");
     const decideRun = script(decide);
-    expect(decideRun).toContain("node tools/upstream/bump-diff.mjs");
+    expect(decideRun).toContain("node tools/upstream/bump-diff.ts");
     expect(decideRun).toContain('--bump-diff "$RUNNER_TEMP/bump-diff.json"');
     // The marker records the head the allowlist read; upstream-merge.yml merges only that head.
     expect(decideRun).toContain('--head "$head"');

@@ -3,15 +3,15 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mochitestFailures, suiteResults } from "../suite-results.mjs";
+import { mochitestFailures, suiteResults } from "../suite-results.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
-// tools/upstream/suite-results.mjs: e2e.yml's Beta mode writes suite-results.json from each
+// tools/upstream/suite-results.ts: e2e.yml's Beta mode writes suite-results.json from each
 // step's outcome, the mochitest log and the e2e harness's --report-json (spec
 // upstream-beta-canary, decision 4). The mochitest log is the TBPL file mozlog writes for
 // --log-tbpl (testing/mozbase/mozlog/mozlog/formatters/tbplformatter.py): a failed check is
 // "TEST-UNEXPECTED-FAIL | test | subtest - message", its stack on the lines after it.
-const SCRIPT = fileURLToPath(new URL("../suite-results.mjs", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../suite-results.ts", import.meta.url));
 
 const LOG = [
   "SUITE-START | Running 76 tests",

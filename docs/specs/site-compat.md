@@ -559,5 +559,6 @@ What changed from the plan above, and why:
   from a developer's network on the live sites. The copies served no scripts, which the
   snapshot drops anyway.
 - **In e2e.yml** after the scenarios, as a Beta-mode suite (`sites-offline` in
-  `suite-results.mjs`): about 25 s for the four on a local machine. Screenshots are not
-  compared, as planned; they are uploaded with the report when the gate fails.
+  `suite-results.mjs`; since changed: `suite-results.ts`, ADR-025): about 25 s for the four on a
+  local machine. Screenshots are not compared, as planned; they are uploaded with the report when
+  the gate fails.

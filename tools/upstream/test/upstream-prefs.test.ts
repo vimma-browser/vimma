@@ -11,11 +11,11 @@ import {
   readPref,
   refreshPrefs,
   unifiedDiff,
-} from "../upstream-prefs.mjs";
+} from "../upstream-prefs.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 const OURS_PATH = "src/browser/branding/vimma/pref/firefox-branding.js";
-const script = fileURLToPath(new URL("../upstream-prefs.mjs", import.meta.url));
+const script = fileURLToPath(new URL("../upstream-prefs.ts", import.meta.url));
 const ours = readFileSync(
   new URL("../../../src/browser/branding/vimma/pref/firefox-branding.js", import.meta.url),
   "utf8",

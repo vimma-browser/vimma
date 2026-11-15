@@ -135,11 +135,12 @@ runtime only through `application.ini` on Linux (its C++ uses are Windows-only).
 The Firefox Beta canary ([upstream-beta-canary](../specs/upstream-beta-canary.md)) runs the same
 artifact build on a Firefox Beta source tarball, in its own CI checkout; `main` still pins a
 release. `tools/artifact-build/artifact-build.mjs` and `tools/upstream/artifact-preflight.mjs`
-read the tree from `sourcestamp.txt` and accept only `releases/mozilla-release` and
-`releases/mozilla-beta`. A release is unchanged (`MOZ_ARTIFACT_REVISION`). For a Beta the tool
-looks up `gecko.v2.mozilla-beta.shippable.revision.<rev>.firefox.linux64-opt` and passes the task
-id as `MOZ_ARTIFACT_TASK` with `MOZ_ARTIFACT_REVISION` unset, because mach's revision search
-picks its trees from Vimma's `0.x` display version and so never reaches mozilla-beta
+(Since changed: `artifact-preflight.ts`, ADR-025) read the tree from `sourcestamp.txt` and accept
+only `releases/mozilla-release` and `releases/mozilla-beta`. A release is unchanged
+(`MOZ_ARTIFACT_REVISION`). For a Beta the tool looks up
+`gecko.v2.mozilla-beta.shippable.revision.<rev>.firefox.linux64-opt` and passes the task id as
+`MOZ_ARTIFACT_TASK` with `MOZ_ARTIFACT_REVISION` unset, because mach's revision search picks its
+trees from Vimma's `0.x` display version and so never reaches mozilla-beta
 (`select_candidate_trees` and `install_from` in `python/mozbuild/mozbuild/artifacts.py`,
 Firefox 157.0.1). `version.txt` gets Mozilla's Beta value (`159.0` for `159.0b1`).
 

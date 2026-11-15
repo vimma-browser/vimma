@@ -7,10 +7,10 @@
  * Upstream autopilot, step 1 (spec m7-upstream-autopilot): is there a Firefox release newer than
  * the one surfer.json pins, is it a security release, and how far behind is Vimma?
  *
- *   node tools/upstream/detect.mjs [--surfer-json surfer.json] [--feeds DIR] [--now ISO]
- *                                  [--json FILE] [--github-output FILE]
+ *   node tools/upstream/detect.ts [--surfer-json surfer.json] [--feeds DIR] [--now ISO]
+ *                                 [--json FILE] [--github-output FILE]
  *
- * Reads Mozilla's live feeds (releases.mjs), or with --feeds the files firefox_versions.json,
+ * Reads Mozilla's live feeds (releases.ts), or with --feeds the files firefox_versions.json,
  * firefox.json and advisories.html in DIR. Prints a summary; --github-output appends the step
  * outputs upstream.yml uses. Node built-ins only, so the scheduled job needs no `npm ci`.
  * Exit status: 0 it ran (whatever it found; drift is an output, not an exit status), 2 a
@@ -33,20 +33,28 @@ import {
   parseReleasesFeed,
   parseVersionsFeed,
   versionKey,
-} from "./releases.mjs";
+} from "./releases.ts";
+import type { Advisory, Classification, Drift } from "./releases.ts";
 
-/**
- * @typedef {import("./releases.mjs").Classification} Classification
- * @typedef {import("./releases.mjs").Drift} Drift
- * @typedef {{ current: string, latest: string, newer: boolean, release: Classification,
- *   drift: Drift, advisoriesError: string | null, checkedAt: string }} Detection
- */
+export type Detection = {
+  current: string;
+  latest: string;
+  newer: boolean;
+  release: Classification;
+  drift: Drift;
+  advisoriesError: string | null;
+  checkedAt: string;
+};
 
-/**
- * @param {{ current: string, fetchText: (url: string) => Promise<string>, now: Date }} input
- * @returns {Promise<Detection>}
- */
-export async function detect({ current, fetchText, now }) {
+export async function detect({
+  current,
+  fetchText,
+  now,
+}: {
+  current: string;
+  fetchText: (url: string) => Promise<string>;
+  now: Date;
+}): Promise<Detection> {
   versionKey(current);
   const [versionsText, releasesText] = await Promise.all([
     fetchText(VERSIONS_URL),
@@ -54,8 +62,7 @@ export async function detect({ current, fetchText, now }) {
   ]);
   const { latest, lastReleaseDate } = parseVersionsFeed(versionsText);
   const releases = parseReleasesFeed(releasesText);
-  /** @type {import("./releases.mjs").Advisory[] | null} */
-  let advisories = null;
+  let advisories: Advisory[] | null = null;
   let advisoriesError = null;
   try {
     advisories = parseAdvisories(await fetchText(ADVISORIES_URL));
@@ -73,25 +80,22 @@ export async function detect({ current, fetchText, now }) {
   };
 }
 
-/** @param {boolean | null} security */
-export function securityWord(security) {
+export function securityWord(security: boolean | null) {
   return security === null ? "unknown" : String(security);
 }
 
 /**
  * The labels a tracking issue or PR for this release carries. Unknown counts as security
  * until the advisories page can be read: a false alarm is cheaper than a missed one.
- * @param {Classification} release
  */
-export function labelsFor(release) {
+export function labelsFor(release: Classification) {
   return release.security === false ? ["upstream"] : ["upstream", "security"];
 }
 
 /**
  * One line for logs, issue titles and the drift error.
- * @param {Drift} d
  */
-export function driftLine(d) {
+export function driftLine(d: Drift) {
   const w = d.worst;
   if (!w) return `Vimma's Firefox ${d.current} is the latest release.`;
   const what = `Firefox ${w.version} (${w.date}, ${describe(w)})`;
@@ -104,8 +108,7 @@ export function driftLine(d) {
   return `Vimma ships Firefox ${d.current}; ${what} must be merged by ${w.deadline}.`;
 }
 
-/** @param {Classification} c */
-export function describe(c) {
+export function describe(c: Classification) {
   const kind = c.kind === "major" ? "major release" : "dot release";
   if (c.security === null) return `${kind}, security unknown`;
   if (!c.security) return `${kind}, no advisory`;
@@ -115,10 +118,8 @@ export function describe(c) {
 /**
  * Step outputs for upstream.yml. `version` is empty when nothing is newer; `detection` is the
  * whole result as one line of JSON for the later jobs.
- * @param {Detection} r
- * @returns {Record<string, string>}
  */
-export function outputs(r) {
+export function outputs(r: Detection): Record<string, string> {
   return {
     version: r.newer ? r.latest : "",
     current: r.current,
@@ -134,10 +135,9 @@ export function outputs(r) {
 }
 
 /**
- * @param {Detection} r
- * @returns {string} Markdown for the job summary and the console
+ * @returns Markdown for the job summary and the console
  */
-export function summary(r) {
+export function summary(r: Detection): string {
   const lines = [
     "### Upstream autopilot: detection",
     "",
@@ -155,9 +155,8 @@ export function summary(r) {
 
 /**
  * $GITHUB_OUTPUT lines, each value in a heredoc with a delimiter it cannot contain.
- * @param {Record<string, string>} values
  */
-export function githubOutputText(values) {
+export function githubOutputText(values: Record<string, string>) {
   return Object.entries(values)
     .map(([k, v]) => {
       let delim = "EOF";
@@ -167,8 +166,7 @@ export function githubOutputText(values) {
     .join("");
 }
 
-/** @param {string} url */
-async function fetchLive(url) {
+async function fetchLive(url: string) {
   let last;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -183,15 +181,13 @@ async function fetchLive(url) {
   throw last instanceof Error ? last : new Error(String(last));
 }
 
-/** @param {string} dir */
-function fetchFromDir(dir) {
-  /** @type {Record<string, string>} */
-  const files = {
+function fetchFromDir(dir: string) {
+  const files: Record<string, string> = {
     [VERSIONS_URL]: "firefox_versions.json",
     [RELEASES_URL]: "firefox.json",
     [ADVISORIES_URL]: "advisories.html",
   };
-  return async (/** @type {string} */ url) => readFileSync(join(dir, files[url] ?? "?"), "utf8");
+  return async (url: string) => readFileSync(join(dir, files[url] ?? "?"), "utf8");
 }
 
 async function main() {

@@ -8,7 +8,7 @@
  * title and body (what applied, what conflicts, what the tests said), the fallback comment when
  * Actions may not open PRs, and the drift issue.
  *
- *   node tools/upstream/autopilot-body.mjs <issue|title|pr|fallback|drift|patch-issue> --detection FILE
+ *   node tools/upstream/autopilot-body.ts <issue|title|pr|fallback|drift|patch-issue> --detection FILE
  *     [--patch-check FILE --patch-markdown FILE --patch-result ok|fail|norun --audit FILE
  *      --artifacts yes|no|unknown --artifacts-note TEXT --tests RESULT --has-token true|false
  *      --issue N --branch NAME --repo OWNER/NAME --run-url URL --owner LOGIN --error FILE
@@ -18,64 +18,101 @@
  * Writes Markdown to stdout (`pr --draft-only` and `pr --auto-merge-only` print "true" or
  * "false"). Node built-ins only.
  * Every string from outside (a hunk, an advisory, an error) is constrained by a regexp in
- * releases.mjs, inside a code fence that patch-check.py sized for it, or escaped for where it
+ * releases.ts, inside a code fence that patch-check.py sized for it, or escaped for where it
  * goes: oneLine for Markdown text, codeLine for a code span.
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { describe, driftLine, labelsFor } from "./detect.mjs";
+import { describe, driftLine, labelsFor } from "./detect.ts";
+import type { Detection } from "./detect.ts";
 
 /** A PR body may hold 65,536 characters; keep a margin for GitHub's own additions. */
 export const BODY_LIMIT = 64000;
 
-/**
- * @typedef {import("./detect.mjs").Detection} Detection
- * @typedef {{ patch: string, files: string[], status: string, imports: boolean,
- *   missing: string[], hunks: { file: string, index: number, of: number, header: string,
- *   status: string, offset: number, fuzz: number }[] }} PatchRow
- * @typedef {{ ran: boolean, ok: boolean, error?: string, firefox: string | null,
- *   revision?: string | null, counts: Record<string, number>, patches: PatchRow[] }} PatchReport
- * @typedef {{ detection: Detection, patchReport: PatchReport | null, patchMarkdown: string,
- *   patchResult: string, audit: string, artifacts: string, artifactsNote: string,
- *   tests: string, hasToken: boolean, issue: string, branch: string, repo: string,
- *   runUrl: string, owner: string, error: string, betaIssues: BetaIssue[],
- *   prefs?: PrefRefresh | null, reexport?: Reexport | null, autoMerge?: string, ref?: string,
- *   head?: string,
- *   bumpDiff?: { ok: boolean, reason: string } | null }} Context
- * @typedef {{ state: string, reexported: string[],
- *   refused: { patch: string, reason: string }[] }} Reexport
- * @typedef {{ state: string, refreshed: { pref: string, old: string, new: string }[],
- *   unresolved: string[] }} PrefRefresh
- * @typedef {{ number: number, state: "OPEN" | "CLOSED" }} BetaIssue
- */
+export type PatchRow = {
+  patch: string;
+  files: string[];
+  status: string;
+  imports: boolean;
+  missing: string[];
+  hunks: {
+    file: string;
+    index: number;
+    of: number;
+    header: string;
+    status: string;
+    offset: number;
+    fuzz: number;
+  }[];
+};
+export type PatchReport = {
+  ran: boolean;
+  ok: boolean;
+  error?: string;
+  firefox: string | null;
+  revision?: string | null;
+  counts: Record<string, number>;
+  patches: PatchRow[];
+};
+export type Context = {
+  detection: Detection;
+  patchReport: PatchReport | null;
+  patchMarkdown: string;
+  patchResult: string;
+  audit: string;
+  artifacts: string;
+  artifactsNote: string;
+  tests: string;
+  hasToken: boolean;
+  issue: string;
+  branch: string;
+  repo: string;
+  runUrl: string;
+  owner: string;
+  error: string;
+  betaIssues: BetaIssue[];
+  prefs?: PrefRefresh | null;
+  reexport?: Reexport | null;
+  autoMerge?: string;
+  ref?: string;
+  head?: string;
+  bumpDiff?: { ok: boolean; reason: string } | null;
+};
+export type Reexport = {
+  state: string;
+  reexported: string[];
+  refused: { patch: string; reason: string }[];
+};
+export type PrefRefresh = {
+  state: string;
+  refreshed: { pref: string; old: string; new: string }[];
+  unresolved: string[];
+};
+export type BetaIssue = { number: number; state: "OPEN" | "CLOSED" };
 
 /**
  * The bump PR's title, and so its squash commit's subject and changelog line (spec
  * firefox-versions, decision 9): `upstream: firefox 158.0 (MFSA 2026-106)`. Lowercase for
  * commitlint's subject-case; tools/release/firefox-notes.mjs capitalises it and links the IDs.
  * Only IDs of the form `MFSA YYYY-N` reach the subject.
- * @param {string} version
- * @param {{ id: string }[]} [advisories] the advisories that name this release
+ * @param advisories the advisories that name this release
  */
-export function prTitle(version, advisories = []) {
+export function prTitle(version: string, advisories: { id: string }[] = []) {
   const ids = advisories.map((a) => a.id).filter((id) => /^MFSA \d{4}-\d+$/.test(id));
   return `upstream: firefox ${version}` + (ids.length ? ` (${ids.join(", ")})` : "");
 }
 
-/** @param {string} version */
-export function issueTitle(version) {
+export function issueTitle(version: string) {
   return `Firefox ${version} released`;
 }
 
-/** @param {string} version */
-export function branchName(version) {
+export function branchName(version: string) {
   return `upstream/firefox-${version}`;
 }
 
-/** @param {string} current */
-export function driftTitle(current) {
+export function driftTitle(current: string) {
   return `Vimma's Firefox ${current} is past the security drift limit`;
 }
 
@@ -83,11 +120,20 @@ export function driftTitle(current) {
  * Open the PR as a draft unless it can be merged as it stands: every patch imports, the suites
  * passed, and the upstream App's token opens it so that its own CI runs (a PR opened with
  * GITHUB_TOKEN starts no workflows; marking it ready for review does).
- * @param {{ patchResult: string, tests: string, hasToken: boolean,
- *   prefs?: PrefRefresh | null, reexport?: Reexport | null }} c
- * @returns {{ draft: boolean, reason: string }}
  */
-export function draftDecision({ patchResult, tests, hasToken, prefs, reexport }) {
+export function draftDecision({
+  patchResult,
+  tests,
+  hasToken,
+  prefs,
+  reexport,
+}: {
+  patchResult: string;
+  tests: string;
+  hasToken: boolean;
+  prefs?: PrefRefresh | null;
+  reexport?: Reexport | null;
+}): { draft: boolean; reason: string } {
   // Fuzz-only patches re-exported by the autopilot (spec upstream-bump-automation, Behaviour 3
   // and 6): the suites did not run on the old patches, so PR CI runs them on the re-export; the
   // PR waits for the owner, never for auto-merge, because the artifact build cannot test every
@@ -112,9 +158,9 @@ export function draftDecision({ patchResult, tests, hasToken, prefs, reexport })
 /**
  * The hidden line that lets upstream-merge.yml merge this head once every check on it is green.
  * It names the commit the allowlist read, so a later push is not merged on its strength.
- * @param {string} sha a full commit id
+ * @param sha a full commit id
  */
-export function autoMergeMarker(sha) {
+export function autoMergeMarker(sha: string) {
   if (!/^[0-9a-f]{40}$/.test(sha)) throw new Error(`not a full commit id: ${sha}`);
   return `<!-- upstream-auto-merge: ${sha} -->`;
 }
@@ -123,13 +169,10 @@ export function autoMergeMarker(sha) {
  * Whether the bump PR is set to auto-merge (spec upstream-bump-automation, Behaviour 5): "on",
  * or the first condition that did not hold. `AUTO_MERGE_UPSTREAM` is matched exactly, so a typo
  * leaves auto-merge off.
- * @param {Context} c
- * @returns {{ on: boolean, reason: string }}
  */
-export function autoMergeDecision(c) {
+export function autoMergeDecision(c: Context): { on: boolean; reason: string } {
   const kind = c.detection.release.kind === "major" ? "major" : "dot";
-  /** @param {string} why */
-  const off = (why) => ({ on: false, reason: `off: ${why}` });
+  const off = (why: string) => ({ on: false, reason: `off: ${why}` });
   const allowed = c.autoMerge === "all" || (c.autoMerge === "dot" && kind === "dot");
   if (!allowed) return off(`AUTO_MERGE_UPSTREAM does not allow a ${kind} release`);
   if (c.ref !== "refs/heads/main") return off("the run is not on main");
@@ -149,10 +192,9 @@ export function autoMergeDecision(c) {
 }
 
 /**
- * @param {PatchReport | null} report
- * @param {string} result ok, fail or norun (upstream.yml's patch-check step)
+ * @param result ok, fail or norun (upstream.yml's patch-check step)
  */
-export function patchLine(report, result) {
+export function patchLine(report: PatchReport | null, result: string) {
   if (!report || !report.ran || result === "norun") {
     return `**did not run**${report?.error ? `: ${oneLine(report.error)}` : ""}; no verdict`;
   }
@@ -170,10 +212,8 @@ export function patchLine(report, result) {
 /**
  * The conflicts section: each patch that `surfer import` would stop at, its upstream files and
  * the hunks that need fuzz or fail. Empty when every patch imports.
- * @param {PatchReport | null} report
- * @returns {string[]}
  */
-export function conflictLines(report) {
+export function conflictLines(report: PatchReport | null): string[] {
   if (!report?.ran) return [];
   const bad = report.patches.filter((p) => !p.imports);
   if (bad.length === 0) return [];
@@ -206,9 +246,8 @@ export function conflictLines(report) {
 /**
  * The title of the triage issue for patches that do not apply, one per Firefox version so a
  * rerun updates the same issue (spec upstream-bump-automation, decision 18).
- * @param {string} version
  */
-export function patchIssueTitle(version) {
+export function patchIssueTitle(version: string) {
   return `Firefox ${version}: patches do not apply`;
 }
 
@@ -216,10 +255,9 @@ export function patchIssueTitle(version) {
  * The body of that triage issue: the failing patches and hunks, the bump branch, its PR and the
  * run, so a person or a coding agent can rebase the patches without CI running a model
  * (spec upstream-bump-automation, decisions 16 to 21 and 23).
- * @param {Context} c
- * @param {string} pr "#N", or "" when no PR was opened
+ * @param pr "#N", or "" when no PR was opened
  */
-export function patchIssueBody(c, pr) {
+export function patchIssueBody(c: Context, pr: string) {
   const v = c.detection.release.version;
   return [
     `Our patches do not apply cleanly to Firefox ${v}, so the bump stays a draft and never ` +
@@ -238,9 +276,8 @@ export function patchIssueBody(c, pr) {
 
 /**
  * The "Copied upstream prefs" row (spec upstream-bump-automation, Behaviour 1 and 2).
- * @param {PrefRefresh | null | undefined} prefs
  */
-export function prefsLine(prefs) {
+export function prefsLine(prefs: PrefRefresh | null | undefined) {
   if (!prefs) return "not checked";
   if (prefs.state === "refreshed") {
     return `refreshed ${prefs.refreshed.length} in this commit (below)`;
@@ -253,9 +290,8 @@ export function prefsLine(prefs) {
 
 /**
  * The "Fuzz re-export" row and list (spec upstream-bump-automation, Behaviour 3).
- * @param {Reexport | null | undefined} r
  */
-export function reexportLine(r) {
+export function reexportLine(r: Reexport | null | undefined) {
   if (!r || r.state === "none") return "none needed";
   if (r.state === "reexported") {
     const n = r.reexported.length;
@@ -265,8 +301,7 @@ export function reexportLine(r) {
   return "not attempted: a patch fails";
 }
 
-/** @param {Reexport | null | undefined} r @param {string} owner */
-function reexportLines(r, owner) {
+function reexportLines(r: Reexport | null | undefined, owner: string) {
   if (r?.state === "reexported") {
     return [
       "### Re-exported patches",
@@ -292,8 +327,7 @@ function reexportLines(r, owner) {
   return [];
 }
 
-/** @param {PrefRefresh | null | undefined} prefs */
-function refreshedLines(prefs) {
+function refreshedLines(prefs: PrefRefresh | null | undefined) {
   if (prefs?.state !== "refreshed") return [];
   return [
     "### Refreshed prefs",
@@ -308,8 +342,7 @@ function refreshedLines(prefs) {
   ];
 }
 
-/** @param {string} tests @param {Context} c */
-export function testsLine(tests, c) {
+export function testsLine(tests: string, c: Context) {
   if (tests === "success") return "passed (`tests/browser/` and `tests/e2e/`)";
   if (tests === "failure") return "**failed**: see the run's `mochitest (artifact build)` job";
   if (tests === "cancelled") return "**cancelled** (timeout?): see the run";
@@ -320,8 +353,7 @@ export function testsLine(tests, c) {
   return `not run (${tests || "unknown"})`;
 }
 
-/** @param {Context} c */
-function artifactsLine(c) {
+function artifactsLine(c: Context) {
   if (c.artifacts === "yes") return c.artifactsNote || "Mozilla's build is indexed";
   if (c.artifacts === "no") return `**not indexed**: ${c.artifactsNote}`;
   return c.patchResult === "ok"
@@ -329,8 +361,7 @@ function artifactsLine(c) {
     : "not checked";
 }
 
-/** @param {Detection} d */
-function advisoryLines(d) {
+function advisoryLines(d: Detection) {
   const r = d.release;
   if (r.security === null) {
     return ["Advisories: the MFSA index could not be read; treated as a security release."];
@@ -348,10 +379,8 @@ function advisoryLines(d) {
  * The Beta canary's issues for the release's major, as upstream.yml's detect job found them
  * (`gh issue list --json number,state`). Only a positive integer and GitHub's two issue states
  * pass, so nothing else from the list can reach the PR body. Newest first, each once.
- * @param {string} json
- * @returns {BetaIssue[]}
  */
-export function betaIssues(json) {
+export function betaIssues(json: string): BetaIssue[] {
   let list;
   try {
     list = JSON.parse(json);
@@ -359,8 +388,7 @@ export function betaIssues(json) {
     return [];
   }
   if (!Array.isArray(list)) return [];
-  /** @type {Map<number, BetaIssue>} */
-  const seen = new Map();
+  const seen = new Map<number, BetaIssue>();
   for (const i of list) {
     const ok = Number.isSafeInteger(i?.number) && i.number > 0;
     if (ok && (i.state === "OPEN" || i.state === "CLOSED")) {
@@ -374,10 +402,8 @@ export function betaIssues(json) {
  * The line naming the Beta canary's issues (spec upstream-beta-canary, decision 11), only for a
  * bump to a new major: the canary tests the Betas of a major, so a dot release within the major
  * Vimma ships has nothing new to show, and its bump of `N.0` already named them.
- * @param {Context} c
- * @returns {string[]}
  */
-function betaLines(c) {
+function betaLines(c: Context): string[] {
   const d = c.detection;
   const major = d.release.version.split(".")[0];
   if (!c.betaIssues.length || major === d.current.split(".")[0]) return [];
@@ -394,9 +420,8 @@ function betaLines(c) {
 
 /**
  * The bump PR's body.
- * @param {Context} c
  */
-export function prBody(c) {
+export function prBody(c: Context) {
   const d = c.detection;
   const r = d.release;
   const { draft, reason } = draftDecision(c);
@@ -456,7 +481,7 @@ export function prBody(c) {
     "",
     'After the merge the nightly does the full build and runs the `skip-if = ["artifact"]` ' +
       "tests. The suites include the playbook's prefs checks (cfr provider, Safe Browsing " +
-      "lists: `tools/upstream/upstream-prefs.mjs`).",
+      "lists: `tools/upstream/upstream-prefs.ts`).",
   );
   if (r.security !== false) {
     out.push(
@@ -478,9 +503,8 @@ export function prBody(c) {
 
 /**
  * Comment on the tracking issue when GitHub refused to let Actions open the PR.
- * @param {Context} c
  */
-export function fallbackBody(c) {
+export function fallbackBody(c: Context) {
   const v = c.detection.release.version;
   const params = new URLSearchParams({
     expand: "1",
@@ -505,9 +529,8 @@ export function fallbackBody(c) {
 
 /**
  * The tracking issue for a new release.
- * @param {Context} c
  */
-export function issueBody(c) {
+export function issueBody(c: Context) {
   const d = c.detection;
   const r = d.release;
   const mention = r.security !== false && c.owner ? `@${c.owner} ` : "";
@@ -533,9 +556,8 @@ export function issueBody(c) {
 /**
  * The drift issue: opened once while Vimma is past a limit; upstream.yml fails every run until
  * surfer.json on main moves.
- * @param {Context} c
  */
-export function driftBody(c) {
+export function driftBody(c: Context) {
   const d = c.detection.drift;
   const rows = d.unshipped.map(
     (u) =>
@@ -557,9 +579,8 @@ export function driftBody(c) {
 
 /**
  * One line from patch-audit.py's output: its totals and whether the ADR-003 register matches.
- * @param {string} text
  */
-export function auditLine(text) {
+export function auditLine(text: string) {
   const lines = text.split("\n").map((l) => l.trim());
   const total = lines.find((l) => l.startsWith("Total:"))?.replace(/^Total:\s*/, "");
   if (!total) return "";
@@ -574,9 +595,8 @@ export function auditLine(text) {
  * start a link, an HTML tag, emphasis or a code span, or end the cell, is backslash-escaped,
  * the backslash itself first (CodeQL js/incomplete-sanitization: escaping only `|` let `\|`
  * through as an escaped backslash and a live pipe).
- * @param {string} s
  */
-function oneLine(s) {
+function oneLine(s: string) {
   return s
     .replace(/\s+/g, " ")
     .trim()
@@ -586,14 +606,12 @@ function oneLine(s) {
 /**
  * Outside text as one line for inside a code span, where Markdown is not read: only a backtick
  * could end the span, so it becomes `'`.
- * @param {string} s
  */
-function codeLine(s) {
+function codeLine(s: string) {
   return s.replace(/\s+/g, " ").trim().replace(/`/g, "'");
 }
 
-/** @param {string | undefined} path */
-function readMaybe(path) {
+function readMaybe(path: string | undefined) {
   return path && existsSync(path) ? readFileSync(path, "utf8") : "";
 }
 
@@ -632,8 +650,7 @@ function main() {
   if (!values.detection) throw new Error("--detection FILE is required");
   const detection = JSON.parse(readFileSync(values.detection, "utf8"));
   const patchJson = readMaybe(values["patch-check"]);
-  /** @type {Context} */
-  const c = {
+  const c: Context = {
     detection,
     patchReport: patchJson ? JSON.parse(patchJson) : null,
     patchMarkdown: readMaybe(values["patch-markdown"]),
@@ -658,8 +675,7 @@ function main() {
     bumpDiff: readMaybe(values["bump-diff"]) ? JSON.parse(readMaybe(values["bump-diff"])) : null,
   };
   const v = detection.release.version;
-  /** @type {Record<string, () => string>} */
-  const texts = {
+  const texts: Record<string, () => string> = {
     issue: () => issueBody(c),
     "issue-title": () => issueTitle(v),
     title: () => prTitle(v, detection.release.advisories),

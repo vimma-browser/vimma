@@ -222,10 +222,10 @@ jobs:
 
       # The cfr provider and Safe Browsing lists we copy from upstream (docs/rebase.md, step 6):
       # a stale copy shadows upstream's. Fails with the line to paste.
-      - name: Upstream pref copies are current (tools/upstream/upstream-prefs.mjs)
+      - name: Upstream pref copies are current (tools/upstream/upstream-prefs.ts)
         id: upstream-prefs
         continue-on-error: ${{ steps.mode.outputs.beta == 'true' }}
-        run: node tools/upstream/upstream-prefs.mjs
+        run: node tools/upstream/upstream-prefs.ts
 
       - name: Disk guard (artifact build and tests need ~1.2 GB)
         run: |
@@ -328,10 +328,10 @@ jobs:
           retention-days: 7
 
       # Beta mode only, after every step (a failed build step skips the suites; that is recorded
-      # too). suite-results.mjs exits 1 when any step did not succeed, so the run fails once
+      # too). suite-results.ts exits 1 when any step did not succeed, so the run fails once
       # everything reported, unless the caller passed fail-on-findings: false (the canary, whose
       # findings go to its issue). A failed import or artifact build still fails the job.
-      - name: suite-results.json (Beta mode, tools/upstream/suite-results.mjs)
+      - name: suite-results.json (Beta mode, tools/upstream/suite-results.ts)
         id: suite-results
         if: "!cancelled() && steps.mode.outputs.beta == 'true'"
         env:
@@ -340,7 +340,7 @@ jobs:
           FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         run: |
           status=0
-          node tools/upstream/suite-results.mjs --version "$VERSION" \
+          node tools/upstream/suite-results.ts --version "$VERSION" \
             --mochitest-log "$RUNNER_TEMP/mochitest.tbpl.log" \
             --e2e-report "$RUNNER_TEMP/e2e-report.json" --out "$RUNNER_TEMP/suite-results.json" ||
             status=$?

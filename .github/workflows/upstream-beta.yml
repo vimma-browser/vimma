@@ -9,7 +9,7 @@
 #   test          e2e.yml (workflow_call) in Beta mode: import, artifact build, every check and
 #                 suite, suite-results.json. Only when every patch applies and Mozilla's build of
 #                 the Beta is indexed.
-#   render        tools/upstream/canary.mjs render: issue.json (body, comment, action) and
+#   render        tools/upstream/canary.ts render: issue.json (body, comment, action) and
 #                 state.json, uploaded as upstream-beta-<version> (also the "tested" record).
 #   report        main only. Opens, updates or closes "Firefox N beta: canary findings"
 #                 (label upstream-beta) from issue.json; closes the issues of released versions.
@@ -75,7 +75,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
         run: |
-          node tools/upstream/canary.mjs detect --version "$VERSION" \
+          node tools/upstream/canary.ts detect --version "$VERSION" \
             --github-output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # B6: the previous result of main for the same Firefox version, handed to render through
@@ -198,7 +198,7 @@ jobs:
           name: canary-previous
           path: ${{ runner.temp }}/previous
 
-      - name: Render the issue (tools/upstream/canary.mjs render)
+      - name: Render the issue (tools/upstream/canary.ts render)
         env:
           VERSION: ${{ needs.detect.outputs.version }}
           SHA: ${{ github.sha }}
@@ -210,7 +210,7 @@ jobs:
           TEST_RESULT: ${{ needs.test.result }}
         run: |
           out="$RUNNER_TEMP/upstream-beta"
-          node tools/upstream/canary.mjs render --version "$VERSION" --repo "$GITHUB_REPOSITORY" \
+          node tools/upstream/canary.ts render --version "$VERSION" --repo "$GITHUB_REPOSITORY" \
             --ref "$GITHUB_REF_NAME" --sha "$SHA" --run-url "$RUN_URL" --owner "$OWNER" \
             --patch-check "$RUNNER_TEMP/source/patch-check.json" --source-result "$SOURCE_RESULT" \
             --artifacts "$ARTIFACTS" --artifacts-note "$ARTIFACTS_NOTE" --test-result "$TEST_RESULT" \
