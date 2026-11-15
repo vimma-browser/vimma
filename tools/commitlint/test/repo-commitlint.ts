@@ -1,5 +1,5 @@
 /**
- * The repository's commitlint (commitlint.config.mjs and its plugins), run in-process for tests.
+ * The repository's commitlint (commitlint.config.ts and its plugins), run in-process for tests.
  *
  * Spawning `npx commitlint` per message cost each call an npm start-up plus a commitlint
  * start-up and config load (about 0.3 s idle, 0.7 s and more on a loaded machine), which pushed
