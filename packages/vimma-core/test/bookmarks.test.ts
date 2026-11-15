@@ -31,20 +31,27 @@ import { createDispatcher } from "../src/keys/dispatcher.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 import { parseCommandLine } from "../src/keys/cmdline.mjs";
 
-/** @import { BookmarksState, Folder, PlacesItem } from "../src/ui/bookmarks.mjs" */
+import type { BookmarksState, Folder, PlacesItem } from "../src/ui/bookmarks.mjs";
+import type { Mode } from "../src/keys/modes.mjs";
 
-/** @param {string} guid @param {string} title @param {string} uri @returns {PlacesItem} */
-const bm = (guid, title, uri) => ({ guid, typeCode: 1, title, uri });
-/** @param {string} guid @param {string} title @param {PlacesItem[]} [children] */
-const folder = (guid, title, children = []) => ({ guid, typeCode: 2, title, children });
+const bm = (guid: string, title: string, uri: string): PlacesItem => ({
+  guid,
+  typeCode: 1,
+  title,
+  uri,
+});
+const folder = (guid: string, title: string, children: PlacesItem[] = []) => ({
+  guid,
+  typeCode: 2,
+  title,
+  children,
+});
 
 /**
  * The folder at `path` (child indexes from `node`) in a copy of the places tree; throws when the
  * fixture has no folder there.
- * @param {PlacesItem} node @param {number[]} path
- * @returns {PlacesItem & { children: PlacesItem[] }}
  */
-function folderAt(node, ...path) {
+function folderAt(node: PlacesItem, ...path: number[]): PlacesItem & { children: PlacesItem[] } {
   let at = node;
   for (const i of path) {
     const next = at.children?.[i];
@@ -77,7 +84,7 @@ const places = {
   ],
 };
 
-const root = /** @type {Folder} */ (fromPlaces(places));
+const root = fromPlaces(places) as Folder;
 
 describe("parseBookmarkPath", () => {
   test("folders and a leaf", () => {
@@ -136,7 +143,7 @@ describe("fromPlaces", () => {
     ).toEqual(["toolbar", "other", "mobile"]);
   });
   test("separators are dropped", () => {
-    const work = /** @type {Folder} */ (root.children[2]);
+    const work = root.children[2] as Folder;
     expect(work.children.map((c) => c.guid)).toEqual(["docs", "jira"]);
   });
   test('"all" is the whole tree, rooted at the menu', () => {
@@ -292,19 +299,16 @@ describe("filterBookmarks", () => {
   });
 });
 
-/**
- * @param {BookmarksState} s
- * @param {Array<{ id: string, arg?: number, count?: number, page?: number }>} actions
- */
-function press(s, actions) {
-  /** @type {ReturnType<typeof bookmarksKey>["effect"]} */
-  let effect = null;
+function press(
+  s: BookmarksState,
+  actions: Array<{ id: string; arg?: number; count?: number; page?: number }>,
+) {
+  let effect: ReturnType<typeof bookmarksKey>["effect"] = null;
   for (const a of actions) ({ state: s, effect } = bookmarksKey(s, a));
   return { state: s, effect };
 }
-const sel = (/** @type {BookmarksState} */ s) => s.rows[s.selected];
-const at = (/** @type {string} */ guid, opts = {}) =>
-  openBookmarks(root, { selectedGuid: guid, ...opts });
+const sel = (s: BookmarksState) => s.rows[s.selected];
+const at = (guid: string, opts = {}) => openBookmarks(root, { selectedGuid: guid, ...opts });
 
 describe("bookmarksKey", () => {
   test("j / k move within the rows", () => {
@@ -428,7 +432,7 @@ describe("bookmarksKey", () => {
 describe("bookmarksKey counts and jumps", () => {
   // toolbar, unfiled, work, docs, MDN (highlighted), Jira, Workshop, lua, Bookmarklet
   const s = at("mdn", { expanded: ["work", "docs"] });
-  const guid = (/** @type {BookmarksState} */ st) => sel(st)?.guid;
+  const guid = (st: BookmarksState) => sel(st)?.guid;
 
   test("3 j and 3 k move three rows over the rows shown, clamped at the ends", () => {
     expect(guid(press(s, [{ id: "panel.down", count: 3 }]).state)).toBe("lua");
@@ -509,10 +513,7 @@ describe("renderStart", () => {
 
 describe("keymap and command line", () => {
   const keymap = compileKeymap();
-  const run = (
-    /** @type {import("../src/keys/modes.mjs").Mode} */ mode,
-    /** @type {string[]} */ keys,
-  ) => {
+  const run = (mode: Mode, keys: string[]) => {
     const d = createDispatcher(keymap);
     let r;
     for (const k of keys) r = d.dispatch(mode, parseKey(k));

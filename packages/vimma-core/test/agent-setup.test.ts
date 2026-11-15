@@ -16,6 +16,7 @@ import {
   prepareLocalModel,
   probeLocal,
   providerKey,
+  sameProvider,
   unavailableText,
 } from "../src/agent/agent-setup.mjs";
 import { budget } from "./budget.mjs";
@@ -479,5 +480,21 @@ describe("the picker's entries", () => {
       });
       expect(entries[0]).toEqual({ provider: typed, state: null, current: true });
     });
+  });
+});
+
+describe("sameProvider", () => {
+  test("one model at one endpoint under one name; any of the three differing makes another", () => {
+    /** @type {import("../src/config/config.mjs").AgentProviderConfig} */
+    const p = /** @type {any} */ ({
+      name: "anthropic",
+      kind: "anthropic",
+      endpoint: "https://api.anthropic.com",
+      model: "claude-sonnet-4-5",
+    });
+    expect(sameProvider(p, { ...p })).toBe(true);
+    expect(sameProvider(p, { ...p, name: "work" })).toBe(false);
+    expect(sameProvider(p, { ...p, endpoint: "https://api.anthropic.com/" })).toBe(false);
+    expect(sameProvider(p, { ...p, model: "claude-opus-4-1" })).toBe(false);
   });
 });

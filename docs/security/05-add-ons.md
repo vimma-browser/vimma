@@ -19,6 +19,6 @@ The add-on picker lists, enables, disables and removes extensions. Spec:
 - A3. System, built-in and hidden add-ons are **never** listed or acted on, by the picker or by
   `:addon name`.
   [`lists_extensions_but_not_system_ones`](../../tests/browser/browser_vimma_addons.js),
-  [`:addon never reaches a hidden or system add-on`](../../packages/vimma-core/test/addons.test.mjs)
+  [`:addon never reaches a hidden or system add-on`](../../packages/vimma-core/test/addons.test.ts)
 
 Allowed without a question, as in about:addons: enable, disable, and private-window access.

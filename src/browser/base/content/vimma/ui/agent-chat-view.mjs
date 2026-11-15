@@ -17,6 +17,7 @@ import {
   noModelReason,
   whereDataGoes,
 } from "../core/agent-chat.mjs";
+import { keyField } from "./agent-chat-key.mjs";
 import { buildPanelBox } from "./side-panel.mjs";
 
 /** @import { AgentChatServices, AgentChatWindow } from "./agent-chat.mjs" */
@@ -25,16 +26,9 @@ export const CHAT_ID = "vimma-agent-chat";
 export const CHAT_INPUT_ID = "vimma-agent-chat-input";
 export const CHAT_LOG_ID = "vimma-agent-chat-log";
 export const CHAT_SLOT_ID = "vimma-agent-chat-slot";
-export const CHAT_KEY_ID = "vimma-agent-chat-key";
 const KEY_HINT = "Enter stores it, encrypted, in login storage · Esc cancels";
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
-// The key field's eye button: `::-moz-reveal` parses only in user-agent sheets, so this one rule
-// goes in as an agent sheet (an author sheet such as side-panel.css drops it).
-const NO_REVEAL_SHEET =
-  "data:text/css," + encodeURIComponent(`#${CHAT_KEY_ID}::-moz-reveal { display: none; }`);
-/** @type {WeakSet<BrowserWindow>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
-const noReveal = new WeakSet();
 
 const INSERT_HINT = "Enter sends · ctrl+Enter asks every step · shift+Enter new line · Esc";
 const NORMAL_HINT =
@@ -213,30 +207,7 @@ export function build(chat) {
   const keyBox = el(doc, "label", "vimma-agent-chat-keybox");
   keyBox.hidden = true;
   const keyLabel = el(doc, "div", "vimma-agent-chat-keylabel");
-  const keyInput = /** @type {HTMLInputElement} */ (doc.createElementNS(HTML_NS, "input"));
-  keyInput.id = CHAT_KEY_ID;
-  keyInput.type = "password";
-  keyInput.autocomplete = "off";
-  keyInput.className = "vimma-agent-chat-input";
-  if (!noReveal.has(chat.win)) {
-    noReveal.add(chat.win);
-    try {
-      chat.win.windowUtils.loadSheetUsingURIString(
-        NO_REVEAL_SHEET,
-        chat.win.windowUtils.AGENT_SHEET,
-      );
-    } catch (e) {
-      // The button would then show but do nothing: the listeners below still cancel it.
-      console.error("vimma agent: the key field's sheet did not load", e);
-    }
-  }
-  // An entered key is never shown again (M46). NO_REVEAL_SHEET hides the eye button, and every
-  // reveal a user can ask for (that button, the textbox context menu's item, `revealPassword`)
-  // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
-  // menu goes too, since its only use here would be that reveal item; ctrl+v still pastes.
-  for (const type of ["MozWillToggleReveal", "contextmenu", "copy", "cut", "dragstart"]) {
-    keyInput.addEventListener(type, (e) => e.preventDefault());
-  }
+  const keyInput = keyField(chat.win);
   keyBox.append(keyLabel, keyInput);
   log.after(slotBox, input, keyBox);
   chat.keyInput = keyInput;

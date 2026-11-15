@@ -14,13 +14,7 @@ import {
 
 // docs/specs/pdf-mode.md decision 10, docs/security/20-pdf-viewer.md section 20 (V8).
 
-/**
- * @param {string} title
- * @param {number} level
- * @param {number} page
- * @param {object} [more]
- */
-const e = (title, level, page, more = {}) => ({
+const e = (title: string, level: number, page: number, more: object = {}) => ({
   title,
   level,
   page,
@@ -48,21 +42,14 @@ const ENTRIES = [
   e("Website", 1, 0, { kind: "url", url: "https://example.com/" }),
 ];
 const raw = { entries: ENTRIES, truncated: false };
-const outline = () =>
-  /** @type {NonNullable<ReturnType<typeof parsePdfOutline>>} */ (parsePdfOutline(raw, 6));
+const outline = () => parsePdfOutline(raw, 6) as NonNullable<ReturnType<typeof parsePdfOutline>>;
 
-/** @param {ReturnType<typeof openOutline>} s */
-const titles = (s) => outlineRows(s).map((r) => r.title);
-/** @param {ReturnType<typeof openOutline>} s */
-const selectedTitle = (s) => outlineRows(s).find((r) => r.selected)?.title;
-/**
- * @param {ReturnType<typeof openOutline>} s
- * @param {...string} ids
- */
-function keys(s, ...ids) {
+const titles = (s: ReturnType<typeof openOutline>) => outlineRows(s).map((r) => r.title);
+const selectedTitle = (s: ReturnType<typeof openOutline>) =>
+  outlineRows(s).find((r) => r.selected)?.title;
+function keys(s: ReturnType<typeof openOutline>, ...ids: string[]) {
   let state = s;
-  /** @type {any} */
-  let effect = null;
+  let effect: any = null;
   for (const id of ids) ({ state, effect } = outlineKey(state, { id, page: 4 }));
   return { state, effect };
 }
@@ -113,10 +100,7 @@ describe("parsePdfOutline", () => {
       ["a first entry below the top", { entries: [e("a", 2, 1)], truncated: false }],
       ["level 0", { entries: [e("a", 0, 1)], truncated: false }],
       ["a 513-character title", { entries: [e("x".repeat(513), 1, 1)], truncated: false }],
-      [
-        "a title that is not a string",
-        { entries: [e(/** @type {any} */ (5), 1, 1)], truncated: false },
-      ],
+      ["a title that is not a string", { entries: [e(5 as any, 1, 1)], truncated: false }],
       [
         "an 8193-character URL",
         {
@@ -186,9 +170,7 @@ describe("the current entry", () => {
   });
 
   test("before every entry's page, the first entry", () => {
-    const o = /** @type {any} */ (
-      parsePdfOutline({ entries: [e("a", 1, 3)], truncated: false }, 6)
-    );
+    const o = parsePdfOutline({ entries: [e("a", 1, 3)], truncated: false }, 6) as any;
     expect(currentEntry(o, 1)).toBe(0);
   });
 
@@ -343,7 +325,7 @@ describe("the filter", () => {
 });
 
 test("a truncated outline says so after its last row", () => {
-  const o = /** @type {any} */ (parsePdfOutline({ entries: [e("a", 1, 1)], truncated: true }, 1));
+  const o = parsePdfOutline({ entries: [e("a", 1, 1)], truncated: true }, 1) as any;
   expect(OUTLINE_TRUNCATED_TEXT).toBe("outline truncated at 5000 entries");
   expect(openOutline(o, 1).outline.truncated).toBe(true);
 });
