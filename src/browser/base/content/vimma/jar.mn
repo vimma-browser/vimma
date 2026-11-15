@@ -10,6 +10,8 @@ browser.jar:
         content/browser/vimma/ctl/agent-commands.mjs      (ctl/agent-commands.mjs)
         content/browser/vimma/ctl/agent-errors.mjs        (ctl/agent-errors.mjs)
         content/browser/vimma/ctl/agent-tabs.mjs          (ctl/agent-tabs.mjs)
+        content/browser/vimma/ctl/agent-waits.mjs         (ctl/agent-waits.mjs)
+        content/browser/vimma/ctl/agent-steps.mjs         (ctl/agent-steps.mjs)
         content/browser/vimma/ctl/AgentPages.sys.mjs      (ctl/AgentPages.sys.mjs)
         content/browser/vimma/ctl/AgentDownloads.sys.mjs  (ctl/AgentDownloads.sys.mjs)
         content/browser/vimma/ctl/AgentDrive.sys.mjs      (ctl/AgentDrive.sys.mjs)
