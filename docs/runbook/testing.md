@@ -32,7 +32,7 @@ taskset -c 0,1 npm run mochitest -- --repeat=49 tests/browser/browser_vimma_<nam
 kill $(jobs -p)
 ```
 
-Pass `--repeat=N` with `=`: `tools/mochitest.mjs` treats a bare `N` as a test path. Under
+Pass `--repeat=N` with `=`: `tools/mochitest.ts` treats a bare `N` as a test path. Under
 `--repeat`, the harness never resets a test's `unexpectedTimeouts`, so after one repetition runs
 over the limit every later one also reports "exceeded the timeout threshold": count overruns from
 the `Entering test`/`Leaving test` timestamps instead. No retries in CI; a flaky test gets
@@ -70,7 +70,7 @@ cleanly, send `ctrl+q` (with `browser.warnOnQuitShortcut` = `false` in `user.js`
 ### Running a local build (`npm start`)
 
 `npm start` runs the full build (`engine/obj-x86_64-pc-linux-gnu`) if present, else the artifact
-build with `XUL_APP_FILE` as `tools/mochitest.mjs` does, with
+build with `XUL_APP_FILE` as `tools/mochitest.ts` does, with
 `~/.cache/vimma-dev-profile` (`--profile DIR`, `--fresh` for a temp profile, `--import` to run
 `npm run import` first, browser flags after a second `--`). It refuses a profile in use: a POSIX
 lock on `<profile>/.parentlock` (`/proc/locks`) or a `lock` symlink whose pid is alive (the link

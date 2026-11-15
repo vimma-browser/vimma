@@ -135,7 +135,8 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
   `macos-smoke`, macos.yml `smoke`) moved to `.nvmrc` in their own pull request, before the
   last group's tools (#946); `tools/test/runner-node.test.ts` keeps it so.
 - A job that checks out only some paths (`sparse-checkout: tools/ci/tree-covered.mjs` in
-  pkgbuild.yml and semgrep.yml) names the new file when it moves.
+  pkgbuild.yml and semgrep.yml) names the new file when it moves. (Since changed: both name
+  `tools/ci/tree-covered.ts`, #946.)
 - A step that runs the base branch's copy of a tool (`git show "$BASE:tools/…"`: ci.yml and
   e2e.yml for `docs-only.mjs`, key-guard.yml for `key-guard.mjs`) runs it on the runner's own
   Node, so those tools stay `.mjs` (decision 7, second exception). (Since changed: an earlier
