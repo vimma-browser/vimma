@@ -6,8 +6,10 @@
 interface VimmaModules {
   "chrome://browser/content/vimma/about/AboutVimma.sys.mjs": typeof import("../src/browser/base/content/vimma/about/AboutVimma.sys.mjs");
   "chrome://browser/content/vimma/about/about.mjs": typeof import("../src/browser/base/content/vimma/about/about.mjs");
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs": typeof import("../src/browser/base/content/vimma/actors/AgentActors.sys.mjs");
   "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs": typeof import("../src/browser/base/content/vimma/actors/VimmaActors.sys.mjs");
   "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs": typeof import("../src/browser/base/content/vimma/actors/VimmaChild.sys.mjs");
+  "chrome://browser/content/vimma/actors/actor-for.mjs": typeof import("../src/browser/base/content/vimma/actors/actor-for.mjs");
   "chrome://browser/content/vimma/actors/agent-fields.mjs": typeof import("../src/browser/base/content/vimma/actors/agent-fields.mjs");
   "chrome://browser/content/vimma/actors/block.mjs": typeof import("../src/browser/base/content/vimma/actors/block.mjs");
   "chrome://browser/content/vimma/actors/caret.mjs": typeof import("../src/browser/base/content/vimma/actors/caret.mjs");
@@ -16,6 +18,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/grep-worker.mjs": typeof import("../src/browser/base/content/vimma/actors/grep-worker.mjs");
   "chrome://browser/content/vimma/actors/hint-collect.mjs": typeof import("../src/browser/base/content/vimma/actors/hint-collect.mjs");
   "chrome://browser/content/vimma/actors/pdf-view.mjs": typeof import("../src/browser/base/content/vimma/actors/pdf-view.mjs");
+  "chrome://browser/content/vimma/actors/submit-marks.mjs": typeof import("../src/browser/base/content/vimma/actors/submit-marks.mjs");
   "chrome://browser/content/vimma/actors/text-model.mjs": typeof import("../src/browser/base/content/vimma/actors/text-model.mjs");
   "chrome://browser/content/vimma/agent/AgentChat.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs");
   "chrome://browser/content/vimma/agent/AgentCli.sys.mjs": typeof import("../src/browser/base/content/vimma/agent/AgentCli.sys.mjs");

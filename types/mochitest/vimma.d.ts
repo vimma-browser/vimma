@@ -95,7 +95,7 @@ type VimmaActorsApi =
 type HintTarget = Parameters<VimmaActorsApi["activateHint"]>[0];
 /**
  * A frame's console error entry, as the child makes it (core/agent-act.mjs ConsoleEntry);
- * VimmaActors.agentConsole passes the child's entries on as `unknown` for its caller to check.
+ * AgentActors.agentConsole passes the child's entries on as `unknown` for its caller to check.
  */
 type ConsoleEntry = import("../../src/browser/base/content/vimma/core/agent-act.mjs").ConsoleEntry;
 /** `[mcp]` as the config resolves it (core/config.mjs McpConfig). */

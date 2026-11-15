@@ -848,8 +848,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   form's default submission, and it is not sent when the page put back a value the question
   showed. A fill allows its submission only after its last field is set, so a form the page
   submits while it is being filled is cancelled like any other.
-  Before every click and every fill the tab is marked in the parent, after the page's transient user
-  activation is consumed in every frame, and from then on, while its top document is the same,
+  Before every click and every fill the tab is marked in the parent (`AgentActors.agentMark`; the
+  marks and the `http-on-modify-request` observer are in `actors/submit-marks.mjs`, one instance
+  per parent process), after the page's transient user activation is consumed in every frame,
+  and from then on, while its top document is the same,
   the request of every navigating form submission in it (any frame, a submit button,
   `requestSubmit()` or a later `submit()`, whatever the page cached) **must** be cancelled
   before it is sent when it carries no transient user activation, unless it is the one
