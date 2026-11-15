@@ -14,17 +14,20 @@ import {
   tabSearchItems,
 } from "../src/ui/tabsearch.mjs";
 
-/** @import { PickerItem } from "../src/ui/picker.mjs" */
-/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
+import type { PickerItem } from "../src/ui/picker.mjs";
+import type { Workspaces } from "../src/workspaces/workspaces.mjs";
 
 /**
  * A workspaces model from what the pickers read of each workspace: its id, name, tabs and active
  * tab. The container and panes, which they do not read, are filled in.
- * @param {{ active: string, workspaces: { id: string, name: string, tabs: string[],
- *   activeTab: string | null }[] }} model
- * @returns {Workspaces}
  */
-const fixture = ({ active, workspaces }) => ({
+const fixture = ({
+  active,
+  workspaces,
+}: {
+  active: string;
+  workspaces: { id: string; name: string; tabs: string[]; activeTab: string | null }[];
+}): Workspaces => ({
   active,
   next: workspaces.length + 1,
   workspaces: workspaces.map((w) => ({ ...w, container: w.id, panes: null })),
@@ -37,8 +40,7 @@ const model = fixture({
     { id: "w2", name: "personal", tabs: ["t3"], activeTab: "t3" },
   ],
 });
-/** @param {string} id */
-const info = (id) => ({ title: `Title ${id}`, url: `https://${id}.example.com/` });
+const info = (id: string) => ({ title: `Title ${id}`, url: `https://${id}.example.com/` });
 const here = pickerItems(model, info, {});
 const there = pickerItems(
   fixture({ ...model, workspaces: [{ id: "w1", name: "work", tabs: ["u1"], activeTab: "u1" }] }),
@@ -55,8 +57,7 @@ const secret = pickerItems(
   {},
 );
 
-/** @param {number} closedId @param {Partial<Parameters<typeof closedTabItem>[0]>} [extra] */
-const closedTab = (closedId, extra = {}) => ({
+const closedTab = (closedId: number, extra: Partial<Parameters<typeof closedTabItem>[0]> = {}) => ({
   closedId,
   title: `Closed ${closedId}`,
   url: `https://c${closedId}.example.com/`,
@@ -178,8 +179,7 @@ describe("sections, names and the row cap", () => {
     closedTabs: [closedTab(1)],
     closedWindows: [],
   });
-  const byId = (/** @type {string} */ id) =>
-    /** @type {PickerItem} */ (all.find((i) => i.tabId === id));
+  const byId = (id: string) => all.find((i) => i.tabId === id) as PickerItem;
 
   test("a section is a window's workspace, or recently closed", () => {
     expect(sectionOf(byId("t1"))).toBe(sectionOf(byId("t2")));
@@ -198,7 +198,7 @@ describe("sections, names and the row cap", () => {
     expect(accessibleName(byId("t1"))).toBe("Title t1, work");
     expect(accessibleName(byId("u1"))).toBe("Title u1, work, window 2");
     expect(accessibleName(byId("closed:1"))).toBe("Closed 1, work, recently closed");
-    const playing = { ...byId("t1"), playing: /** @type {const} */ (true), markers: "playing" };
+    const playing = { ...byId("t1"), playing: true as const, markers: "playing" };
     expect(accessibleName(playing)).toBe("Title t1, work, playing");
     const win = closedWindowItem({ closedId: 1, title: "Mail", tabCount: 3, closedAt: 0 });
     expect(accessibleName(win)).toBe("Mail, closed window, 3 tabs");
