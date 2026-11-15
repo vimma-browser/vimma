@@ -15,12 +15,11 @@ import { compileKeymap } from "../src/keys/keymap.mjs";
 import { createDispatcher } from "../src/keys/dispatcher.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { PanelState, PanelTabInfo } from "../src/ui/sidepanel.mjs" */
-/** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
-/** @import { Mode } from "../src/keys/modes.mjs" */
+import type { PanelState, PanelTabInfo } from "../src/ui/sidepanel.mjs";
+import type { Workspaces } from "../src/workspaces/workspaces.mjs";
+import type { Mode } from "../src/keys/modes.mjs";
 
-/** @type {Workspaces} */
-const model = {
+const model: Workspaces = {
   active: "w2",
   next: 4,
   workspaces: [
@@ -37,22 +36,19 @@ const model = {
   ],
 };
 
-/** @type {Record<string, PanelTabInfo>} */
-const tabs = {
+const tabs: Record<string, PanelTabInfo> = {
   t1: { title: "GitHub", url: "https://github.com/" },
   t2: { title: "Mail", url: "https://mail.example.com/inbox" },
   t3: { title: "", url: "about:blank", label: "scratch", playing: true },
   t4: { title: "Bank", url: "https://bank.fi/", foreign: true },
 };
-const info = (/** @type {string} */ id) => tabs[id];
+const info = (id: string) => tabs[id];
 
-/**
- * @param {PanelState} s
- * @param {{ id: string, arg?: number, count?: number, page?: number }[]} actions
- */
-function press(s, actions) {
-  /** @type {ReturnType<typeof panelKey>["effect"]} */
-  let effect = null;
+function press(
+  s: PanelState,
+  actions: { id: string; arg?: number; count?: number; page?: number }[],
+) {
+  let effect: ReturnType<typeof panelKey>["effect"] = null;
   for (const a of actions) ({ state: s, effect } = panelKey(s, a));
   return { state: s, effect };
 }
@@ -232,8 +228,7 @@ describe("panelKey", () => {
 
   test("x after the refresh closes the next tab: three x close three rows", () => {
     let state = press(s, [{ id: "panel.up" }]).state;
-    /** @type {string[]} */
-    const closed = [];
+    const closed: string[] = [];
     let left = model;
     for (let i = 0; i < 3; i++) {
       const r = panelKey(state, { id: "panel.close_tab" });
@@ -317,11 +312,7 @@ describe("refreshPanel", () => {
 
 describe("panel keys in the keymap", () => {
   const keymap = compileKeymap();
-  /**
-   * @param {Mode} mode
-   * @param {string} keys
-   */
-  const feed = (mode, keys) => {
+  const feed = (mode: Mode, keys: string) => {
     const d = createDispatcher(keymap);
     return keys.split(" ").map((k) => d.dispatch(mode, parseKey(k)));
   };
@@ -409,7 +400,7 @@ describe("counts and jumps", () => {
     ),
   };
   const s = openPanel(long, (id) => ({ title: id }));
-  const at = (/** @type {PanelState} */ st) => st.selected;
+  const at = (st: PanelState) => st.selected;
 
   test("4 j moves down four rows and 3 k up three, clamped at the ends", () => {
     expect(at(press(s, [{ id: "panel.down", count: 4 }]).state)).toBe(4);
@@ -483,22 +474,20 @@ describe("rowNumber", () => {
 // docs/specs/m4-side-panel-multiselect.md: marks, a line-wise range, and Enter showing the
 // marked tabs together as panes.
 describe("marks", () => {
-  /** @type {Workspaces} */
-  const five = {
+  const five: Workspaces = {
     ...model,
     workspaces: model.workspaces.map((w) =>
       w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4", "t5", "t6"], activeTab: "t2" } : w,
     ),
   };
-  /** @type {Record<string, PanelTabInfo>} */
-  const more = { ...tabs, t5: { title: "Docs" }, t6: { title: "Pinned", pinned: true } };
-  const info5 = (/** @type {string} */ id) => more[id];
+  const more: Record<string, PanelTabInfo> = {
+    ...tabs,
+    t5: { title: "Docs" },
+    t6: { title: "Pinned", pinned: true },
+  };
+  const info5 = (id: string) => more[id];
   const open = () => openPanel(five, info5);
-  /**
-   * @param {string[]} list
-   * @returns {typeof five}
-   */
-  const withTabs = (list) => ({
+  const withTabs = (list: string[]): typeof five => ({
     ...five,
     workspaces: five.workspaces.map((w) => (w.id === "w2" ? { ...w, tabs: list } : w)),
   });
@@ -710,9 +699,12 @@ describe("a split in the panel", () => {
       w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4", "t5", "t6"], activeTab: "t3" } : w,
     ),
   };
-  /** @type {Record<string, PanelTabInfo>} */
-  const more = { ...tabs, t5: { title: "Docs" }, t6: { title: "Chat" } };
-  const info5 = (/** @type {string} */ id) => more[id];
+  const more: Record<string, PanelTabInfo> = {
+    ...tabs,
+    t5: { title: "Docs" },
+    t6: { title: "Chat" },
+  };
+  const info5 = (id: string) => more[id];
   /** t2, t3, t4 are the panes, t3's has focus; the highlight starts on t3 (the active tab). */
   const split = { panes: ["t4", "t2", "t3"], paneFocus: "t3" };
   const open = () => openPanel(five, info5, split);
@@ -921,9 +913,13 @@ describe("several splits in the panel (multiple-splits)", () => {
       w.id === "w2" ? { ...w, tabs: ["t2", "t3", "t4", "t5", "t6", "t7"], activeTab: "t7" } : w,
     ),
   };
-  /** @type {Record<string, PanelTabInfo>} */
-  const more = { ...tabs, t5: { title: "Docs" }, t6: { title: "Chat" }, t7: { title: "News" } };
-  const info6 = (/** @type {string} */ id) => more[id];
+  const more: Record<string, PanelTabInfo> = {
+    ...tabs,
+    t5: { title: "Docs" },
+    t6: { title: "Chat" },
+    t7: { title: "News" },
+  };
+  const info6 = (id: string) => more[id];
   /** S1: t2 t3; S2: t4 t5 t6; t7 in no split. */
   const splits = [
     { number: 1, tabs: ["t3", "t2"] },

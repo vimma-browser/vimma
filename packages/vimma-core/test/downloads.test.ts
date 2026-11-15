@@ -20,16 +20,12 @@ import {
 import { statusSegments } from "../src/ui/statusbar.mjs";
 import { DOWNLOAD_SEGMENTS } from "../src/control/control.mjs";
 
-/** @import { DownloadRecord } from "../src/ui/downloads.mjs" */
+import type { DownloadRecord } from "../src/ui/downloads.mjs";
 
 const MB = 1024 * 1024;
 
-/**
- * A finished download, overridden per test.
- * @param {Partial<DownloadRecord>} over
- * @returns {DownloadRecord}
- */
-const rec = (over = {}) => ({
+/** A finished download, overridden per test. */
+const rec = (over: Partial<DownloadRecord> = {}): DownloadRecord => ({
   id: 1,
   name: "report.pdf",
   url: "https://files.example.com/get/report.pdf?token=secret",
@@ -57,8 +53,7 @@ const rec = (over = {}) => ({
   ...over,
 });
 
-/** @param {Partial<DownloadRecord>} over */
-const running = (over = {}) =>
+const running = (over: Partial<DownloadRecord> = {}) =>
   rec({
     stopped: false,
     succeeded: false,
@@ -71,21 +66,18 @@ const running = (over = {}) =>
     endTime: null,
     ...over,
   });
-/** @param {Partial<DownloadRecord>} over */
-const paused = (over = {}) => running({ stopped: true, canceled: true, speed: 0, ...over });
-/** @param {Partial<DownloadRecord>} over */
-const failed = (over = {}) =>
+const paused = (over: Partial<DownloadRecord> = {}) =>
+  running({ stopped: true, canceled: true, speed: 0, ...over });
+const failed = (over: Partial<DownloadRecord> = {}) =>
   rec({
     succeeded: false,
     targetExists: false,
     error: { kind: "failed", verdict: "", reason: "" },
     ...over,
   });
-/** @param {Partial<DownloadRecord>} over */
-const canceled = (over = {}) =>
+const canceled = (over: Partial<DownloadRecord> = {}) =>
   rec({ succeeded: false, canceled: true, targetExists: false, ...over });
-/** @param {Partial<DownloadRecord>} over */
-const blocked = (over = {}) =>
+const blocked = (over: Partial<DownloadRecord> = {}) =>
   rec({
     succeeded: false,
     targetExists: false,
@@ -93,7 +85,7 @@ const blocked = (over = {}) =>
     error: { kind: "reputation", verdict: "Insecure", reason: "Insecure download" },
     ...over,
   });
-const caMalware = (/** @type {Partial<DownloadRecord>} */ over = {}) =>
+const caMalware = (over: Partial<DownloadRecord> = {}) =>
   blocked({
     hasBlockedData: false,
     error: { kind: "contentAnalysis", verdict: "Malware", reason: "Blocked by your organization" },
@@ -249,8 +241,7 @@ describe("downloadSections", () => {
 });
 
 describe("downloadKey", () => {
-  /** @param {DownloadRecord} r @param {string} key */
-  const op = (r, key, c = ctx) => {
+  const op = (r: DownloadRecord, key: string, c = ctx) => {
     const k = downloadKey(r, key, c);
     return k.type === "run" ? k.op : k.type;
   };
@@ -385,13 +376,13 @@ describe("downloadKey", () => {
     expect(op(failed({ path: "" }), "enter")).toBe("refuse");
     expect(op(failed(agent), "enter")).toBe("refuse");
     expect(op(blocked(agent), "!")).toBe("refuse");
-    for (const [key, want] of /** @type {const} */ ([
+    for (const [key, want] of [
       ["s", "show"],
       ["y", "copyLink"],
       ["shift+y", "copyPath"],
       ["d", "remove"],
       ["shift+d", "delete"],
-    ])) {
+    ] as const) {
       expect(op(rec(agent), key)).toBe(want);
     }
   });
@@ -442,11 +433,11 @@ describe("downloadKey", () => {
 });
 
 describe("downloadSegment", () => {
-  /**
-   * @param {readonly DownloadRecord[]} list
-   * @param {Parameters<typeof downloadSegment>[1]} [ends]
-   */
-  const at = (list, ends = null, now = 0) => downloadSegment(downloadSummary(list), ends, now);
+  const at = (
+    list: readonly DownloadRecord[],
+    ends: Parameters<typeof downloadSegment>[1] = null,
+    now = 0,
+  ) => downloadSegment(downloadSummary(list), ends, now);
 
   test("the segment shows one, several, unknown size and paused", () => {
     expect(at([running()])).toMatchObject({ text: "↓ 41%", label: "downloading 41%" });
@@ -485,7 +476,7 @@ describe("downloadSegment", () => {
   });
 
   test("failed and blocked outrank the title; progress gives way first", () => {
-    const status = (/** @type {ReturnType<typeof at>} */ downloads) =>
+    const status = (downloads: ReturnType<typeof at>) =>
       statusSegments({ mode: "normal", downloads }).find((s) => s.id === "downloads");
     const progress = status(at([running()]));
     expect(progress).toMatchObject({

@@ -12,24 +12,15 @@ import { parseCommandLine, completeCommandLine } from "../src/keys/cmdline.mjs";
 import { getAction } from "../src/keys/actions.mjs";
 import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 
-/** @import { AddonRecord } from "../src/ui/addons.mjs" */
+import type { AddonRecord } from "../src/ui/addons.mjs";
 
-/**
- * `value`, failing the test where it is missing.
- * @template T
- * @param {T | undefined} value
- * @returns {T}
- */
-const defined = (value) => {
+/** `value`, failing the test where it is missing. */
+const defined = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error("expected a value");
   return value;
 };
 
-/**
- * @param {Partial<AddonRecord>} over
- * @returns {AddonRecord}
- */
-const rec = (over) => ({
+const rec = (over: Partial<AddonRecord>): AddonRecord => ({
   id: "a@x",
   name: "A",
   version: "1.0",
@@ -174,7 +165,7 @@ describe("keys and commands", () => {
 
   test("Tab completes add-on names after :addon", () => {
     const names = ["uBlock Origin", "Bitwarden", "aardvark"];
-    const complete = (/** @type {string} */ line) =>
+    const complete = (line: string) =>
       completeCommandLine(line, { args: { addon: names } }).candidates;
     expect(complete(":addon ").map((c) => c.value)).toEqual([
       "addon uBlock Origin",
