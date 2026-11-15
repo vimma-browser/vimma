@@ -4,7 +4,8 @@
 
 // Child side of the Vimma actor (spec: docs/specs/m1-actor-insert-scroll.md). One per frame,
 // including out-of-process iframes: reports focus changes in its own document as an
-// EditableDescriptor (vimma-core editable.mjs) and runs scroll, blur and focus-input commands.
+// EditableDescriptor (vimma-core editable.mjs) and runs blur and focus-input commands; scroll
+// commands go to its PageScroll (page-scroll.mjs).
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
@@ -43,6 +44,7 @@ import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
 import { textOfDocument } from "./text-model.mjs";
 import { GrepMatcher } from "./grep-matcher.mjs";
 import { PdfView } from "./pdf-view.mjs";
+import { PageScroll } from "./page-scroll.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -50,11 +52,6 @@ const lazy = /** @type {Lazy<"setTimeout">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
-/** @import { ScrollKind } from "./VimmaActors.sys.mjs" */
-
-/** j/k/h/l step in CSS pixels (Vimium's scrollStepSize). */
-const STEP = 60;
-
 /** Focus on these moves into another document, whose own child reports. */
 const FRAMES = new Set(["iframe", "frame", "browser"]);
 
@@ -142,51 +139,9 @@ function describe(el) {
   return d;
 }
 
-/** Overflow values that lock an axis: a site's modal sets one on <html> or <body>. */
-const LOCKED = new Set(["hidden", "clip"]);
-
-/**
- * @param {Element} el
- * @param {boolean} vertical
- */
-function overflowOf(el, vertical) {
-  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
-  return (vertical ? style?.overflowY : style?.overflowX) ?? "visible";
-}
-
-/**
- * Whether the page itself is scroll-locked on this axis. <body>'s overflow applies to the
- * viewport only while <html>'s is `visible` (CSS Overflow 3, § 3.3).
- * @param {Document} doc
- * @param {boolean} vertical
- */
-function documentLocked(doc, vertical) {
-  const html = doc.documentElement;
-  const root = html ? overflowOf(html, vertical) : "visible";
-  if (LOCKED.has(root)) return true;
-  return root === "visible" && !!doc.body && LOCKED.has(overflowOf(doc.body, vertical));
-}
-
-/**
- * @param {Element} el
- * @param {boolean} vertical
- */
-function canScroll(el, vertical) {
-  const max = vertical ? el.scrollTopMax : el.scrollLeftMax;
-  if (!(max > 0)) return false;
-  const doc = el.ownerDocument;
-  if (el === doc.scrollingElement) return !documentLocked(doc, vertical);
-  const overflow = overflowOf(el, vertical);
-  return overflow === "auto" || overflow === "scroll" || overflow === "overlay";
-}
-
 /** @param {EventTarget | null} t @returns {t is Node} */
 const isNode = (t) => !!t && "nodeType" in t;
 
-/** At most this many elements are searched for the largest scrollable. */
-const SEARCH_LIMIT = 10000;
-/** A search that found nothing is not repeated for this long (holding j). */
-const SEARCH_BACKOFF_MS = 1000;
 /** How often, in ms, a collection waiting for its page's first size looks again (#sized). */
 const SIZE_POLL_MS = 25;
 
@@ -194,75 +149,6 @@ const SIZE_POLL_MS = 25;
 function hasSize(win) {
   const { vw, vh } = viewportSize(win);
   return vw > 0 && vh > 0;
-}
-
-/**
- * The largest element of `all` (at most SEARCH_LIMIT of them) that scrolls on the axis, or null.
- * @param {HTMLCollectionOf<Element>} all  a live collection, read lazily
- * @param {boolean} vertical
- * @param {boolean} [visibleOnly]  skip what is hidden (a layer's other tab panels)
- */
-function largestScrollable(all, vertical, visibleOnly = false) {
-  let best = null;
-  let area = 0;
-  for (let i = 0; i < Math.min(all.length, SEARCH_LIMIT); i++) {
-    const el = /** @type {Element} */ (all[i]);
-    if (!canScroll(el, vertical)) continue;
-    if (visibleOnly && !el.checkVisibility({ visibilityProperty: true })) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width * r.height > area) [best, area] = [el, r.width * r.height];
-  }
-  return best;
-}
-
-/**
- * The fixed layer under the middle of the viewport, and the scroller under that point inside it:
- * a cookie banner's settings, a modal or a lightbox drawn over a page that still scrolls (issue
- * #864). Cookiebot's layer is a `role=region`, Usercentrics' a dialog without `aria-modal` in a
- * shadow root, so the layer is told by its `position: fixed`, not by its ARIA. Null when the
- * middle of the viewport is the page's own: a fixed header or a chat widget in a corner is not
- * there.
- * @param {Window} win
- * @param {boolean} vertical
- * @returns {{ layer: Element, inner: Element | null } | null}
- */
-function layerAtCentre(win, vertical) {
-  const { vw, vh } = viewportSize(win);
-  if (!(vw > 0 && vh > 0)) return null;
-  const x = vw / 2;
-  const y = vh / 2;
-  const doc = win.document;
-  let hit = doc.elementFromPoint(x, y);
-  // elementFromPoint stops at a shadow host; the layer can be inside its tree, open or closed.
-  for (let root = hit?.openOrClosedShadowRoot; root;) {
-    const inner = root.elementFromPoint(x, y);
-    if (!inner || inner === hit) break;
-    hit = inner;
-    root = hit.openOrClosedShadowRoot;
-  }
-  /** @type {Element | null} */
-  let inner = null;
-  for (
-    let el = hit;
-    el && el !== doc.body && el !== doc.documentElement;
-    // Slotted content belongs to the layer its slot is in, not to its light-tree parents.
-    el = /** @type {Element | null} */ (el.assignedSlot) ?? parentOf(el)
-  ) {
-    if (!inner && canScroll(el, vertical)) inner = el;
-    if (win.getComputedStyle(el)?.position === "fixed") return { layer: el, inner };
-  }
-  return null;
-}
-
-/**
- * The parent element, stepping out of a shadow root to its host.
- * @param {Element} el
- * @returns {Element | null}
- */
-function parentOf(el) {
-  if (el.parentElement) return el.parentElement;
-  const root = el.getRootNode();
-  return "host" in root ? /** @type {ShadowRoot} */ (root).host : null;
 }
 
 /** A find text no page contains (a noncharacter): resets the find buffer without moving. */
@@ -342,16 +228,8 @@ export class VimmaChild extends JSWindowActorChild {
    */
   static _sizePollMsForTests = null;
 
-  /** @type {WeakRef<Element> | null} the last largest scrollable, reused while it can scroll */
-  #largest = null;
-  /**
-   * The last fixed layer's largest scrollable, reused while that layer is under the middle of
-   * the viewport and the element can scroll.
-   * `el` is null when the layer had nothing to scroll, and that search is not repeated for
-   * SEARCH_BACKOFF_MS (holding j over a fixed background).
-   * @type {{ layer: WeakRef<Element>, el: WeakRef<Element> | null, at: number } | null}
-   */
-  #layerScroller = null;
+  /** Scrolling in this frame (docs/specs/m1-actor-insert-scroll.md). */
+  #scroll = new PageScroll(this, () => deepActiveElement(this.document));
   /** The last hint collection (m1-hints): its generation and its elements, by target id. */
   #hints = { gen: -1, els: /** @type {WeakRef<Element>[]} */ ([]) };
   /**
@@ -395,8 +273,6 @@ export class VimmaChild extends JSWindowActorChild {
    * @type {{ doc: Document, at: number, last: number | null, observer: MutationObserver | null } | null}
    */
   #stepWatch = null;
-  /** When a search for the largest scrollable last found nothing (0: not since focus moved). */
-  #emptySearchAt = 0;
   /** Copy mode in this document (m1-copy-mode). */
   #caret = new Caret();
   /** Element focus in this document (docs/specs/element-focus.md). */
@@ -569,7 +445,7 @@ export class VimmaChild extends JSWindowActorChild {
     const doc = this.document;
     switch (event.type) {
       case "focusin": {
-        this.#emptySearchAt = 0;
+        this.#scroll.focusMoved();
         // Unretargeted: the element itself, also inside an open or closed shadow root.
         const target = /** @type {Element | null} */ (event.originalTarget);
         if (target && this.#focusedByFind(target)) {
@@ -602,7 +478,7 @@ export class VimmaChild extends JSWindowActorChild {
         // tab): the user is back on its focused element, which counts as a focusin. An editable
         // document root (designMode, contenteditable <body>) gets only this event.
         if (event.originalTarget !== this.contentWindow) return;
-        this.#emptySearchAt = 0;
+        this.#scroll.focusMoved();
         this.#report(deepActiveElement(doc) ?? doc.body, "focusin");
         return;
       }
@@ -801,7 +677,7 @@ export class VimmaChild extends JSWindowActorChild {
       case "Vimma:Scroll":
         // pdf.js's presentation mode shows one page at a time: the scroll keys turn pages.
         if (this.#pdf?.turnPage(msg.data.kind, msg.data.count)) return true;
-        return this.#scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
+        return this.#scroll.scroll(msg.data.kind, msg.data.count, msg.data.instant === true);
       case "Vimma:PdfTheme":
         // A theme change (V12): the token sheet again.
         this.#pdf?.setTheme(msg.data?.css);
@@ -830,14 +706,9 @@ export class VimmaChild extends JSWindowActorChild {
         const pdf = this.#pdf;
         return el?.isConnected ? new Promise((resolve) => pdf.linkPage(el, resolve)) : 0;
       }
-      case "Vimma:ScrollFraction": {
-        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16): the element `j`
-        // scrolls, as a fraction of how far it can go.
-        const el = this.#scrollTarget(true);
-        if (!el) return 0;
-        const max = el.scrollHeight - el.clientHeight;
-        return max > 0 ? Math.min(1, Math.max(0, el.scrollTop / max)) : 0;
-      }
+      case "Vimma:ScrollFraction":
+        // Where an agent tab is scrolled to (docs/specs/mcp-drive.md D16).
+        return this.#scroll.fraction();
       case "Vimma:Blur": {
         if (isIndex(msg.data?.gen)) this.#blurGen = msg.data.gen;
         const el = deepActiveElement(this.document);
@@ -863,10 +734,8 @@ export class VimmaChild extends JSWindowActorChild {
         if (this.document.hasFocus() && this.#inEditable()) this.docShell?.doCommand(command);
         return undefined;
       }
-      case "Vimma:ScrollPosition": {
-        const win = this.contentWindow;
-        return win ? { x: win.scrollX, y: win.scrollY } : null;
-      }
+      case "Vimma:ScrollPosition":
+        return this.#scroll.position();
       case "Vimma:FindAnchor":
         return this.#findAnchor();
       case "Vimma:FindClosed":
@@ -882,14 +751,9 @@ export class VimmaChild extends JSWindowActorChild {
         // By code point: a cut through a surrogate pair would leave half a character.
         return text ? [...text].slice(0, max).join("") : null;
       }
-      case "Vimma:ScrollTo": {
-        const x = Number(msg.data?.x);
-        const y = Number(msg.data?.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) {
-          this.contentWindow?.scrollTo({ left: x, top: y, behavior: "instant" });
-        }
+      case "Vimma:ScrollTo":
+        this.#scroll.scrollTo(msg.data);
         return undefined;
-      }
       case "Vimma:Grep":
         return this.#grepSearch(msg.data);
       case "Vimma:GrepPreview":
@@ -1870,80 +1734,5 @@ export class VimmaChild extends JSWindowActorChild {
     );
     if (el) this.#focus(el);
     return !!el;
-  }
-
-  /**
-   * @param {boolean} vertical
-   * @returns {Element | null}
-   */
-  #scrollTarget(vertical) {
-    const doc = this.document;
-    const root = doc.scrollingElement;
-    for (let el = deepActiveElement(doc); el && el !== root && el !== doc.body;) {
-      if (canScroll(el, vertical)) return el;
-      el = parentOf(el);
-    }
-    // A layer over the page (a cookie banner's settings) scrolls before the page behind it: the
-    // scroller under the middle of the viewport, else the layer's largest.
-    const win = /** @type {Window} */ (this.contentWindow);
-    const over = win && layerAtCentre(win, vertical);
-    if (over?.inner) return over.inner;
-    if (over) {
-      const c = this.#layerScroller?.layer.deref() === over.layer ? this.#layerScroller : null;
-      const kept = c?.el?.deref();
-      if (kept?.isConnected && canScroll(kept, vertical)) return kept;
-      if (!(c && !c.el && Date.now() - c.at < SEARCH_BACKOFF_MS)) {
-        const el = largestScrollable(over.layer.getElementsByTagName("*"), vertical, true);
-        this.#layerScroller = {
-          layer: new WeakRef(over.layer),
-          el: el ? new WeakRef(el) : null,
-          at: Date.now(),
-        };
-        if (el) return el;
-      }
-    }
-    if (root && canScroll(root, vertical)) return root;
-    // App shells, pdf.js and a locked page's modal scroll an inner element: take the largest
-    // visible one. Cached; a search is bounded, and one that found nothing is not repeated
-    // until focus moves or a second has passed.
-    const last = this.#largest?.deref();
-    if (last?.isConnected && canScroll(last, vertical)) return last;
-    const now = Date.now();
-    if (this.#emptySearchAt && now - this.#emptySearchAt < SEARCH_BACKOFF_MS) return null;
-    const best = largestScrollable(doc.getElementsByTagName("*"), vertical);
-    this.#largest = best ? new WeakRef(best) : null;
-    this.#emptySearchAt = best ? 0 : now;
-    return best;
-  }
-
-  /**
-   * @param {ScrollKind} kind
-   * @param {number} count
-   * @param {boolean} [instant]  no smooth scroll: an agent's tab in the background, whose
-   *   refresh driver is throttled (docs/specs/mcp-drive.md D8)
-   * @returns {boolean} whether this frame had something to scroll
-   */
-  #scroll(kind, count, instant = false) {
-    const vertical = kind !== "left" && kind !== "right";
-    const el = this.#scrollTarget(vertical);
-    if (!el) return false;
-    const behavior =
-      !instant && Services.prefs.getBoolPref("general.smoothScroll", true) ? "smooth" : "instant";
-    const n = Math.max(1, Number(count) || 1);
-    // Whole pixels, so d then u returns to the same place.
-    const half = Math.round(el.clientHeight / 2) * n;
-    /** @type {Record<ScrollKind, () => void>} */
-    const run = {
-      down: () => el.scrollBy({ top: STEP * n, behavior }),
-      up: () => el.scrollBy({ top: -STEP * n, behavior }),
-      right: () => el.scrollBy({ left: STEP * n, behavior }),
-      left: () => el.scrollBy({ left: -STEP * n, behavior }),
-      half_down: () => el.scrollBy({ top: half, behavior }),
-      half_up: () => el.scrollBy({ top: -half, behavior }),
-      top: () => el.scrollTo({ top: 0, behavior }),
-      bottom: () => el.scrollTo({ top: el.scrollHeight, behavior }),
-    };
-    run[kind]();
-    return true;
   }
 }
