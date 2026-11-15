@@ -1,6 +1,7 @@
-// Spec ci-quality-gates: weekly mutation testing of vimma-core (plan §5, unit layer). Survivors
-// become one tracking issue (.github/workflows/mutation.yml); they never fail a build, so there is
-// no `thresholds.break`. Local run: `npm run mutation`; reading the report: docs/runbook/.
+// Spec ci-quality-gates: weekly mutation testing of vimma-core (the unit layer of
+// docs/architecture/testing.md). Survivors become one tracking issue
+// (.github/workflows/mutation.yml); they never fail a build, so there is no `thresholds.break`.
+// Local run: `npm run mutation`; reading the report: docs/runbook/.
 //
 // Test runner: @stryker-mutator/vitest-runner with per-test coverage, so each mutant runs only the
 // tests that reach it. The command runner used before ran the whole core suite (about 30 s) once
