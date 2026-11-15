@@ -15,39 +15,127 @@ import type { Job } from "./workflow-types.ts";
 const root = new URL("../../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, root), "utf8");
 
-/** Files that hold examples of the forbidden commands on purpose, or only history. */
+/** Files that are only history or data: never run, never read as instructions. */
 const SKIP = new Set([
-  "CHANGELOG.md", // released history, never run
+  "CHANGELOG.md", // released history
   "package-lock.json", // read as data below
-  "tools/test/build-supply-chain.test.ts", // its fixtures are the commands it refuses
-  "tools/test/supply-chain.test.ts", // this file's fixtures
 ]);
 const SKIP_DIRS = ["tools/package/vendor/"]; // third-party JSON schemas and licence lists
 
 /**
- * Lines that name a forbidden command as prose, not as something to run: the whole list, each
- * matched by its file and an exact piece of the line.
+ * The guards' own code and tests hold the commands they refuse as fixtures. Only these files may
+ * mark a block of lines as fixtures, and only the marked lines are skipped.
  */
-const PROSE: ReadonlyArray<readonly [string, string]> = [
-  ["CONTRIBUTING.md", "so `npm ci` and `npm install` run"],
-  ["docs/security/14-build-and-release-supply-chain.md", "An npm install **never** runs"],
-  ["docs/specs/build-supply-chain.md", "No `npm ci` or `npm install` in the repository"],
-  ["docs/specs/build-supply-chain.md", "An npm install **never** runs"],
-  // Zen's macOS release workflow, as the spec's research found it.
-  ["docs/specs/macos-build.md", "`cargo install apple-codesign`, the p12 from a secret"],
-  // Commands run in vimma-browser/vimma-updates, another repository, not with this lockfile.
-  ["docs/runbook/ci-update-keys-and-update-host.md", "deploy command `npx wrangler deploy`"],
-  ["docs/runbook/ci-update-keys-and-update-host.md", "npx wrangler deploy"],
+const FIXTURE_FILES = new Set([
+  "tools/test/build-supply-chain.test.ts",
+  "tools/test/supply-chain.test.ts",
+  // The plugin's Bash guard refuses the same commands for agents: its block messages, rules and
+  // test cases name them.
+  "tools/claude-plugin/hooks/lib/bash-rules.mjs",
+  "tools/claude-plugin/test/bash-guard.test.ts",
+]);
+const FIXTURES_BEGIN = "// supply-chain-guard: fixtures";
+const FIXTURES_END = "// supply-chain-guard: end";
+
+/**
+ * Lines allowed to hold what the guard refuses: the whole list, each matched by its file and its
+ * exact text, trimmed. A test checks that each still faults without its allowance.
+ */
+// supply-chain-guard: fixtures
+const ALLOWED: ReadonlyArray<readonly [string, string]> = [
+  // Prose that forbids the command it names.
+  [
+    "CONTRIBUTING.md",
+    "- **No install scripts.** `.npmrc` sets `ignore-scripts=true`, so `npm ci` and `npm install` run",
+  ],
+  [
+    "docs/security/14-build-and-release-supply-chain.md",
+    "- B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from",
+  ],
+  [
+    "docs/specs/build-supply-chain.md",
+    "7. **No install scripts.** No `npm ci` or `npm install` in the repository runs package",
+  ],
+  [
+    "docs/specs/build-supply-chain.md",
+    "- B4. An npm install **never** runs install scripts, and the build **must** run Surfer only from",
+  ],
+  // Research: Zen's macOS release workflow, as the spec found it.
+  [
+    "docs/specs/macos-build.md",
+    "`cargo install apple-codesign`, the p12 from a secret, `mach macos-sign -r -c release -e",
+  ],
+  // Test names and fixtures of runner-node.test.ts, which refuses these before a guard.
+  [
+    "tools/test/runner-node.test.ts",
+    'it("finds node, npm or npx at the end of a line too", () => {',
+  ],
+  [
+    "tools/test/runner-node.test.ts",
+    '["corepack", { steps: [CHECKOUT, { run: "corepack enable" }, GUARD] }, "step 1"],',
+  ],
+  [
+    "tools/test/runner-node.test.ts",
+    '["bun", { steps: [CHECKOUT, { run: "bun x tsc" }, GUARD] }, "step 1"],',
+  ],
+  // Cross-repository exception: commands run by and in vimma-browser/vimma-updates (its Workers
+  // Builds deploy command, and the same by hand from its checkout), which has no lockfile of its
+  // own; outside this repository's dependencies.
+  [
+    "docs/runbook/ci-update-keys-and-update-host.md",
+    "repository → `vimma-browser/vimma-updates` (Workers Builds, deploy command `npx wrangler deploy`,",
+  ],
+  [
+    "docs/runbook/ci-update-keys-and-update-host.md",
+    "git pull && CLOUDFLARE_API_TOKEN=<workers-token> CLOUDFLARE_ACCOUNT_ID=<account-id> npx wrangler deploy",
+  ],
 ];
+// supply-chain-guard: end
 
+// supply-chain-guard: fixtures
+/** npm's names for install and update (`npm help install`, `npm help update`), longest first. */
+const INSTALL_NAMES =
+  "install-test|install|isntall|instal|isntal|insta|isnta|inst|isnt|ins|in|it|i|add|" +
+  "update|udpate|upgrade|up";
+/** npm's options before its command, each with or without a value: `--global`, `--prefix dir`. */
+const NPM_OPTS = String.raw`(?:--?[\w-]+(?:=\S+|\s+(?!-)[^\s;&|]+)?\s+)*`;
+/** Spellings no English sentence holds, checked on every line of every file. */
+const INSTALL_ANYWHERE = new RegExp(
+  String.raw`\bnpm\s+${NPM_OPTS}(install|isntall|i|add|update|upgrade)(?![\w-])`,
+  "g",
+);
+/** Every spelling, checked where a line is a command (a script, a run: line, code in quotes). */
+const INSTALL = new RegExp(String.raw`\bnpm\s+${NPM_OPTS}(${INSTALL_NAMES})(?![\w-])`, "g");
+/** npm commands that fetch the package they name: `npm create x`, `npm init x`, `npm link x`. */
+const FETCHING_VERB = new RegExp(
+  String.raw`\bnpm\s+${NPM_OPTS}(create|init|innit|link|ln)\s+(?!-)[\w@]`,
+  "g",
+);
+/** Runners that fetch whatever they are asked for: there is no form of them that is safe. */
+const ALWAYS_FETCH = /\b(?:pnpm\s+dlx|yarn\s+dlx|pnpx|bunx)\b/g;
+/** Other package managers' installs, and corepack, which downloads them. */
+const OTHER_PM =
+  /\b(?:(?:yarn|pnpm|bun)\s+(?:install|i|add|up|upgrade|update|x|dlx)(?![\w-])|corepack\b)/g;
+const PIPE_TO_SHELL =
+  /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo(?:\s+-\S+)*\s+)?(?:(?:ba|z|da|k)?sh|python3?|node|perl|ruby)\b/g;
+const SUBST_TO_SHELL =
+  /(?:^|[\s;&|(`"'])(?:(?:ba|z|da|k)?sh|source|eval|\.)\s+(?:-c\s+)?["']?(?:\$\(|<\()\s*(?:curl|wget)\b/g;
+const PIP = /\b(?:pip3?|python3?\s+-m\s+pip)\s+install\b[^\n]*/g;
+const CARGO_INSTALL = /\bcargo\s+(?:\+\S+\s+)?(?:install|binstall)\b[^\n]*/g;
+const CARGO_UNLOCK = /\bcargo\s+(?:\+\S+\s+)?(?:update|generate-lockfile)\b/g;
 /** A cargo command that resolves crates, to the end of its shell command. */
-const CARGO_RUN = /\bcargo\s+(?:build|test|clippy|run|check|doc|bench)\b[^\n&;|"]*/g;
+const CARGO_RUN =
+  /\bcargo\s+(?:\+\S+\s+)?(?:build|test|clippy|run|check|doc|bench|fetch)\b[^\n&;|"]*/g;
+// supply-chain-guard: end
 
-/** @returns each cargo command in a run: script that does not keep to Cargo.lock */
+/** @returns each cargo command in a script that does not keep to Cargo.lock */
 function cargoFaults(run: string): string[] {
-  return [...run.matchAll(CARGO_RUN)]
-    .map((m) => m[0].trim())
-    .filter((c) => !/--locked|^cargo\s+\w+\s+--version$/.test(c));
+  return [
+    ...[...run.matchAll(CARGO_RUN)]
+      .map((m) => m[0].trim())
+      .filter((c) => !/--locked|^cargo\s+(?:\+\S+\s+)?\w+\s+--version$/.test(c)),
+    ...[...run.matchAll(CARGO_UNLOCK)].map((m) => m[0]),
+  ];
 }
 
 /** @returns every path git tracks, relative to the repository root */
@@ -72,24 +160,6 @@ function trackedText(): Array<[string, string]> {
   }
   return files;
 }
-
-/** npm's names for install and update (`npm help install`, `npm help update`), longest first. */
-const INSTALL_NAMES =
-  "install-test|install|isntall|instal|isntal|insta|isnta|inst|isnt|ins|in|it|i|add|" +
-  "update|udpate|upgrade|up";
-/** Spellings no English sentence holds, checked on every line of every file. */
-const INSTALL_ANYWHERE =
-  /\bnpm\s+(?:--?[\w-]+(?:=\S+)?\s+)*(install|isntall|i|add|update|upgrade)(?![\w-])/g;
-/** Every spelling, checked where a line is a command (a script, a run: line, code in backticks). */
-const INSTALL = new RegExp(
-  `\\bnpm\\s+(?:--?[\\w-]+(?:=\\S+)?\\s+)*(${INSTALL_NAMES})(?![\\w-])`,
-  "g",
-);
-/** Runners that fetch whatever they are asked for: there is no form of them that is safe. */
-const ALWAYS_FETCH = /\b(?:pnpm\s+dlx|yarn\s+dlx|pnpx|bunx)\b/g;
-const PIPE_TO_SHELL = /\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba|z|da|k)?sh\b/g;
-const PIP = /\b(?:pip3?|python3?\s+-m\s+pip)\s+install\b[^\n]*/g;
-const CARGO_INSTALL = /\bcargo\s+(?:install|binstall)\b[^\n]*/g;
 
 /** The binaries the root's devDependencies install, from the lockfile: all npx may run. */
 function lockedBins(): Set<string> {
@@ -121,26 +191,11 @@ export function fetchingNpx(text: string, bins: ReadonlySet<string>): string[] {
   return out;
 }
 
-/**
- * npx spawned from code: execFileSync("npx", ["--no", "--", "prettier", …]). A spawned npx has
- * no terminal, so npm takes `--yes` unless told `--no`: the first argument must say it, and the
- * arguments must be a literal list this can read.
- */
-function fetchingNpxInCode(text: string, bins: ReadonlySet<string>): Array<[number, string]> {
-  const out: Array<[number, string]> = [];
-  for (const m of text.matchAll(/["'`]npx["'`]\s*,\s*(\[[^\]]*)?/g)) {
-    const args = [...(m[1] ?? "").matchAll(/["'`]([^"'`]*)["'`]/g)].map((a) => a[1] ?? "");
-    if (!m[1] || !["--no", "--no-install"].includes(args[0] ?? "") || badArgs(args, bins))
-      out.push([m.index ?? 0, m[0].replace(/\s+/g, " ")]);
-  }
-  return out;
-}
-
 /** @returns whether npx with these arguments could fetch a package */
 function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
   for (const a of args) {
     if (a === "--no" || a === "--no-install" || a === "--") continue;
-    if (/^(?:-y|--yes|-p|--package(?:=.*)?|-c|--call(?:=.*)?)$/.test(a)) return true;
+    if (/^(?:-y|-yes|--yes|-p|--package|-c|--call)(?:=.*)?$/.test(a)) return true;
     if (a.startsWith("-")) continue; // npm's own options, such as --offline
     // A bin name; anything else (`|`, `<`, a closing quote) ends the command.
     if (!/^[\w@][\w@./-]*$/.test(a)) return false;
@@ -149,13 +204,57 @@ function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
   return false;
 }
 
-/** @returns each npm install or update in `text` that is not prose saying the opposite */
+/**
+ * The string literals a list starts with, up to its first other item (a variable, a call): what
+ * decides what npm does. Null when it starts with something else.
+ */
+function literalList(list: string): string[] | null {
+  const out: string[] = [];
+  for (const item of list.split(",").map((t) => t.trim())) {
+    const m = /^(["'`])([^"'`]*)\1$/.exec(item);
+    if (!m) break;
+    out.push(m[2] ?? "");
+  }
+  return out.length > 0 ? out : null;
+}
+
+// supply-chain-guard: fixtures
+/**
+ * npm or npx spawned from code, as a program and its arguments: execFileSync("npm", ["ci"]) in
+ * JavaScript, ["npm", "ci"] in Python. A spawned npx has no terminal, so npm takes `--yes` unless
+ * told `--no`: its first argument must say so. The arguments must be a literal list this can
+ * read, and a name held in a variable (`const r = "npx"`) is refused, since its call cannot be.
+ * @returns each refused spawn, with its offset in `text`
+ */
+function spawnFaults(text: string, bins: ReadonlySet<string>): Array<[number, string]> {
+  const out: Array<[number, string]> = [];
+  const add = (at: number, call: string) => out.push([at, call.replace(/\s+/g, " ")]);
+  const check = (at: number, call: string, prog: string, args: string[] | null) => {
+    if (args === null) return add(at, call);
+    const line = `${prog} ${args.join(" ")}`;
+    if (prog === "npx" && !["--no", "--no-install"].includes(args[0] ?? "")) return add(at, call);
+    if (commandFaults(line, bins).length > 0) add(at, call);
+  };
+  // spawn("npx", [ … ]), ["npm", [ … ]]: the program, then its arguments as a list.
+  for (const m of text.matchAll(/[([]\s*(["'`])(npx|npm)\1\s*,\s*\[([^\]]*)\]/g))
+    check(m.index ?? 0, m[0], m[2] ?? "", literalList(m[3] ?? ""));
+  // [ "npm", "install", … ]: a list that starts with the program.
+  for (const m of text.matchAll(/\[\s*(["'])(npx|npm)\1\s*,((?:\s*(["'])[^"'\n]*\4\s*,?)+)\s*\]/g))
+    check(m.index ?? 0, m[0], m[2] ?? "", literalList(m[3] ?? ""));
+  // The program's name held in a variable, or passed with arguments that are not a list.
+  const held = /\(\s*(["'])(npx|npm)\1\s*,\s*(?![\s[])|=\s*(["'])(npx|npm)\3\s*[;,)\n]/g;
+  for (const m of text.matchAll(held)) add(m.index ?? 0, m[0]);
+  return out;
+}
+// supply-chain-guard: end
+
+/** @returns each of npm's install or update commands in `text`, but prose forbidding one */
 function installs(text: string, re: RegExp): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(re)) {
-    // "no npm install", "never `npm i`": prose saying the opposite.
-    const before = text.slice(0, m.index).replace(/[`*_]+$/, "");
-    if (!/\b(?:no|never|not|without)\s*$/i.test(before)) out.push(`npm ${m[1]}: ${m[0]}`);
+    // Prose saying the opposite: "no" or "never" (or "not", "without") just before it.
+    const before = text.slice(0, m.index).replace(/[`*_\s]+$/, "");
+    if (!/\b(?:no|never|not|without)$/i.test(before)) out.push(`npm ${m[1]}: ${m[0]}`);
   }
   return out;
 }
@@ -164,19 +263,30 @@ function installs(text: string, re: RegExp): string[] {
 function anywhereFaults(line: string): string[] {
   const faults = installs(line, INSTALL_ANYWHERE);
   for (const m of line.matchAll(ALWAYS_FETCH)) faults.push(`fetching runner: ${m[0]}`);
-  for (const m of line.matchAll(PIPE_TO_SHELL)) faults.push(`download piped to a shell: ${m[0]}`);
+  for (const re of [PIPE_TO_SHELL, SUBST_TO_SHELL])
+    for (const m of line.matchAll(re)) faults.push(`download run by a shell: ${m[0].trim()}`);
   for (const m of line.matchAll(PIP))
-    if (!/--require-hashes/.test(m[0])) faults.push(`pip install without hashes: ${m[0]}`);
-  for (const m of line.matchAll(CARGO_INSTALL))
-    if (!/--locked/.test(m[0])) faults.push(`cargo install without --locked: ${m[0]}`);
+    if (!/--require-hashes/.test(m[0])) faults.push(`unhashed pip: ${m[0]}`);
+  for (const m of line.matchAll(CARGO_INSTALL)) {
+    if (!/--locked/.test(m[0])) faults.push(`unlocked cargo: ${m[0]}`);
+    else if (/--git\b/.test(m[0]) && !/--rev\s+[0-9a-f]{40}\b/.test(m[0]))
+      faults.push(`cargo git source without a commit: ${m[0]}`);
+  }
   return faults;
 }
 
 /** @returns each forbidden install or fetch in a piece of text that is a command */
 function commandFaults(text: string, bins: ReadonlySet<string>): string[] {
   return [
+    ...anywhereFaults(text),
     ...installs(text, INSTALL),
-    ...fetchingNpx(text, bins).map((call) => `npx that can fetch: ${call}`),
+    ...[...text.matchAll(FETCHING_VERB)].map((m) => `npm ${m[1]} <package>: ${m[0]}`),
+    ...[...text.matchAll(OTHER_PM)].map((m) => `another package manager: ${m[0]}`),
+    ...[...text.matchAll(CARGO_UNLOCK)].map((m) => `cargo off its lockfile: ${m[0]}`),
+    ...[...text.matchAll(/\bcargo\s+(?:\+\S+\s+)?fetch\b[^\n&;|"]*/g)]
+      .filter((m) => !/--locked/.test(m[0]))
+      .map((m) => `cargo fetch without --locked: ${m[0]}`),
+    ...fetchingNpx(text, bins).map((call) => `fetching npx: ${call}`),
   ];
 }
 
@@ -184,47 +294,80 @@ function commandFaults(text: string, bins: ReadonlySet<string>): string[] {
 export function lineFaults(line: string, bins: ReadonlySet<string>): string[] {
   return [
     ...new Set([
-      ...anywhereFaults(line),
       ...commandFaults(line, bins),
-      ...fetchingNpxInCode(line, bins).map(([, call]) => `npx that can fetch: ${call}`),
+      ...spawnFaults(line, bins).map(([, call]) => `spawned npm: ${call}`),
     ]),
   ];
 }
 
 /** Files whose every line is a command or a comment: scripts, workflows, package.json. */
-const SHELL_LIKE = /\.(?:sh|bash|ya?ml|toml|json|jsonc)$|(?:^|\/)(?:Makefile|Dockerfile|PKGBUILD)$/;
+const SHELL_LIKE =
+  /\.(?:sh|bash|zsh|fish|ps1|cmd|bat|ya?ml|toml|json|jsonc)$|(?:^|\/)(?:Makefile|Dockerfile|PKGBUILD|mozconfig)$/;
+/** Files whose comments are prose: Markdown, and code. */
+const isShellLike = (path: string, text: string) => SHELL_LIKE.test(path) || text.startsWith("#!");
 
 /**
  * The parts of a line that are commands: the whole line, less its comment, in a script or a
- * workflow; elsewhere (Markdown, code comments) only code in backticks that is not a test's name
- * in a link, and in Markdown each line of a fenced block.
+ * workflow, and each line of a fenced block in Markdown; elsewhere code in backticks that is not
+ * a test's name in a link, and in code every string literal too.
  */
-function commandPieces(path: string, line: string, fenced: boolean): string[] {
-  if (SHELL_LIKE.test(path) || fenced) return [line.replace(/(?:^|\s)#.*$/, "")];
+function commandPieces(path: string, line: string, shell: boolean, fenced: boolean): string[] {
+  if (shell || fenced) return [line.replace(/(?:^|\s)#.*$/, "")];
   // A test's name in a link to it (docs/security) is a name, not a command.
-  return [...line.matchAll(/`([^`]+)`(?!\]\()/g)].map((m) => m[1] ?? "");
+  const pieces = [...line.matchAll(/`([^`]+)`(?!\]\()/g)].map((m) => m[1] ?? "");
+  if (!path.endsWith(".md"))
+    for (const m of line.matchAll(/"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g))
+      pieces.push(m[1] ?? m[2] ?? "");
+  return pieces;
 }
 
-/** @returns `path:line: fault` for every fault in every tracked file but the allowed prose */
+/**
+ * @param allow whether the allowed lines are skipped; off, to check each still faults
+ * @returns [line number, fault] for every fault in one file
+ */
+export function fileFaults(
+  path: string,
+  text: string,
+  bins: ReadonlySet<string>,
+  allow = true,
+): Array<[number, string]> {
+  const out: Array<[number, string]> = [];
+  const shell = isShellLike(path, text);
+  const lines = text.split("\n");
+  const skip = new Set<number>();
+  let fenced = false;
+  let fixtures = false;
+  lines.forEach((line, i) => {
+    const t = line.trim();
+    if (t === FIXTURES_BEGIN || t === FIXTURES_END) {
+      if (!FIXTURE_FILES.has(path)) out.push([i + 1, "a fixture marker outside the guard's tests"]);
+      fixtures = t === FIXTURES_BEGIN;
+      skip.add(i + 1);
+      return;
+    }
+    const fence = path.endsWith(".md") && /^(?:```|~~~)/.test(t);
+    if (fence) fenced = !fenced;
+    if (fence || (fixtures && FIXTURE_FILES.has(path))) return void skip.add(i + 1);
+    if (allow && ALLOWED.some(([p, l]) => p === path && l === t)) return void skip.add(i + 1);
+    const faults = new Set(anywhereFaults(line));
+    for (const piece of commandPieces(path, line, shell, fenced))
+      for (const f of commandFaults(piece, bins)) faults.add(f);
+    for (const f of faults) out.push([i + 1, f]);
+  });
+  if (fixtures) out.push([lines.length, "a fixture block that is never closed"]);
+  for (const [at, call] of spawnFaults(text, bins)) {
+    const line = text.slice(0, at).split("\n").length;
+    if (!skip.has(line)) out.push([line, `spawned npm: ${call}`]);
+  }
+  return out;
+}
+
+/** @returns `path:line: fault` for every fault in every tracked file but the allowed lines */
 function repoFaults(): string[] {
   const bins = lockedBins();
   const out: string[] = [];
-  for (const [path, text] of trackedText()) {
-    let fenced = false;
-    text.split("\n").forEach((line, i) => {
-      const fence = path.endsWith(".md") && /^\s*(?:```|~~~)/.test(line);
-      if (fence) fenced = !fenced;
-      if (fence || PROSE.some(([p, piece]) => p === path && line.includes(piece))) return;
-      const faults = new Set(anywhereFaults(line));
-      for (const piece of commandPieces(path, line, fenced))
-        for (const f of commandFaults(piece, bins)) faults.add(f);
-      for (const f of faults) out.push(`${path}:${i + 1}: ${f}`);
-    });
-    for (const [at, call] of fetchingNpxInCode(text, bins)) {
-      const line = text.slice(0, at).split("\n").length;
-      out.push(`${path}:${line}: npx that can fetch: ${call}`);
-    }
-  }
+  for (const [path, text] of trackedText())
+    for (const [line, f] of fileFaults(path, text, bins)) out.push(`${path}:${line}: ${f}`);
   return out;
 }
 
@@ -246,6 +389,26 @@ function usesOf(text: string, name: string): string[] {
   }
   return out;
 }
+
+/** @returns each job's container and service images, as `job: image` */
+function imagesOf(text: string): Array<[string, unknown]> {
+  const out: Array<[string, unknown]> = [];
+  for (const [id, job] of jobs(text) as Map<string, Record<string, unknown>>) {
+    const c = job.container;
+    if (c !== undefined)
+      out.push([
+        `${id} container`,
+        typeof c === "object" && c ? (c as { image?: unknown }).image : c,
+      ]);
+    for (const [name, svc] of Object.entries((job.services ?? {}) as Record<string, unknown>))
+      out.push([`${id} service ${name}`, (svc as { image?: unknown } | null)?.image]);
+  }
+  return out;
+}
+
+/** Whether a container image is pinned by its digest. */
+const pinnedImage = (image: unknown) =>
+  typeof image === "string" && /^[\w./:-]+@sha256:[0-9a-f]{64}$/.test(image);
 
 /**
  * Whether an action reference runs only reviewed, unchanging code: a file of this repository, an
@@ -331,12 +494,40 @@ describe("supply chain: what installs and runs packages", () => {
     },
   );
 
+  // supply-chain-guard: fixtures
   it("reads an npx call from code whose arguments span lines", () => {
     const code = 'execFileSync(\n  "npx",\n  [\n    "prettier",\n    out,\n  ],\n);';
-    expect(fetchingNpxInCode(code, bins)).not.toEqual([]);
-    expect(fetchingNpxInCode(code.replace('"prettier"', '"--no", "--", "prettier"'), bins)).toEqual(
-      [],
-    );
+    expect(spawnFaults(code, bins)).not.toEqual([]);
+    expect(spawnFaults(code.replace('"prettier"', '"--no", "--", "prettier"'), bins)).toEqual([]);
+  });
+
+  it.each([
+    ["tools/x.ts", 'execSync("npx left-pad");'],
+    ["tools/x.ts", "// runs it: execSync('npm --prefix site install')"],
+    ["tools/x.ts", 'const r = "npx";\nexecFileSync(r, ["x"]);'],
+    ["tools/x.ts", 'spawnSync("npm", ["exec", "x"]);'],
+    ["tools/x.py", 'subprocess.run(["npm", "install", "x"], check=True)'],
+    ["tools/x.py", 'subprocess.run(\n    [\n        "npm",\n        "install",\n    ]\n)'],
+    ["tools/x", "#!/bin/sh\nnpm i x"],
+    ["configs/linux/mozconfig", "npm i x"],
+    ["tools/x.zsh", "pnpm install"],
+    ["docs/x.md", "Run:\n\n```sh\nnpm in x\n```"],
+    ["docs/x.md", "Run `yarn add x` first."],
+    ["docs/x.md", "Or install it with npm install x."],
+    ["tools/x.ts", "// supply-chain-guard: fixtures\nnpm i x"],
+  ])("finds the command in %s: %j", (path, text) => {
+    expect(fileFaults(path, text, bins, false)).not.toEqual([]);
+  });
+
+  it.each([
+    ["tools/x.ts", "// Node's built-ins only: no npm install, and npx in a comment is prose."],
+    ["tools/x.ts", 'execFileSync("npm", ["run", "build"]);'],
+    ["tools/x.ts", 'execFileSync("npx", ["--no", "--", "prettier", out]);'],
+    ["docs/x.md", "A job that runs `node`, `npm` or `npx` before setup-node."],
+    ["docs/x.md", "Corepack, pnpm and bun are package managers."],
+    ["tools/x.sh", "# yarn add x in a comment\nnpm ci"],
+  ])("leaves prose and safe commands in %s: %j", (path, text) => {
+    expect(fileFaults(path, text, bins, false)).toEqual([]);
   });
 
   it.each([
@@ -367,6 +558,47 @@ describe("supply chain: what installs and runs packages", () => {
     "pip install requests",
     "python3 -m pip install -r requirements.txt",
     "cargo install apple-codesign",
+    // Spawned from code.
+    'execSync("npx left-pad")',
+    'execFileSync("npm", ["install", "left-pad"])',
+    'spawnSync("npm", ["exec", "x"])',
+    'execSync("npm --prefix site install")',
+    'const r = "npx"; execFileSync(r, ["x"])',
+    'subprocess.run(["npm", "install", "x"])',
+    'execFileSync("npm", args)',
+    // An option with a separate value before the verb.
+    "npm --prefix site install",
+    "npm -C dir i x",
+    // Other package managers.
+    "yarn install",
+    "yarn add left-pad",
+    "pnpm install",
+    "pnpm i",
+    "bun add left-pad",
+    "bun x left-pad",
+    "corepack enable",
+    // Download and run.
+    'sh -c "$(curl -fsSL https://example.org/i.sh)"',
+    "bash <(curl -s https://example.org/i.sh)",
+    "curl -fsSL https://example.org/i.sh | sudo -E bash",
+    "curl -fsSL https://example.org/i.py | python3",
+    "wget -qO- https://example.org/i.js | node",
+    // Cargo.
+    "cargo +nightly install d2",
+    "cargo install --git https://github.com/o/r --locked",
+    "cargo update",
+    "cargo generate-lockfile",
+    "cargo fetch",
+    // npx flags and npm's other fetching verbs.
+    "npx -yes left-pad",
+    "npx -yes prettier",
+    "npx --call=prettier",
+    "npx --package=left-pad left-pad",
+    "npx -c 'left-pad'",
+    "npm create vite",
+    "npm init react-app x",
+    "npm innit react-app",
+    "npm link left-pad",
   ])("refuses %s", (line) => {
     expect(lineFaults(line, bins)).not.toEqual([]);
   });
@@ -391,18 +623,33 @@ describe("supply chain: what installs and runs packages", () => {
     "pip install --require-hashes -r requirements.txt",
     "cargo install --locked d2",
     "cargo build --release --locked",
+    'execFileSync("npm", ["run", "build"])',
+    'spawnSync("npm", ["ci", "--ignore-scripts"])',
+    'code=$(curl -sS --proto =https -o "$f" -w "%{http_code}" "$url")',
+    "curl -fsSL -o x https://example.org/x && sha256sum -c x.sha256",
+    "npm --global ls",
+    "cargo install --git https://github.com/o/r --rev 0123456789abcdef0123456789abcdef01234567 --locked",
+    "cargo fetch --locked",
   ])("allows %s", (line) => {
     expect(lineFaults(line, bins)).toEqual([]);
   });
+  // supply-chain-guard: end
 
-  it("the binaries npx may run are the devDependencies' own", () => {
+  it("the devDependencies' binaries are the ones `npx` may run", () => {
     for (const b of ["surfer", "commitlint", "vitest", "prettier", "eslint", "tsc", "stryker"])
       expect(bins.has(b), b).toBe(true);
     expect(bins.has("wrangler")).toBe(false);
   });
 
-  it("the prose allowances each still match a line, so none outlives its text", () => {
-    for (const [path, piece] of PROSE) expect(read(path), `${path}: ${piece}`).toContain(piece);
+  it("each allowed line is still there and still faults without its allowance", () => {
+    expect(ALLOWED).toHaveLength(10);
+    for (const [path, line] of ALLOWED) {
+      const text = read(path);
+      const at = text.split("\n").findIndex((l) => l.trim() === line) + 1;
+      expect(at, `${path}: ${line}`).toBeGreaterThan(0);
+      const faults = fileFaults(path, text, bins, false).filter(([n]) => n === at);
+      expect(faults, `${path}:${at}`).not.toEqual([]);
+    }
   });
 
   it("every cargo command a workflow runs keeps to Cargo.lock", () => {
@@ -415,8 +662,12 @@ describe("supply chain: what installs and runs packages", () => {
       }
     }
     expect(faults).toEqual([]);
+    // supply-chain-guard: fixtures
     expect(cargoFaults("cargo build --release")).toEqual(["cargo build --release"]);
+    expect(cargoFaults("cargo +nightly test")).toEqual(["cargo +nightly test"]);
+    expect(cargoFaults("cargo update -p x")).toEqual(["cargo update"]);
     expect(cargoFaults("cd x && cargo test --locked; cargo clippy --version")).toEqual([]);
+    // supply-chain-guard: end
   });
 });
 
@@ -432,6 +683,33 @@ describe("supply chain: GitHub Actions", () => {
       for (const u of uses) expect(pinned(u), `${path}: uses ${u}`).toBe(true);
     }
     expect(all.length).toBeGreaterThan(100);
+  });
+
+  it("every job's container and service image is pinned by digest", () => {
+    for (const path of tracked().filter((p) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(p)))
+      for (const [where, image] of imagesOf(read(path)))
+        expect(pinnedImage(image), `${path} ${where}: ${String(image)}`).toBe(true);
+    const text = [
+      "on: push",
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-24.04",
+      "    container: node:22",
+      "    services:",
+      "      db:",
+      `        image: postgres@sha256:${"a".repeat(64)}`,
+      "      cache:",
+      "        image: redis:7",
+      "  b:",
+      "    runs-on: ubuntu-24.04",
+      "    container:",
+      "      image: fedora:42",
+    ].join("\n");
+    expect(imagesOf(text).filter(([, i]) => !pinnedImage(i))).toEqual([
+      ["a container", "node:22"],
+      ["a service cache", "redis:7"],
+      ["b container", "fedora:42"],
+    ]);
   });
 
   it.each([
