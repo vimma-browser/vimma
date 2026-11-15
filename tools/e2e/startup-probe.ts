@@ -124,9 +124,10 @@ export function processReport(
     );
   if (threads.length) {
     const shown = threads.slice(0, maxThreads);
+    const more = threads.length - shown.length;
     lines.push(
       `threads of ${pgid} (state, CPU time, kernel wait channel; main thread first, then the ` +
-        `busiest${threads.length > shown.length ? `; ${threads.length - shown.length} more not shown` : ""}):`,
+        `busiest${more ? `; ${more} more not shown` : ""}):`,
       ...shown.map(
         (t) =>
           `  ${t.pid} ${t.comm}  state ${t.state}  ${cpu(t.cpuSeconds)}  ${t.wchan}` +
@@ -193,7 +194,11 @@ function entries(dir: string, spawnedAtMs: number, depth = 1, prefix = "") {
  * nsProfileLock on $TMPDIR/<program>, with the same hostname lookup, and removes that folder once
  * start-up is done. `tmp` is the browser's TMPDIR (inside the profile, so only this browser's).
  */
-export function startupLockReport(tmp: string, spawnedAtMs: number): string {
+export function startupLockReport(
+  tmp: string,
+  spawnedAtMs: number,
+  { platform = process.platform }: { platform?: string } = {},
+): string {
   const all = entries(tmp, spawnedAtMs, 2);
   const inside = (d: string) =>
     all
@@ -206,9 +211,12 @@ export function startupLockReport(tmp: string, spawnedAtMs: number): string {
   return [
     "TMPDIR entries by last change, in seconds since spawn:",
     ...all.slice(-PROBE_MAX_ENTRIES).map((e) => `  ${secs(e.ms)}  ${e.label}`),
-    ...(lockDirs.length
-      ? lockDirs.map((d) => lockPhase(`start-up lock ${d}`, inside(d)))
-      : ["no start-up lock in TMPDIR: not taken yet, or already released after start-up"]),
+    // Only Linux makes the lock symlink these conclusions rest on (macOS takes .parentlock only).
+    ...(platform !== "linux"
+      ? []
+      : lockDirs.length
+        ? lockDirs.map((d) => lockPhase(`start-up lock ${d}`, inside(d)))
+        : ["no start-up lock in TMPDIR: not taken yet, or already released after start-up"]),
   ].join("\n");
 }
 
@@ -220,7 +228,10 @@ export function startupLockReport(tmp: string, spawnedAtMs: number): string {
 export function profileTimeline(
   profile: string,
   spawnedAtMs: number,
-  { maxEntries = PROBE_MAX_ENTRIES }: { maxEntries?: number } = {},
+  {
+    maxEntries = PROBE_MAX_ENTRIES,
+    platform = process.platform,
+  }: { maxEntries?: number; platform?: string } = {},
 ): string {
   let names: string[];
   try {
@@ -232,18 +243,25 @@ export function profileTimeline(
   const shown = all.slice(-maxEntries);
   const dropped = all.length - shown.length;
   const phase = lockPhase("profile lock", names);
+  const older = dropped ? ` (${dropped} older not shown)` : "";
   return [
-    `profile entries by last change, in seconds since spawn${dropped ? ` (${dropped} older not shown)` : ""}:`,
+    `profile entries by last change, in seconds since spawn${older}:`,
     ...shown.map((e) => `  ${secs(e.ms)}  ${e.label}`),
-    phase.endsWith("neither .parentlock nor lock")
-      ? "no lock and no .parentlock: the browser never locked this profile"
-      : phase,
+    // As in startupLockReport: a conclusion on Linux only.
+    ...(platform !== "linux"
+      ? []
+      : [
+          phase.endsWith("neither .parentlock nor lock")
+            ? "no lock and no .parentlock: the browser never locked this profile"
+            : phase,
+        ]),
   ].join("\n");
 }
 
 /**
  * Everything above for a browser that has not written its discovery file: the profile's
- * timeline, its TMPDIR's start-up lock (when `tmp` is given), then its processes. `pid` is the browser's (its process group's) pid.
+ * timeline, its TMPDIR's start-up lock (when `tmp` is given), then its processes. `pid` is the
+ * browser's (its process group's) pid.
  */
 export function startupProbe({
   profile,

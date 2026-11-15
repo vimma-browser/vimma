@@ -10,6 +10,8 @@ import { parseStat, processReport, profileTimeline, startupLockReport } from "..
 
 const FAKE_BROWSER = fileURLToPath(new URL("./fixtures/fake-browser.ts", import.meta.url));
 const linux = process.platform === "linux";
+/** The lock conclusions are drawn on Linux only; these tests check them on any machine. */
+const LINUX = { platform: "linux" };
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -121,7 +123,7 @@ describe("profileTimeline", () => {
     at("startupCache", 2250);
     symlinkSync("127.0.0.1:+4242", join(profile, "lock"));
 
-    const report = profileTimeline(profile, spawnedAt);
+    const report = profileTimeline(profile, spawnedAt, LINUX);
     const lines = report.split("\n");
     expect(lines[0]).toMatch(/^profile entries by last change, in seconds since spawn/);
     expect(lines.slice(1, 4)).toEqual([
@@ -138,17 +140,17 @@ describe("profileTimeline", () => {
   it("says when start-up stopped between the fcntl lock and the lock symlink", () => {
     const profile = tempDir();
     writeFileSync(join(profile, ".parentlock"), "");
-    expect(profileTimeline(profile, Date.now())).toMatch(
+    expect(profileTimeline(profile, Date.now(), LINUX)).toMatch(
       /\.parentlock but no lock symlink: .*hostname/,
     );
     symlinkSync("127.0.0.1:+1", join(profile, "lock"));
-    expect(profileTimeline(profile, Date.now())).toMatch(/got past this lock/);
+    expect(profileTimeline(profile, Date.now(), LINUX)).toMatch(/got past this lock/);
   });
 
   it("says when the browser never locked its profile", () => {
     const profile = tempDir();
     writeFileSync(join(profile, "user.js"), "");
-    expect(profileTimeline(profile, Date.now())).toMatch(
+    expect(profileTimeline(profile, Date.now(), LINUX)).toMatch(
       /no lock and no \.parentlock: the browser never locked this profile/,
     );
   });
@@ -165,16 +167,36 @@ describe("startupLockReport", () => {
     const spawnedAt = Date.now() - 5000;
     mkdirSync(join(tmp, "vimma"));
     writeFileSync(join(tmp, "vimma", ".parentlock"), "");
-    const report = startupLockReport(tmp, spawnedAt);
+    const report = startupLockReport(tmp, spawnedAt, LINUX);
     expect(report).toMatch(/^TMPDIR entries by last change, in seconds since spawn/);
     expect(report).toMatch(/^ {2}\+\d+\.\d{3} s {2}vimma\/\.parentlock$/m);
     expect(report).toMatch(/^start-up lock vimma: \.parentlock but no lock symlink: .*hostname/m);
   });
 
   it("says when TMPDIR holds no start-up lock", () => {
-    expect(startupLockReport(tempDir(), Date.now())).toMatch(
+    expect(startupLockReport(tempDir(), Date.now(), LINUX)).toMatch(
       /^no start-up lock in TMPDIR: not taken yet, or already released/m,
     );
+  });
+});
+
+// macOS's nsProfileLock takes only .parentlock and makes no lock symlink, so the Linux
+// conclusion ("stopped before the hostname lookup") would be wrong there.
+describe("lock conclusions on other platforms", () => {
+  it("lists the entries but draws no lock conclusion off Linux", () => {
+    const profile = tempDir();
+    const spawnedAt = Date.now();
+    writeFileSync(join(profile, ".parentlock"), "");
+    mkdirSync(join(profile, "vimma"));
+    writeFileSync(join(profile, "vimma", ".parentlock"), "");
+    for (const report of [
+      profileTimeline(profile, spawnedAt, { platform: "darwin" }),
+      startupLockReport(profile, spawnedAt, { platform: "darwin" }),
+    ]) {
+      expect(report).toMatch(/^ {2}[+-]\d+\.\d{3} s {2}(vimma\/)?\.parentlock$/m);
+      expect(report).not.toMatch(/lock symlink|hostname|never locked|start-up lock|got past/);
+    }
+    expect(profileTimeline(profile, spawnedAt, { platform: "linux" })).toMatch(/hostname/);
   });
 });
 
