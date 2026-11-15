@@ -315,7 +315,7 @@ const OUTLINE_HOST = {
 /**
  * Pane actions that do something only with two panes or more: as single keys they are
  * runnable only then, so the first ctrl+w of `<C-w>h` passes to the page while the window has
- * one pane (plan §2; Firefox's ctrl+w close tab is off, key-handling-batch). `prefix+h` is
+ * one pane (Firefox's ctrl+w close tab is off, key-handling-batch). `prefix+h` is
  * consumed either way (ctrl+b is ours).
  */
 const MULTI_PANE = new Set([
