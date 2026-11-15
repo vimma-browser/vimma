@@ -13,7 +13,8 @@ into the host. The agent chat window (`agent-chat.mjs`) is passed the agent's se
 host that builds it (`AgentChatServices`: the conversations, the agent CLIs, the API keys,
 `config.toml`'s refusal and setup's write to it, the `[agent]` providers); it imports nothing
 from `agent/`, `config/` or `host/`, and not `host/host-services.mjs` either. Its box is built
-and drawn by `agent-chat-view.mjs`, which is handed the window and never imports it.
+and drawn by `agent-chat-view.mjs`, and its API key entry and masked key field (security.md M46)
+are `agent-chat-key.mjs`; both are handed the window and never import it.
 
 **Read more:** [Config and theme](../../../../../../docs/architecture/config-and-theme.md); the chrome UI rules
 in

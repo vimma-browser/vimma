@@ -121,6 +121,13 @@ export const providerKey = (/** @type {AgentProviderConfig} */ p) =>
   `${p.kind}\n${p.endpoint.replace(/\/+$/, "")}\n${p.model}${p.kind === "cli" ? `\n${p.cli}` : ""}`;
 
 /**
+ * Whether two providers are the same model at the same endpoint under the same name.
+ * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
+ */
+export const sameProvider = (a, b) =>
+  a.endpoint === b.endpoint && a.model === b.model && a.name === b.name;
+
+/**
  * Whether `provider`'s local server still lists its model (Behaviour 7): one `GET /v1/models` to
  * the provider's own endpoint, only on this machine and only for an OpenAI-compatible server.
  * Only "nothing answers" and "lists others" count against it, so a server without the route

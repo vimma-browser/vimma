@@ -140,9 +140,9 @@ vision; its key stays in login storage.
   [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.mjs),
   [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.ts)
 
-**The chat window** (`ui/agent-chat.mjs`; `ui/agent-chat-view.mjs`, which builds its box, the
-masked key field included, and draws every value in it as text; `host/agent-chat-ops.mjs`,
-`host/agent-ui.mjs`):
+**The chat window** (`ui/agent-chat.mjs`; `ui/agent-chat-view.mjs`, which builds its box and
+draws every value in it as text; `ui/agent-chat-key.mjs`, the API key entry and its masked field;
+`host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
 Vimma's own chrome, a box in the side panel's slot, never a page. It shows the user's messages,
 the model's replies, a line per step and the gate's questions of its open conversation, so it
 holds text a page may have written (a reply quoting it, a tab's title or a button's words in a
@@ -205,8 +205,10 @@ for the user.
   [`test_a_conversation_deleted_while_its_key_is_read_takes_its_message`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`test_forget_all_leaves_no_text_for_the_next_conversation`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`the notice before the first task names the host and, when known, who runs it`](../../packages/vimma-core/test/agent-chat.test.mjs)
-- M46. A hosted provider's key **must** be typed only into the window's password field, which
-  hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
+- M46. A hosted provider's key **must** be typed only into the window's password field
+  (`ui/agent-chat-key.mjs` builds it and stores, clears and deletes the key; its `RESTRICTED`
+  entry in `tools/layering/layers.ts` lets only `ui/agent-chat.mjs` and `ui/agent-chat-view.mjs`
+  import it), which hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
   text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the
