@@ -90,7 +90,7 @@ describe("configs/common/mozconfig: the updater", () => {
       const r = source(MOZCONFIG, srcdir({ certs }), { VIMMA_UPDATES: "1" });
       expect(r.status).not.toBe(0);
       expect(r.stderr).toContain(`${CERT_DIR}/`);
-      expect(r.stderr).toContain("docs/runbook.md");
+      expect(r.stderr).toContain("docs/runbook/");
     }
   });
 

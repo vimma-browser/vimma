@@ -140,10 +140,9 @@ add_task(async function test_startup_named_the_launcher_before_anything_else_sta
     Assert.ok(true, "only Linux reads MOZ_APP_LAUNCHER");
     return;
   }
-  const own = PathUtils.join(
-    PathUtils.parent(Services.dirsvc.get("XREExeF", Ci.nsIFile).path),
-    "vimma-open",
-  );
+  const exeDir = PathUtils.parent(Services.dirsvc.get("XREExeF", Ci.nsIFile).path);
+  Assert.ok(exeDir, "the binary sits in a folder");
+  const own = PathUtils.join(exeDir, "vimma-open");
   if (await IOUtils.exists(own)) {
     Assert.ok(AppLauncher.init(), "the window's startup came first and named vimma-open");
     Assert.equal(Services.env.get("MOZ_APP_LAUNCHER"), "", "read at startup, then emptied");

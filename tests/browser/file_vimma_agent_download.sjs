@@ -12,9 +12,13 @@ const ELF = [0x7f, 0x45, 0x4c, 0x46, 2, 1, 1, 0];
 
 /** A stored zip holding these names (empty files). @param {string[]} names */
 function zip(names) {
+  /** @type {number[]} */
   const out = [];
+  /** @param {number} n */
   const u16 = (n) => out.push(n & 0xff, (n >> 8) & 0xff);
+  /** @param {number} n */
   const u32 = (n) => out.push(n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff);
+  /** @type {number[]} */
   const offsets = [];
   for (const name of names) {
     offsets.push(out.length);
@@ -69,6 +73,7 @@ function body(kind) {
   }
 }
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const q = new URLSearchParams(request.queryString);
   const name = q.get("name") || "vimma-agent-test.bin";

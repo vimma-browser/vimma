@@ -11,7 +11,7 @@ behaviour is in [m3-workspaces](../specs/m3-workspaces.md),
 [tiling-layouts](../specs/tiling-layouts.md), [workspace-routing](../specs/workspace-routing.md)
 and [private-workspace](../specs/private-workspace.md), the split view decision in
 [ADR-013](../adr/013-split-on-firefox-split-view.md), and the rules with their tests in
-[docs/security.md](../security.md) §2 (routing) and §3 (deletion and containers). How the key
+[docs/security/](../security/README.md) §2 (routing) and §3 (deletion and containers). How the key
 reaches its runner: [The life of a keypress](keypress.md).
 
 ```mermaid
@@ -220,6 +220,8 @@ windows never take the agent workspace's container. `vimma-open` names the progr
 a link with `-vimma-from`, for rules with `app`
 ([app-routes](../specs/app-routes.md)). Tests:
 [browser_vimma_workspace_routes.js](../../tests/browser/browser_vimma_workspace_routes.js),
+[browser_vimma_workspace_routes_external.js](../../tests/browser/browser_vimma_workspace_routes_external.js),
+[browser_vimma_workspace_routes_windows.js](../../tests/browser/browser_vimma_workspace_routes_windows.js),
 [routes.test.mjs](../../packages/vimma-core/test/routes.test.mjs), and R1 onwards in
 security.md §2.
 

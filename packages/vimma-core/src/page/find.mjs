@@ -46,3 +46,18 @@ export function findCountText({ current = 0, total, limit }) {
   if (!total) return "";
   return `[${current}/${total}]`;
 }
+
+/**
+ * The top frame's scroll position as its child answered `Vimma:ScrollPosition`: a fresh
+ * `{ x, y }` of finite numbers, or null for anything else. The answer comes from a content
+ * process, which may be compromised; a caller that compares two positions then sees no position
+ * rather than one that never compares equal or always does.
+ * @param {unknown} raw
+ * @returns {{ x: number, y: number } | null}
+ */
+export function parseScrollPosition(raw) {
+  if (!raw || typeof raw !== "object" || !("x" in raw) || !("y" in raw)) return null;
+  const { x, y } = raw;
+  if (typeof x !== "number" || typeof y !== "number") return null;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}

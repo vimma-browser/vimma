@@ -808,25 +808,30 @@ export function updateVersionLine(offer) {
 }
 
 /**
- * `[updates] check` after a read of config.toml (decision 31 as since changed, #741). A file
- * with errors whose `check` can be read applies it as a valid file would, true when missing, so
- * a value from a newer build never keeps the user from the release that accepts it; that can
- * turn checks on that the config in force had off. Only when `check` cannot be read, since the
- * file may then say `check = false`, does it keep the value of the config in force, and when
- * only the defaults stand in for the file (at startup) it holds checks (`:update` aside) until
- * the file is fixed.
+ * `[updates] check` after a read of config.toml (decision 31 as since changed, #741, #967). A
+ * file with errors whose `check` can be read applies it as a valid file would, true when missing,
+ * so a value from a newer build never keeps the user from the release that accepts it; that can
+ * turn checks on that the config in force had off. When `check` cannot be read, the file may say
+ * `check = false`, so the read fails closed: it never turns checks on. When only the defaults
+ * stand in for the file (at startup) it holds checks (`:update` aside) until the file is fixed;
+ * otherwise it keeps the setting in effect (`previous`: held stays held), and checks stay on
+ * only when both that setting and the config in force have them on, since an earlier file with
+ * errors may have turned them on past the config in force, or off past it.
  * @param {{ errors: number, inForce: boolean, raw: boolean | "missing" | null,
- *   hadConfig: boolean }} read
+ *   hadConfig: boolean, previous?: { check: boolean, held: boolean } | null }} read
  *   `inForce`: `updates.check` of the config in force after the read; `raw`: rawUpdatesCheck;
- *   `hadConfig`: a config (not the fallback) was in force before the read
+ *   `hadConfig`: a config (not the fallback) was in force before the read; `previous`: this
+ *   function's last result (or the hold for an unreadable file), the setting in effect. Every
+ *   caller that keeps a config in force must pass it: left out, an unreadable `check` follows
+ *   the config in force alone and can undo an opt-out stated in a file with errors (#967)
  * @returns {{ check: boolean, held: boolean }}
  */
-export function updatesCheckAfterRead({ errors, inForce, raw, hadConfig }) {
+export function updatesCheckAfterRead({ errors, inForce, raw, hadConfig, previous = null }) {
   if (!errors) return { check: inForce, held: false };
   if (raw === "missing") return { check: true, held: false };
   if (raw !== null) return { check: raw, held: false };
-  if (!hadConfig) return { check: false, held: true };
-  return { check: inForce, held: false };
+  if (!hadConfig || previous?.held) return { check: false, held: true };
+  return { check: inForce && (previous?.check ?? true), held: false };
 }
 
 /**

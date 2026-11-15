@@ -9,7 +9,8 @@
 #   tools/upstream/firefox-source.sh      run from the repository root
 #
 # It deletes engine/, objdir and all, without asking. It is for CI's fresh runners; on a
-# developer's machine use `npx surfer download` (docs/runbook.md, "First Firefox build").
+# developer's machine use `npx surfer download` (docs/runbook/first-firefox-build.md, "First Firefox
+# build").
 #
 # Reads the Firefox version from surfer.json, downloads the source tarball to the path Surfer
 # reads (.surfer/engine/) when it is not there, and checks it against Mozilla's SHA512SUMS, whose

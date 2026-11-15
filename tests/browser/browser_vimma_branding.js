@@ -25,9 +25,12 @@ function formatBrandTerms(terms) {
   /** @type {Record<string, string>} */
   const out = {};
   for (const t of terms) {
-    const msg = bundle.getMessage(`vimma-test-${t}`);
+    // The message the test added above, with a value; formatPattern throws for a null one.
+    const msg = /** @type {FluentMessage} */ (bundle.getMessage(`vimma-test-${t}`));
     // Strip Unicode isolation marks Fluent wraps placeables in.
-    out[t] = bundle.formatPattern(msg.value).replace(/[\u2068\u2069]/g, "");
+    out[t] = bundle
+      .formatPattern(/** @type {FluentPattern} */ (msg.value))
+      .replace(/[\u2068\u2069]/g, "");
   }
   return out;
 }
@@ -59,7 +62,9 @@ add_task(async function brand_strings_are_vimma() {
 });
 
 add_task(async function window_title_names_vimma() {
-  const defaultTitle = await document.l10n.formatValue("browser-main-window-default-title");
+  // A browser window's document is localized (browser.xhtml links its .ftl files).
+  const l10n = /** @type {DocumentL10n} */ (document.l10n);
+  const defaultTitle = await l10n.formatValue("browser-main-window-default-title");
   Assert.equal(defaultTitle, BRAND, "default window title");
 
   await BrowserTestUtils.withNewTab("data:text/html,<title>vimma-page</title>", async () => {

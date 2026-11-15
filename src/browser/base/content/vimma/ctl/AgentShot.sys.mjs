@@ -51,7 +51,7 @@ export const SHOT_REFUSALS = Object.freeze({
 /**
  * A page screenshots are taken of: a web page, as for `vimma_elements` (F2). A tab moved into the
  * agent workspace may show a privileged about: page, the start page or a local file.
- * @param {any} principal nsIPrincipal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
@@ -66,7 +66,7 @@ const HINT_FG = "#071011";
  * @param {Promise<T>} promise @param {number} ms @param {T} fallback
  */
 async function within(promise, ms, fallback) {
-  /** @type {any} */
+  /** @type {number | undefined} */
   let timer;
   const late = new Promise((resolve) => {
     timer = lazy.setTimeout(resolve, ms, fallback);
@@ -81,7 +81,7 @@ async function within(promise, ms, fallback) {
 /**
  * Draws each label as the user's hint mode does (hints.css): bold monospace capitals on the
  * theme's hint colour, at its element's top left corner.
- * @param {any} ctx  an OffscreenCanvasRenderingContext2D
+ * @param {OffscreenCanvasRenderingContext2D} ctx
  * @param {{ label: string, x: number, y: number }[]} labels
  * @param {number} scale
  * @param {{ bg: string, fg: string }} colours
@@ -106,7 +106,7 @@ function drawLabels(ctx, labels, scale, colours) {
 
 /**
  * The theme's hint colours in `win`, as hints.css takes them.
- * @param {any} win  a browser window
+ * @param {BrowserWindow} win
  */
 function hintColours(win) {
   const style = win.getComputedStyle(win.document.documentElement);
@@ -122,16 +122,16 @@ function hintColours(win) {
  * The image in an encoding whose base64 is at most `max` characters (F19; issue #584): the
  * smallest of screenshotEncodings' `smallest` (a full image: PNG; the default one: PNG or
  * JPEG), else the first of its `then` that fits; null when none fits.
- * @param {any} canvas  an OffscreenCanvas
+ * @param {OffscreenCanvas} canvas
  * @param {number} max @param {boolean} full
  * @returns {Promise<{ mimeType: string, data: string } | null>}
  */
 async function encode(canvas, max, full) {
   const { smallest, then } = screenshotEncodings(full);
-  const fits = (/** @type {any} */ blob) => 4 * Math.ceil(blob.size / 3) <= max;
-  /** @param {any} blob @param {string} type */
+  const fits = (/** @type {Blob} */ blob) => 4 * Math.ceil(blob.size / 3) <= max;
+  /** @param {Blob} blob @param {string} type */
   const encoded = async (blob, type) => {
-    const bytes = /** @type {any} */ (new Uint8Array(await blob.arrayBuffer()));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
     return { mimeType: type, data: bytes.toBase64() };
   };
   let best = null;
@@ -166,8 +166,8 @@ export const AgentShot = {
    * A screenshot of `tab`'s viewport, in the background (F18-F21), with `labels` drawn on it;
    * or why there is none. At most AGENT_SCREENSHOT_SMALL.width pixels wide unless `full`
    * (issue #584).
-   * @param {any} win  the browser window that holds the tab
-   * @param {any} tab
+   * @param {BrowserWindow} win  the browser window that holds the tab
+   * @param {MozTabbrowserTab} tab
    * @param {Map<string, HintTarget> | null} labels  the labels to draw, or none
    * @param {boolean} [full]
    * @returns {Promise<{ mimeType: string, data: string, width: number, height: number,
@@ -188,7 +188,7 @@ export const AgentShot = {
   /**
    * Whether a screenshot of the tab of `browser` is being taken: the agent's keys, clicks and
    * fills there are then `in-use`.
-   * @param {any} browser
+   * @param {MozBrowser} browser
    */
   capturing(browser) {
     return capturing.has(browser);
@@ -198,7 +198,7 @@ export const AgentShot = {
    * Runs an agent's keys, click or fill on the tab of `browser`; a screenshot of it meanwhile
    * is refused.
    * @template T
-   * @param {any} browser @param {() => Promise<T>} run
+   * @param {MozBrowser} browser @param {() => Promise<T>} run
    * @returns {Promise<T>}
    */
   async acting(browser, run) {
@@ -214,7 +214,8 @@ export const AgentShot = {
 
   /**
    * The drawing of `capture`, once the tab is held.
-   * @param {any} win @param {any} browser @param {Map<string, HintTarget> | null} labels
+   * @param {BrowserWindow} win @param {MozTabBrowser} browser
+   * @param {Map<string, HintTarget> | null} labels
    * @param {boolean} full
    * @returns {Promise<{ mimeType: string, data: string, width: number, height: number,
    *   drawn: number } | { refused: string }>}
@@ -265,6 +266,11 @@ export const AgentShot = {
     const height = Math.min(bitmap.height, AGENT_SCREENSHOT.height);
     const canvas = new win.OffscreenCanvas(width, height);
     const ctx = canvas.getContext("2d", { alpha: false });
+    if (!ctx) {
+      // No 2D context (out of memory): what a failed draw below threw for, said the same way.
+      bitmap.close();
+      return { refused: SHOT_REFUSALS.failed };
+    }
     ctx.drawImage(bitmap, 0, 0);
     bitmap.close();
     let drawn = 0;

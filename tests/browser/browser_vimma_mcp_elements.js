@@ -12,7 +12,7 @@
 
 "use strict";
 
-/* global focusContent -- from head.js */
+/* global focusContent, contextOf -- from head.js */
 /* global Client, tidyTask -- from head_vimma_control.js */
 /* global requestLongerTimeout -- the browser-chrome harness (browser-test.js) */
 
@@ -113,7 +113,7 @@ async function openAgentTab(url = FORM) {
     // The frame of another site has loaded its button.
     await until(
       () =>
-        tab.linkedBrowser.browsingContext.children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
+        contextOf(tab.linkedBrowser).children[0]?.currentWindowGlobal?.documentURI?.spec?.endsWith(
           "file_vimma_agent_widget.html",
         ),
       "the widget frame loaded",
@@ -878,5 +878,552 @@ addTidyTask(async function test_cards_name_their_buttons() {
     "a query for the product finds its add button too",
   );
   c.close();
+  await mcp(false);
+});
+
+// An element of another namespace that shares a form control's local name (a page's
+// `createElementNS(other, "input")`) is matched by the `input` selector but has none of an
+// input's members: it is listed and inspected as what it is, a click target, never as a field
+// (issue #938).
+addTidyTask(async function test_a_foreign_namespace_input_is_no_field() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const style = doc.createElement("style");
+    // A stylesheet, not a style attribute: that is HTML's, SVG's and MathML's only.
+    style.textContent =
+      "[aria-label='Not a field'] { display: inline-block; width: 120px; height: 20px }";
+    doc.head.append(style);
+    const fake = doc.createElementNS("urn:vimma:test", "input");
+    fake.setAttribute("aria-label", "Not a field");
+    doc.body.prepend(fake);
+  });
+  const targets = await VimmaActors.collectHints(browser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const fake = targets.find(
+    (t) => t.info?.text === "Not a field" || t.info?.caption === "Not a field",
+  );
+  Assert.ok(fake, "the element is listed");
+  const target = /** @type {HintTarget} */ (fake);
+  Assert.equal(target.info?.kind, "click", "as a click target, not a field");
+  Assert.equal(target.info?.type, undefined, "with no input type");
+  const inspected = await VimmaActors.agentInspect(target);
+  Assert.equal(inspected?.alive, true, "it is still there");
+  Assert.equal(
+    inspected && "field" in inspected ? inspected.field : undefined,
+    undefined,
+    "a click on it reaches no field",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// A foreign-namespace element inside a `<label>` is no interactive content to Gecko
+// (Element::IsInteractiveHTMLContent is false for any element outside HTML), so a click on it is
+// passed on to the label's control: here a form's submit button, whose submission the click
+// must be inspected as, so that a grant does not run it unasked (security.md M28).
+addTidyTask(async function test_a_foreign_input_in_a_label_inspects_as_its_controls_submit() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], () => {
+    const doc = content.document;
+    const style = doc.createElement("style");
+    style.textContent =
+      "[aria-label='Show more'] { display: inline-block; width: 120px; height: 20px }";
+    doc.head.append(style);
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    const label = doc.createElement("label");
+    label.htmlFor = "buy";
+    const fake = doc.createElementNS("urn:vimma:test", "input");
+    fake.setAttribute("aria-label", "Show more");
+    label.append(fake);
+    doc.body.prepend(form, label);
+  });
+  const targets = await VimmaActors.collectHints(browser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const fake = targets.find((t) => t.info?.text === "Show more" || t.info?.caption === "Show more");
+  Assert.ok(fake, "the element in the label is listed");
+  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (fake));
+  Assert.equal(inspected?.alive, true, "it is still there");
+  const submit = inspected && "submit" in inspected ? inspected.submit : undefined;
+  Assert.equal(submit?.action, "https://example.com/collect", "a click on it submits the form");
+  Assert.equal(submit?.fields, 1, "with its one named field");
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// Issue #1055: a `<label>` passes a click on its content on to its control unless the click
+// lands in interactive content, as Gecko decides it (nsContentUtils::IsInInteractiveHTMLContent,
+// from the clicked element up its flattened tree to the nearest HTML label): an `a` with no href
+// is not, and a `label` of another namespace is no label. A click there that presses the label's
+// submit button must ask, also under a grant (security.md M28). Inside a label the list holds
+// only strong targets (hint-collect STRONG), so the click below is on a summary, which is no
+// interactive content outside a details, in a foreign `label`; the other cases are checked on
+// the child's own decision.
+
+/**
+ * A form whose submit button is `#buy`, and a label for it around `kind`'s content: a summary
+ * in a foreign-namespace `label`, or a link.
+ * @param {any} browser @param {string} kind
+ */
+async function labelForBuy(browser, kind) {
+  await SpecialPowers.spawn(browser, [kind], (kind) => {
+    const doc = content.document;
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    const label = doc.createElement("label");
+    label.htmlFor = "buy";
+    if (kind === "foreign") {
+      const wrapper = doc.createElementNS("urn:vimma:test", "label");
+      wrapper.innerHTML = "<summary>Continue</summary>";
+      label.append(wrapper);
+    } else {
+      label.innerHTML = '<a href="#more">Continue</a>';
+    }
+    doc.body.prepend(form, label);
+  });
+}
+
+addTidyTask(async function test_a_click_a_label_passes_on_to_a_submit_asks() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForBuy(tab.linkedBrowser, "foreign");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Continue", "element in the label");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks, under the grant (M28)");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await c.response(id)).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_a_link_in_a_label_keeps_its_click() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForBuy(tab.linkedBrowser, "link");
+  const targets = await VimmaActors.collectHints(tab.linkedBrowser, "hint.follow", {
+    agent: true,
+    elements: true,
+  });
+  const link = targets.find((t) => t.info?.text === "Continue");
+  Assert.ok(link, "the link in the label is listed");
+  const inspected = await VimmaActors.agentInspect(/** @type {HintTarget} */ (link));
+  Assert.equal(inspected?.alive, true, "it is still there");
+  Assert.ok(!(inspected && "submit" in inspected), "an a with an href keeps the click: no submit");
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// What the child decides for elements no click can land on, or that sit deeper in the label:
+// a hidden input is never rendered, but a script's click on it reaches the label all the same.
+addTidyTask(async function test_label_forwarding_follows_geckos_interactive_content() {
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const form = doc.createElement("form");
+    form.action = "https://example.com/collect";
+    form.innerHTML = '<input name="note" value="kept"><button id="buy">Buy</button>';
+    doc.body.prepend(form);
+    /** @type {Record<string, boolean>} */
+    const submits = {};
+    /** @param {string} name @param {string} html @param {string} pick */
+    const check = (name, html, pick) => {
+      const label = doc.createElement("label");
+      label.htmlFor = "buy";
+      label.innerHTML = html;
+      doc.body.append(label);
+      const el = /** @type {Element} */ (label.querySelector(pick));
+      submits[name] = "submit" in actTargetOf(el);
+    };
+    check("hidden input", '<input type="hidden" name="h">', "input");
+    check("text input", '<input name="t">', "input");
+    check("a without href", "<a>Continue</a>", "a");
+    check("a with href", '<a href="#x">Continue</a>', "a");
+    check("span in a with href", '<a href="#x"><span>Continue</span></a>', "span");
+    check("span in a details", "<details><summary><span>More</span></summary></details>", "span");
+    check("img without usemap", '<img alt="x">', "img");
+    check("summary", "<summary>More</summary>", "summary");
+    check("video with controls", "<video controls></video>", "video");
+    const wrapper = doc.createElementNS("urn:vimma:test", "label");
+    const span = doc.createElement("span");
+    wrapper.append(span);
+    const outer = doc.createElement("label");
+    outer.htmlFor = "buy";
+    outer.append(wrapper);
+    doc.body.append(outer);
+    submits["span in a foreign label"] = "submit" in actTargetOf(span);
+    const host = doc.createElement("span");
+    const root = host.attachShadow({ mode: "open" });
+    root.innerHTML = "<span>Continue</span>";
+    const shadowed = doc.createElement("label");
+    shadowed.htmlFor = "buy";
+    shadowed.append(host);
+    doc.body.append(shadowed);
+    const inner = /** @type {Element} */ (root.querySelector("span"));
+    submits["span in a shadow root"] = "submit" in actTargetOf(inner);
+    // Gecko's walk for interactive content stops where the flattened tree ends: at an element
+    // no slot takes, and at a slot's own content while nodes are assigned to it. The label is
+    // still on the click's path, so it passes the click on, a link around them or not.
+    /** @param {string} name @param {string} shadow @param {string} light @param {string} pick */
+    const inLink = (name, shadow, light, pick) => {
+      const label = doc.createElement("label");
+      label.htmlFor = "buy";
+      label.innerHTML = `<a href="#x"><span>${light}</span></a>`;
+      const host = /** @type {Element} */ (label.querySelector("span"));
+      const root = host.attachShadow({ mode: "open" });
+      root.innerHTML = shadow;
+      doc.body.append(label);
+      const el = /** @type {Element} */ (host.querySelector(pick) ?? root.querySelector(pick));
+      submits[name] = "submit" in actTargetOf(el);
+    };
+    inLink("slotted span in a link", '<slot name="s"></slot>', '<span slot="s">Go</span>', "span");
+    inLink(
+      "unslotted span in a link",
+      '<slot name="s"></slot>',
+      '<span slot="t">Go</span>',
+      "span",
+    );
+    inLink(
+      "slot fallback in a link",
+      '<slot><b id="fallback">Go</b></slot>',
+      "<i>Assigned</i>",
+      "#fallback",
+    );
+    // A closed shadow root's slot is on the click's path too (Gecko's GetAssignedSlot), and the
+    // label there passes the click on to the form inside the same tree.
+    const closedHost = doc.createElement("span");
+    closedHost.attachShadow({ mode: "closed" }).innerHTML =
+      '<form action="https://example.com/collect"><button id="buy">Buy</button></form>' +
+      '<label for="buy"><slot></slot></label>';
+    closedHost.innerHTML = "<summary>Continue</summary>";
+    doc.body.append(closedHost);
+    const closedSummary = /** @type {Element} */ (closedHost.querySelector("summary"));
+    submits["summary slotted into a closed shadow root's label"] =
+      "submit" in actTargetOf(closedSummary);
+    return submits;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "hidden input": true,
+      "text input": false,
+      "a without href": true,
+      "a with href": false,
+      "span in a with href": false,
+      "span in a details": false,
+      "img without usemap": true,
+      summary: true,
+      "video with controls": false,
+      "span in a foreign label": true,
+      "span in a shadow root": true,
+      "slotted span in a link": false,
+      "unslotted span in a link": true,
+      "slot fallback in a link": true,
+      "summary slotted into a closed shadow root's label": true,
+    },
+    "a label passes on a click as Gecko does (IsInInteractiveHTMLContent)",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// Issue #1067: with dom.shadowdom.referenceTarget.enabled, a label's `for` or its first labelable
+// descendant can name a shadow host whose shadow root forwards to an element inside it
+// (Element::ResolveReferenceTarget). Gecko clicks or focuses that inner element, but the label's
+// `control` is retargeted to the host (HTMLLabelElement::GetControlForBindings), which is no
+// submit button and no field. The child must judge the inner element: a submit there asks
+// (security.md M28), a text field there is refused (F9).
+const REFERENCE_TARGET_PREF = "dom.shadowdom.referenceTarget.enabled";
+
+/**
+ * Adds a form with a submit button `#buy` inside a shadow root of a host `#shop`, the root's
+ * reference target that button, and a label for the host; `mode` is the root's.
+ * @param {any} browser @param {"open" | "closed"} mode
+ */
+async function labelForShadowBuy(browser, mode) {
+  await SpecialPowers.spawn(browser, [mode], (mode) => {
+    const doc = content.document;
+    const host = doc.createElement("span");
+    host.id = "shop";
+    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    root.innerHTML =
+      '<form action="https://example.com/collect"><input name="note" value="kept">' +
+      '<button id="buy">Buy</button></form>';
+    root.referenceTarget = "buy";
+    const label = doc.createElement("label");
+    label.htmlFor = "shop";
+    label.textContent = "Continue";
+    doc.body.prepend(host, label);
+  });
+}
+
+addTidyTask(async function test_a_label_for_a_reference_target_submit_asks() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await labelForShadowBuy(tab.linkedBrowser, "closed");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Continue", "element in the label");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  /** @type {any} */
+  let reply = null;
+  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
+  Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the inner form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await replied).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_label_forwarding_follows_reference_targets() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const FORM =
+      '<form action="https://example.com/collect"><input name="note" value="kept">' +
+      '<button id="buy">Buy</button><input id="text" name="t"></form>';
+    let n = 0;
+    /**
+     * A host in the page whose shadow root (of `mode`) holds FORM and forwards to `target`.
+     * @param {string} target @param {"open" | "closed"} [mode]
+     */
+    const hostFor = (target, mode = "open") => {
+      const host = doc.createElement("span");
+      host.id = `host${++n}`;
+      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      root.innerHTML = FORM;
+      root.referenceTarget = target;
+      return host;
+    };
+    /** @param {Element} label */
+    const clickIn = (label) => {
+      label.append(doc.createElement("summary"));
+      doc.body.append(label);
+      const out = actTargetOf(/** @type {Element} */ (label.querySelector(":scope > summary")));
+      return out.submit ? "submit" : (out.field ?? "plain");
+    };
+    /** @param {Element} host */
+    const forHost = (host) => {
+      doc.body.append(host);
+      const label = doc.createElement("label");
+      label.htmlFor = host.id;
+      return clickIn(label);
+    };
+    /** @type {Record<string, string>} */
+    const got = {};
+    got["for an open root's submit"] = forHost(hostFor("buy"));
+    got["for a closed root's submit"] = forHost(hostFor("buy", "closed"));
+    got["for a root's text field"] = forHost(hostFor("text"));
+    got["for a root whose target is missing"] = forHost(hostFor("nothing"));
+    // A shadow root that forwards to another host, whose root forwards to its submit button.
+    const outer = doc.createElement("span");
+    outer.id = "outer";
+    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const inner = hostFor("buy", "closed");
+    inner.id = "inner";
+    outerRoot.append(inner);
+    outerRoot.referenceTarget = "inner";
+    got["for a chain of roots to a submit"] = forHost(outer);
+    // No `for`: the first labelable descendant, after its reference target is resolved.
+    const wrapping = doc.createElement("label");
+    wrapping.append(hostFor("buy"));
+    got["around a host forwarding to a submit"] = clickIn(wrapping);
+    return got;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "for an open root's submit": "submit",
+      "for a closed root's submit": "submit",
+      "for a root's text field": "text",
+      "for a root whose target is missing": "plain",
+      "for a chain of roots to a submit": "submit",
+      "around a host forwarding to a submit": "submit",
+    },
+    "a label's control is judged after its reference target, as Gecko clicks it",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+// Issue #1079: with dom.shadowdom.referenceTarget.enabled, a button's or a field's `form`
+// attribute can name a shadow host whose shadow root forwards to a form inside it, and Gecko
+// makes that inner form the control's owner (nsGenericHTMLFormElement::UpdateFormOwner), which a
+// click or the Enter key submits. But the control's `form` is retargeted to the host
+// (RetargetReferenceTargetForBindings), which has no method, action or fields. The child must
+// judge the inner form: a submit by the button asks as that form's (security.md M28).
+
+/**
+ * Adds a shadow host `#shop` whose shadow root (of `mode`) holds a form `#order` that sends a
+ * field to https://example.com/collect and forwards to it, and a submit button `Buy` outside the
+ * root whose `form` attribute names the host.
+ * @param {any} browser @param {"open" | "closed"} mode
+ */
+async function buttonForShadowForm(browser, mode) {
+  await SpecialPowers.spawn(browser, [mode], (mode) => {
+    const doc = content.document;
+    const host = doc.createElement("span");
+    host.id = "shop";
+    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    root.innerHTML =
+      '<form id="order" action="https://example.com/collect"><input name="note" value="kept">' +
+      "</form>";
+    root.referenceTarget = "order";
+    const button = doc.createElement("button");
+    button.setAttribute("form", "shop");
+    button.textContent = "Buy";
+    doc.body.prepend(host, button);
+  });
+}
+
+addTidyTask(async function test_a_submit_for_a_reference_target_form_asks() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await buttonForShadowForm(tab.linkedBrowser, "closed");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Buy", "the button for the host's form");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  /** @type {any} */
+  let reply = null;
+  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
+  Assert.equal(reply?.error, undefined, "the click is not refused as gone");
+  Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the inner form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await replied).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_form_owners_follow_reference_targets() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf, fillTargetOf, formOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const FORM =
+      '<form id="order" method="post" action="https://example.com/collect">' +
+      '<input name="note" value="kept"><button>Send</button></form>';
+    let n = 0;
+    /**
+     * A host in the page whose shadow root (of `mode`) holds FORM and forwards to `target`.
+     * @param {string} target @param {"open" | "closed"} [mode]
+     */
+    const hostFor = (target, mode = "open") => {
+      const host = doc.createElement("span");
+      host.id = `owner${++n}`;
+      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      root.innerHTML = FORM;
+      root.referenceTarget = target;
+      return host;
+    };
+    /** @param {() => string} f @returns {string} what `f` returns, or that it threw */
+    const tried = (f) => {
+      try {
+        return f();
+      } catch (e) {
+        return `threw: ${/** @type {Error} */ (e).message}`;
+      }
+    };
+    /**
+     * What a click on a submit button outside, whose `form` names `host`, would do.
+     * @param {Element} host
+     */
+    const buttonFor = (host) => {
+      if (!host.isConnected) doc.body.append(host);
+      const button = doc.createElement("button");
+      button.setAttribute("form", host.id);
+      doc.body.append(button);
+      return tried(() => {
+        const out = actTargetOf(button);
+        return out.submit ? `${out.submit.method} ${out.submit.action}` : "plain";
+      });
+    };
+    /** @type {Record<string, string>} */
+    const got = {};
+    got["a button for an open root's form"] = buttonFor(hostFor("order"));
+    got["a button for a closed root's form"] = buttonFor(hostFor("order", "closed"));
+    got["a button for a root whose target is missing"] = buttonFor(hostFor("nothing"));
+    // A shadow root that forwards to another host, whose root forwards to its form.
+    const outer = doc.createElement("span");
+    outer.id = "outer-owner";
+    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const inner = hostFor("order", "closed");
+    outerRoot.append(inner);
+    outerRoot.referenceTarget = inner.id;
+    doc.body.append(outer);
+    got["a button for a chain of roots to a form"] = buttonFor(outer);
+    // A field outside whose `form` names a host: its default submission and its form.
+    const host = hostFor("order", "closed");
+    doc.body.append(host);
+    const field = doc.createElement("input");
+    field.name = "q";
+    field.setAttribute("form", host.id);
+    doc.body.append(field);
+    got["a field's default submission"] = tried(() => {
+      const fill = fillTargetOf(field, "x");
+      return fill.submit ? `${fill.submit.method} ${fill.submit.action}` : "none";
+    });
+    got["a field's form"] = tried(() => {
+      const form = formOf(field);
+      return form ? `${form.localName}#${form.id}` : "none";
+    });
+    return got;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "a button for an open root's form": "post https://example.com/collect",
+      "a button for a closed root's form": "post https://example.com/collect",
+      "a button for a root whose target is missing": "plain",
+      "a button for a chain of roots to a form": "post https://example.com/collect",
+      "a field's default submission": "post https://example.com/collect",
+      "a field's form": "form#order",
+    },
+    "a control's form is judged after its reference target, as Gecko submits it",
+  );
+  BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });

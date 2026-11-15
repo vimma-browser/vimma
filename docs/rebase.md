@@ -8,7 +8,7 @@ you do with its PR, the manual procedure for when it cannot finish (a patch conf
 artifacts, a failing suite), the fast path for security releases and how to roll back.
 Background: [ADR-002](adr/002-upstream-release-channel.md),
 [ADR-003](adr/003-own-files-minimal-patches.md), [ADR-010](adr/010-pr-artifact-builds.md),
-[ADR-015](adr/015-upstream-autopilot.md), [runbook](runbook.md) (CI and automation). Specs:
+[ADR-015](adr/015-upstream-autopilot.md), [runbook](runbook/ci.md) (CI and automation). Specs:
 [m7-upstream-autopilot](specs/m7-upstream-autopilot.md),
 [m0-rebase-playbook](specs/m0-rebase-playbook.md).
 
@@ -26,7 +26,7 @@ Background: [ADR-002](adr/002-upstream-release-channel.md),
 | 8   | Mark ready, CI, merge                     | GitHub                                           | CI ≈ 8 min                               |
 
 **When the autopilot's PR is green (the common case) you do only step 8**, and with
-`AUTO_MERGE_UPSTREAM` set (docs/runbook.md) not even that: GitHub merges a green bump whose diff
+`AUTO_MERGE_UPSTREAM` set (docs/runbook/) not even that: GitHub merges a green bump whose diff
 is only the version and copied prefs. Steps 2–7 are for a
 draft: a patch that does not apply, a failing suite, or a release without Mozilla artifacts.
 Decision points are marked **Decide**.
@@ -89,7 +89,8 @@ bump PR names the canary's issues for that version.
    `sha512sum`, and `tools/upstream/verify-sha512.py` compares it with the
    `source/firefox-X.Y.Z.source.tar.xz` line of `SHA512SUMS` next to it, after checking that
    `SHA512SUMS.asc` is a good signature by Mozilla's release key, pinned in the repository
-   (ADR-021, docs/security.md B1). **A bad or missing signature, or a mismatch, fails the run**:
+   (ADR-021, docs/security/14-build-and-release-supply-chain.md B1). **A bad or missing signature,
+   or a mismatch, fails the run**:
    no PR. Then `patch-audit.py` (ADR-003 register) and the artifact preflight
    (`artifact-preflight.mjs`: is Mozilla's build of the tarball's revision in the Taskcluster
    index?). The reports are the run's `patch-check` artifact (30 days).
@@ -164,10 +165,10 @@ with `-f rebuild=true`.
 
 Every run also compares the Firefox on `main` with every newer release. A release must be merged
 within **3 days** of its release date if it is a security dot release, **7 days** for a major
-release, **14 days** for a dot release without an advisory (docs/security.md, G2). Past that the
-`drift` job opens one issue labelled `security`, "Vimma's Firefox X is past the security drift
-limit", that mentions you, and **fails every run** until `surfer.json` on `main` moves. Merging
-the bump is the fix; close the drift issue then.
+release, **14 days** for a dot release without an advisory (docs/security/10-firefox-updates.md,
+G2). Past that the `drift` job opens one issue labelled `security`, "Vimma's Firefox X is past the
+security drift limit", that mentions you, and **fails every run** until `surfer.json` on `main`
+moves. Merging the bump is the fix; close the drift issue then.
 
 ## 2. Download the new source
 
@@ -438,8 +439,8 @@ listed; `chore` would be hidden, which is why the autopilot does not use it).
 ## Security dot release: the fast path
 
 Target: **merged within 3 days** of Mozilla's release, enforced by the drift check
-(docs/security.md, G2; ADR-015). A dot release (`X.Y.Z`, e.g. 157.0.2) is a few backported
-fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
+(docs/security/10-firefox-updates.md, G2; ADR-015). A dot release (`X.Y.Z`, e.g. 157.0.2) is a few
+backported fixes; our front-end patches nearly always stay `clean`. Mozilla's advisories:
 <https://www.mozilla.org/security/advisories/>.
 
 | When         | What happens                                                                   |

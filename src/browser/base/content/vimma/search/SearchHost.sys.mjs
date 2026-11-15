@@ -82,12 +82,12 @@ function writeState(state) {
 
 /**
  * The profile's engines as core reads them.
- * @param {any[]} engines
+ * @param {SearchEngine[]} engines
  * @returns {InstalledEngine[]}
  */
 function describe(engines) {
   return engines.map((e) => {
-    const url = e._urls?.find((/** @type {any} */ u) => u.type === SEARCH_TYPE)?.template;
+    const url = e._urls?.find((u) => u.type === SEARCH_TYPE)?.template;
     return {
       id: e.id,
       name: e.name,
@@ -107,6 +107,10 @@ function describe(engines) {
 async function run(step) {
   const s = lazy.SearchService;
   const byId = (/** @type {string} */ id) => s.getEngineById(id);
+  // Core plans updates and renames only for the engines Vimma made (SearchState.created), which
+  // Firefox keeps as user engines.
+  const userEngine = (/** @type {string} */ id) =>
+    /** @type {UserSearchEngine | null} */ (s.getEngineById(id));
   switch (step.op) {
     case "create": {
       const engine = await s.addUserEngine({
@@ -117,10 +121,10 @@ async function run(step) {
       return engine.id;
     }
     case "update":
-      byId(step.id)?.changeUrl(SEARCH_TYPE, step.url, null);
+      userEngine(step.id)?.changeUrl(SEARCH_TYPE, step.url, null);
       return null;
     case "rename":
-      if (!byId(step.id)?.rename(step.name)) {
+      if (!userEngine(step.id)?.rename(step.name)) {
         console.warn(
           `vimma: [search] cannot rename an engine to "${step.name}": the name is taken`,
         );
@@ -210,8 +214,8 @@ function setErrors(next) {
 async function refreshAliases() {
   try {
     const list = await lazy.UrlbarSearchUtils.tokenAliasEngines();
-    tokenAliases = list.flatMap((/** @type {any} */ { engine, tokenAliases: aliases }) =>
-      aliases.map((/** @type {string} */ alias) => ({ alias, engine: engine.name })),
+    tokenAliases = list.flatMap(({ engine, tokenAliases: aliases }) =>
+      aliases.map((alias) => ({ alias, engine: engine.name })),
     );
   } catch (e) {
     console.warn("vimma: search aliases not read", e);

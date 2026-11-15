@@ -16,6 +16,7 @@ const BinaryInputStream = Components.Constructor(
 const FILE = "vimma-update-appimage";
 const LOG = "vimma-update-appimage-log";
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const query = request.queryString;
   response.setHeader("Cache-Control", "no-cache", false);

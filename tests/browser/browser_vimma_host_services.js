@@ -8,7 +8,7 @@
 // the agent chat window it builds the rest of what that window uses (the agent CLIs, the API
 // keys, config.toml's refusal and setup's write to it). Only vimma.js may fill it, once per
 // service, and nothing swaps a service afterwards; a service asked for before it is provided
-// gives the answer that does the least (docs/security.md M11, M46), and the keys' service hands
+// gives the answer that does the least (docs/security/ M11, M46), and the keys' service hands
 // out no key.
 
 "use strict";

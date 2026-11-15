@@ -137,16 +137,19 @@ add_task(async function about_dialog_shows_the_attribution_once() {
   const dialog = await opened;
   try {
     const doc = dialog.document;
-    const desc = doc.getElementById("communityDesc");
-    await doc.l10n.translateElements([desc]);
+    // The About dialog is localized (aboutDialog.xhtml links its .ftl files) and has both
+    // paragraphs; translateElements throws for a missing one, as a read through it did before.
+    const l10n = /** @type {DocumentL10n} */ (doc.l10n);
+    const desc = /** @type {HTMLElement} */ (doc.getElementById("communityDesc"));
+    await l10n.translateElements([desc]);
     Assert.equal(
       desc.textContent.trim(),
       ATTRIBUTION,
       "the community paragraph is the attribution",
     );
     Assert.equal(desc.querySelectorAll("[href]").length, 0, "with no links to mozilla.org");
-    const exp = doc.getElementById("communityExperimentalDesc");
-    await doc.l10n.translateElements([exp]);
+    const exp = /** @type {HTMLElement} */ (doc.getElementById("communityExperimentalDesc"));
+    await l10n.translateElements([exp]);
     Assert.equal(exp.textContent.trim(), ATTRIBUTION, "so is the experimental builds' paragraph");
   } finally {
     await BrowserTestUtils.closeWindow(dialog);
@@ -155,7 +158,8 @@ add_task(async function about_dialog_shows_the_attribution_once() {
 
 add_task(async function about_vimma_shows_the_attribution() {
   await BrowserTestUtils.withNewTab("about:vimma", async (browser) => {
-    const line = browser.contentDocument.getElementById("attribution");
+    // about:vimma loads in the parent process, so the browser has its document.
+    const line = /** @type {Document} */ (browser.contentDocument).getElementById("attribution");
     Assert.ok(line, "about:vimma has an attribution line");
     Assert.equal(line?.textContent.trim(), ATTRIBUTION, "the attribution line");
   });

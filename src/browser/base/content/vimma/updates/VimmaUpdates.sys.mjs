@@ -177,7 +177,7 @@ let replacement = { stage: "none", buildId: null, reason: null };
 /**
  * The build ID of the offer the last check in this process verified. Only such an offer is
  * installed: one restored from the pref `vimma.update.last`, which anyone can edit, waits for a
- * check (docs/security.md UP10).
+ * check (docs/security/16-update-check.md UP10).
  */
 let verifiedBuildId = /** @type {string | null} */ (null);
 /** The build ID the replacement under way is for. */
@@ -334,16 +334,26 @@ function manifestUrl() {
  *   are held
  */
 
+/**
+ * One of Firefox's updater's classes, which only a build with MOZ_UPDATER has: callers check
+ * `has` in firefox() first.
+ * @param {"service" | "manager" | "checker"} name
+ */
+function updaterClass(name) {
+  const contract = /** @type {const} */ (`@mozilla.org/updates/update-${name};1`);
+  const found = Cc[contract];
+  if (!found) throw new Error(`${contract} is missing: a build without MOZ_UPDATER`);
+  return found;
+}
+
 /** @returns {FirefoxUpdater} */
 function firefox() {
   if (firefoxForTest && inAutomation()) return firefoxForTest;
   const has = !!lazy.AppConstants.MOZ_UPDATER && "@mozilla.org/updates/update-service;1" in Cc;
-  const aus = () =>
-    Cc["@mozilla.org/updates/update-service;1"].getService(Ci.nsIApplicationUpdateService);
+  const aus = () => updaterClass("service").getService(Ci.nsIApplicationUpdateService);
   // The update manager's own getters are async; its internal ones are what Firefox's update
   // service reads synchronously (UpdateService.sys.mjs, lazy.UM.internal).
-  const um = () =>
-    Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager).internal;
+  const um = () => updaterClass("manager").getService(Ci.nsIUpdateManager).internal;
   const AUS = Ci.nsIApplicationUpdateService;
   return {
     get usable() {
@@ -362,13 +372,15 @@ function firefox() {
     },
     get busy() {
       if (!has) return false;
-      const service = aus();
+      // The update manager's downloading update, not the service's isDownloading: that getter
+      // is not in nsIApplicationUpdateService.idl, so XPConnect's wrapper reads it as undefined.
+      // Nor the state: it stays STATE_PENDING while a second update downloads.
       return (
-        service.isDownloading || service.currentState === AUS.STATE_STAGING || !!um().readyUpdate
+        !!um().downloadingUpdate || aus().currentState === AUS.STATE_STAGING || !!um().readyUpdate
       );
     },
     async check(asked) {
-      const checker = Cc["@mozilla.org/updates/update-checker;1"].getService(Ci.nsIUpdateChecker);
+      const checker = updaterClass("checker").getService(Ci.nsIUpdateChecker);
       // allowCheck runs inside checkForUpdates, synchronously: only this check is the one asked
       // for, not a timer's check that starts while its answer is awaited.
       askedCheck = asked;
@@ -668,7 +680,7 @@ function onMarRequest(subject, topic) {
 /**
  * Firefox's updater did something with an update: the status bars show it, and a finished
  * download needs no more anonymous URLs (decision 1).
- * @param {any} _subject @param {string} topic
+ * @param {unknown} _subject @param {string} topic
  */
 function onUpdaterTopic(_subject, topic) {
   if (topic === "update-downloaded" || topic === "update-staged") marUrls = new Set();
@@ -687,7 +699,7 @@ async function sha512File(path) {
   for (let offset = 0; ;) {
     const bytes = await IOUtils.read(path, { offset, maxBytes: WRITE_CHUNK });
     if (!bytes.byteLength) break;
-    hash.update(/** @type {any} */ (bytes), bytes.byteLength);
+    hash.update(bytes, bytes.byteLength);
     offset += bytes.byteLength;
   }
   const binary = hash.finish(false);

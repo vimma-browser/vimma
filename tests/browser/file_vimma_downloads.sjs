@@ -15,6 +15,7 @@ const HALF = "a".repeat(SIZE / 2);
 /** Timers kept alive until they fire: a collected nsITimer never fires. */
 const timers = new Set();
 
+/** @param {nsIHttpResponse} response @param {string} name @param {number} length */
 function attachment(response, name, length) {
   response.setHeader("Cache-Control", "no-store", false);
   response.setHeader("Content-Type", "application/octet-stream", false);
@@ -22,6 +23,7 @@ function attachment(response, name, length) {
   response.setHeader("Content-Length", String(length), false);
 }
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const query = new URLSearchParams(request.queryString);
   const name = query.get("name") || "file.bin";

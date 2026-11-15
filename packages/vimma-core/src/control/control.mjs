@@ -564,6 +564,163 @@ function checkRequest(m, errors) {
 }
 
 /**
+ * The arguments of each agent command as checkRequest accepts them, in the shape the browser's
+ * handlers read (ctl/agent-commands.mjs).
+ * @typedef {{ elements?: boolean, query?: string, kinds?: string[] }} StepListArgs
+ * @typedef {{ tab: string }} TabArgs
+ * @typedef {{ label: string, value: string | boolean }} FillField
+ * @typedef {{
+ *   "agent-hello": { client: { name: string, version?: string }, via?: string, ctl?: string,
+ *     session?: string },
+ *   "agent-tabs": Record<string, never>,
+ *   "agent-read": TabArgs & { format?: "markdown" | "text", max_chars?: number },
+ *   "agent-open": StepListArgs & { url: string, tab?: string },
+ *   "agent-close": TabArgs,
+ *   "agent-ping": Record<string, never>,
+ *   "agent-cancel": { id: number },
+ *   "agent-keys": TabArgs & { keys: string },
+ *   "agent-show": TabArgs,
+ *   "agent-elements": TabArgs & { query?: string, kinds?: string[], full?: boolean },
+ *   "agent-activate": TabArgs & StepListArgs & { label: string },
+ *   "agent-fill": TabArgs & StepListArgs & { fields: FillField[], submit?: true | string },
+ *   "agent-screenshot": TabArgs & { labels?: boolean, full?: boolean },
+ *   "agent-console": TabArgs & { since?: number },
+ * }} AgentArgs
+ * @typedef {keyof AgentArgs} AgentCommand
+ * @typedef {{ [C in AgentCommand]: { command: C, args: AgentArgs[C] } }[AgentCommand]} AgentRequest
+ */
+
+/** @param {unknown} v @returns {v is string[]} */
+const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
+
+/**
+ * An agent command with its arguments, checked as a request's are (checkRequest) and copied
+ * into the shape its handler reads: an argument that was not sent stays absent. Null when
+ * `command` is no agent command or the validator refuses the arguments. The browser's handlers
+ * read nothing else, so arguments that reach them by another way than the socket's validator
+ * (the built-in agent's tool calls, a test) are held to the same checks.
+ * @param {string} command @param {unknown} given
+ * @returns {AgentRequest | null}
+ */
+export function parseAgentRequest(command, given) {
+  if (!AGENT_COMMANDS.includes(command) || !isObject(given)) return null;
+  // Checked and read from one copy of the caller's own data, made as the socket's JSON makes
+  // it: an in-process caller's getter or inherited property cannot hand the handler a value
+  // other than the one checked.
+  /** @type {unknown} */
+  let args;
+  try {
+    args = JSON.parse(JSON.stringify(given));
+  } catch {
+    return null;
+  }
+  if (!isObject(args)) return null;
+  /** @type {string[]} */
+  const errors = [];
+  checkRequest({ type: "request", id: 1, command, args }, errors);
+  if (errors.length) return null;
+  // Checked above; each read narrows again, so a shape the checks let through by mistake is
+  // refused here rather than handed on.
+  const { tab, elements, query, kinds, full } = args;
+  const list = {
+    ...(typeof elements === "boolean" ? { elements } : {}),
+    ...(typeof query === "string" ? { query } : {}),
+    ...(isStrings(kinds) ? { kinds: [...kinds] } : {}),
+  };
+  if (command === "agent-hello") {
+    const { client, via, ctl, session } = args;
+    if (!isObject(client) || typeof client.name !== "string") return null;
+    return {
+      command,
+      args: {
+        client: {
+          name: client.name,
+          ...(typeof client.version === "string" ? { version: client.version } : {}),
+        },
+        ...(typeof via === "string" ? { via } : {}),
+        ...(typeof ctl === "string" ? { ctl } : {}),
+        ...(typeof session === "string" ? { session } : {}),
+      },
+    };
+  }
+  if (command === "agent-tabs" || command === "agent-ping") return { command, args: {} };
+  if (command === "agent-cancel") {
+    return typeof args.id === "number" ? { command, args: { id: args.id } } : null;
+  }
+  if (command === "agent-open") {
+    const { url } = args;
+    if (typeof url !== "string") return null;
+    return { command, args: { url, ...(typeof tab === "string" ? { tab } : {}), ...list } };
+  }
+  if (typeof tab !== "string") return null;
+  if (command === "agent-close" || command === "agent-show") return { command, args: { tab } };
+  if (command === "agent-read") {
+    const { format, max_chars } = args;
+    return {
+      command,
+      args: {
+        tab,
+        ...(format === "markdown" || format === "text" ? { format } : {}),
+        ...(typeof max_chars === "number" ? { max_chars } : {}),
+      },
+    };
+  }
+  if (command === "agent-keys") {
+    return typeof args.keys === "string" ? { command, args: { tab, keys: args.keys } } : null;
+  }
+  if (command === "agent-elements") {
+    const { query: q, kinds: k } = list;
+    return {
+      command,
+      args: {
+        tab,
+        ...(q === undefined ? {} : { query: q }),
+        ...(k === undefined ? {} : { kinds: k }),
+        ...(typeof full === "boolean" ? { full } : {}),
+      },
+    };
+  }
+  if (command === "agent-activate") {
+    return typeof args.label === "string"
+      ? { command, args: { tab, label: args.label, ...list } }
+      : null;
+  }
+  if (command === "agent-fill") {
+    const { fields, submit } = args;
+    if (!Array.isArray(fields)) return null;
+    /** @type {FillField[]} */
+    const copied = [];
+    for (const f of fields) {
+      if (!isObject(f) || typeof f.label !== "string") return null;
+      const { value } = f;
+      if (typeof value !== "string" && typeof value !== "boolean") return null;
+      copied.push({ label: f.label, value });
+    }
+    if (submit !== undefined && submit !== true && typeof submit !== "string") return null;
+    return {
+      command,
+      args: { tab, fields: copied, ...(submit === undefined ? {} : { submit }), ...list },
+    };
+  }
+  if (command === "agent-screenshot") {
+    const { labels } = args;
+    return {
+      command,
+      args: {
+        tab,
+        ...(typeof labels === "boolean" ? { labels } : {}),
+        ...(typeof full === "boolean" ? { full } : {}),
+      },
+    };
+  }
+  if (command === "agent-console") {
+    const { since } = args;
+    return { command, args: { tab, ...(typeof since === "number" ? { since } : {}) } };
+  }
+  return null;
+}
+
+/**
  * Fields of `result` that must be strings, booleans, or strings or null.
  * @param {Obj} result @param {string} prefix
  * @param {{ strings?: string[], flags?: string[], nullable?: string[] }} shape

@@ -83,6 +83,16 @@ const DIALOGS = /** @type {Record<string, string>} */ ({
   prompt: "prompt",
 });
 
+/**
+ * `v`'s property `key`, or undefined when `v` is no object or has none: a dialog's subject is
+ * commonDialog.xhtml's window (CommonDialog.sys.mjs notifies with its `ui.prompt`), whose
+ * `Dialog` holds the prompt's arguments, read as the page gave them.
+ * @param {unknown} v @param {string} key
+ * @returns {unknown}
+ */
+const fieldOf = (v, key) =>
+  typeof v === "object" && v !== null ? /** @type {unknown} */ (Reflect.get(v, key)) : undefined;
+
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
 
@@ -98,12 +108,12 @@ const bounded = (promise, fallback, ms) => Promise.race([promise, sleep(ms).then
  * Resolves at the first of: a progress event of `browser`'s page (a load starting, committing
  * or stopping, a location change), `ms` passing, or `wake` resolving; so a wait reacts to a
  * load at once without asking the tab every few milliseconds.
- * @param {any} browser XULBrowserElement @param {number} ms @param {Promise<unknown>} [wake]
+ * @param {MozTabBrowser} browser @param {number} ms @param {Promise<unknown>} [wake]
  * @returns {Promise<void>}
  */
 function nextEvent(browser, ms, wake) {
-  /** @type {any} */
-  const tabs = browser.ownerGlobal?.gBrowser;
+  // documentGlobal, not ownerGlobal: Firefox renamed it, and the old name reads undefined.
+  const tabs = browser.documentGlobal?.gBrowser;
   return new Promise((resolve) => {
     let timer = 0;
     const done = () => {
@@ -116,8 +126,8 @@ function nextEvent(browser, ms, wake) {
       resolve();
     };
     const listener = {
-      onStateChange: (/** @type {any} */ b) => b === browser && done(),
-      onLocationChange: (/** @type {any} */ b) => b === browser && done(),
+      onStateChange: (/** @type {MozBrowser} */ b) => b === browser && done(),
+      onLocationChange: (/** @type {MozBrowser} */ b) => b === browser && done(),
     };
     timer = lazy.setTimeout(done, Math.max(0, ms));
     try {
@@ -131,7 +141,7 @@ function nextEvent(browser, ms, wake) {
 
 /**
  * A URI's site, its registrable domain (eTLD+1, mcp-drive D18); its host when it has none.
- * @param {any} uri nsIURI
+ * @param {nsIURI | null | undefined} uri
  */
 function uriSite(uri) {
   try {
@@ -141,7 +151,7 @@ function uriSite(uri) {
   }
 }
 
-/** A URI's host, or "" for one without a host. @param {any} uri nsIURI */
+/** A URI's host, or "" for one without a host. @param {nsIURI | null | undefined} uri */
 function uriHost(uri) {
   try {
     return String(uri?.host ?? "");
@@ -154,7 +164,8 @@ function uriHost(uri) {
  * The host of a frame of another site than the tab's page, or "" when there is no frame, it is of
  * the same site, or either has no host (about:blank and about:srcdoc frames take their parent's
  * origin; data: and blob: frames name none), so that the tab's host is named as before.
- * @param {any} wg the frame's WindowGlobalParent, or null @param {any} tabUri nsIURI
+ * @param {WindowGlobalParent | null | undefined} wg the frame's document, or none
+ * @param {nsIURI | null} tabUri
  */
 function otherSiteHost(wg, tabUri) {
   try {
@@ -170,11 +181,11 @@ function otherSiteHost(wg, tabUri) {
 /**
  * Where a link a click would follow goes, against the tab's page (F10): another site, or not a
  * web page at all. `javascript:` runs in the page and loads nothing, so it counts as neither.
- * @param {any} browser XULBrowserElement @param {string | undefined} href
+ * @param {MozTabBrowser} browser @param {string | undefined} href
  */
 function linkWhere(browser, href) {
   if (href === undefined) return { crossSite: false, otherScheme: false };
-  /** @type {any} */
+  /** @type {nsIURI} */
   let uri;
   try {
     uri = Services.io.newURI(href);
@@ -195,16 +206,16 @@ function linkWhere(browser, href) {
  */
 const running = new WeakMap();
 
-/** @param {any} browser  the top document's id */
+/** @param {MozBrowser} browser  the top document's id */
 const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
 
 /** @param {unknown} s  well-formed, so the reply is one line vimma-ctl's parser takes */
-const wf = (s) => /** @type {string} */ (/** @type {any} */ (String(s ?? "")).toWellFormed());
+const wf = (s) => String(s ?? "").toWellFormed();
 
 /**
  * A web page (mcp-drive D12): a tab moved into the agent workspace may show a file, about: or
  * the start page, which is not the agent's to act on.
- * @param {any} principal nsIPrincipal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 const onTheWeb = (principal) =>
   !!principal?.isContentPrincipal && (principal.schemeIs("http") || principal.schemeIs("https"));
@@ -212,7 +223,7 @@ const onTheWeb = (principal) =>
 /**
  * A document's site, from its principal (mcp-drive D18): a srcdoc or about:blank frame inherits
  * its parent's, which its URI does not say. Empty when it has none.
- * @param {any} principal nsIPrincipal
+ * @param {nsIPrincipal | null | undefined} principal
  */
 function siteOf(principal) {
   try {
@@ -222,7 +233,7 @@ function siteOf(principal) {
   }
 }
 
-/** @param {any} principal nsIPrincipal  its host, or "" */
+/** @param {nsIPrincipal | null | undefined} principal  its host, or "" */
 function hostOf(principal) {
   try {
     return String(principal?.asciiHost ?? "");
@@ -238,13 +249,13 @@ function hostOf(principal) {
  *   dialog?: { type: string, text: string }, blocked?: string, stopped?: "in-use" }} FillResult
  */
 
-/** @param {any} browser  its top document and URL now */
+/** @param {MozBrowser} browser  its top document and URL now */
 const pageOf = (browser) => ({ doc: docOf(browser), url: String(browser.currentURI?.spec ?? "") });
 
 /**
  * Watches for a tab-modal dialog the page of `browser` opens (F11): the first one's type and
  * text, inside the untrusted-content delimiters.
- * @param {any} browser XULBrowserElement
+ * @param {MozTabBrowser} browser
  */
 function watchDialogs(browser) {
   const top = browser.browsingContext;
@@ -253,13 +264,14 @@ function watchDialogs(browser) {
     dialog: null,
     stop: () => Services.obs.removeObserver(observer, "common-dialog-loaded"),
   };
-  const observer = (/** @type {any} */ subject) => {
+  const observer = (/** @type {unknown} */ subject) => {
     try {
-      const args = subject?.Dialog?.args ?? subject?.args;
-      if (seen.dialog || args?.owningBrowsingContext?.top !== top) return;
-      const type = DIALOGS[String(args.promptType)];
+      const args = fieldOf(fieldOf(subject, "Dialog"), "args") ?? fieldOf(subject, "args");
+      const owner = fieldOf(args, "owningBrowsingContext");
+      if (seen.dialog || fieldOf(owner, "top") !== top) return;
+      const type = DIALOGS[String(fieldOf(args, "promptType"))];
       if (!type) return;
-      const text = wf(cutTo(shown(String(args.text ?? "")), DIALOG_TEXT_MAX));
+      const text = wf(cutTo(shown(String(fieldOf(args, "text") ?? "")), DIALOG_TEXT_MAX));
       seen.dialog = { type, text: wrapUntrusted(text) };
     } catch {
       // not a dialog of this tab
@@ -272,7 +284,7 @@ function watchDialogs(browser) {
 /**
  * The page after an agent's step: whether a new document loaded and is still loading, the
  * dialog it opened, the first submission Vimma stopped, and why the wait stopped early.
- * @param {any} browser XULBrowserElement @param {{ doc: number }} before
+ * @param {MozTabBrowser} browser @param {{ doc: number }} before
  * @param {{ type: string, text: string } | null} dialog @param {string[]} blocked
  * @param {"in-use" | undefined} stopped
  */
@@ -291,7 +303,7 @@ export const AgentAct = {
    * Asks the top document of `browser` whether it is ready (VimmaActors.agentQuiet with
    * `ready`), bounded in the parent as well: a page that busy-loops holds its own process, and
    * with it the child's limits, but never the call past `until`.
-   * @param {any} browser XULBrowserElement @param {number} until  ms since the epoch
+   * @param {MozTabBrowser} browser @param {number} until  ms since the epoch
    */
   askReady(browser, until) {
     return bounded(
@@ -313,15 +325,16 @@ export const AgentAct = {
    * not changed for a moment since (AGENT_WAITS.readyQuiet, at most readyBusy). A page that
    * says it is complete while the tab still loads is the one before a load on its way, so the
    * wait goes on to the next. Never past `until`.
-   * @param {any} browser XULBrowserElement
-   * @param {(wg: any) => boolean} accept  whether the top document is the page waited for
+   * @param {MozTabBrowser} browser
+   * @param {(wg: WindowGlobalParent) => boolean} accept  whether the top document is the page
+   *   waited for
    * @param {number} until  ms since the epoch
    * @returns {Promise<boolean>} whether it was ready in time
    */
   async ready(browser, accept, until) {
-    /** @type {any} the document last asked whether it is ready */
+    /** @type {WindowGlobalParent | null} the document last asked whether it is ready */
     let asked = null;
-    /** @type {any} the document that answered it is ready */
+    /** @type {WindowGlobalParent | null} the document that answered it is ready */
     let readyDoc = null;
     /** @type {Promise<unknown> | undefined} the pending answer, which wakes the wait once */
     let wake;
@@ -352,9 +365,9 @@ export const AgentAct = {
    * question shows when it may (C7): the tab's page shows a payment card field in any frame, or
    * the control the step presses has a pay phrase in its text, accessible name, title or value.
    * Nothing on the page changes.
-   * @param {any} browser XULBrowserElement
+   * @param {MozTabBrowser} browser
    * @param {{ target?: HintTarget | null, by?: "click" | "form", text?: string,
-   *   keys?: string, frame?: any }} step  `target`: the element of the agent's `vimma_elements`
+   *   keys?: string, frame?: WindowGlobalParent | null }} step  `target`: the element of the agent's `vimma_elements`
    *   it presses (`form`: through its form's default button); `text`: what the control says, as
    *   the parent knows it (a link of `f`'s list); `keys`: a key step's keys, shown when there is
    *   no text; `frame`: the WindowGlobalParent of a link of `f`'s list, which has no `target`
@@ -418,7 +431,7 @@ export const AgentAct = {
   /**
    * The element a label names, as it is now, if an agent may click it (F4, F9, F10; security.md
    * M29): what the question shows, or why it is refused. Nothing on the page changes.
-   * @param {any} browser XULBrowserElement @param {HintTarget} target @param {string} label
+   * @param {MozTabBrowser} browser @param {HintTarget} target @param {string} label
    * @returns {Promise<{ element: import("../core/agent-act.mjs").ActTarget } | { refused: string }>}
    */
   async clickable(browser, target, label) {
@@ -448,7 +461,7 @@ export const AgentAct = {
    * `clickable` said it may be and the user allowed it, then waits for a page the click started
    * (up to 20 s), a dialog it opened, or the user starting to use the tab; when none came, what
    * changed in place (`changed`).
-   * @param {any} browser XULBrowserElement @param {HintTarget} target
+   * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
    *   inUse: () => boolean }} asked  `submit`: the submission the question named
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
@@ -467,7 +480,7 @@ export const AgentAct = {
 
   /**
    * `activate`, once no other click runs on the tab.
-   * @param {any} browser XULBrowserElement @param {HintTarget} target
+   * @param {MozTabBrowser} browser @param {HintTarget} target
    * @param {{ submit: { method: string, action: string } | null, href: string | null,
    *   inUse: () => boolean }} asked
    * @returns {Promise<{ refused: string, blocked?: string } | { navigated: boolean,
@@ -530,7 +543,7 @@ export const AgentAct = {
    * answer, so the wait sees it and goes on for the page. A step the child skipped ends the
    * wait at once (`skipped`): the page changed the element as it was pressed, and the
    * allowance must close before the page can put it back and submit by itself.
-   * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
+   * @param {MozTabBrowser} browser @param {{ doc: number, url: string }} before
    * @param {{ dialog: { type: string, text: string } | null }} dialogs
    * @param {() => boolean} inUse
    * @param {HintTarget | null} [step]  the element the child clicks or submits after its reply;
@@ -547,9 +560,11 @@ export const AgentAct = {
     /** @type {Promise<unknown> | null} the step's frame settling, once asked */
     let settling = null;
     let settled = false;
-    /** @type {any} the new document last asked whether it is ready */
+    /** @type {WindowGlobalParent | null} the new document last asked whether it is ready */
     let asked = null;
     let ready = false;
+    /** When the address was first seen changed in place with no load (0: not seen). */
+    let inPlaceAt = 0;
     /** @type {Promise<unknown> | undefined} what wakes the wait besides the tab's progress */
     let wake;
     /**
@@ -570,7 +585,20 @@ export const AgentAct = {
       const now = pageOf(browser);
       if (loading || now.doc !== before.doc || now.url !== before.url) started = true;
       if (started) {
-        if (!loading) return undefined;
+        if (!loading && (now.doc !== before.doc || now.url === before.url)) return undefined;
+        if (!loading) {
+          // The address changed in place (history.pushState) and nothing loads yet: the tab's
+          // location change reaches the parent before the start of a load the same handler
+          // goes on to make (a form.submit() after the pushState), and the allowance that ends
+          // with this wait must still be open for it. A load that starts later than a tick is
+          // cancelled, which fails closed. Counted once per wait, so a page that keeps changing
+          // its address cannot stretch it.
+          if (!inPlaceAt) inPlaceAt = Date.now();
+          const left = inPlaceAt + TICK_MS - Date.now();
+          if (left <= 0) return undefined;
+          await nextEvent(browser, left, wake);
+          continue;
+        }
         const wg = browser.browsingContext?.currentWindowGlobal;
         if (ready && wg === asked) return undefined;
         if (now.doc !== before.doc && wg && !wg.isInitialDocument && wg !== asked) {
@@ -618,7 +646,7 @@ export const AgentAct = {
    * Resolves once the frame of the step's element (the tab's top frame when there is none) has
    * settled (core AGENT_WAITS: quiet, still, busy). A frame that cannot say, having no actor or
    * no longer its document, is given the time a page that changed nothing would be.
-   * @param {any} browser XULBrowserElement @param {HintTarget | null} step @param {number} until
+   * @param {MozTabBrowser} browser @param {HintTarget | null} step @param {number} until
    */
   async settle(browser, step, until) {
     const from = Date.now();
@@ -644,7 +672,7 @@ export const AgentAct = {
    * hidden tab's one-second timer clamp for a page that had not changed yet, so the result
    * never says "nothing changed" of a page that updated itself a moment late. Null when a page
    * or a dialog of the browser came instead, or the frame cannot say.
-   * @param {any} browser XULBrowserElement @param {{ doc: number, url: string }} before
+   * @param {MozTabBrowser} browser @param {{ doc: number, url: string }} before
    * @param {{ dialog: { type: string, text: string } | null }} dialogs
    * @param {HintTarget} target
    * @returns {Promise<string[] | null>}
@@ -660,7 +688,7 @@ export const AgentAct = {
    * The field a label names, as it is now, if an agent may fill it with `value` (F4, F6, F13;
    * security.md M27): what the question shows (its name and how it is set), or why it is
    * refused. Nothing on the page changes.
-   * @param {any} browser XULBrowserElement @param {HintTarget} target @param {string} label
+   * @param {MozTabBrowser} browser @param {HintTarget} target @param {string} label
    * @param {string | boolean} value
    * @returns {Promise<{ field: import("../core/agent-act.mjs").FillTarget, name: string }
    *   | { refused: string }>}
@@ -694,7 +722,7 @@ export const AgentAct = {
    * submission (`form`). Before each field the tab must still be the agent's (`still`) and not
    * in use; a field that changed since the question stops the call. Then waits as after a click
    * when it submitted or a field's handler started a load; otherwise it returns at once.
-   * @param {any} browser XULBrowserElement
+   * @param {MozTabBrowser} browser
    * @param {{ label: string, target: HintTarget, value: string | boolean,
    *   expect: { field: string, type: string | null } }[]} steps
    * @param {{ submit: { by: "click" | "form", target: HintTarget,
@@ -714,7 +742,7 @@ export const AgentAct = {
 
   /**
    * `fill`, once no other step runs on the tab.
-   * @param {any} browser XULBrowserElement
+   * @param {MozTabBrowser} browser
    * @param {{ label: string, target: HintTarget, value: string | boolean,
    *   expect: { field: string, type: string | null } }[]} steps
    * @param {{ submit: { by: "click" | "form", target: HintTarget,
@@ -847,11 +875,15 @@ export const AgentAct = {
 
   /**
    * The LOAD_ERRORS code of the Firefox error page the browser's top document is, or null
-   * (issue #643). The document's URI, not the tab's, which keeps the address that failed.
-   * @param {any} browser
+   * (issue #643). The document's URI, not the tab's, which keeps the address that failed: the
+   * top window global's, which is the document's from its creation, where the browser's own copy
+   * comes with a later location change, after a wait that wakes on the load's end has looked.
+   * The browser's is read when there is no window global or it has no document URI yet.
+   * @param {MozBrowser} browser
    */
   loadError(browser) {
-    return loadErrorOf(String(browser.documentURI?.spec ?? ""));
+    const wg = browser.browsingContext?.currentWindowGlobal;
+    return loadErrorOf(String((wg?.documentURI ?? browser.documentURI)?.spec ?? ""));
   },
 
   /**
@@ -862,7 +894,7 @@ export const AgentAct = {
    * which this one leaves out (agent-speed S4). `site` and `lines` are what the caller keeps for
    * the next list. Labels are counted over the whole page, so a filter or a left-out line never
    * changes another element's label; only the elements the list gave can be clicked by theirs.
-   * @param {any} tab
+   * @param {MozTabbrowserTab} tab
    * @param {{ query?: string, kinds?: string[], seen?: (site: string) => Set<string> | undefined }}
    *   [options]
    * @returns {Promise<{ elements: string, dropped: number, repeated: string[], site: string,

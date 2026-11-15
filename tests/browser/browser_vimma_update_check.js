@@ -601,6 +601,31 @@ add_task(async function an_opt_out_under_a_misspelt_table_never_turns_checks_on(
   VimmaUpdates._reset();
 });
 
+add_task(async function an_unreadable_check_never_undoes_an_opt_out_stated_in_a_broken_file() {
+  await fetch(`${HOST}?reset`);
+  await serve(await manifest());
+  // 1. A valid file without [updates]: checks on.
+  const file = PathUtils.join(dir, "967.toml");
+  await IOUtils.writeUTF8(file, "schema = 2\n");
+  await ConfigHost.reload(file);
+  await until(() => VimmaUpdates.status().enabled, "on with a valid file");
+  // 2. check = false beside an error elsewhere: off, the valid file stays in force.
+  await IOUtils.writeUTF8(file, "schema = 2\n[updates]\ncheck = false\n[keys]\nnope = 1\n");
+  await ConfigHost.reload(file);
+  Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
+  await until(() => !VimmaUpdates.status().enabled, "check = false from the broken file");
+  // 3. The TOML no longer parses: check = false was the last word, so checks stay off.
+  await IOUtils.writeUTF8(file, "schema = 2\n[updates\ncheck = false\n");
+  await ConfigHost.reload(file);
+  Assert.ok(ConfigHost.errors.length > 0, "the file has errors");
+  Assert.ok(!VimmaUpdates.status().enabled, "checks stay off");
+  Assert.equal((await VimmaUpdates.check()).outcome, "off");
+  Assert.deepEqual(await requests(), [], "no request");
+  await ConfigHost.reload();
+  await until(() => VimmaUpdates.status().enabled, "back on with the defaults");
+  VimmaUpdates._reset();
+});
+
 add_task(async function a_config_that_parses_with_errors_still_checks() {
   await fetch(`${HOST}?reset`);
   await serve(await manifest());

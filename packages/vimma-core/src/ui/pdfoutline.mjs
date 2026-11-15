@@ -4,8 +4,8 @@
 
 /**
  * The PDF outline (docs/specs/pdf-mode.md decision 10): the parser that bounds the outline the
- * content actor reads from pdf.js before chrome shows it (docs/security.md section 20, V8), and
- * the outline panel's state and `index` mode keys.
+ * content actor reads from pdf.js before chrome shows it (docs/security/20-pdf-viewer.md section
+ * 20, V8), and the outline panel's state and `index` mode keys.
  */
 
 import { PDF_MAX_PAGES, stripInvisible } from "../page/pdf.mjs";
@@ -97,9 +97,9 @@ export function parsePdfOutline(raw, pages) {
 }
 
 /**
- * Whether the parent may open an outline entry's URL (docs/security.md section 4): http and
- * https only, as pdf.js itself links them; never `javascript:`, `data:` or a local file a remote
- * PDF names.
+ * Whether the parent may open an outline entry's URL
+ * (docs/security/04-opening-urls-from-untrusted-text.md section 4): http and https only, as pdf.js
+ * itself links them; never `javascript:`, `data:` or a local file a remote PDF names.
  * @param {string} url
  */
 export function outlineUrlAllowed(url) {

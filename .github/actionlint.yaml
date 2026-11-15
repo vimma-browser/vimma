@@ -1,3 +1,4 @@
-# No workflow targets a self-hosted runner (docs/security.md, B5), so no label is declared.
+# No workflow targets a self-hosted runner (docs/security/14-build-and-release-supply-chain.md, B5),
+# so no label is declared.
 self-hosted-runner:
   labels: []

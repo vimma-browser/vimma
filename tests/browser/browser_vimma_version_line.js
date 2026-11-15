@@ -10,7 +10,10 @@
 const { AppConstants } = ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs");
 const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
 
-/** Runs this app's binary with `args`: { exitCode, out } (stdout and stderr together). */
+/**
+ * Runs this app's binary with `args`: { exitCode, out } (stdout and stderr together).
+ * @param {string[]} args
+ */
 async function runApp(args) {
   const bin = Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
   const proc = await Subprocess.call({ command: bin, arguments: args, stderr: "stdout" });

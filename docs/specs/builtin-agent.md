@@ -14,7 +14,7 @@ for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `
 `config/ConfigHost.sys.mjs`);
 new `tools/agent-bench/`;
 `tests/e2e/fixtures/`;
-`docs/guide.md`, `docs/security.md`, `docs/limits.md`, README · Upstream patches: none · ADR: a
+`docs/guide.md`, `docs/security/`, `docs/limits.md`, README · Upstream patches: none · ADR: a
 [ADR-023](../adr/023-in-browser-model-client.md), an in-browser model client beside
 [ADR-019](../adr/019-agents-over-mcp.md) (B4). No new dependency (B6).
 
@@ -830,7 +830,7 @@ them; a deleted file is removed, not overwritten, so a disk recovery tool may fi
 any deleted file. A reopened conversation sends its stored text to its provider again, which,
 for a hosted provider, is said by the header as for any task.
 
-### `docs/security.md` changes, with the implementation
+### `docs/security/12-agents-mcp-built-in-agent.md` changes, with the implementation
 
 A new subsection of §12 for the built-in agent, with rules and their tests:
 
@@ -995,7 +995,7 @@ order and pay` is a payment checkpoint by its words. The search form is a real f
   questions in the window, giving a page, several conversations and their tabs, the conversation list, what is stored
   and how it is encrypted, budgets, stopping, how it differs from an MCP agent; "What Vimma
   protects, and what it does not" gains the built-in agent; the Features at a glance line.
-- `docs/security.md`: the §12 subsection above, with its tests.
+- `docs/security/12-agents-mcp-built-in-agent.md`: the §12 subsection above, with its tests.
 - `docs/limits.md`, "Agents (MCP)": a local server's tool calling depends on the server and the
   model; a local address may forward to a hosted model; token counts are the provider's or an
   estimate; cost only with prices the user enters; conversations share the agent workspace's

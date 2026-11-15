@@ -10,7 +10,7 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
 );
 
-/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey -- from head.js */
+/* global focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey, historyOf -- from head.js */
 
 // ctrl+b o: a key under the prefix the host has not built (head.js).
 bindUnbuiltPrefixKey();
@@ -592,7 +592,7 @@ add_task(async function data_urls_are_blocked_with_a_notice() {
   Assert.equal(browser.currentURI.spec, url, "and :open loads nothing");
   // A data: load in flight would commit before (or be cut off by) the next load, so one more
   // :open and the history show whether any of them got in: one entry more, and not data:.
-  const history = browser.browsingContext.sessionHistory;
+  const history = historyOf(browser);
   const entries = history.count;
   const next = `${PAGE}?after`;
   const loaded = BrowserTestUtils.browserLoaded(browser, false, next);

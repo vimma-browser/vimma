@@ -5,8 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { formPage, manifest, otherPolicies } from "../create-app.mjs";
 
-// docs/security.md, G14: the upstream App can write contents, pull requests and issues, nothing
-// else; it has no webhook and is private to the organisation.
+// docs/security/10-firefox-updates.md, G14: the upstream App can write contents, pull requests and
+// issues, nothing else; it has no webhook and is private to the organisation.
 describe("the upstream App's manifest", () => {
   it("asks for contents, pull requests and issues, and nothing else", () => {
     const m = manifest("http://127.0.0.1:4000/callback");

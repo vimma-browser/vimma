@@ -30,10 +30,30 @@ const dir = PathUtils.join(PathUtils.tempDir, `vimma-config-${Date.now()}`);
 const file = PathUtils.join(dir, "config.toml");
 const themeDir = PathUtils.join(dir, "omarchy");
 
+/**
+ * A value the test's own lookup found, or the config its reload or wait put in force. It changes
+ * nothing at run time: a read through a missing one throws, as it did before.
+ * @template T
+ * @param {T | null | undefined} value
+ */
+function found(value) {
+  return /** @type {T} */ (value);
+}
+
+/** The config in force; each read follows a wait or a reload that put one there. */
+const config = () => found(ConfigHost.config);
+
+/**
+ * Resolves with the first truthy value of `cond`.
+ * @template T
+ * @param {() => T} cond
+ * @param {string} msg
+ */
 function until(cond, msg) {
   return TestUtils.waitForCondition(cond, msg, 50, 100);
 }
 
+/** @param {string} id */
 function segText(id) {
   return (
     document.getElementById("vimma-statusbar")?.querySelector(`[data-segment="${id}"]`)
@@ -46,32 +66,42 @@ function noticeText() {
   return n?.matches(":popover-open") ? n.textContent : null;
 }
 
-/** "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it. */
+/**
+ * "#rrggbb" → "rgb(r, g, b)", as getComputedStyle reports it.
+ * @param {string} hex
+ */
 function rgb(hex) {
   const n = parseInt(hex.slice(1), 16);
   return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`;
 }
 
 const barBackground = () =>
-  getComputedStyle(document.getElementById("vimma-statusbar")).backgroundColor;
+  getComputedStyle(found(document.getElementById("vimma-statusbar"))).backgroundColor;
 
 /**
  * Writes config.toml. Each write gets a size of its own (a trailing comment), so the poll sees a
  * change even when two writes land in the same millisecond.
  */
 let writes = 0;
+/** @param {string} text */
 async function writeConfig(text) {
   writes++;
   await IOUtils.writeUTF8(file, `${text}\n${"#".repeat(writes)}\n`);
 }
 
-/** ctrl+b, then `key`. */
+/**
+ * ctrl+b, then `key`.
+ * @param {string} key
+ */
 function prefix(key) {
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey(key);
 }
 
-/** The number of tabs after ctrl+b `key` and a moment for a tab to open. */
+/**
+ * The number of tabs after ctrl+b `key` and a moment for a tab to open.
+ * @param {string} key
+ */
 async function tabsAfterPrefix(key) {
   const before = gBrowser.tabs.length;
   const opened = BrowserTestUtils.waitForEvent(gBrowser.tabContainer, "TabOpen").then(() => true);
@@ -80,11 +110,16 @@ async function tabsAfterPrefix(key) {
   const timeout = new Promise((r) => setTimeout(() => r(false), 1000));
   const did = await Promise.race([opened, timeout]);
   const after = gBrowser.tabs.length;
-  while (gBrowser.tabs.length > before) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > before) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   return { did, delta: after - before };
 }
 
-/** An example.com tab, selected and focused, in normal mode. */
+/**
+ * An example.com tab, selected and focused, in normal mode.
+ * @param {string} name
+ */
 async function openPage(name) {
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, `${PAGE}?${name}`);
   await focusContent(tab.linkedBrowser);
@@ -108,7 +143,9 @@ add_task(async function setup() {
     ],
   });
   registerCleanupFunction(async () => {
-    while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+    while (gBrowser.tabs.length > 1) {
+      gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+    }
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
     // Back to the 2 s poll and the hermetic path before the harness looks for left-over timers.
     await SpecialPowers.popPrefEnv();
@@ -139,10 +176,14 @@ add_task(async function the_help_overlay_marks_and_lists_an_override() {
   await focusContent(tab.linkedBrowser);
   EventUtils.synthesizeKey("b", { ctrlKey: true });
   EventUtils.synthesizeKey("?", { shiftKey: true });
-  const help = () => document.getElementById("vimma-help");
+  // help-overlay.mjs: a modal <dialog>.
+  const help = () =>
+    /** @type {HTMLDialogElement | null} */ (document.getElementById("vimma-help"));
   await until(() => !!help()?.open, "ctrl+b ? opens the overlay");
-  const row = (name) => help().querySelector(`[data-action="${name}"]`);
-  const part = (name, cls) => row(name).querySelector(`.vimma-help-${cls}`).textContent;
+  /** @param {string} name */
+  const row = (name) => found(found(help()).querySelector(`[data-action="${name}"]`));
+  /** @param {string} name @param {string} cls */
+  const part = (name, cls) => found(row(name).querySelector(`.vimma-help-${cls}`)).textContent;
   Assert.equal(part("new_tab", "override"), "*", "the overridden action is marked *");
   Assert.stringContains(part("new_tab", "keys"), "ctrl+b t", "with the file's binding");
   Assert.ok(!part("new_tab", "keys").includes("ctrl+b c"), "not the default one it replaced");
@@ -164,8 +205,8 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
     () => segText("error")?.startsWith("config.toml:3:"),
     "the status bar shows config.toml:3:",
   );
-  Assert.ok(segText("error").includes('did you mean "new_tab"'), "with the suggestion");
-  Assert.equal(ConfigHost.config.keys.new_tab, "prefix+t", "the old config stays active");
+  Assert.ok(found(segText("error")).includes('did you mean "new_tab"'), "with the suggestion");
+  Assert.equal(config().keys.new_tab, "prefix+t", "the old config stays active");
   await focusContent(tab.linkedBrowser);
   Assert.equal((await tabsAfterPrefix("t")).delta, 1, "the old mapping still opens a tab");
   await focusContent(tab.linkedBrowser);
@@ -173,7 +214,7 @@ add_task(async function a_broken_line_keeps_the_old_config_and_shows_file_and_li
 
   await writeConfig(`[keys]\nnew_tab = "prefix+y"`);
   await until(() => segText("error") === null, "fixing the file clears the error");
-  Assert.equal(ConfigHost.config.keys.new_tab, "prefix+y", "and the fixed file is active");
+  Assert.equal(config().keys.new_tab, "prefix+y", "and the fixed file is active");
 
   BrowserTestUtils.removeTab(tab);
   await resetConfig();
@@ -196,13 +237,13 @@ add_task(async function an_unknown_agent_cli_skips_its_provider_and_the_file_app
   );
   await until(() => ConfigHost.config?.keys.new_tab === "prefix+t", "the file applies");
   Assert.deepEqual(ConfigHost.errors, [], "an unknown cli is no error");
-  Assert.deepEqual(ConfigHost.config.agent.providers, [], "its provider is left out");
+  Assert.deepEqual(config().agent.providers, [], "its provider is left out");
   Assert.equal(ConfigHost.warnings.length, 1, "it is a warning");
   await until(
     () => segText("error")?.startsWith("config.toml:7: agent.providers[0].cli: unknown agent CLI"),
     "the status bar names the file, the line and the CLI",
   );
-  Assert.ok(segText("error").includes("this provider is skipped"), "and says what happened");
+  Assert.ok(found(segText("error")).includes("this provider is skipped"), "and says what happened");
   await focusContent(tab.linkedBrowser);
   Assert.equal((await tabsAfterPrefix("t")).delta, 1, "the file's mapping works");
 
@@ -225,12 +266,12 @@ add_task(async function the_poll_is_not_a_repeating_timer_a_test_could_be_blamed
       .getService(Ci.nsITimerManager)
       .getTimers()
       .filter(
-        (t) =>
+        (/** @type {nsITimer} */ t) =>
           t.type !== Ci.nsITimer.TYPE_ONE_SHOT &&
           t.type !== Ci.nsITimer.TYPE_ONE_SHOT_LOW_PRIORITY &&
           t.name.includes("ConfigHost"),
       )
-      .map((t) => `${t.name} ${t.delay}`);
+      .map((/** @type {nsITimer} */ t) => `${t.name} ${t.delay}`);
   const busyUntil = Date.now() + 300;
   while (Date.now() < busyUntil) {
     // The poll (every 100 ms here) fires meanwhile; its callback waits for the main thread.
@@ -255,7 +296,10 @@ add_task(async function colon_source_reloads_at_once() {
   await resetConfig();
 });
 
-/** Types `:line` and Enter. */
+/**
+ * Types `:line` and Enter.
+ * @param {string} line
+ */
 function command(line) {
   EventUtils.synthesizeKey(":", { shiftKey: true });
   EventUtils.sendString(line);
@@ -267,13 +311,13 @@ add_task(async function colon_source_a_path_replaces_the_config_and_reports_that
   const tab = await openPage("source-path");
   await writeConfig(`[keys]\nnew_tab = "prefix+t"`);
   await ConfigHost.reload();
-  Assert.equal(ConfigHost.config.keys.new_tab, "prefix+t", "sanity: config.toml is in force");
+  Assert.equal(config().keys.new_tab, "prefix+t", "sanity: config.toml is in force");
 
   // Relative: next to config.toml. The file replaces the config, it is not merged into it.
   await IOUtils.writeUTF8(PathUtils.join(dir, "work.toml"), `[keys]\nclose_tab = "prefix+q"\n`);
   command("source work.toml");
   await until(() => ConfigHost.config?.keys.close_tab === "prefix+q", ":source work.toml loads");
-  Assert.equal(ConfigHost.config.keys.new_tab, undefined, "config.toml's binding is gone");
+  Assert.ok(!Object.hasOwn(config().keys, "new_tab"), "config.toml's binding is gone");
   Assert.equal(ConfigHost.path, PathUtils.join(dir, "work.toml"), "the file in force");
   await focusContent(tab.linkedBrowser);
   Assert.equal((await tabsAfterPrefix("t")).delta, 0, "ctrl+b t no longer opens a tab");
@@ -282,15 +326,15 @@ add_task(async function colon_source_a_path_replaces_the_config_and_reports_that
   await focusContent(tab.linkedBrowser);
   command("source nope.toml");
   await until(() => segText("error") === "nope.toml: no such file", "a missing file is said");
-  Assert.equal(ConfigHost.config.keys.close_tab, "prefix+q", "the config in force stays");
+  Assert.equal(config().keys.close_tab, "prefix+q", "the config in force stays");
 
   // A broken file: its own name and line, and nothing changes.
   await IOUtils.writeUTF8(PathUtils.join(dir, "bad.toml"), `[keys]\nnew_tabb = "prefix+u"\n`);
   await focusContent(tab.linkedBrowser);
   command(`source ${PathUtils.join(dir, "bad.toml")}`);
   await until(() => segText("error")?.startsWith("bad.toml:2:"), "bad.toml:2: in the bar");
-  Assert.ok(segText("error").includes('did you mean "new_tab"'), "with the suggestion");
-  Assert.equal(ConfigHost.config.keys.close_tab, "prefix+q", "the config in force stays");
+  Assert.ok(found(segText("error")).includes('did you mean "new_tab"'), "with the suggestion");
+  Assert.equal(config().keys.close_tab, "prefix+q", "the config in force stays");
 
   // Plain :source goes back to config.toml.
   await focusContent(tab.linkedBrowser);
@@ -342,7 +386,9 @@ add_task(async function colon_config_opens_the_file_and_creates_it_from_the_temp
 add_task(async function panes_max_refuses_a_third_split() {
   const tab = await openPage("panes");
   await writeConfig(`schema = 2\n[panes]\nmax = 2`);
-  await until(() => PaneViews.get(window).max === 2, "[panes] max reaches the pane view");
+  /** The window's pane view, which Vimma made when it started this window. */
+  const paneView = () => found(PaneViews.get(window));
+  await until(() => paneView().max === 2, "[panes] max reaches the pane view");
 
   prefix("v");
   await until(
@@ -352,19 +398,22 @@ add_task(async function panes_max_refuses_a_third_split() {
       gBrowser.selectedTab.linkedBrowser.contentDocument?.readyState === "complete",
     "the second pane's start page has loaded",
   );
-  const view = PaneViews.get(window);
-  Assert.equal(leaves(view.panes).length, 2, "two panes");
+  const view = paneView();
+  // leaves() of no panes throws (it reads `.root`), as it did before.
+  Assert.equal(leaves(found(view.panes)).length, 2, "two panes");
   const tabs = gBrowser.tabs.length;
   prefix("v");
   await until(() => noticeText()?.includes("at most 2 panes"), "the third split is refused");
-  Assert.equal(leaves(view.panes).length, 2, "still two panes");
+  Assert.equal(leaves(found(view.panes)).length, 2, "still two panes");
   Assert.equal(gBrowser.tabs.length, tabs, "and no tab was opened");
 
   while (view.panes) view.close();
-  while (gBrowser.tabs.length > 1) gBrowser.removeTab(gBrowser.tabs.at(-1));
+  while (gBrowser.tabs.length > 1) {
+    gBrowser.removeTab(/** @type {MozTabbrowserTab} */ (gBrowser.tabs.at(-1)));
+  }
   document.getElementById(NOTICE_ID)?.hidePopover?.();
   await resetConfig();
-  Assert.equal(PaneViews.get(window).max, 8, "the default comes back without the file");
+  Assert.equal(paneView().max, 8, "the default comes back without the file");
 });
 
 add_task(async function theme_source_and_colors_feed_the_theme() {
@@ -419,16 +468,19 @@ add_task(async function workspaces_from_the_file_apply_live() {
     "chrome://browser/content/vimma/workspaces/WindowWorkspaces.sys.mjs",
   );
   const def = () => WorkspaceStore.definitions.workspaces.find((w) => w.name === "cfgws");
+  /** The workspace a wait saw in the store. */
+  const seen = () => found(def());
   await writeConfig(`[workspaces.cfgws]\ncolor = "green"\nicon = "tree"`);
   await until(() => def()?.source === "config", "[workspaces] reaches the store");
-  Assert.equal(def().color, "green", "with its colour");
-  Assert.ok(def().userContextId > 0, "and a container of its own");
+  Assert.equal(seen().color, "green", "with its colour");
+  Assert.greater(seen().userContextId ?? 0, 0, "and a container of its own");
   await until(
-    () => WindowWorkspaces.get(window).model.workspaces.some((w) => w.id === def().id),
+    () =>
+      found(found(WindowWorkspaces.get(window)).model).workspaces.some((w) => w.id === seen().id),
     "the window has the new workspace",
   );
 
   await resetConfig();
   await until(() => def()?.source === "runtime", "out of the file it becomes runtime");
-  await WorkspaceStore.deleteWorkspace(def().id, { confirmed: true });
+  await WorkspaceStore.deleteWorkspace(seen().id, { confirmed: true });
 });

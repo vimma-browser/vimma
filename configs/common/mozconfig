@@ -58,7 +58,7 @@ if [ "${VIMMA_UPDATES:-}" = 1 ]; then
     if [ ! -s "$topsrcdir/toolkit/mozapps/update/updater/vimma/$_vimma_cert" ]; then
       echo "mozconfig: VIMMA_UPDATES=1 needs toolkit/mozapps/update/updater/vimma/$_vimma_cert," \
         "linked from configs/updater/ by npm run import" \
-        "(docs/runbook.md, \"Update signing keys and the update host\")" >&2
+        "(docs/runbook/ci-update-keys-and-update-host.md, \"Update signing keys and the update host\")" >&2
       exit 1
     fi
     # engine/ sits in the repository: a stale file or a link to another checkout, from a build

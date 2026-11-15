@@ -19,7 +19,9 @@ in the chat window grants that conversation's connection until the task ends, an
 the connection; it uses `ctl/VimmaControl.sys.mjs` for the connection itself. `AgentCli.sys.mjs`
 uses `ctl/VimmaControl.sys.mjs` and `ctl/AgentDownloads.sys.mjs` for the CLIs it starts.
 
-**Security:** [docs/security.md](../../../../../../docs/security.md) section 12, "The built-in agent".
+**Security:**
+[docs/security/12-agents-mcp-built-in-agent.md](../../../../../../docs/security/12-agents-mcp-built-in-agent.md)
+section 12, "The built-in agent".
 
 **Read more:** [builtin-agent](../../../../../../docs/specs/builtin-agent.md),
 [builtin-agent-cli](../../../../../../docs/specs/builtin-agent-cli.md).

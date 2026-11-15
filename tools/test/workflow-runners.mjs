@@ -1,5 +1,5 @@
 // Reads which runner each job of a GitHub Actions workflow targets, for
-// self-hosted-runner.test.mjs (docs/specs/build-supply-chain.md, decision 7). The workflows are
+// self-hosted-runner.test.ts (docs/specs/build-supply-chain.md, decision 7). The workflows are
 // parsed as YAML (js-yaml), not matched as text, so quoted keys, flow mappings, anchors and
 // duplicate keys mean what they mean to GitHub; js-yaml rejects a duplicate key, which fails the
 // test. The YAML 1.2 core schema, without the `!!merge` tag: GitHub does not apply `<<:` merge

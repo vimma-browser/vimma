@@ -1,6 +1,6 @@
 # Spec m6a-updater §7: when the maintainer publishes a release, sign an update manifest for it
 # and push it to vimma-browser/vimma-updates, which Cloudflare serves at updates.vimma.dev, so
-# installs see "update available". Setup, recovery and the off switch: docs/runbook.md, "Update
+# installs see "update available". Setup, recovery and the off switch: docs/runbook/ci-update-keys-and-update-host.md, "Update
 # signing keys and the update host".
 #
 # Publishing a release starts `start`, which only starts this workflow again on main with the tag
@@ -48,7 +48,7 @@
 #   nightly-publish  as publish, for …/vimma-nightly/update.xml alone.
 #
 # A called job is this file's job on main, so its OIDC token names update-publish.yml at
-# refs/heads/main, the one job_workflow_ref Google Cloud admits (docs/runbook.md, step 7b): the
+# refs/heads/main, the one job_workflow_ref Google Cloud admits (docs/runbook/ci-update-keys-and-update-host.md, step 7b): the
 # key gains no new workflow. The release manifest's prepare, sign and publish jobs never run in
 # a call: they need this file to be the run's own workflow (github.workflow_ref is the caller's
 # in a call). The nightly's jobs run only in nightly.yml's call, and only while the repository
@@ -145,7 +145,7 @@ jobs:
       - name: Start the manifest run on main
         run: |
           if [ "$UPDATES_ENABLED" != true ]; then
-            echo "::notice::UPDATES_ENABLED is not true; no update manifest for $TAG (docs/runbook.md, Update signing keys and the update host)"
+            echo "::notice::UPDATES_ENABLED is not true; no update manifest for $TAG (docs/runbook/ci-update-keys-and-update-host.md, Update signing keys and the update host)"
             exit 0
           fi
           [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
@@ -154,7 +154,7 @@ jobs:
           # The macOS manifest needs the .dmg, which usually reaches the release after this, and
           # then release.yml's macos-tap starts it; a draft published after its .dmg has it now.
           # The release's metadata, never the file: GitHub counts any request for a release file,
-          # a HEAD too, as a download (docs/runbook.md, "Release download counts"). A draft
+          # a HEAD too, as a download (docs/runbook/ci-release-download-counts.md, "Release download counts"). A draft
           # answers 404 here, as at its download URLs.
           code=$(curl -sS --proto =https --retry 3 -o "$RUNNER_TEMP/release.json" -w '%{http_code}' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/$TAG") || true
@@ -178,7 +178,7 @@ jobs:
       github.ref == 'refs/heads/main' && (vars.UPDATES_ENABLED == 'true' || inputs.dry_run) &&
       !inputs.mar && startsWith(github.workflow_ref, 'vimma-browser/vimma/.github/workflows/update-publish.yml@')
     # macOS reads the build ID from the .dmg with hdiutil. A one-leg matrix rather than a
-    # conditional runs-on, so that the runner check (docs/security.md, B5) sees both runners.
+    # conditional runs-on, so that the runner check (docs/security/14-build-and-release-supply-chain.md, B5) sees both runners.
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -251,7 +251,7 @@ jobs:
               || { echo "::error::$base/$f: not found; is $TAG published, with its assets?"; exit 1; }
           done
           # An unsigned release never gets a signed manifest: the sums file is only as good as
-          # release.yml's signature on it (docs/security.md UP7).
+          # release.yml's signature on it (docs/security/16-update-check.md UP7).
           curl -fsSL --proto =https --retry 3 -o "$SUMS.sigstore.json" "$base/$SUMS.sigstore.json" \
             || { echo "::error::$TAG has no $SUMS.sigstore.json; an unsigned release gets no update manifest"; exit 1; }
           # The complete MAR, which a release built with Firefox's updater lists in SHA256SUMS;
@@ -325,7 +325,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       id-token: write # GitHub OIDC for Google Cloud Workload Identity Federation
-    # Its deployment branch is main alone (docs/runbook.md), and the key's IAM binding names this
+    # Its deployment branch is main alone (docs/runbook/), and the key's IAM binding names this
     # environment, so only a job of this workflow on main can ask Cloud KMS to sign.
     environment: update-signing
     env:
@@ -386,7 +386,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           project_id: ${{ steps.body.outputs.project }}
 
-      # docs/runbook.md, step 6: the key is RSA_SIGN_RAW_PKCS1_4096 and signs exactly the bytes it
+      # docs/runbook/ci-update-keys-and-update-host.md, step 6: the key is RSA_SIGN_RAW_PKCS1_4096 and signs exactly the bytes it
       # is sent, so the SHA-384 DigestInfo of `vimma-update-xml-v1\n` + body is built here; the
       # result is an RSASSA-PKCS1-v1_5 SHA-384 signature, checked at once against KMS's key.
       - name: Sign with Cloud KMS
@@ -421,7 +421,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    # Holds UPDATES_DEPLOY_KEY; its deployment branch is main alone (docs/runbook.md).
+    # Holds UPDATES_DEPLOY_KEY; its deployment branch is main alone (docs/runbook/).
     environment: update-publish
     env:
       UPDATES_DEPLOY_KEY_SET: ${{ secrets.UPDATES_DEPLOY_KEY != '' }}
@@ -484,7 +484,7 @@ jobs:
       - name: Without UPDATES_ENABLED, or in a dry run, push nothing
         if: vars.UPDATES_ENABLED != 'true' || inputs.dry_run
         run: |
-          echo "::notice::Signed and verified; not pushed (UPDATES_ENABLED: ${UPDATES_ENABLED:-unset}, dry run: $DRY_RUN). docs/runbook.md, Update signing keys and the update host."
+          echo "::notice::Signed and verified; not pushed (UPDATES_ENABLED: ${UPDATES_ENABLED:-unset}, dry run: $DRY_RUN). docs/runbook/ci-update-keys-and-update-host.md, Update signing keys and the update host."
         env:
           UPDATES_ENABLED: ${{ vars.UPDATES_ENABLED }}
           DRY_RUN: ${{ inputs.dry_run }}
@@ -494,7 +494,7 @@ jobs:
       - name: Enabled, but no deploy key
         if: env.UPDATES_DEPLOY_KEY_SET != 'true' && vars.UPDATES_ENABLED == 'true' && !inputs.dry_run
         run: |
-          echo "::error::UPDATES_ENABLED is true but the update-publish environment has no UPDATES_DEPLOY_KEY; nothing was pushed (docs/runbook.md, step 7)"
+          echo "::error::UPDATES_ENABLED is true but the update-publish environment has no UPDATES_DEPLOY_KEY; nothing was pushed (docs/runbook/ci-update-keys-and-update-host.md, step 7)"
           exit 1
 
       # One commit per manifest, on top of what vimma-updates has now; the clone's manifest is
@@ -649,7 +649,7 @@ jobs:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           project_id: ${{ steps.key.outputs.project }}
 
-      # As the manifest's signature (docs/runbook.md, step 6): the SHA-384 DigestInfo of every
+      # As the manifest's signature (docs/runbook/ci-update-keys-and-update-host.md, step 6): the SHA-384 DigestInfo of every
       # byte but the placeholder's, signed by the raw PKCS#1 key, so the result is the
       # RSASSA-PKCS1-v1_5 SHA-384 signature `signmar -s` would have written there.
       - name: Sign the MAR with Cloud KMS
@@ -882,7 +882,7 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-    # Holds UPDATES_DEPLOY_KEY; its deployment branch is main alone (docs/runbook.md).
+    # Holds UPDATES_DEPLOY_KEY; its deployment branch is main alone (docs/runbook/).
     environment: update-publish
     env:
       BUILD_ID: ${{ inputs.nightly }}
@@ -935,7 +935,7 @@ jobs:
       - name: No deploy key
         if: env.UPDATES_DEPLOY_KEY_SET != 'true'
         run: |
-          echo "::error::the update-publish environment has no UPDATES_DEPLOY_KEY; nothing was pushed (docs/runbook.md, step 7)"
+          echo "::error::the update-publish environment has no UPDATES_DEPLOY_KEY; nothing was pushed (docs/runbook/ci-update-keys-and-update-host.md, step 7)"
           exit 1
 
       # As publish: one commit, on top of what vimma-updates has now, checked once more against

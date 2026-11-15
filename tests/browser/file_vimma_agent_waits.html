@@ -7,8 +7,9 @@
    - button that updates the page at once, one that updates it when a 600 ms request answers, one
    - that changes nothing, a field, a link to a page whose load event takes 5 s, a button whose
    - script submits a form 1.5 s later, and a submit button whose page holds its submission back
-   - and sends it again 1.5 s later, one that does the same while it keeps a request open, and
-   - a form whose destination answers after 3 s. -->
+   - and sends it again 1.5 s later, one that does the same while it keeps a request open,
+   - a form whose destination answers after 3 s, and a submit button whose click handler changes
+   - the address with history.pushState before the form is sent. -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -37,6 +38,9 @@
     </form>
     <form id="busy-order" method="post" action="file_vimma_agent_page.html?busy">
       <button type="submit">Order busy</button>
+    </form>
+    <form id="pushed-order" method="post" action="file_vimma_agent_page.html?pushed">
+      <button id="pushed" type="submit">Order pushed</button>
     </form>
     <form id="draft" method="post" action="file_vimma_agent_page.html?late"></form>
     <p id="total">Total 0</p>
@@ -70,6 +74,11 @@
           window.resentBusy = true;
           busy.requestSubmit();
         }, 1500);
+      });
+      // The address changes in place first; the form's own submission follows the click.
+      document.getElementById("pushed").addEventListener("click", () => {
+        stamp();
+        history.pushState(null, "", "?pushed-in-place");
       });
       const order = document.getElementById("order");
       window.resent = false;

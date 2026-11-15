@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * `npm run lane:setup` (docs/runbook.md, "Parallel browser lanes"): gives this git worktree its
- * own engine/ and artifact build, so `npm run mochitest -- --artifact tests/browser/` runs here
- * in isolation, next to other lanes and the main checkout's full build.
+ * `npm run lane:setup` (docs/runbook/parallel-browser-lanes.md, "Parallel browser lanes"): gives
+ * this git worktree its own engine/ and artifact build, so `npm run mochitest -- --artifact
+ * tests/browser/` runs here in isolation, next to other lanes and the main checkout's full build.
  *
  *   npm run lane:setup -- [--source <checkout>] [--force] [--allow-copy] [--no-verify]
  *

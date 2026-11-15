@@ -121,7 +121,7 @@ function stuckRestoreMs() {
 /**
  * A page loading into `browser` in the parent process before its layout has started: the
  * initial about:blank the load replaces, or the new document while the parser still runs.
- * @param {any} browser
+ * @param {MozBrowser} browser
  */
 function layoutPending(browser) {
   const doc = browser.contentDocument;
@@ -568,7 +568,7 @@ export class WindowWorkspacesImpl {
   handleEvent(e) {
     if (this.#win.closed) return;
     // Before the restore check: openURI's tab for a routed link comes in the routing's task.
-    if (e.type === "TabOpen") lazy.WorkspaceRouter.adoptTab(e.target);
+    if (e.type === "TabOpen") lazy.WorkspaceRouter.adoptTab(/** @type {Tab} */ (e.target));
     switch (e.type) {
       case "SSWindowRestoring":
       case "SSWindowStateBusy":
@@ -682,7 +682,7 @@ export class WindowWorkspacesImpl {
    * a page's own navigation, or a link a page opened (never routed: spec workspace-routing,
    * decision 3), once per tab and host.
    * @param {Tab} tab
-   * @param {any} [location]  nsIURI, the browser's current one by default
+   * @param {nsIURI | null} [location]  the browser's current one by default
    */
   #hint(tab, location = tab.linkedBrowser?.currentURI) {
     if (tab.pinned || !location) return;

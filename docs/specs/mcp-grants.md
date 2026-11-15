@@ -246,7 +246,7 @@ agent workspace.
   payments among these steps, and only those its signals recognise.
 - **Answering by reflex** is less likely, because a task now asks once instead of once per tool.
 
-`docs/security.md` changes in the implementing PR:
+`docs/security/` changes in the implementing PR:
 
 - M1: every agent command waits for a yes or runs under an unexpired grant **of its
   connection**; the grant covers every grantable tool.

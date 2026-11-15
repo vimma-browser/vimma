@@ -14,7 +14,8 @@
 // `await waitForPageKey(...)` or `await pageKeys(browser)`.
 
 /* exported focusContent, recordPageKeys, pageKeys, waitForPageKey, bindUnbuiltPrefixKey,
-   useShippedSupportBase, openSettingsPane */
+   useShippedSupportBase, openSettingsPane, contextOf, windowGlobalOf, historyOf, webProgressOf,
+   contentPrincipalOf */
 
 "use strict";
 
@@ -145,4 +146,61 @@ async function openSettingsPane(pane, selectors, check) {
     }
     await check(doc, /** @type {HTMLElement} */ (doc.querySelector(wanted[0])));
   });
+}
+
+/**
+ * The browsing context of `browser`. A loaded tab's browser has one; a browser without a frame
+ * loader (a lazy tab's) has none, and the test fails here, as a read through it would.
+ * @param {MozBrowser} browser
+ * @returns {CanonicalBrowsingContext}
+ */
+function contextOf(browser) {
+  const bc = browser.browsingContext;
+  if (!bc) throw new Error("the browser has no browsing context");
+  return bc;
+}
+
+/**
+ * The web progress of `browser`'s context; the test fails here when it has none, as a read
+ * through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIWebProgress}
+ */
+function webProgressOf(browser) {
+  const progress = browser.webProgress;
+  if (!progress) throw new Error("the browser has no web progress");
+  return progress;
+}
+
+/**
+ * The principal of the page in `browser`; the test fails here before a remote browser's first
+ * page has committed, as a read through it would.
+ * @param {MozBrowser} browser
+ * @returns {nsIPrincipal}
+ */
+function contentPrincipalOf(browser) {
+  const principal = browser.contentPrincipal;
+  if (!principal) throw new Error("the browser has no content principal");
+  return principal;
+}
+
+/**
+ * The document (window global) `bc` shows now; the test fails here when it shows none.
+ * @param {CanonicalBrowsingContext | null | undefined} bc
+ * @returns {WindowGlobalParent}
+ */
+function windowGlobalOf(bc) {
+  const wg = bc?.currentWindowGlobal;
+  if (!wg) throw new Error("the browsing context shows no document");
+  return wg;
+}
+
+/**
+ * The back/forward list of `browser`'s tab; the test fails here when its context keeps none.
+ * @param {MozBrowser} browser
+ */
+function historyOf(browser) {
+  const history = contextOf(browser).sessionHistory;
+  if (!history) throw new Error("the browsing context keeps no history");
+  return history;
 }

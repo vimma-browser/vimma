@@ -9,6 +9,7 @@
 let first;
 let timer;
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   response.processAsync();
   response.setHeader("Content-Type", "text/html; charset=utf-8", false);

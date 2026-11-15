@@ -19,6 +19,7 @@ const PAGE = `<!doctype html>
   </body>
 </html>`;
 
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const [policy, ...flags] = request.queryString.split("&");
   const cached = flags.includes("cached");

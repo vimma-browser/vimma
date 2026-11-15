@@ -15,7 +15,7 @@ const { WakeLock: VimmaWakeLock } = ChromeUtils.importESModule(
 /**
  * A stand-in for nsIEnvironment, so the cases below never touch the real process environment.
  *
- * @param {Record<string, string>} vars
+ * @param {Record<string, string | undefined>} vars
  */
 function fakeEnv(vars = {}) {
   return {

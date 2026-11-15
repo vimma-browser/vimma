@@ -14,6 +14,8 @@ import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
 import { HostServices } from "./host-services.mjs";
 import { openUrl } from "./tab-ops.mjs";
 
+/** @import { Workspaces } from "../core/workspaces.mjs" */
+
 export const ROUTE_USAGE = ":route, :route add [workspace], :route move";
 
 /**
@@ -33,27 +35,24 @@ export function runRoute(win, text, say) {
     openUrl(win, `about:vimma?tab=${encodeURIComponent(id)}#routes`, "tab");
     return null;
   }
-  if (!ww?.model) return "no workspaces in this window";
-  if (verb === "add") return addRoute(win, tab, rest.join(" "), say);
-  if (verb === "move") return moveByRoute(win, tab);
+  const model = ww?.model;
+  if (!ww || !model) return "no workspaces in this window";
+  if (verb === "add") return addRoute(model, tab, rest.join(" "), say);
+  if (verb === "move") return moveByRoute(ww, tab);
   return `:route ${verb}: unknown; ${ROUTE_USAGE}`;
 }
 
 /**
- * @param {BrowserWindow} win
- * @param {any} tab
+ * @param {Workspaces} model  the window's workspaces
+ * @param {MozTabbrowserTab} tab
  * @param {string} name  the workspace, "" for the current one
  * @param {(text: string) => void} say
  */
-function addRoute(win, tab, name, say) {
-  const ww = /** @type {any} */ (WindowWorkspaces.get(win));
+function addRoute(model, tab, name, say) {
   const domain = routeDomainFor(tab.linkedBrowser.currentURI?.spec ?? "");
   if (!domain) return ":route add: only for http and https pages";
-  const model = ww.model;
   const target = name ? findWorkspace(model, workspaceRefFor(model, name)) : null;
-  const workspace = name
-    ? target?.name
-    : model.workspaces.find((/** @type {{ id: string }} */ w) => w.id === model.active)?.name;
+  const workspace = name ? target?.name : model.workspaces.find((w) => w.id === model.active)?.name;
   if (!workspace) return `:route add: no workspace "${name}"`;
   const url = `https://${domain.includes(":") ? `[${domain}]` : domain}/`;
   const earlier = matchRoute(WorkspaceRouter.routes, { url });
@@ -73,11 +72,10 @@ function addRoute(win, tab, name, say) {
 }
 
 /**
- * @param {BrowserWindow} win
- * @param {any} tab
+ * @param {NonNullable<ReturnType<typeof WindowWorkspaces.get>>} ww  the window's workspaces
+ * @param {MozTabbrowserTab} tab
  */
-function moveByRoute(win, tab) {
-  const ww = /** @type {any} */ (WindowWorkspaces.get(win));
+function moveByRoute(ww, tab) {
   const hit = WorkspaceRouter.matchTab(tab);
   if (!hit) return ":route move: no rule matches this page";
   if (hit.workspace.userContextId === tab.userContextId) {

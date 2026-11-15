@@ -24,7 +24,8 @@ steps 2–8). No security classification, no drift check, and the PR job failed 
 One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has the map).
 
 1. **Detect** (`detect`, every 4 h at :17, read-only, < 1 billed minute). `tools/upstream/detect.mjs`
-   (Node built-ins, the runner's own Node, no `npm ci`) reads three public feeds:
+   (Node built-ins, the runner's own Node, no `npm ci`; since changed: `.nvmrc`'s Node through
+   `actions/setup-node`, which TypeScript tools need, #946) reads three public feeds:
    - `firefox_versions.json` (product-details): `LATEST_FIREFOX_VERSION`;
    - `firefox.json` (product-details): every release with category and date;
    - the MFSA index, `https://www.mozilla.org/en-US/security/advisories/`. Mozilla publishes no
@@ -95,8 +96,9 @@ One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has 
   (`release-please-config.json`), so a Firefox security bump would neither appear in the
   changelog nor trigger a release PR. `upstream` is a listed commitlint type shown under "Changed".
 - **Node, not Python**, for the new logic: tests in Vitest beside the other tools, and the
-  runner's Node needs no setup. `check-release.py` and its tests are gone (`detect.mjs` replaces
-  them); the Python tools for patches and hashes stay.
+  runner's Node needs no setup (since changed: `.nvmrc`'s Node is set up, #946).
+  `check-release.py` and its tests are gone (`detect.mjs` replaces them); the Python tools for
+  patches and hashes stay.
 - **Secrets:** none for detection, the patch check or the suites; `UPSTREAM_PR_TOKEN` is optional
   (the PR's own CI). The Safe Browsing key is only for the nightly and release builds: the
   artifact build is keyless by design (`e2e.yml`, spec m0-safebrowsing-key), and no autopilot job
@@ -115,8 +117,8 @@ One workflow, six jobs; the heavy ones run once per release (`upstream.yml` has 
 
 About 3 releases a month (one major, one or two dot releases): ≈ 180 + 3 × 30 = **≈ 270 a
 month**, 14 % of the budget (was ≈ 130). Once the repo is public, hosted minutes are free.
-(Since changed: the repository is public, so these minutes cost nothing; `docs/runbook.md`,
-"Actions minutes budget".)
+(Since changed: the repository is public, so these minutes cost nothing;
+`docs/runbook/ci-actions-minutes-budget.md`, "Actions minutes budget".)
 
 ## Tests (written first)
 
@@ -128,7 +130,7 @@ month**, 14 % of the budget (was ≈ 130). Once the repo is public, hosted minut
   its step outputs and heredocs, the CLI on fixtures; PR body, draft decision, conflict list,
   size limit, fallback compare link, tracking and drift issues.
 - `tools/upstream/test/upstream-prefs.test.mjs`, `artifact-preflight.test.mjs`.
-- `tools/test/upstream-workflow.test.mjs`: schedule, per-job permissions, no secrets, no
+- `tools/test/upstream-workflow.test.ts`: schedule, per-job permissions, no secrets, no
   `pull_request_target`, SHA pins, the SHA-512 check before import, the fallback and the drift
   failure.
 - `test_patch_check.py`: the report's `revision`.
@@ -147,7 +149,8 @@ days). The artifact preflight finds Mozilla's build of 157.0.1 indexed until 202
    approve pull requests". Without it the autopilot comments a compare link on the tracking issue.
 2. Optional: `UPSTREAM_PR_TOKEN` (fine-grained, this repo, Contents + Pull requests read/write),
    so the PR's CI runs and an all-green bump opens ready for review. (Since changed: the GitHub
-   App `vimma-upstream-autopilot` replaces the token; docs/runbook.md, "Upstream App".)
+   App `vimma-upstream-autopilot` replaces the token; docs/runbook/ci-upstream-bumps.md, "Upstream
+   App".)
 
 ## Dependencies
 

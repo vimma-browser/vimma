@@ -1,4 +1,4 @@
-# Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security.md G13 and G14.
+# Spec upstream-bump-automation, Behaviour 5 (since changed), docs/security/10-firefox-updates.md G13 and G14.
 # Sets the upstream autopilot's bump PR to auto-merge only once every workflow the PR started has
 # finished green, not only the checks the main ruleset requires: the macOS mochitests, vimma-ctl
 # on macOS and the package checks hold the merge too.
@@ -55,7 +55,14 @@ jobs:
         with:
           persist-credentials: false
 
-      # The runner's own Node: merge-ready.mjs uses built-ins only.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        env:
+          YARN_IGNORE_PATH: "1" # its `yarn --version` ignores a .yarnrc yarn-path in the checkout
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false # no cache, even when package.json names npm
+
+      # .nvmrc's Node, set up above, and no npm ci: merge-ready uses built-ins only.
       - name: merge the bump when every run on its head is green
         id: merge
         env:

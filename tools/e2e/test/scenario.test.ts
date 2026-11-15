@@ -8,6 +8,7 @@ import {
   matchState,
   runSteps,
   scenarioLaunch,
+  STEP_KINDS,
   validateScenario,
 } from "../scenario.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
@@ -316,22 +317,54 @@ describe("screenshots taken a fixed time after a step (#981)", () => {
   // photographs instead (`wait-for-state` on the field of `state` that reports it; #1006).
   const all = loadScenarios(SCENARIOS, {});
 
-  // Not only the step right before: a wait, then a sleep or a key, then the screenshot would
-  // photograph the screen a time after the key all the same.
-  it("each screenshot waits on state after the last sleep and the last key before it", () => {
-    const last = (steps: (typeof all)[number]["steps"], i: number, key: string) => {
-      for (let j = i - 1; j >= 0; j--) if (Object.hasOwn(steps[j] ?? {}, key)) return j;
-      return -1;
-    };
-    const unwaited = all.flatMap((s) =>
-      s.steps.flatMap((step, i) => {
-        if (!step.screenshot) return [];
-        const wait = last(s.steps, i, "wait-for-state");
-        const ok = wait >= 0 && wait > last(s.steps, i, "sleep") && wait > last(s.steps, i, "keys");
-        return ok ? [] : [`${s.name}: ${step.screenshot}`];
-      }),
-    );
-    expect(unwaited).toEqual([]);
+  // Not only the step right before: a wait, then a sleep, a key or any other step, then the
+  // screenshot would photograph the screen a time after that step all the same. Every kind of
+  // step but a check of state or another screenshot changes the screen or lets time pass
+  // (#1040): text typed, a page opened, an agent, MCP or vimma-ctl call and its answer, an
+  // external program, a restart, a held connection, an update served or installed, a profile
+  // file written. A kind added later counts as one too.
+  type Steps = (typeof all)[number]["steps"];
+  const STILL = new Set(["wait-for-state", "assert-state", "screenshot"]);
+  const CHANGES = STEP_KINDS.filter((kind) => !STILL.has(kind));
+  const unwaited = (name: string, steps: Steps) =>
+    steps.flatMap((step, i) => {
+      if (!step.screenshot) return [];
+      for (let j = i - 1; j >= 0; j--) {
+        const before = steps[j] ?? {};
+        if (Object.hasOwn(before, "wait-for-state")) return [];
+        if (CHANGES.some((kind) => Object.hasOwn(before, kind))) break;
+      }
+      return [`${name}: ${step.screenshot}`];
+    });
+
+  it("each screenshot waits on state after the last step that changes the screen", () => {
+    expect(all.flatMap((s) => unwaited(s.name, s.steps))).toEqual([]);
+  });
+
+  it.each<[string, Steps[number]]>([
+    ["sleep", { sleep: 100 }],
+    ["keys", { keys: "j" }],
+    ["type", { type: "hello" }],
+    ["open", { open: "about:blank" }],
+    ["agent", { agent: { send: "tabs", as: "t" } }],
+    ["mcp", { mcp: { method: "tools/list" } }],
+    ["ctl", { ctl: { run: ["state"], as: "s" } }],
+    ["external", { external: ["true"] }],
+    ["restart", { restart: "quit" }],
+  ])("refuses a screenshot after a wait, then a step of kind %s", (_kind, step) => {
+    const steps: Steps = [{ "wait-for-state": { mode: "normal" } }, step, { screenshot: "x" }];
+    expect(unwaited("s", steps)).toEqual(["s: x"]);
+  });
+
+  it("a screenshot after a wait and checks of state alone passes", () => {
+    const steps: Steps = [
+      { keys: "j" },
+      { "wait-for-state": { mode: "normal" } },
+      { "assert-state": { mode: "normal" } },
+      { screenshot: "a" },
+      { screenshot: "b" },
+    ];
+    expect(unwaited("s", steps)).toEqual([]);
   });
 
   it("m0-agent-cli photographs each screen once its notice is gone", () => {

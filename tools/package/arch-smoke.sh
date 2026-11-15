@@ -70,7 +70,7 @@ if [ "${1:-}" = "--inside" ]; then
   test -f /usr/share/icons/hicolor/128x128/apps/vimma.png
   if [ "$real" = 1 ]; then
     # As the .deb smoke in release.yml: the first run creates the profile, since --screenshot on
-    # a fresh profile races the bookmarks import (docs/runbook.md, Smoke check).
+    # a fresh profile races the bookmarks import (docs/runbook/smoke-check.md, Smoke check).
     sudo -u builder mkdir /home/builder/p
     sudo -u builder timeout 30 vimma --headless --no-remote --profile /home/builder/p about:blank || true
     sudo -u builder timeout 60 vimma --headless --no-remote --profile /home/builder/p \

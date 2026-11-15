@@ -33,6 +33,9 @@ const { WindowWorkspaces } = ChromeUtils.importESModule(
 const { validateMessage } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/core/index.mjs",
 );
+const { AgentAct } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/ctl/AgentAct.sys.mjs",
+);
 
 const DIR = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
@@ -357,4 +360,43 @@ addTidyTask(async function test_a_page_kept_busy_does_not_keep_the_allowance_ope
   Assert.ok(r.ok, "the click ran");
   Assert.equal(await sent, Cr.NS_BINDING_ABORTED, "the page's resubmission was cancelled");
   Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
+});
+
+addTidyTask(async function test_a_submission_after_a_pushstate_is_not_cut_short() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The click's handler changes the address in place, then the form is sent: the tab's location
+  // change comes before the load's start, and a wait that ended in between closed the allowance
+  // and cancelled the very submission the user allowed (issue #1064).
+  const sent = requestStatus(`${PAGE}?pushed`);
+  const r = await submitClick(c, tab, by["Order pushed"]);
+  Assert.ok(r.ok, `the click ran: ${JSON.stringify(r.error)}`);
+  Assert.equal(r.result.blocked, undefined, "nothing was blocked");
+  Assert.equal(await sent, Cr.NS_OK, "the asked submission was sent");
+  Assert.equal(r.result.navigated, true, "and its page loaded within the call");
+  Assert.equal(r.result.url, `${PAGE}?pushed`, "the destination");
+});
+
+// A wait wakes on the tab's own progress (a load starting, committing or stopping), not only on
+// its TICK_MS timer: it listens to its window's tab browser. Firefox renamed Node.ownerGlobal to
+// documentGlobal, and a read of the old name found no window, so the wait never listened.
+add_task(async function test_a_wait_listens_to_its_tab_progress() {
+  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE);
+  /** @type {object[]} */
+  const added = [];
+  const add = gBrowser.addTabsProgressListener;
+  gBrowser.addTabsProgressListener = function (/** @type {object} */ listener) {
+    added.push(listener);
+    return add.call(this, listener);
+  };
+  try {
+    // No page is the one waited for: the wait runs until its end, a few ticks.
+    await AgentAct.ready(tab.linkedBrowser, () => false, Date.now() + 300);
+  } finally {
+    gBrowser.addTabsProgressListener = add;
+    BrowserTestUtils.removeTab(tab);
+  }
+  Assert.greater(added.length, 0, "the wait listened to the tab's progress");
 });
