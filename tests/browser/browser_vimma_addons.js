@@ -64,6 +64,9 @@ const selected = () =>
     found(picker()).querySelector("[role=option][aria-selected=true]")
   );
 const noticeText = () => document.getElementById(NOTICE_ID)?.textContent ?? "";
+/** An add-on the test installed (getAddonByID gives null for one that is not). */
+const installedAddon = async (/** @type {string} */ id) =>
+  /** @type {TestAddon} */ (await AddonManager.getAddonByID(id));
 const promptOpen = () => document.getElementById(PROMPT_ID)?.hidden === false;
 const promptText = () =>
   (
@@ -279,14 +282,14 @@ add_task(async function o_opens_the_options_or_the_details() {
 add_task(async function x_toggles_enabled() {
   await pick("plain", PLAIN.id);
   EventUtils.synthesizeKey("x");
-  await until(async () => (await AddonManager.getAddonByID(PLAIN.id)).userDisabled, "disabled");
+  await until(async () => (await installedAddon(PLAIN.id)).userDisabled, "disabled");
   await until(() => cell(rowOf(PLAIN.id), "host").includes("disabled"), "the row says disabled");
   Assert.ok(isOpen(), "the picker stays open");
   EventUtils.synthesizeKey("KEY_Enter");
   await until(() => noticeText().startsWith(`${PLAIN.name} is disabled`), "Enter refuses");
   await pick("plain", PLAIN.id);
   EventUtils.synthesizeKey("x");
-  await until(async () => !(await AddonManager.getAddonByID(PLAIN.id)).userDisabled, "enabled");
+  await until(async () => !(await installedAddon(PLAIN.id)).userDisabled, "enabled");
   await until(() => cell(rowOf(PLAIN.id), "host") === "3.0 · enabled", "the row says enabled");
   EventUtils.synthesizeKey("KEY_Escape");
 });
@@ -316,7 +319,7 @@ add_task(async function u_reports_the_update_check() {
   await until(() => noticeText().startsWith(`${POPUP.name}: update 9.0 available`), "found", 300);
   await until(() => cell(rowOf(POPUP.id), "host").endsWith("· update"), "the row says update");
   Assert.equal(
-    (await AddonManager.getAddonByID(POPUP.id)).version,
+    (await installedAddon(POPUP.id)).version,
     "1.0",
     "the update is not installed by Vimma",
   );
@@ -379,7 +382,7 @@ add_task(async function a_stale_yes_removes_nothing() {
   });
   const upgrade = await AddonManager.getInstallForFile(xpi);
   await upgrade.install();
-  Assert.equal((await AddonManager.getAddonByID(OPTIONS.id)).version, "2.1", "sanity: updated");
+  Assert.equal((await installedAddon(OPTIONS.id)).version, "2.1", "sanity: updated");
   EventUtils.synthesizeKey("y");
   await until(() => noticeText().includes("changed since you were asked"), "the guard refuses");
   Assert.ok(await AddonManager.getAddonByID(OPTIONS.id), "nothing was removed");

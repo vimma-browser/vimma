@@ -405,10 +405,9 @@ declare const ExtensionTestUtils: any;
 
 // --- ChromeUtils.importESModule ---
 
-// The tests import many Firefox modules (test utilities among them) and read more of them than the
-// product does, so their program excludes types/firefox-modules.d.ts (tests/tsconfig.json) and
-// a URL that types/vimma-modules.d.ts does not map gives `any` here, where the product's own check
-// gets `unknown` (types/firefox.d.ts).
+// The Firefox modules the tests import are typed (types/firefox-modules.d.ts and
+// types/mochitest/firefox-test-modules.d.ts), so a URL neither map has gives `unknown` here, as
+// in the product's own check (types/firefox.d.ts).
 interface UnmappedESModule {
-  readonly module: any;
+  readonly module: unknown;
 }

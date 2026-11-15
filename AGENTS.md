@@ -46,7 +46,8 @@ macOS next; Windows is not a target. The site, vimma.dev, lives in `vimma-browse
 - `npm run gen-vimma-modules`: regenerate `types/vimma-modules.d.ts`, which types
   `ChromeUtils.importESModule` for each of Vimma's `chrome://` module URLs, after adding, moving
   or removing a module in `jar.mn` or vimma-core. A Firefox module the product newly imports goes
-  in `types/firefox-modules.d.ts` by hand.
+  in `types/firefox-modules.d.ts` by hand, one only a browser test imports in
+  `types/mochitest/firefox-test-modules.d.ts`.
 - `npm run gen-update-keys`: regenerate the pinned update keys
   (`packages/vimma-core/src/updates/update-keys.mjs`) after changing the updater's certificates
   (`configs/updater/*.der`).
