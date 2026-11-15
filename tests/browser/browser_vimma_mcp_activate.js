@@ -487,7 +487,7 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
           docShell: content.docShell,
           manager: {
             isCurrentGlobal: true,
-            innerWindowId: content.windowGlobalChild.innerWindowId,
+            innerWindowId: /** @type {any} */ (content.windowGlobalChild)?.innerWindowId,
           },
           sendAsyncMessage: (/** @type {string} */ name, /** @type {any} */ data) =>
             sent.push({ name, data }),
@@ -496,7 +496,9 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       /** @type {boolean[]} */
       const pressed = [];
       const agent = new AgentPage(actor, {
-        onPage: (el) => !!el?.isConnected && el.ownerDocument === doc,
+        onPage: /** @type {(el: Element | null | undefined) => el is Element} */ (
+          (el) => !!el?.isConnected && el.ownerDocument === doc
+        ),
         press: (_el, still = () => true) => {
           const ok = still();
           pressed.push(ok);
@@ -505,8 +507,10 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
         beforeSubmitCheck: () => null,
       });
       agent.listed = { gen: 4, els: [new WeakRef(button), new WeakRef(field)] };
-      const tick = () => new Promise((resolve) => Services.tm.dispatchToMainThread(resolve));
+      const tick = () =>
+        new Promise((resolve) => Services.tm.dispatchToMainThread(() => resolve(null)));
       const until = Date.now() + 30000;
+      /** @type {any} */
       const click = { op: "activate", gen: 4, id: 0, href: null, until };
       const outcome = () => agent.element({ op: "outcome", gen: 4, id: 0 });
       const unknown = agent.element({ op: "alive", gen: 3, id: 0 });
@@ -525,7 +529,9 @@ add_task(async function the_agent_page_helper_acts_on_the_document_it_is_given()
       agent.pageHidden();
       await tick();
       const hidden = outcome();
-      const target = agent.element({ op: "inspect-fill", gen: 4, id: 1, value: "hi" });
+      const target = /** @type {any} */ (
+        agent.element({ op: "inspect-fill", gen: 4, id: 1, value: "hi" })
+      );
       const expect = { field: target.field, type: target.type };
       const fill = agent.element({ op: "fill", gen: 4, id: 1, value: "hi", expect, until });
       await tick();
