@@ -68,6 +68,14 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 6. JavaScript with JSDoc stays, as ADR-004 decided, for everything Firefox loads
    (`src/browser/base/content/vimma/`) and for `packages/vimma-core`, which `npm run sync-core`
    copies into the browser unbuilt. A test fails when a `.ts` file is tracked outside `tools/`.
+   (Since changed: two repository-root configs are TypeScript too, and the test names them.
+   `vitest.config.ts` is bundled by Vite and `commitlint.config.ts` is loaded through jiti, a
+   dependency of `@commitlint/load`, so neither needs Node's type stripping; `tools/tsconfig.json`
+   type-checks both and eslint lints them as it lints `tools/`. `eslint.config.mjs` stays: eslint
+   10 loads a TypeScript config only through jiti, which it lists as an optional peer the
+   repository does not declare, or behind its `unstable_native_nodejs_ts_config` flag, which every
+   command and editor would have to pass. `stryker.config.mjs` stays: Stryker 10 finds and reads
+   only `.json`, `.js`, `.mjs` and `.cjs` configs.)
 7. One exception inside `tools/`: the hooks of `tools/claude-plugin` stay `.mjs`. Claude Code and
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2

@@ -245,8 +245,8 @@ erase (`tsc` rejects the rest), `import type` for a type-only import, and the re
 relative import: `./x.ts`. New Node code under `tools/` is written as `.ts`; Rust, shell and Python
 stay as they are. `tools/test/mjs-ratchet.test.ts` fails on a `.mjs`, `.js` or `.cjs` file missing
 from `tools/test/mjs-allowlist.txt`; a script a browser page loads is a `.js` file in a `fixtures/`
-folder, which it does not count. `ERR_UNKNOWN_FILE_EXTENSION` for a `.ts` file, from commitlint or
-any tool, means the Node running it is older than `package.json`'s `engines`: use `.nvmrc`'s.
+folder, which it does not count. `ERR_UNKNOWN_FILE_EXTENSION` for a `.ts` file, from any tool,
+means the Node running it is older than `package.json`'s `engines`: use `.nvmrc`'s.
 
 Moving an area, in a pull request that does only this (`Part of #946`). `tools/claude-plugin`
 stays `.mjs` (ADR-025 says why).
