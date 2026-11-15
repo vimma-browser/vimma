@@ -16,6 +16,7 @@ import {
 } from "../src/ui/picker.mjs";
 import { downloadSections } from "../src/ui/downloads.mjs";
 import { createSplits, newSplit, splitPickerItems } from "../src/panes/splits.mjs";
+import { budget } from "./budget.mjs";
 
 /** @import { AnyItem, Field, PickerState, PickerItem } from "../src/ui/picker.mjs" */
 /** @import { Workspaces } from "../src/workspaces/workspaces.mjs" */
@@ -237,7 +238,7 @@ describe("picker state machine", () => {
     const long = { ...search, query: `${" ".repeat(200_000)}x` };
     const start = performance.now();
     const r = press(long, ["ctrl+w"]).state;
-    expect(performance.now() - start).toBeLessThan(1000);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
     expect(r.query).toBe(" ".repeat(200_000));
   });
 

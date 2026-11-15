@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { describeOutcome, formatAge, redactReport, workspaceReport } from "../src/ui/report.mjs";
+import { budget } from "./budget.mjs";
 
 describe("redactReport", () => {
   const home = "/home/alice";
@@ -33,7 +34,7 @@ describe("redactReport", () => {
   it("strips a home's trailing slashes in linear time (CodeQL js/polynomial-redos)", () => {
     const start = performance.now();
     const out = redactReport("/home/alice/x", `/${"/".repeat(200_000)}x`);
-    expect(performance.now() - start).toBeLessThan(1000);
+    expect(performance.now() - start).toBeLessThan(budget(1000));
     expect(out).toBe("/home/alice/x");
     expect(redactReport("/home/alice/x", "/home/alice///")).toBe("~/x");
   });

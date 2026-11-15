@@ -28,10 +28,10 @@ about 124 min per nightly and 117 min per release, free on a standard runner, an
 their variables are set ("Full builds" below). Usage is listed in Settings → Billing → Usage.
 
 The bench step adds about 45 seconds to each CI run. `mutation.yml` is the largest scheduled
-cost: a full run (first Sunday of the month) is estimated at 60–90 min on the 2-CPU runner
-(4 916 mutants; 22 min with 12 workers locally, about 0.6 s per mutant per CPU), an incremental
-week a few minutes plus one for the report job: roughly 100 min a month, free now. If the full
-run gets too slow, narrow `mutate` in `stryker.config.mjs` or drop the monthly full run.
+cost, and does not fit its 180-minute job yet (#975): the core has grown to about 38,000 mutants.
+With per-test coverage, three core files (1,553 mutants) took about an hour on 4 workers of a
+busy 12-core machine; a full run is many runner-hours, so it needs sharding or a smaller weekly
+`mutate` scope in `stryker.config.mjs`.
 
 `sites.yml` (spec site-compat) runs one job a night at 04:30 UTC, and by hand: about 3.6 min of
 setup (e2e.yml's steps up to the artifact build) plus the site list, about 15-20 min in all

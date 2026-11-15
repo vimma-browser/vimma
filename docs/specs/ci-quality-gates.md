@@ -41,7 +41,12 @@ Two rows of plan §5 and issue #17:
   core suite once per mutant (`packages/vimma-core/vitest.config.mjs`, one worker, `--bail 1`).
   Only one dependency added: `@stryker-mutator/core` 10.0.0, Apache-2.0, pinned exactly. Two of
   its transitive packages are outside the allowlist and have reviewed exceptions: `tslib` (0BSD)
-  and `caniuse-lite` (CC-BY-4.0, data, dev-only).
+  and `caniuse-lite` (CC-BY-4.0, data, dev-only). (Since changed: issue
+  [#975](https://github.com/vimma-browser/vimma/issues/975) moved back to
+  `@stryker-mutator/vitest-runner` 10.1.1, Apache-2.0, pinned exactly, which matches Vitest 5's
+  `" > "` names and adds per-test coverage. The command runner took about 30 s a mutant, so with
+  about 38,000 mutants no run finished within the job's 180 minutes; see
+  docs/runbook/ci-mutation-testing.md.)
 - **Incremental mode, results carried as an artifact.** Each run uploads `mutation-report`
   (HTML, JSON, incremental file; 35 days); the next run downloads the last successful one with
   `gh run download` (`actions: read`). The Actions cache was rejected: it evicts entries unused

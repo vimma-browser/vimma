@@ -20,14 +20,18 @@ Reading the issue and the report:
 - Do not chase 100 %: string-literal mutants in error messages, for example, are fine to leave
   when no caller depends on the text.
 
-Locally: `npm run mutation` (full run the first time, about 20 min on 12 cores; later runs reuse
+Locally: `npm run mutation` (the first full run takes many hours; later runs reuse
 `reports/mutation/stryker-incremental.json` and re-test only changed files, `npx stryker run --force`
-to redo everything); `npx stryker run --mutate packages/vimma-core/src/keys/keys.mjs` for one file.
+to redo everything); `npx stryker run --mutate packages/vimma-core/src/page/pageurl.mjs` for one file
+(148 mutants, under a minute).
 
-How it runs, and why: Stryker's `command` runner runs `vitest run` on the core's tests once per
-mutant (`packages/vimma-core/vitest.config.mjs`, one worker, `--bail 1`). The dedicated
-`@stryker-mutator/vitest-runner` 10.0.0 is not used: with Vitest 5 it skips every test inside a
-`describe()` and reports their mutants as survivors (spec ci-quality-gates). Each run uploads its
+How it runs, and why: `@stryker-mutator/vitest-runner` runs the core's tests
+(`packages/vimma-core/vitest.config.mjs`) with per-test coverage: the dry run records which tests
+reach each mutant, and each mutant then runs only those tests. Before #975 Stryker's `command`
+runner ran the whole suite (about 30 s) once per mutant, because vitest-runner 10.0.0 skipped every
+test inside a `describe()` on Vitest 5; with about 38,000 mutants that run could not finish in the
+job's 180 minutes, and most of its mutants ended as timeouts. vitest-runner 10.1.1 fixed the
+Vitest 5 test names. Each run uploads its
 results; the next week's run downloads them (`actions: read`) and re-tests only the mutants in
 changed files. Because that cannot see new tests, the first Sunday of the month (or
 `gh workflow run mutation.yml -f full=true`) re-tests everything. The job running Stryker has no
@@ -39,5 +43,8 @@ imports a file there passes `npm test` and fails Stryker's dry run, so the run i
 mutant. `tools/mutation/test/sandbox.test.ts` fails in every pull request on such a read that it
 can see: a path written in a core test or in a module the test imports. A path built at run time
 shows only in the dry run. Tests that assert a tight speed budget carry the Vitest tag `timing`,
-which the mutation run leaves out: Stryker's instrumented code runs several times slower. To
-check the setup without testing any mutant: `npx stryker run --dryRunOnly` (about a minute).
+which the mutation run leaves out: Stryker's instrumented code runs several times slower.
+Linear-time checks (a 200,000-character input under 500 ms) stay in and take their limit from
+`budget()` in `packages/vimma-core/test/budget.mjs`, which is 20 times longer under Stryker, so
+a mutant that makes the code quadratic still fails them. To check the setup without testing any
+mutant: `npx stryker run --dryRunOnly` (about 5 minutes: the whole suite once, instrumented).
