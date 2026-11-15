@@ -8,7 +8,8 @@ Status: implemented · Area: `packages/vimma-core/src/` (new `agent-loop.mjs`,
 for the built-in label and the conversation grant; `config.mjs` for `[agent]`; `actions.mjs` and
 `defaults.mjs` for the key; `config.mjs` also for setup's edit of config.toml);
 `src/browser/base/content/vimma/` (new `agent/AgentChat.sys.mjs`,
-`agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs`;
+`agent/AgentKeys.sys.mjs`, `agent/AgentStore.sys.mjs`, `ui/agent-chat.mjs` (Since changed: its
+box is built and drawn by `ui/agent-chat-view.mjs`, issue #1110);
 `ctl/agent-commands.mjs`, `host/AgentGate.sys.mjs`, `host/workspace-ops.mjs`, `host/mcp-ops.mjs`,
 `ui/statusbar.mjs`, `ui/side-panel.mjs`, `host/agent-ui.mjs`, new `host/agent-chat-ops.mjs`,
 `config/ConfigHost.sys.mjs`);

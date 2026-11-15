@@ -176,6 +176,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/split/layout.mjs": typeof import("../src/browser/base/content/vimma/split/layout.mjs");
   "chrome://browser/content/vimma/start/StartPage.sys.mjs": typeof import("../src/browser/base/content/vimma/start/StartPage.sys.mjs");
   "chrome://browser/content/vimma/start/start.mjs": typeof import("../src/browser/base/content/vimma/start/start.mjs");
+  "chrome://browser/content/vimma/ui/agent-chat-view.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat-view.mjs");
   "chrome://browser/content/vimma/ui/agent-chat.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-chat.mjs");
   "chrome://browser/content/vimma/ui/agent-prompt.mjs": typeof import("../src/browser/base/content/vimma/ui/agent-prompt.mjs");
   "chrome://browser/content/vimma/ui/bookmarks-panel.mjs": typeof import("../src/browser/base/content/vimma/ui/bookmarks-panel.mjs");
