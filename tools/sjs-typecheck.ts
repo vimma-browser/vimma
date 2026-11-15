@@ -62,13 +62,15 @@ function main() {
     const tsc = spawnSync(
       process.execPath,
       [TSC, "-p", join(dir, "tsconfig.json"), "--pretty", "false"],
-      { cwd: ROOT, encoding: "utf8" },
+      { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
     );
     if (tsc.error) throw tsc.error;
     const output = sourcePaths(`${tsc.stdout}${tsc.stderr}`, relative(ROOT, dir), HANDLERS);
     if (tsc.status !== 0) {
       process.stderr.write(output);
-      process.exit(tsc.status ?? 1);
+      // Not process.exit(): it would skip the finally and leave the temporary folder behind.
+      process.exitCode = tsc.status ?? 1;
+      return;
     }
     process.stdout.write(`${HANDLERS}/*.sjs: ${handlers.length} handlers, no type errors\n`);
   } finally {

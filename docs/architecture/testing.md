@@ -175,7 +175,9 @@ that httpd.js runs to serve test pages are checked by `tools/sjs-typecheck.ts`: 
 `.sjs` file, so it checks byte-for-byte `.js` copies in a temporary folder with
 `tests/tsconfig.json`'s options and reports each error at the `.sjs` file's own line. That
 program has Firefox's declarations and the sandbox's globals (`getState`, `setSharedState` and
-the rest, in `types/sjs/`), not the harness's. `Assert.equal` and its kin take an expected value of
+the rest, in `types/sjs/`), not the harness's. It also has the DOM lib, so a DOM global the
+sandbox lacks (`setTimeout`, `document`) is not caught; a handler that waits uses `nsITimer`.
+`Assert.equal` and its kin take an expected value of
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
 the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the

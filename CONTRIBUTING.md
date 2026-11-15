@@ -161,12 +161,14 @@ own and fails if a test leaves anything in it. A mochitest removes its temp file
 new test file passes it from its first commit: give a helper's parameters JSDoc types, and where
 Firefox's type is wider than the test knows (an element `getElementById` returns, an about: page's
 document), cast it with `/** @type {...} */ (expr)` rather than adding a guard that changes what
-the test does. The `.sjs` handlers that serve test pages are checked too (`tools/sjs-typecheck.ts`):
-give `handleRequest` `@param {nsIHttpRequest} request @param {nsIHttpResponse} response`, and
-the state functions httpd.js gives a handler (`getState`, `setSharedState` and the rest) are
-declared in `types/sjs/sjs.d.ts`. A Vimma module a test imports by its `chrome://` URL has the module's
-own types there, so a test that knows more than they say (a window whose workspaces are built, a
-workspace that has its container) casts to one of the named types in `types/mochitest/vimma.d.ts`.
+the test does. A Vimma module a test imports by its `chrome://` URL has the module's own types
+there, so a test that knows more than they say (a window whose workspaces are built, a workspace
+that has its container) casts to one of the named types in `types/mochitest/vimma.d.ts`. The `.sjs`
+handlers that serve test pages are checked too (`tools/sjs-typecheck.ts`): give `handleRequest`
+`@param {nsIHttpRequest} request @param {nsIHttpResponse} response`; the state functions httpd.js
+gives a handler (`getState`, `setSharedState` and the rest) are declared in `types/sjs/sjs.d.ts`.
+DOM globals the handler's sandbox lacks (`setTimeout`, `document`) are not caught, so a handler
+that waits uses `nsITimer`.
 After changing a `tests/browser/head*.js` file, run `npm run gen-mochitest-head`; after adding,
 moving or removing a module, `npm run gen-mochitest-modules`.
 
