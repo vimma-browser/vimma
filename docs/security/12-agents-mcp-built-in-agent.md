@@ -140,7 +140,9 @@ vision; its key stays in login storage.
   [`a task ends after the same call is refused three times in a row`](../../packages/vimma-core/test/agent-loop.test.mjs),
   [`max_running and keep_days parse within their bounds`](../../packages/vimma-core/test/config-agent.test.mjs)
 
-**The chat window** (`ui/agent-chat.mjs`, `host/agent-chat-ops.mjs`, `host/agent-ui.mjs`):
+**The chat window** (`ui/agent-chat.mjs`; `ui/agent-chat-view.mjs`, which builds its box, the
+masked key field included, and draws every value in it as text; `host/agent-chat-ops.mjs`,
+`host/agent-ui.mjs`):
 Vimma's own chrome, a box in the side panel's slot, never a page. It shows the user's messages,
 the model's replies, a line per step and the gate's questions of its open conversation, so it
 holds text a page may have written (a reply quoting it, a tab's title or a button's words in a
