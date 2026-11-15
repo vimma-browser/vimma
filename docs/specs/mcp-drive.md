@@ -335,8 +335,9 @@ char? }` actions (`:18`) over a compiled keymap trie, with counts in normal mode
       because each one loads a URL; a history step to an entry that is not http or https (one
       the user reached in that tab before) is refused.
 13. **Within one call.** Actions run in order. After an action that loads a page (a follow,
-    back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`,
-    `agent-commands.mjs:33`). (Since changed: the page counts as loaded at its
+    back, forward, `gu`, `gU`), the next one waits for that load, up to 20 s (`LOAD_TIMEOUT_MS`).
+    (Since changed: `LOAD_TIMEOUT_MS` is in `ctl/agent-waits.mjs`, issue #1108.) (Since changed:
+    the page counts as loaded at its
     `DOMContentLoaded` and 200 ms without a change, at most 1 s, rather than at its load event,
     because a page's slow images and trackers held every step; the result's `loading` says
     whether it is still loading; issue

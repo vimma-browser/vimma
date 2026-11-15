@@ -185,8 +185,8 @@ multi-selection (decision 9).
   has its own child. Messages are handled in `VimmaChild.receiveMessage`
   (`actors/VimmaChild.sys.mjs:344`).
 - **The agent read path.** `agent-read` reads a page with Firefox's `PageExtractor` actor
-  (`ctl/agent-commands.mjs:316-345`; vimma-mcp, Research), and loads a lazy tab first with
-  `gBrowser.insertBrowser` and `browser.loadURI` (`loadedPage`, `:241-255`), which is acceptable
+  (`COMMANDS["agent-read"]` in `ctl/agent-commands.mjs`; vimma-mcp, Research), and loads a lazy
+  tab first with `gBrowser.insertBrowser` and `browser.loadURI` (`loadedPage`), which is acceptable
   for an agent's own tabs but replaces a restored tab's pending session.
 - **Copy mode.** `v` / `prefix+[` (`defaults.mjs:150`, `:192`) enter it; the caret's `enter`
   keeps a selection that is on screen and starts selecting from it (`actors/caret.mjs:180-193`).
