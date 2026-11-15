@@ -56,16 +56,18 @@ bindings, so it is accepted here.
   adapter from the viewer's DOM and window through Xrays (from the current page outward, each
   page's `data-loaded` attribute and `loadingIcon` class; `innerWidth`, `innerHeight` and
   `devicePixelRatio`), its operation count is the actor's own, and they feed only the control
-  socket's `state.pdf` flag (S9). The record's `zoom` is the viewer's browsing-context
-  `fullZoom` and **must** be a finite number from 0.01 to 100, or the record counts as not
-  drawn; the parent takes a report as drawn only when that zoom equals its own
-  `browser.browsingContext.fullZoom` exactly, so a forged zoom can only make `state.pdf` read
-  not drawn. On a zoom change the parent marks the kept report not drawn and sends the viewer's
-  actor a `Vimma:PdfZoom` message with no data, which only asks for a report; the adapter
-  reports no page as drawn until its resize listener has seen the window's present CSS size.
+  socket's `state.pdf` flag (S9). A report follows every operation, also one that a viewer whose
+  getters throw makes fail, so such a viewer cannot hold back the count. The record's `zoom` is the
+  viewer's browsing-context `fullZoom` and **must** be a finite number from 0.01 to 100, or the
+  record counts as not drawn; the parent takes a report as drawn only when that zoom equals its own
+  `browser.browsingContext.fullZoom` exactly, so a forged zoom can only make `state.pdf` read not
+  drawn. On a zoom change the parent marks the kept report not drawn and sends the viewer's actor a
+  `Vimma:PdfZoom` message with no data, which only asks for a report; the adapter reports no page as
+  drawn until its resize listener has seen the window's present CSS size.
   [`pdf state outside its bounds is dropped`](../../packages/vimma-core/test/pdf.test.mjs),
   [`a page label cannot carry bidi or zero-width characters`](../../packages/vimma-core/test/pdf.test.mjs),
   [`a report with no usable zoom is never drawn`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`a_viewer_whose_pdfViewer_getter_throws_still_reports_each_operation`](../../tests/browser/browser_vimma_pdf_status.js),
   [`a_full_zoom_change_is_not_drawn_until_the_viewer_redraws`](../../tests/browser/browser_vimma_pdf_status.js),
   [`a_zoom_change_that_keeps_the_layout_still_turns_drawn`](../../tests/browser/browser_vimma_pdf_status.js)
 - V7. The parent **must** send the viewer only operations: a name from `PDF_OPS` and one bounded

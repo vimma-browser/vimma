@@ -326,13 +326,14 @@ export class PdfView {
     if (!msg) return false;
     const { op, n } = msg;
     const app = this.#app;
-    const viewer = app.pdfViewer;
     // pdf.js's live values, or nothing happens: a viewer without its document (or a hostile
     // getter) gives no number to compute from.
     const page = num(() => app.page);
     const pages = num(() => app.pagesCount);
     const live = (/** @type {number[]} */ ...v) => v.every(Number.isFinite);
     try {
+      // Inside the try: a getter that throws fails this operation, not the report after it.
+      const viewer = app.pdfViewer;
       switch (op) {
         case "next":
         case "prev":
