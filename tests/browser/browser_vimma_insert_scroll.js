@@ -683,6 +683,40 @@ add_task(async function the_page_scroll_helper_scrolls_the_document_it_is_given(
   });
 });
 
+// A search for the largest scrollable that found nothing is not repeated for a second (K8),
+// unless focus moves: the child calls focusMoved() on focusin and on the window's focus.
+add_task(async function a_page_scroll_searches_again_once_focus_moves() {
+  await withPage(async (browser) => {
+    const seen = await SpecialPowers.spawn(browser, [], () => {
+      const { PageScroll } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/page-scroll.mjs",
+      );
+      const doc = content.document;
+      const actor = /** @type {JSWindowActorChild} */ (
+        /** @type {unknown} */ ({ document: doc, contentWindow: content })
+      );
+      const scroll = new PageScroll(actor, () => null);
+      doc.documentElement.style.overflow = "hidden";
+      const none = scroll.target(true);
+      const box = doc.createElement("div");
+      box.style.cssText = "height: 100px; overflow: auto";
+      const tall = doc.createElement("div");
+      tall.style.height = "5000px";
+      box.append(tall);
+      doc.body.prepend(box);
+      const backedOff = scroll.target(true);
+      scroll.focusMoved();
+      const found = scroll.target(true) === box;
+      return { none, backedOff, found };
+    });
+    Assert.deepEqual(
+      seen,
+      { none: null, backedOff: null, found: true },
+      "nothing to scroll, still nothing within the second, then the new scroller once focus moves",
+    );
+  });
+});
+
 add_task(async function i_with_no_text_field_lets_keys_through() {
   await withPage(async (browser) => {
     EventUtils.synthesizeKey("i");
