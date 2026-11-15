@@ -1,8 +1,14 @@
-## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`)
+## 12. Agents (MCP) (`host/AgentGate.sys.mjs`, `ctl/agent-commands.mjs`, `ctl/agent-tabs.mjs`)
 
 Lets local AI agents (Claude Code, Codex, opencode, Copilot) list, read, open and close tabs of
 one workspace, **agent**, through the control socket's `agent` role. Spec:
 [vimma-mcp](../specs/vimma-mcp.md), [ADR-019](../adr/019-agents-over-mcp.md).
+
+`ctl/agent-commands.mjs` asks the gate and runs each command; `ctl/agent-tabs.mjs` decides which
+tabs an agent reaches (`isAgentTab`, `findAgentTab`, tab ownership; M2) and checks after the yes
+that the tab and URL are still those asked about (`stillAsAsked`; M8). `agent-tabs.mjs` and
+`ctl/agent-errors.mjs` (the refusals) never import the gate: they are called before and after the
+question, never in its place.
 
 Only the seven modules that call the gate today may import it (ADR-026, `RESTRICTED` in
 `tools/layering/layers.ts`), so a new caller, such as the parent actor, is reviewed against this
