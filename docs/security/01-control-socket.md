@@ -44,7 +44,7 @@ only the agent workspace, and every request asks you first (§12).
   but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
   connection at a time (M51).
   [`test_limits`](../../tests/browser/browser_vimma_control.js),
-  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_mcp_agents_cannot_keep_out_a_ticket`](../../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../../tests/browser/browser_vimma_control.js)

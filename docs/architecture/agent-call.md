@@ -118,7 +118,7 @@ Tests: `test_handshake` in [browser_vimma_control.js](../../tests/browser/browse
 `mcp_off_says_to_run_mcp_on_without_connecting` in
 [tests/mcp.rs](../../tools/vimma-ctl/tests/mcp.rs); `refuses_a_file_others_can_read` in
 `discovery.rs`; `test_agents_cannot_take_every_connection` in
-[browser_vimma_mcp_agent.js](../../tests/browser/browser_vimma_mcp_agent.js). The rules are S1 to
+[browser_vimma_mcp_agent_grants.js](../../tests/browser/browser_vimma_mcp_agent_grants.js). The rules are S1 to
 S14 in security.md §1.
 
 ## 4. The request reaches the agent commands
@@ -177,7 +177,7 @@ command as an `AgentError` with code `denied` and a reason (`user`, `timeout`, `
 `cancelled`). Tests: [agent-gate.test.mjs](../../packages/vimma-core/test/agent-gate.test.mjs),
 [agent-checkpoint.test.mjs](../../packages/vimma-core/test/agent-checkpoint.test.mjs),
 `test_denials_timeouts_queue_and_mute` and `test_one_grant_covers_every_tool_of_its_connection` in
-[browser_vimma_mcp_agent.js](../../tests/browser/browser_vimma_mcp_agent.js),
+[browser_vimma_mcp_agent_grants.js](../../tests/browser/browser_vimma_mcp_agent_grants.js),
 `test_submit_asks_under_a_grant` in
 [browser_vimma_mcp_submit.js](../../tests/browser/browser_vimma_mcp_submit.js), and
 `test_a_allows_that_button_on_that_site` in
