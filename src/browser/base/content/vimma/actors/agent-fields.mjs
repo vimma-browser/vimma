@@ -600,8 +600,37 @@ function labelledControl(el) {
     label = pathParent(label);
   }
   if (!isHTML(label, "label") || interactive) return null;
-  const control = label.control;
+  const control = label.control && referenceTargetOf(label.control);
   return control && control !== el ? control : null;
+}
+
+/**
+ * The element a label's `control` stands for. With dom.shadowdom.referenceTarget.enabled, a
+ * shadow root can forward its host to an element inside it, and Gecko clicks or focuses the
+ * element at the end of that chain (Element::ResolveReferenceTarget, followed as
+ * HTMLLabelElement::GetLabeledElementInternal does), while `control` is retargeted to the host
+ * in the label's tree (GetControlForBindings): no submit button and no field, so a submit or a
+ * field behind it would go unjudged (security.md M28, M29). With the pref off a shadow root has
+ * no `referenceTarget`, and `el` is returned as it is.
+ * @param {Element} el
+ * @returns {Element}
+ */
+function referenceTargetOf(el) {
+  let target = el;
+  for (;;) {
+    // `referenceTarget` exists only with the pref on (ShadowRoot.webidl).
+    const root = /** @type {(ShadowRoot & { referenceTarget?: string | null }) | null} */ (
+      target.openOrClosedShadowRoot
+    );
+    const id = root?.referenceTarget;
+    if (!root || id === null || id === undefined) return target;
+    const next = root.getElementById(id);
+    // Gecko returns no control for a chain that ends in nothing, so this cannot be what it
+    // clicks: fail closed. The throw refuses the click as a gone element (agentInspect), and
+    // the check before the press clicks nothing.
+    if (!next) throw new Error("a label's control forwards to no element");
+    target = next;
+  }
 }
 
 /**
