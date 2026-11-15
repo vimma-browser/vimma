@@ -59,14 +59,14 @@ Every rule about what a workspace or a pane holds is a pure function in
   icon) and its reconcile with `config.toml`'s `[workspaces]`; `snapshot.mjs`: the versioned JSON
   of one window's state.
 
-Tests: [workspaces.test.mjs](../../packages/vimma-core/test/workspaces.test.mjs),
-[panes.test.mjs](../../packages/vimma-core/test/panes.test.mjs),
-[splits.test.mjs](../../packages/vimma-core/test/splits.test.mjs),
-[switchplan.test.mjs](../../packages/vimma-core/test/switchplan.test.mjs),
-[splitplan.test.mjs](../../packages/vimma-core/test/splitplan.test.mjs), and the fixtures in
+Tests: [workspaces.test.ts](../../packages/vimma-core/test/workspaces.test.ts),
+[panes.test.ts](../../packages/vimma-core/test/panes.test.ts),
+[splits.test.ts](../../packages/vimma-core/test/splits.test.ts),
+[switchplan.test.ts](../../packages/vimma-core/test/switchplan.test.ts),
+[splitplan.test.ts](../../packages/vimma-core/test/splitplan.test.ts), and the fixtures in
 `tests/contract/state/` and `tests/contract/workspaces/`, read by
-[snapshot.test.mjs](../../packages/vimma-core/test/snapshot.test.mjs) and
-[workspacedefs.test.mjs](../../packages/vimma-core/test/workspacedefs.test.mjs).
+[snapshot.test.ts](../../packages/vimma-core/test/snapshot.test.ts) and
+[workspacedefs.test.ts](../../packages/vimma-core/test/workspacedefs.test.ts).
 
 ## The mirror: one per app, one per window
 

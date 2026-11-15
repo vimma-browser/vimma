@@ -39,15 +39,13 @@ import {
 } from "../src/panes/panes.mjs";
 import { toSnapshot, readSnapshot } from "../src/workspaces/snapshot.mjs";
 
-/**
- * The workspace state a snapshot restores to, without its tab renames.
- * @param {unknown} input
- * @param {Parameters<typeof readSnapshot>[1]} [options]
- */
-const stateOf = (input, options) => readSnapshot(input, options).state;
+import type { Panes } from "../src/panes/panes.mjs";
 
-/** @param {() => unknown} fn @param {string} code */
-function expectWsError(fn, code) {
+/** The workspace state a snapshot restores to, without its tab renames. */
+const stateOf = (input: unknown, options?: Parameters<typeof readSnapshot>[1]) =>
+  readSnapshot(input, options).state;
+
+function expectWsError(fn: () => unknown, code: string) {
   let err;
   try {
     fn();
@@ -55,7 +53,7 @@ function expectWsError(fn, code) {
     err = e;
   }
   expect(err).toBeInstanceOf(WorkspaceError);
-  expect(/** @type {WorkspaceError} */ (err).code).toBe(code);
+  expect((err as WorkspaceError).code).toBe(code);
 }
 
 const two = () =>
@@ -71,10 +69,8 @@ function abc() {
   return selectTab(s, "b");
 }
 
-/** @param {any} s */
-const ws = (s) => activeWorkspace(s);
-/** @param {any} w */
-const paneTabs = (w) => (w.panes ? leaves(w.panes).map((l) => l.tab) : []);
+const ws = (s: any) => activeWorkspace(s);
+const paneTabs = (w: any) => (w.panes ? leaves(w.panes).map((l) => l.tab) : []);
 
 describe("workspace lifecycle", () => {
   test("createWorkspaces makes the first workspace active, empty, with stable ids", () => {
@@ -217,10 +213,7 @@ describe("explicit workspace ids", () => {
     ["control character", "ws\u0007"],
     ["not a string", 7],
   ])("a bad id (%s) is bad-id", (_, id) => {
-    expectWsError(
-      () => createWorkspaces([{ name: "w", container: "c", id: /** @type {any} */ (id) }]),
-      "bad-id",
-    );
+    expectWsError(() => createWorkspaces([{ name: "w", container: "c", id: id as any }]), "bad-id");
   });
 
   test("an id of exactly MAX_WORKSPACE_ID characters is fine", () => {
@@ -385,9 +378,7 @@ describe("panes inside workspaces", () => {
     t = splitPane(t, "vertical", "e"); // .5 .25 .25
     t = splitPane(t, "vertical", "f"); // .5 .25 .125 .125
     expect(splitPane(t, "vertical", "g")).toBe(t); // no-space
-    expect(
-      leaves(/** @type {any} */ (ws(splitPane(s, "horizontal", "e", { max: 3 })).panes)),
-    ).toHaveLength(3);
+    expect(leaves(ws(splitPane(s, "horizontal", "e", { max: 3 })).panes as any)).toHaveLength(3);
   });
 
   test("withPanes applies a pane op and syncs the active tab", () => {
@@ -473,8 +464,7 @@ const opArb = fc.oneof(
   { weight: 1, arbitrary: fc.record({ op: fc.constant("rename"), w: fc.nat() }) },
 );
 
-/** @param {any[]} ops */
-function run(ops) {
+function run(ops: any[]) {
   let s = two();
   let n = 0;
   for (const o of ops) {
@@ -483,7 +473,7 @@ function run(ops) {
     const wref = { index: ((o.w ?? 0) % s.workspaces.length) + 1 };
     switch (o.op) {
       case "open": {
-        const target = /** @type {any} */ (findWorkspace(s, wref));
+        const target = findWorkspace(s, wref) as any;
         const after = o.after && target.activeTab ? target.activeTab : undefined;
         s = openTab(s, `t${n++}`, { workspace: wref, activate: o.activate, after });
         break;
@@ -509,7 +499,7 @@ function run(ops) {
         if (!activeWorkspace(s).panes) break;
         s = withPanes(s, (p) => {
           const ls = leaves(p);
-          const target = /** @type {any} */ (ls[o.pick % ls.length]).pane;
+          const target = (ls[o.pick % ls.length] as any).pane;
           if (o.kind === "close") return ls.length > 1 ? closePane(p, target) : p;
           if (o.kind === "swap") return swap(p, o.dir);
           if (o.kind === "zoom") return toggleZoom(p);
@@ -574,7 +564,7 @@ describe("workspace properties", () => {
             continue;
           }
           expect(w.panes).not.toBeNull();
-          const p = /** @type {import("../src/panes/panes.mjs").Panes} */ (w.panes);
+          const p = w.panes as Panes;
           expect(w.tabs).toContain(w.activeTab);
           const shown = leaves(p);
           expect(shown.find((l) => l.pane === p.focus)?.tab).toBe(w.activeTab);

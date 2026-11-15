@@ -1091,7 +1091,9 @@ export const VimmaUpdates = {
    * @param {XMLHttpRequest} request  opened, not sent
    */
   beforeCheck(request) {
-    const channel = /** @type {any} */ (request).channel.QueryInterface(Ci.nsIHttpChannel);
+    // open() made the channel; a request without one fails the check.
+    if (!request.channel) throw new Error("the update check's request is not open");
+    const channel = request.channel.QueryInterface(Ci.nsIHttpChannel);
     channel.loadFlags |= Ci.nsIRequest.LOAD_ANONYMOUS;
     channel.redirectionLimit = 0;
     channel.QueryInterface(Ci.nsIEncodedChannel).applyConversion = false;

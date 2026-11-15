@@ -1,4 +1,4 @@
-## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-matcher.mjs`)
+## 15. Live grep (`host/grep.mjs`, `actors/VimmaChild.sys.mjs`, `actors/grep-page.mjs`, `actors/grep-matcher.mjs`)
 
 `ctrl+b f g` searches the text of the tabs in its scope: the parent sends the query to each
 frame's own content process, which builds a text model of its own document on the page's thread,
