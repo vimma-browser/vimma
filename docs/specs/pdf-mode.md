@@ -755,13 +755,12 @@ change does. No new disk writes, and
 ## Tests
 
 - **Vitest** (`packages/vimma-core`):
-  - `keymap.test.mjs` (Since changed: `keymap.test.ts`, ADR-025): a `pdf` trie is normal's with
-    `[modal.pdf]` over it; a user's `[modal.normal]` binding shows in `pdf` unless `[modal.pdf]`
-    binds the same sequence; `[unbind] pdf` removes only there; `[modal.pdf]` cannot shadow the
-    prefix; `[modal.index]` is a mode table.
-  - `dispatcher.test.mjs` (Since changed: `dispatcher.test.ts`, ADR-025): a context change resets a
-    pending sequence and a count; the same key gives the `pdf` action with context `pdf` and the
-    normal one with `page`.
+  - `keymap.test.mjs`: a `pdf` trie is normal's with `[modal.pdf]` over it; a user's
+    `[modal.normal]` binding shows in `pdf` unless `[modal.pdf]` binds the same sequence;
+    `[unbind] pdf` removes only there; `[modal.pdf]` cannot shadow the prefix; `[modal.index]` is
+    a mode table.
+  - `dispatcher.test.mjs`: a context change resets a pending sequence and a count; the same key
+    gives the `pdf` action with context `pdf` and the normal one with `page`.
   - `pdf.test.mjs`: `parsePdfState` accepts a full record and drops out-of-range numbers, a page
     past the count, a label over 32 characters (`pdf state outside its bounds is dropped`); it
     strips control and format characters from a label, such as U+202E and U+200B (`a page label

@@ -307,9 +307,8 @@ because the page's own `Esc` handler would then find its focus gone.)
 
 ## Tests (write first)
 
-`editable.test.mjs` (Since changed: `editable.test.ts`, ADR-025), `hints.test.mjs`,
-`cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025), `escape.test.mjs` (Since changed:
-`escape.test.ts`, ADR-025); table-driven with `test.each`, properties with fast-check.
+`editable.test.mjs`, `hints.test.mjs`, `cmdline.test.mjs`, `escape.test.mjs`; table-driven with
+`test.each`, properties with fast-check.
 
 Insert detection:
 

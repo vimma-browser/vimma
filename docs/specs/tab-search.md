@@ -418,8 +418,8 @@ Written first and seen to fail.
   first, closed windows); the private filter in both directions; the caps (25 and 5); a closed
   agent tab's marker; section keys and headings; accessible names; the live count text; the
   200-row window.
-- `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025): `:tabsearch [text]`, `:ts` and
-  `:b [text]` run `goto.picker` with the text; `:tab` completes `tabnew`, `tabrename`, `tabsearch`.
+- `cmdline.test.mjs`: `:tabsearch [text]`, `:ts` and `:b [text]` run `goto.picker` with the
+  text; `:tab` completes `tabnew`, `tabrename`, `tabsearch`.
 - `help.test.mjs`: the `goto_picker` row keeps `ctrl+b g, b` with the new description, and there
   is no `tab_search` row. The help snapshot is re-recorded and `docs/bindings.md` and
   `bindings.json` are regenerated.

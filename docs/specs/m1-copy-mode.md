@@ -57,9 +57,9 @@ top, a cross-origin frame, a last line 3000 px down) and `file_vimma_copy_frame.
 - Malformed `Vimma:Caret` messages (`null`, a string, `constructor`, `__proto__`, count `0`,
   `1.5`, `"2"`) and an `enter` to an unfocused frame are refused.
 
-Core: `dispatcher.test.mjs` (Since changed: `dispatcher.test.ts`, ADR-025) "copy mode keys"
-(`v 0 $ gg G y` in visual, a count on `w`). Mutation check: dropping the consume of passing keys in
-`visual` fails "the page gets no keys" (`["x","z","q","z"]` vs `["z"]`); reverted.
+Core: `dispatcher.test.mjs` "copy mode keys" (`v 0 $ gg G y` in visual, a count on `w`).
+Mutation check: dropping the consume of passing keys in `visual` fails "the page gets no keys"
+(`["x","z","q","z"]` vs `["z"]`); reverted.
 
 ## Vim motions, selection keys and mouse selection (2026-10-10)
 
@@ -70,16 +70,16 @@ hints and tab keys in another table, and `{ } ^ ; , o V Y e E W B` were unbound 
 selection the user makes with the mouse in normal mode enters copy mode with it.
 
 Tests: core `motions.test.mjs` (targets per motion, counts, line limits of `f`/`t`, `;`/`,`,
-`iw`/`aw`) and `dispatcher.test.mjs` (Since changed: `dispatcher.test.ts`, ADR-025) "copy mode: Vim
-motions…" (the keys, `f` waiting for its character, a count kept across it, Esc/named keys/chords
-cancelling it, `f f`). `browser_vimma_copy_motions.js` asserts the selected string for each motion,
-`V`, `o` (both kinds), `iw`/`aw` and `Y`, and that malformed find messages are refused.
+`iw`/`aw`) and `dispatcher.test.mjs` "copy mode: Vim motions…" (the keys, `f` waiting for its
+character, a count kept across it, Esc/named keys/chords cancelling it, `f f`).
+`browser_vimma_copy_motions.js` asserts the selected string for each motion, `V`, `o` (both
+kinds), `iw`/`aw` and `Y`, and that malformed find messages are refused.
 `browser_vimma_copy_mouse.js`: drag, double and triple click enter `VISUAL`; `y`, `ctrl+c`, the
 context menu's Copy and the primary selection copy it; `e` extends it, `Esc` clears it; a plain
-click, a link, a script's selection (also from a click handler) and a drag in a text field do not
-enter; the same in the second of two split panes. Mutation check: dropping the `sel.isCollapsed`
-guard of the selection listener fails "a plain click: normal" (`visual`), the link click and the
-click-handler case; reverted.
+click, a link, a script's selection (also from a click handler) and a drag in a text field do
+not enter; the same in the second of two split panes. Mutation check: dropping the
+`sel.isCollapsed` guard of the selection listener fails "a plain click: normal" (`visual`), the
+link click and the click-handler case; reverted.
 
 ## Settled (2026-10-09, from the engine tree)
 

@@ -451,12 +451,12 @@ Written first; red pasted, then green (CONTRIBUTING.md).
     takes `kind: "block"` with each `blockKind` and refuses an unknown one; `parseBlockReply`
     refuses malformed replies (non-finite rects, negative lengths, unknown kinds; extra fields
     dropped).
-  - `dispatcher.test.mjs` (Since changed: `dispatcher.test.ts`, ADR-025): `[modal.element]` keys
-    (`v V y + - j k Esc`, counts on `+ - j k`), plain keys consumed, chords passed; `ip` / `ap` in
-    `visual` beside `iw` / `aw`.
-  - `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025) / `defaults.test.mjs`: the new
-    actions exist and are grouped; in the keymap sub-PR, `F` reaches `hint.element`, `gF` reaches
-    `hint.follow_new_tab`, and no default collides, including the firefox-keys bindings.
+  - `dispatcher.test.mjs`: `[modal.element]` keys (`v V y + - j k Esc`, counts on `+ - j k`),
+    plain keys consumed, chords passed; `ip` / `ap` in `visual` beside `iw` / `aw`.
+  - `actions.test.mjs` / `defaults.test.mjs`: the new actions exist and are grouped; in the keymap
+    sub-PR, `F` reaches `hint.element`, `gF` reaches `hint.follow_new_tab`, and no default
+    collides, including the
+    firefox-keys bindings.
   - `statusbar.test.mjs`: the `ELEMENT` badge and the kind · length segment; `theme.test.mjs`: the
     new tokens and contrast pairs, and `--vimma-mode-element` differs from `--vimma-mode-visual`
     in the stock themes.

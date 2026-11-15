@@ -206,12 +206,12 @@ multi-selection (decision 9).
 - **Three-key sequences.** `compileKeymap` builds one trie per mode and walks every chord of a
   binding, however many (`packages/vimma-core/src/keymap.mjs:263-277`), so `prefix+f g` is a
   three-chord path `ctrl+b`, `f`, `g`. A node may have children and no action: normal mode's `y`
-  is one today (`packages/vimma-core/test/keymap.test.mjs:139-143` (Since changed: `keymap.test.ts`,
-  ADR-025)). The dispatcher returns pending at such a node (`dispatcher.mjs:138-141`), arms no
-  timeout because the node has no action of its own (`ambiguous`, `:174`), and cancels on a key with
-  no child (`:123-136`). Checked on main at 7280cd5 by compiling two three-chord user keys under
-  `prefix+f`: both ran their actions, `ctrl+b f x` cancelled and `ctrl+b g` still ran `goto_picker`.
-  No default binding had three chords before live grep, so no test covered one.
+  is one today (`packages/vimma-core/test/keymap.test.mjs:139-143`). The dispatcher returns
+  pending at such a node (`dispatcher.mjs:138-141`), arms no timeout because the node has no
+  action of its own (`ambiguous`, `:174`), and cancels on a key with no child (`:123-136`).
+  Checked on main at 7280cd5 by compiling two three-chord user keys under `prefix+f`: both ran
+  their actions, `ctrl+b f x` cancelled and `ctrl+b g` still ran `goto_picker`. No default
+  binding had three chords before live grep, so no test covered one.
 - **Telescope's keys.** telescope.nvim's README (v0.2.1) suggests `<leader>ff` for
   `find_files`, `<leader>fg` for `live_grep`, `<leader>fb` for `buffers` and `<leader>fh` for
   `help_tags`: one `f` group for its finders.
@@ -665,13 +665,11 @@ Written first and seen to fail.
     marked; the closed line; past five windows one summed line; no tabs.
   - `ctrl+s` cycles workspace → window → all windows → closed → workspace.
   - bench: `grepText` over 1,000,000 characters under 50 ms.
-- `keymap.test.mjs` (Since changed: `keymap.test.ts`, ADR-025): the `prefix+f` node has no action
-  and has the child `g`; `ctrl+b f g` dispatches `live_grep` and `ctrl+b f` followed by an unbound
-  key cancels.
-- `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025), `defaults.test.mjs`,
-  `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025), `help.test.mjs`: `live_grep` on
-  `prefix+f g`, `grep_next`/`grep_previous` on `]q`/`[q`, `:grep [text]`; the help rows. The help
-  snapshot is re-recorded with a changelog line; `docs/bindings.md`, `bindings.json` and
+- `keymap.test.mjs`: the `prefix+f` node has no action and has the child `g`; `ctrl+b f g`
+  dispatches `live_grep` and `ctrl+b f` followed by an unbound key cancels.
+- `actions.test.mjs`, `defaults.test.mjs`, `cmdline.test.mjs`, `help.test.mjs`: `live_grep` on
+  `prefix+f g`, `grep_next`/`grep_previous` on `]q`/`[q`, `:grep [text]`; the help rows. The
+  help snapshot is re-recorded with a changelog line; `docs/bindings.md`, `bindings.json` and
   `defaults.toml` are regenerated.
 
 ### Mochitests (`tests/browser/`)

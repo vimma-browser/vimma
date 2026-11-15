@@ -80,10 +80,9 @@ overridden row; the workspace count and the last three keys after `j k j` on a p
 (`j → scroll.down`…) and the window's mode; with the control socket on, its port shows and the
 token (from the discovery file) is nowhere in the page's HTML; `:bug` puts a report on the
 clipboard with the Firefox version and no `$HOME/` path or URL; `j` / `k` scroll the page.
-Vitest: `report.test.mjs` (redaction, outcomes), `cmdline.test.mjs` (Since changed:
-`cmdline.test.ts`, ADR-025) (`:about`, `:vimma`, `:bug`, no argument), `version-files.test.mjs`
-(Since changed: `version-files.test.ts`, ADR-025) (`patchManifest` on fixtures and on the
-repository).
+Vitest: `report.test.mjs` (redaction, outcomes), `cmdline.test.mjs` (`:about`, `:vimma`, `:bug`, no
+argument), `version-files.test.mjs` (Since changed: `version-files.test.ts`, ADR-025)
+(`patchManifest` on fixtures and on the repository).
 
 Red: the mochitest timed out in its first task (`about:vimma` unknown; "The window unloaded while
 we were waiting for the browser to load"); vitest `Cannot find module '../src/report.mjs'`,

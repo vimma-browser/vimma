@@ -211,8 +211,8 @@ socket, MCP, the agent gate and the agent's keys are unchanged.
 
 ## Tests
 
-Vitest (`packages/vimma-core/src/suggestions.test.mjs` (Since changed: `suggestions.test.ts`,
-ADR-025), `keymap.test.mjs` (Since changed: `keymap.test.ts`, ADR-025), `defaults.test.mjs`):
+Vitest (`packages/vimma-core/src/suggestions.test.mjs`, `keymap.test.mjs`,
+`defaults.test.mjs`):
 
 - `suggestionListOpen`: ARIA 1.2 combobox expanded with a visible popup → true; expanded with
   its named popup hidden → false; collapsed → false; ARIA 1.1 wrapper with `aria-owns` → true;

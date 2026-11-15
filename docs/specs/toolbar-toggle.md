@@ -812,21 +812,21 @@ buttons`), shows once the prompt is armed and hides while it is not, as the agen
 Write first; paste red, then green (CONTRIBUTING.md, "TDD").
 
 - **Vitest:**
-  - `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025) / `defaults.test.mjs`:
-    `toggle_toolbar` on `prefix+u` reaches `toolbar.toggle` through the dispatcher; `show_toolbar` /
-    `hide_toolbar` are unbound; no default key collides.
+  - `actions.test.mjs` / `defaults.test.mjs`: `toggle_toolbar` on `prefix+u` reaches
+    `toolbar.toggle` through the dispatcher; `show_toolbar` / `hide_toolbar` are unbound; no
+    default key collides.
   - `config.test.mjs`:
     - `[ui] toolbar` parses `"shown"` and `"hidden"`;
     - a wrong value is an error with the closest value;
     - `[ui]` in a schema-1 file gets the "new in schema 2" error;
     - an unknown `[ui]` key is an error;
     - the default is `"shown"`.
-  - `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025): `:toolbar`, `:toolbar show`,
-    `:toolbar hide`, the completion of the two words, and an unknown word refused.
-  - `prompt-keys.test.mjs` (Since changed: `prompt-keys.test.ts`, ADR-025) (decision 11a): `y` and
-    `n` answer an armed prompt and are swallowed before; a held key never answers; only the
-    lower-case letters count; `Tab` focuses the prompt from outside it and is Firefox's inside;
-    `Esc` is Firefox's; keys in a field never answer; the keys line names the prompt's buttons.
+  - `cmdline.test.mjs`: `:toolbar`, `:toolbar show`, `:toolbar hide`, the completion of the two
+    words, and an unknown word refused.
+  - `prompt-keys.test.mjs` (decision 11a): `y` and `n` answer an armed prompt and are swallowed
+    before; a held key never answers; only the lower-case letters count; `Tab` focuses the prompt
+    from outside it and is Firefox's inside; `Esc` is Firefox's; keys in a field never answer;
+    the keys line names the prompt's buttons.
   - `statusbar.test.mjs`:
     - with the toolbar hidden, `not secure` for `insecure` and none for `secure` and `neutral`;
     - `private` in a private window;

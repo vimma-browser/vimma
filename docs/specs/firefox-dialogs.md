@@ -196,10 +196,9 @@ markup; its text comes from Firefox's own button labels.
 
 ## Tests
 
-- Vitest, `packages/vimma-core/test/prompt-keys.test.mjs` (Since changed: `prompt-keys.test.ts`,
-  ADR-025): `dialogKey` accepts and cancels only once armed and not on a held key; text fields, a
-  key sequence and other keys pass; an alert leaves `n` alone. `dialogHint` with two buttons, one,
-  and a text field.
+- Vitest, `packages/vimma-core/test/prompt-keys.test.mjs`: `dialogKey` accepts and cancels only
+  once armed and not on a held key; text fields, a key sequence and other keys pass; an alert
+  leaves `n` alone. `dialogHint` with two buttons, one, and a text field.
 - Mochitest, `tests/browser/browser_vimma_dialog_keys.js`: the leave-page dialog's line waits
   and then names `y leave page · n stay on page`; `n` keeps the tab, `y` before the dialog is
   armed and after a key typed through it does nothing, and an armed `y` closes the tab; a page's

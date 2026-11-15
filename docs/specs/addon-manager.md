@@ -128,8 +128,8 @@ private windows) without the mouse or about:addons.
 
 - Vitest `packages/vimma-core/test/addons.test.mjs`: filtering (system, built-in, hidden,
   sort), row text, best-match for `:addon`, the stale-answer check; `picker.test.mjs`: the
-  addon keys' effects and name-only matching; `cmdline.test.mjs` (Since changed: `cmdline.test.ts`,
-  ADR-025): `:addon`/`:addons` parsing and argument completion.
+  addon keys' effects and name-only matching; `cmdline.test.mjs`: `:addon`/`:addons` parsing and
+  argument completion.
 - Mochitest `tests/browser/browser_vimma_addons.js`, three extensions installed from inline
   XPIs (`ExtensionTestUtils.loadExtension` with `useAddonManager: "permanent"`): one with a
   popup, one with `options_ui`, one with neither. The picker lists them and no system add-on;

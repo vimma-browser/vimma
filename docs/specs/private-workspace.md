@@ -409,11 +409,10 @@ UX, honestly:
 
 - **Vitest** `privatews.test.mjs`: cycling from private in both directions; normal cycling and
   the normal `ctrl+^` never return private; `ctrl+^` from private; the toggle; the picker row (count, `new`); the
-  refusals. `actions.test.mjs` (Since changed: `actions.test.ts`, ADR-025) / `defaults.test.mjs`:
-  `private_workspace` on `prefix+shift+p` and `ctrl+shift+p` reaches `workspace.private` in every
-  mode. `cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025): `:private`, `:priv`,
-  `:private close`. Snapshots (`help.test.mjs.snap`, `defaults.test.mjs.snap`) gain the row and
-  keys, with the changelog line the rules ask for.
+  refusals. `actions.test.mjs` / `defaults.test.mjs`: `private_workspace` on `prefix+shift+p`
+  and `ctrl+shift+p` reaches `workspace.private` in every mode. `cmdline.test.mjs`: `:private`,
+  `:priv`, `:private close`. Snapshots (`help.test.mjs.snap`, `defaults.test.mjs.snap`) gain the
+  row and keys, with the changelog line the rules ask for.
 - **Mochitest** `browser_vimma_private_workspace.js`:
   - `ctrl+b shift+p` opens exactly one private window and focuses it. Pressing it again there
     focuses the normal window back. `ctrl+shift+p` opens no second private window (Firefox's

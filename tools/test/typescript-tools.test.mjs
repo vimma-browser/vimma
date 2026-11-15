@@ -22,6 +22,20 @@ const ROOT_TS_CONFIGS = ["commitlint.config.ts", "vitest.config.ts"];
 const CORE_TESTS = "packages/vimma-core/test/";
 
 /**
+ * The TypeScript files outside the places ADR-025 allows it: tools/, the root configs, and
+ * vimma-core's tests (as `.ts` only, the one extension their tsconfig, eslint and Vitest read).
+ * @param {string[]} paths
+ */
+function outsideTypeScriptHomes(paths) {
+  return paths.filter(
+    (p) =>
+      !p.startsWith("tools/") &&
+      !(p.startsWith(CORE_TESTS) && p.endsWith(".ts")) &&
+      !ROOT_TS_CONFIGS.includes(p),
+  );
+}
+
+/**
  * The modules a .ts file loads when Node runs it: its import and export declarations and its
  * import() calls with a string, read from the program Node runs (types stripped as Node strips
  * them), so a module path in a string or a comment is not one. A type-only import is erased.
@@ -183,9 +197,19 @@ describe("TypeScript under tools/ (ADR-025)", () => {
       .filter((p) => p && !/\.d\.[mc]?ts$/.test(p));
     // The root configs whose tool loads TypeScript itself (Vite bundles vitest.config.ts,
     // commitlint loads its config through jiti) are Node-side tooling too (ADR-025).
-    const outside = tracked.filter(
-      (p) => !p.startsWith("tools/") && !p.startsWith(CORE_TESTS) && !ROOT_TS_CONFIGS.includes(p),
-    );
-    expect(outside).toEqual([]);
+    expect(outsideTypeScriptHomes(tracked)).toEqual([]);
+  });
+
+  it("lets only .ts through in vimma-core's tests: .mts and .cts escape tsconfig, eslint and Vitest", () => {
+    const sample = [
+      "tools/a/b.mts",
+      `${CORE_TESTS}keys.test.ts`,
+      `${CORE_TESTS}keys.test.mts`,
+      `${CORE_TESTS}fuzz/harness.cts`,
+    ];
+    expect(outsideTypeScriptHomes(sample)).toEqual([
+      `${CORE_TESTS}keys.test.mts`,
+      `${CORE_TESTS}fuzz/harness.cts`,
+    ]);
   });
 });

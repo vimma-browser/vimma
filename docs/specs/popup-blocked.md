@@ -193,10 +193,10 @@ it for the private session only. See `docs/security/`, prompt keys.
 
 ## Tests
 
-- Vitest, `packages/vimma-core/test/prompt-keys.test.mjs` (Since changed: `prompt-keys.test.ts`,
-  ADR-025): `popupBarKey` allows, blocks and closes only once armed and not on a held key; keys from
-  a field, during a sequence, with no bar or in the agent workspace pass; `Tab` passes; a locked
-  pref leaves `y` and `n` alone; `popupBarHint` with and without a field, and locked.
+- Vitest, `packages/vimma-core/test/prompt-keys.test.mjs`: `popupBarKey` allows, blocks and
+  closes only once armed and not on a held key; keys from a field, during a sequence, with no
+  bar or in the agent workspace pass; `Tab` passes; a locked pref leaves `y` and `n` alone;
+  `popupBarHint` with and without a field, and locked.
 - Vitest, `packages/vimma-core/test/popups.test.mjs`: the rows in Firefox's order; the redirect
   row; the allow row left out when locked; no `hide` row with the bar off; no rows when nothing is
   blocked and the site has no permission; allow and reset for a blocked site, block for an

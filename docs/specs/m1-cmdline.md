@@ -47,9 +47,9 @@ line open and tells me what I probably meant. Nothing I type into it reaches the
 - `:` in a text field (insert) is typed into it; the line does not open.
 - The page sees none of the keys typed into the line (head.js race-free helpers).
 
-`packages/vimma-core/test/cmdline.test.mjs` (Since changed: `cmdline.test.ts`, ADR-025):
-`PENDING_ACTIONS` is `["workspace.switch"]` (empty since m3-workspaces); `:open x` parses to
-`page.open`; `:help`, `:h` → `help.show`.
+`packages/vimma-core/test/cmdline.test.mjs`: `PENDING_ACTIONS` is `["workspace.switch"]` (empty
+since m3-workspaces);
+`:open x` parses to `page.open`; `:help`, `:h` → `help.show`.
 
 ## Out of scope
 
