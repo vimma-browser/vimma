@@ -11,6 +11,7 @@ interface VimmaModules {
   "chrome://browser/content/vimma/actors/VimmaChild.sys.mjs": typeof import("../src/browser/base/content/vimma/actors/VimmaChild.sys.mjs");
   "chrome://browser/content/vimma/actors/actor-for.mjs": typeof import("../src/browser/base/content/vimma/actors/actor-for.mjs");
   "chrome://browser/content/vimma/actors/agent-fields.mjs": typeof import("../src/browser/base/content/vimma/actors/agent-fields.mjs");
+  "chrome://browser/content/vimma/actors/agent-page.mjs": typeof import("../src/browser/base/content/vimma/actors/agent-page.mjs");
   "chrome://browser/content/vimma/actors/block.mjs": typeof import("../src/browser/base/content/vimma/actors/block.mjs");
   "chrome://browser/content/vimma/actors/caret.mjs": typeof import("../src/browser/base/content/vimma/actors/caret.mjs");
   "chrome://browser/content/vimma/actors/enter-key.mjs": typeof import("../src/browser/base/content/vimma/actors/enter-key.mjs");
