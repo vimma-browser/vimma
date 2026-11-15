@@ -210,7 +210,7 @@ for the whole connection names no time left`.
 
 ### Mochitests (`tests/browser/`)
 
-- `browser_vimma_mcp_agent.js`: `test_a_reconnect_of_the_same_session_keeps_its_grant`: a bare
+- `browser_vimma_mcp_agent_grants.js`: `test_a_reconnect_of_the_same_session_keeps_its_grant`: a bare
   `a` grants with no end, a reconnect with the same session id reads unasked, another session
   asks, and after `:mcp off` and on the same session asks.
 

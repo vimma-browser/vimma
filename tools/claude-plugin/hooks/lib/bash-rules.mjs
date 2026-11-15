@@ -4,7 +4,8 @@
 
 // The rules the Bash guard enforces. Each one stops a command that has already cost the project
 // something when an agent ran it: an unchecked squash message (#278), a pattern kill that took the
-// agent's own shell, a rewritten branch, a dismissed alert, a disabled workflow.
+// agent's own shell, a rewritten branch, a dismissed alert, a disabled workflow. The install rule
+// (install-rules.mjs) keeps an agent from bringing in code that no lockfile pins.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -12,6 +13,14 @@ import { homedir } from "node:os";
 import { createRequire } from "node:module";
 import { isAbsolute, join, resolve } from "node:path";
 import { commandOf, parseShell } from "./shell.mjs";
+import {
+  applet,
+  checkInstall,
+  checkNpmConfig,
+  INSTALL_REASONS,
+  readsProgram,
+  SHELLS,
+} from "./install-rules.mjs";
 
 /**
  * @typedef {import("./shell.mjs").Segment} Segment
@@ -45,6 +54,7 @@ export const REASONS = {
     "<file> with the squash body, so the guard can run commitlint on the exact message first. " +
     'Write the body to a file, then run: gh pr merge <N> --squash --subject "..." ' +
     "--body-file <file>.",
+  ...INSTALL_REASONS,
 };
 
 /**
@@ -73,12 +83,28 @@ function checkScript(segs, ctx) {
       const found = checkScript(sub, { ...ctx, cwd });
       if (found) return found;
     }
+    const config = checkNpmConfig(seg.words);
+    if (config) return config;
     const cmd = commandOf(seg.words);
     if (!cmd) continue;
+    /** @param {Word[]} words */
+    const nested = (words) =>
+      checkScript([{ words, subs: [], writes: [], stdin: [], op: null }], { ...ctx, cwd });
 
     const inner = innerScript(cmd);
     if (inner !== null) {
       const found = checkScript(parseShell(inner), { ...ctx, cwd });
+      if (found) return found;
+    }
+    // A here-string or heredoc that a shell reads as its script: `bash <<< '...'`.
+    if (SHELLS.has(applet(cmd).name) && readsProgram(cmd)) {
+      for (const text of seg.stdin) {
+        const found = checkScript(parseShell(text), { ...ctx, cwd });
+        if (found) return found;
+      }
+    }
+    for (const words of findExecs(cmd)) {
+      const found = nested(words);
       if (found) return found;
     }
 
@@ -91,18 +117,36 @@ function checkScript(segs, ctx) {
       checkKill(cmd, seg, segs, i) ??
       checkPush(cmd) ??
       checkGh(cmd, { ...ctx, cwd }) ??
-      checkAlertRequest(cmd);
+      checkAlertRequest(cmd) ??
+      checkInstall(cmd, seg, segs, i, { cwd }, nested);
     if (found) return found;
   }
   return null;
 }
 
-/** The script a `bash -c` or `eval` runs, or null. @param {Command} cmd */
-function innerScript(cmd) {
+/** The script a `bash -c` (also through busybox) or `eval` runs, or null. @param {Command} command */
+function innerScript(command) {
+  const cmd = applet(command);
   if (cmd.name === "eval") return cmd.args.map((w) => w.text).join(" ");
-  if (!["bash", "sh", "zsh", "dash", "ksh"].includes(cmd.name)) return null;
+  if (!SHELLS.has(cmd.name)) return null;
   const at = cmd.args.findIndex((w) => /^-[a-z]*c[a-z]*$/.test(w.text));
-  return at < 0 ? null : (cmd.args[at + 1]?.text ?? null);
+  if (at < 0) return null;
+  const script = cmd.args[at + 1]?.text === "--" ? cmd.args[at + 2] : cmd.args[at + 1];
+  return script?.text ?? null;
+}
+
+/** The commands `find -exec`, `-execdir`, `-ok` and `-okdir` run. @param {Command} cmd */
+function findExecs(cmd) {
+  if (cmd.name !== "find") return [];
+  /** @type {Word[][]} */
+  const out = [];
+  for (let j = 0; j < cmd.args.length; j++) {
+    if (!/^-(?:exec|execdir|ok|okdir)$/.test(cmd.args[j]?.text ?? "")) continue;
+    const start = j + 1;
+    while (j < cmd.args.length && !/^[;+]$/.test(cmd.args[j]?.text ?? "")) j++;
+    out.push(cmd.args.slice(start, j));
+  }
+  return out;
 }
 
 /** Files a command writes through its arguments: `tee`'s, and the target of `cp` or `mv`. @param {Command} cmd */
