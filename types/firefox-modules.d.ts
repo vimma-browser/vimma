@@ -55,12 +55,14 @@ interface VimmaModules {
       forgetClosedWindow(index: number): void;
     };
   };
-  // engine/browser/components/shell/ShellService.sys.mjs: the proxy's own object, whose two
-  // methods AppLauncher wraps (both take startupCheck and forAllTypes).
+  // engine/browser/components/shell/ShellService.sys.mjs: the proxy's own object, whose methods
+  // AppLauncher wraps (the two checks take startupCheck and forAllTypes).
   "moz-src:///browser/components/shell/ShellService.sys.mjs": {
     ShellService: {
       isDefaultBrowser(startupCheck?: boolean, forAllTypes?: boolean): boolean;
       isDefaultBrowserAsync(startupCheck?: boolean, forAllTypes?: boolean): Promise<boolean>;
+      setDefaultBrowser(forAllUsers?: boolean): Promise<void>;
+      _attemptedSetDefaultThisSession: boolean;
     };
   };
   // engine/browser/components/urlbar/QuickSuggest.sys.mjs: resolves once Suggest has started.
