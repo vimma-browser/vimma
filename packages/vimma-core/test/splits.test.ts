@@ -24,20 +24,14 @@ import {
   updateSplit,
 } from "../src/panes/splits.mjs";
 
-/** @import { Splits } from "../src/panes/splits.mjs" */
+import type { Splits } from "../src/panes/splits.mjs";
 
-/** @param {Splits} s */
-const numbers = (s) => s.splits.map((x) => x.number);
-/** @param {Splits} s @param {number} n */
-const tabsOf = (s, n) =>
-  leaves(/** @type {any} */ (s.splits.find((x) => x.number === n))).map((l) => l.tab);
+const numbers = (s: Splits) => s.splits.map((x) => x.number);
+const tabsOf = (s: Splits, n: number) =>
+  leaves(s.splits.find((x) => x.number === n) as any).map((l) => l.tab);
 
-/**
- * Splits made one after the other from the side panel's marks.
- * @param {string[][]} groups
- * @param {{ max?: number }} [options]
- */
-function made(groups, options = {}) {
+/** Splits made one after the other from the side panel's marks. */
+function made(groups: string[][], options: { max?: number } = {}) {
   let s = createSplits();
   for (const tabs of groups) {
     const r = newSplit(s, tabs, options);
@@ -47,8 +41,7 @@ function made(groups, options = {}) {
   return s;
 }
 
-/** @param {() => unknown} fn @param {string} code */
-function expectSplitsError(fn, code) {
+function expectSplitsError(fn: () => unknown, code: string) {
   let err;
   try {
     fn();
@@ -56,7 +49,7 @@ function expectSplitsError(fn, code) {
     err = e;
   }
   expect(err).toBeInstanceOf(SplitsError);
-  expect(/** @type {SplitsError} */ (err).code).toBe(code);
+  expect((err as SplitsError).code).toBe(code);
 }
 
 describe("numbers (decision 8)", () => {
@@ -86,7 +79,7 @@ describe("numbers (decision 8)", () => {
     ]);
     s = endSplit(s, 2);
     expect(numbers(s)).toEqual([1, 3]);
-    s = /** @type {any} */ (newSplit(s, ["g", "h"])).splits;
+    s = (newSplit(s, ["g", "h"]) as any).splits;
     expect(numbers(s)).toEqual([1, 2, 3]);
     expect(s.shown).toBe(2);
     expect(tabsOf(s, 2)).toEqual(["g", "h"]);
@@ -119,7 +112,7 @@ describe("numbers (decision 8)", () => {
 
   test("the result is frozen, and the input is not changed", () => {
     const before = made([["a", "b"]]);
-    const after = /** @type {any} */ (newSplit(before, ["c", "d"])).splits;
+    const after = (newSplit(before, ["c", "d"]) as any).splits;
     expect(Object.isFrozen(after)).toBe(true);
     expect(Object.isFrozen(after.splits)).toBe(true);
     expect(numbers(before)).toEqual([1]);
@@ -136,13 +129,13 @@ describe("selecting a tab (behaviour 2)", () => {
     expect(r.change).toBe("show");
     expect(r.splits.shown).toBe(1);
     expect(r.splits.last).toBe(1);
-    const one = /** @type {any} */ (shownSplit(r.splits));
+    const one = shownSplit(r.splits) as any;
     expect(one.focus).toBe(paneOfTab(one, "a"));
   });
 
   test("a tab of the shown split focuses its pane; its focused tab changes nothing", () => {
     const s = made([["a", "b"]]);
-    const focused = /** @type {any} */ (shownSplit(s));
+    const focused = shownSplit(s) as any;
     const other = leaves(focused).find((l) => l.pane !== focused.focus)?.tab ?? "";
     const r = selectSplitTab(s, other);
     expect(r.change).toBe("focus");
@@ -166,12 +159,12 @@ describe("selecting a tab (behaviour 2)", () => {
 
   test("showing a split keeps its tree, sizes, zoom and focused pane", () => {
     let s = made([["a", "b", "c"]], {});
-    const tree = split(/** @type {any} */ (shownSplit(s)), "p1", "horizontal", "x");
+    const tree = split(shownSplit(s) as any, "p1", "horizontal", "x");
     s = updateSplit(s, 1, tree);
-    s = /** @type {any} */ (newSplit(s, ["d", "e"])).splits;
+    s = (newSplit(s, ["d", "e"]) as any).splits;
     s = selectSplitTab(s, "z").splits;
     const back = showSplit(s, 1);
-    const shown = /** @type {any} */ (shownSplit(back));
+    const shown = shownSplit(back) as any;
     expect(shown.root).toBe(tree.root);
     expect(shown.focus).toBe(tree.focus);
     expect(shown.zoom).toBe(tree.zoom);
@@ -192,30 +185,28 @@ describe("selecting a tab (behaviour 2)", () => {
 describe("a new split from marked tabs (behaviour 5, decision 6)", () => {
   test("a marked tab of another split moves: its pane closes there as closePane closes it", () => {
     let s = made([["a", "b", "c"]]);
-    const before = /** @type {any} */ (shownSplit(s));
-    s = /** @type {any} */ (newSplit(s, ["b", "z"])).splits;
+    const before = shownSplit(s) as any;
+    s = (newSplit(s, ["b", "z"]) as any).splits;
     expect(numbers(s)).toEqual([1, 2]);
     expect(tabsOf(s, 1)).toEqual(["a", "c"]);
     expect(tabsOf(s, 2)).toEqual(["b", "z"]);
-    const one = /** @type {any} */ (s.splits[0]);
-    expect(one.root).toEqual(
-      closePane(before, /** @type {string} */ (paneOfTab(before, "b"))).root,
-    );
+    const one = s.splits[0] as any;
+    expect(one.root).toEqual(closePane(before, paneOfTab(before, "b") as string).root);
   });
 
   test("split 1 left with one pane ends and frees number 1", () => {
     let s = made([["a", "b"]]);
-    s = /** @type {any} */ (newSplit(s, ["b", "z"])).splits;
+    s = (newSplit(s, ["b", "z"]) as any).splits;
     expect(numbers(s)).toEqual([1]);
     expect(tabsOf(s, 1)).toEqual(["b", "z"]);
     expect(s.shown).toBe(1);
   });
 
   test("the new split's focus is the tab asked for, else its first", () => {
-    const s = /** @type {any} */ (newSplit(createSplits(), ["a", "b"], { focus: "b" })).splits;
-    expect(shownSplit(s)?.focus).toBe(paneOfTab(/** @type {any} */ (shownSplit(s)), "b"));
-    const t = /** @type {any} */ (newSplit(createSplits(), ["a", "b"])).splits;
-    expect(shownSplit(t)?.focus).toBe(paneOfTab(/** @type {any} */ (shownSplit(t)), "a"));
+    const s = (newSplit(createSplits(), ["a", "b"], { focus: "b" }) as any).splits;
+    expect(shownSplit(s)?.focus).toBe(paneOfTab(shownSplit(s) as any, "b"));
+    const t = (newSplit(createSplits(), ["a", "b"]) as any).splits;
+    expect(shownSplit(t)?.focus).toBe(paneOfTab(shownSplit(t) as any, "a"));
   });
 
   test("fewer than two tabs, or a tab twice, is an error", () => {
@@ -341,7 +332,7 @@ describe("stepping (behaviour 8)", () => {
 describe("changing a split's tree", () => {
   test("updateSplit replaces the tree and keeps the number", () => {
     const s = made([["a", "b"]]);
-    const tree = split(/** @type {any} */ (shownSplit(s)), "p1", "vertical", "c");
+    const tree = split(shownSplit(s) as any, "p1", "vertical", "c");
     const t = updateSplit(s, 1, tree);
     expect(tabsOf(t, 1).sort()).toEqual(["a", "b", "c"]);
     expect(t.splits[0]?.number).toBe(1);
@@ -349,7 +340,7 @@ describe("changing a split's tree", () => {
 
   test("a tree left with one pane ends the split", () => {
     const s = made([["a", "b"]]);
-    const one = closePane(/** @type {any} */ (shownSplit(s)), "p2");
+    const one = closePane(shownSplit(s) as any, "p2");
     expect(updateSplit(s, 1, one)).toEqual(createSplits());
   });
 
@@ -363,7 +354,7 @@ describe("changing a split's tree", () => {
 
   test("a hidden flag from a single-split tree is not kept", () => {
     const s = made([["a", "b"]]);
-    const t = updateSplit(s, 1, hideView(/** @type {any} */ (shownSplit(s))));
+    const t = updateSplit(s, 1, hideView(shownSplit(s) as any));
     expect(t.splits[0]).not.toHaveProperty("hidden");
   });
 });
@@ -447,14 +438,14 @@ describe("hiddenSplitRefusal (decision 4)", () => {
 });
 
 describe("the split picker's rows (behaviour 7, decision 12)", () => {
-  const titles = /** @type {Record<string, string>} */ ({
+  const titles = {
     a: "Editor",
     b: "PDF",
     c: "Search",
     d: "Docs",
     e: "Notes",
-  });
-  const titleOf = (/** @type {string} */ id) => titles[id] ?? "";
+  } as Record<string, string>;
+  const titleOf = (id: string) => titles[id] ?? "";
 
   test("one row per split in number order: label, pane count, titles; the shown one active", () => {
     const s = showSplit(

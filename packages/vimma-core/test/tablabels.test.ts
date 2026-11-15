@@ -69,9 +69,11 @@ describe("tab labels", () => {
 
   test("writeTabLabels: undefined when empty, keys sorted", () => {
     expect(writeTabLabels({})).toBeUndefined();
-    expect(
-      Object.keys(/** @type {object} */ (writeTabLabels({ t2: "b", t10: "c", t1: "a" }))),
-    ).toEqual(["t1", "t10", "t2"]);
+    expect(Object.keys(writeTabLabels({ t2: "b", t10: "c", t1: "a" }) as object)).toEqual([
+      "t1",
+      "t10",
+      "t2",
+    ]);
   });
 
   test("readTabLabels is lenient: drops stale or invalid entries with warnings, never throws", () => {
