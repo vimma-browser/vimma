@@ -116,7 +116,8 @@ actions that are not implemented yet (parallel spec).
   used, and insert from `i` or `gi` lasts until `Esc` or a new document whatever the page does
   with focus; [insert-focus](insert-focus.md).)
 - **Scrolling** runs in the focused frame's child (`Services.focus.focusedContentBrowsingContext`
-  when it belongs to the browser, else the top frame); a frame with nothing to scroll answers
+  when it belongs to the browser, else the top frame), in its `PageScroll` (`actors/page-scroll.mjs`,
+  since issue #1109); a frame with nothing to scroll answers
   false and the top frame scrolls instead. Target: the nearest scrollable ancestor of the
   focused element (through shadow hosts), else `document.scrollingElement` when it can scroll,
   else the largest visible scrollable element (app shells, pdf.js). Amounts: `j k h l` 60 px

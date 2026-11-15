@@ -201,8 +201,9 @@ whose URL `vimma.js` passes in: `actors/` names no `host/` module), marked
 `safeForUntrustedWebProcess` because the parent trusts nothing from the child but a descriptor,
 which at worst flips that tab's mode, and checks every other reply. `VimmaActors.scroll` sends
 `Vimma:Scroll` with `sendQuery` to the focused frame's actor, and to the top frame when the focused
-one has nothing to scroll. `VimmaChild`'s `receiveMessage` scrolls its own document (in the PDF
-viewer's presentation mode it turns pages), and answers whether anything moved. `_run` does not wait
+one has nothing to scroll. `VimmaChild`'s `receiveMessage` hands it to the frame's `PageScroll`
+(`actors/page-scroll.mjs`), which scrolls its own document (in the PDF viewer's presentation mode
+the child turns pages instead), and answers whether anything moved. `_run` does not wait
 for that answer: `_onKeyDown` calls `_emit` at once, and the window's listeners (the status bar
 among them) redraw from `VimmaHost.status`.
 
