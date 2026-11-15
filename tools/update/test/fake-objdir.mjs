@@ -5,7 +5,15 @@
 // A stand-in engine tree and objdir for tools/update/mar-tools.mjs and the workflow steps that
 // run it, compiled with the system C compiler (the runners' and a Linux developer's `cc`).
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 
 /** nightly.yml's objdir, relative to the checkout. */
@@ -38,40 +46,62 @@ export function cc(out, source, args = []) {
   rmSync(src);
 }
 
+/** The objdir's stand-in libraries, with the libraries each links to (-l names). */
+const LIBRARIES = /** @type {const} */ ([
+  ["libmozsqlite3.so", []],
+  ["libnss3.so", ["mozsqlite3"]],
+  ["libsoftokn3.so", ["mozsqlite3"]],
+  ["libfreeblpriv3.so", []],
+  // A library of the objdir that signmar does not load: never packed.
+  ["libxul.so", []],
+]);
+
+/**
+ * Compiles the stand-in tree's libraries, signmar and mar into `dir`. Nothing compiled holds a
+ * path (the libraries have no run path, signmar's is $ORIGIN), so the files can be copied into
+ * any number of trees: a test file compiles them once instead of once per tree.
+ * @param {string} dir
+ */
+export function compileStandIns(dir) {
+  for (const [name, deps] of LIBRARIES) {
+    cc(join(dir, name), `int ${name.replace(/\W/g, "_")}(void) { return 0; }\n`, [
+      "-shared",
+      "-fPIC",
+      `-L${dir}`,
+      ...deps.map((d) => `-l${d}`),
+    ]);
+  }
+  cc(
+    join(dir, "signmar"),
+    "int libnss3_so(void); int libmozsqlite3_so(void);\n" +
+      "int main(void) { return libnss3_so() + libmozsqlite3_so(); }\n",
+    [`-L${dir}`, "-lnss3", "-lmozsqlite3", "-Wl,-rpath,$ORIGIN"],
+  );
+  cc(join(dir, "mar"), "int main(void) { return 0; }\n");
+}
+
 /**
  * A checkout with an engine tree and an objdir laid out as mozbuild leaves them: dist/bin holds
  * symlinks to the objects built elsewhere in the objdir; signmar finds its libraries through an
  * $ORIGIN run path, and the libraries, which have none as NSS's have none, find each other only
  * through LD_LIBRARY_PATH.
  * @param {string} root
+ * @param {string} [standIns] a directory compileStandIns filled; without one, they are compiled
  */
-export function fakeTree(root) {
+export function fakeTree(root, standIns) {
   const obj = join(root, OBJ);
   const bin = join(obj, "dist/bin");
   const built = join(obj, "security");
   for (const d of [bin, built, join(obj, "dist/host/bin")]) mkdirSync(d, { recursive: true });
-  const lib = (/** @type {string} */ name, /** @type {string[]} */ deps = []) => {
-    cc(join(built, name), `int ${name.replace(/\W/g, "_")}(void) { return 0; }\n`, [
-      "-shared",
-      "-fPIC",
-      `-L${built}`,
-      ...deps.map((d) => `-l${d}`),
-    ]);
+  const from = standIns ?? mkdtempSync(join(root, "stand-ins-"));
+  if (!standIns) compileStandIns(from);
+  for (const [name] of LIBRARIES) {
+    copyFileSync(join(from, name), join(built, name));
     symlinkSync(join(built, name), join(bin, name));
-  };
-  lib("libmozsqlite3.so");
-  lib("libnss3.so", ["mozsqlite3"]);
-  lib("libsoftokn3.so", ["mozsqlite3"]);
-  lib("libfreeblpriv3.so");
-  // A library of the objdir that signmar does not load: never packed.
-  lib("libxul.so");
-  cc(
-    join(bin, "signmar"),
-    "int libnss3_so(void); int libmozsqlite3_so(void);\n" +
-      "int main(void) { return libnss3_so() + libmozsqlite3_so(); }\n",
-    [`-L${built}`, "-lnss3", "-lmozsqlite3", "-Wl,-rpath,$ORIGIN"],
-  );
-  cc(join(obj, "dist/host/bin/mar"), "int main(void) { return 0; }\n");
+  }
+  copyFileSync(join(from, "signmar"), join(bin, "signmar"));
+  copyFileSync(join(from, "mar"), join(obj, "dist/host/bin/mar"));
+  if (!standIns) rmSync(from, { recursive: true });
   const packaging = join(root, "engine/tools/update-packaging");
   mkdirSync(packaging, { recursive: true });
   for (const f of ["make_full_update.sh", "common.sh"]) {

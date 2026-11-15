@@ -6,22 +6,30 @@
 // with a relative objdir, matched none of them, and the mar job's signmar then failed to start
 // (libmozsqlite3.so not found). A stand-in objdir is compiled here with the system C compiler:
 // a signmar linked, with an $ORIGIN run path, to libraries beside it, as Mozilla's is.
-import { describe, expect, it } from "vitest";
+//
+// Each test starts processes (pack or check, then ldd for each program and library, then signmar
+// and mar). Compiling the stand-ins and packing them once for the file keeps each test to that:
+// compiling them again in every test took them past vitest's 5 s with every CPU busy (#1084).
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempDir } from "../../test/temp-dir.mjs";
 import { librariesIn, missingIn } from "../mar-tools.mjs";
-import { OBJ, PACKED, cc, fakeTree } from "./fake-objdir.mjs";
+import { OBJ, PACKED, cc, compileStandIns, fakeTree } from "./fake-objdir.mjs";
 
 const SCRIPT = fileURLToPath(new URL("../mar-tools.mjs", import.meta.url));
 
@@ -35,6 +43,33 @@ const run = (cwd, args) =>
     encoding: "utf8",
     env: { ...process.env, LD_LIBRARY_PATH: "" },
   });
+
+const LINUX = process.platform === "linux";
+
+/** compileStandIns' files, and the ones single tests swap in. */
+let standIns = "";
+// Ten compiler runs, the file's one irreducible cost: on a loaded machine (every CPU busy) they
+// take several seconds, more than a hook's default 10 s leaves room for.
+beforeAll(() => {
+  if (!LINUX) return;
+  standIns = mkdtempSync(join(tmpdir(), "vimma-mar-tools-cc-"));
+  compileStandIns(standIns);
+  cc(join(standIns, "signmar-without-nss"), "int main(void) { return 0; }\n");
+  cc(join(standIns, "libnssdbm3.so"), "int libnssdbm3_so(void) { return 0; }\n", [
+    "-shared",
+    "-fPIC",
+  ]);
+  // Linked as -lnssdbm3, so it needs libnssdbm3.so whatever its own file is called.
+  cc(join(standIns, "freebl-with-nssdbm3.so"), "int libfreeblpriv3_so(void) { return 0; }\n", [
+    "-shared",
+    "-fPIC",
+    `-L${standIns}`,
+    "-lnssdbm3",
+  ]);
+}, 30_000);
+afterAll(() => {
+  if (standIns) rmSync(standIns, { recursive: true, force: true });
+});
 
 describe("mar-tools.mjs: reading ldd", () => {
   const LDD = [
@@ -67,7 +102,7 @@ describe("mar-tools.mjs: reading ldd", () => {
 describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
   it("packs signmar's libraries from a relative objdir, which ldd names by absolute path", () => {
     const root = tempDir("vimma-mar-tools-");
-    fakeTree(root);
+    fakeTree(root, standIns);
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.stderr).toBe("");
     expect(r.status).toBe(0);
@@ -81,7 +116,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("packs from an absolute objdir, as release.yml's MOZ_OBJDIR is", () => {
     const root = tempDir("vimma-mar-tools-");
-    const { obj } = fakeTree(root);
+    const { obj } = fakeTree(root, standIns);
     const r = run(root, ["pack", "--objdir", obj, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.status, r.stderr).toBe(0);
     expect(readdirSync(join(root, "mar-tools")).sort()).toEqual(PACKED);
@@ -89,7 +124,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("starts from an empty directory: nothing an earlier pack left stays", () => {
     const root = tempDir("vimma-mar-tools-");
-    fakeTree(root);
+    fakeTree(root, standIns);
     mkdirSync(join(root, "mar-tools"));
     writeFileSync(join(root, "mar-tools/stale.so"), "");
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
@@ -99,7 +134,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("fails when signmar needs a library that the objdir does not have", () => {
     const root = tempDir("vimma-mar-tools-");
-    const { bin, built } = fakeTree(root);
+    const { bin, built } = fakeTree(root, standIns);
     rmSync(join(bin, "libmozsqlite3.so"));
     rmSync(join(built, "libmozsqlite3.so"));
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
@@ -109,9 +144,8 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("fails when ldd names no NSS library of the objdir: signmar would not verify anything", () => {
     const root = tempDir("vimma-mar-tools-");
-    const { obj } = fakeTree(root);
-    rmSync(join(obj, "dist/bin/signmar"));
-    cc(join(obj, "dist/bin/signmar"), "int main(void) { return 0; }\n");
+    const { obj } = fakeTree(root, standIns);
+    copyFileSync(join(standIns, "signmar-without-nss"), join(obj, "dist/bin/signmar"));
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.status).not.toBe(0);
     expect(r.stderr).toContain("libnss3.so");
@@ -119,21 +153,11 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("packs what a library NSS opens itself loads from the objdir, though signmar does not", () => {
     const root = tempDir("vimma-mar-tools-");
-    const { bin, built } = fakeTree(root);
-    cc(join(built, "libnssdbm3.so"), "int libnssdbm3_so(void) { return 0; }\n", [
-      "-shared",
-      "-fPIC",
-    ]);
+    const { bin, built } = fakeTree(root, standIns);
+    copyFileSync(join(standIns, "libnssdbm3.so"), join(built, "libnssdbm3.so"));
     symlinkSync(join(built, "libnssdbm3.so"), join(bin, "libnssdbm3.so"));
-    rmSync(join(bin, "libfreeblpriv3.so"));
-    rmSync(join(built, "libfreeblpriv3.so"));
-    cc(join(built, "libfreeblpriv3.so"), "int libfreeblpriv3_so(void) { return 0; }\n", [
-      "-shared",
-      "-fPIC",
-      `-L${built}`,
-      "-lnssdbm3",
-    ]);
-    symlinkSync(join(built, "libfreeblpriv3.so"), join(bin, "libfreeblpriv3.so"));
+    // Over the object dist/bin's symlink points to, which stays.
+    copyFileSync(join(standIns, "freebl-with-nssdbm3.so"), join(built, "libfreeblpriv3.so"));
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.status, r.stderr).toBe(0);
     expect(readdirSync(join(root, "mar-tools"))).toContain("libnssdbm3.so");
@@ -141,7 +165,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it.each([".", "..", ""])("refuses to empty --out %j, the checkout or above it", (out) => {
     const root = tempDir("vimma-mar-tools-");
-    fakeTree(root);
+    fakeTree(root, standIns);
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", out]);
     expect(r.status).not.toBe(0);
     expect(existsSync(join(root, "engine"))).toBe(true);
@@ -149,7 +173,7 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 
   it("fails when a tool is missing", () => {
     const root = tempDir("vimma-mar-tools-");
-    const { obj } = fakeTree(root);
+    const { obj } = fakeTree(root, standIns);
     rmSync(join(obj, "dist/host/bin/mar"));
     const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
     expect(r.status).not.toBe(0);
@@ -158,12 +182,20 @@ describe.skipIf(process.platform !== "linux")("mar-tools.mjs pack", () => {
 });
 
 describe.skipIf(process.platform !== "linux")("mar-tools.mjs check", () => {
-  /** A packed directory, made by pack from the stand-in tree. */
+  /** A checkout whose mar-tools pack made from the stand-in tree; tests change copies of it. */
+  let base = "";
+  beforeAll(() => {
+    base = mkdtempSync(join(tmpdir(), "vimma-mar-tools-packed-"));
+    fakeTree(base, standIns);
+    const r = run(base, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
+    expect(r.status, r.stderr).toBe(0);
+  });
+  afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+  /** A fresh copy of the packed directory, for a test to change. */
   function packed() {
     const root = tempDir("vimma-mar-tools-");
-    fakeTree(root);
-    const r = run(root, ["pack", "--objdir", OBJ, "--engine", "engine", "--out", "mar-tools"]);
-    expect(r.status, r.stderr).toBe(0);
+    cpSync(join(base, "mar-tools"), join(root, "mar-tools"), { recursive: true });
     return root;
   }
 

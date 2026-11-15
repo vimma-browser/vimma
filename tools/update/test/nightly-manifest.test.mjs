@@ -2,7 +2,7 @@
 // published at …/vimma-nightly/update.xml for the channel `vimma-nightly`, offers the build on
 // the rolling `nightly` release (its complete MAR as `<patch>` and its tarball), and names the
 // build as `X.Y.Z-nightly.<buildID>`. A nightly manifest is never accepted where a release one is
-// checked, nor the reverse. Keys are generated here; nothing is fetched.
+// checked, nor the reverse. The keys are tools/test/test-keys.ts's; nothing is fetched.
 import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
 import { constants, createHash, privateEncrypt } from "node:crypto";
@@ -69,7 +69,7 @@ function kmsSign(body, k) {
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
 beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
-}, 60_000);
+});
 
 const update = () => ({
   appVersion: "160.0",

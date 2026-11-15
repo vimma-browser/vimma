@@ -1,9 +1,9 @@
 // docs/specs/m6a-updater.md §2 and §7: the update manifest a published release gets, built by
 // tools/update/manifest.mjs, signed in update-publish.yml's `sign` job and checked before the
-// push with the verifier the browser runs (packages/vimma-core/src/updates/updates.mjs). Keys are
-// generated here; nothing is fetched. A run with VIMMA_UPDATE_ASSETS=<dir> (a release's
-// tarball, AppImage, .deb and SHA256SUMS, downloaded by hand) also builds, signs and verifies a
-// manifest for those real files.
+// push with the verifier the browser runs (packages/vimma-core/src/updates/updates.mjs). The keys
+// are tools/test/test-keys.ts's; nothing is fetched. A run with VIMMA_UPDATE_ASSETS=<dir> (a
+// release's tarball, AppImage, .deb and SHA256SUMS, downloaded by hand) also builds, signs and
+// verifies a manifest for those real files.
 import { describe, expect, it, beforeAll, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { createHash, privateEncrypt, constants } from "node:crypto";
@@ -92,7 +92,7 @@ const offer = () => ({
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
 beforeAll(async () => {
   [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
-}, 60_000);
+});
 
 const DL = "https://github.com/vimma-browser/vimma/releases/download/v0.3.1";
 
