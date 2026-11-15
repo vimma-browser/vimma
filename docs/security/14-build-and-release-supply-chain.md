@@ -133,15 +133,19 @@ of the same commit read it too, so a tree without it could not be released anywa
   [`no workflow lets npx fetch a package`](../../tools/test/build-supply-chain.test.ts),
   [`surfer.json lists no add-ons`](../../tools/test/build-supply-chain.test.ts)
   An agent running under the `vimma-guardrails` Claude Code plugin is held to the same lockfile:
-  its Bash guard refuses npm's install and update commands, an npx or `npm exec` that could fetch
-  a package (anything but `--no`, or a bin already in `node_modules/.bin`), the installs and
-  runners of pnpm, Yarn and Bun, pip without `--require-hashes`, a crate installed without
-  `--locked` and a download piped into a shell. It reads commands the way its other rules do, so a
-  name built at run time, an alias or a script file the command runs is beyond it: it is a
-  guardrail for agents, and `npm ci` in CI is the check that holds.
+  its Bash guard (`tools/claude-plugin/hooks/lib/install-rules.mjs`) refuses npm's install,
+  update, dedupe and `audit fix` commands, an npx or `npm exec` that could fetch a package or run
+  a bin from outside the checkout (anything but `--no` or a bin already in `node_modules/.bin`;
+  never with a prefix, global, workspace, `--yes`, `--package` or `--call` setting, as a flag or an
+  `npm_config_` variable), the installs and runners of pnpm, Yarn, Bun and corepack, Python
+  packages without `--require-hashes`, a crate installed without `--locked`, and a download that a
+  shell or interpreter runs. It reads commands the way its other rules do, through quoting,
+  wrappers, `sh -c`, here-strings, `find -exec` and the command an npx runs; a name built at run
+  time, an alias or a script file the command runs is beyond it. It is a guardrail for agents,
+  and `npm ci` in CI is the check that holds.
   [`installs outside the lockfile`](../../tools/claude-plugin/test/bash-guard.test.ts),
   [`npx and npm exec`](../../tools/claude-plugin/test/bash-guard.test.ts),
-  [`pip, cargo install and piped downloads`](../../tools/claude-plugin/test/bash-guard.test.ts)
+  [`Python packages, crates and piped downloads`](../../tools/claude-plugin/test/bash-guard.test.ts)
 - B5. A workflow **never** targets a self-hosted runner: every job runs on a standard
   GitHub-hosted image or calls a workflow file of this repository, and a `runs-on` expression
   that cannot be resolved to a hosted image fails. The test parses each workflow as YAML and

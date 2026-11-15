@@ -10,9 +10,9 @@
 
 /**
  * @typedef {{ text: string, dynamic: boolean }} Word
- * @typedef {{ words: Word[], subs: Segment[][], writes: Word[], op: string | null }} Segment
+ * @typedef {{ words: Word[], subs: Segment[][], writes: Word[], stdin: string[], op: string | null }} Segment
  *   a simple command, the commands of its substitutions, the files its output redirections
- *   write, and the operator after it
+ *   write, the text its here-strings and heredocs feed it, and the operator after it
  * @typedef {{ name: string, args: Word[] }} Command
  */
 
@@ -28,7 +28,7 @@ class Parser {
   constructor(src) {
     this.s = src;
     this.i = 0;
-    /** @type {{ delim: string, strip: boolean }[]} */
+    /** @type {{ delim: string, strip: boolean, into: string[] }[]} */
     this.heredocs = [];
   }
 
@@ -47,9 +47,11 @@ class Parser {
     let subs = [];
     /** @type {Word[]} */
     let writes = [];
+    /** @type {string[]} */
+    let stdin = [];
     /** @type {Word | null} */
     let word = null;
-    /** @type {"" | "in" | "out"} the next word is a redirection target, not an argument */
+    /** @type {"" | "in" | "out" | "here"} the next word is a redirection target or a here-string */
     let target = "";
     let depth = 0;
     const cur = () => (word ??= { text: "", dynamic: false });
@@ -58,6 +60,7 @@ class Parser {
     const endWord = () => {
       if (!word) return;
       if (target === "out") writes.push(word);
+      if (target === "here") stdin.push(word.text);
       if (target) target = "";
       else words.push(word);
       word = null;
@@ -65,10 +68,13 @@ class Parser {
     /** @param {string | null} op */
     const endSeg = (op) => {
       endWord();
-      if (words.length || subs.length || writes.length) segs.push({ words, subs, writes, op });
+      if (words.length || subs.length || writes.length || stdin.length) {
+        segs.push({ words, subs, writes, stdin, op });
+      }
       words = [];
       subs = [];
       writes = [];
+      stdin = [];
     };
 
     while (this.i < s.length) {
@@ -137,10 +143,10 @@ class Parser {
           subs.push(this.script(true));
         } else if (s.startsWith("<<<", this.i)) {
           this.i += 3;
-          target = "in";
+          target = "here";
         } else if (s.startsWith("<<", this.i)) {
           this.i += 2;
-          this.heredocStart();
+          this.heredocStart(stdin);
         } else {
           const start = this.i;
           while (this.i < s.length && "<>&|".includes(s[this.i] ?? "")) this.i++;
@@ -210,8 +216,11 @@ class Parser {
     return parseShell(body);
   }
 
-  /** Reads the delimiter after `<<` or `<<-`; the body starts at the next newline. */
-  heredocStart() {
+  /**
+   * Reads the delimiter after `<<` or `<<-`; the body starts at the next newline.
+   * @param {string[]} into the stdin of the command the heredoc feeds
+   */
+  heredocStart(into) {
     const s = this.s;
     const strip = s[this.i] === "-";
     if (strip) this.i++;
@@ -222,20 +231,27 @@ class Parser {
       if (c !== "'" && c !== '"' && c !== "\\") delim += c;
       this.i++;
     }
-    if (delim) this.heredocs.push({ delim, strip });
+    if (delim) this.heredocs.push({ delim, strip, into });
   }
 
-  /** Skips the bodies of the heredocs opened on the line just ended: they are data. */
+  /**
+   * Skips the bodies of the heredocs opened on the line just ended: they are data, kept as the
+   * stdin of their command, not parsed as commands.
+   */
   skipHeredocs() {
     const s = this.s;
-    for (const { delim, strip } of this.heredocs.splice(0)) {
+    for (const { delim, strip, into } of this.heredocs.splice(0)) {
+      const body = [];
       while (this.i < s.length) {
         const nl = s.indexOf("\n", this.i);
         const end = nl < 0 ? s.length : nl;
         const line = s.slice(this.i, end);
         this.i = end + 1;
-        if ((strip ? line.replace(/^\t+/, "") : line) === delim) break;
+        const text = strip ? line.replace(/^\t+/, "") : line;
+        if (text === delim) break;
+        body.push(text);
       }
+      into.push(body.join("\n"));
     }
   }
 }
@@ -270,6 +286,22 @@ const WRAPPERS = new Map([
   ["stdbuf", ["-i", "-o", "-e"]],
   ["timeout", ["-s", "-k"]],
   ["xargs", ["-n", "-I", "-L", "-P", "-d", "-s", "-E", "-a"]],
+  [
+    "parallel",
+    [
+      "-j",
+      "--jobs",
+      "-S",
+      "--sshlogin",
+      "-a",
+      "--arg-file",
+      "-d",
+      "--delimiter",
+      "-I",
+      "-C",
+      "--colsep",
+    ],
+  ],
 ]);
 
 /**
