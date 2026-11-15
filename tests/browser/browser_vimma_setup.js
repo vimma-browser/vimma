@@ -348,6 +348,7 @@ add_task(async function install_without_the_pages_browser_fails_and_finishes() {
   await press(doc, "KEY_Enter");
   await TestUtils.waitForCondition(() => step(doc) === "done", "the page finishes");
   Assert.equal(doc.querySelector("#setup-results li:last-child")?.className, "failed");
+  Assert.deepEqual(stub.asked, [], "AMO never asked: install fails before AddonManager");
   Assert.strictEqual(await AddonManager.getAddonByID(UBLOCK), null, "nothing installed");
   SetupHost.browserFor = realBrowserFor;
   stub.restore();

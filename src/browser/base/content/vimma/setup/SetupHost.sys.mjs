@@ -256,7 +256,7 @@ export const SetupHost = {
    * the standard permission prompt are Firefox's own; Vimma never answers the prompt.
    * @param {MozBrowser | null} browser  the setup page's browser, which the prompt anchors to.
    *   Without one, "failed": Firefox's permission prompt throws on a null anchor
-   *   (ExtensionsUI.sys.mjs getTabBrowser) and the install would never end.
+   *   (ExtensionsUI.sys.mjs getTabBrowser), and the page would stay at "applying".
    * @param {string} guid  one the page was shown
    * @returns {Promise<"installed" | "declined" | "failed">}
    */
