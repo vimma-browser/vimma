@@ -44,7 +44,7 @@ only the agent workspace, and every request asks you first (§12).
   but not the 4 agents, so MCP agents cannot keep out a task Vimma started; a ticket has one
   connection at a time (M51).
   [`test_limits`](../../tests/browser/browser_vimma_control.js),
-  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent.js),
+  [`test_agents_cannot_take_every_connection`](../../tests/browser/browser_vimma_mcp_agent_grants.js),
   [`test_mcp_agents_cannot_keep_out_a_ticket`](../../tests/browser/browser_vimma_agent_cli.js)
 - S6. A token file left by a crash **must** be removed at start; a symlink or directory in its
   place is never followed. [`test_stale_discovery_file_removed_at_start`](../../tests/browser/browser_vimma_control.js)
@@ -103,7 +103,7 @@ only the agent workspace, and every request asks you first (§12).
   [`test_a_query_under_way_is_not_settled_even_heard_late`](../../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_a_grep_jump_until_it_has_drawn`](../../tests/browser/browser_vimma_state_waits.js),
   [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.ts),
-  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.ts),
   [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.

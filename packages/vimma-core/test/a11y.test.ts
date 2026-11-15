@@ -23,11 +23,10 @@ import {
 // vimma palette, the built-in Tokyo Night and a light theme; and WCAG non-text contrast (3:1) of
 // the focus colour (focus rings, the focused pane's outline) on every surface it touches.
 
-/** @import { Announced } from "../src/ui/statusbar.mjs" */
-/** @import { Mode } from "../src/keys/modes.mjs" */
+import type { Announced } from "../src/ui/statusbar.mjs";
+import type { Mode } from "../src/keys/modes.mjs";
 
-/** @param {string} name */
-const fixture = (name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`../../../tests/contract/theme/${name}`, import.meta.url), "utf8");
 const theme = mergeWithDefaults({}).theme;
 
@@ -49,14 +48,10 @@ const THEMES = {
 };
 
 describe("statusAnnouncement: the mode, said once, and only where nothing else says it", () => {
-  /** @type {Announced} */
-  const start = { mode: "normal", notFound: null };
+  const start: Announced = { mode: "normal", notFound: null };
 
-  /**
-   * Feeds `inputs` one after another; the texts spoken.
-   * @param {Array<Parameters<typeof statusAnnouncement>[1]>} inputs
-   */
-  const speak = (inputs, last = start) => {
+  /** Feeds `inputs` one after another; the texts spoken. */
+  const speak = (inputs: Array<Parameters<typeof statusAnnouncement>[1]>, last = start) => {
     const said = [];
     for (const input of inputs) {
       const r = statusAnnouncement(last, input);
@@ -73,7 +68,7 @@ describe("statusAnnouncement: the mode, said once, and only where nothing else s
     ]);
   });
 
-  test.each(/** @type {Array<[Mode]>} */ ([["help"], ["command"], ["panel"]]))(
+  test.each([["help"], ["command"], ["panel"]] as Array<[Mode]>)(
     "%s mode is not spoken: its own focused UI says it, and the way back is silent",
     (mode) => {
       expect(speak([{ mode }, { mode: "normal" }])).toEqual([]);
@@ -188,12 +183,9 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
     });
 
     test(`${name}: link hints and every mode badge`, () => {
-      /** @type {Array<[string, string]>} */
-      const pairs = [
+      const pairs: Array<[string, string]> = [
         ["--vimma-hint-fg", "--vimma-hint-bg"],
-        ...BADGES.map(
-          /** @returns {[string, string]} */ (b) => [`--vimma-mode-${b}-fg`, `--vimma-mode-${b}`],
-        ),
+        ...BADGES.map((b): [string, string] => [`--vimma-mode-${b}-fg`, `--vimma-mode-${b}`]),
       ];
       for (const [fg, bg] of pairs) {
         const ratio = contrastRatio(String(r.tokens[fg]), String(r.tokens[bg]));
@@ -220,11 +212,11 @@ describe("contrast (WCAG 2.x AA, 4.5:1)", () => {
   });
 
   test("the focus colour is the accent wherever the accent already reaches 3:1", () => {
-    for (const name of /** @type {const} */ ([
+    for (const name of [
       "vimma dark (built in)",
       "Tokyo Night (built in)",
       "Tokyo Night (Omarchy)",
-    ])) {
+    ] as const) {
       const t = THEMES[name].tokens;
       expect(t["--vimma-focus"], name).toBe(t["--vimma-accent"]);
     }

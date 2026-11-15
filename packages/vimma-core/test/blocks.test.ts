@@ -14,18 +14,11 @@ import {
 /**
  * A descriptor tree from a nested shorthand: [tag, props?, ...children]. Every element is on
  * screen unless it says `onScreen: false`. Indices are in document order.
- * @param {any} node
  */
-function tree(node) {
-  /** @type {any[]} */
-  const out = [];
-  /** @type {Map<string, number>} */
-  const names = new Map();
-  /**
-   * @param {any} n
-   * @param {number} parent
-   */
-  const add = (n, parent) => {
+function tree(node: any) {
+  const out: any[] = [];
+  const names: Map<string, number> = new Map();
+  const add = (n: any, parent: number) => {
     const [tag, maybeProps, ...rest] = n;
     const hasProps = maybeProps && typeof maybeProps === "object" && !Array.isArray(maybeProps);
     const props = hasProps ? maybeProps : {};
@@ -36,16 +29,13 @@ function tree(node) {
     for (const c of children) add(c, index);
   };
   add(node, -1);
-  return { descs: out, at: (/** @type {string} */ n) => /** @type {number} */ (names.get(n)) };
+  return { descs: out, at: (n: string) => names.get(n) as number };
 }
 
 /** A leaf with visible text of its own. */
 const T = { directText: true, text: true };
 
-/**
- * @param {ReturnType<typeof tree>} t
- */
-const picked = (t) =>
+const picked = (t: ReturnType<typeof tree>) =>
   pickBlocks(t.descs).map((b) => `${t.descs[b.index].name ?? t.descs[b.index].tag}:${b.kind}`);
 
 describe("classifyBlock: what a text block is", () => {
@@ -389,7 +379,7 @@ describe("adjacentBlock: the walks of j and k", () => {
 
 describe("blockAround / blockObject: ip and ap in copy mode", () => {
   // The chain from body to the element holding the caret, as the child describes it.
-  const chain = (/** @type {any[]} */ ...links) => {
+  const chain = (...links: any[]) => {
     let node = links[links.length - 1];
     for (let i = links.length - 2; i >= 0; i--) node = [...links[i], node];
     return tree(node);
