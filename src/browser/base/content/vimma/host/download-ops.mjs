@@ -451,11 +451,19 @@ export class DownloadRows {
  * @param {DownloadListEntry} d
  */
 async function showInFolder(d) {
-  /** @type {SessionDownload} */
-  const download = isSession(d)
-    ? d
-    : await lazy.Downloads.createDownload({ source: d.source.url, target: d.target.path });
+  const download = isSession(d) ? d : await downloadFromHistory(d);
   await download.showContainingDirectory();
+}
+
+/**
+ * A `Download` for a history entry's file. Core offers the keys that need one only for a file
+ * that exists, whose path the entry has; without one, createDownload would throw all the same.
+ * @param {DownloadListEntry} d
+ */
+function downloadFromHistory(d) {
+  const path = d.target.path;
+  if (!path) throw new Error("the download has no file");
+  return lazy.Downloads.createDownload({ source: d.source.url, target: path });
 }
 
 /**

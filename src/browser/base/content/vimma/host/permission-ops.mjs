@@ -102,7 +102,7 @@ function stateLabel(id, state) {
  */
 function readRecords(browser, principal) {
   const SP = lazy.SitePermissions;
-  /** @type {Record<number | string, PermissionRecord["scope"]>} */
+  /** @type {Record<string, PermissionRecord["scope"]>} */
   const scopes = {
     [SP.SCOPE_PERSISTENT]: "persistent",
     [SP.SCOPE_SESSION]: "session",
@@ -112,44 +112,40 @@ function readRecords(browser, principal) {
   };
   // Globally blocked permissions (and temporary ones) are only in the browser's list.
   // SitePermissions.getAllForBrowser: each permission set for the tab, with its state and scope.
-  /** @type {{ id: string, state: number, scope: number }[]} */
-  const browserPerms = SP.getAllForBrowser(browser);
-  const forBrowser = new Map(browserPerms.map((p) => [p.id, p]));
-  return SP.listPermissions()
-    .filter(
-      (/** @type {string} */ id) => SP.getPermissionLabel(id) && id !== "open-protocol-handler",
-    )
-    .map((/** @type {string} */ id) => {
-      const def = SP.getDefault(id);
-      let { state, scope } = SP.getForPrincipal(principal, id, browser);
-      const global = forBrowser.get(id);
-      if (global && global.scope === SP.SCOPE_GLOBAL) ({ state, scope } = global);
-      let set = state !== def || scope !== SP.SCOPE_PERSISTENT;
-      let label = stateLabel(id, state);
-      if (id === "cookie") {
-        // Page Info: with no permission for the site, cookies follow Firefox's cookie settings,
-        // which no single state describes.
-        const own = services.perms.testPermissionFromPrincipal(principal, "cookie");
-        set = own !== SP.UNKNOWN;
-        if (!set) label = "Firefox's cookie settings";
-        else state = own;
-      }
-      if (id === "popup" && !set) {
-        // A stored block reads as the default, Block; only the site's own entry tells them apart.
-        set = services.perms.testExactPermissionFromPrincipal(principal, "popup") !== SP.UNKNOWN;
-      }
-      const s = scopes[scope] ?? "persistent";
-      return {
-        id,
-        label: SP.getPermissionLabel(id),
-        state,
-        stateLabel: label,
-        states: SP.getAvailableStates(id),
-        set,
-        scope: s,
-        locked: s === "policy" || s === "global" || lockedByPref(id),
-      };
-    });
+  const forBrowser = new Map(SP.getAllForBrowser(browser).map((p) => [p.id, p]));
+  return SP.listPermissions().flatMap((id) => {
+    const permLabel = SP.getPermissionLabel(id);
+    if (!permLabel || id === "open-protocol-handler") return [];
+    const def = SP.getDefault(id);
+    let { state, scope } = SP.getForPrincipal(principal, id, browser);
+    const global = forBrowser.get(id);
+    if (global && global.scope === SP.SCOPE_GLOBAL) ({ state, scope } = global);
+    let set = state !== def || scope !== SP.SCOPE_PERSISTENT;
+    let label = stateLabel(id, state);
+    if (id === "cookie") {
+      // Page Info: with no permission for the site, cookies follow Firefox's cookie settings,
+      // which no single state describes.
+      const own = services.perms.testPermissionFromPrincipal(principal, "cookie");
+      set = own !== SP.UNKNOWN;
+      if (!set) label = "Firefox's cookie settings";
+      else state = own;
+    }
+    if (id === "popup" && !set) {
+      // A stored block reads as the default, Block; only the site's own entry tells them apart.
+      set = services.perms.testExactPermissionFromPrincipal(principal, "popup") !== SP.UNKNOWN;
+    }
+    const s = scopes[scope] ?? "persistent";
+    return {
+      id,
+      label: permLabel,
+      state,
+      stateLabel: label,
+      states: SP.getAvailableStates(id),
+      set,
+      scope: s,
+      locked: s === "policy" || s === "global" || lockedByPref(id),
+    };
+  });
 }
 
 /**

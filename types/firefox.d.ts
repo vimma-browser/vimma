@@ -572,19 +572,30 @@ interface LazyModules {
   // may give null too).
   E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
-  // Untyped: wide Firefox APIs Vimma drives in depth (downloads, add-ons, permissions, form
-  // autofill, search, containers, js-ctypes and subprocesses).
-  AboutNewTab: any;
-  AddonManager: any;
+  // Untyped: wide Firefox APIs Vimma drives in depth (the agent's downloads and dialogs,
+  // js-ctypes and subprocesses).
+  // engine/browser/modules/AboutNewTab.sys.mjs: setting the URL overrides it until the reset.
+  AboutNewTab: {
+    newTabURL: string;
+    readonly newTabURLOverridden: boolean;
+    resetNewTabURL(): void;
+  };
+  AddonManager: AddonManagerApi;
   // engine/toolkit/components/formautofill/shared/AutofillFormFactory.sys.mjs
   AutofillFormFactory: { createFromField(field: Element): FormLike };
-  ContextualIdentityService: any;
-  DownloadHistory: any;
-  DownloadIntegration: any;
+  ContextualIdentityService: ContextualIdentityServiceApi;
+  // engine/toolkit/components/downloads/DownloadHistory.sys.mjs: the session's downloads, then
+  // the newest from history.
+  DownloadHistory: {
+    getList(options: { type: string; maxHistoryResults?: number }): Promise<DownloadList>;
+  };
+  // engine/toolkit/components/downloads/DownloadIntegration.sys.mjs, as
+  // `Integration.downloads.getCombined` takes it.
+  DownloadIntegration: object;
   DownloadPaths: any;
-  Downloads: any;
-  DownloadsCommon: any;
-  ExtensionPermissions: any;
+  Downloads: DownloadsModule;
+  DownloadsCommon: DownloadsCommonApi;
+  ExtensionPermissions: ExtensionPermissionsApi;
   // engine/toolkit/components/formautofill/shared/FormAutofillHeuristics.sys.mjs: undefined
   // when the form has no field it reads.
   FormAutofillHeuristics: {
@@ -599,16 +610,20 @@ interface LazyModules {
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
   PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
-  SearchService: any;
-  SitePermissions: any;
+  SearchService: SearchServiceApi;
+  SitePermissions: SitePermissionsApi;
   Subprocess: any;
-  UrlbarSearchUtils: any;
+  // engine/browser/components/urlbar/UrlbarSearchUtils.sys.mjs: the visible engines with an
+  // `@` alias, each with those aliases (an empty list when the search service fails to start).
+  UrlbarSearchUtils: {
+    tokenAliasEngines(): Promise<{ engine: SearchEngine; tokenAliases: string[] }[]>;
+  };
   ctypes: any;
   nsContentDispatchChooser: any;
   nsUnknownContentTypeDialog: any;
-  // Its per-window count of PiP windows is compared with `> 0`, a window without one (no entry,
-  // undefined) counting as none.
-  PictureInPicture: any;
+  // engine/toolkit/components/pictureinpicture/PictureInPicture.sys.mjs: its per-window count of
+  // PiP windows; a window without one has no entry.
+  PictureInPicture: { readonly originatingWinWeakMap: WeakMap<Window, number> };
 
   // Vimma's own modules, imported lazily to break a load cycle.
   AgentChat: typeof import("../src/browser/base/content/vimma/agent/AgentChat.sys.mjs").AgentChat;
@@ -1517,6 +1532,8 @@ interface DownloadListView {
 }
 interface DownloadList {
   getAll(): Promise<DownloadListEntry[]>;
+  /** The ALL list also holds the agent's downloads (ctl/AgentDownloads.sys.mjs). */
+  remove(download: DownloadListEntry | FirefoxDownload): Promise<void>;
   addView(view: DownloadListView): Promise<void>;
   removeView(view: DownloadListView): Promise<void>;
 }
@@ -1551,8 +1568,8 @@ interface ExtensionBrowserAction {
   /** As the button's click or its `_execute_action` shortcut. */
   triggerAction(window: BrowserWindow): void;
 }
-// engine/toolkit/mozapps/extensions/AddonManager.sys.mjs: the members the add-on picker uses.
-// LazyModules leaves the module untyped (setup/ uses others); addon-ops.mjs reads it as this.
+// engine/toolkit/mozapps/extensions/AddonManager.sys.mjs: the members the add-on picker uses
+// (setup/'s are declared further down).
 interface AddonManagerApi {
   getAddonsByTypes(types: readonly string[]): Promise<AddonWrapper[]>;
   getAllInstalls(): Promise<AddonInstall[]>;
@@ -1716,4 +1733,151 @@ interface BrowserWindow {
     features?: string;
     args?: unknown;
   }): BrowserWindow;
+}
+
+// The Firefox modules the rest of Vimma reads lazily (#938, after host/ and ctl/), with only the
+// members it uses.
+
+// engine/toolkit/mozapps/extensions/AddonManager.sys.mjs: the setup page's install of an AMO
+// add-on. getInstallForURL rejects before the add-on manager has started.
+interface AddonManagerApi {
+  getInstallForURL(
+    url: string,
+    options?: { hash?: string | null; name?: string },
+  ): Promise<AddonInstall>;
+  /** Firefox's own install path from AMO: policy, signature and permission prompt. */
+  installAddonFromAOM(browser: MozBrowser, uri: nsIURI, install: AddonInstall): void;
+}
+// AddonManager.sys.mjs (AddonInstallWrapper): its listener hears of each step.
+interface AddonInstall {
+  addListener(listener: AddonInstallListener): void;
+  removeListener(listener: AddonInstallListener): void;
+}
+interface AddonInstallListener {
+  onInstallEnded?(): void;
+  onInstallCancelled?(): void;
+  onDownloadCancelled?(): void;
+  onInstallFailed?(): void;
+  onDownloadFailed?(): void;
+}
+
+// engine/toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs: the getters
+// return copies; getPublicIdentityFromId gives undefined for an id without a public container.
+// update and remove give false for an id they do not know. A container the user named has a
+// name; Firefox's own have an l10nId instead (the browser tests declare the same).
+interface ContextualIdentity {
+  readonly userContextId: number;
+  readonly public: boolean;
+  readonly icon: string;
+  readonly color: string;
+  readonly name?: string;
+  readonly l10nId?: string;
+}
+interface ContextualIdentityServiceApi {
+  getPublicIdentities(): ContextualIdentity[];
+  getPublicIdentityFromId(userContextId: number): ContextualIdentity | undefined;
+  /** Throws once the container ids run out. */
+  create(name: string, icon: string, color: string): ContextualIdentity;
+  /** Throws for a name of only whitespace. */
+  update(userContextId: number, name: string, icon: string, color: string): boolean;
+  remove(userContextId: number): boolean;
+  closeContainerTabs(userContextId?: number): Promise<void>;
+}
+
+// engine/toolkit/components/downloads/Downloads.sys.mjs: the list kinds (strings such as
+// "{Downloads.PUBLIC}"), and a download made from a URL and a path (DownloadCore's
+// Download.fromSerializable throws without a target path). Named apart from the browser tests'
+// DownloadsApi (types/mochitest/firefox.d.ts), whose lists and downloads are the agent's kind.
+interface DownloadsModule {
+  readonly PUBLIC: string;
+  readonly PRIVATE: string;
+  readonly ALL: string;
+  getList(type: string): Promise<DownloadList>;
+  createDownload(properties: { source: string; target: string }): Promise<SessionDownload>;
+}
+// engine/browser/components/downloads/DownloadsCommon.sys.mjs: the downloads panel's commands.
+interface DownloadsCommonApi {
+  /** Null before the download succeeds. */
+  getMimeInfo(download: DownloadListEntry): { readonly type: string } | null;
+  deleteDownload(download: DownloadListEntry): Promise<void>;
+  deleteDownloadFiles(download: DownloadListEntry, clearHistoryOnDelete?: number): Promise<void>;
+  copyDownloadLink(download: DownloadListEntry): void;
+  openDownload(
+    download: DownloadListEntry,
+    options?: { useSystemDefault?: boolean },
+  ): Promise<void>;
+  /** "open", "unblock", "confirmBlock" or "cancel". */
+  confirmUnblockDownload(options: {
+    verdict?: string;
+    becauseBlockedByReputationCheck: boolean;
+    window: Window;
+    dialogType: "unblock" | "chooseUnblock" | "chooseOpen";
+  }): Promise<string>;
+}
+
+// engine/toolkit/components/search/SearchService.sys.mjs (its getters throw before init has
+// finished, except isInitialized) and SearchEngine.sys.mjs. `_urls` is the engine's internal
+// list of URL templates.
+interface SearchServiceApi {
+  readonly isInitialized: boolean;
+  readonly CHANGE_REASON: { readonly USER: number };
+  init(): Promise<void>;
+  getEngines(): Promise<SearchEngine[]>;
+  getVisibleEngines(): Promise<SearchEngine[]>;
+  getAppProvidedEngines(): Promise<SearchEngine[]>;
+  getDefault(): Promise<SearchEngine>;
+  readonly defaultEngine: SearchEngine | null;
+  getEngineById(id: string): SearchEngine | null;
+  addUserEngine(formInfo: { name: string; url: string; alias?: string }): Promise<UserSearchEngine>;
+  removeEngine(engine: SearchEngine, changeReason: number): Promise<void>;
+  setDefault(engine: SearchEngine, changeReason: number): Promise<void>;
+}
+interface SearchEngine {
+  readonly id: string;
+  readonly name: string;
+  /** Empty without one; set trims it. */
+  alias: string;
+  readonly aliases: string[];
+  readonly hidden: boolean;
+  readonly _urls?: { readonly type: string; readonly template: string }[];
+}
+// engine/toolkit/components/search/UserSearchEngine.sys.mjs: an engine the user (or Vimma) added.
+interface UserSearchEngine extends SearchEngine {
+  /** False when another engine has the name. */
+  rename(name: string): boolean;
+  changeUrl(type: string, template: string | null, postData: string | null): void;
+}
+
+// engine/browser/modules/SitePermissions.sys.mjs: states are the permission manager's actions,
+// scopes are strings. getPermissionLabel gives null for a permission without a label;
+// getMultichoiceStateLabel gives null, or throws, for a state it has no label for.
+interface SitePermissionsApi {
+  readonly UNKNOWN: number;
+  readonly ALLOW: number;
+  readonly BLOCK: number;
+  readonly SCOPE_PERSISTENT: string;
+  readonly SCOPE_SESSION: string;
+  readonly SCOPE_TEMPORARY: string;
+  readonly SCOPE_POLICY: string;
+  readonly SCOPE_GLOBAL: string;
+  listPermissions(): string[];
+  getPermissionLabel(id: string): string | null;
+  getMultichoiceStateLabel(id: string, state: number): string | null;
+  getAvailableStates(id: string): number[];
+  getDefault(id: string): number;
+  isSupportedPrincipal(principal: nsIPrincipal | null): boolean;
+  getAllForBrowser(browser: MozBrowser): { id: string; state: number; scope: string }[];
+  getForPrincipal(
+    principal: nsIPrincipal,
+    id: string,
+    browser?: MozBrowser,
+  ): { state: number; scope: string };
+  setForPrincipal(
+    principal: nsIPrincipal,
+    id: string,
+    state: number,
+    scope?: string,
+    browser?: MozBrowser,
+  ): void;
+  removeFromPrincipal(principal: nsIPrincipal, id: string, browser?: MozBrowser): void;
 }
