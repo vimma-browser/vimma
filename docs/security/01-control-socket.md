@@ -115,7 +115,9 @@ only the agent workspace, and every request asks you first (§12).
   reads only what core `parseAgentRequest` gives back: the arguments the validator accepts,
   copied into the shape that command takes, whichever way the command came (a socket, the
   built-in agent's tool calls); any other arguments are refused (`invalid-args`) before the
-  command runs.
+  command runs. It checks and copies one copy of the caller's own data, made as JSON makes it,
+  so that an in-process caller's getter or inherited property cannot change a value between the
+  check and the handler.
   [`LineFramer gives back the lines sent, however the bytes are chunked`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`any line a client sends, decoded as the server does, validates without throwing`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`every valid message validates; one changed or added field makes it invalid`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
@@ -124,7 +126,9 @@ only the agent workspace, and every request asks you first (§12).
   [`agent-open passes only short http(s) URLs; agent labels never carry control or bidi characters`](../../packages/vimma-core/test/fuzz/control.fuzz.test.mjs),
   [`test_handshake`](../../tests/browser/browser_vimma_control.js),
   [`a copy: the parsed arguments share no object with the request's`](../../packages/vimma-core/test/control-v2.test.mjs),
-  [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.mjs)
+  [`what the validator refuses is null: a missing tab, a wrong type, an extra field`](../../packages/vimma-core/test/control-v2.test.mjs),
+  [`arguments are read once: a getter cannot change a value after the check`](../../packages/vimma-core/test/control-v2.test.mjs),
+  [`inherited properties are not arguments`](../../packages/vimma-core/test/control-v2.test.mjs)
 - S12. The `full` role **must** run only with `vimma.control.enabled`, and the `agent` role only
   with MCP on; a hello for a role that is off is refused (`role-off`) and closed, and turning a
   switch off closes that role's connections. An agent connection **never** reaches `send-keys`,

@@ -599,11 +599,22 @@ const isStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string
  * `command` is no agent command or the validator refuses the arguments. The browser's handlers
  * read nothing else, so arguments that reach them by another way than the socket's validator
  * (the built-in agent's tool calls, a test) are held to the same checks.
- * @param {string} command @param {unknown} args
+ * @param {string} command @param {unknown} given
  * @returns {AgentRequest | null}
  */
-export function parseAgentRequest(command, args) {
-  if (!AGENT_COMMANDS.includes(command) || !isObject(args)) return null;
+export function parseAgentRequest(command, given) {
+  if (!AGENT_COMMANDS.includes(command) || !isObject(given)) return null;
+  // Checked and read from one copy of the caller's own data, made as the socket's JSON makes
+  // it: an in-process caller's getter or inherited property cannot hand the handler a value
+  // other than the one checked.
+  /** @type {unknown} */
+  let args;
+  try {
+    args = JSON.parse(JSON.stringify(given));
+  } catch {
+    return null;
+  }
+  if (!isObject(args)) return null;
   /** @type {string[]} */
   const errors = [];
   checkRequest({ type: "request", id: 1, command, args }, errors);
