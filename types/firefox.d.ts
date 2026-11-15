@@ -19,11 +19,11 @@ interface FirefoxServices {
   focus: nsIFocusManager;
   // engine/caps/nsIScriptSecurityManager.idl
   scriptSecurityManager: {
-    getSystemPrincipal(): unknown;
-    createNullPrincipal(originAttributes: object): unknown;
-    createContentPrincipal(uri: nsIURI, originAttributes: object): unknown;
-    principalWithOA(principal: unknown, originAttributes: object): unknown;
-    checkLoadURIWithPrincipal(principal: unknown, uri: unknown, flags?: number): void;
+    getSystemPrincipal(): nsIPrincipal;
+    createNullPrincipal(originAttributes: object): nsIPrincipal;
+    createContentPrincipal(uri: nsIURI, originAttributes: object): nsIPrincipal;
+    principalWithOA(principal: nsIPrincipal, originAttributes: object): nsIPrincipal;
+    checkLoadURIWithPrincipal(principal: nsIPrincipal, uri: nsIURI, flags?: number): void;
   };
   clipboard: nsIClipboard;
   // engine/dom/events/nsIEventListenerService.idl
@@ -337,8 +337,11 @@ declare const ChromeUtils: {
     url: S extends `chrome://browser/content/vimma/${string}` ? never : S,
   ): UnmappedESModule extends { readonly module: infer M } ? M : unknown;
   // `target` is a module's `lazy` object, typed with Lazy<…> below: its names and the module
-  // map's must match.
-  defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;
+  // map's must match, and each URL must be one LazyModuleUrl allows for its name.
+  defineESModuleGetters<T extends object, const M extends { [K in keyof T]: string }>(
+    target: T,
+    modules: M & { [K in keyof M]: K extends keyof T ? LazyModuleUrl<T[K], K, M[K]> : never },
+  ): void;
   registerWindowActor(name: string, options: object): void;
   /** A QueryInterface for a JS object that implements `interfaces` (and nsISupports). */
   generateQI(interfaces: (keyof XPCOMInterfaces)[]): nsISupports["QueryInterface"];
@@ -698,6 +701,24 @@ interface FormAutofillField {
 }
 
 type Lazy<K extends keyof LazyModules> = { readonly [P in K]: LazyModules[P] };
+
+// A URL a lazy getter `Name` of type `T` may load. A module VimmaModules maps must export `Name`;
+// Vimma's own (its exports' types are the source's) must export it as `T` or a narrower type,
+// while a Firefox module's entry is hand-written like LazyModules and the browser tests' map
+// declares some apart from it (types/mochitest/firefox-test-modules.d.ts), so only the name is
+// checked. A Vimma URL the map lacks (a typo, a module jar.mn does not ship) is an error, as for
+// importESModule; any other Firefox URL is taken as written.
+type LazyModuleUrl<T, Name, U> = U extends keyof VimmaModules
+  ? Name extends keyof VimmaModules[U]
+    ? U extends `chrome://browser/content/vimma/${string}`
+      ? VimmaModules[U][Name] extends T
+        ? U
+        : never
+      : U
+    : never
+  : U extends `chrome://browser/content/vimma/${string}`
+    ? never
+    : U;
 
 // engine/toolkit/components/passwordmgr/nsILoginInfo.idl
 interface nsILoginInfo {
