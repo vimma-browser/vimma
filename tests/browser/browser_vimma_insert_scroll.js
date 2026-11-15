@@ -596,6 +596,127 @@ for (const shape of ["corner", "static"]) {
   });
 }
 
+add_task(async function h_and_l_scroll_sideways() {
+  await withPage(async (browser) => {
+    await SpecialPowers.spawn(browser, [], () => {
+      /** @type {HTMLElement} */ (content.document.getElementById("tall")).style.width = "20000px";
+    });
+    const x = () => SpecialPowers.spawn(browser, [], () => content.scrollX);
+    EventUtils.synthesizeKey("l");
+    await TestUtils.waitForCondition(async () => (await x()) === STEP, "l scrolls right");
+    EventUtils.synthesizeKey("h");
+    await TestUtils.waitForCondition(async () => (await x()) === 0, "h scrolls back left");
+    Assert.equal(await pageScrollY(browser), 0, "neither moves the page down");
+  });
+});
+
+// The focused element's own scroller comes before the page (the nearest scrollable ancestor).
+add_task(async function j_scrolls_the_focused_element_s_scroller_before_the_page() {
+  await withPage(async (browser) => {
+    await SpecialPowers.spawn(browser, [], () => {
+      const doc = content.document;
+      const box = doc.createElement("div");
+      box.id = "box";
+      box.style.cssText = "height: 100px; overflow: auto";
+      const inner = doc.createElement("div");
+      inner.id = "inner";
+      inner.tabIndex = 0;
+      inner.style.height = "5000px";
+      box.append(inner);
+      doc.body.prepend(box);
+      inner.focus();
+    });
+    EventUtils.synthesizeKey("j");
+    await TestUtils.waitForCondition(
+      () =>
+        SpecialPowers.spawn(
+          browser,
+          [],
+          () => /** @type {HTMLElement} */ (content.document.getElementById("box")).scrollTop,
+        ).then((top) => top === STEP),
+      "j scrolls the box around the focused element",
+    );
+    Assert.equal(await pageScrollY(browser), 0, "not the page");
+  });
+});
+
+// The frame's scrolling lives in its own module (issue #1109): it reads only the document and
+// window it is given, so a stand-in for the actor drives it as the child does.
+add_task(async function the_page_scroll_helper_scrolls_the_document_it_is_given() {
+  await withPage(async (browser) => {
+    const seen = await SpecialPowers.spawn(browser, [], () => {
+      const { PageScroll } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/page-scroll.mjs",
+      );
+      const doc = content.document;
+      const actor = /** @type {JSWindowActorChild} */ (
+        /** @type {unknown} */ ({ document: doc, contentWindow: content })
+      );
+      const scroll = new PageScroll(actor, () => null);
+      const root = scroll.target(true) === doc.scrollingElement;
+      const moved = scroll.scroll("down", 2, true);
+      const afterDown = content.scrollY;
+      scroll.scrollTo({ x: "a", y: 0 });
+      const afterBadTo = content.scrollY;
+      scroll.scrollTo({ x: 0, y: 300 });
+      return {
+        root,
+        moved,
+        afterDown,
+        afterBadTo,
+        position: scroll.position(),
+        fraction: Math.abs(scroll.fraction() - 300 / content.scrollMaxY) < 0.001,
+      };
+    });
+    Assert.deepEqual(
+      seen,
+      {
+        root: true,
+        moved: true,
+        afterDown: 2 * STEP,
+        afterBadTo: 2 * STEP,
+        position: { x: 0, y: 300 },
+        fraction: true,
+      },
+      "the page's scrolling element moves, a position that is not two numbers is ignored",
+    );
+  });
+});
+
+// A search for the largest scrollable that found nothing is not repeated for a second (K8),
+// unless focus moves: the child calls focusMoved() on focusin and on the window's focus.
+add_task(async function a_page_scroll_searches_again_once_focus_moves() {
+  await withPage(async (browser) => {
+    const seen = await SpecialPowers.spawn(browser, [], () => {
+      const { PageScroll } = ChromeUtils.importESModule(
+        "chrome://browser/content/vimma/actors/page-scroll.mjs",
+      );
+      const doc = content.document;
+      const actor = /** @type {JSWindowActorChild} */ (
+        /** @type {unknown} */ ({ document: doc, contentWindow: content })
+      );
+      const scroll = new PageScroll(actor, () => null);
+      doc.documentElement.style.overflow = "hidden";
+      const none = scroll.target(true);
+      const box = doc.createElement("div");
+      box.style.cssText = "height: 100px; overflow: auto";
+      const tall = doc.createElement("div");
+      tall.style.height = "5000px";
+      box.append(tall);
+      doc.body.prepend(box);
+      const backedOff = scroll.target(true);
+      scroll.focusMoved();
+      const found = scroll.target(true) === box;
+      return { none, backedOff, found };
+    });
+    Assert.deepEqual(
+      seen,
+      { none: null, backedOff: null, found: true },
+      "nothing to scroll, still nothing within the second, then the new scroller once focus moves",
+    );
+  });
+});
+
 add_task(async function i_with_no_text_field_lets_keys_through() {
   await withPage(async (browser) => {
     EventUtils.synthesizeKey("i");
