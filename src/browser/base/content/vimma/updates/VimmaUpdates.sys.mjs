@@ -269,7 +269,7 @@ async function detectInstall() {
   // source tree. Every packaged build (tarball, AppImage, .deb, AUR, the .dmg) has one.
   const packaged = await IOUtils.exists(PathUtils.join(gre, "omni.ja"));
   const marker = await IOUtils.readUTF8(PathUtils.join(gre, MARKER)).catch(() => null);
-  const platform = /** @type {string} */ (lazy.AppConstants.platform);
+  const platform = lazy.AppConstants.platform;
   // On macOS GreD is Vimma.app/Contents/Resources; the cask is the app it installs beside its
   // Caskroom folder (spec macos-homebrew, decision 8). Nothing is written into the bundle.
   const mac = platform === "macosx";
@@ -298,7 +298,7 @@ function target() {
 }
 
 function channel() {
-  return /** @type {string} */ (lazy.UpdateUtils.UpdateChannel);
+  return lazy.UpdateUtils.UpdateChannel;
 }
 
 /**
@@ -412,7 +412,7 @@ function save() {
 
 /** Vimma's version of the running build (version_display.txt). */
 function runningVersion() {
-  return /** @type {string} */ (lazy.AppConstants.MOZ_APP_VERSION_DISPLAY);
+  return lazy.AppConstants.MOZ_APP_VERSION_DISPLAY;
 }
 
 /**
