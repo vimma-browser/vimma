@@ -158,7 +158,10 @@ export const SetupHost = {
     return { addons: remember(addons.length ? addons : curatedOffline(installed)), offline: false };
   },
 
-  /** @param {string} terms @returns {Promise<{ addons: any[], offline: boolean }>} */
+  /**
+   * @param {string} terms
+   * @returns {Promise<{ addons: import("../core/setup.mjs").AddonEntry[], offline: boolean }>}
+   */
   async search(terms) {
     const results = await amoResults(amoSearchUrl(terms, amoBase()));
     if (!results) return { addons: [], offline: true };

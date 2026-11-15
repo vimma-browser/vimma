@@ -44,11 +44,7 @@ const CODE_PATTERNS = [
  * them. Remove each line with its fix; the check reads these files for everything else. Only
  * comments count: a reference in a test title or another string is not scanned, and is not here.
  */
-export const PLAN_REF_PENDING: ReadonlySet<string> = new Set([
-  "src/browser/base/content/vimma/ui/theme-host.mjs",
-  "stryker.config.mjs",
-  "tools/package/package.mjs",
-]);
+export const PLAN_REF_PENDING: ReadonlySet<string> = new Set(["tools/package/package.mjs"]);
 
 const MARKER = /\bprocess-wording:\s*\S/;
 
