@@ -19,7 +19,7 @@ const action = (id, mode, extra = {}) => ({ kind: "action", action: { id }, mode
  */
 const modeOf = (r) => (r.kind === "pass" ? undefined : r.mode);
 
-describe("resolveEscape (plan §2)", () => {
+describe("resolveEscape", () => {
   /** @type {Array<[Mode, ReturnType<typeof action>]>} */
   const idle = [
     ["insert", action("mode.normal", "normal", { blur: true })],

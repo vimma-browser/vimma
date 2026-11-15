@@ -19,16 +19,9 @@ import { describe, expect, it } from "vitest";
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const WORKFLOWS = join(REPO, ".github/workflows/");
 
-const RUNNER_NODE = [
-  "upstream-beta.yml detect",
-  "upstream-beta.yml render",
-  "upstream-merge.yml merge",
-  "upstream.yml detect",
-  "upstream.yml drift",
-  "upstream.yml patch-issue",
-  "upstream.yml publish",
-  "upstream.yml track",
-];
+// Empty since tools/upstream moved (#946): its upstream.yml, upstream-beta.yml and
+// upstream-merge.yml jobs were the last ones.
+const RUNNER_NODE: string[] = [];
 
 // Steps that print a command for a person to run rather than run it.
 const PRINTS_ONLY = ["fuzz.yml report"];
@@ -49,6 +42,14 @@ const NO_AUTO_CACHE = [
   "pkgbuild.yml covered",
   "semgrep.yml covered",
   "spec-status.yml check",
+  "upstream-beta.yml detect",
+  "upstream-beta.yml render",
+  "upstream-merge.yml merge",
+  "upstream.yml detect",
+  "upstream.yml drift",
+  "upstream.yml patch-issue",
+  "upstream.yml publish",
+  "upstream.yml track",
 ];
 
 // Jobs that run a guard from the base branch (`git show "$BASE:tools/…"`): the docs-only

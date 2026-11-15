@@ -5,6 +5,9 @@
 // Loaded by browser.xhtml (browser-xhtml.patch) right after browser-main.js.
 
 {
+  // browser.xhtml's window, which the type check otherwise knows only as a DOM Window.
+  const win = /** @type {BrowserWindow} */ (/** @type {unknown} */ (window));
+
   // First: nothing may start Firefox's shell service before it knows its launcher (#855).
   // browser-before-ui-startup has normally done it already (jar.mn): then this is a no-op.
   const { AppLauncher } = ChromeUtils.importESModule(
@@ -34,7 +37,7 @@
   const { StartPage } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/start/StartPage.sys.mjs",
   );
-  StartPage.init(window);
+  StartPage.init(win);
 
   // about:vimma, registered at runtime once per process (spec m5-about-vimma): no upstream patch.
   const { AboutVimma } = ChromeUtils.importESModule(
@@ -62,7 +65,7 @@
   const { ThemeHost } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/ui/theme-host.mjs",
   );
-  ThemeHost.init(window);
+  ThemeHost.init(win);
 
   // Instant theme reload (m5-omarchy-theme): `-vimma-reload-theme` from Omarchy's theme-set hook,
   // which this installs when it finds Omarchy. Once per process.
@@ -105,7 +108,7 @@
     configRefused: ConfigHost.refused,
     addAgentProvider: ConfigHost.addAgentProvider,
   });
-  VimmaHost.init(window);
+  VimmaHost.init(win);
 
   // The workspace definitions, once per app (m3-workspaces, sub-spec 2a): Tabbrowser-sys-mjs.patch
   // asks the store for the container of a tab or window opened without one. Not awaited: until
@@ -126,11 +129,11 @@
   const { PaneViews } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/split/PaneView.mjs",
   );
-  PaneViews.init(window);
+  PaneViews.init(win);
 
   // config.toml (spec m5-config-load), once its users exist: the keymap, [panes] max, hints,
   // [sites] and [theme]. Read asynchronously; until then the built-in defaults apply.
-  ConfigHost.init(window);
+  ConfigHost.init(win);
 
   // The first-run setup (docs/specs/first-run-setup.md): about:vimma-setup once per process, and
   // the welcome screen in front on a profile's first start, after the window's own first tab.
@@ -139,7 +142,7 @@
   );
   SetupHost.register();
   if (!SetupHost.offerBlocked) {
-    window.delayedStartupPromise.then(() => SetupHost.offer(window));
+    win.delayedStartupPromise.then(() => SetupHost.offer(win));
   }
 
   // Update checks (spec m6a-updater), once per process: one a few seconds after the first
@@ -154,7 +157,7 @@
   const { VimmaControl } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs",
   );
-  VimmaControl.init(window);
+  VimmaControl.init(win);
 
   // docs/specs/vimma-mcp.md decision 29 D: `:control on <minutes>` ends, also across a restart.
   const { ControlHost } = ChromeUtils.importESModule(
@@ -182,6 +185,6 @@
   const { PrivateSwap } = ChromeUtils.importESModule(
     "chrome://browser/content/vimma/host/private-swap.mjs",
   );
-  PrivateSwap.init(window);
-  window.addEventListener("unload", () => VimmaHost.uninit(window), { once: true });
+  PrivateSwap.init(win);
+  win.addEventListener("unload", () => VimmaHost.uninit(win), { once: true });
 }

@@ -7,6 +7,7 @@ import {
   parseToml,
   setTomlKeys,
 } from "../src/config/toml.mjs";
+import { budget } from "./budget.mjs";
 
 describe("parseToml", () => {
   test("parses a TOML 1.0 document into plain values", () => {
@@ -199,7 +200,7 @@ describe("setTomlKeys", () => {
     const text = `x = """\n[a${" ".repeat(200_000)}\n"""\n`;
     const start = performance.now();
     expect(setTomlKeys(text, [{ table: "search", key: "default", value: "x" }]).ok).toBe(true);
-    expect(performance.now() - start).toBeLessThan(500);
+    expect(performance.now() - start).toBeLessThan(budget(500));
   });
 
   test("a trailing comment on the edited line is kept", () => {

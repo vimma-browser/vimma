@@ -2,6 +2,7 @@ import { describe, test, expect } from "vitest";
 import fc from "fast-check";
 import { ACTIONS, closest, getAction, resolveActionName } from "../src/keys/actions.mjs";
 import { compileKeymap } from "../src/keys/keymap.mjs";
+import { budget } from "./budget.mjs";
 
 describe("actions", () => {
   test("every action has a unique id+arg, a unique config name, a group and a description", () => {
@@ -180,7 +181,7 @@ describe("closest", () => {
     const huge = "k".repeat(4 * 1024 * 1024);
     const start = performance.now();
     expect(closest(huge, pool)).toBeUndefined();
-    expect(performance.now() - start).toBeLessThan(50);
+    expect(performance.now() - start).toBeLessThan(budget(50));
   });
 });
 

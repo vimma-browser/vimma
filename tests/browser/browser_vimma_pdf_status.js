@@ -390,6 +390,41 @@ add_task(async function a_hostile_viewer_gets_only_primitives_through() {
   });
 });
 
+add_task(async function a_viewer_whose_pdfViewer_getter_throws_still_reports_each_operation() {
+  await withPdf(async (browser) => {
+    await TestUtils.waitForCondition(() => segment("page") === "page i (1/6)", "the page");
+    await recordingState(async (seen) => {
+      // Each report carries how many operations the actor was sent (`state.pdf`); a viewer that
+      // throws from its own getter fails the operation, not the report that follows it.
+      await SpecialPowers.spawn(browser, [], () => {
+        const app = /** @type {PdfJsWindow} */ (content.wrappedJSObject).PDFViewerApplication;
+        Object.defineProperty(app, "pdfViewer", {
+          configurable: true,
+          get: Cu.exportFunction(() => {
+            throw new content.Error("hostile");
+          }, content),
+        });
+      });
+      const states = /** @type {{ ops: number }[]} */ (seen);
+      // Read from the messages themselves: with no page number (pdf.js's own page getter goes
+      // through pdfViewer) the parent keeps no state.
+      let sent = PdfOps.state(browser)?.ops ?? NaN;
+      Assert.ok(Number.isSafeInteger(sent), "the last report's operation count");
+      // A zoom, which the adapter runs on pdfViewer, and a jump, which goes through pdf.js's
+      // link service.
+      for (const op of ["zoom", "first"]) {
+        const before = states.length;
+        Assert.ok(PdfOps.run(browser, op, 1), `${op} is sent`);
+        await TestUtils.waitForCondition(
+          () => states.slice(before).some((s) => s.ops > sent),
+          `a report after ${op}`,
+        );
+        sent = Math.max(...states.map((s) => s.ops));
+      }
+    });
+  });
+});
+
 add_task(async function a_flood_of_pagesloaded_is_coalesced() {
   // V5 bounds the rate, not the count: the viewer may still be laying out and drawing (a resize,
   // `drawn` going false and true), and those changes are sent too, each after the one before.

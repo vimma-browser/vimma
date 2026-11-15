@@ -99,9 +99,11 @@ function selectRow(id) {
 // workspace's tab is in that workspace's container: the site's principal is the tab's.
 /** @param {string} url @param {MozTabbrowserTab} tab */
 const principalOf = (url, tab) =>
-  Services.scriptSecurityManager.createContentPrincipal(
-    Services.io.newURI(url),
-    contentPrincipalOf(tab.linkedBrowser).originAttributes,
+  /** @type {nsIPrincipal} */ (
+    Services.scriptSecurityManager.createContentPrincipal(
+      Services.io.newURI(url),
+      contentPrincipalOf(tab.linkedBrowser).originAttributes,
+    )
   );
 /** @param {string} url @param {string} id @param {MozTabbrowserTab} tab */
 const stateOf = (url, id, tab) => SitePermissions.getForPrincipal(principalOf(url, tab), id).state;
@@ -116,7 +118,10 @@ function pageInfoList() {
         SitePermissions.getPermissionLabel(id) && id !== "open-protocol-handler",
     )
     .sort((/** @type {string} */ a, /** @type {string} */ b) =>
-      SitePermissions.getPermissionLabel(a).localeCompare(SitePermissions.getPermissionLabel(b)),
+      // Each has a label: the filter above keeps only those.
+      /** @type {string} */ (SitePermissions.getPermissionLabel(a)).localeCompare(
+        /** @type {string} */ (SitePermissions.getPermissionLabel(b)),
+      ),
     );
 }
 
@@ -458,7 +463,7 @@ add_task(async function test_the_agent_workspace_refuses_and_grants_nothing() {
     "the refusal",
   );
   Assert.ok(!isOpen(), "no picker");
-  const principal = tab.linkedBrowser.contentPrincipal;
+  const principal = contentPrincipalOf(tab.linkedBrowser);
   Assert.equal(
     SitePermissions.getForPrincipal(principal, "camera").state,
     SitePermissions.UNKNOWN,

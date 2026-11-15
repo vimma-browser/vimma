@@ -20,108 +20,68 @@ import {
 } from "../core/editable.mjs";
 import { HintError, hintKey, hintStatus, startHints } from "../core/hints.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
-import { PageFirstQueue } from "../core/page-first.mjs";
 import { SUGGESTION_ACTIONS } from "../core/suggestions.mjs";
 import { pressingKey } from "../actors/enter-key.mjs";
 import { compileKeymap } from "../core/keymap.mjs";
 import { KEY_KEEPING_MODES } from "../core/modes.mjs";
 import { notImplementedText } from "../core/actions.mjs";
 import { PENDING_ACTIONS } from "../core/cmdline.mjs";
-import { CommandLine } from "../ui/cmdline.mjs";
-import { HelpOverlay } from "../ui/help-overlay.mjs";
-import { HintOverlay } from "../ui/hint-overlay.mjs";
 import { StatusBar } from "../ui/statusbar.mjs";
-import { DownloadRows, DownloadWatch, downloadPickerKey } from "./download-ops.mjs";
-import { Find } from "./find.mjs";
-import { ElementFocus } from "./element-focus.mjs";
-import { Notice } from "../ui/notice.mjs";
 import { TabStrip } from "../ui/tabstrip.mjs";
 import { Toolbar } from "../ui/toolbar.mjs";
-import {
-  AddonPicker,
-  DownloadPicker,
-  GotoPicker,
-  MCP_LOG,
-  PermissionPicker,
-  PopupPicker,
-  SplitPicker,
-  WorkspacePicker,
-} from "../ui/picker.mjs";
-import { RenamePrompt } from "../ui/rename-prompt.mjs";
-import { SidePanel } from "../ui/side-panel.mjs";
-import { BookmarksPanel } from "../ui/bookmarks-panel.mjs";
-import { OutlinePanel } from "../ui/pdf-outline.mjs";
-import { AgentChatWindow } from "../ui/agent-chat.mjs";
-import { CHAT_SERVICES, giveSelectedTab } from "./agent-chat-ops.mjs";
-import { bookmarkContext, runBookmarkEffect } from "./bookmark-actions.mjs";
-import { bookmarksRoot, loadTree, observeBookmarks, setBookmarksRoot } from "./bookmark-ops.mjs";
-import { pickerWorkspaces, selectedTabId, tabById } from "./goto.mjs";
-import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
-import { GrepSession } from "./grep.mjs";
-import { getTabLabel, setTabLabel } from "../workspaces/tab-labels.mjs";
-import { SearchHost } from "../search/SearchHost.sys.mjs";
+import { bookmarksRoot, setBookmarksRoot } from "./bookmark-ops.mjs";
+import { getTabLabel } from "../workspaces/tab-labels.mjs";
 import { VimmaUpdates } from "../updates/VimmaUpdates.sys.mjs";
-import { closeTabById, openOrSay } from "./tab-ops.mjs";
+import { openOrSay } from "./tab-ops.mjs";
 import { DEFAULT_FIREFOX_KEYS, FirefoxKeys } from "./firefox-keys.mjs";
 import { boundChords, firefoxShortcuts, pageFirst } from "../core/firefox-keys.mjs";
-import { firefoxIds } from "./browser-ops.mjs";
 import { focusedChromeField, runChromeEdit } from "./edit-keys.mjs";
-import {
-  hasPanes,
-  showAlone,
-  showSplit,
-  showTabs,
-  shownSplit,
-  splitPickerRows,
-  splitStatus,
-} from "./pane-ops.mjs";
+import { hasPanes, splitStatus } from "./pane-ops.mjs";
 import { PaneViews } from "../split/PaneView.mjs";
 import { leaves } from "../core/panes.mjs";
 import { WindowWorkspaces } from "../workspaces/WindowWorkspaces.sys.mjs";
 import { WorkspaceStore } from "../workspaces/WorkspaceStore.sys.mjs";
-import { moveTabFromPicker, workspaceNames } from "./workspace-ops.mjs";
-import {
-  PRIVATE_WORKSPACE_ID,
-  isPrivateBrowsing,
-  isPrivateWorkspace,
-  pickerItemsWithPrivate,
-  pickerMove,
-  pickerSelect,
-  privatePanel,
-  privateStatus,
-  privateTabCount,
-} from "./private-ops.mjs";
+import { privateStatus, privateTabCount } from "./private-ops.mjs";
 import { restartAsking, restartOrSay, tabsKeptBy } from "./restart.mjs";
 import { AgentUi } from "./agent-ui.mjs";
 import { AgentGate } from "./AgentGate.sys.mjs";
 import { logCells } from "../core/agent-prompt.mjs";
 import { PromptKeys } from "./prompt-keys.mjs";
-import { AgentPrompt } from "../ui/agent-prompt.mjs";
+import { GotoPicker, MCP_LOG } from "../ui/picker.mjs";
+import { UrlbarQueries } from "./urlbar-queries.mjs";
+import { newWindowState } from "./window-state.mjs";
 import { ANNOUNCE_MS, UpdateUi } from "./update-ui.mjs";
 import { KeyLog } from "./key-log.mjs";
-import { addonNames, addonOp, addonPickerItems, openAddonById, sayAddon } from "./addon-ops.mjs";
-import {
-  forgetSitePermissions,
-  sitePermissionItems,
-  sitePermissionKey,
-} from "./permission-ops.mjs";
-import { popupPickerItems, popupRefusal, popupStatus, runPopupRow } from "./popup-ops.mjs";
+import { addonNames } from "./addon-ops.mjs";
+import { forgetSitePermissions } from "./permission-ops.mjs";
+import { popupStatus } from "./popup-ops.mjs";
 import { PdfOps, pdfFindStatus } from "./pdf-ops.mjs";
 import { stripInvisible } from "../core/pdf.mjs";
 import { contentRunners, hostRunners } from "./runners.mjs";
 import { HostServices } from "./host-services.mjs";
-import {
-  dropOutlineAsk,
-  followOutline,
-  outlineClosed,
-  showOutline,
-  showOutlineBeside,
-} from "./outline-ops.mjs";
+import { dropOutlineAsk } from "./outline-ops.mjs";
 
 // Defined with the code that uses them; importers reach them here, as before the runners moved.
 export { CONFIG_EDIT_TOPIC, CONFIG_RELOAD_TOPIC } from "./runners.mjs";
 export { NO_OUTLINE, OUTLINE_ATTACHMENT, PDF_OUTLINE_PREF } from "./outline-ops.mjs";
 
+/** @import { PageFirstQueue } from "../core/page-first.mjs" */
+/** @import { CommandLine } from "../ui/cmdline.mjs" */
+/** @import { HelpOverlay } from "../ui/help-overlay.mjs" */
+/** @import { HintOverlay } from "../ui/hint-overlay.mjs" */
+/** @import { DownloadRows, DownloadWatch } from "./download-ops.mjs" */
+/** @import { Find } from "./find.mjs" */
+/** @import { ElementFocus } from "./element-focus.mjs" */
+/** @import { Notice } from "../ui/notice.mjs" */
+/** @import { AddonPicker, DownloadPicker, PermissionPicker, PopupPicker } from "../ui/picker.mjs" */
+/** @import { SplitPicker, WorkspacePicker } from "../ui/picker.mjs" */
+/** @import { RenamePrompt } from "../ui/rename-prompt.mjs" */
+/** @import { SidePanel } from "../ui/side-panel.mjs" */
+/** @import { BookmarksPanel } from "../ui/bookmarks-panel.mjs" */
+/** @import { OutlinePanel } from "../ui/pdf-outline.mjs" */
+/** @import { AgentChatWindow } from "../ui/agent-chat.mjs" */
+/** @import { GrepSession } from "./grep.mjs" */
+/** @import { AgentPrompt } from "../ui/agent-prompt.mjs" */
 /** @import { Chord } from "../core/keys.mjs" */
 /** @import { ConfigError } from "../core/config.mjs" */
 /** @import { InsertSiteRule } from "../core/editable.mjs" */
@@ -315,7 +275,7 @@ const OUTLINE_HOST = {
 /**
  * Pane actions that do something only with two panes or more: as single keys they are
  * runnable only then, so the first ctrl+w of `<C-w>h` passes to the page while the window has
- * one pane (plan §2; Firefox's ctrl+w close tab is off, key-handling-batch). `prefix+h` is
+ * one pane (Firefox's ctrl+w close tab is off, key-handling-batch). `prefix+h` is
  * consumed either way (ctrl+b is ours).
  */
 const MULTI_PANE = new Set([
@@ -613,345 +573,35 @@ export const VimmaHost = {
   /** @param {BrowserWindow} win */
   init(win) {
     if (states.has(win)) return;
-    /** @type {Map<string, BrowserWindow>} the window of each tab tab search listed (tab-search.mjs) */
-    let tabWindows = new Map();
     const keymap = settings.keymap ?? compileKeymap({}, { mac: MAC });
-    const hintOverlay = new HintOverlay(win);
-    /** @type {WindowState} */
-    const state = {
+    // `:mcp log` (docs/specs/mcp-drive.md D14), built here beside the gate's import.
+    const mcpLog = new GotoPicker(
       win,
-      keymap,
-      onKeyDown: (e) => this._onKeyDown(win, state, e),
-      onKeyDownAfter: (e) => this._onKeyDownAfter(state, e),
-      onKeyPress: (e) => this._onKeyPress(state, e),
-      onKeyPressAfter: (e) => this._onKeyPressAfter(state, e),
-      pageFirst: new PageFirstQueue(),
-      firefoxKeys: null,
-      private: isPrivateBrowsing(win),
-      // The overlay is modal, but tabs can still change underneath it (a script closes the
-      // selected tab): close it and focus the newly selected browser.
-      onTabSelect: () => {
-        this._cancelPending(win, state);
-        this._cancelHints(state);
-        state.element.leave();
-        state.help.close({ tabChanged: true });
-        state.cmdline.close({ tabChanged: true });
-        state.picker.close({ tabChanged: true });
-        state.wsPicker.close({ tabChanged: true });
-        state.addonPicker.close({ tabChanged: true });
-        state.permissionPicker.close({ tabChanged: true });
-        state.popups.close({ tabChanged: true });
-        state.splitPicker.close({ tabChanged: true });
-        state.downloadPicker.close({ tabChanged: true });
-        state.mcpLog.close({ tabChanged: true });
-        state.grep.close({ tabChanged: true });
-        state.rename.close({ tabChanged: true });
-        // The outline belongs to its tab's document; the new tab's PDF shows its own.
-        if (state.outline.isOpen && state.outline.browser !== win.gBrowser?.selectedBrowser) {
-          state.outline.close();
-        }
-        showOutlineBeside(state, OUTLINE_HOST);
-      },
-      dispatcher: createDispatcher(keymap),
-      help: new HelpOverlay(win, keymap, RUNNABLE, () => state.firefoxKeys?.status().on ?? []),
-      notice: new Notice(win),
-      cmdline: new CommandLine(win, {
-        run: (result) => this._runCommand(state, result),
-        changed: () => this._emit(state),
-        args: () => ({
-          addon: addonNames(),
-          firefox: firefoxIds(win),
-          workspace: workspaceNames(win),
-          search: SearchHost.completions,
-        }),
-      }),
-      tabStrip: null,
-      toolbar: null,
-      urlbarQueries: null,
-      promptKeys: null,
-      timer: null,
-      onCancelHints: () => this._cancelHints(state),
-      onMouseDown: () => {
-        this._cancelHints(state);
-        state.element.leave();
-      },
-      hint: null,
-      element: new ElementFocus({
-        overlay: hintOverlay,
-        notify: (text) => state.notice.show(text),
-        changed: () => this._emit(state),
-        setMode: setBrowserMode,
-      }),
-      resize: false,
-      hintOverlay,
-      listeners: new Set(),
-      statusBar: null,
-      picker: new GotoPicker(win, {
-        items: () => {
-          const { items, windowOf } = tabSearchList(win);
-          tabWindows = windowOf;
-          return items;
-        },
-        activeId: () => selectedTabId(win),
-        select: (tabId) => goToTab(win, tabWindows.get(tabId), tabId),
-        reopen: (id) => reopenClosed(win, id),
-      }),
-      // The private workspace is the last row (docs/specs/private-workspace.md decision 5).
-      wsPicker: new WorkspacePicker(win, {
-        items: () => pickerItemsWithPrivate(win),
-        activeId: () =>
-          isPrivateWorkspace(win)
-            ? PRIVATE_WORKSPACE_ID
-            : (WindowWorkspaces.get(win)?.model?.active ?? null),
-        select: (id) => {
-          const said = pickerSelect(win, id);
-          const refused = said === undefined ? WindowWorkspaces.get(win)?.switchTo({ id }) : said;
-          if (refused) state.notice.show(refused);
-        },
-        move: (id) => {
-          const ask = (/** @type {string} */ q, /** @type {() => void} */ yes) =>
-            state.rename.ask(q, yes);
-          const said = pickerMove(win, id, ask, (text) => state.notice.show(text));
-          if (said !== undefined) {
-            if (said) state.notice.show(said);
-            return;
-          }
-          const refused = moveTabFromPicker(
-            win,
-            id,
-            (question, yes) => state.rename.ask(question, yes),
-            (said) => state.notice.show(said),
-          );
-          if (refused) state.notice.show(refused);
-        },
-        // `m` on a side-panel row: that tab, which may be in the background (and lazy).
-        moveRow: (tab, id) => {
-          const ask = (/** @type {string} */ q, /** @type {() => void} */ yes) =>
-            state.rename.ask(q, yes);
-          const say = (/** @type {string} */ text) => state.notice.show(text);
-          // The picker types its rows' tabs as elements: each is a tab of this window's strip.
-          const row = /** @type {MozTabbrowserTab} */ (tab);
-          const said = pickerMove(win, id, ask, say, row);
-          const refused = said === undefined ? moveTabFromPicker(win, id, ask, say, row) : said;
-          if (refused) state.notice.show(refused);
-        },
-      }),
-      mcpLog: new GotoPicker(
-        win,
-        {
-          items: () =>
-            AgentGate.log.map((e, i) => {
-              const { time, text, outcome } = logCells(e);
-              return {
-                kind: /** @type {const} */ ("log"),
-                logId: String(i),
-                display: text,
-                time,
-                outcome,
-                active: false,
-              };
-            }),
-          activeId: () => null,
-          select: () => {},
-        },
-        MCP_LOG,
-      ),
-      addonPicker: new AddonPicker(win, {
-        load: addonPickerItems,
-        select: (id) => void sayAddon(state, openAddonById(win, id)),
-        addon: (op, id) => addonOp(state, op, id),
-      }),
-      permissionPicker: new PermissionPicker(win, {
-        items: () => sitePermissionItems(win),
+      {
+        items: () =>
+          AgentGate.log.map((e, i) => {
+            const { time, text, outcome } = logCells(e);
+            return {
+              kind: /** @type {const} */ ("log"),
+              logId: String(i),
+              display: text,
+              time,
+              outcome,
+              active: false,
+            };
+          }),
         activeId: () => null,
         select: () => {},
-        permission: (op, id) => {
-          const { notice, close } = sitePermissionKey(win, op, id);
-          if (close) state.permissionPicker.close();
-          else state.permissionPicker.setItems(sitePermissionItems(win));
-          if (notice) state.notice.show(notice, { error: true });
-        },
-      }),
-      downloads: new DownloadWatch(
-        win,
-        () => this._emit(state),
-        (text) => state.statusBar?.announce(text),
-      ),
-      downloadRows: new DownloadRows(win, (rows) => state.downloadPicker.update(rows)),
-      downloadPicker: new DownloadPicker(win, {
-        load: () => state.downloadRows.open(),
-        select: () => {},
-        download: (key, id) =>
-          downloadPickerKey(win, state.downloadRows, key, id, {
-            say: (text, error) => state.notice.show(text, { error: !!error }),
-            close: () => state.downloadPicker.close(),
-            ask: (question, yes) => state.rename.ask(question, yes),
-          }),
-        closed: () => state.downloadRows.close(),
-      }),
-      splitPicker: new SplitPicker(win, {
-        items: () => {
-          const rows = splitPickerRows(win);
-          return "items" in rows ? rows.items : [];
-        },
-        activeId: () => PaneViews.get(win)?.splits.shown?.toString() ?? null,
-        select: (id) => {
-          showSplit(win, Number(id));
-          this._emit(state);
-        },
-      }),
-      popups: new PopupPicker(win, {
-        load: () => popupPickerItems(win),
-        refuse: (rows) => popupRefusal(win, rows),
-        notice: (text) => state.notice.show(text),
-        select: (id) => {
-          runPopupRow(win, id);
-          this._emit(state);
-        },
-      }),
-      grep: new GrepSession(win, {
-        notice: (text) => state.notice.show(text),
-        emit: () => this._emit(state),
-      }),
-      rename: new RenamePrompt(win, {
-        apply: (tab, text) => {
-          setTabLabel(tab, text);
-          this._emit(state);
-        },
-        changed: () => this._emit(state),
-      }),
-      find: new Find(win, () => this._emit(state)),
-      // The PDF viewer's page and match count (docs/specs/pdf-mode.md decision 13).
-      stopPdf: PdfOps.subscribe((browser) => {
-        if (stateOfBrowser(browser) !== state) return;
-        // pdf.js opened another PDF in the viewer: the outline of the last one closes (V11).
-        if (state.outline.isOpen && state.outline.browser === browser && !PdfOps.outline(browser)) {
-          state.outline.close();
-        }
-        if (state.outline.browser === browser) {
-          state.outline.followPage(PdfOps.state(browser)?.page ?? 1);
-        }
-        if (browser === win.gBrowser?.selectedBrowser) {
-          showOutlineBeside(state, OUTLINE_HOST);
-        }
-        this._emit(state);
-      }),
-      // The outline Tab asked for: shown if its tab is still the selected one.
-      outlineFor: null,
-      stopOutline: PdfOps.subscribeOutline((browser, outline) => {
-        if (browser !== state.outlineFor?.browser) {
-          // The outline asked for as the PDF opened (decision 19): shown if it still may be.
-          if (browser === win.gBrowser?.selectedBrowser) {
-            showOutlineBeside(state, OUTLINE_HOST);
-            this._emit(state);
-          }
-          return;
-        }
-        dropOutlineAsk(state);
-        // Only into the state Tab was pressed in: its tab selected, in normal mode or with a panel
-        // in the slot, which the outline replaces; never under a picker, prompt or the help.
-        const selected = browser === win.gBrowser?.selectedBrowser;
-        const mode = this._mode(state);
-        if (selected && (mode === "normal" || mode === "panel")) {
-          showOutline(state, browser, outline);
-        }
-        this._emit(state);
-      }),
-      agentPrompt: new AgentPrompt(win),
-      updatePrompt: new AgentPrompt(win, {
-        id: "vimma-update-prompt",
-        color: "var(--vimma-text-error)",
-      }),
-      onFocus: () => {
-        AgentUi.onFocusChange(win);
-        UpdateUi.onFocusChange(win);
-        showOutlineBeside(state, OUTLINE_HOST);
       },
-      panel: new SidePanel(win, {
-        // A private window lists its tabs as the private workspace (private-workspace 6).
-        model: () => {
-          if (isPrivateWorkspace(win)) return privatePanel(pickerWorkspaces(win)).model;
-          return WindowWorkspaces.get(win)?.model ? pickerWorkspaces(win) : null;
-        },
-        // The header names the cycle's targets, past the agent workspace (vimma-mcp decision 9).
-        where: () =>
-          isPrivateWorkspace(win)
-            ? privatePanel(pickerWorkspaces(win)).options
-            : { skip: WindowWorkspaces.get(win)?.cycleSkip },
-        info: (tabId) => {
-          const tab = tabById(win, tabId);
-          if (!tab) return undefined;
-          const browser = tab.linkedBrowser;
-          return {
-            title: browser?.contentTitle || tab.label,
-            url: browser?.currentURI?.spec ?? "",
-            label: getTabLabel(tab),
-            foreign: !!WindowWorkspaces.get(win)?.isForeign(tab),
-            playing: !!tab.soundPlaying,
-            pinned: !!tab.pinned,
-          };
-        },
-        closeTab: (tabId) => {
-          const tab = tabById(win, tabId);
-          if (tab) closeTabById(win, tab);
-        },
-        move: (tabId) => {
-          const tab = tabById(win, tabId);
-          if (tab) state.wsPicker.openFor(tab, tab.linkedBrowser?.contentTitle || tab.label);
-        },
-        color: () => WindowWorkspaces.get(win)?.status()?.color,
-        select: (tabId) => {
-          const tab = tabById(win, tabId);
-          if (!tab) return;
-          /** @type {{ gBrowser: { selectedTab: Element } }} */ (
-            /** @type {unknown} */ (win)
-          ).gBrowser.selectedTab = tab;
-        },
-        say: (text) => state.notice.show(text),
-        together: (tabIds, focus, alone) => showTabs(win, tabIds, focus, alone),
-        // docs/specs/side-panel-unsplit.md: the split's panes start marked.
-        split: () => shownSplit(win),
-        alone: (tabId) => showAlone(win, tabId),
-      }),
-      outline: new OutlinePanel(win, {
-        effect: (browser, effect) => {
-          if (effect.type === "follow") followOutline(state, browser, effect.index);
-        },
-        left: (browser) => PdfOps.forget(browser),
-        hidden: (browser) => outlineClosed(browser),
-      }),
-      bookmarks: new BookmarksPanel(win, {
-        load: () => loadTree(win),
-        observe: observeBookmarks,
-        effect: (effect) => runBookmarkEffect(bookmarkContext(state), effect),
-      }),
-      agentChat: new AgentChatWindow(
-        win,
-        {
-          ask: (question, yes) => state.rename.ask(question, yes),
-          say: (text, error) => state.notice.show(text, { error: !!error }),
-          give: (id) =>
-            giveSelectedTab(
-              win,
-              id,
-              (question, yes) => state.rename.ask(question, yes),
-              (text) => state.notice.show(text),
-            ),
-          copy: (text) =>
-            Cc["@mozilla.org/widget/clipboardhelper;1"]
-              .getService(Ci.nsIClipboardHelper)
-              .copyString(text),
-          rearm: () => AgentUi.rearmSlot(win),
-          prompt: (o) => state.rename.prompt(o),
-          changed: () => {
-            AgentUi.refresh();
-            this._emit(state);
-          },
-        },
-        CHAT_SERVICES,
-      ),
-      onAgentChat: () => this._emit(state),
-    };
+      MCP_LOG,
+    );
+    const state = newWindowState(this, win, keymap, {
+      runnable: RUNNABLE,
+      setBrowserMode,
+      stateOfBrowser,
+      outline: OUTLINE_HOST,
+      mcpLog,
+    });
     states.set(win, state);
     windows.add(win);
     win.addEventListener("keydown", state.onKeyDown, true);
@@ -2297,86 +1947,3 @@ VimmaUpdates.addListener(() => {
     if (state) VimmaHost._emit(state);
   }
 });
-
-/**
- * The address bar's queries, for `state.urlbar` (docs/specs/m0-control-protocol-and-vimma-ctl.md,
- * "state"; #1006): whether its suggestion list draws all it will for the text last searched.
- * Firefox starts a query on each key typed in the field and draws each one's results as they
- * come; this follows the query under way through the controller's own notifications, which
- * reach the list first (it listens from the field's start), so the flag turns once the list
- * has drawn the end of the query. It finds the field by its id, never through `gURLBar`: that
- * getter, read before the field exists, leaves the window without one. It starts listening at
- * window init when the field is there, else at the first focus or `state` read; one that starts
- * late counts the field's last query as under way until that query's promise settles, since the
- * notification of its start was missed.
- */
-class UrlbarQueries {
-  /** @param {BrowserWindow} win */
-  constructor(win) {
-    this.win = win;
-    /** @type {UrlbarInput | null} the address bar, once found */
-    this.bar = null;
-    /** @type {UrlbarInput["controller"] | null} the controller listened to (one per field) */
-    this.controller = null;
-    /** @type {unknown} the id of the query under way (LATE: one begun before listening) */
-    this.running = null;
-    /** @type {UrlbarQueryListener} */
-    this.listener = {
-      onQueryStarted: (context) => {
-        this.running = context.id;
-      },
-      onQueryFinished: (context) => this.ended(context.id),
-      onQueryCancelled: (context) => this.ended(context.id),
-    };
-    // A query starts from a focused field: listening from the first focus misses none, unless
-    // the field had focus before this window's init (handled in attach).
-    this.onFocus = () => this.attach();
-    win.addEventListener("focusin", this.onFocus, true);
-    this.attach();
-  }
-
-  /** Listens to the field's controller, once it exists. */
-  attach() {
-    if (this.controller) return;
-    this.bar ??= /** @type {UrlbarInput | null} */ (this.win.document.getElementById("urlbar"));
-    const controller = this.bar?.controller;
-    if (!this.bar || !controller) return;
-    controller.addListener(this.listener);
-    this.controller = controller;
-    this.win.removeEventListener("focusin", this.onFocus, true);
-    // A query begun before now announced its start unheard: it is under way until the field's
-    // last query promise settles (at once when none ran), or until a newer query starts.
-    this.running = LATE;
-    const done = () => this.ended(LATE);
-    this.bar.lastQueryContextPromise.then(done, done);
-  }
-
-  /** @param {unknown} id */
-  ended(id) {
-    if (id === this.running) this.running = null;
-  }
-
-  /**
-   * `null` while the list is closed; else whether no query is under way and the results it
-   * draws are those of the text last searched (`lastSearchString` is set as the query starts,
-   * before the controller hears of it: a query held back for the search engines has not
-   * started yet).
-   * @returns {{ settled: boolean } | null}
-   */
-  drawn() {
-    this.attach();
-    const bar = this.bar;
-    if (!bar?.view.isOpen) return null;
-    const searched = bar.view.queryContext?.searchString === bar.lastSearchString;
-    return { settled: this.running === null && searched };
-  }
-
-  destroy() {
-    this.win.removeEventListener("focusin", this.onFocus, true);
-    this.controller?.removeListener(this.listener);
-    this.controller = null;
-  }
-}
-
-/** UrlbarQueries' mark for a query that began before it listened. */
-const LATE = Symbol("late");
