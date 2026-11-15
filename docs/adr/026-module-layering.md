@@ -293,8 +293,10 @@ the one function `native-swap.mjs` took from `private-swap.mjs`, moved to `nativ
   refuses it all the same.
 - Other ways to give a Vimma file a second URL are allow-lists of what the tree has. `jar.mn`
   may hold only blank lines, comments (`#` and a space, or `#` alone), one `browser.jar:` header, entries of
-  the form `target (source)` with no `.` or `..` segment, and `%` lines that override one `.svg`
-  image with another outside `content/vimma/`; a preprocessor directive (`#include`, `#ifdef`,
+  the form `target (source)` with no `.` or `..` segment, `%` lines that override one `.svg`
+  image with another outside `content/vimma/`, and word for word the one `category` line that
+  has BrowserGlue call `AppLauncher.beforeUIStartup` by its own `chrome://` URL before the command
+  line runs (#855, security §7 O10); a preprocessor directive (`#include`, `#ifdef`,
   `#filter`), a preprocessed (`*`) entry or any other line is refused. A script or page (`.mjs`,
   `.js`, `.html`, `.xhtml`), and any file taken from `vimma/`, is packaged only as
   `content/browser/vimma/<its path>`. `vimma/moz.build` must have its shape of today line by

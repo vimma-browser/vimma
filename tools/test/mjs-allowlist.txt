@@ -28,16 +28,10 @@ packages/vimma-core/test/appimage-update.test.mjs
 packages/vimma-core/test/bookmarks-toolbar.test.mjs
 packages/vimma-core/test/bookmarks.test.mjs
 packages/vimma-core/test/budget.mjs
-packages/vimma-core/test/config-agent.test.mjs
-packages/vimma-core/test/config-source.test.mjs
-packages/vimma-core/test/config-v2.test.mjs
-packages/vimma-core/test/config.test.mjs
-packages/vimma-core/test/contract.test.mjs
 packages/vimma-core/test/control-v2.test.mjs
 packages/vimma-core/test/control.test.mjs
 packages/vimma-core/test/ctl-version.test.mjs
 packages/vimma-core/test/default-browser.test.mjs
-packages/vimma-core/test/defaults.test.mjs
 packages/vimma-core/test/downloads.test.mjs
 packages/vimma-core/test/firefox-keys.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
@@ -66,10 +60,7 @@ packages/vimma-core/test/popups.test.mjs
 packages/vimma-core/test/privatepair.test.mjs
 packages/vimma-core/test/privatews.test.mjs
 packages/vimma-core/test/report.test.mjs
-packages/vimma-core/test/resize-mode.test.mjs
 packages/vimma-core/test/restart.test.mjs
-packages/vimma-core/test/routes.test.mjs
-packages/vimma-core/test/search.test.mjs
 packages/vimma-core/test/setup.test.mjs
 packages/vimma-core/test/sidepanel.test.mjs
 packages/vimma-core/test/sitepermissions.test.mjs
@@ -82,9 +73,6 @@ packages/vimma-core/test/switchplan.test.mjs
 packages/vimma-core/test/tablabels.test.mjs
 packages/vimma-core/test/tabs.test.mjs
 packages/vimma-core/test/tabsearch.test.mjs
-packages/vimma-core/test/theme.test.mjs
-packages/vimma-core/test/toml-conformance.test.mjs
-packages/vimma-core/test/toml.test.mjs
 packages/vimma-core/test/update-notices.test.mjs
 packages/vimma-core/test/updates.test.mjs
 packages/vimma-core/test/workspacedefs.test.mjs

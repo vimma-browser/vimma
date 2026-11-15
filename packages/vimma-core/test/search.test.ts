@@ -12,18 +12,18 @@ import {
   toFirefoxTemplate,
 } from "../src/config/search.mjs";
 
-/** @param {string[]} lines */
-const v2 = (...lines) => ["schema = 2", ...lines].join("\n") + "\n";
+import type { ResolvedConfig } from "../src/config/config.mjs";
+import type { InstalledEngine } from "../src/config/search.mjs";
 
-/** @param {string} text */
-function ok(text) {
+const v2 = (...lines: string[]) => ["schema = 2", ...lines].join("\n") + "\n";
+
+function ok(text: string) {
   const r = parseConfig(text);
   expect(r.errors).toEqual([]);
-  return /** @type {import("../src/config/config.mjs").ResolvedConfig} */ (r.config);
+  return r.config as ResolvedConfig;
 }
 
-/** @param {string} text */
-function errors(text) {
+function errors(text: string) {
   const r = parseConfig(text);
   expect(r.config).toBeNull();
   return r.errors.map((e) => ({
@@ -233,19 +233,19 @@ describe("resolveSearch", () => {
   });
 });
 
-/**
- * @param {Partial<import("../src/config/search.mjs").InstalledEngine> & { id: string, name: string }} e
- * @returns {import("../src/config/search.mjs").InstalledEngine}
- */
-const engine = (e) => ({ alias: "", aliases: [], hidden: false, ...e });
+const engine = (e: Partial<InstalledEngine> & { id: string; name: string }): InstalledEngine => ({
+  alias: "",
+  aliases: [],
+  hidden: false,
+  ...e,
+});
 
 const GOOGLE = engine({ id: "google", name: "Google", aliases: ["@google"] });
 const DDG = engine({ id: "ddg", name: "DuckDuckGo", aliases: ["@duckduckgo", "@ddg"] });
 const WIKI = engine({ id: "wiki", name: "Wikipedia (en)", aliases: ["@wikipedia"] });
 const INSTALLED = [GOOGLE, DDG, WIKI];
 
-/** @param {string[]} lines */
-const searchOf = (...lines) => /** @type {any} */ (ok(v2(...lines)).search);
+const searchOf = (...lines: string[]) => ok(v2(...lines)).search as any;
 
 const GH = "https://github.com/search?q={searchTerms}";
 
@@ -328,7 +328,7 @@ describe("planSearch", () => {
     expect(plan.state?.default).toEqual({ set: null, previous: "google" });
   });
 
-  const managed = (/** @type {string} */ url, name = "github.com") => ({
+  const managed = (url: string, name = "github.com") => ({
     created: [{ alias: "gh", id: "u1", name, url }],
     aliased: [],
     default: null,
@@ -547,7 +547,7 @@ describe(":open @ completion", () => {
     { alias: "@google", engine: "Google" },
     { alias: "@wikipedia", engine: "Wikipedia (en)" },
   ]);
-  const complete = (/** @type {string} */ line) =>
+  const complete = (line: string) =>
     completeCommandLine(line, { args: { search } }).candidates.map((c) => [c.value, c.description]);
 
   test("lists the aliases starting with what was typed, each with its engine", () => {

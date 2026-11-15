@@ -385,8 +385,8 @@ can read it out of `vimma-ctl`'s memory runs as the user and can read the token 
   later from the downloads list.
   [`test_agent_tabs_may_download_again`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../../tests/browser/browser_vimma_mcp_downloads.js),
-  [`download_dir is ~ or absolute, never home, / or the Downloads folder itself`](../../packages/vimma-core/test/config-v2.test.mjs),
-  [`download_dir is never in a hidden folder of home or in /tmp, /var/tmp, /dev/shm`](../../packages/vimma-core/test/config-v2.test.mjs),
+  [`download_dir is ~ or absolute, never home, / or the Downloads folder itself`](../../packages/vimma-core/test/config-v2.test.ts),
+  [`download_dir is never in a hidden folder of home or in /tmp, /var/tmp, /dev/shm`](../../packages/vimma-core/test/config-v2.test.ts),
   [`test_a_folder_that_is_not_private_is_refused`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`[mcp] download_dir and download_max_mb are refused or a quarantine folder in bounds`](../../packages/vimma-core/test/fuzz/config.fuzz.test.mjs)
 - M13. A dangerous file (an executable or library by name, type or first bytes; a script, a `#!`

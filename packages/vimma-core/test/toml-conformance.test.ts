@@ -4,8 +4,7 @@
 import { describe, test, expect } from "vitest";
 import { parseToml } from "../src/config/toml.mjs";
 
-/** @param {string} text */
-const value = (text) => {
+const value = (text: string) => {
   const r = parseToml(text);
   if (!r.ok) throw new Error(`unexpected TOML error: ${r.error.message} at ${r.error.line}`);
   return r.value;
@@ -107,8 +106,9 @@ describe("valid TOML 1.0", () => {
     expect(value("f = -nan").f).toBeNaN();
   });
 
-  /** @type {Array<[string, string, { dateTime?: boolean, date?: boolean, time?: boolean, local: boolean }]>} */
-  const dates = [
+  const dates: Array<
+    [string, string, { dateTime?: boolean; date?: boolean; time?: boolean; local: boolean }]
+  > = [
     ["1979-05-27T07:32:00Z", "1979-05-27T07:32:00.000Z", { dateTime: true, local: false }],
     [
       "1979-05-27T00:32:00-07:00",
@@ -132,7 +132,7 @@ describe("valid TOML 1.0", () => {
     ["07:32", "07:32:00.000", { time: true, local: true }],
   ];
   test.each(dates)("date %s", (text, iso, kind) => {
-    const d = /** @type {any} */ (value(`d = ${text}`).d);
+    const d = value(`d = ${text}`).d as any;
     expect(d).toBeInstanceOf(Date);
     expect(d.isValid()).toBe(true);
     expect(d.toISOString()).toBe(iso);
@@ -143,9 +143,7 @@ describe("valid TOML 1.0", () => {
   });
 
   test("dates inside arrays and inline tables", () => {
-    const v = /** @type {any} */ (
-      value("a = [1979-05-27, 07:32:00]\nt = { d = 1979-05-27T07:32:00 }")
-    );
+    const v = value("a = [1979-05-27, 07:32:00]\nt = { d = 1979-05-27T07:32:00 }") as any;
     expect(v.a).toHaveLength(2);
     expect(v.t.d.isDateTime()).toBe(true);
   });

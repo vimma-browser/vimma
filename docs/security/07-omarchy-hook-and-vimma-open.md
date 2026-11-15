@@ -56,23 +56,25 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`a daemonised tmux server ends the list at tmux, whatever its clients`](../../tools/package/test/vimma-open.test.mjs)
 
 - O10. Settings' Make default button **must** register only the package's own desktop entry,
-  never a command another program chose. On Linux, the first window's first script
-  (`services/AppLauncher.sys.mjs`) starts Firefox's shell service with `MOZ_APP_LAUNCHER` set to
-  the `vimma-open` next to the binary, replacing any value inherited from the caller, and then
+  never a command another program chose. On Linux, BrowserGlue's `browser-before-ui-startup`
+  category runs `services/AppLauncher.sys.mjs` (before the command line runs, so before Firefox
+  handles `vimma -setDefaultBrowser`, and before the first window), which starts Firefox's shell
+  service with `MOZ_APP_LAUNCHER` set to the `vimma-open` next to the binary, replacing any value
+  inherited from the caller, and then
   sets it to empty, so no program Vimma starts inherits it (a Firefox started from one would take
   `vimma-open` as itself, bug 1494436). An AppImage, known by its own `is-packaged-app` marker
   and never by the caller's `APPDIR`, keeps `AppRun`'s value (the `.AppImage`); without a
   `vimma-open` next to the binary (the tarball, a build from source) nothing is set. When something
   starts the shell service first (the profile service making a dedicated default profile on a
-  first start, `vimma -setDefaultBrowser`), it has taken another command; Vimma reports that in
+  first start), it has taken another command; Vimma reports that in
   the console, and Make default then asks GIO for the first desktop entry it lists whose `Exec` program is
   that `vimma-open` (usually the package's; a user entry in `~/.local/share/applications` that
   runs it, with any arguments, comes first, as for Firefox's own button, see §11) and sets it, for what Firefox's own button sets, or runs Firefox's method
   when there is none, under Flatpak, or when a policy forbids it. The default-browser check then also counts that
   entry when GIO names it for both http and https, by the same exact-path match, with a quoted
-  or escaped program never matching. **⚠ limit:** `vimma -setDefaultBrowser` sets the default
-  before Vimma's window starts, so it keeps Firefox's behaviour (a `userapp-` entry for the
-  binary). A program that can write `~/.local/share/applications` or
+  or escaped program never matching. `vimma -setDefaultBrowser` is the same explicit request as
+  the button and takes the same path, on time or late. A program that can write
+  `~/.local/share/applications` or
   `mimeapps.list` can choose the default browser itself, so a desktop entry there that also runs
   `vimma-open` is outside this boundary (§11). On Omarchy, where GIO names Omarchy's router
   (`omarchy-browser.desktop`) as the http and https handler, Vimma also counts itself the
@@ -92,6 +94,7 @@ of its parent processes, and reads `TERM_PROGRAM`, which any program can set.
   [`test_an_inherited_appdir_never_keeps_another_program`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_a_shell_service_already_running_is_reported_and_the_value_emptied`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_startup_named_the_launcher_before_anything_else_started_the_service`](../../tests/browser/browser_vimma_app_launcher.js),
+  [`test_the_launcher_is_named_before_the_command_line_runs`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_an_appimage_keeps_apprun_s_value`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_make_default_sets_the_package_entry_after_a_late_start`](../../tests/browser/browser_vimma_app_launcher.js),
   [`test_without_the_package_entry_make_default_keeps_firefox_s_way`](../../tests/browser/browser_vimma_app_launcher.js),

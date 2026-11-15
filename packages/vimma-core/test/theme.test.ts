@@ -24,15 +24,13 @@ import { mergeWithDefaults } from "../src/config/config.mjs";
 import { MODES } from "../src/keys/modes.mjs";
 import { budget } from "./budget.mjs";
 
-/** @param {string} name */
-const fixture = (name) =>
+const fixture = (name: string) =>
   readFileSync(new URL(`../../../tests/contract/theme/${name}`, import.meta.url), "utf8");
 
 const defaults = mergeWithDefaults({}).theme;
-/** @param {Partial<typeof defaults>} over */
-const themeCfg = (over = {}) => ({ ...defaults, ...over });
-/** @param {Partial<typeof defaults>} over */
-const tokyoCfg = (over = {}) => themeCfg({ name: "tokyo-night", ...over });
+const themeCfg = (over: Partial<typeof defaults> = {}) => ({ ...defaults, ...over });
+const tokyoCfg = (over: Partial<typeof defaults> = {}) =>
+  themeCfg({ name: "tokyo-night", ...over });
 
 describe("hex colours", () => {
   test.each(["#fff", "#FFF", "#1a1b26", "#A9B1D6"])("%s is a hex colour", (c) => {
@@ -163,7 +161,7 @@ describe("parseOmarchyColors: a colors.toml with only the base keys", () => {
   test("without color8-15 or selection_background: bright colours 20% toward white", () => {
     const r = parseOmarchyColors(base);
     expect(r.errors).toEqual([]);
-    const p = /** @type {Record<string, string>} */ (r.palette);
+    const p = r.palette as Record<string, string>;
     expect(p.bright_red).toBe("#ed7893"); // #e95678, 20% toward white
     expect(p.bright_foreground).toBe("#fadad1"); // foreground
     expect(p.dark_foreground).toBe("#fadad1"); // foreground (Omarchy's rule; fg-dim reads)
@@ -332,7 +330,7 @@ describe("resolveTheme", () => {
     ])("appearance %s under a %s scheme is the %s palette", (appearance, scheme, bg, mode) => {
       const r = resolveTheme({
         theme: themeCfg({ source: "file", appearance }),
-        scheme: /** @type {"dark" | "light"} */ (scheme),
+        scheme: scheme as "dark" | "light",
       });
       expect(r.errors).toEqual([]);
       expect(r.tokens["--vimma-bg"]).toBe(bg);
@@ -422,8 +420,8 @@ describe("resolveTheme", () => {
     expect(r.tokens["--vimma-color-scheme"]).toBe("light");
     expect(r.tokens["--vimma-bg"]).toBe("#eff1f5");
     for (const badge of BADGES) {
-      const bg = /** @type {string} */ (r.tokens[`--vimma-mode-${badge}`]);
-      const fg = /** @type {string} */ (r.tokens[`--vimma-mode-${badge}-fg`]);
+      const bg = r.tokens[`--vimma-mode-${badge}`] as string;
+      const fg = r.tokens[`--vimma-mode-${badge}-fg`] as string;
       expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
     }
     // neither palette text colour reaches 4.5:1 on this yellow, so the text falls back to black
@@ -567,15 +565,15 @@ describe("tokens", () => {
     const r = resolveTheme({ theme: themeCfg() });
     expect(r.tokens["--vimma-element-outline"]).toBe(r.tokens["--vimma-accent"]);
     for (const [name, theme] of Object.entries(BUILTIN_THEMES)) {
-      for (const appearance of /** @type {const} */ (["dark", "light"])) {
+      for (const appearance of ["dark", "light"] as const) {
         if (!theme[appearance]) continue;
         const cfg = themeCfg({ name, appearance });
         const t = resolveTheme({ theme: cfg }).tokens;
         expect(t["--vimma-mode-element"], `${name} ${appearance}`).not.toBe(
           t["--vimma-mode-visual"],
         );
-        const fg = /** @type {string} */ (t["--vimma-mode-element-fg"]);
-        const bg = /** @type {string} */ (t["--vimma-mode-element"]);
+        const fg = t["--vimma-mode-element-fg"] as string;
+        const bg = t["--vimma-mode-element"] as string;
         expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(4.5);
       }
     }
@@ -583,10 +581,9 @@ describe("tokens", () => {
 
   // Every theme Vimma ships or is tested with: the built-ins in each variant, and each fixture.
   const badgeThemes = () => {
-    /** @type {[string, ReturnType<typeof resolveTheme>][]} */
-    const out = [];
+    const out: [string, ReturnType<typeof resolveTheme>][] = [];
     for (const [name, theme] of Object.entries(BUILTIN_THEMES)) {
-      for (const appearance of /** @type {const} */ (["dark", "light"])) {
+      for (const appearance of ["dark", "light"] as const) {
         if (theme[appearance])
           out.push([
             `${name} ${appearance}`,
@@ -609,13 +606,10 @@ describe("tokens", () => {
   test("every badge has a colour of its own, apart from every other badge's", () => {
     for (const [name, r] of badgeThemes()) {
       expect(r.errors, name).toEqual([]);
-      const colours = BADGES.map((b) => /** @type {string} */ (r.tokens[`--vimma-mode-${b}`]));
+      const colours = BADGES.map((b) => r.tokens[`--vimma-mode-${b}`] as string);
       for (let i = 0; i < BADGES.length; i++) {
         for (let j = i + 1; j < BADGES.length; j++) {
-          const d = colorDistance(
-            /** @type {string} */ (colours[i]),
-            /** @type {string} */ (colours[j]),
-          );
+          const d = colorDistance(colours[i] as string, colours[j] as string);
           expect(
             d,
             `${name}: ${BADGES[i]} ${colours[i]} vs ${BADGES[j]} ${colours[j]}`,
@@ -658,13 +652,13 @@ describe("tokens", () => {
         }),
       ],
     ]) {
-      const t = /** @type {ReturnType<typeof resolveTheme>} */ (r).tokens;
+      const t = (r as ReturnType<typeof resolveTheme>).tokens;
       for (let n = 1; n <= 9; n++) {
-        const c = /** @type {string} */ (t[`--vimma-split-${n}`]);
+        const c = t[`--vimma-split-${n}`] as string;
         expect(c, `${name} split ${n}`).toMatch(/^#[0-9a-f]{6}$/);
         for (const bg of SPLIT_SURFACES) {
           expect(
-            contrastRatio(c, /** @type {string} */ (t[bg])),
+            contrastRatio(c, t[bg] as string),
             `${name} split ${n} on ${bg}`,
           ).toBeGreaterThanOrEqual(3);
         }
@@ -688,10 +682,10 @@ describe("tokens", () => {
     const dim = resolveTheme({
       theme: themeCfg({ name: "vimma", appearance: "dark", colors: { split_3: "#101010" } }),
     });
-    const c = /** @type {string} */ (dim.tokens["--vimma-split-3"]);
+    const c = dim.tokens["--vimma-split-3"] as string;
     expect(c).not.toBe("#101010");
     for (const bg of SPLIT_SURFACES) {
-      expect(contrastRatio(c, /** @type {string} */ (dim.tokens[bg]))).toBeGreaterThanOrEqual(3);
+      expect(contrastRatio(c, dim.tokens[bg] as string)).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -711,14 +705,11 @@ describe("tokens", () => {
       theme: themeCfg({ source: "omarchy" }),
       omarchy: fixture("mono.colors.toml"),
     }).tokens;
-    const colours = BADGES.map((b) => /** @type {string} */ (t[`--vimma-mode-${b}`]));
+    const colours = BADGES.map((b) => t[`--vimma-mode-${b}`] as string);
     for (let i = 0; i < colours.length; i++) {
       for (let j = i + 1; j < colours.length; j++) {
         // Twice the just-noticeable difference (delta E 2.3).
-        const d = colorDistance(
-          /** @type {string} */ (colours[i]),
-          /** @type {string} */ (colours[j]),
-        );
+        const d = colorDistance(colours[i] as string, colours[j] as string);
         expect(d, `${BADGES[i]} vs ${BADGES[j]}`).toBeGreaterThanOrEqual(5);
       }
     }
@@ -729,12 +720,14 @@ describe("tokens", () => {
       theme: themeCfg({ source: "omarchy" }),
       omarchy: fixture("mono.colors.toml"),
     });
-    /** @type {[string, ReturnType<typeof resolveTheme>][]} */
-    const themes = [...badgeThemes(), ["mono.colors.toml", mono]];
+    const themes: [string, ReturnType<typeof resolveTheme>][] = [
+      ...badgeThemes(),
+      ["mono.colors.toml", mono],
+    ];
     for (const [name, r] of themes) {
       for (const b of BADGES) {
-        const fg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}-fg`]);
-        const bg = /** @type {string} */ (r.tokens[`--vimma-mode-${b}`]);
+        const fg = r.tokens[`--vimma-mode-${b}-fg`] as string;
+        const bg = r.tokens[`--vimma-mode-${b}`] as string;
         expect(contrastRatio(fg, bg), `${name} ${b}`).toBeGreaterThanOrEqual(MIN_CONTRAST);
       }
       expect(
@@ -772,8 +765,7 @@ describe("tokens", () => {
 
   // The normal badge is the aqua: insert's green and help's cyan must stay apart from it, and from
   // each other, without badgeColors having to move them.
-  /** @type {Array<["dark" | "light", typeof VIMMA_DARK]>} */
-  const vimmaVariants = [
+  const vimmaVariants: Array<["dark" | "light", typeof VIMMA_DARK]> = [
     ["dark", VIMMA_DARK],
     ["light", VIMMA_LIGHT],
   ];
@@ -920,8 +912,7 @@ describe("themeStylesheet", () => {
   });
 
   test("a fixed scheme is passed to web pages; one that follows the system is not", () => {
-    /** @type {[ReturnType<typeof themeStylesheet>, string][]} */
-    const fixed = [
+    const fixed: [ReturnType<typeof themeStylesheet>, string][] = [
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "light" }) }), "light"],
       [themeStylesheet({ theme: themeCfg({ source: "file", appearance: "dark" }) }), "dark"],
       [themeStylesheet({ theme: tokyoCfg({ source: "file" }) }), "dark"],
