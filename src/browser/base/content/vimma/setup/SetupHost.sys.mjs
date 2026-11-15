@@ -72,7 +72,7 @@ const offered = new Map();
 
 /** @param {string} url @returns {Promise<unknown[] | null>} null offline or after 10 s */
 async function amoResults(url) {
-  /** @type {any} */
+  /** @type {number | undefined} */
   let timer;
   const timeout = new Promise((resolve) => {
     timer = lazy.setTimeout(() => resolve(null), AMO_TIMEOUT_MS);
@@ -90,7 +90,7 @@ async function amoResults(url) {
 
 async function installedIds() {
   const addons = await lazy.AddonManager.getAddonsByTypes(["extension"]);
-  return new Set(addons.map((/** @type {any} */ a) => a.id));
+  return new Set(addons.map((a) => a.id));
 }
 
 /** @param {import("../core/setup.mjs").AddonEntry[]} list */
@@ -135,7 +135,7 @@ export const SetupHost = {
   /**
    * Opens the welcome screen in front, once per profile. The pref is set before the page
    * loads, so a crash or a closed window never shows it twice.
-   * @param {any} win
+   * @param {BrowserWindow} win
    * @returns {boolean} whether it opened
    */
   offer(win) {
@@ -172,12 +172,9 @@ export const SetupHost = {
   async engines() {
     const s = lazy.SearchService;
     await s.init();
-    const visible = (await s.getVisibleEngines()).map((/** @type {any} */ e) => e.name);
-    const app = new Set((await s.getAppProvidedEngines()).map((/** @type {any} */ e) => e.name));
-    const names = [
-      ...visible.filter((/** @type {string} */ n) => app.has(n)),
-      ...visible.filter((/** @type {string} */ n) => !app.has(n)),
-    ];
+    const visible = (await s.getVisibleEngines()).map((e) => e.name);
+    const app = new Set((await s.getAppProvidedEngines()).map((e) => e.name));
+    const names = [...visible.filter((n) => app.has(n)), ...visible.filter((n) => !app.has(n))];
     const fromFile = /** @type {any} */ (ConfigHost.config)?.search?.default;
     const current = names.includes(fromFile) ? fromFile : (await s.getDefault()).name;
     return { names, current };
@@ -207,7 +204,7 @@ export const SetupHost = {
     const path = configFile();
     /** @type {string | null} */
     let text = null;
-    /** @type {any} */
+    /** @type {Awaited<ReturnType<IOUtilsNamespace["stat"]>> | null} */
     let before = null;
     try {
       before = await IOUtils.stat(path);

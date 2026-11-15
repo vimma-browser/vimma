@@ -268,7 +268,8 @@ export class WorkspaceStoreImpl {
     }
     for (const id of plan.update) {
       const w = this.#def(id);
-      CIS.update(w.userContextId, w.name, w.icon, w.color);
+      // An update is planned only for a container it adopted, which has an id.
+      if (w.userContextId !== null) CIS.update(w.userContextId, w.name, w.icon, w.color);
     }
     return this.definitions !== before;
   }

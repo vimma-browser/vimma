@@ -20,10 +20,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
 });
-/** The modules as typed in types/firefox.d.ts: LazyModules leaves them untyped (setup/ reads more). */
-const addonManager = () => /** @type {AddonManagerApi} */ (lazy.AddonManager);
-const extensionPermissions = () =>
-  /** @type {ExtensionPermissionsApi} */ (lazy.ExtensionPermissions);
+const addonManager = () => lazy.AddonManager;
+const extensionPermissions = () => lazy.ExtensionPermissions;
 
 /** about:addons' "Run in Private Windows" permission (components/addon-card.mjs). */
 const PRIVATE_BROWSING_PERM = "internal:privateBrowsingAllowed";

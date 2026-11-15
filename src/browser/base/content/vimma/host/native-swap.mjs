@@ -160,7 +160,7 @@ function holdActive(win) {
   held.set(win, () => {
     win.removeEventListener("occlusionstatechange", onChange);
     // Picture-in-Picture may have forced it active meanwhile, for a video it plays.
-    if (win.closed || lazy.PictureInPicture.originatingWinWeakMap.get(win) > 0) return;
+    if (win.closed || (lazy.PictureInPicture.originatingWinWeakMap.get(win) ?? 0) > 0) return;
     try {
       bc.forceAppWindowActive = false;
     } catch (e) {
