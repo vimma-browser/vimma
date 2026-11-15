@@ -1067,4 +1067,39 @@ describe("parseAgentRequest", () => {
     expect(parseAgentRequest("agent-hello", { client: { name: "" } })).toBeNull();
     expect(parseAgentRequest("agent-console", { tab: "1", since: -1 })).toBeNull();
   });
+
+  // An in-process caller could pass an object whose values change between reads: what is
+  // checked is a copy of its own data, read once, so the handler gets what was checked.
+  test("arguments are read once: a getter cannot change a value after the check", () => {
+    let reads = 0;
+    const args = {
+      get tab() {
+        reads += 1;
+        return reads === 1 ? "1" : "2";
+      },
+    };
+    expect(parseAgentRequest("agent-close", args)).toEqual({
+      command: "agent-close",
+      args: { tab: "1" },
+    });
+    expect(reads).toBe(1);
+    const fields = [{ label: "a", value: "x" }];
+    let fieldReads = 0;
+    const fill = {
+      tab: "1",
+      get fields() {
+        fieldReads += 1;
+        return fieldReads === 1 ? fields : [{ label: "a", value: 1 }];
+      },
+    };
+    expect(parseAgentRequest("agent-fill", fill)?.args).toEqual({ tab: "1", fields });
+    expect(fieldReads).toBe(1);
+  });
+
+  test("inherited properties are not arguments", () => {
+    const inherited = Object.create({ tab: "1" });
+    expect(parseAgentRequest("agent-close", inherited)).toBeNull();
+    const client = Object.create({ name: "c" });
+    expect(parseAgentRequest("agent-hello", { client })).toBeNull();
+  });
 });
