@@ -61,7 +61,11 @@ _Pages_ and _extensions_ cannot reach it.
   (the file cannot be read or its TOML does not parse; `updates` is not a table; `check` is not
   a boolean; `[updates]` has other keys but no `check`; the file has a top-level key Vimma does
   not know, such as `[update]`; or a boolean `check` sits in another table) and only the
-  defaults stand in for the file, no check runs but `:update`, which the pref still stops. A
+  defaults stand in for the file, no check runs but `:update`, which the pref still stops. When
+  a config was in force before, an unreadable `check` keeps the setting in effect, never turning
+  checks on: checks held stay held, and checks stay on only when both the setting in effect and
+  the config in force have them on, so a readable `check = false` from an earlier file with
+  errors in the same session holds (#967). A
   file that parses applies its `check` as a valid file would. Apart from
   `:update`, an attempt that got no answer is **never** repeated within 10 minutes, so restarts
   send no burst of requests.
@@ -73,6 +77,8 @@ _Pages_ and _extensions_ cannot reach it.
   [`a_source_build_checks_nothing`](../../tests/browser/browser_vimma_update_check.js),
   [`a_config_with_errors_still_turns_checks_off`](../../tests/browser/browser_vimma_update_check.js),
   [`a file with errors: a readable check = false holds; else the config in force, or held`](../../packages/vimma-core/test/updates.test.mjs),
+  [`an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)`](../../packages/vimma-core/test/updates.test.mjs),
+  [`an_unreadable_check_never_undoes_an_opt_out_stated_in_a_broken_file`](../../tests/browser/browser_vimma_update_check.js),
   [`a file that parses but has errors checks as a valid file would (#741)`](../../packages/vimma-core/test/updates.test.mjs),
   [`:update runs while checks are held, never past a stated opt-out`](../../packages/vimma-core/test/updates.test.mjs),
   [`an opt-out under a misspelt or misplaced table may mean check = false`](../../packages/vimma-core/test/updates.test.mjs),

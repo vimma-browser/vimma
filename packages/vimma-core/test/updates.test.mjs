@@ -1229,6 +1229,67 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
     );
   });
 
+  test("an unreadable check keeps the setting in effect, never a stated opt-out undone (#967)", () => {
+    // 1. A valid file without [updates]: checks on.
+    let now = updatesCheckAfterRead({
+      errors: 0,
+      inForce: true,
+      raw: null,
+      hadConfig: false,
+      previous: null,
+    });
+    expect(now).toEqual({ check: true, held: false });
+    // 2. check = false beside an error elsewhere: it parses, so off; the valid config stays.
+    now = updatesCheckAfterRead({
+      errors: 1,
+      inForce: true,
+      raw: false,
+      hadConfig: true,
+      previous: now,
+    });
+    expect(now).toEqual({ check: false, held: false });
+    // 3. A syntax error, or the check line mangled: the last readable statement was check = false.
+    now = updatesCheckAfterRead({
+      errors: 1,
+      inForce: true,
+      raw: null,
+      hadConfig: true,
+      previous: now,
+    });
+    expect(now).toEqual({ check: false, held: false });
+    // An unreadable file (held), then a TOML error: still held, not the config in force.
+    expect(
+      updatesCheckAfterRead({
+        errors: 1,
+        inForce: true,
+        raw: null,
+        hadConfig: true,
+        previous: { check: false, held: true },
+      }),
+    ).toEqual({ check: false, held: true });
+    // A file with errors and no check line turned checks on past a valid check = false: an
+    // unreadable file after it may say check = false again, so it does not keep them on.
+    expect(
+      updatesCheckAfterRead({
+        errors: 1,
+        inForce: false,
+        raw: null,
+        hadConfig: true,
+        previous: { check: true, held: false },
+      }),
+    ).toEqual({ check: false, held: false });
+    // On in effect and in force: an unreadable file keeps them on, as before.
+    expect(
+      updatesCheckAfterRead({
+        errors: 1,
+        inForce: true,
+        raw: null,
+        hadConfig: true,
+        previous: { check: true, held: false },
+      }),
+    ).toEqual({ check: true, held: false });
+  });
+
   test("an opt-out under a misspelt or misplaced table may mean check = false", () => {
     for (const text of [
       "schema = 2\n[update]\ncheck = false\n",

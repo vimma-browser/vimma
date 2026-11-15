@@ -132,9 +132,10 @@ Then, whether or not the file applied, `use` tells the update check what `[updat
 is (`updatesCheckAfterRead` in core `updates.mjs`). A file with errors still decides it when its
 TOML parses: its own `check` applies, and a missing one counts as true, so a value from a newer
 build never keeps the user from the release that accepts it. Only when `check` cannot be read
-(the TOML does not parse, or the line is malformed or misplaced) does it keep the value of the
-config in force, and when only the defaults stand in for the file, at startup, it holds checks
-(`:update` aside). `use` then
+(the TOML does not parse, or the line is malformed or misplaced) does it fall back, and then
+never turns checks on: when only the defaults stand in for the file, at startup, it holds checks
+(`:update` aside); otherwise it keeps the setting in effect (the last read's result, which
+`ConfigHost` keeps), on only when the config in force is on too (#967). `use` then
 calls `report`, which logs the errors (once per change of the file, and again on each `:source`)
 and passes them to `VimmaHost.configure` as `configErrors` with the file's
 name. The status bar shows them, `about:vimma` lists them, and the built-in agent's window names
