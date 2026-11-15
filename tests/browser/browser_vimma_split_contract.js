@@ -400,11 +400,9 @@ function assertBorders(tabs, focused, what) {
  * @param {number} y
  */
 async function paintedAt(x, y) {
-  const bitmap = await window.browsingContext.currentWindowGlobal.drawSnapshot(
-    new DOMRect(x, y, 1, 1),
-    1,
-    "black",
-  );
+  const bitmap = await /** @type {WindowGlobalParent} */ (
+    window.browsingContext.currentWindowGlobal
+  ).drawSnapshot(new DOMRect(x, y, 1, 1), 1, "black");
   const canvas = new OffscreenCanvas(1, 1);
   // null only for a context type the canvas does not support, or a canvas with another context.
   const ctx = /** @type {OffscreenCanvasRenderingContext2D} */ (canvas.getContext("2d"));

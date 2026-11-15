@@ -4,7 +4,7 @@
 
 // config.toml for every window (spec: docs/specs/m5-config-load.md). One per app. Reads
 // `$XDG_CONFIG_HOME/vimma/config.toml` (default `~/.config/vimma/config.toml`) and nothing else
-// in that folder, polls its mtime and size every 2 s (plan §3: Firefox has no portable file
+// in that folder, polls its mtime and size every 2 s (Firefox has no portable file
 // watcher), and reads it at once on `:source`. vimma-core parses and validates (reloadConfig:
 // a file is applied whole or not at all, else the last good config stays); this module does
 // the I/O and hands each part to the module that uses it. `:source <path>` puts another file in

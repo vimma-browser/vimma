@@ -242,7 +242,7 @@ add_task(async function the_theme_reaches_only_the_viewer() {
   await withPdf(async (browser) => {
     const css = await ask(browser);
     Assert.equal(typeof css, "string", "the viewer gets the token sheet");
-    Assert.ok(css.includes("--vimma-bg"), "with the tokens");
+    Assert.ok(/** @type {string} */ (css).includes("--vimma-bg"), "with the tokens");
   });
   const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, ROOT + "file_vimma_plain.html");
   Assert.strictEqual(await ask(tab.linkedBrowser), null, "a web page gets nothing");

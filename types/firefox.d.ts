@@ -10,7 +10,7 @@ interface FirefoxServices {
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
     newURI(spec: string): nsIURI;
-    newChannelFromURIWithLoadInfo(uri: unknown, loadInfo: unknown): any;
+    newChannelFromURIWithLoadInfo(uri: nsIURI, loadInfo: nsILoadInfo): nsIChannel;
   };
   // engine/netwerk/dns/nsIEffectiveTLDService.idl
   eTLD: {
@@ -269,9 +269,11 @@ interface XPCComponentsUtils {
     setContainerNode(node: Node): void;
     encodeToString(): string;
   };
-  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl).
-  waiveXrays<T>(obj: T): any;
-  unwaiveXrays<T>(obj: T): any;
+  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl). Waived, an object shows
+  // what the page's own scripts set on it, which no type describes: the caller checks each value
+  // it reads. Unwaived, it is the Xray view again.
+  waiveXrays(obj: object): { readonly [name: string]: unknown };
+  unwaiveXrays<T>(obj: T): T;
   exportFunction(fn: Function, target: object): Function;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
@@ -346,9 +348,9 @@ declare const ChromeUtils: {
   getAllDOMProcesses(): nsIDOMProcessParent[];
 };
 
-// engine/dom/webidl/Window.webidl (chrome-only part)
+// engine/dom/webidl/Window.webidl: never null. A chrome window's, in the parent, is canonical.
 interface Window {
-  readonly browsingContext: any;
+  readonly browsingContext: BrowsingContext;
 }
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
@@ -368,7 +370,12 @@ declare class JSWindowActorParent {
 // engine/dom/webidl/Worker.webidl (ChromeWorker): a Worker with chrome privileges (system modules)
 declare class ChromeWorker extends Worker {}
 declare class JSWindowActorChild {
-  readonly browsingContext: any;
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager rather than give null, and a manager always has a context
+   * (engine/dom/ipc/jsactor/JSWindowActorChild.cpp, GetBrowsingContext).
+   */
+  readonly browsingContext: BrowsingContext;
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
@@ -376,14 +383,41 @@ declare class JSWindowActorChild {
     // engine/toolkit/actors/FinderChild.sys.mjs, registered for every frame
     // (engine/toolkit/modules/ActorManagerParent.sys.mjs)
     getActor(name: "Finder"): FinderChildActor;
-    getActor(name: string): any;
+    // engine/toolkit/actors/AutoCompleteChild.sys.mjs; throws in a frame it is not registered for
+    getActor(name: "AutoComplete"): AutoCompleteChildActor;
+    getActor(name: string): JSWindowActorChild;
     readonly innerWindowId: number;
     readonly isCurrentGlobal: boolean;
   };
-  // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
-  readonly docShell: any;
+  /**
+   * The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController): null once the
+   * frame's context has lost it, as a discarded one has (JSWindowActorChild.cpp, GetDocShell).
+   */
+  readonly docShell: nsIDocShell | null;
   sendAsyncMessage(name: string, data?: unknown): void;
-  sendQuery(name: string, data?: unknown): Promise<any>;
+  /** The parent actor's answer to one of Vimma's queries (host/VimmaParent.sys.mjs). */
+  sendQuery<K extends keyof VimmaChildQueries>(
+    name: K,
+    data?: unknown,
+  ): Promise<VimmaChildQueries[K]>;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
+}
+// What VimmaParent answers its child's queries with (host/VimmaParent.sys.mjs).
+interface VimmaChildQueries {
+  /** The theme's token sheet, null for any actor but the top viewer's current one (V12). */
+  "Vimma:PdfTheme": string | null;
+}
+// engine/toolkit/actors/AutoCompleteChild.sys.mjs: the frame's autocomplete popup is open.
+interface AutoCompleteChildActor {
+  readonly popupOpen: boolean;
+}
+// engine/docshell/base/nsIDocShell.idl and nsIDocShellTreeItem.idl (the members Vimma uses);
+// isLoadingDocument is nsIWebProgress's, which a docshell also is.
+interface nsIDocShell extends nsISupports {
+  /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
+  readonly treeOwner: nsISupports | null;
+  readonly isLoadingDocument: boolean;
+  doCommand(command: string): void;
 }
 
 // engine/dom/base/nsISelectionController.idl (the members copy mode uses)
@@ -502,8 +536,7 @@ interface nsIPrincipal {
 // name is exported by one module). A module's `lazy` object is
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
-// list only the members Vimma calls; `any` marks a module Vimma uses beyond a few members whose
-// shape is not typed here yet.
+// list only the members Vimma calls.
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -582,8 +615,6 @@ interface LazyModules {
   // may give null too).
   E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
-  // Untyped: wide Firefox APIs Vimma drives in depth (the agent's downloads and dialogs,
-  // js-ctypes and subprocesses).
   // engine/browser/modules/AboutNewTab.sys.mjs: setting the URL overrides it until the reset.
   AboutNewTab: {
     newTabURL: string;
@@ -602,7 +633,7 @@ interface LazyModules {
   // engine/toolkit/components/downloads/DownloadIntegration.sys.mjs, as
   // `Integration.downloads.getCombined` takes it.
   DownloadIntegration: object;
-  DownloadPaths: any;
+  DownloadPaths: DownloadPathsModule;
   Downloads: DownloadsModule;
   DownloadsCommon: DownloadsCommonApi;
   ExtensionPermissions: ExtensionPermissionsApi;
@@ -616,21 +647,24 @@ interface LazyModules {
     isCreditCardField(fieldName: unknown): boolean;
     isAddressField(fieldName: unknown): boolean;
   };
-  Integration: any;
+  Integration: IntegrationModule;
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
   PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
   SearchService: SearchServiceApi;
   SitePermissions: SitePermissionsApi;
-  Subprocess: any;
+  Subprocess: SubprocessModule;
   // engine/browser/components/urlbar/UrlbarSearchUtils.sys.mjs: the visible engines with an
   // `@` alias, each with those aliases (an empty list when the search service fails to start).
   UrlbarSearchUtils: {
     tokenAliasEngines(): Promise<{ engine: SearchEngine; tokenAliases: string[] }[]>;
   };
-  ctypes: any;
-  nsContentDispatchChooser: any;
-  nsUnknownContentTypeDialog: any;
+  // The agent's downloads and the agent pages' hooks: types/firefox-downloads.d.ts.
+  ctypes: CtypesModule;
+  // engine/uriloader/exthandler/ContentDispatchChooser.sys.mjs and toolkit/mozapps/downloads/
+  // HelperAppDlg.sys.mjs: the classes the agent's wrappers construct and fall back to.
+  nsContentDispatchChooser: new () => ContentDispatchChooser;
+  nsUnknownContentTypeDialog: new () => HelperAppLauncherDialog;
   // engine/toolkit/components/pictureinpicture/PictureInPicture.sys.mjs: its per-window count of
   // PiP windows; a window without one has no entry.
   PictureInPicture: { readonly originatingWinWeakMap: WeakMap<Window, number> };
@@ -736,7 +770,9 @@ interface Window {
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
-  readonly docShell: any;
+  /** Null once the window is closed: `closed` is true exactly when it has none
+   * (engine/dom/base/nsGlobalWindowOuter.cpp, GetClosedOuter). */
+  readonly docShell: nsIDocShell | null;
   fullScreen: boolean;
   /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
   readonly wrappedJSObject: { readonly [name: string]: unknown };
@@ -744,6 +780,8 @@ interface Window {
 
 // engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
 interface ChromeWindow extends Window {
+  /** Chrome windows are in the parent process only. */
+  readonly browsingContext: CanonicalBrowsingContext;
   readonly windowState: number;
   readonly isFullyOccluded: boolean;
   getAttention(): void;
@@ -787,6 +825,10 @@ interface MozBrowser extends Element {
 // of a document's window global in the parent.
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
+  getActor(
+    name: "Vimma",
+  ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
 }
 
@@ -1002,8 +1044,7 @@ interface XULFrameElement extends Element {
   readonly contentDocument: Document | null;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's
-// `browsingContext` is still `any`).
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads).
 interface BrowsingContext {
   // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
   // (engine/dom/chrome-webidl/OriginAttributes.webidl).
@@ -1045,6 +1086,13 @@ interface CanonicalBrowsingContext extends BrowsingContext {
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
+  /** The chrome window the context is in; null once it has none. */
+  readonly topChromeWindow: ChromeWindow | null;
+  /**
+   * An app window's context only: kept active while minimized or occluded. The setter throws
+   * on any other.
+   */
+  forceAppWindowActive: boolean;
 }
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
 // members). The principals are never null (webidl `Principal`, not nullable).
@@ -1200,15 +1248,18 @@ interface ContentPermissionIntegration {
 // DownloadSource, DownloadTarget and DownloadSaver that Vimma's agent downloads read
 // (ctl/AgentDownloads.sys.mjs). The saver is a DownloadCopySaver or, for a helper-app download,
 // a DownloadLegacySaver, which alone has `request` (its channel, null until it starts) and
-// `deferExecuted`.
-interface FirefoxDownload {
+// `deferExecuted`. It is what Downloads.getList's lists hold: a session download.
+interface FirefoxDownload extends SessionDownload {
   readonly source: {
     readonly url: string;
     readonly originalUrl: string | null;
     readonly userContextId?: number;
     readonly browsingContextId?: number;
   };
-  readonly target: { readonly path: string; readonly partFilePath: string | null };
+  readonly target: SessionDownload["target"] & {
+    readonly path: string;
+    readonly partFilePath: string | null;
+  };
   readonly saver: {
     readonly totalBytes?: number;
     readonly request?: { readonly contentLength?: number } | null;
@@ -1244,15 +1295,6 @@ interface nsIHelperAppLauncher {
   readonly contentLength: number;
   promptForSaveDestination(): void;
   saveDestinationAvailable(file: { readonly path: string } | null): void;
-}
-// engine/toolkit/modules/subprocess/Subprocess.sys.mjs (its Process, through the pipes Vimma
-// asked for): the scanner Vimma runs.
-interface ChildProcess {
-  readonly stdin: { close(): Promise<unknown> };
-  readonly stdout: { readString(): Promise<string> };
-  readonly stderr: { readString(): Promise<string> };
-  wait(): Promise<{ exitCode: number }>;
-  kill(): void;
 }
 // The modules ctl/AgentDownloads.sys.mjs reads lazily, named here and not there:
 // tools/security/test/chrome-source.test.ts pins every mention of the process module in it.
@@ -1494,17 +1536,18 @@ interface SessionDownload extends DownloadListEntry {
   showContainingDirectory(): Promise<void>;
 }
 // DownloadList.sys.mjs: a view hears of each entry, those already listed when it is added too.
-interface DownloadListView {
-  onDownloadAdded?(download: DownloadListEntry): void;
-  onDownloadChanged?(download: DownloadListEntry): void;
-  onDownloadRemoved?(download: DownloadListEntry): void;
+// Downloads.getList's lists hold session downloads (FirefoxDownload), the agent's among them;
+// DownloadHistory.getList's, history entries too.
+interface DownloadListView<D extends DownloadListEntry = DownloadListEntry> {
+  onDownloadAdded?(download: D): void;
+  onDownloadChanged?(download: D): void;
+  onDownloadRemoved?(download: D): void;
 }
-interface DownloadList {
-  getAll(): Promise<DownloadListEntry[]>;
-  /** The ALL list also holds the agent's downloads (ctl/AgentDownloads.sys.mjs). */
-  remove(download: DownloadListEntry | FirefoxDownload): Promise<void>;
-  addView(view: DownloadListView): Promise<void>;
-  removeView(view: DownloadListView): Promise<void>;
+interface DownloadList<D extends DownloadListEntry = DownloadListEntry> {
+  getAll(): Promise<D[]>;
+  remove(download: D): Promise<void>;
+  addView(view: DownloadListView<D>): Promise<void>;
+  removeView(view: DownloadListView<D>): Promise<void>;
 }
 // engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
 // null for an id that has none. `extension` is the Extension that registered it
@@ -1761,7 +1804,7 @@ interface DownloadsModule {
   readonly PUBLIC: string;
   readonly PRIVATE: string;
   readonly ALL: string;
-  getList(type: string): Promise<DownloadList>;
+  getList(type: string): Promise<DownloadList<FirefoxDownload>>;
   createDownload(properties: { source: string; target: string }): Promise<SessionDownload>;
 }
 // engine/browser/components/downloads/DownloadsCommon.sys.mjs: the downloads panel's commands.

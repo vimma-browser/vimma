@@ -55,11 +55,12 @@ theme parsing, the workspace and pane models, the control protocol validator, th
 queue, update manifests and the rest; and the Node tools under `tools/`, including tests of the
 workflows themselves (`tools/test/`) and the e2e harness against a fake control server.
 
-**Where.** `vitest.config.mjs` takes every `*.test.mjs` under `packages/**/test/` and
-`tools/**/test/`, with a global setup (`tools/test/tmp-guard.mjs`) that fails a test leaving
-files in its temporary folder. The `check` job runs `npm run coverage`, which fails below 90 %
-of lines, functions, branches and statements in `packages/vimma-core/src/` (the vendored
-smol-toml excluded). There is no coverage figure for the browser code.
+**Where.** `vitest.config.ts` takes every `*.test.mjs` under `packages/**/test/` and
+`tools/**/test/`, and every `*.test.ts` under `tools/**/test/`, with a global setup
+(`tools/test/tmp-guard.mjs`) that fails a test leaving files in its temporary folder. The `check`
+job runs `npm run coverage`, which fails below 90 % of lines, functions, branches and statements
+in `packages/vimma-core/src/` (the vendored smol-toml excluded).
+There is no coverage figure for the browser code.
 
 **Locally.** `npm test`, or `npx vitest run <file>`.
 

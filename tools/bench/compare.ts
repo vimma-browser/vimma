@@ -1,15 +1,15 @@
 /**
- * Bench regression gate (spec ci-quality-gates, plan §5 "Performance", issues #17 and #342).
+ * Bench regression gate (spec ci-quality-gates, docs/architecture/testing.md, issues #17 and #342).
  * Compares the working tree's cases with the baseline commit's cases, both measured by
  * tools/bench/bench.ts in the same processes, sample by sample. It fails when
- *   - any case of the working tree takes BUDGET_US or more (plan: key-to-action in core < 50 µs);
+ *   - any case of the working tree takes BUDGET_US or more (key-to-action in core under 50 µs);
  *   - the geometric mean of the cases' changes is more than THRESHOLD (10 %) above the baseline
  *     commit's, or one case is more than CASE_THRESHOLD (25 %) above it, or a case of the
  *     baseline commit was not measured. A change is the case's ratio (its time over the reference
  *     workload's, sampled in pairs) against the same case's ratio in the baseline commit.
  */
 export const BUDGET_US = 50;
-/** Plan §5: a regression over 10 % fails, measured on the suite (geometric mean of the cases). */
+/** A regression over 10 % fails, measured on the suite (geometric mean of the cases). */
 export const THRESHOLD = 0.1;
 /**
  * One case alone fails only past 25 %: a single sub-microsecond case moves more than the suite's

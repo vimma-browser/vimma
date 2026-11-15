@@ -326,7 +326,10 @@ async function assertDialogs(label, tab) {
     content.setTimeout(() => content.alert("tab-modal"), 0);
   });
   let [win] = /** @type {[Window]} */ (/** @type {unknown} */ (await loaded));
-  Assert.ok(win.docShell.chromeEventHandler, `${label}: the alert is in the tab`);
+  Assert.ok(
+    /** @type {nsIDocShell} */ (win.docShell).chromeEventHandler,
+    `${label}: the alert is in the tab`,
+  );
   assertDialog(`${label}: the tab-modal alert`, win);
   dialogOf(win).acceptDialog();
 
@@ -341,7 +344,10 @@ async function assertDialogs(label, tab) {
     );
   }, 0);
   [win] = /** @type {[Window]} */ (/** @type {unknown} */ (await loaded));
-  Assert.ok(!win.docShell.chromeEventHandler, `${label}: the alert is a window of its own`);
+  Assert.ok(
+    !(/** @type {nsIDocShell} */ (win.docShell).chromeEventHandler),
+    `${label}: the alert is a window of its own`,
+  );
   assertDialog(`${label}: the window-modal alert`, win);
   const closed = BrowserTestUtils.domWindowClosed(win);
   dialogOf(win).acceptDialog();

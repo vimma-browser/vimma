@@ -335,6 +335,7 @@ declare var goQuitApplication: BrowserWindow["goQuitApplication"];
 declare var DownloadURL: BrowserWindow["DownloadURL"];
 declare var gUnifiedExtensions: BrowserWindow["gUnifiedExtensions"];
 declare var BrowserAddonUI: BrowserWindow["BrowserAddonUI"];
+declare var browsingContext: ChromeWindow["browsingContext"];
 declare var windowState: ChromeWindow["windowState"];
 declare var STATE_MAXIMIZED: ChromeWindow["STATE_MAXIMIZED"];
 declare var STATE_NORMAL: ChromeWindow["STATE_NORMAL"];
