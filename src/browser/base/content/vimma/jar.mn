@@ -8,6 +8,8 @@ browser.jar:
         content/browser/vimma/ctl/VimmaControl.sys.mjs    (ctl/VimmaControl.sys.mjs)
         content/browser/vimma/host/AgentGate.sys.mjs      (host/AgentGate.sys.mjs)
         content/browser/vimma/ctl/agent-commands.mjs      (ctl/agent-commands.mjs)
+        content/browser/vimma/ctl/agent-errors.mjs        (ctl/agent-errors.mjs)
+        content/browser/vimma/ctl/agent-tabs.mjs          (ctl/agent-tabs.mjs)
         content/browser/vimma/ctl/AgentPages.sys.mjs      (ctl/AgentPages.sys.mjs)
         content/browser/vimma/ctl/AgentDownloads.sys.mjs  (ctl/AgentDownloads.sys.mjs)
         content/browser/vimma/ctl/AgentDrive.sys.mjs      (ctl/AgentDrive.sys.mjs)

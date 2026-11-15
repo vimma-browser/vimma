@@ -119,6 +119,8 @@ interface VimmaModules {
   "chrome://browser/content/vimma/ctl/AgentShot.sys.mjs": typeof import("../src/browser/base/content/vimma/ctl/AgentShot.sys.mjs");
   "chrome://browser/content/vimma/ctl/VimmaControl.sys.mjs": typeof import("../src/browser/base/content/vimma/ctl/VimmaControl.sys.mjs");
   "chrome://browser/content/vimma/ctl/agent-commands.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-commands.mjs");
+  "chrome://browser/content/vimma/ctl/agent-errors.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-errors.mjs");
+  "chrome://browser/content/vimma/ctl/agent-tabs.mjs": typeof import("../src/browser/base/content/vimma/ctl/agent-tabs.mjs");
   "chrome://browser/content/vimma/host/AgentGate.sys.mjs": typeof import("../src/browser/base/content/vimma/host/AgentGate.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaHost.sys.mjs": typeof import("../src/browser/base/content/vimma/host/VimmaHost.sys.mjs");
   "chrome://browser/content/vimma/host/VimmaParent.sys.mjs": typeof import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs");

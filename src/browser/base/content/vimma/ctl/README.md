@@ -2,7 +2,8 @@
 
 The control socket (`VimmaControl.sys.mjs`, protocols 1 and 2) and the agent commands
 (`agent-commands.mjs` and the `Agent*.sys.mjs` modules), which ask the agent gate,
-`host/AgentGate.sys.mjs`, before they act
+`host/AgentGate.sys.mjs`, before they act. `agent-tabs.mjs` holds which tabs an agent reaches
+and the check after the yes, `agent-errors.mjs` the refusals; neither imports the gate
 ([ARCHITECTURE.md](../../../../../../ARCHITECTURE.md#module-map)).
 
 **Entry points:** `VimmaControl.init(window)`, `AgentPages.init()` and `AgentConsole.init()`,

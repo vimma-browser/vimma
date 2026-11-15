@@ -341,7 +341,8 @@ first, so that what the guide says a model can do is what the bench measured.
   and `forgetAgentConnection` (`:1328`) clears them. Every tool finds its tab through
   `agentTabs` (`:174`) and `findAgentTab` (`:207`), which refuse a tab outside the agent
   workspace with `invalid-args`; `isAgentTab` (`:154`) checks the container and the workspace.
-  A per-conversation filter fits in these two functions.
+  A per-conversation filter fits in these two functions. (Since changed: the tab model and tab
+  ownership are in `ctl/agent-tabs.mjs`, issue #1108.)
 - `packages/vimma-core/src/agent.mjs`: `ConnId` is `string | number` (`:277`), so an
   in-process connection needs no socket. `wrapUntrusted` (`:508`) and `untrustedHeader`
   (`:517`) put page text between delimiters a page cannot close; the comment at `:432-434`
