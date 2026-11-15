@@ -103,7 +103,7 @@ only the agent workspace, and every request asks you first (§12).
   [`test_a_query_under_way_is_not_settled_even_heard_late`](../../tests/browser/browser_vimma_state_waits.js),
   [`test_state_reports_a_grep_jump_until_it_has_drawn`](../../tests/browser/browser_vimma_state_waits.js),
   [`pdf is one flag, or null`](../../packages/vimma-core/test/control.test.mjs),
-  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.mjs),
+  [`pdfDrawn`](../../packages/vimma-core/test/pdf.test.ts),
   [`test_state_reports_the_pdf_viewer_as_drawn`](../../tests/browser/browser_vimma_state_waits.js)
 - S10. `open` **must** load only http, https, file and about URLs of at most 64 KiB, checked by
   the server itself, never only by the client.
