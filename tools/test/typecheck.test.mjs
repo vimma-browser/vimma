@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
-// `npm run typecheck` (ci.yml's "Typecheck" step) checks four programs under the same strict
+// `npm run typecheck` (ci.yml's "Typecheck" step) checks five programs under the same strict
 // options: the browser code without Node's types (issue #945), tools/ with them, tests included
-// (issue #947), the core's tests with them (issue #959), and the browser tests under tests/
-// with the mochitest harness's declarations (issue #959).
+// (issue #947), the core's tests with them (issue #959), the browser tests under tests/ with the
+// mochitest harness's declarations (issue #959), and the tests' .sjs handlers (issue #1070).
 /** @param {string} path */
 const json = (path) => JSON.parse(readFileSync(new URL(`../../${path}`, import.meta.url), "utf8"));
 
@@ -14,13 +14,17 @@ describe("npm run typecheck", () => {
   const coreTests = json("packages/vimma-core/test/tsconfig.json");
   const browserTests = json("tests/tsconfig.json");
 
-  it("checks the browser code, tools/ and the core's tests, each with its own tsconfig", () => {
+  it("checks the browser code, tools/, the core's tests and the browser tests", () => {
     const script = json("package.json").scripts.typecheck;
     expect(script).toMatch(/\btsc -p tsconfig\.json\b/);
     expect(script).toMatch(/\btsc -p tools\/tsconfig\.json\b/);
     expect(script).toMatch(/\btsc -p packages\/vimma-core\/test\/tsconfig\.json\b/);
-    // tests/tsconfig.json, through the ratchet of tools/test/mochitest-allowlist.txt.
-    expect(script).toMatch(/\bnode tools\/mochitest-typecheck\.ts\b/);
+    // Every file under tests/ is free of type errors, so the program is plain tsc: the ratchet
+    // list that held back the files not fixed yet is gone (issue #959, emptied by #1069).
+    expect(script).toMatch(/\btsc -p tests\/tsconfig\.json\b/);
+    expect(script).not.toMatch(/mochitest-typecheck/);
+    // tsc reads no .sjs file, so the handlers are checked as copies (issue #1070).
+    expect(script).toMatch(/\bnode tools\/sjs-typecheck\.ts\b/);
   });
 
   it("keeps Node's types out of the browser code's check", () => {
@@ -76,8 +80,7 @@ describe("npm run typecheck", () => {
 
   // The browser tests run in Firefox, not Node: no Node types, the harness's globals from
   // types/mochitest/ instead, and every file under tests/ that is JavaScript, so a new test is
-  // checked from its first commit. The ratchet list, not an exclude, holds back the files not
-  // fixed yet (tools/mochitest-typecheck.ts).
+  // checked from its first commit; tools/sjs-typecheck.ts checks the .sjs handlers.
   it("checks every JavaScript file under tests/ with the mochitest harness's declarations", () => {
     expect(browserTests.extends).toBe("../tsconfig.json");
     expect(browserTests.include).toEqual([

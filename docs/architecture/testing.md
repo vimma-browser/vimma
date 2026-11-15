@@ -170,9 +170,14 @@ browser: `tests/tsconfig.json` with the harness's globals declared in `types/moc
 names, `head.d.ts`, which `npm run gen-mochitest-head` generates from the `head*.js` files, and
 `modules.d.ts`, which `npm run gen-mochitest-modules` generates from `jar.mn` and vimma-core's
 layout).
-`tools/mochitest-typecheck.ts` holds the program to `tools/test/mochitest-allowlist.txt`: a listed
-file may still have type errors, every other file, a new one included, may not, and a listed
-file that has none must come off the list. `Assert.equal` and its kin take an expected value of
+Every file in the program, a new one included, must be free of type errors. The `.sjs` handlers
+that httpd.js runs to serve test pages are checked by `tools/sjs-typecheck.ts`: tsc reads no
+`.sjs` file, so it checks byte-for-byte `.js` copies in a temporary folder with
+`tests/tsconfig.json`'s options and reports each error at the `.sjs` file's own line. That
+program has Firefox's declarations and the sandbox's globals (`getState`, `setSharedState` and
+the rest, in `types/sjs/`), not the harness's. It also has the DOM lib, so a DOM global the
+sandbox lacks (`setTimeout`, `document`) is not caught; a handler that waits uses `nsITimer`.
+`Assert.equal` and its kin take an expected value of
 the actual one's type, and `Assert.ok` refuses a promise, so a test that compares a value with
 the wrong kind of thing, or asserts on a promise it forgot to await, fails the check.
 `ChromeUtils.importESModule` with a literal `chrome://browser/content/vimma/` URL returns the

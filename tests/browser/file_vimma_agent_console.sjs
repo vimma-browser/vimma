@@ -3,14 +3,13 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // A response with the status the query names; `slow` holds it, so the page can abort it.
+/** @param {nsIHttpRequest} request @param {nsIHttpResponse} response */
 function handleRequest(request, response) {
   const query = new URLSearchParams(request.queryString);
   const status = Number(query.get("status")) || 200;
   if (query.get("slow")) {
     response.processAsync();
-    const timer = Components.classes["@mozilla.org/timer;1"].createInstance(
-      Components.interfaces.nsITimer,
-    );
+    const timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     timer.initWithCallback(
       () => {
         response.setStatusLine("1.1", status, "Status");
@@ -18,7 +17,7 @@ function handleRequest(request, response) {
         response.finish();
       },
       3000,
-      Components.interfaces.nsITimer.TYPE_ONE_SHOT,
+      Ci.nsITimer.TYPE_ONE_SHOT,
     );
     return;
   }

@@ -33,4 +33,6 @@ in `tests/e2e/`) is checked the same way (issue #959), with the harness's global
 `types/mochitest/`; the files not fixed yet are listed in
 `tools/test/mochitest-allowlist.txt`, which only shrinks. A test imports Vimma's modules by
 `chrome://` URL, which a generated map (`types/mochitest/modules.d.ts`) types as the source
-module, so the tests are checked against the product's own JSDoc.
+module, so the tests are checked against the product's own JSDoc. (Since changed: the list
+emptied and was removed, and the `.sjs` handlers are checked too, through
+`tools/sjs-typecheck.ts`; issue #1070.)
