@@ -61,7 +61,9 @@ function generate() {
   ].join("\n");
   const out = fileURLToPath(new URL(OUT, root));
   writeFileSync(out, body);
-  execFileSync("npx", ["prettier", "--log-level", "warn", "--write", out], { stdio: "inherit" });
+  execFileSync("npx", ["--no", "--", "prettier", "--log-level", "warn", "--write", out], {
+    stdio: "inherit",
+  });
   console.log(`gen-agent-tools: ${tools.length} tools -> ${OUT}`);
 }
 
