@@ -10,7 +10,7 @@ interface FirefoxServices {
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
     newURI(spec: string): nsIURI;
-    newChannelFromURIWithLoadInfo(uri: unknown, loadInfo: unknown): any;
+    newChannelFromURIWithLoadInfo(uri: nsIURI, loadInfo: nsILoadInfo): nsIChannel;
   };
   // engine/netwerk/dns/nsIEffectiveTLDService.idl
   eTLD: {
@@ -269,9 +269,11 @@ interface XPCComponentsUtils {
     setContainerNode(node: Node): void;
     encodeToString(): string;
   };
-  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl).
-  waiveXrays<T>(obj: T): any;
-  unwaiveXrays<T>(obj: T): any;
+  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl). Waived, an object shows
+  // what the page's own scripts set on it, which no type describes: the caller checks each value
+  // it reads. Unwaived, it is the Xray view again.
+  waiveXrays(obj: object): { readonly [name: string]: unknown };
+  unwaiveXrays<T>(obj: T): T;
   exportFunction(fn: Function, target: object): Function;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
@@ -348,9 +350,9 @@ declare const ChromeUtils: {
   getAllDOMProcesses(): nsIDOMProcessParent[];
 };
 
-// engine/dom/webidl/Window.webidl (chrome-only part)
+// engine/dom/webidl/Window.webidl: never null. A chrome window's, in the parent, is canonical.
 interface Window {
-  readonly browsingContext: any;
+  readonly browsingContext: BrowsingContext;
 }
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
@@ -370,7 +372,12 @@ declare class JSWindowActorParent {
 // engine/dom/webidl/Worker.webidl (ChromeWorker): a Worker with chrome privileges (system modules)
 declare class ChromeWorker extends Worker {}
 declare class JSWindowActorChild {
-  readonly browsingContext: any;
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager rather than give null, and a manager always has a context
+   * (engine/dom/ipc/jsactor/JSWindowActorChild.cpp, GetBrowsingContext).
+   */
+  readonly browsingContext: BrowsingContext;
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
@@ -378,14 +385,41 @@ declare class JSWindowActorChild {
     // engine/toolkit/actors/FinderChild.sys.mjs, registered for every frame
     // (engine/toolkit/modules/ActorManagerParent.sys.mjs)
     getActor(name: "Finder"): FinderChildActor;
-    getActor(name: string): any;
+    // engine/toolkit/actors/AutoCompleteChild.sys.mjs; throws in a frame it is not registered for
+    getActor(name: "AutoComplete"): AutoCompleteChildActor;
+    getActor(name: string): JSWindowActorChild;
     readonly innerWindowId: number;
     readonly isCurrentGlobal: boolean;
   };
-  // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
-  readonly docShell: any;
+  /**
+   * The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController): null once the
+   * frame's context has lost it, as a discarded one has (JSWindowActorChild.cpp, GetDocShell).
+   */
+  readonly docShell: nsIDocShell | null;
   sendAsyncMessage(name: string, data?: unknown): void;
-  sendQuery(name: string, data?: unknown): Promise<any>;
+  /** The parent actor's answer to one of Vimma's queries (host/VimmaParent.sys.mjs). */
+  sendQuery<K extends keyof VimmaChildQueries>(
+    name: K,
+    data?: unknown,
+  ): Promise<VimmaChildQueries[K]>;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
+}
+// What VimmaParent answers its child's queries with (host/VimmaParent.sys.mjs).
+interface VimmaChildQueries {
+  /** The theme's token sheet, null for any actor but the top viewer's current one (V12). */
+  "Vimma:PdfTheme": string | null;
+}
+// engine/toolkit/actors/AutoCompleteChild.sys.mjs: the frame's autocomplete popup is open.
+interface AutoCompleteChildActor {
+  readonly popupOpen: boolean;
+}
+// engine/docshell/base/nsIDocShell.idl and nsIDocShellTreeItem.idl (the members Vimma uses);
+// isLoadingDocument is nsIWebProgress's, which a docshell also is.
+interface nsIDocShell extends nsISupports {
+  /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
+  readonly treeOwner: nsISupports | null;
+  readonly isLoadingDocument: boolean;
+  doCommand(command: string): void;
 }
 
 // engine/dom/base/nsISelectionController.idl (the members copy mode uses)
@@ -738,7 +772,9 @@ interface Window {
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
-  readonly docShell: any;
+  /** Null once the window is closed: `closed` is true exactly when it has none
+   * (engine/dom/base/nsGlobalWindowOuter.cpp, GetClosedOuter). */
+  readonly docShell: nsIDocShell | null;
   fullScreen: boolean;
   /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
   readonly wrappedJSObject: { readonly [name: string]: unknown };
@@ -746,6 +782,8 @@ interface Window {
 
 // engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
 interface ChromeWindow extends Window {
+  /** Chrome windows are in the parent process only. */
+  readonly browsingContext: CanonicalBrowsingContext;
   readonly windowState: number;
   readonly isFullyOccluded: boolean;
   getAttention(): void;
@@ -789,6 +827,10 @@ interface MozBrowser extends Element {
 // of a document's window global in the parent.
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
+  getActor(
+    name: "Vimma",
+  ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
 }
 
@@ -1004,8 +1046,7 @@ interface XULFrameElement extends Element {
   readonly contentDocument: Document | null;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's
-// `browsingContext` is still `any`).
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads).
 interface BrowsingContext {
   // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
   // (engine/dom/chrome-webidl/OriginAttributes.webidl).
@@ -1047,6 +1088,13 @@ interface CanonicalBrowsingContext extends BrowsingContext {
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
+  /** The chrome window the context is in; null once it has none. */
+  readonly topChromeWindow: ChromeWindow | null;
+  /**
+   * An app window's context only: kept active while minimized or occluded. The setter throws
+   * on any other.
+   */
+  forceAppWindowActive: boolean;
 }
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
 // members). The principals are never null (webidl `Principal`, not nullable).

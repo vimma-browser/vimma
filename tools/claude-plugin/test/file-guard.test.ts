@@ -14,8 +14,7 @@ function repoWithWorktree() {
   const base = realpathSync(tempDir("vimma-guard-repo-"));
   const main = join(base, "repo");
   mkdirSync(main);
-  const git = (/** @type {string[]} */ ...args) =>
-    execFileSync("git", ["-C", main, ...args], { stdio: "pipe" });
+  const git = (...args: string[]) => execFileSync("git", ["-C", main, ...args], { stdio: "pipe" });
   git("init", "-q", "-b", "main");
   writeFileSync(join(main, "README.md"), "x\n");
   git("add", ".");
@@ -24,8 +23,7 @@ function repoWithWorktree() {
   return { base, main, worktree: join(main, ".claude", "worktrees", "item") };
 }
 
-/** @param {string} tool @param {Record<string, unknown>} toolInput @param {boolean} subagent */
-function input(tool, toolInput, subagent = true) {
+function input(tool: string, toolInput: Record<string, unknown>, subagent = true) {
   return {
     hook_event_name: "PreToolUse",
     tool_name: tool,

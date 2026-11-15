@@ -248,8 +248,8 @@ from `tools/test/mjs-allowlist.txt`; a script a browser page loads is a `.js` fi
 folder, which it does not count. `ERR_UNKNOWN_FILE_EXTENSION` for a `.ts` file, from commitlint or
 any tool, means the Node running it is older than `package.json`'s `engines`: use `.nvmrc`'s.
 
-Moving an area, in a pull request that does only this (`Part of #946`). `tools/claude-plugin`
-stays `.mjs` (ADR-025 says why).
+Moving an area, in a pull request that does only this (`Part of #946`). The hooks of
+`tools/claude-plugin` (`hooks/`) stay `.mjs` (ADR-025 says why); its tests are `.ts`.
 
 1. **Callers first.** Find every way the area is reached before renaming:
    - its paths: `git grep -nE 'tools/<area>/|\.\./<area>/|tools\\/<area>\\/'`, and each file's
