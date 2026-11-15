@@ -5,6 +5,8 @@ import { formatConfigTemplate } from "../src/config/defaults.mjs";
 import { bindingTable } from "../src/ui/help.mjs";
 import { MODES } from "../src/keys/modes.mjs";
 
+import type { Keymap } from "../src/keys/keymap.mjs";
+
 const env = {
   home: "/home/u",
   xdgConfigHome: "/xdg",
@@ -53,8 +55,8 @@ describe("formatConfigTemplate", () => {
     const r = parseConfig(text);
     const none = parseConfig("");
     expect(r.errors).toEqual([]);
-    const km = /** @type {import("../src/keys/keymap.mjs").Keymap} */ (r.keymap);
-    const kmNone = /** @type {import("../src/keys/keymap.mjs").Keymap} */ (none.keymap);
+    const km = r.keymap as Keymap;
+    const kmNone = none.keymap as Keymap;
     expect(bindingTable(km)).toEqual(bindingTable(kmNone));
     for (const mode of MODES) expect(km.sequences(mode)).toEqual(kmNone.sequences(mode));
     expect([km.prefix, km.leader, km.timeoutMs]).toEqual([
@@ -64,8 +66,8 @@ describe("formatConfigTemplate", () => {
     ]);
     // The [modal.<mode>] headers stay so an uncommented line lands in its table; empty, they
     // add nothing (the keymap above is the default one).
-    const modes = Object.keys(/** @type {any} */ (r.config).modal);
-    expect(Object.values(/** @type {any} */ (r.config).modal)).toEqual(modes.map(() => ({})));
+    const modes = Object.keys((r.config as any).modal);
+    expect(Object.values((r.config as any).modal)).toEqual(modes.map(() => ({})));
     expect({ ...r.config, modal: {} }).toEqual(none.config);
   });
 
