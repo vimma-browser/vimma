@@ -16,12 +16,12 @@ import {
   parseAgentRequest,
   validateMessage,
 } from "../src/control/control.mjs";
+import type { ValidateOptions } from "../src/control/control.mjs";
 import { createHmac } from "node:crypto";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v2/", import.meta.url));
 const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
-/** @param {string} name */
-const fixture = (name) => JSON.parse(readFileSync(FIXTURES + name, "utf8"));
+const fixture = (name: string) => JSON.parse(readFileSync(FIXTURES + name, "utf8"));
 
 const NONCE = "fedcba9876543210".repeat(4);
 const TOKEN = "0123456789abcdef".repeat(4);
@@ -32,18 +32,15 @@ const hello = (extra = {}) => ({
   role: "agent",
   ...extra,
 });
-/**
- * @param {string} command
- * @param {Record<string, unknown>} [args]
- */
-const req = (command, args = {}, id = 1) => ({ type: "request", id, command, args });
-/** @param {unknown} result */
-const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
-/**
- * @param {unknown} message
- * @param {import("../src/control/control.mjs").ValidateOptions} [options]
- */
-const errorsOf = (message, options) => validateMessage(message, options).errors;
+const req = (command: string, args: Record<string, unknown> = {}, id = 1) => ({
+  type: "request",
+  id,
+  command,
+  args,
+});
+const ok = (result: unknown, id = 1) => ({ type: "response", id, ok: true, result });
+const errorsOf = (message: unknown, options?: ValidateOptions) =>
+  validateMessage(message, options).errors;
 
 describe("contract fixtures (tests/contract/control/v2)", () => {
   test("every new message has one valid and one invalid fixture", () => {
@@ -162,8 +159,7 @@ describe("hello, welcome and discovery with roles", () => {
 
   test("a v2 discovery file lists one or both roles, never twice", () => {
     const d = { protocol: 2, port: 4000, token: TOKEN, pid: 7 };
-    const errors = (/** @type {unknown} */ roles) =>
-      errorsOf({ ...d, roles }, { kind: "discovery" });
+    const errors = (roles: unknown) => errorsOf({ ...d, roles }, { kind: "discovery" });
     expect(errors(["agent"])).toEqual([]);
     expect(errors(["full", "agent"])).toEqual([]);
     for (const bad of [[], ["agent", "agent"], ["root"], "agent", undefined]) {
@@ -198,7 +194,7 @@ describe("agent commands: args", () => {
 
   // docs/specs/mcp-session-grants.md S4: the session id of one vimma-ctl mcp process.
   test("agent-hello: a session id of 32 to 128 lowercase hex characters", () => {
-    const hello = (/** @type {unknown} */ session) =>
+    const hello = (session: unknown) =>
       errorsOf(req("agent-hello", { client: { name: "x" }, session }));
     expect(hello("a".repeat(32))).toEqual([]);
     expect(hello("0123456789abcdef".repeat(8))).toEqual([]);
@@ -309,8 +305,7 @@ describe("agent commands: args", () => {
 
   // docs/specs/mcp-forms.md F18, F20: a screenshot names one tab, and whether to draw the labels.
   test("agent-screenshot: a tab and an optional labels flag, nothing else", () => {
-    const shot = (/** @type {Record<string, unknown>} */ args) =>
-      errorsOf(req("agent-screenshot", args));
+    const shot = (args: Record<string, unknown>) => errorsOf(req("agent-screenshot", args));
     expect(shot({ tab: "12" })).toEqual([]);
     expect(shot({ tab: "12", labels: true })).toEqual([]);
     expect(shot({ tab: "12", labels: false })).toEqual([]);
@@ -321,8 +316,7 @@ describe("agent commands: args", () => {
 
   // docs/specs/mcp-forms.md F22: a console read names one tab, and optionally a time.
   test("agent-console: a tab and an optional since, nothing else", () => {
-    const read = (/** @type {Record<string, unknown>} */ args) =>
-      errorsOf(req("agent-console", args));
+    const read = (args: Record<string, unknown>) => errorsOf(req("agent-console", args));
     expect(read({ tab: "12" })).toEqual([]);
     expect(read({ tab: "12", since: 0 })).toEqual([]);
     expect(read({ tab: "12", since: 1_761_000_000_000 })).toEqual([]);
@@ -358,7 +352,7 @@ describe("agent commands: args", () => {
   // docs/specs/mcp-forms.md F12, F14, F15: a fill names one tab, 1 to 32 fields by label with a
   // text or a true or false, and an optional submit: true or a submit button's label.
   test("agent-fill: a tab, fields by label and value, an optional submit", () => {
-    const fill = (/** @type {Record<string, unknown>} */ args) => errorsOf(req("agent-fill", args));
+    const fill = (args: Record<string, unknown>) => errorsOf(req("agent-fill", args));
     const sd = { label: "sd", value: "ada@example.com" };
     expect(fill({ tab: "12", fields: [sd] })).toEqual([]);
     expect(fill({ tab: "12", fields: [sd, { label: "sf", value: true }], submit: true })).toEqual(
@@ -534,8 +528,7 @@ describe("agent commands: results and errors", () => {
   // delimiters, Vimma's clock, and how many entries were left out.
   test("agent-console: the page, its errors and requests inside the delimiters, the time", () => {
     const cmd = { command: "agent-console" };
-    const wrap = (/** @type {string} */ t) =>
-      `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+    const wrap = (t: string) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
     const result = {
       url: "https://a/",
       title: "A",
@@ -713,7 +706,7 @@ describe("agent commands: results and errors", () => {
   });
 
   test("a denial names its reason; no other error carries one", () => {
-    const denied = (/** @type {unknown} */ reason = undefined) => ({
+    const denied = (reason: unknown = undefined) => ({
       type: "response",
       id: 1,
       ok: false,
@@ -731,11 +724,7 @@ describe("agent commands: results and errors", () => {
 
   // Issue #592: a used-up rate is busy with the time until the next call is allowed.
   test("retryAfter: 1 to 60000 whole milliseconds, on a busy denial only", () => {
-    /**
-     * @param {unknown} reason
-     * @param {unknown} retryAfter
-     */
-    const denied = (reason, retryAfter) => ({
+    const denied = (reason: unknown, retryAfter: unknown) => ({
       type: "response",
       id: 1,
       ok: false,
@@ -758,12 +747,11 @@ describe("agent commands: results and errors", () => {
 // `kinds` filters, `agent-elements` a `full` flag, and a compact list names the labels it left
 // out as given in the conversation's last list of the site (security.md M31).
 describe("element list filters and compact lists (agent-speed S4)", () => {
-  const wrap = (/** @type {string} */ t) =>
-    `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+  const wrap = (t: string) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
   const list = wrap('{"label":"a","kind":"button","text":"Go"}');
 
   test("agent-elements takes query, kinds and full", () => {
-    const els = (/** @type {Record<string, unknown>} */ args) =>
+    const els = (args: Record<string, unknown>) =>
       errorsOf(req("agent-elements", { tab: "12", ...args }));
     expect(els({ query: "oat drink", kinds: ["button", "link"], full: true })).toEqual([]);
     expect(els({ full: false })).toEqual([]);
@@ -783,8 +771,7 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 
   test("a step takes query and kinds only with its element list", () => {
     const fields = [{ label: "sd", value: "x" }];
-    /** @type {[string, Record<string, unknown>][]} */
-    const steps = [
+    const steps: [string, Record<string, unknown>][] = [
       ["agent-open", { url: "https://a/" }],
       ["agent-activate", { tab: "12", label: "sd" }],
       ["agent-fill", { tab: "12", fields }],
@@ -806,8 +793,7 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 
   test("a list's repeated labels come with it, each a label, at most once", () => {
     const after = { url: "https://a/", title: "A", loading: false, navigated: true };
-    /** @type {[string, Record<string, unknown>][]} */
-    const lists = [
+    const lists: [string, Record<string, unknown>][] = [
       ["agent-elements", { url: "https://a/", title: "A" }],
       ["agent-activate", after],
       ["agent-fill", { ...after, filled: 1 }],
@@ -834,14 +820,12 @@ describe("element list filters and compact lists (agent-speed S4)", () => {
 // Issue #584: an open, a click or a fill may return the page's new element list, under the same
 // rules as agent-elements' (security.md M31); a screenshot is smaller unless asked full.
 describe("element lists in a step's result (#584)", () => {
-  const wrap = (/** @type {string} */ t) =>
-    `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
+  const wrap = (t: string) => `<untrusted-web-content>\n${t}\n</untrusted-web-content>`;
   const list = wrap('{"label":"a","kind":"button","text":"Go"}');
 
   test("agent-open, agent-activate and agent-fill take an optional elements flag", () => {
     const fields = [{ label: "sd", value: "x" }];
-    /** @type {[string, Record<string, unknown>][]} */
-    const steps = [
+    const steps: [string, Record<string, unknown>][] = [
       ["agent-open", { url: "https://a/" }],
       ["agent-open", { url: "https://a/", tab: "4" }],
       ["agent-activate", { tab: "12", label: "sd" }],
@@ -863,8 +847,7 @@ describe("element lists in a step's result (#584)", () => {
   });
 
   test("agent-screenshot takes an optional full flag", () => {
-    const shot = (/** @type {Record<string, unknown>} */ args) =>
-      errorsOf(req("agent-screenshot", args));
+    const shot = (args: Record<string, unknown>) => errorsOf(req("agent-screenshot", args));
     expect(shot({ tab: "12", full: true })).toEqual([]);
     expect(shot({ tab: "12", full: false, labels: true })).toEqual([]);
     expect(shot({ tab: "12", full: "yes" })).toEqual(["full must be a boolean"]);
@@ -872,8 +855,7 @@ describe("element lists in a step's result (#584)", () => {
 
   test("a step's list is inside the untrusted delimiters, with its dropped count", () => {
     const after = { url: "https://a/", title: "A", loading: false, navigated: true };
-    /** @type {[string, Record<string, unknown>][]} */
-    const cases = [
+    const cases: [string, Record<string, unknown>][] = [
       ["agent-activate", after],
       ["agent-fill", { ...after, filled: 1 }],
       ["agent-open", { tab: "13", url: "https://a/", title: "A" }],
@@ -924,8 +906,7 @@ describe("element lists in a step's result (#584)", () => {
   test("a load error: one of Firefox's codes, only with unlisted error", () => {
     const after = { url: "https://a/", title: "Server Not Found", loading: false, navigated: true };
     const open = { tab: "13", url: "https://a/", title: "Server Not Found" };
-    /** @type {[Record<string, unknown>, string][]} */
-    const loads = [
+    const loads: [Record<string, unknown>, string][] = [
       [open, "agent-open"],
       [after, "agent-activate"],
       [{ ...after, filled: 1 }, "agent-fill"],

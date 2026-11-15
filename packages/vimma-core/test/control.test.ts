@@ -17,27 +17,24 @@ import {
   DOWNLOAD_SEGMENTS,
   controlUpdateState,
 } from "../src/control/control.mjs";
+import type { ValidateOptions } from "../src/control/control.mjs";
 
 const FIXTURES = fileURLToPath(new URL("../../../tests/contract/control/v1/", import.meta.url));
 const files = readdirSync(FIXTURES).filter((f) => f.endsWith(".json"));
-/** @param {string} name */
-const fixture = (name) => JSON.parse(readFileSync(FIXTURES + name, "utf8"));
+const fixture = (name: string) => JSON.parse(readFileSync(FIXTURES + name, "utf8"));
 
 const TOKEN = "0123456789abcdef".repeat(4);
 const NONCE = "fedcba9876543210".repeat(4);
 const hello = (extra = {}) => ({ type: "hello", protocol: 1, nonce: NONCE, ...extra });
-/**
- * @param {string} command
- * @param {Record<string, unknown>} [args]
- */
-const req = (command, args = {}, id = 1) => ({ type: "request", id, command, args });
-/** @param {unknown} result */
-const ok = (result, id = 1) => ({ type: "response", id, ok: true, result });
-/**
- * @param {unknown} message
- * @param {import("../src/control/control.mjs").ValidateOptions} [options]
- */
-const errorsOf = (message, options) => validateMessage(message, options).errors;
+const req = (command: string, args: Record<string, unknown> = {}, id = 1) => ({
+  type: "request",
+  id,
+  command,
+  args,
+});
+const ok = (result: unknown, id = 1) => ({ type: "response", id, ok: true, result });
+const errorsOf = (message: unknown, options?: ValidateOptions) =>
+  validateMessage(message, options).errors;
 
 describe("contract fixtures (tests/contract/control/v1)", () => {
   test("every message type has one valid and one invalid fixture", () => {
@@ -54,8 +51,7 @@ describe("contract fixtures (tests/contract/control/v1)", () => {
     const { nonce } = fixture("hello.valid.json").message;
     const { token } = fixture("auth.valid.json").message;
     const { proof } = fixture("challenge.valid.json").message;
-    const mac = (/** @type {string} */ text) =>
-      createHmac("sha256", token).update(text).digest("hex");
+    const mac = (text: string) => createHmac("sha256", token).update(text).digest("hex");
     expect(mac(`vimma-server\0${nonce}`)).toBe(proof);
     expect(mac(nonce)).not.toBe(proof); // domain-separated
   });
@@ -146,7 +142,7 @@ describe("validateMessage: envelopes", () => {
 
   test("request ids are integers in 1..2^53-1", () => {
     for (const id of [0, -1, 1.5, "1", null, 2 ** 53]) {
-      expect(errorsOf(req("state", {}, /** @type {any} */ (id)))).toEqual([
+      expect(errorsOf(req("state", {}, id as any))).toEqual([
         "id must be an integer from 1 to 2^53-1",
       ]);
     }
@@ -444,7 +440,7 @@ describe("validateMessage: state", () => {
   // a word from a closed list, so a script waits for them rather than for a time; never the
   // question, a file's name or its site (security.md S9).
   test("agent.armed is a flag, and downloads a word from a closed list or null", () => {
-    const agent = (/** @type {unknown} */ armed) => ({ waiting: 1, ran: false, armed });
+    const agent = (armed: unknown) => ({ waiting: 1, ran: false, armed });
     expect(errorsOf(ok({ ...state, agent: agent(true) }), { command: "state" })).toEqual([]);
     expect(errorsOf(ok({ ...state, agent: agent("y allow") }), { command: "state" })).toEqual([
       "result.agent.armed must be a boolean",
@@ -682,9 +678,7 @@ describe("validateMessage: discovery file", () => {
   });
 
   test("unknown kind option is an error", () => {
-    expect(errorsOf(file, { kind: /** @type {any} */ ("nope") })).toEqual([
-      'unknown message kind "nope"',
-    ]);
+    expect(errorsOf(file, { kind: "nope" as any })).toEqual(['unknown message kind "nope"']);
   });
 });
 
@@ -704,14 +698,14 @@ describe("tokensEqual", () => {
   });
 
   test("non-strings are never equal", () => {
-    expect(tokensEqual(/** @type {any} */ (undefined), /** @type {any} */ (undefined))).toBe(false);
-    expect(tokensEqual(TOKEN, /** @type {any} */ (null))).toBe(false);
+    expect(tokensEqual(undefined as any, undefined as any)).toBe(false);
+    expect(tokensEqual(TOKEN, null as any)).toBe(false);
   });
 });
 
 describe("LineFramer (the server's framing)", () => {
-  const bytes = (/** @type {string} */ s) => new TextEncoder().encode(s);
-  const text = (/** @type {Uint8Array[]} */ lines) => lines.map((l) => new TextDecoder().decode(l));
+  const bytes = (s: string) => new TextEncoder().encode(s);
+  const text = (lines: Uint8Array[]) => lines.map((l) => new TextDecoder().decode(l));
 
   test("splits on \\n, drops one \\r before it, and keeps a partial line for the next push", () => {
     const f = new LineFramer(16);

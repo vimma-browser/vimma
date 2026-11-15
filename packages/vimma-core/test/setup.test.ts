@@ -1,5 +1,6 @@
 import { describe, test, expect } from "vitest";
 import { CURATED, amoEntries, initialSetup, planSetup, setupKey } from "../src/system/setup.mjs";
+import type { SetupState } from "../src/system/setup.mjs";
 
 /** An AMO search result as the v5 API returns it. */
 const amo = (over = {}) => ({
@@ -24,16 +25,9 @@ const fresh = () =>
     engine: "Google",
   });
 
-/** @import { SetupState } from "../src/system/setup.mjs" */
-
-/**
- * Feeds keys, returning the last result.
- * @param {SetupState} state
- * @param {...string} ks
- */
-const keys = (state, ...ks) => {
-  /** @type {ReturnType<typeof setupKey>} */
-  let r = { state, effect: null };
+/** Feeds keys, returning the last result. */
+const keys = (state: SetupState, ...ks: string[]) => {
+  let r: ReturnType<typeof setupKey> = { state, effect: null };
   for (const k of ks) r = setupKey(r.state, k);
   return r;
 };
@@ -59,7 +53,7 @@ describe("setup", () => {
   });
 
   test("an AMO result off addons.mozilla.org or without a sha256 hash is dropped", () => {
-    const file = (/** @type {string} */ url, /** @type {string | undefined} */ hash) => ({
+    const file = (url: string, hash: string | undefined) => ({
       current_version: { file: { url, hash } },
     });
     const got = amoEntries([
