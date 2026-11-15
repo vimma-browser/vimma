@@ -10,6 +10,9 @@
 // where Vitest 5 matches " > ", so no test inside a describe() ran); 10.1.1 fixed that.
 // The suite is the core's alone (packages/vimma-core/vitest.config.mjs, which also leaves out the
 // tests tagged `timing` and raises the test timeout: Stryker's runner takes no command line).
+import { fileURLToPath } from "node:url";
+import { mutateFor } from "./tools/mutation/shard.ts";
+
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
   testRunner: "vitest",
@@ -19,11 +22,14 @@ export default {
   // The dry run runs the whole suite once, instrumented and counting coverage per test: about
   // 6 minutes on one loaded local core, past Stryker's 5-minute default.
   dryRunTimeoutMinutes: 30,
-  mutate: [
-    "packages/vimma-core/src/**/*.mjs",
-    // Vendored smol-toml: third-party code we do not change (same exclusion as coverage).
-    "!packages/vimma-core/src/vendor/**",
-  ],
+  // The core's sources, not the vendored smol-toml (third-party code we do not change; same
+  // exclusion as coverage). mutation.yml runs it as a matrix of shards: MUTATION_SHARD=k of
+  // MUTATION_SHARDS=n mutates only shard k's files (tools/mutation/shard.ts).
+  mutate: mutateFor(fileURLToPath(new URL(".", import.meta.url)), process.env),
+  // Static mutants (in code that runs once, when a module loads: tables, constants) need every
+  // test rerun in a fresh module environment. In a sample of three core files they were 46 % of
+  // the mutants and 98 % of the time, so they are left out; the report counts them as ignored.
+  ignoreStatic: true,
   // Kept out of the sandbox copy: the engine, the browser sources, mochitests and old reports,
   // which the core's tests never read, and the git-ignored build output, worktrees and Firefox
   // downloads (Stryker does not read .gitignore, so a local run would copy them). docs/ and

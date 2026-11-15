@@ -28,10 +28,13 @@ about 124 min per nightly and 117 min per release, free on a standard runner, an
 their variables are set ("Full builds" below). Usage is listed in Settings → Billing → Usage.
 
 The bench step adds about 45 seconds to each CI run. `mutation.yml` is the largest scheduled
-cost, and does not fit its 180-minute job yet (#975): the core has grown to about 38,000 mutants.
-With per-test coverage, three core files (1,553 mutants) took about an hour on 4 workers of a
-busy 12-core machine; a full run is many runner-hours, so it needs sharding or a smaller weekly
-`mutate` scope in `stryker.config.mjs`.
+cost: 10 shard jobs (docs/runbook/ci-mutation-testing.md, "Shards"). The monthly full run takes an
+estimated 35 to 65 minutes per shard, about 6 to 11 runner-hours. Every shard repeats npm ci,
+the instrumenting and its own dry run (the tests that reach its files: 1 to 1.5 minutes
+locally), so a weekly incremental shard takes about 6 to 7 minutes, about 65 to 70 minutes a week
+plus one minute for the report job: roughly 10 to 16 runner-hours a month, free on a standard
+runner for a public repository. To lower it, drop the monthly full run or mutate fewer files
+(`stryker.config.mjs`).
 
 `sites.yml` (spec site-compat) runs one job a night at 04:30 UTC, and by hand: about 3.6 min of
 setup (e2e.yml's steps up to the artifact build) plus the site list, about 15-20 min in all

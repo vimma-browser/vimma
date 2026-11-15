@@ -45,8 +45,9 @@ Two rows of plan §5 and issue #17:
   [#975](https://github.com/vimma-browser/vimma/issues/975) moved back to
   `@stryker-mutator/vitest-runner` 10.1.1, Apache-2.0, pinned exactly, which matches Vitest 5's
   `" > "` names and adds per-test coverage. The command runner took about 30 s a mutant, so with
-  about 38,000 mutants no run finished within the job's 180 minutes; see
-  docs/runbook/ci-mutation-testing.md.)
+  about 38,000 mutants no run finished within the job's 180 minutes. The run is now 10 shard
+  jobs (`tools/mutation/shard.ts`) whose reports the report job merges, and static mutants are
+  left out; see docs/runbook/ci-mutation-testing.md, "Shards".)
 - **Incremental mode, results carried as an artifact.** Each run uploads `mutation-report`
   (HTML, JSON, incremental file; 35 days); the next run downloads the last successful one with
   `gh run download` (`actions: read`). The Actions cache was rejected: it evicts entries unused

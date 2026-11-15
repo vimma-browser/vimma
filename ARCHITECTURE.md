@@ -223,7 +223,7 @@ they test.
 | `tools/sites/`              | The site-compatibility suite, live and from recorded pages.                                                 |
 | `tools/bench/`              | The key-to-action benchmark and its regression gate.                                                        |
 | `tools/agent-bench/`        | The built-in agent's model bench against a local test shop ([docs/agent-bench.md](docs/agent-bench.md)).    |
-| `tools/mutation/`           | The report of Stryker mutation testing.                                                                     |
+| `tools/mutation/`           | Stryker mutation testing: the split into shards, the merge of their reports, and the issue report.          |
 | `tools/spec-lint/`          | Checks of spec and ADR headers, decision reasons, and spec statuses against their issues.                   |
 | `tools/md-wording/`         | Checks that Markdown and comments are written for outside readers.                                          |
 | `tools/arch-lint/`          | Checks that this page names every folder and workflow ("Keeping it current" below).                         |
