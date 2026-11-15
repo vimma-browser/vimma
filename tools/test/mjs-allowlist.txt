@@ -36,7 +36,6 @@ packages/vimma-core/test/ctl-version.test.mjs
 packages/vimma-core/test/default-browser.test.mjs
 packages/vimma-core/test/downloads.test.mjs
 packages/vimma-core/test/find.test.mjs
-packages/vimma-core/test/firefox-keys.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
@@ -51,7 +50,6 @@ packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
 packages/vimma-core/test/grep.test.mjs
-packages/vimma-core/test/guide-agent-examples.test.mjs
 packages/vimma-core/test/help.test.mjs
 packages/vimma-core/test/hints.test.mjs
 packages/vimma-core/test/hyprswap.test.mjs
@@ -82,7 +80,6 @@ packages/vimma-core/test/tablabels.test.mjs
 packages/vimma-core/test/tabs.test.mjs
 packages/vimma-core/test/tabsearch.test.mjs
 packages/vimma-core/test/update-notices.test.mjs
-packages/vimma-core/test/updates.test.mjs
 packages/vimma-core/test/workspacedefs.test.mjs
 packages/vimma-core/test/workspaces.test.mjs
 tools/artifact-build/artifact-build.mjs
