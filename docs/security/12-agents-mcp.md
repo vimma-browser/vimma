@@ -11,6 +11,11 @@ that the tab and URL are still those asked about (`stillAsAsked`; M8). `agent-ta
 question, never in its place. `agent-tabs.mjs` is restricted too (`RESTRICTED` in
 `tools/layering/layers.ts`): `agent-commands.mjs` is its one importer and hands none of it on, so
 the built-in agent reaches tab ownership only through `AgentTabOwners` there.
+`ctl/agent-waits.mjs` (load waits, time limits, the raise of a tab's process) and
+`ctl/agent-steps.mjs` (which `vimma_keys` step acts first and whether it may pay, so that the
+question says so, mcp-checkpoints C6 and C7; what a submission shows; the cuts of a reply) import
+neither the gate nor the tab model: `agent-commands.mjs` finds the tab, asks, re-checks, and
+passes them the tab.
 
 In each frame, the agent's page work is `actors/agent-page.mjs` (`AgentPage`): its listed
 elements (M25), its clicks, fills and submissions, run after the child's reply and checked again

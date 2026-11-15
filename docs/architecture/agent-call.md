@@ -129,7 +129,7 @@ connection run only its role's commands: an agent connection asking for `send-ke
 (`test_each_role_runs_only_its_commands`). `agentRequest` validates the arguments again, refuses a
 fifth request in flight (an `agent-cancel` is not counted) as `denied` with reason `busy`, and calls
 `runAgentCommand`, which requires `agent-hello` first and raises the named tab to foreground
-priority until the reply.
+priority until the reply (`raiseNamedTab`, through `raisePriority` of `ctl/agent-waits.mjs`).
 
 `COMMANDS["agent-activate"]` then decides everything it can before the user is asked:
 
