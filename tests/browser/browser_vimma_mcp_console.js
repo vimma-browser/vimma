@@ -20,8 +20,8 @@ const { VimmaControl } = ChromeUtils.importESModule(
 const { AgentGate } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/host/AgentGate.sys.mjs",
 );
-const { VimmaActors } = ChromeUtils.importESModule(
-  "chrome://browser/content/vimma/actors/VimmaActors.sys.mjs",
+const { AgentActors } = ChromeUtils.importESModule(
+  "chrome://browser/content/vimma/actors/AgentActors.sys.mjs",
 );
 const { AgentConsole } = ChromeUtils.importESModule(
   "chrome://browser/content/vimma/ctl/AgentConsole.sys.mjs",
@@ -260,7 +260,7 @@ add_task(async function test_a_noisy_page_sends_one_replys_worth() {
   const tab = await openAgentTab(url);
   // Each frame answers only its newest entries after `since`, cut, and counts the rest, so a page
   // cannot make the parent copy and sort everything it logged (F24).
-  const answers = await VimmaActors.agentConsole(tab.linkedBrowser, 5000, { since: 0, max: 100 });
+  const answers = await AgentActors.agentConsole(tab.linkedBrowser, 5000, { since: 0, max: 100 });
   const top = answers[0];
   Assert.equal(top.entries.length, 100, "the top frame answers 100 entries");
   Assert.ok(top.omitted >= 300, `and counts the rest: ${top.omitted}`);

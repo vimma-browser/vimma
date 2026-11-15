@@ -247,9 +247,9 @@ security.md §13, among them `only_the_focused_frame_may_report` and
 - **Agents.** An agent's `vimma_keys` takes a different path: `ctl/agent-commands.mjs` calls core
   `parseAgentKeys` (`agent-keys.mjs`), which parses the keys with a dispatcher of its own over the
   default keymap, never the user's, and keeps only whitelisted actions; `ctl/AgentDrive.sys.mjs`
-  then runs each step on the agent tab through `VimmaActors` and the tab's own `<browser>`
-  (history steps go through its session history, `gu` and `gU` load a URL), not through the
-  runner tables or the user's mode
+  then runs each step on the agent tab through `VimmaActors`, `AgentActors` and the tab's own
+  `<browser>` (history steps go through its session history, `gu` and `gU` load a URL), not
+  through the runner tables or the user's mode
   ([mcp-drive](../specs/mcp-drive.md), security.md M16, M20, M21). The rest of an agent call is
   in [The life of an agent call](agent-call.md).
 

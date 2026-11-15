@@ -99,11 +99,9 @@ function selectRow(id) {
 // workspace's tab is in that workspace's container: the site's principal is the tab's.
 /** @param {string} url @param {MozTabbrowserTab} tab */
 const principalOf = (url, tab) =>
-  /** @type {nsIPrincipal} */ (
-    Services.scriptSecurityManager.createContentPrincipal(
-      Services.io.newURI(url),
-      contentPrincipalOf(tab.linkedBrowser).originAttributes,
-    )
+  Services.scriptSecurityManager.createContentPrincipal(
+    Services.io.newURI(url),
+    contentPrincipalOf(tab.linkedBrowser).originAttributes,
   );
 /** @param {string} url @param {string} id @param {MozTabbrowserTab} tab */
 const stateOf = (url, id, tab) => SitePermissions.getForPrincipal(principalOf(url, tab), id).state;

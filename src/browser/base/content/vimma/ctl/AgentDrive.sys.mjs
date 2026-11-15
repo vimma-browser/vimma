@@ -25,6 +25,7 @@ import { AGENT_ELEMENTS } from "../core/agent-act.mjs";
 import { wrapUntrusted } from "../core/agent.mjs";
 import { isCaseSensitive } from "../core/find.mjs";
 import { urlRoot, urlUp } from "../core/pageurl.mjs";
+import { AgentActors } from "../actors/AgentActors.sys.mjs";
 import { VimmaActors } from "../actors/VimmaActors.sys.mjs";
 import { VimmaHost } from "../host/VimmaHost.sys.mjs";
 import { AgentAct } from "./AgentAct.sys.mjs";
@@ -503,7 +504,7 @@ export const AgentDrive = {
             Object.assign(result, { ok: false, note });
           } else if (
             session?.source === "elements" &&
-            !(await bounded(VimmaActors.agentElementAlive(target), false, deadline))
+            !(await bounded(AgentActors.agentElementAlive(target), false, deadline))
           ) {
             // mcp-forms F4: the page replaced the link since it was listed.
             Object.assign(result, {

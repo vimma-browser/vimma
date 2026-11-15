@@ -192,8 +192,9 @@ workspace was replaced, the tab left it, or the tab's URL differs from the one i
 
 `AgentAct.activate`, wrapped in `AgentShot.acting`, marks the page so that a form submission the
 page's own script starts after the click is cancelled unless it is the one asked about
-(`VimmaActors.agentMark`), then calls `VimmaActors.agentActivate`
-(`actors/VimmaActors.sys.mjs`). That sends `Vimma:AgentElement` with `op: "activate"` to the
+(`AgentActors.agentMark`; the marks and the observer that cancels the submission are in
+`actors/submit-marks.mjs`), then calls `AgentActors.agentActivate`
+(`actors/AgentActors.sys.mjs`). That sends `Vimma:AgentElement` with `op: "activate"` to the
 frame's `VimmaChild`, which looks the element up by the list's generation and id. Its
 `#agentActivate` answers `gone` for an element no longer on the page or a request past its time,
 `changed` for one that no longer submits to the method and address the question named, and
