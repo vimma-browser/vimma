@@ -563,6 +563,8 @@ export const AgentAct = {
     /** @type {WindowGlobalParent | null} the new document last asked whether it is ready */
     let asked = null;
     let ready = false;
+    /** When the address was first seen changed in place with no load (0: not seen). */
+    let inPlaceAt = 0;
     /** @type {Promise<unknown> | undefined} what wakes the wait besides the tab's progress */
     let wake;
     /**
@@ -583,7 +585,19 @@ export const AgentAct = {
       const now = pageOf(browser);
       if (loading || now.doc !== before.doc || now.url !== before.url) started = true;
       if (started) {
-        if (!loading) return undefined;
+        if (!loading && (now.doc !== before.doc || now.url === before.url)) return undefined;
+        if (!loading) {
+          // The address changed in place (history.pushState) and nothing loads yet: the tab's
+          // location change reaches the parent before the start of a load the same handler
+          // goes on to make (a form.submit() after the pushState), and the allowance that ends
+          // with this wait must still be open for it. A tick later the load has said so. Counted
+          // once per wait, so a page that keeps changing its address cannot stretch it.
+          if (!inPlaceAt) inPlaceAt = Date.now();
+          const left = inPlaceAt + TICK_MS - Date.now();
+          if (left <= 0) return undefined;
+          await nextEvent(browser, left, wake);
+          continue;
+        }
         const wg = browser.browsingContext?.currentWindowGlobal;
         if (ready && wg === asked) return undefined;
         if (now.doc !== before.doc && wg && !wg.isInitialDocument && wg !== asked) {
@@ -863,11 +877,12 @@ export const AgentAct = {
    * (issue #643). The document's URI, not the tab's, which keeps the address that failed: the
    * top window global's, which is the document's from its creation, where the browser's own copy
    * comes with a later location change, after a wait that wakes on the load's end has looked.
+   * The browser's is read when there is no window global or it has no document URI yet.
    * @param {MozBrowser} browser
    */
   loadError(browser) {
     const wg = browser.browsingContext?.currentWindowGlobal;
-    return loadErrorOf(String((wg ? wg.documentURI : browser.documentURI)?.spec ?? ""));
+    return loadErrorOf(String((wg?.documentURI ?? browser.documentURI)?.spec ?? ""));
   },
 
   /**

@@ -855,7 +855,10 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   most 2 s; a load the step started is waited for until the new page has had its
   `DOMContentLoaded` and 200 ms without a change. A submission the step itself makes starts its
   load in that process before the settle's answer, over the same IPC channel, so the call waits
-  for that load with the allowance open. A step that has started no load a second after it ran
+  for that load with the allowance open. The address changing in place (`history.pushState`)
+  does not end the wait at once: the tab's location change reaches the parent before the start
+  of a load the same step makes, so the wait gives that load 100 ms to start before it takes
+  the step as done. A step that has started no load a second after it ran
   has its allowance withdrawn then, while the wait goes on, so a page that keeps itself busy
   (changing its document, holding a request open) never keeps the allowance open longer than
   the second it had before; the parent bounds each of these answers itself, so a page that
@@ -904,6 +907,7 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_an_allowed_submission_the_page_holds_back_is_cancelled_later`](../../tests/browser/browser_vimma_mcp_waits.js),
   [`test_a_page_kept_busy_does_not_keep_the_allowance_open`](../../tests/browser/browser_vimma_mcp_waits.js),
   [`test_an_allowed_submission_to_a_slow_server_goes_through`](../../tests/browser/browser_vimma_mcp_waits.js),
+  [`test_a_submission_after_a_pushstate_is_not_cut_short`](../../tests/browser/browser_vimma_mcp_waits.js),
   [`test_users_own_submit_in_an_agent_tab_goes_through`](../../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_sent_elsewhere_than_asked_is_stopped`](../../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_submit_listener_moving_the_destination_is_stopped`](../../tests/browser/browser_vimma_mcp_submit.js),

@@ -362,6 +362,23 @@ addTidyTask(async function test_a_page_kept_busy_does_not_keep_the_allowance_ope
   Assert.equal(tab.linkedBrowser.currentURI.spec, WAITS, "the page stayed");
 });
 
+addTidyTask(async function test_a_submission_after_a_pushstate_is_not_cut_short() {
+  await mcp(true);
+  const tab = await openAgentTab();
+  const c = await agentClient();
+  const by = await labels(c, tab);
+  // The click's handler changes the address in place, then the form is sent: the tab's location
+  // change comes before the load's start, and a wait that ended in between closed the allowance
+  // and cancelled the very submission the user allowed (issue #1064).
+  const sent = requestStatus(`${PAGE}?pushed`);
+  const r = await submitClick(c, tab, by["Order pushed"]);
+  Assert.ok(r.ok, `the click ran: ${JSON.stringify(r.error)}`);
+  Assert.equal(r.result.blocked, undefined, "nothing was blocked");
+  Assert.equal(await sent, Cr.NS_OK, "the asked submission was sent");
+  Assert.equal(r.result.navigated, true, "and its page loaded within the call");
+  Assert.equal(r.result.url, `${PAGE}?pushed`, "the destination");
+});
+
 // A wait wakes on the tab's own progress (a load starting, committing or stopping), not only on
 // its TICK_MS timer: it listens to its window's tab browser. Firefox renamed Node.ownerGlobal to
 // documentGlobal, and a read of the old name found no window, so the wait never listened.
