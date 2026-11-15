@@ -182,7 +182,7 @@ describe("validateMessage: envelopes", () => {
   });
 
   test.each(ERROR_CODES)("error code %s is accepted", (code) => {
-    // A protocol 2 denial also says why (control-v2.test.mjs).
+    // A protocol 2 denial also says why (control-v2.test.ts).
     const error = { code, message: "m", ...(code === "denied" ? { reason: "user" } : {}) };
     expect(errorsOf({ type: "response", id: 1, ok: false, error })).toEqual([]);
   });
