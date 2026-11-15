@@ -10,7 +10,7 @@ interface FirefoxServices {
   io: {
     createExposableURI(uri: { spec: string }): { spec: string; displaySpec: string };
     newURI(spec: string): nsIURI;
-    newChannelFromURIWithLoadInfo(uri: unknown, loadInfo: unknown): any;
+    newChannelFromURIWithLoadInfo(uri: nsIURI, loadInfo: nsILoadInfo): nsIChannel;
   };
   // engine/netwerk/dns/nsIEffectiveTLDService.idl
   eTLD: {
@@ -60,9 +60,9 @@ interface FirefoxServices {
   vc: { compare(a: string, b: string): number };
   obs: nsIObserverService;
   // engine/xpcom/base/nsIUUIDGenerator.idl
-  uuid: { generateUUID(): { toString(): string } };
+  uuid: { generateUUID(): nsID };
   // engine/xpcom/io/nsIDirectoryService.idl (nsIProperties)
-  dirsvc: { get(prop: string, iface: unknown): { readonly path: string } };
+  dirsvc: { get<T>(prop: string, iface: nsIJSIID<T>): T };
   // engine/xpcom/system/nsIEnvironment.idl ("" for an unset variable)
   env: {
     get(name: string): string;
@@ -119,9 +119,9 @@ interface nsIPrefBranch {
 }
 
 // engine/xpcom/base/nsIConsoleService.idl: its cached messages, of any kind (each use checks
-// for nsIScriptError, engine/dom/bindings/nsIScriptError.idl).
+// for nsIScriptError; nsIConsoleMessage below).
 interface nsIConsoleService {
-  getMessageArray(): any[] | null;
+  getMessageArray(): nsIConsoleMessage[] | null;
 }
 
 // engine/dom/interfaces/base/nsIFocusManager.idl
@@ -204,10 +204,9 @@ interface nsILoginManager {
   removeLoginAsync(login: nsILoginInfo): Promise<void>;
 }
 
-// XPCOM component classes and results (engine/js/xpconnect). Untyped on purpose: each use
-// names its interface, and the IDL in the engine tree is the reference.
-declare const Cc: any;
-// engine/xpcom/base/ErrorList.py: the codes Vimma names, and any other by name.
+// XPCOM component classes (engine/js/xpconnect): XPCOMClasses below, by contract ID.
+declare const Cc: XPCOMClasses;
+// XPCOM results (engine/xpcom/base/ErrorList.py): the codes Vimma names, and any other by name.
 declare const Cr: Record<string, number> & {
   readonly NS_BINDING_ABORTED: number;
   readonly NS_OK: number;
@@ -270,20 +269,34 @@ interface XPCComponentsUtils {
     setContainerNode(node: Node): void;
     encodeToString(): string;
   };
-  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl).
-  waiveXrays<T>(obj: T): any;
-  unwaiveXrays<T>(obj: T): any;
+  // The PDF viewer's adapter (actors/pdf-view.mjs; xpccomponents.idl). Waived, an object shows
+  // what the page's own scripts set on it, which no type describes: the caller checks each value
+  // it reads. Unwaived, it is the Xray view again.
+  waiveXrays(obj: object): { readonly [name: string]: unknown };
+  unwaiveXrays<T>(obj: T): T;
   exportFunction(fn: Function, target: object): Function;
   cloneInto<T>(obj: T, target: object, options?: { cloneFunctions?: boolean }): T;
 }
 declare const Cu: XPCComponentsUtils;
 
-// XPCOM in system modules: interface constants and component constructors.
-declare const Ci: any;
+// XPCOM in system modules: interface ids (XPCOMInterfaces below) and component constructors.
+declare const Ci: XPCOMInterfaces;
 declare const Components: {
-  Constructor(cid: string, iface: string, init?: string): any;
-  ID(id: string): unknown;
-  readonly manager: any;
+  // engine/js/xpconnect/src/XPCComponents.cpp (nsXPCComponents_Constructor): `new` makes the
+  // contract's object as `iface`, then calls its `init` method with the arguments.
+  Constructor<K extends keyof XPCOMInterfaces>(
+    contract: keyof XPCOMClasses,
+    iface: K,
+  ): new () => XPCOMInstance<K>;
+  Constructor<K extends keyof XPCOMInterfaces, I extends XPCOMMethodName<XPCOMInstance<K>>>(
+    contract: keyof XPCOMClasses,
+    iface: K,
+    init: I,
+  ): new (
+    ...args: XPCOMInstance<K>[I] extends (...args: infer A) => unknown ? A : never
+  ) => XPCOMInstance<K>;
+  ID(id: string): nsID;
+  readonly manager: nsIComponentManager;
   isSuccessCode(code: number): boolean;
   // The calling script's frame (xpccomponents.idl, nsIStackFrame): host/host-services.mjs checks
   // that only vimma.js provides the host's services.
@@ -329,16 +342,17 @@ declare const ChromeUtils: {
   // map's must match.
   defineESModuleGetters<T extends object>(target: T, modules: { [K in keyof T]: string }): void;
   registerWindowActor(name: string, options: object): void;
-  generateQI(interfaces: string[]): (iid: unknown) => any;
+  /** A QueryInterface for a JS object that implements `interfaces` (and nsISupports). */
+  generateQI(interfaces: (keyof XPCOMInterfaces)[]): nsISupports["QueryInterface"];
   now(): number;
   getXPCOMErrorName(code: number): string;
   /** The parent process first, then every live content process (nsIDOMProcessParent). */
-  getAllDOMProcesses(): { readonly remoteType: string | null; readonly childID: number }[];
+  getAllDOMProcesses(): nsIDOMProcessParent[];
 };
 
-// engine/dom/webidl/Window.webidl (chrome-only part)
+// engine/dom/webidl/Window.webidl: never null. A chrome window's, in the parent, is canonical.
 interface Window {
-  readonly browsingContext: any;
+  readonly browsingContext: BrowsingContext;
 }
 
 // engine/dom/chrome-webidl/JSWindowActor.webidl
@@ -358,7 +372,12 @@ declare class JSWindowActorParent {
 // engine/dom/webidl/Worker.webidl (ChromeWorker): a Worker with chrome privileges (system modules)
 declare class ChromeWorker extends Worker {}
 declare class JSWindowActorChild {
-  readonly browsingContext: any;
+  /**
+   * The webidl says nullable, but the getter throws (InvalidStateError) while the actor has no
+   * manager rather than give null, and a manager always has a context
+   * (engine/dom/ipc/jsactor/JSWindowActorChild.cpp, GetBrowsingContext).
+   */
+  readonly browsingContext: BrowsingContext;
   readonly document: Document;
   readonly contentWindow: Window | null;
   // WindowGlobalChild: the other actors of this frame (spec m1-find: Firefox's FinderChild)
@@ -366,14 +385,41 @@ declare class JSWindowActorChild {
     // engine/toolkit/actors/FinderChild.sys.mjs, registered for every frame
     // (engine/toolkit/modules/ActorManagerParent.sys.mjs)
     getActor(name: "Finder"): FinderChildActor;
-    getActor(name: string): any;
+    // engine/toolkit/actors/AutoCompleteChild.sys.mjs; throws in a frame it is not registered for
+    getActor(name: "AutoComplete"): AutoCompleteChildActor;
+    getActor(name: string): JSWindowActorChild;
     readonly innerWindowId: number;
     readonly isCurrentGlobal: boolean;
   };
-  // The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController)
-  readonly docShell: any;
+  /**
+   * The frame's nsIDocShell (spec m1-copy-mode: its nsISelectionController): null once the
+   * frame's context has lost it, as a discarded one has (JSWindowActorChild.cpp, GetDocShell).
+   */
+  readonly docShell: nsIDocShell | null;
   sendAsyncMessage(name: string, data?: unknown): void;
-  sendQuery(name: string, data?: unknown): Promise<any>;
+  /** The parent actor's answer to one of Vimma's queries (host/VimmaParent.sys.mjs). */
+  sendQuery<K extends keyof VimmaChildQueries>(
+    name: K,
+    data?: unknown,
+  ): Promise<VimmaChildQueries[K]>;
+  sendQuery(name: string, data?: unknown): Promise<unknown>;
+}
+// What VimmaParent answers its child's queries with (host/VimmaParent.sys.mjs).
+interface VimmaChildQueries {
+  /** The theme's token sheet, null for any actor but the top viewer's current one (V12). */
+  "Vimma:PdfTheme": string | null;
+}
+// engine/toolkit/actors/AutoCompleteChild.sys.mjs: the frame's autocomplete popup is open.
+interface AutoCompleteChildActor {
+  readonly popupOpen: boolean;
+}
+// engine/docshell/base/nsIDocShell.idl and nsIDocShellTreeItem.idl (the members Vimma uses);
+// isLoadingDocument is nsIWebProgress's, which a docshell also is.
+interface nsIDocShell extends nsISupports {
+  /** Null once the docshell is destroyed (nsIDocShellTreeItem.idl). */
+  readonly treeOwner: nsISupports | null;
+  readonly isLoadingDocument: boolean;
+  doCommand(command: string): void;
 }
 
 // engine/dom/base/nsISelectionController.idl (the members copy mode uses)
@@ -492,8 +538,7 @@ interface nsIPrincipal {
 // name is exported by one module). A module's `lazy` object is
 // `/** @type {Lazy<"setTimeout" | "PrivateBrowsingUtils">} */ ({})`: the getters fill it on the
 // next line, which is why the empty object may be asserted to the full shape. Firefox modules
-// list only the members Vimma calls; `any` marks a module Vimma uses beyond a few members whose
-// shape is not typed here yet.
+// list only the members Vimma calls.
 interface LazyModules {
   // engine/toolkit/modules/Timer.sys.mjs: ids are numbers; clearing an unknown id (null, a
   // finished timer) does nothing. The callback gets the extra arguments (a promise's resolve
@@ -546,7 +591,7 @@ interface LazyModules {
     decrypt(cipherText: string, trigger?: string | boolean, reauth?: boolean): Promise<string>;
   };
   // engine/toolkit/modules/FileUtils.sys.mjs (an nsIFile constructor)
-  FileUtils: { File: new (path: string) => any };
+  FileUtils: { File: new (path: string) => nsIFile };
   // engine/netwerk/base/NetUtil.sys.mjs
   NetUtil: { newURI(spec: string, charset?: string | null, base?: unknown): nsIURI };
   // engine/toolkit/modules/UpdateUtils.sys.mjs
@@ -572,8 +617,6 @@ interface LazyModules {
   // may give null too).
   E10SUtils: { deserializePrincipal(base64: string): nsIPrincipal | null };
 
-  // Untyped: wide Firefox APIs Vimma drives in depth (the agent's downloads and dialogs,
-  // js-ctypes and subprocesses).
   // engine/browser/modules/AboutNewTab.sys.mjs: setting the URL overrides it until the reset.
   AboutNewTab: {
     newTabURL: string;
@@ -592,7 +635,7 @@ interface LazyModules {
   // engine/toolkit/components/downloads/DownloadIntegration.sys.mjs, as
   // `Integration.downloads.getCombined` takes it.
   DownloadIntegration: object;
-  DownloadPaths: any;
+  DownloadPaths: DownloadPathsModule;
   Downloads: DownloadsModule;
   DownloadsCommon: DownloadsCommonApi;
   ExtensionPermissions: ExtensionPermissionsApi;
@@ -606,21 +649,24 @@ interface LazyModules {
     isCreditCardField(fieldName: unknown): boolean;
     isAddressField(fieldName: unknown): boolean;
   };
-  Integration: any;
+  Integration: IntegrationModule;
   // engine/toolkit/modules/JSONFile.sys.mjs (a constructor function)
   JSONFile: new (config: JSONFileConfig) => JSONFileInstance;
   PopupAndRedirectBlockerObserver: PopupAndRedirectBlockerObserver;
   SearchService: SearchServiceApi;
   SitePermissions: SitePermissionsApi;
-  Subprocess: any;
+  Subprocess: SubprocessModule;
   // engine/browser/components/urlbar/UrlbarSearchUtils.sys.mjs: the visible engines with an
   // `@` alias, each with those aliases (an empty list when the search service fails to start).
   UrlbarSearchUtils: {
     tokenAliasEngines(): Promise<{ engine: SearchEngine; tokenAliases: string[] }[]>;
   };
-  ctypes: any;
-  nsContentDispatchChooser: any;
-  nsUnknownContentTypeDialog: any;
+  // The agent's downloads and the agent pages' hooks: types/firefox-downloads.d.ts.
+  ctypes: CtypesModule;
+  // engine/uriloader/exthandler/ContentDispatchChooser.sys.mjs and toolkit/mozapps/downloads/
+  // HelperAppDlg.sys.mjs: the classes the agent's wrappers construct and fall back to.
+  nsContentDispatchChooser: new () => ContentDispatchChooser;
+  nsUnknownContentTypeDialog: new () => HelperAppLauncherDialog;
   // engine/toolkit/components/pictureinpicture/PictureInPicture.sys.mjs: its per-window count of
   // PiP windows; a window without one has no entry.
   PictureInPicture: { readonly originatingWinWeakMap: WeakMap<Window, number> };
@@ -726,7 +772,9 @@ interface Window {
   readonly Event: typeof Event;
   readonly OffscreenCanvas: typeof OffscreenCanvas;
   readonly CSS: typeof CSS;
-  readonly docShell: any;
+  /** Null once the window is closed: `closed` is true exactly when it has none
+   * (engine/dom/base/nsGlobalWindowOuter.cpp, GetClosedOuter). */
+  readonly docShell: nsIDocShell | null;
   fullScreen: boolean;
   /** The page's own view of its window, without Xrays: what its scripts set (xpconnect). */
   readonly wrappedJSObject: { readonly [name: string]: unknown };
@@ -734,6 +782,8 @@ interface Window {
 
 // engine/dom/webidl/Window.webidl (the ChromeWindow part): a top-level chrome window.
 interface ChromeWindow extends Window {
+  /** Chrome windows are in the parent process only. */
+  readonly browsingContext: CanonicalBrowsingContext;
   readonly windowState: number;
   readonly isFullyOccluded: boolean;
   getAttention(): void;
@@ -777,6 +827,10 @@ interface MozBrowser extends Element {
 // of a document's window global in the parent.
 interface WindowGlobalParent {
   readonly innerWindowId: number;
+  /** Vimma's actor is host/VimmaParent.sys.mjs's class (actors/VimmaActors.sys.mjs register). */
+  getActor(
+    name: "Vimma",
+  ): import("../src/browser/base/content/vimma/host/VimmaParent.sys.mjs").VimmaParent;
   getActor(name: string): JSWindowActorParent;
 }
 
@@ -992,8 +1046,7 @@ interface XULFrameElement extends Element {
   readonly contentDocument: Document | null;
 }
 
-// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads; a window's
-// `browsingContext` is still `any`).
+// engine/dom/chrome-webidl/BrowsingContext.webidl (the members Vimma reads).
 interface BrowsingContext {
   // LoadContextMixin: webidl `any`, an OriginAttributesDictionary
   // (engine/dom/chrome-webidl/OriginAttributes.webidl).
@@ -1035,6 +1088,13 @@ interface CanonicalBrowsingContext extends BrowsingContext {
    * that keeps none. */
   readonly sessionHistory: nsISHistory | null;
   getAllBrowsingContextsInSubtree(): CanonicalBrowsingContext[];
+  /** The chrome window the context is in; null once it has none. */
+  readonly topChromeWindow: ChromeWindow | null;
+  /**
+   * An app window's context only: kept active while minimized or occluded. The setter throws
+   * on any other.
+   */
+  forceAppWindowActive: boolean;
 }
 // engine/dom/chrome-webidl/WindowGlobalActors.webidl (WindowContext's and WindowGlobalParent's
 // members). The principals are never null (webidl `Principal`, not nullable).
@@ -1190,15 +1250,18 @@ interface ContentPermissionIntegration {
 // DownloadSource, DownloadTarget and DownloadSaver that Vimma's agent downloads read
 // (ctl/AgentDownloads.sys.mjs). The saver is a DownloadCopySaver or, for a helper-app download,
 // a DownloadLegacySaver, which alone has `request` (its channel, null until it starts) and
-// `deferExecuted`.
-interface FirefoxDownload {
+// `deferExecuted`. It is what Downloads.getList's lists hold: a session download.
+interface FirefoxDownload extends SessionDownload {
   readonly source: {
     readonly url: string;
     readonly originalUrl: string | null;
     readonly userContextId?: number;
     readonly browsingContextId?: number;
   };
-  readonly target: { readonly path: string; readonly partFilePath: string | null };
+  readonly target: SessionDownload["target"] & {
+    readonly path: string;
+    readonly partFilePath: string | null;
+  };
   readonly saver: {
     readonly totalBytes?: number;
     readonly request?: { readonly contentLength?: number } | null;
@@ -1235,15 +1298,6 @@ interface nsIHelperAppLauncher {
   promptForSaveDestination(): void;
   saveDestinationAvailable(file: { readonly path: string } | null): void;
 }
-// engine/toolkit/modules/subprocess/Subprocess.sys.mjs (its Process, through the pipes Vimma
-// asked for): the scanner Vimma runs.
-interface ChildProcess {
-  readonly stdin: { close(): Promise<unknown> };
-  readonly stdout: { readString(): Promise<string> };
-  readonly stderr: { readString(): Promise<string> };
-  wait(): Promise<{ exitCode: number }>;
-  kill(): void;
-}
 // The modules ctl/AgentDownloads.sys.mjs reads lazily, named here and not there:
 // tools/security/test/chrome-source.test.ts pins every mention of the process module in it.
 type AgentDownloadsLazy = Lazy<
@@ -1259,47 +1313,6 @@ type AgentDownloadsLazy = Lazy<
   | "setTimeout"
   | "nsUnknownContentTypeDialog"
 >;
-
-// A control connection's socket and streams, as ctl/VimmaControl.sys.mjs reads them:
-// engine/netwerk/base/nsITransport.idl (nsISocketTransport), engine/xpcom/io/
-// nsIAsyncInputStream.idl and nsIAsyncOutputStream.idl. Named apart from the browser tests'
-// fuller declarations of those interfaces (types/mochitest/firefox.d.ts). QueryInterface gives
-// the stream as the interface asked for, or throws.
-interface ControlTransport {
-  openInputStream(
-    flags: number,
-    segmentSize: number,
-    segmentCount: number,
-  ): { QueryInterface(iid: unknown): ControlInputStream };
-  openOutputStream(
-    flags: number,
-    segmentSize: number,
-    segmentCount: number,
-  ): { QueryInterface(iid: unknown): ControlOutputStream };
-  close(reason: number): void;
-}
-interface ControlInputStream {
-  /** Throws at the end of the stream, or with NS_BASE_STREAM_WOULD_BLOCK. */
-  available(): number;
-  asyncWait(
-    callback: { onInputStreamReady(stream: unknown): void },
-    flags: number,
-    requestedCount: number,
-    target: unknown,
-  ): void;
-  close(): void;
-}
-interface ControlOutputStream {
-  /** The bytes of `buf` (a binary string) written; throws NS_BASE_STREAM_WOULD_BLOCK. */
-  write(buf: string, count: number): number;
-  asyncWait(
-    callback: { onOutputStreamReady(stream: unknown): void },
-    flags: number,
-    requestedCount: number,
-    target: unknown,
-  ): void;
-  close(): void;
-}
 
 // SpiderMonkey's built-ins newer than the type check's ES2022 library (engine/js/src/builtin/
 // String.cpp, ES2024; engine/js/src/vm/TypedArrayObject.cpp, ES2026).
@@ -1525,17 +1538,18 @@ interface SessionDownload extends DownloadListEntry {
   showContainingDirectory(): Promise<void>;
 }
 // DownloadList.sys.mjs: a view hears of each entry, those already listed when it is added too.
-interface DownloadListView {
-  onDownloadAdded?(download: DownloadListEntry): void;
-  onDownloadChanged?(download: DownloadListEntry): void;
-  onDownloadRemoved?(download: DownloadListEntry): void;
+// Downloads.getList's lists hold session downloads (FirefoxDownload), the agent's among them;
+// DownloadHistory.getList's, history entries too.
+interface DownloadListView<D extends DownloadListEntry = DownloadListEntry> {
+  onDownloadAdded?(download: D): void;
+  onDownloadChanged?(download: D): void;
+  onDownloadRemoved?(download: D): void;
 }
-interface DownloadList {
-  getAll(): Promise<DownloadListEntry[]>;
-  /** The ALL list also holds the agent's downloads (ctl/AgentDownloads.sys.mjs). */
-  remove(download: DownloadListEntry | FirefoxDownload): Promise<void>;
-  addView(view: DownloadListView): Promise<void>;
-  removeView(view: DownloadListView): Promise<void>;
+interface DownloadList<D extends DownloadListEntry = DownloadListEntry> {
+  getAll(): Promise<D[]>;
+  remove(download: D): Promise<void>;
+  addView(view: DownloadListView<D>): Promise<void>;
+  removeView(view: DownloadListView<D>): Promise<void>;
 }
 // engine/dom/chrome-webidl/WebExtensionPolicy.webidl: an installed extension's policy; getByID is
 // null for an id that has none. `extension` is the Extension that registered it
@@ -1792,7 +1806,7 @@ interface DownloadsModule {
   readonly PUBLIC: string;
   readonly PRIVATE: string;
   readonly ALL: string;
-  getList(type: string): Promise<DownloadList>;
+  getList(type: string): Promise<DownloadList<FirefoxDownload>>;
   createDownload(properties: { source: string; target: string }): Promise<SessionDownload>;
 }
 // engine/browser/components/downloads/DownloadsCommon.sys.mjs: the downloads panel's commands.
@@ -1925,17 +1939,505 @@ interface ContextualIdentityNotification {
   readonly wrappedJSObject: { readonly userContextId: number; readonly name: string };
 }
 // The XPCOM objects a browser window's arguments hold (engine/xpcom/ds/nsISupportsPrimitives.idl,
-// nsIArray.idl, nsIPropertyBag2.idl). `Ci` is untyped, so `instanceof Ci.nsIArray` does not
-// narrow: the code casts after its check.
-interface nsISupportsString {
-  readonly data: string;
-}
+// nsIArray.idl, nsIPropertyBag2.idl; their ids are in XPCOMInterfaces below).
 interface nsIArray {
   readonly length: number;
-  /** The element as the interface `iid` names; Vimma asks only for nsISupportsString. */
-  queryElementAt(index: number, iid: unknown): nsISupportsString;
 }
 interface nsIPropertyBag2 {
   /** Throws for a property the bag does not have. */
   getPropertyAsBool(name: string): boolean;
+}
+
+// ---------------------------------------------------------------------------------------------
+// XPCOM: the interface ids in Ci, the classes in Cc and the interfaces Vimma reaches through them
+// (#938). Only the interfaces and members Vimma uses; the IDL in the engine tree is the reference.
+
+// engine/js/xpconnect/src/XPCJSID.cpp: `Ci.nsIFoo`. `x instanceof Ci.nsIFoo` asks x for the
+// interface (QueryInterface) and is true when it has it; QueryInterface and createInstance give
+// the object as the interface the id names.
+interface nsIJSIID<T> {
+  readonly name: string;
+  [Symbol.hasInstance](value: unknown): value is T;
+}
+// engine/xpcom/base/nsISupports.idl: every XPCOM object. QueryInterface throws NS_NOINTERFACE
+// for an interface the object does not have.
+interface nsISupports {
+  QueryInterface<T>(iid: nsIJSIID<T>): T;
+}
+// engine/js/xpconnect/src/XPCJSID.cpp: `Cc[contract]`, a component class.
+interface nsIJSCID {
+  /** A new object of the class. */
+  createInstance<T>(iid: nsIJSIID<T>): T;
+  /** The class's one object, made on the first call. */
+  getService<T>(iid: nsIJSIID<T>): T;
+}
+// engine/xpcom/base/nsID.h: a class or interface id (Components.ID, Services.uuid).
+interface nsID {
+  toString(): string;
+}
+type XPCOMInstance<K extends keyof XPCOMInterfaces> =
+  XPCOMInterfaces[K] extends nsIJSIID<infer T> ? T : never;
+type XPCOMMethodName<T> = {
+  [P in keyof T]: T[P] extends (...args: never[]) => unknown ? P : never;
+}[keyof T];
+
+// The classes Vimma makes or gets, by contract ID: `Cc[id]` is undefined for one that is not
+// registered, so a class some builds lack is optional.
+interface XPCOMClasses {
+  "@mozilla.org/alert-notification;1": nsIJSCID;
+  "@mozilla.org/alerts-service;1": nsIJSCID;
+  "@mozilla.org/binaryinputstream;1": nsIJSCID;
+  "@mozilla.org/browser/shell-service;1": nsIJSCID;
+  "@mozilla.org/consoleAPI-storage;1": nsIJSCID;
+  "@mozilla.org/file/local;1": nsIJSCID;
+  /** Only where Firefox is built with GIO (Linux). */
+  "@mozilla.org/gio-service;1"?: nsIJSCID;
+  "@mozilla.org/login-manager/loginInfo;1": nsIJSCID;
+  "@mozilla.org/network/file-input-stream;1": nsIJSCID;
+  "@mozilla.org/network/server-socket;1": nsIJSCID;
+  "@mozilla.org/network/socket-transport-service;1": nsIJSCID;
+  "@mozilla.org/process/util;1": nsIJSCID;
+  "@mozilla.org/referrer-info;1": nsIJSCID;
+  "@mozilla.org/reputationservice/application-reputation-service;1": nsIJSCID;
+  "@mozilla.org/scriptableinputstream;1": nsIJSCID;
+  "@mozilla.org/security/hash;1": nsIJSCID;
+  "@mozilla.org/supports-PRBool;1": nsIJSCID;
+  "@mozilla.org/supports-string;1": nsIJSCID;
+  "@mozilla.org/text-input-processor;1": nsIJSCID;
+  // The updater's three classes: only in a build with MOZ_UPDATER.
+  "@mozilla.org/updates/update-checker;1"?: nsIJSCID;
+  "@mozilla.org/updates/update-manager;1"?: nsIJSCID;
+  "@mozilla.org/updates/update-service;1"?: nsIJSCID;
+  "@mozilla.org/widget/clipboardhelper;1": nsIJSCID;
+  "@mozilla.org/widget/transferable;1": nsIJSCID;
+  /** An about: page's module: undefined for a page no module serves. */
+  [about: `@mozilla.org/network/protocol/about;1?what=${string}`]: nsIJSCID | undefined;
+}
+
+// The interface ids Vimma names, with the constants it and its tests read.
+interface XPCOMInterfaces {
+  nsIAboutModule: nsIJSIID<nsIAboutModule> & {
+    readonly ALLOW_SCRIPT: number;
+    readonly IS_SECURE_CHROME_UI: number;
+  };
+  nsIAlertNotification: nsIJSIID<nsIAlertNotification>;
+  nsIAlertsService: nsIJSIID<nsIAlertsService>;
+  nsIApplicationReputationService: nsIJSIID<nsIApplicationReputationService> & {
+    readonly VERDICT_DANGEROUS: number;
+    readonly VERDICT_SAFE: number;
+    readonly VERDICT_UNCOMMON: number;
+  };
+  // The updater's ids, like its classes in XPCOMClasses, exist only with MOZ_UPDATER
+  // (engine/toolkit/moz.build); VimmaUpdates reads their members only once it has the classes.
+  nsIApplicationUpdateService: nsIJSIID<nsIApplicationUpdateService> & {
+    readonly STATE_DOWNLOADING: number;
+    readonly STATE_PENDING: number;
+    readonly STATE_STAGING: number;
+    readonly STATE_SWAP: number;
+  };
+  nsIArray: nsIJSIID<nsIArray>;
+  nsIAsyncInputStream: nsIJSIID<nsIAsyncInputStream>;
+  nsIAsyncOutputStream: nsIJSIID<nsIAsyncOutputStream>;
+  nsIAppStartup: nsIJSIID<nsIAppStartup> & {
+    readonly eAttemptQuit: number;
+    readonly eRestart: number;
+  };
+  nsIBaseWindow: nsIJSIID<nsIBaseWindow>;
+  nsIBinaryInputStream: nsIJSIID<nsIBinaryInputStream>;
+  nsIBrowserDOMWindow: nsIJSIID<nsIBrowserDOMWindow> & {
+    readonly OPEN_CURRENTWINDOW: number;
+    readonly OPEN_EXTERNAL: number;
+    readonly OPEN_NEWTAB: number;
+    readonly OPEN_NEWWINDOW: number;
+  };
+  nsIClipboardHelper: nsIJSIID<nsIClipboardHelper>;
+  nsICommandLine: nsIJSIID<nsICommandLine> & {
+    readonly STATE_INITIAL_LAUNCH: number;
+    readonly STATE_REMOTE_AUTO: number;
+  };
+  nsICommandLineHandler: nsIJSIID<nsISupports>;
+  nsIComponentRegistrar: nsIJSIID<nsIComponentRegistrar>;
+  nsIConsoleAPIStorage: nsIJSIID<nsIConsoleAPIStorage>;
+  nsIContentDispatchChooser: nsIJSIID<nsISupports>;
+  nsIContentPolicy: nsIJSIID<nsISupports> & {
+    readonly TYPE_DOCUMENT: number;
+    readonly TYPE_SUBDOCUMENT: number;
+    /** The content types by name; a name this Firefox does not have is undefined. */
+    readonly [type: `TYPE_${string}`]: number | undefined;
+  };
+  nsICryptoHash: nsIJSIID<nsICryptoHash> & {
+    readonly SHA256: number;
+    readonly SHA512: number;
+  };
+  nsIDOMProcessParent: nsIJSIID<nsIDOMProcessParent>;
+  nsIDocumentEncoder: nsIJSIID<nsISupports> & {
+    readonly OutputLFLineBreak: number;
+    readonly SkipInvisibleContent: number;
+  };
+  nsIEncodedChannel: nsIJSIID<nsIEncodedChannel>;
+  nsIFactory: nsIJSIID<nsIFactory>;
+  nsIFile: nsIJSIID<nsIFile> & {
+    readonly DIRECTORY_TYPE: number;
+    readonly NORMAL_FILE_TYPE: number;
+  };
+  nsIFileInputStream: nsIJSIID<nsIFileInputStream>;
+  nsIGIOMimeApp: nsIJSIID<nsIGIOMimeApp>;
+  nsIGIOService: nsIJSIID<nsIGIOService>;
+  nsIHelperAppLauncherDialog: nsIJSIID<nsISupports>;
+  nsIHttpChannel: nsIJSIID<nsIHttpChannel>;
+  nsIInterfaceRequestor: nsIJSIID<nsIInterfaceRequestor>;
+  nsILoadContext: nsIJSIID<nsILoadContext>;
+  nsILoginInfo: nsIJSIID<nsILoginInfo>;
+  nsINestedURI: nsIJSIID<nsINestedURI>;
+  nsIProcess: nsIJSIID<nsIProcess>;
+  nsIPropertyBag2: nsIJSIID<nsIPropertyBag2>;
+  nsIReferrerInfo: nsIJSIID<nsIReferrerInfo> & {
+    readonly EMPTY: number;
+    readonly NO_REFERRER: number;
+  };
+  nsIRequest: nsIJSIID<nsIRequest> & { readonly LOAD_ANONYMOUS: number };
+  nsIScriptError: nsIJSIID<nsIScriptError> & { readonly warningFlag: number };
+  nsIScriptSecurityManager: nsIJSIID<nsISupports> & {
+    readonly DISALLOW_INHERIT_PRINCIPAL: number;
+  };
+  nsIScriptableInputStream: nsIJSIID<nsIScriptableInputStream>;
+  nsISelectionController: nsIJSIID<nsISelectionController> & {
+    readonly SCROLL_SYNCHRONOUS: number;
+    readonly SELECTION_ATTENTION: number;
+    readonly SELECTION_FOCUS_REGION: number;
+    readonly SELECTION_NORMAL: number;
+    readonly SELECTION_ON: number;
+  };
+  nsISelectionDisplay: nsIJSIID<nsISupports>;
+  nsISelectionListener: nsIJSIID<nsISelectionListener>;
+  nsIServerSocket: nsIJSIID<nsIServerSocket>;
+  nsIServiceManager: nsIJSIID<nsIServiceManager>;
+  nsIShellService: nsIJSIID<nsISupports>;
+  nsISocketTransportService: nsIJSIID<nsISocketTransportService>;
+  nsISupports: nsIJSIID<nsISupports>;
+  nsISupportsPRBool: nsIJSIID<nsISupportsPRBool>;
+  nsISupportsString: nsIJSIID<nsISupportsString>;
+  nsITextInputProcessor: nsIJSIID<nsITextInputProcessor>;
+  nsITransferable: nsIJSIID<nsITransferable>;
+  nsITransport: nsIJSIID<nsITransport> & { readonly OPEN_UNBUFFERED: number };
+  nsIURIFixup: nsIJSIID<nsISupports> & { readonly FIXUP_FLAG_NONE: number };
+  nsIUpdateChecker: nsIJSIID<nsIUpdateChecker> & {
+    readonly BACKGROUND_CHECK: number;
+    readonly FOREGROUND_CHECK: number;
+  };
+  nsIUpdateManager: nsIJSIID<nsIUpdateManager>;
+  nsIWebProgressListener: nsIJSIID<nsISupports> & {
+    readonly LOCATION_CHANGE_SAME_DOCUMENT: number;
+    readonly STATE_CERT_USER_OVERRIDDEN: number;
+    readonly STATE_IS_BROKEN: number;
+    readonly STATE_IS_DOCUMENT: number;
+    readonly STATE_IS_SECURE: number;
+    readonly STATE_IS_WINDOW: number;
+    readonly STATE_START: number;
+    readonly STATE_STOP: number;
+  };
+}
+
+// engine/xpcom/components/nsIComponentManager.idl, nsIComponentRegistrar.idl and
+// nsIServiceManager.idl: Components.manager, which is all three.
+interface nsIComponentManager extends nsISupports {}
+interface nsIComponentRegistrar extends nsISupports {
+  registerFactory(
+    cid: nsID,
+    className: string | null,
+    contractID: string | null,
+    factory: nsIFactory | null,
+  ): void;
+  isContractIDRegistered(contractID: string): boolean;
+}
+interface nsIServiceManager extends nsISupports {
+  isServiceInstantiatedByContractID<T>(contractID: string, iid: nsIJSIID<T>): boolean;
+}
+// engine/xpcom/components/nsIFactory.idl
+interface nsIFactory extends nsISupports {
+  createInstance(iid: nsIJSIID<unknown>): unknown;
+}
+// engine/netwerk/protocol/about/nsIAboutModule.idl
+interface nsIAboutModule extends nsISupports {
+  getURIFlags(uri: nsIURI): number;
+  newChannel(uri: nsIURI, loadInfo: nsILoadInfo): nsIChannel;
+  getChromeURI(uri: nsIURI): nsIURI;
+}
+// engine/xpcom/io/nsIFile.idl
+interface nsIFile extends nsISupports {
+  readonly path: string;
+  initWithPath(path: string): void;
+}
+// engine/netwerk/base/nsIRequest.idl, nsIChannel.idl and engine/netwerk/protocol/http/
+// nsIHttpChannel.idl, nsIEncodedChannel.idl
+interface nsIRequest extends nsISupports {
+  loadFlags: number;
+  isPending(): boolean;
+}
+interface nsIChannel extends nsIRequest {
+  originalURI: nsIURI;
+  readonly URI: nsIURI;
+  readonly loadInfo: nsILoadInfo;
+}
+interface nsIHttpChannel extends nsIChannel {
+  /** How many redirects it follows; 0 makes a redirect fail. */
+  redirectionLimit: number;
+}
+interface nsIEncodedChannel extends nsISupports {
+  /** False keeps a compressed body as it came. */
+  applyConversion: boolean;
+}
+// engine/netwerk/base/nsILoadInfo.idl
+interface nsILoadInfo {
+  /** Null for a top-level load. */
+  readonly loadingPrincipal: nsIPrincipal | null;
+  /** The frame's id; 0 for a load no frame made (a system request). */
+  readonly browsingContextID: number;
+  /** The URI the document takes its URL and principal from; null: the channel's own. */
+  resultPrincipalURI: nsIURI | null;
+}
+interface nsIURI extends nsISupports {}
+// engine/netwerk/base/nsINestedURI.idl (view-source:, jar: and others)
+interface nsINestedURI extends nsISupports {
+  readonly innermostURI: nsIURI;
+}
+// engine/netwerk/base/nsIReferrerInfo.idl: `policy` is a referrer policy constant.
+interface nsIReferrerInfo extends nsISupports {
+  init(policy: number, sendReferrer?: boolean, originalReferrer?: nsIURI | null): void;
+}
+// engine/xpcom/io/nsIFile.idl
+interface nsIFile {
+  /** A symlink's target path; "" for a file that is not one. */
+  readonly target: string;
+  /** Null for the root. */
+  readonly parent: nsIFile | null;
+  /** Its mode bits (0o644). */
+  readonly permissions: number;
+  exists(): boolean;
+  isFile(): boolean;
+  isDirectory(): boolean;
+  isSymlink(): boolean;
+  isReadable(): boolean;
+  isWritable(): boolean;
+  isExecutable(): boolean;
+  remove(recursive: boolean): void;
+}
+// engine/xpcom/io/nsIInputStream.idl, nsIAsyncInputStream.idl, nsIOutputStream.idl,
+// nsIAsyncOutputStream.idl, nsIBinaryInputStream.idl, nsIFileInputStream.idl and
+// nsIScriptableInputStream.idl. available() is the bytes that can be read now; it throws at the
+// end of the stream, or with NS_BASE_STREAM_WOULD_BLOCK, as write() does. An async stream's
+// callback is called once, on `target`, when the stream can be read or written, or is closed.
+interface nsIInputStream extends nsISupports {
+  available(): number;
+  close(): void;
+}
+interface nsIAsyncInputStream extends nsIInputStream {
+  asyncWait(
+    callback: { onInputStreamReady(stream: nsIAsyncInputStream): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+}
+interface nsIOutputStream extends nsISupports {
+  /** The bytes of `buf` (a binary string) written. */
+  write(buf: string, count: number): number;
+  close(): void;
+}
+interface nsIAsyncOutputStream extends nsIOutputStream {
+  asyncWait(
+    callback: { onOutputStreamReady(stream: nsIAsyncOutputStream): void },
+    flags: number,
+    requestedCount: number,
+    target: unknown,
+  ): void;
+}
+interface nsIBinaryInputStream extends nsIInputStream {
+  setInputStream(stream: nsIInputStream): void;
+  /** Reads up to `length` bytes into `buffer`; the number read. */
+  readArrayBuffer(length: number, buffer: ArrayBuffer): number;
+  readByteArray(length: number): number[];
+}
+interface nsIFileInputStream extends nsIInputStream {
+  init(file: nsIFile, ioFlags: number, perm: number, behaviorFlags: number): void;
+}
+interface nsIScriptableInputStream extends nsISupports {
+  init(stream: nsIInputStream): void;
+  /** Up to `count` bytes, as a binary string. */
+  read(count: number): string;
+}
+// engine/netwerk/base/nsITransport.idl, nsISocketTransport.idl, nsIServerSocket.idl and
+// nsISocketTransportService.idl. `reason` and `status` are nsresults; initWithFilename makes a
+// Unix domain socket at `path` (`backlog` -1: the default).
+interface nsITransport extends nsISupports {
+  openInputStream(flags: number, segmentSize: number, segmentCount: number): nsIInputStream;
+  openOutputStream(flags: number, segmentSize: number, segmentCount: number): nsIOutputStream;
+  close(reason: number): void;
+}
+interface nsISocketTransport extends nsITransport {}
+interface nsIServerSocket extends nsISupports {
+  /** -1 for `port` picks a free one. */
+  init(port: number, loopbackOnly: boolean, backlog: number): void;
+  initWithFilename(path: nsIFile, permissions: number, backlog: number): void;
+  asyncListen(listener: nsIServerSocketListener): void;
+  close(): void;
+  readonly port: number;
+}
+interface nsIServerSocketListener {
+  onSocketAccepted(server: nsIServerSocket, transport: nsISocketTransport): void;
+  onStopListening(server: nsIServerSocket, status: number): void;
+}
+interface nsISocketTransportService extends nsISupports {
+  createUnixDomainTransport(path: nsIFile): nsISocketTransport;
+}
+// engine/xpcom/ds/nsISupportsPrimitives.idl
+interface nsISupportsString extends nsISupports {
+  data: string;
+}
+interface nsISupportsPRBool extends nsISupports {
+  data: boolean;
+}
+// engine/xpcom/ds/nsIArray.idl and nsIPropertyBag2.idl
+interface nsIArray extends nsISupports {
+  /** The element as the interface `iid` names. */
+  queryElementAt<T>(index: number, iid: nsIJSIID<T>): T;
+}
+interface nsIPropertyBag2 extends nsISupports {}
+// engine/xpcom/base/nsIInterfaceRequestor.idl
+interface nsIInterfaceRequestor extends nsISupports {
+  getInterface<T>(iid: nsIJSIID<T>): T;
+}
+// engine/xpcom/threads/nsIProcess.idl: runw runs `file` with UTF-16 arguments; `blocking` false
+// returns at once.
+interface nsIProcess extends nsISupports {
+  init(file: nsIFile): void;
+  startHidden: boolean;
+  noShell: boolean;
+  runw(blocking: boolean, args: string[], count: number): void;
+}
+// engine/security/manager/ssl/nsICryptoHash.idl: finish gives the hash as a binary string, or
+// base64 when `base64` is true.
+interface nsICryptoHash extends nsISupports {
+  init(algorithm: number): void;
+  update(data: ArrayLike<number>, length: number): void;
+  finish(base64: boolean): string;
+}
+// engine/toolkit/components/startup/public/nsIAppStartup.idl
+interface nsIAppStartup extends nsISupports {
+  readonly shuttingDown: boolean;
+  readonly attemptingQuit: boolean;
+  quit(mode: number): void;
+  restartInSafeMode(mode: number): void;
+}
+// engine/widget/nsIBaseWindow.idl
+interface nsIBaseWindow extends nsISupports {
+  visibility: boolean;
+}
+// engine/widget/nsIClipboardHelper.idl: `context` is the window context that copies, so a
+// private window's copy is marked private.
+interface nsIClipboardHelper extends nsISupports {
+  copyString(text: string, context?: WindowGlobalParent | null): void;
+}
+// engine/widget/nsITransferable.idl: getTransferData sets `data.value` to an nsISupportsString
+// for text, and throws when there is none.
+interface nsITransferable extends nsISupports {
+  init(context: nsILoadContext | null): void;
+  addDataFlavor(flavor: string): void;
+  getTransferData(flavor: string, data: { value?: nsISupports }): void;
+}
+// engine/docshell/base/nsILoadContext.idl
+interface nsILoadContext extends nsISupports {}
+// engine/dom/interfaces/base/nsITextInputProcessor.idl: beginInputTransaction is false while
+// another input method composes; keydown and keyup dispatch the event to the focused window.
+interface nsITextInputProcessor extends nsISupports {
+  beginInputTransaction(win: Window, callback: (...args: unknown[]) => boolean): boolean;
+  keydown(event: KeyboardEvent, flags?: number): number;
+  keyup(event: KeyboardEvent, flags?: number): boolean;
+}
+// engine/xpcom/base/nsIConsoleMessage.idl and engine/dom/bindings/nsIScriptError.idl: a console
+// message; a script error or warning's `flags` say which (scriptErrorLevel in core).
+interface nsIConsoleMessage extends nsISupports {
+  readonly message: string;
+}
+interface nsIScriptError extends nsIConsoleMessage {
+  readonly errorMessage: string;
+  readonly sourceName: string;
+  readonly lineNumber: number;
+  readonly columnNumber: number;
+  readonly flags: number;
+  readonly category: string;
+  /** Its window's id; 0 for a message no window logged. */
+  readonly innerWindowID: number;
+  readonly timeStamp: number;
+}
+// engine/dom/console/nsIConsoleAPIStorage.idl: the console.* calls of the window with inner id
+// `id` (dom/console/Console.cpp makes each event; `arguments` are the page's own values).
+interface nsIConsoleAPIStorage extends nsISupports {
+  getEvents(id?: string): ConsoleAPIEvent[];
+}
+interface ConsoleAPIEvent {
+  readonly level: string;
+  readonly arguments: unknown;
+  readonly filename: unknown;
+  readonly lineNumber: unknown;
+  readonly columnNumber: unknown;
+  readonly timeStamp: unknown;
+}
+// engine/dom/interfaces/base/nsIDOMProcessParent.idl
+interface nsIDOMProcessParent extends nsISupports {
+  readonly remoteType: string | null;
+  readonly childID: number;
+}
+// engine/toolkit/components/alerts/nsIAlertsService.idl
+interface nsIAlertNotification extends nsISupports {
+  init(name?: string, imageURL?: string, title?: string, text?: string, clickable?: boolean): void;
+}
+interface nsIAlertsService extends nsISupports {
+  showAlert(alert: nsIAlertNotification, listener?: unknown): void;
+}
+// engine/toolkit/components/reputationservice/nsIApplicationReputation.idl
+interface nsIApplicationReputationService extends nsISupports {
+  /** Whether Firefox treats a file of this name as a program. */
+  isExecutable(fileName: string): boolean;
+}
+// engine/toolkit/system/gnome/nsIGIOService.idl (engine/xpcom/io): getAppForURIScheme throws when
+// no app handles the scheme; its app is an nsIGIOMimeApp unless a Flatpak portal gives it.
+interface nsIGIOService extends nsISupports {
+  readonly isRunningUnderFlatpak: boolean;
+  getAppForURIScheme(scheme: string): nsISupports;
+}
+interface nsIGIOMimeApp extends nsISupports {
+  /** The desktop entry's id, `org.example.App.desktop`. */
+  readonly id: string;
+}
+// engine/toolkit/mozapps/update/nsIUpdateService.idl (the update manager's `internal` is its
+// nsIUpdateManagerInternal, with synchronous getters). Only the IDL's members: XPConnect wraps a
+// JS-implemented service, so UpdateService.sys.mjs's other getters (isDownloading) read as
+// undefined through it.
+interface nsIUpdate {
+  readonly buildID: string;
+}
+interface nsIUpdateCheckResult {}
+interface nsIUpdateChecker extends nsISupports {
+  checkForUpdates(checkType: number): { readonly result: Promise<nsIUpdateCheckResult> };
+}
+interface nsIApplicationUpdateService extends nsISupports {
+  readonly disabled: boolean;
+  readonly canUsuallyApplyUpdates: boolean;
+  /** One of the STATE_ constants. */
+  readonly currentState: number;
+  onCheckComplete(result: nsIUpdateCheckResult): Promise<void>;
+}
+interface nsIUpdateManager extends nsISupports {
+  readonly internal: {
+    readonly readyUpdate: nsIUpdate | null;
+    readonly downloadingUpdate: nsIUpdate | null;
+  };
+}
+// engine/dom/interfaces/base/nsIBrowserDOMWindow.idl
+interface nsIBrowserDOMWindow extends nsISupports {}
+// engine/toolkit/components/commandlines/nsICommandLine.idl
+interface nsICommandLine extends nsISupports {
+  /** One of the STATE_ constants: the first launch, or a remote one. */
+  readonly state: number;
 }

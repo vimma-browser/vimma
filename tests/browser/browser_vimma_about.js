@@ -61,7 +61,9 @@ function repoDir() {
   const self = getChromeDir(getResolvedURI(gTestPath));
   self.append(gTestPath.split("/").at(-1) ?? "");
   self.normalize();
-  return self.parent.parent.parent; // tests/browser/<file>
+  const repo = self.parent?.parent?.parent; // tests/browser/<file>
+  if (!repo) throw new Error("the test file is not inside the repository");
+  return repo;
 }
 
 /**

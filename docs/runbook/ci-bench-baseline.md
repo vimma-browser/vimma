@@ -78,18 +78,20 @@ If the step does fail without a slowing change, that is a flake: quarantine it (
 issue with the log; do not re-run to green), and look at the numbers before touching thresholds.
 
 **Node is pinned exactly** in `.nvmrc`; ci, e2e, mutation, fuzz, sites, spec-status, downloads,
-pkgbuild, semgrep, release-please and claude use `node-version-file: .nvmrc` (the base-branch
-guards run on the runner's own Node, docs/security/14-build-and-release-supply-chain.md B18), and so do the nightly build jobs and
+pkgbuild, semgrep, release-please, claude, upstream, upstream-beta and upstream-merge use
+`node-version-file: .nvmrc` (the base-branch guards run on the runner's own Node,
+docs/security/14-build-and-release-supply-chain.md B18), and so do the nightly build jobs and
 every release and macos job: no setup-node step takes a bare major such as `node-version: 22`,
 which would give the newest 22.x the runner has. A release job checks out the tag's commit before
 setup-node, so it reads that tag's `.nvmrc`; every release tag has one (from v0.1.1), and the
 build jobs of the same commit read it too, so a tree without it could not be released anyway.
-`tools/test/runner-node.test.ts` fails on a setup-node without `.nvmrc`, and lists the jobs that
-still run `node` or `npm` on the runner image's own Node, whose version this repository does not
-choose, directly or through a `tools/**/*.sh` wrapper; none of them may reach a `.ts` file, run
-or imported by a `.mjs`, and that list only shrinks (#946). A Node bump is its
-own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node` to it
-(`npm run typecheck` checks `tools/` against it). `.nvmrc` never
+`tools/test/runner-node.test.ts` fails on a setup-node without `.nvmrc`, and on any job that runs
+`node` or `npm` on the runner image's own Node, whose version this repository does not choose,
+directly or through a `tools/**/*.sh` wrapper. Its list of such jobs (`RUNNER_NODE`) is empty
+since the upstream jobs took setup-node (#946); only the base-branch guards remain on the
+runner's Node, and none of them may reach a `.ts` file, run or imported by a `.mjs`. A Node bump
+is its own PR, by hand (Dependabot has no `.nvmrc` support); a new major also moves `@types/node`
+to it (`npm run typecheck` checks `tools/` against it). `.nvmrc` never
 leaves `engines` in `package.json` (`^22.18.0 || >=24.3.0`), the versions that run the `.ts` tools
 without a flag or a warning (ADR-025). The bench needs nothing for it: both sides of the
 comparison run on the same Node.

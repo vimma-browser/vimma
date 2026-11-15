@@ -315,13 +315,14 @@ describe("pinned keys (update-keys.mjs)", () => {
     // RSA_SIGN_RAW_PKCS1_4096 signs exactly the bytes it is sent, with PKCS#1 v1.5 type-1
     // padding; the signer sends the DER DigestInfo (SHA-384 prefix, then the 48-byte hash), as
     // the runbook's step 6 builds it. That is RSASSA-PKCS1-v1_5 SHA-384, so a pinned primary
-    // alone must accept it.
-    const { generateKeyPairSync, createHash, privateEncrypt, constants } =
-      await import("node:crypto");
-    const kms = generateKeyPairSync("rsa", { modulusLength: 4096 });
-    const der = new Uint8Array(kms.publicKey.export({ type: "spki", format: "der" }));
+    // alone must accept it. The padding is the same for every modulus length, so the file's
+    // RSA-2048 primary signs here: a fresh RSA-4096 key took seconds to make, and longer on a
+    // busy machine. The pinned keys' 4096 bits are checked in the tests above.
+    const { createHash, createPrivateKey, privateEncrypt, constants } = await import("node:crypto");
+    const pkcs8 = Buffer.from(await subtle.exportKey("pkcs8", primary.pair.privateKey));
+    const privateKey = createPrivateKey({ key: pkcs8, format: "der", type: "pkcs8" });
     /** @type {import("../src/updates/updates.mjs").PinnedKey} */
-    const pin = { id: await spkiKeyId(subtle, der), slot: "primary", spki: base64Encode(der) };
+    const pin = { id: primary.id, slot: "primary", spki: primary.spki };
     const body = manifest();
     const SHA384_DIGESTINFO = Buffer.from("3041300d060960864801650304020205000430", "hex");
     const digestInfo = Buffer.concat([
@@ -329,7 +330,7 @@ describe("pinned keys (update-keys.mjs)", () => {
       createHash("sha384").update(signedBytes(body)).digest(),
     ]);
     const raw = privateEncrypt(
-      { key: kms.privateKey, padding: constants.RSA_PKCS1_PADDING },
+      { key: privateKey, padding: constants.RSA_PKCS1_PADDING },
       digestInfo,
     );
     const text = body + signatureComment([{ key: pin.id, sig: base64Encode(new Uint8Array(raw)) }]);
@@ -337,7 +338,7 @@ describe("pinned keys (update-keys.mjs)", () => {
     expect(r).toEqual({ ok: true, body, key: { id: pin.id, slot: "primary" } });
     const flipped = text.replace('vimmaSerial="2', 'vimmaSerial="3');
     expect((await verifyManifest(flipped, [pin], subtle)).ok).toBe(false);
-  }, 30_000);
+  });
 });
 
 describe("parseManifest", () => {

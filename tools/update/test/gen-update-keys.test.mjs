@@ -1,7 +1,7 @@
 // docs/specs/m6a-updater.md "Delivery" (sub-PR 2) and decision 39: the manifest check's pinned
 // keys (packages/vimma-core/src/updates/update-keys.mjs) are generated from the certificates
 // Firefox's updater embeds (configs/updater/*.der), so the two verifiers trust
-// the same keys from one source. Keys and certificates are generated in the test.
+// the same keys from one source. The certificates are made in the test over test-keys.ts's keys.
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { createHash, generateKeyPairSync } from "node:crypto";
@@ -78,7 +78,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(keys).toEqual([{ id, slot: "primary", spki }]);
     expect(Object.isFrozen(keys) && Object.isFrozen(keys[0])).toBe(true);
     expect(text).toContain("npm run gen-update-keys");
-  }, 60_000);
+  });
 
   it("pins both when the secondary is a key of its own", async () => {
     const dir = tempDir("vimma-update-keys-");
@@ -91,7 +91,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     ]);
     expect(keys[0].spki).toBe(spkiB64(primary));
     expect(keys[1].spki).toBe(spkiB64(secondary));
-  }, 60_000);
+  });
 
   it("refuses a missing slot, a key that is not RSA-4096 and a file that is not a certificate", () => {
     const dir = tempDir("vimma-update-keys-");
@@ -100,6 +100,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const small = join(dir, "small.key.pem");
     writeFileSync(
       small,
+      // RSA-2048: any length but 4096 is refused (CodeQL flags anything shorter as weak).
       generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
         type: "pkcs8",
         format: "pem",
@@ -121,7 +122,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(() => readCertificates(dir)).toThrow(/RSA-4096/);
     writeFileSync(join(dir, "secondary.der"), "not a certificate");
     expect(() => readCertificates(dir)).toThrow(/secondary\.der/);
-  }, 60_000);
+  });
 
   it("refuses a certificate whose self-signature does not verify", () => {
     const dir = tempDir("vimma-update-keys-");
@@ -131,8 +132,9 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     writeFileSync(join(dir, "primary.der"), der);
     writeFileSync(join(dir, "secondary.der"), der);
     expect(() => readCertificates(dir)).toThrow(/self-signed/);
-  }, 60_000);
+  });
 
+  // Node starts three times and openssl once: on a busy machine that alone can take most of 5 s.
   it("--check fails when update-keys.mjs differs from what the certificates give", async () => {
     const dir = tempDir("vimma-update-keys-");
     const primary = certificate(dir, "primary.der", "Vimma update signing primary");
@@ -147,7 +149,7 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(run(["--check"])).toContain("up to date");
     writeFileSync(out, readFileSync(out, "utf8").replace(/"[A-Za-z0-9+/]{10}/, '"AAAAAAAAAA'));
     expect(() => run(["--check"])).toThrow(/gen-update-keys/);
-  }, 60_000);
+  }, 15_000);
 
   it("a flag without its value is an error, not an undefined path", () => {
     for (const args of [["--out"], ["--check", "--out"], ["--certs"]]) {
@@ -174,5 +176,5 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     expect(
       readFileSync(join(ROOT, "docs/runbook/ci-update-keys-and-update-host.md"), "utf8"),
     ).toContain(sha);
-  }, 60_000);
+  });
 });

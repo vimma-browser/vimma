@@ -555,7 +555,7 @@ function socketOwner(path) {
  */
 function statxOwner(path) {
   const ctypes = lazy.ctypes;
-  /** @type {any} */
+  /** @type {CLibrary | undefined} */
   let libc;
   try {
     libc = ctypes.open("libc.so.6");
@@ -614,7 +614,7 @@ function statxOwner(path) {
  */
 function lstatOwner(path) {
   const ctypes = lazy.ctypes;
-  /** @type {any} */
+  /** @type {CLibrary | undefined} */
   let libc;
   try {
     // XPCOMABI throws when it is not known.
@@ -664,7 +664,7 @@ function readLink(path) {
   const os = Services.appinfo.OS;
   if (os !== "Linux" && os !== "Darwin") return null;
   const ctypes = lazy.ctypes;
-  /** @type {any} */
+  /** @type {CLibrary | undefined} */
   let libc;
   try {
     // An absolute path on macOS, as in lstatOwner: dyld searches the working directory too.
@@ -685,7 +685,8 @@ function readLink(path) {
     if (n < 0 || n >= size) return null;
     const bytes = new Uint8Array(n);
     const view = ctypes.cast(buf, ctypes.uint8_t.array(size));
-    for (let i = 0; i < n; i++) bytes[i] = view[i];
+    // Within its length: js-ctypes throws past it.
+    for (let i = 0; i < n; i++) bytes[i] = /** @type {number} */ (view[i]);
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch (e) {
     console.error("vimma: readlink failed", e);
@@ -992,7 +993,7 @@ function wrapDialog() {
   const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   const factory = {
     QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
-    /** @param {unknown} iid */
+    /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
     createInstance(iid) {
       const inner = new lazy.nsUnknownContentTypeDialog();
       const dialog = {
@@ -1068,7 +1069,7 @@ export const AgentDownloads = {
       console.error("vimma agent downloads: the download dialog is not wrapped", e);
     }
     lazy.Downloads.getList(lazy.Downloads.ALL)
-      .then((/** @type {{ addView(view: object): unknown }} */ list) => list.addView(capView))
+      .then((list) => list.addView(capView))
       .catch(console.error);
   },
 

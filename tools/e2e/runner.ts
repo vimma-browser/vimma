@@ -1,5 +1,6 @@
 // Runs e2e scenarios one after another, each in a fresh session, with a per-scenario timeout
-// and a total budget (plan §5: suite < 5 min). Pending scenarios are reported, never passed.
+// and a total budget (the suite stays under 5 minutes, docs/architecture/testing.md). Pending
+// scenarios are reported, never passed.
 import { runSteps } from "./scenario.ts";
 import type { Control, Scenario, StepContext, UpdateControl } from "./scenario.ts";
 
@@ -16,7 +17,7 @@ export type Session = {
   teardown: () => Promise<void>;
 };
 
-/** Plan §5: the whole suite stays under 5 minutes. */
+/** The whole suite stays under 5 minutes (ARCHITECTURE.md, "Testing"). */
 export const DEFAULT_BUDGET_MS = 5 * 60 * 1000;
 export const DEFAULT_SCENARIO_SECONDS = 60;
 /** How long a timed-out scenario may take to stop before the runner moves on. */

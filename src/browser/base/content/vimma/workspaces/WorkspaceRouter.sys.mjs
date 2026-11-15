@@ -224,7 +224,7 @@ const handler = {
 };
 
 const factory = {
-  createInstance(/** @type {unknown} */ iid) {
+  createInstance(/** @type {nsIJSIID<unknown>} */ iid) {
     return handler.QueryInterface(iid);
   },
   QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
@@ -602,10 +602,7 @@ export const WorkspaceRouter = {
  */
 function fromExternal(arg) {
   try {
-    return (
-      arg instanceof Ci.nsIPropertyBag2 &&
-      /** @type {nsIPropertyBag2} */ (arg).getPropertyAsBool("fromExternal") === true
-    );
+    return arg instanceof Ci.nsIPropertyBag2 && arg.getPropertyAsBool("fromExternal") === true;
   } catch {
     return false;
   }
@@ -628,9 +625,9 @@ function singleUrl(arg) {
   /** @type {string | null} */
   let url = null;
   if (typeof arg === "string") url = arg;
-  else if (arg instanceof Ci.nsISupportsString) url = /** @type {nsISupportsString} */ (arg).data;
-  else if (arg instanceof Ci.nsIArray && /** @type {nsIArray} */ (arg).length === 1) {
-    url = /** @type {nsIArray} */ (arg).queryElementAt(0, Ci.nsISupportsString).data;
+  else if (arg instanceof Ci.nsISupportsString) url = arg.data;
+  else if (arg instanceof Ci.nsIArray && arg.length === 1) {
+    url = arg.queryElementAt(0, Ci.nsISupportsString).data;
   }
   return url && !url.includes("|") ? url : null;
 }

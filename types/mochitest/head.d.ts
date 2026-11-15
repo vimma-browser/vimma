@@ -233,10 +233,10 @@ declare function discovery(): Promise<any>;
 declare function hmacHex(key: string, text: string): Promise<string>;
 /** A protocol client over nsISocketTransport: JSON lines both ways. */
 declare class Client {
-  transport: any;
-  output: any;
-  input: any;
-  binary: any;
+  transport: nsISocketTransport;
+  output: nsIOutputStream;
+  input: nsIAsyncInputStream;
+  binary: nsIBinaryInputStream;
   buffer: string;
   /** @type {any[]} */
   messages: any[];

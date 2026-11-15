@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * End-to-end scenarios on a real Vimma build (spec m0-e2e-harness, plan §5). Each scenario in
- * tests/e2e/scenarios/ gets a fresh temp profile and browser (under Xvfb when DISPLAY is unset),
- * driven through vimma-ctl; screenshots are compared with tests/e2e/baselines/. On macOS (or
- * with --headless) the browser runs with MOZ_HEADLESS=1 instead, and screenshot steps are
- * skipped: there is no framebuffer to capture, so no baseline is checked.
+ * End-to-end scenarios on a real Vimma build (spec m0-e2e-harness, docs/architecture/testing.md).
+ * Each scenario in tests/e2e/scenarios/ gets a fresh temp profile and browser (under Xvfb when
+ * DISPLAY is unset), driven through vimma-ctl; screenshots are compared with
+ * tests/e2e/baselines/. On macOS (or with --headless) the browser runs with MOZ_HEADLESS=1
+ * instead, and screenshot steps are skipped: there is no framebuffer to capture, so no baseline
+ * is checked.
  *
  *   npm run e2e                                  # every scenario, the default build
  *   npm run e2e -- --filter m0-happy-path        # names containing the text

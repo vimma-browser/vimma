@@ -48,7 +48,7 @@ const handler = {
 };
 
 const factory = {
-  createInstance(/** @type {unknown} */ iid) {
+  createInstance(/** @type {nsIJSIID<unknown>} */ iid) {
     return handler.QueryInterface(iid);
   },
   QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),

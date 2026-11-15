@@ -1,5 +1,6 @@
-// Contract fixtures (plan §5): one valid and the invalid cases per config schema version, and
-// Omarchy colors.toml files. A new schema version adds tests/contract/config/v<n>/.
+// Contract fixtures (docs/architecture/testing.md): one valid and the invalid cases per config
+// schema version, and Omarchy colors.toml files. A new schema version adds
+// tests/contract/config/v<n>/.
 import { describe, test, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { CONFIG_SCHEMA_VERSION, parseConfig } from "../src/config/config.mjs";

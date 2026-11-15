@@ -200,6 +200,10 @@ support-files = ["file_vimma_grep.html", "head_vimma_grep.js"]
 
 ["browser_vimma_workspace_routes.js"]
 
+["browser_vimma_workspace_routes_external.js"]
+
+["browser_vimma_workspace_routes_windows.js"]
+
 ["browser_vimma_workspace_routing.js"]
 support-files = ["file_vimma_cookie.html"]
 

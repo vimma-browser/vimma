@@ -10,12 +10,13 @@ import { fileURLToPath } from "node:url";
 import { transformSync } from "amaro";
 import { ESLint } from "eslint";
 import * as espree from "espree";
-import vitestConfig from "../../vitest.config.mjs";
+import vitestConfig from "../../vitest.config.ts";
 
 // ADR-025: tools/ may be TypeScript that Node runs as it is, by erasing the types. These pin what
 // that needs from Node, Vitest and eslint; tools/test/typecheck.test.mjs pins tsc's side.
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const FIXTURE = fileURLToPath(new URL("fixtures/ts-run/main.ts", import.meta.url));
+const ROOT_TS_CONFIGS = ["commitlint.config.ts", "vitest.config.ts"];
 
 /**
  * The modules a .ts file loads when Node runs it: its import and export declarations and its
@@ -128,7 +129,8 @@ describe("TypeScript under tools/ (ADR-025)", () => {
 
   it("imports each relative module by the name of a file that exists, as Node needs", () => {
     // tsc accepts `./x.js` for x.ts and Vitest resolves it, but Node does not.
-    const files = execFileSync("git", ["ls-files", "-z", "tools/**/*.ts"], {
+    // The root configs too: commitlint.config.ts imports from tools/.
+    const files = execFileSync("git", ["ls-files", "-z", "tools/**/*.ts", ...ROOT_TS_CONFIGS], {
       cwd: ROOT,
       encoding: "utf8",
     })
@@ -166,6 +168,10 @@ describe("TypeScript under tools/ (ADR-025)", () => {
     })
       .split("\0")
       .filter((p) => p && !/\.d\.[mc]?ts$/.test(p));
-    expect(tracked.filter((p) => !p.startsWith("tools/"))).toEqual([]);
+    // The root configs whose tool loads TypeScript itself (Vite bundles vitest.config.ts,
+    // commitlint loads its config through jiti) are Node-side tooling too (ADR-025).
+    expect(tracked.filter((p) => !p.startsWith("tools/") && !ROOT_TS_CONFIGS.includes(p))).toEqual(
+      [],
+    );
   });
 });

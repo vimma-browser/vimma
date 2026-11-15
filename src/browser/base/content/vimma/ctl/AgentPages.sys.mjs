@@ -268,15 +268,14 @@ function wrapChooser() {
   const registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
   const factory = {
     QueryInterface: ChromeUtils.generateQI(["nsIFactory"]),
-    /** @param {unknown} iid */
+    /** @param {nsIJSIID<unknown>} iid @returns {unknown} */
     createInstance(iid) {
       const inner = AgentPages._chooserForTests ?? new lazy.nsContentDispatchChooser();
       const chooser = {
         QueryInterface: ChromeUtils.generateQI(["nsIContentDispatchChooser"]),
         /**
          * nsIContentDispatchChooser.handleURI's: handler, uri, principal, browsingContext, …
-         * @param {[unknown, nsIURI | null, nsIPrincipal | null, BrowsingContext | null,
-         *   ...unknown[]]} args
+         * @param {Parameters<ContentDispatchChooser["handleURI"]>} args
          */
         handleURI(...args) {
           const [, uri, principal, bc] = args;
@@ -302,7 +301,7 @@ function wrapChooser() {
 export const AgentPages = {
   /**
    * Test-only: the chooser agent-free loads go to, in place of Firefox's.
-   * @type {{ QueryInterface?: unknown, handleURI(...args: never[]): unknown } | null}
+   * @type {({ QueryInterface?: unknown } & ContentDispatchChooser) | null}
    */
   _chooserForTests: null,
 

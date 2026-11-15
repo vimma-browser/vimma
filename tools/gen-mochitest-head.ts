@@ -63,6 +63,7 @@ export async function headTypes(): Promise<string> {
         "--strict",
         ...headFiles(),
         "types/firefox.d.ts",
+        "types/firefox-downloads.d.ts",
         "types/mochitest/harness.d.ts",
         "types/mochitest/firefox.d.ts",
       ],

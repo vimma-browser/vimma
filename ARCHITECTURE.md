@@ -341,17 +341,17 @@ the tests that enforce it. In short:
 
 ## Testing
 
-| Layer       | Covers                                                                 | Where and gate                                                                                   |
-| ----------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Unit        | vimma-core and `tools/`                                                | Vitest (`npm test`); 90 % line, branch and function coverage of vimma-core (`vitest.config.mjs`) |
-| Property    | Parsers of outside input                                               | fast-check: a fixed seed on every pull request, a random seed nightly (`fuzz.yml`)               |
-| Contract    | Control protocol, config, state and workspace files                    | `tests/contract/`, read by vimma-core's tests; the protocol fixtures by vimma-ctl's too          |
-| Rust        | vimma-ctl                                                              | `cargo test`, `cargo clippy -- -D warnings`                                                      |
-| Browser     | The host on a real build: keys, actions, UI, actors, workspaces, panes | Mochitests on an artifact build, every pull request (`e2e.yml`)                                  |
-| End to end  | A real build driven through the socket, with screenshots               | `tools/e2e`; 0.5 % pixel tolerance, the suite under 5 minutes                                    |
-| Performance | Key-to-action in core; key-to-paint in the window                      | `tools/bench`: under 50 µs per key and no regression above 10 %; `browser_vimma_perf.js`         |
-| Mutation    | Whether core's tests catch changes                                     | Stryker weekly (`mutation.yml`); survivors go to one tracking issue                              |
-| Sites       | Real websites                                                          | Recorded pages on every pull request; live sites nightly, as a report (`sites.yml`)              |
+| Layer       | Covers                                                                 | Where and gate                                                                                  |
+| ----------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Unit        | vimma-core and `tools/`                                                | Vitest (`npm test`); 90 % line, branch and function coverage of vimma-core (`vitest.config.ts`) |
+| Property    | Parsers of outside input                                               | fast-check: a fixed seed on every pull request, a random seed nightly (`fuzz.yml`)              |
+| Contract    | Control protocol, config, state and workspace files                    | `tests/contract/`, read by vimma-core's tests; the protocol fixtures by vimma-ctl's too         |
+| Rust        | vimma-ctl                                                              | `cargo test`, `cargo clippy -- -D warnings`                                                     |
+| Browser     | The host on a real build: keys, actions, UI, actors, workspaces, panes | Mochitests on an artifact build, every pull request (`e2e.yml`)                                 |
+| End to end  | A real build driven through the socket, with screenshots               | `tools/e2e`; 0.5 % pixel tolerance, the suite under 5 minutes                                   |
+| Performance | Key-to-action in core; key-to-paint in the window                      | `tools/bench`: under 50 µs per key and no regression above 10 %; `browser_vimma_perf.js`        |
+| Mutation    | Whether core's tests catch changes                                     | Stryker weekly (`mutation.yml`); survivors go to one tracking issue                             |
+| Sites       | Real websites                                                          | Recorded pages on every pull request; live sites nightly, as a report (`sites.yml`)             |
 
 Tests are written before the code they test, and a baseline or snapshot changes only with a
 reason in the commit body ([CONTRIBUTING.md](CONTRIBUTING.md), "Workflow"). CI never retries a
