@@ -333,7 +333,7 @@ add_task(async function a_shown_window_is_held_active_until_macos_reports_it_and
   let occluded = true;
   NativeSwap._resetForTests({ force: true, log, occluded: () => occluded });
   await place(window, FRAME);
-  /** @param {Window} w */
+  /** @param {ChromeWindow} w */
   const forced = (w) => w.browsingContext.forceAppWindowActive;
   /** @param {Window} w */
   const reported = (w) => w.dispatchEvent(new w.Event("occlusionstatechange"));

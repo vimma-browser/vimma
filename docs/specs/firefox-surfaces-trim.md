@@ -430,7 +430,8 @@ sets `hidden` where CSS is not enough; a whole-file replacement under `src/` or 
     Page" (Vimma's start page is what new tabs and windows show: "Start Page (Default)"), Firefox
     View "Tab Overview", Firefox Labs "Labs", Firefox Translations "Translations" and Firefox
     Screenshots "Screenshots". Mozilla's own products keep their names (Relay, Monitor, Mozilla VPN,
-    Send, Profiler, Thunderbird, Fakespot), because renaming them would claim them as Vimma's
+    Send, Profiler, Thunderbird, Fakespot) (Since changed: also Firefox Enterprise, which Firefox
+    161 adds for its "More from Mozilla" pane), because renaming them would claim them as Vimma's
     (decision 4). Rejected: a hand-carried copy, because a rebase can keep a stale file or miss a
     new term; the terms in Vimma's `brand.ftl`, because the 7 documents that load `brandings.ftl`
     without `brand.ftl` would keep Firefox's names and each duplicate term logs a Fluent error. This

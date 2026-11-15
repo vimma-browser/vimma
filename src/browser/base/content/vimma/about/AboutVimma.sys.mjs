@@ -131,7 +131,7 @@ const aboutModule = {
   getChromeURI() {
     return Services.io.newURI(PAGE_URL);
   },
-  /** @param {nsIURI} uri @param {unknown} loadInfo */
+  /** @param {nsIURI} uri @param {nsILoadInfo} loadInfo */
   newChannel(uri, loadInfo) {
     const channel = Services.io.newChannelFromURIWithLoadInfo(
       Services.io.newURI(PAGE_URL),
