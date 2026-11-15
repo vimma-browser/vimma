@@ -369,6 +369,7 @@ const WRAPPERS = new Map([
       "--max-procs",
       "--delimiter",
       "--max-chars",
+      "--process-slot-var",
       "--arg-file",
     ],
   ],

@@ -207,11 +207,16 @@ function checkManager(cmd, ctx, nested) {
     return checkPip(texts.slice(m + 1));
   }
   if (name === "cargo") return checkCargo(texts);
-  if (name === "gem") return ["install", "update"].includes(texts[0] ?? "") ? block("other") : null;
-  if (name === "go") {
-    if (texts[0] === "get") return block("other");
-    const remote = texts.slice(1).some((t) => /@/.test(t) && !t.startsWith("-"));
-    return ["install", "run"].includes(texts[0] ?? "") && remote ? block("other") : null;
+  if (/^gem$/.test(name)) {
+    const verb = texts[verbAt(texts, new Set(["--config-file"]))];
+    return ["install", "update"].includes(verb ?? "") ? block("other") : null;
+  }
+  if (/^go$/.test(name)) {
+    const k = verbAt(texts, new Set(["-C"]));
+    const verb = texts[k];
+    if (verb === "get") return block("other");
+    const remote = texts.slice(k + 1).some((t) => /@/.test(t) && !t.startsWith("-"));
+    return ["install", "run"].includes(verb ?? "") && remote ? block("other") : null;
   }
   return null;
 }

@@ -623,6 +623,7 @@ describe("words the shell reader has to see through", () => {
     "sudo --user root npm i x",
     "echo x | xargs --max-args 1 npm i",
     "echo x | xargs --max-procs 2 npm i",
+    "echo x | xargs --process-slot-var SLOT npm i",
     // --replace and --max-lines take an optional value only with `=`: the next word is the command.
     "echo x | xargs --replace npm i",
     // More managers.
@@ -656,12 +657,17 @@ describe("words the shell reader has to see through", () => {
     expect(blocked(command)?.reason).toMatch(/--locked/);
   });
 
-  it.each(["gem install rails", "go install example.com/tool@latest", "go get example.com/x"])(
-    "blocks %s",
-    (command) => {
-      expect(blocked(command)?.reason).toMatch(/lockfile/);
-    },
-  );
+  it.each([
+    "gem install rails",
+    "gem -q install rails",
+    "gem --norc install rails",
+    "go install example.com/tool@latest",
+    "go -C dir install example.com/tool@latest",
+    "go get example.com/x",
+    "go -C dir get example.com/x",
+  ])("blocks %s", (command) => {
+    expect(blocked(command)?.reason).toMatch(/lockfile/);
+  });
 
   it.each([
     "npm --silent run build",
@@ -674,7 +680,9 @@ describe("words the shell reader has to see through", () => {
     "uv lock",
     "go build ./...",
     "go install ./cmd/tool",
+    "go -C dir build ./...",
     "gem list",
+    "gem -q list",
     "yarn workspace docs run build",
   ])("allows %s", (command) => {
     expect(blocked(command)).toBeNull();
