@@ -100,8 +100,8 @@ describe("gen-update-keys: update-keys.mjs from the updater's certificates", () 
     const small = join(dir, "small.key.pem");
     writeFileSync(
       small,
-      // RSA-1024: any length but 4096 is refused, and a longer key takes far longer to make.
-      generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey.export({
+      // RSA-2048: any length but 4096 is refused (CodeQL flags anything shorter as weak).
+      generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
         type: "pkcs8",
         format: "pem",
       }),

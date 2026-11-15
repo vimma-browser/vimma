@@ -106,8 +106,8 @@ describe("update-cert: the updater's self-signed certificate", () => {
   });
 
   it("refuses a key that is not RSA-4096", () => {
-    // RSA-1024: any length but 4096 is refused, and a longer key takes far longer to make.
-    const small = generateKeyPairSync("rsa", { modulusLength: 1024 });
+    // RSA-2048: any length but 4096 is refused (CodeQL flags anything shorter as weak).
+    const small = generateKeyPairSync("rsa", { modulusLength: 2048 });
     expect(() => certificateRequest(spkiOf(small.publicKey), "primary")).toThrow(/RSA-4096/);
     const ec = generateKeyPairSync("ec", { namedCurve: "P-256" });
     expect(() => certificateRequest(spkiOf(ec.publicKey), "primary")).toThrow(/RSA-4096/);
