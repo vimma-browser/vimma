@@ -5,7 +5,7 @@
 // Child side of the Vimma actor (spec: docs/specs/m1-actor-insert-scroll.md). One per frame,
 // including out-of-process iframes: reports focus changes in its own document as an
 // EditableDescriptor (vimma-core editable.mjs) and runs blur and focus-input commands; scroll
-// commands go to its PageScroll (page-scroll.mjs).
+// commands go to its PageScroll (page-scroll.mjs), live grep's to its GrepPage (grep-page.mjs).
 
 import { INSERT_EDIT_COMMANDS, isEditable } from "../core/editable.mjs";
 import { inputIndex } from "../core/pageurl.mjs";
@@ -40,11 +40,9 @@ import {
 } from "./agent-fields.mjs";
 import { Caret, isCaretMessage } from "./caret.mjs";
 import { BlockFocus } from "./block.mjs";
-import { GREP_CAPS, parseQuery, previewLines } from "../core/grep.mjs";
-import { textOfDocument } from "./text-model.mjs";
-import { GrepMatcher } from "./grep-matcher.mjs";
 import { PdfView } from "./pdf-view.mjs";
 import { PageScroll } from "./page-scroll.mjs";
+import { GrepPage } from "./grep-page.mjs";
 
 /** @import { EditableDescriptor } from "../core/editable.mjs" */
 
@@ -167,19 +165,6 @@ function selectionOnScreen(sel, win) {
   return r.bottom > 0 && r.top < win.innerHeight;
 }
 
-/** nsISelectionController.SELECTION_NORMAL */
-const SELECTION_NORMAL = 1;
-
-/** nsISelectionController values for live grep's jump (docs/specs/live-grep.md decision 7). */
-const DISPLAY_ATTENTION = 4;
-const WHOLE_SELECTION = 2;
-const SCROLL_SYNCHRONOUS = 1 << 1;
-const SCROLL_VERTICAL_CENTER = 1 << 5;
-/** The longest query a frame accepts (the parent sends none longer). */
-const GREP_QUERY_MAX = GREP_CAPS.query;
-/** Text with something to find: a blank frame is answered without the worker. */
-const NOT_BLANK = /\S/;
-
 /** nsISelectionListener reasons (spec m1-copy-mode, mouse selection). */
 const MOUSEUP_REASON = 4;
 const JS_REASON = 256;
@@ -285,15 +270,12 @@ export class VimmaChild extends JSWindowActorChild {
    * operation it sent (`state.pdf`, #1006).
    */
   #pdfOps = 0;
-  /**
-   * Live grep (docs/specs/live-grep.md decision 14): this document's text model while the
-   * picker is open, marked stale by any change to the document until the next query rebuilds it.
-   * @type {{ model: ReturnType<typeof textOfDocument>, stale: boolean,
-   *   observer: MutationObserver | null }}
-   */
-  #grep = { model: null, stale: true, observer: null };
-  /** This frame's key in the process's matcher, and the newest search generation it saw. */
-  #matcher = { key: GrepMatcher.newKey(), gen: -1 };
+  /** Live grep in this frame (docs/specs/live-grep.md): its text model and matcher key. */
+  #grep = new GrepPage(this, {
+    activeElement: () => deepActiveElement(this.document),
+    editable: (el) => isEditable(describe(el)).editable,
+    selCon: () => this.#selCon(),
+  });
   /** The document's selection while a listener for mouse selections is on it. */
   /** @type {Selection | null} */
   #watched = null;
@@ -353,7 +335,7 @@ export class VimmaChild extends JSWindowActorChild {
   didDestroy() {
     this.#pdf?.destroy();
     this.#pdf = null;
-    this.#grepEnd();
+    this.#grep.end();
     this.#block.destroy();
     try {
       this.#watched?.removeSelectionListener(this.#selectionListener);
@@ -755,13 +737,13 @@ export class VimmaChild extends JSWindowActorChild {
         this.#scroll.scrollTo(msg.data);
         return undefined;
       case "Vimma:Grep":
-        return this.#grepSearch(msg.data);
+        return this.#grep.search(msg.data);
       case "Vimma:GrepPreview":
-        return this.#grepPreview(msg.data);
+        return this.#grep.preview(msg.data);
       case "Vimma:GrepJump":
-        return this.#grepJump(msg.data);
+        return this.#grep.jump(msg.data);
       case "Vimma:GrepEnd":
-        this.#grepEnd();
+        this.#grep.end();
         return undefined;
       case "Vimma:CollectHints":
         return this.#collectHints(msg.data);
@@ -1552,152 +1534,6 @@ export class VimmaChild extends JSWindowActorChild {
     // SVG elements have no click(): dispatch the click event for them.
     if (typeof html.click === "function") html.click();
     else el.dispatchEvent(new win.MouseEvent("click", init));
-    return true;
-  }
-
-  /** The text model, rebuilt when the document changed since it was built. */
-  #grepModel() {
-    const win = this.contentWindow;
-    if (!win) return null;
-    if (this.#grep.model && !this.#grep.stale) return this.#grep.model;
-    if (!this.#grep.observer) {
-      const observer = new win.MutationObserver(() => {
-        this.#grep.stale = true;
-      });
-      observer.observe(this.document, {
-        subtree: true,
-        childList: true,
-        characterData: true,
-        attributes: true,
-      });
-      this.#grep.observer = observer;
-    }
-    this.#grep.model = textOfDocument(win, GREP_CAPS.modelChars);
-    this.#grep.stale = false;
-    return this.#grep.model;
-  }
-
-  /** Drops the text model when the picker closes: no page text outlives the search. */
-  #grepEnd() {
-    this.#grep.observer?.disconnect();
-    this.#grep = { model: null, stale: true, observer: null };
-    // The next search may come from another window, whose generations start again.
-    this.#matcher.gen = -1;
-    GrepMatcher.drop(this.#matcher.key);
-  }
-
-  /**
-   * @param {unknown} query
-   * @returns {query is string}
-   */
-  #isQuery(query) {
-    return typeof query === "string" && query.length > 0 && query.length <= GREP_QUERY_MAX;
-  }
-
-  /**
-   * Live grep's query against this document (docs/specs/live-grep.md): its matches with their
-   * line of context. The parent checks the reply (core parseGrepReply).
-   * @param {{ query: string, gen: number }} data
-   */
-  async #grepSearch(data) {
-    if (!this.#isQuery(data?.query) || !isIndex(data.gen)) return null;
-    // An older search that was queued behind a newer one is dropped unrun.
-    if (data.gen < this.#matcher.gen) return null;
-    this.#matcher.gen = data.gen;
-    const parsed = parseQuery(data.query);
-    const model = this.#grepModel();
-    if (!parsed || !model) return { count: 0, matches: [] };
-    if (!NOT_BLANK.test(model.text)) return { count: 0, matches: [], cut: model.cut };
-    const result = await GrepMatcher.match(this.#matcher.key, model, data.query, false);
-    if (result === "timeout") return { count: 0, matches: [], timedOut: true, cut: model.cut };
-    if (!result) return null;
-    return { ...result, cut: model.cut };
-  }
-
-  /**
-   * The lines around a match of the last search, for the preview (decision 6).
-   * @param {{ start: number, end: number }} data
-   */
-  #grepPreview(data) {
-    const model = this.#grep.model ?? this.#grepModel();
-    if (!model || !isIndex(data?.start) || !isIndex(data?.end)) return null;
-    const { start, end } = data;
-    if (end < start || end > model.text.length) return null;
-    return previewLines(model.text, start, end);
-  }
-
-  /**
-   * Selects a match and scrolls it to the middle as find does (decision 7). When the document
-   * changed since the search, the query runs again and the match with the same ordinal and
-   * text is taken, else the nearest one with the same text.
-   * @param {{ query: string, start: number, end: number, ordinal: number, text: string }} data
-   * @returns {Promise<boolean>} whether a match is selected
-   */
-  async #grepJump(data) {
-    const win = this.contentWindow;
-    if (!win || !this.#isQuery(data?.query) || typeof data.text !== "string") return false;
-    if (!isIndex(data.start) || !isIndex(data.end) || !isIndex(data.ordinal)) return false;
-    const parsed = parseQuery(data.query);
-    if (!parsed) return false;
-    const fresh = !!this.#grep.model && !this.#grep.stale;
-    const model = this.#grepModel();
-    if (!model) return false;
-    let { start, end } = data;
-    if (!fresh || model.text.slice(start, end) !== data.text) {
-      const result = await GrepMatcher.match(this.#matcher.key, model, data.query, true);
-      if (!result || result === "timeout") return false;
-      /** @type {{ start: number, end: number, ordinal: number }[]} */
-      const all = result.matches.filter(
-        (/** @type {{ start: number, end: number }} */ m) =>
-          model.text.slice(m.start, m.end) === data.text,
-      );
-      const same = all.find((m) => m.ordinal === data.ordinal);
-      const near = all.reduce(
-        (best, m) =>
-          !best || Math.abs(m.ordinal - data.ordinal) < Math.abs(best.ordinal - data.ordinal)
-            ? m
-            : best,
-        /** @type {(typeof all)[number] | null} */ (null),
-      );
-      const pick = same ?? near;
-      if (!pick) return false;
-      ({ start, end } = pick);
-    }
-    const a = model.pointAt(start);
-    const b = model.pointAt(end, true);
-    if (!a || !b) return false;
-    const doc = this.document;
-    const range = doc.createRange();
-    range.setStart(a.node, a.offset);
-    range.setEnd(b.node, b.offset);
-    // Normal mode after the jump: a focused text field would keep the tab in insert.
-    const active = deepActiveElement(doc);
-    if (active && active !== doc.body && isEditable(describe(active)).editable) {
-      /** @type {HTMLElement} */ (active).blur();
-    }
-    if (this.browsingContext.parent) win.focus();
-    const sel = win.getSelection();
-    if (!sel) return false;
-    sel.removeAllRanges();
-    sel.addRange(range);
-    const selCon = this.#selCon();
-    if (!selCon) return false;
-    selCon.setDisplaySelection(DISPLAY_ATTENTION);
-    selCon.repaintSelection(SELECTION_NORMAL);
-    // After the next frame: a tab just selected gets its viewport's size first.
-    await new Promise((resolve) => {
-      const timer = win.setTimeout(resolve, 100);
-      win.requestAnimationFrame(() => {
-        win.clearTimeout(timer);
-        resolve(undefined);
-      });
-    });
-    if (!sel.rangeCount) return false;
-    selCon.scrollSelectionIntoView(
-      SELECTION_NORMAL,
-      WHOLE_SELECTION,
-      SCROLL_VERTICAL_CENTER | SCROLL_SYNCHRONOUS,
-    );
     return true;
   }
 
