@@ -34,7 +34,12 @@ import {
   modelPrompt,
 } from "../core/agent-cli.mjs";
 import { checkEndpoint, isLocalEndpoint } from "../core/agent-providers.mjs";
-import { pickerEntries, placementText, unavailableText } from "../core/agent-setup.mjs";
+import {
+  pickerEntries,
+  placementText,
+  sameProvider,
+  unavailableText,
+} from "../core/agent-setup.mjs";
 import { lastUseText } from "../core/agent-store.mjs";
 import { chordFromEvent, formatKey } from "../core/keys.mjs";
 import { AgentPrompt } from "./agent-prompt.mjs";
@@ -45,17 +50,9 @@ import {
   refused,
   render as renderView,
 } from "./agent-chat-view.mjs";
-import {
-  askKey,
-  cancelKey,
-  clearKey,
-  deleteKey,
-  sameProvider,
-  storeKey,
-} from "./agent-chat-key.mjs";
+import { askKey, cancelKey, clearKey, deleteKey, storeKey } from "./agent-chat-key.mjs";
 
 export { CHAT_ID, CHAT_INPUT_ID, CHAT_LOG_ID, CHAT_SLOT_ID } from "./agent-chat-view.mjs";
-export { CHAT_KEY_ID } from "./agent-chat-key.mjs";
 
 const lazy = /** @type {Lazy<"PrivateBrowsingUtils">} */ ({});
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -1328,18 +1325,22 @@ export class AgentChatWindow {
     askKey(this, provider);
   }
 
+  /** See agent-chat-key.mjs. */
   cancelKey() {
     cancelKey(this);
   }
 
+  /** See agent-chat-key.mjs. */
   clearKey() {
     clearKey(this);
   }
 
+  /** See agent-chat-key.mjs. */
   storeKey() {
     return storeKey(this);
   }
 
+  /** See agent-chat-key.mjs. */
   deleteKey() {
     deleteKey(this);
   }

@@ -206,8 +206,9 @@ for the user.
   [`test_forget_all_leaves_no_text_for_the_next_conversation`](../../tests/browser/browser_vimma_agent_picker_race.js),
   [`the notice before the first task names the host and, when known, who runs it`](../../packages/vimma-core/test/agent-chat.test.mjs)
 - M46. A hosted provider's key **must** be typed only into the window's password field
-  (`ui/agent-chat-key.mjs` builds it and stores, clears and deletes the key), which hands it to
-  `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
+  (`ui/agent-chat-key.mjs` builds it and stores, clears and deletes the key; its `RESTRICTED`
+  entry in `tools/layering/layers.ts` lets only `ui/agent-chat.mjs` and `ui/agent-chat-view.mjs`
+  import it), which hands it to `AgentKeys` (M40) and is emptied at once; the key **must not** be drawn in the
   window, the transcript, the status bar or a notice (which may show its last four characters),
   nor kept in a pref or the conversation, and an error storing it **must not** be shown with its
   text, nor recorded in Vimma's key log or its debug output. The field **must not** reveal the

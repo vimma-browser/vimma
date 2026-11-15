@@ -642,7 +642,11 @@ describe("restrictedErrors", () => {
   test("the gate's importers are exactly today's seven", () => {
     // Adding one is a security decision, not a list edit: review the new caller against
     // docs/security/12-agents-mcp.md section 12 first, then add it here and in layers.ts.
-    expect(Object.keys(RESTRICTED)).toEqual(["host/AgentGate.sys.mjs", "ctl/agent-tabs.mjs"]);
+    expect(Object.keys(RESTRICTED)).toEqual([
+      "host/AgentGate.sys.mjs",
+      "ctl/agent-tabs.mjs",
+      "ui/agent-chat-key.mjs",
+    ]);
     expect(RESTRICTED["host/AgentGate.sys.mjs"]?.importers).toEqual([
       "agent/AgentChat.sys.mjs",
       "ctl/AgentDownloads.sys.mjs",
@@ -665,6 +669,24 @@ describe("restrictedErrors", () => {
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(
       /^ctl\/AgentAct\.sys\.mjs:9: imports ctl\/agent-tabs\.mjs, which only/,
+    );
+  });
+  test("the API key entry has two importers, the chat window and its view, and a new one fails", () => {
+    // ui/agent-chat-key.mjs builds the masked key field and stores, clears and deletes a hosted
+    // provider's key (M46): another caller could reveal the field or reach the keys.
+    const key = "ui/agent-chat-key.mjs";
+    expect(RESTRICTED[key]?.importers).toEqual(["ui/agent-chat.mjs", "ui/agent-chat-view.mjs"]);
+    const errors = restrictedErrors(
+      [
+        edge("ui/agent-chat.mjs", key),
+        edge("ui/agent-chat-view.mjs", key),
+        edge("ui/agent-prompt.mjs", key, "eager", 4),
+      ],
+      Object.fromEntries(Object.entries(RESTRICTED).filter(([module]) => module === key)),
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(
+      /^ui\/agent-prompt\.mjs:4: imports ui\/agent-chat-key\.mjs, which only/,
     );
   });
 });

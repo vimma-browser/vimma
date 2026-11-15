@@ -9,6 +9,8 @@
 // stays on the AgentChatWindow (ui/agent-chat.mjs) passed in, which is never imported here, so
 // the two do not form a cycle.
 
+import { sameProvider } from "../core/agent-setup.mjs";
+
 /** @import { AgentChatWindow } from "./agent-chat.mjs" */
 /** @typedef {import("../core/config.mjs").AgentProviderConfig} AgentProviderConfig */
 
@@ -21,13 +23,6 @@ const NO_REVEAL_SHEET =
   "data:text/css," + encodeURIComponent(`#${CHAT_KEY_ID}::-moz-reveal { display: none; }`);
 /** @type {WeakSet<BrowserWindow>} windows NO_REVEAL_SHEET is loaded into (a second load throws) */
 const noReveal = new WeakSet();
-
-/**
- * Whether two providers are the same model at the same endpoint under the same name.
- * @param {AgentProviderConfig} a @param {AgentProviderConfig} b
- */
-export const sameProvider = (a, b) =>
-  a.endpoint === b.endpoint && a.model === b.model && a.name === b.name;
 
 /**
  * The masked key field (Behaviour 3), built once per window by agent-chat-view.mjs's `build`:
@@ -52,8 +47,9 @@ export function keyField(win) {
   }
   // An entered key is never shown again (M46). NO_REVEAL_SHEET hides the eye button, and every
   // reveal a user can ask for (that button, the textbox context menu's item, `revealPassword`)
-  // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and cut. The context
-  // menu goes too, since its only use here would be that reveal item; ctrl+v still pastes.
+  // goes through the cancelable MozWillToggleReveal; a masked field already refuses copy and
+  // cut. The context menu goes too, since its only use here would be that reveal item; ctrl+v
+  // still pastes.
   for (const type of ["MozWillToggleReveal", "contextmenu", "copy", "cut", "dragstart"]) {
     keyInput.addEventListener(type, (e) => e.preventDefault());
   }
