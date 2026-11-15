@@ -1,7 +1,8 @@
 // Drives a running Vimma through `vimma-ctl` (spec m0-e2e-harness), so the e2e suite dogfoods
 // the shipped client. Exit codes and messages are vimma-ctl's (spec
 // m0-control-protocol-and-vimma-ctl). Only ready() retries, and only while the socket is not up
-// yet or busy; commands and assertions run once (plan §5: no retries).
+// yet or busy; commands and assertions run once (CI never retries:
+// ARCHITECTURE.md, "Testing").
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";

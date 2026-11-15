@@ -655,7 +655,8 @@ export function contentRunners(host, page) {
     "scroll.top": (b) => VimmaActors.scroll(b, "top"),
     "scroll.bottom": (b) => VimmaActors.scroll(b, "bottom"),
     // History and reload act on the focused page's <browser>, so in a split the focused pane's
-    // (plan §2, M1 navigation keys). In insert mode the keys are the page's (normal-only bindings).
+    // (docs/bindings.md, "Navigation"). In insert mode the keys are the page's (normal-only
+    // bindings).
     "history.back": (b, a) => goHistory(b, -(a.count ?? 1)),
     "history.forward": (b, a) => goHistory(b, a.count ?? 1),
     "page.reload": (b) => b.reload(),
