@@ -575,3 +575,30 @@ add_task(async function a_real_download_is_shown_on_restart() {
     await SpecialPowers.popPrefEnv();
   }
 });
+
+// The real update service again, with a download that stays under way (the host's ?held): while
+// it is, `:update` makes no check of its own, as Firefox's own checks do not.
+add_task(async function a_real_download_under_way_holds_the_next_check() {
+  await freshTarball();
+  VimmaUpdates._setFirefox(null);
+  await SpecialPowers.pushPrefEnv({ set: [["app.update.staging.enabled", false]] });
+  const aus = Cc["@mozilla.org/updates/update-service;1"].getService(
+    Ci.nsIApplicationUpdateService,
+  );
+  const um = Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager);
+  try {
+    await serve(await manifest({ patch: `${HOST}?held` }));
+    const r = await VimmaUpdates.check({ asked: true });
+    Assert.equal(r.outcome, "offer", r.reason ?? "");
+    await until(() => um.internal.downloadingUpdate, "Firefox downloads the update");
+    Assert.equal(um.internal.readyUpdate, null, "sanity: no update is ready yet");
+    const before = (await requests()).length;
+    await VimmaUpdates.check({ asked: true });
+    Assert.equal((await requests()).length, before, "no check while the download is under way");
+  } finally {
+    await aus.stopDownload();
+    await um.cleanupActiveUpdates();
+    UpdateUi._reset();
+    await SpecialPowers.popPrefEnv();
+  }
+});

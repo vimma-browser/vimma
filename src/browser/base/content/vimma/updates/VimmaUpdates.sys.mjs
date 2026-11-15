@@ -362,9 +362,11 @@ function firefox() {
     },
     get busy() {
       if (!has) return false;
-      const service = aus();
+      // The update manager's downloading update, not the service's isDownloading: that getter
+      // is not in nsIApplicationUpdateService.idl, so XPConnect's wrapper reads it as undefined.
+      // Nor the state: it stays STATE_PENDING while a second update downloads.
       return (
-        service.isDownloading || service.currentState === AUS.STATE_STAGING || !!um().readyUpdate
+        !!um().downloadingUpdate || aus().currentState === AUS.STATE_STAGING || !!um().readyUpdate
       );
     },
     async check(asked) {
