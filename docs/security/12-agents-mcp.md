@@ -785,12 +785,17 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   as the element Gecko clicks: where shadow roots forward the label's control with a reference
   target (`dom.shadowdom.referenceTarget.enabled`, off by default), the element they forward it
   to, not the shadow host the label's `control` property returns; a chain the child cannot
-  follow to an element refuses the click) **must** ask every time without a grant, and under a
-  grant when it is consequential ([mcp-consequence](../specs/mcp-consequence.md) K2, K3): a payment step (M33); a form that sends
-  a password, payment card, one-time-code or file field, an identity field (an autocomplete
-  name of a person's name, contact, address, birth date, username or organisation, one form
-  autofill's address heuristics infer, or `type=email` or `tel`; a failure of the heuristics
-  marks every field), or free text (a textarea or a text-like input other than `type=search`
+  follow to an element refuses the click; and its form judged as the form Gecko submits: where a
+  control's `form` attribute names a shadow host whose root forwards with a reference target to a
+  form inside it, that form, not the host the control's `form` property returns, also for a
+  field's default submission and a fill's submit (issue
+  [#1079](https://github.com/vimma-browser/vimma/issues/1079)); an owner the child cannot follow
+  to a form refuses the click) **must** ask every time without a grant, and under a grant when
+  it is consequential ([mcp-consequence](../specs/mcp-consequence.md) K2, K3): a payment step
+  (M33); a form that sends a password, payment card, one-time-code or file field, an identity
+  field (an autocomplete name of a person's name, contact, address, birth date, username or
+  organisation, one form autofill's address heuristics infer, or `type=email` or `tel`; a
+  failure of the heuristics marks every field), or free text (a textarea or a text-like input other than `type=search`
   whose value is not empty and not a quantity of at most three ASCII digits, read on the raw
   value so digits of other scripts or forms never pass); or a form whose fields the page did not say
   in time, that sends more than the 64 fields besides hidden ones the child reads, or one of whose
@@ -895,6 +900,8 @@ labels: send f again`. The 120 s bound `f`'s own list because the child keeps no
   [`test_submit_asks_under_a_grant`](../../tests/browser/browser_vimma_mcp_submit.js),
   [`test_a_label_for_a_reference_target_submit_asks`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_label_forwarding_follows_reference_targets`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_a_submit_for_a_reference_target_form_asks`](../../tests/browser/browser_vimma_mcp_elements.js),
+  [`test_form_owners_follow_reference_targets`](../../tests/browser/browser_vimma_mcp_elements.js),
   [`test_a_skipped_submit_in_a_frame_withdraws_the_allowance`](../../tests/browser/browser_vimma_agent_click_race.js),
   [`test_basket_form_runs_under_a_grant`](../../tests/browser/browser_vimma_mcp_checkpoint.js),
   [`test_message_form_asks_under_a_grant`](../../tests/browser/browser_vimma_mcp_checkpoint.js),
