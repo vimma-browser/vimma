@@ -193,10 +193,14 @@ export function fetchingNpx(text: string, bins: ReadonlySet<string>): string[] {
 
 /** @returns whether npx with these arguments could fetch a package */
 function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
+  let no = false;
   for (const a of args) {
+    if (a === "--no" || a === "--no-install") no = true;
     if (a === "--no" || a === "--no-install" || a === "--") continue;
     if (/^(?:-y|-yes|--yes|-p|--package|-c|--call)(?:=.*)?$/.test(a)) return true;
     if (a.startsWith("-")) continue; // npm's own options, such as --offline
+    // Told --no, npx runs only what is installed: whatever the code fills in, it fetches nothing.
+    if (no) return false;
     // An argument the code fills in, by a template or by joining strings, could be any package.
     if (a === "" || a.startsWith("${")) return true;
     // A bin name; anything else (`|`, `<`, a closing quote) ends the command.
@@ -213,9 +217,11 @@ function badArgs(args: string[], bins: ReadonlySet<string>): boolean {
 function literalList(list: string): string[] | null {
   const out: string[] = [];
   for (const item of list.split(",").map((t) => t.trim())) {
+    if (item === "") continue; // a trailing comma
     const m = /^(["'`])([^"'`]*)\1$/.exec(item);
-    if (!m) break;
-    out.push(m[2] ?? "");
+    // What the code fills in, after the first literal, stands as `${}`: it could be any word.
+    if (!m && out.length === 0) return null;
+    out.push(m ? (m[2] ?? "") : "${}");
   }
   return out.length > 0 ? out : null;
 }
@@ -270,7 +276,7 @@ function spawnFaults(text: string, bins: ReadonlySet<string>): Array<[number, st
   // spawn("npx", [ … ]), spawn(win ? "npx.cmd" : "npx", args), ["npm", [ … ]]: the program, then
   // its arguments, which must be a list to be read.
   const call = new RegExp(
-    String.raw`([([])\s*((?:[^,()?;\n]*\?\s*${LIT}\s*:\s*)?${LIT})\s*,\s*(?:\[([^\]]*)\]|(?=\S))`,
+    String.raw`([([])\s*((?:[^,?;\n]*?\?\s*${LIT}\s*:\s*)?${LIT})\s*,\s*(?:\[([^\]]*)\]|(?=\S))`,
     "g",
   );
   for (const m of text.matchAll(call)) {
@@ -278,8 +284,9 @@ function spawnFaults(text: string, bins: ReadonlySet<string>): Array<[number, st
     if (m[1] === "[" && m[3] === undefined) continue;
     check(m.index ?? 0, m[0], progsOf((m[2] ?? "").trim()), m[3]);
   }
-  // [ "npm", "install", … ]: a list of literals that starts with the program.
-  const list = new RegExp(String.raw`\[\s*(${LIT})\s*,((?:\s*${LIT}\s*,?)+)\s*\]`, "g");
+  // [ "npm", "install", … ]: a list that starts with the program and its literal arguments; what
+  // follows them (`pkg`, `out`) is read as a word the code fills in.
+  const list = new RegExp(String.raw`\[\s*(${LIT})\s*,((?:\s*${LIT}\s*,?)+[^\]\n]*)`, "g");
   for (const m of text.matchAll(list)) check(m.index ?? 0, m[0], progsOf(m[1] ?? ""), m[2]);
   // The program's name held in a variable, or first in a list whose next item is not a literal.
   const held = new RegExp(
@@ -393,7 +400,11 @@ export function fileFaults(
     if (fence || (fixtures && FIXTURE_FILES.has(path))) return void skip.add(i + 1);
     if (allow && ALLOWED.some(([p, l]) => p === path && l === t)) return void skip.add(i + 1);
     const faults = new Set(anywhereFaults(line));
-    for (const piece of commandPieces(path, line, shell, fenced))
+    // In a script, a line continued with a backslash is read with the lines it runs on to.
+    let command = line;
+    for (let j = i; shell && /\\\s*$/.test(lines[j] ?? "") && j + 1 < lines.length; j++)
+      command = `${command.replace(/\s*\\\s*$/, "")} ${(lines[j + 1] ?? "").trim()}`;
+    for (const piece of commandPieces(path, command, shell, fenced))
       for (const f of commandFaults(piece, bins)) faults.add(f);
     for (const f of faults) out.push([i + 1, f]);
   });
@@ -407,8 +418,11 @@ export function fileFaults(
   for (const run of stepRuns(path, text)) {
     for (const command of run.replace(/\\\n\s*/g, " ").split("\n")) {
       const at = lineOf(lines, command);
-      for (const f of commandFaults(command.replace(/(?:^|\s)#.*$/, ""), bins))
-        if (!skip.has(at) && !seen.has(`${at}:${f}`)) out.push([at, f]);
+      for (const f of commandFaults(command.replace(/(?:^|\s)#.*$/, ""), bins)) {
+        if (skip.has(at) || seen.has(`${at}:${f}`)) continue;
+        seen.add(`${at}:${f}`);
+        out.push([at, f]);
+      }
     }
   }
   return out;
@@ -437,7 +451,7 @@ function lineOf(lines: string[], command: string): number {
   const at = lines.findIndex((l) => {
     const t = l
       .trim()
-      .replace(/^-?\s*run:\s*(?:[|>][+-]?)?\s*/, "")
+      .replace(/^-?\s*run:\s*(?:[|>][+-]?|["'])?\s*/, "")
       .replace(/\s*\\$/, "");
     return t !== "" && command.trim().startsWith(t);
   });
@@ -610,12 +624,22 @@ describe("supply chain: what installs and runs packages", () => {
     [".github/workflows/x.yml", WORKFLOW("run: |\n          npm \\\n            install")],
     [".github/workflows/x.yml", WORKFLOW("run: >-\n          npx\n          left-pad")],
     [".github/workflows/x.yml", WORKFLOW("run: npx\n          left-pad")],
+    // A shell script's line continued with a backslash.
+    ["tools/x.sh", "#!/bin/sh\nnpm \\\n  install x"],
+    ["Makefile", "deps:\n\tnpm \\\n\t  i x"],
     [
       "tools/x/action.yml",
       "runs:\n  using: composite\n  steps:\n    - shell: bash\n      run: >\n        npm\n        install",
     ],
   ])("finds the command in %s: %j", (path, text) => {
     expect(fileFaults(path, text, bins, false)).not.toEqual([]);
+  });
+
+  it("reports a joined run: command once, on the line it starts on", () => {
+    const text = WORKFLOW('run: "npm \\\n          install"');
+    expect(fileFaults(".github/workflows/x.yml", text, bins, false)).toEqual([
+      [6, "npm install: npm install"],
+    ]);
   });
 
   it.each([
@@ -714,6 +738,18 @@ describe("supply chain: what installs and runs packages", () => {
     'spawn("bun", ["install"])',
     'spawn("sh", ["-c", "npx left-pad"])',
     'spawn("bash", ["-c", "npm i x"])',
+    // A list of literals that ends with what the code fills in.
+    'subprocess.run(["npm", "install", pkg])',
+    'subprocess.run(["npx", "left-pad", out])',
+    'Bun.spawn(["npm", "i", pkg])',
+    // A package the code fills in, after the literals that name the command.
+    'execFileSync("npm", ["exec", pkg])',
+    'execFileSync("npm", ["exec", "--", pkg])',
+    'execFileSync("npm", ["x", tool])',
+    'subprocess.run(["npm", "exec", tool])',
+    'spawn("npm", ["--prefix", dir, "install"])',
+    // A ternary whose condition is a call.
+    'spawn(isWin() ? "npx.cmd" : "npx", ["left-pad"])',
   ])("refuses %s", (line) => {
     expect(lineFaults(line, bins)).not.toEqual([]);
   });
@@ -749,6 +785,10 @@ describe("supply chain: what installs and runs packages", () => {
     'execFileSync("/usr/bin/npm", ["ci"])',
     'spawn("pnpm", ["run", "build"])',
     'spawn("sh", ["-c", "npm ci"])',
+    'subprocess.run(["npx", "--no", "--", "prettier", out])',
+    'execFileSync("npx", ["--no", "--", tool])',
+    'spawn(isWin() ? "npx.cmd" : "npx", ["--no", "--", "prettier"])',
+    'execFileSync("npm", ["run", script])',
   ])("allows %s", (line) => {
     expect(lineFaults(line, bins)).toEqual([]);
   });
