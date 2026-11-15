@@ -10,20 +10,17 @@ import { tempDir } from "../../test/temp-dir.mjs";
 
 /** A commitlint stand-in: passes every message, and records what it was given. */
 function passingLint() {
-  /** @type {{ message: string, cwd: string }[]} */
-  const calls = [];
+  const calls: { message: string; cwd: string }[] = [];
   return {
     calls,
-    /** @param {string} message @param {string} cwd */
-    lint(message, cwd) {
+    lint(message: string, cwd: string) {
       calls.push({ message, cwd });
       return { ok: true, output: "" };
     },
   };
 }
 
-/** @param {string} command @param {object} [opts] */
-function blocked(command, opts = {}) {
+function blocked(command: string, opts: Parameters<typeof checkBash>[1] = {}) {
   return checkBash(command, { cwd: "/nonexistent", commitlint: passingLint().lint, ...opts });
 }
 
