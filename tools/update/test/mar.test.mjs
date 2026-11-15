@@ -10,17 +10,11 @@
 // signature that verifies over the bytes this file says are signed, are what the updater reads.
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import {
-  X509Certificate,
-  constants,
-  createHash,
-  generateKeyPairSync,
-  privateEncrypt,
-  verify,
-} from "node:crypto";
+import { X509Certificate, constants, createHash, privateEncrypt, verify } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   SIGNATURE_LENGTH,
   addSignaturePlaceholder,
@@ -133,7 +127,7 @@ describe("verifyMar", () => {
   });
 
   it("accepts a MAR signed the way the KMS key signs, and refuses one byte changed", () => {
-    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const { privateKey, publicKey } = testKey("a");
     const placeholder = addSignaturePlaceholder(unsigned());
     const signed = insertSignature(placeholder, kmsSign(privateKey, signedBytes(placeholder)));
     expect(verifyMar(signed, [publicKey], { channel: "vimma" }).entries).toBe(3);
@@ -151,7 +145,7 @@ describe("verifyMar", () => {
   });
 
   it("refuses a MAR no given key signed", () => {
-    const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 4096 });
+    const { publicKey } = testKey("a");
     expect(() => verifyMar(signmarSigned(), [publicKey], { channel: "vimma" })).toThrow(
       /signature/,
     );

@@ -16,6 +16,7 @@ import {
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   SHA384_DIGESTINFO_PREFIX,
   assembleCertificate,
@@ -25,9 +26,12 @@ import {
 
 const SCRIPT = new URL("../update-cert.mjs", import.meta.url).pathname;
 
-/** A 4096-bit key, as the KMS key and the offline secondary are. */
-function rsaKey() {
-  return generateKeyPairSync("rsa", { modulusLength: 4096 });
+/**
+ * A 4096-bit key, as the KMS key and the offline secondary are.
+ * @param {"a" | "b"} [name]
+ */
+function rsaKey(name = "a") {
+  return testKey(name);
 }
 
 /**
@@ -90,7 +94,7 @@ describe("update-cert: the updater's self-signed certificate", () => {
 
   it("refuses a signature that is not the key's own over this request", () => {
     const { publicKey, privateKey } = rsaKey();
-    const other = rsaKey();
+    const other = rsaKey("b");
     const req = certificateRequest(spkiOf(publicKey), "primary");
     expect(() =>
       assembleCertificate(req.tbs, kmsSign(other.privateKey, req.digestInfo), spkiOf(publicKey)),

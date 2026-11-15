@@ -15,7 +15,14 @@
 // https (core/updates.mjs readPatch).
 
 import { execFileSync } from "node:child_process";
-import { constants, createHash, createPrivateKey, generateKeyPairSync, sign } from "node:crypto";
+import {
+  constants,
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  sign,
+} from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
@@ -104,20 +111,24 @@ export function laterVersion(version: string, n: number) {
 }
 
 /**
- * A manifest key for this run, in the shape vimma.update.testKeys takes, with its private key.
+ * A manifest key for this run, in the shape vimma.update.testKeys takes, with its private key:
+ * a fresh one, or `privateKey`'s (the unit tests pass a fixed key, since making one is a random
+ * prime search that can outlast a test's timeout, #1043).
  */
-export async function makeManifestKey(): Promise<{
+export async function makeManifestKey(privateKey?: KeyObject): Promise<{
   id: string;
   slot: "primary";
   spki: string;
   privateKey: KeyObject;
 }> {
-  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 3072 });
-  const spki = new Uint8Array(publicKey.export({ type: "spki", format: "der" }));
+  const pair = privateKey
+    ? { privateKey, publicKey: createPublicKey(privateKey) }
+    : generateKeyPairSync("rsa", { modulusLength: 3072 });
+  const spki = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
   // Node's global Web Crypto (the same object as node:crypto's webcrypto), typed as the DOM's
   // SubtleCrypto that spkiKeyId takes, as tools/update/manifest.mjs passes it.
   const id = await spkiKeyId(globalThis.crypto.subtle, spki);
-  return { id, slot: "primary", spki: base64Encode(spki), privateKey };
+  return { id, slot: "primary", spki: base64Encode(spki), privateKey: pair.privateKey };
 }
 
 /**

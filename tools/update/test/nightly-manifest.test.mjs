@@ -5,10 +5,11 @@
 // checked, nor the reverse. Keys are generated here; nothing is fetched.
 import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { constants, createHash, generateKeyPairSync, privateEncrypt } from "node:crypto";
+import { constants, createHash, privateEncrypt } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tempDir } from "../../test/temp-dir.mjs";
+import { testKey } from "../../test/test-keys.ts";
 import {
   base64Encode,
   judgeManifest,
@@ -40,8 +41,8 @@ const DL = "https://github.com/vimma-browser/vimma/releases/download/nightly";
 const MAR_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.complete.mar`;
 const TARBALL_URL = `${DL}/vimma-nightly-${BUILD}-linux-x86_64.tar.xz`;
 
-async function kmsKey() {
-  const pair = generateKeyPairSync("rsa", { modulusLength: 4096 });
+async function kmsKey(/** @type {"a" | "b"} */ name) {
+  const pair = testKey(name);
   const der = new Uint8Array(pair.publicKey.export({ type: "spki", format: "der" }));
   const pin = /** @type {const} */ ({
     id: await spkiKeyId(subtle, der),
@@ -67,7 +68,7 @@ function kmsSign(body, k) {
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let key;
 /** @type {Awaited<ReturnType<typeof kmsKey>>} */ let stranger;
 beforeAll(async () => {
-  [key, stranger] = await Promise.all([kmsKey(), kmsKey()]);
+  [key, stranger] = await Promise.all([kmsKey("a"), kmsKey("b")]);
 }, 60_000);
 
 const update = () => ({
