@@ -19,8 +19,8 @@ referring pages are chosen by the sites the files came from.
   screen; a download with no file path is named by its URL's last path segment or host. `y`
   copies the full link only on request.
   [`test_names_with_html_stay_text`](../../tests/browser/browser_vimma_downloads.js),
-  [`a row shows the host, never the URL`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`a download with no file path is named by its URL's last segment, never the URL`](../../packages/vimma-core/test/downloads.test.mjs)
+  [`a row shows the host, never the URL`](../../packages/vimma-core/test/downloads.test.ts),
+  [`a download with no file path is named by its URL's last segment, never the URL`](../../packages/vimma-core/test/downloads.test.ts)
 - D2. A private window **must** list only its own private session's downloads, and a normal
   window **never** a private one; the status bar's segment counts the same way. A private
   download is gone with its session, as in Firefox.
@@ -52,10 +52,10 @@ referring pages are chosen by the sites the files came from.
   [`test_a_content_analysis_malware_verdict_cannot_be_unblocked_removed_or_deleted`](../../tests/browser/browser_vimma_downloads.js),
   [`test_d_on_a_blocked_download_deletes_its_data`](../../tests/browser/browser_vimma_downloads.js),
   [`test_D_on_a_blocked_download_confirms_the_block`](../../tests/browser/browser_vimma_downloads.js),
-  [`unblock needs blocked data and allowOverride`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`a Malware verdict refuses !`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`a content-analysis Malware verdict refuses !, d and shift+d`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`an answer in Firefox's unblock dialog stands only while it still applies`](../../packages/vimma-core/test/downloads.test.mjs)
+  [`unblock needs blocked data and allowOverride`](../../packages/vimma-core/test/downloads.test.ts),
+  [`a Malware verdict refuses !`](../../packages/vimma-core/test/downloads.test.ts),
+  [`a content-analysis Malware verdict refuses !, d and shift+d`](../../packages/vimma-core/test/downloads.test.ts),
+  [`an answer in Firefox's unblock dialog stands only while it still applies`](../../packages/vimma-core/test/downloads.test.ts)
 - D4. An agent download (M11's test: its container, its tab's container, or a path in the
   quarantine folder) **must never** be opened, opened in the system's app, retried, allowed or
   followed to its referring page from the picker, because its file is admitted only under M12
@@ -81,8 +81,8 @@ referring pages are chosen by the sites the files came from.
   [`test_before_it_is_provided_each_service_does_the_least`](../../tests/browser/browser_vimma_host_services.js),
   [`test_the_question_then_yes_saves_to_the_quarantine_0600_unopened`](../../tests/browser/browser_vimma_mcp_downloads.js),
   [`test_u_opens_the_referring_page`](../../tests/browser/browser_vimma_downloads.js),
-  [`an agent download refuses o, shift+o, u, r and !`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`the keys that apply follow isCommandEnabled for each state`](../../packages/vimma-core/test/downloads.test.mjs)
+  [`an agent download refuses o, shift+o, u, r and !`](../../packages/vimma-core/test/downloads.test.ts),
+  [`the keys that apply follow isCommandEnabled for each state`](../../packages/vimma-core/test/downloads.test.ts)
 - D5. `shift+d` (delete the file) and `c` (cancel, which removes the partial data) **must** ask
   `y/N` first, and the picker **must** close before the question shows, because an open picker
   takes every key first and a `y` meant for the question would otherwise reach it. A yes **must**
@@ -94,8 +94,8 @@ referring pages are chosen by the sites the files came from.
   [`test_D_asks_and_deletes_the_file`](../../tests/browser/browser_vimma_downloads.js),
   [`test_the_y_answer_goes_to_the_question_never_to_the_picker`](../../tests/browser/browser_vimma_downloads.js),
   [`test_an_answer_does_nothing_if_the_download_changed`](../../tests/browser/browser_vimma_downloads.js),
-  [`shift+d and c need a y/N; d does not`](../../packages/vimma-core/test/downloads.test.mjs),
-  [`a yes stands only for the download asked about (docs/security/21-downloads-picker.md D5)`](../../packages/vimma-core/test/downloads.test.mjs)
+  [`shift+d and c need a y/N; d does not`](../../packages/vimma-core/test/downloads.test.ts),
+  [`a yes stands only for the download asked about (docs/security/21-downloads-picker.md D5)`](../../packages/vimma-core/test/downloads.test.ts)
 - D6. No agent role **may** reach the picker or the downloads list: `downloads.picker` is not
   one of `vimma_keys`' actions, no control or MCP command lists or opens a download, and no
   `ctl/` or `agent/` module imports the picker's ops.

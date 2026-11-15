@@ -4,7 +4,6 @@
 # tools/test/mjs-ratchet.test.ts fails until it does. The hooks of tools/claude-plugin and the
 # base-branch guards (tools/ci/docs-only.mjs, tools/ci/key-guard.mjs and its test) stay .mjs
 # (ADR-025, decision 7) and are not listed.
-packages/vimma-core/test/addons.test.mjs
 packages/vimma-core/test/agent-act.test.mjs
 packages/vimma-core/test/agent-budget.test.mjs
 packages/vimma-core/test/agent-chat.test.mjs
@@ -25,14 +24,11 @@ packages/vimma-core/test/agent-tools.test.mjs
 packages/vimma-core/test/agent-wait.test.mjs
 packages/vimma-core/test/agent.test.mjs
 packages/vimma-core/test/appimage-update.test.mjs
-packages/vimma-core/test/bookmarks-toolbar.test.mjs
-packages/vimma-core/test/bookmarks.test.mjs
 packages/vimma-core/test/budget.mjs
 packages/vimma-core/test/control-v2.test.mjs
 packages/vimma-core/test/control.test.mjs
 packages/vimma-core/test/ctl-version.test.mjs
 packages/vimma-core/test/default-browser.test.mjs
-packages/vimma-core/test/downloads.test.mjs
 packages/vimma-core/test/fuzz/agent-downloads.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent-keys.fuzz.test.mjs
 packages/vimma-core/test/fuzz/agent.fuzz.test.mjs
@@ -46,18 +42,9 @@ packages/vimma-core/test/fuzz/routes.fuzz.test.mjs
 packages/vimma-core/test/fuzz/strings.fuzz.test.mjs
 packages/vimma-core/test/fuzz/theme.fuzz.test.mjs
 packages/vimma-core/test/fuzz/toml-arb.mjs
-packages/vimma-core/test/help.test.mjs
 packages/vimma-core/test/load-errors.test.mjs
-packages/vimma-core/test/pdfoutline.test.mjs
-packages/vimma-core/test/picker.test.mjs
-packages/vimma-core/test/popups.test.mjs
-packages/vimma-core/test/report.test.mjs
 packages/vimma-core/test/restart.test.mjs
 packages/vimma-core/test/setup.test.mjs
-packages/vimma-core/test/sidepanel.test.mjs
-packages/vimma-core/test/sitepermissions.test.mjs
-packages/vimma-core/test/statusbar.test.mjs
-packages/vimma-core/test/tabsearch.test.mjs
 packages/vimma-core/test/update-notices.test.mjs
 tools/artifact-build/artifact-build.mjs
 tools/artifact-build/test/artifact-build.test.mjs

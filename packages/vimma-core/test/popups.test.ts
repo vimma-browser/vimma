@@ -6,13 +6,9 @@ import { getAction } from "../src/keys/actions.mjs";
 import { DEFAULT_CONFIG } from "../src/config/defaults.mjs";
 import { statusSegments } from "../src/ui/statusbar.mjs";
 
-/** @import { BlockedPopups } from "../src/ui/popups.mjs" */
+import type { BlockedPopups } from "../src/ui/popups.mjs";
 
-/**
- * @param {Partial<BlockedPopups>} over
- * @returns {BlockedPopups}
- */
-const blocked = (over = {}) => ({
+const blocked = (over: Partial<BlockedPopups> = {}): BlockedPopups => ({
   site: "example.com",
   popups: ["https://example.com/a.html", "https://example.com/b.html"],
   redirect: null,
@@ -75,7 +71,7 @@ describe("popupItems", () => {
   });
 
   test("a locked dom.disable_open_during_load leaves the site's permission alone", () => {
-    for (const permission of /** @type {const} */ (["block", "allow"])) {
+    for (const permission of ["block", "allow"] as const) {
       const ids = popupItems(blocked({ popups: [], permission, allowLocked: true }));
       expect(ids.map((i) => i.popupId)).toEqual(["settings"]);
     }
@@ -132,7 +128,7 @@ describe("status bar cue", () => {
   });
 
   test("a right-hand segment while the selected page has the bar, none otherwise", () => {
-    const base = { mode: /** @type {const} */ ("normal") };
+    const base = { mode: "normal" as const };
     const cue = statusSegments({
       ...base,
       popups: "pop-up blocked · y allow · n block · Esc close",

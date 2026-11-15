@@ -12,7 +12,7 @@ link targets for hints, which chrome must treat as untrusted.
 - U3. Bookmarks **must** open only http, https, file and about URLs (bookmarklets are listed but
   never run).
   [`javascript_and_data_bookmarks_refuse_with_a_notice`](../../tests/browser/browser_vimma_bookmarks.js),
-  [`a javascript: bookmark is listed but refuses to open`](../../packages/vimma-core/test/bookmarks.test.mjs)
+  [`a javascript: bookmark is listed but refuses to open`](../../packages/vimma-core/test/bookmarks.test.ts)
 - U4. `:open` and `:tabnew` **never** open `javascript:` or `data:` URLs, however disguised (case,
   tabs, newlines, leading controls, `view-source:`)
   ([#98](https://github.com/vimma-browser/vimma/issues/98)). No length cap applies to text typed there.
