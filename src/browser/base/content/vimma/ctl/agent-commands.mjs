@@ -71,6 +71,17 @@ import {
   tabId,
   tabUrl,
 } from "./agent-tabs.mjs";
+import {
+  cut,
+  fieldOf,
+  firstActing,
+  jsonBytes,
+  linkOf,
+  payStep,
+  unmarked,
+  wf,
+} from "./agent-steps.mjs";
+import { LOAD_TIMEOUT_MS, docOf, notLoading, raisePriority, within } from "./agent-waits.mjs";
 
 export { AgentError };
 
@@ -91,8 +102,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/** How long a read waits for a page (a lazy tab's first load) before it gives up. */
-const LOAD_TIMEOUT_MS = 20000;
 /** How long the extractor may take on a loaded page: a hostile page must not hold a read. */
 const EXTRACT_TIMEOUT_MS = 30000;
 /** Room in the 1 MiB reply line for everything but the text (protocol, decision 4). */
@@ -188,91 +197,6 @@ async function ask(conn, command, what, state, rid, until, always = false, cover
     if (rid !== undefined) state.cancels?.delete(rid);
     if (timer !== null) lazy.clearTimeout(timer);
   }
-}
-
-/**
- * What a submission sends, without the child's `text` and `identity` marks
- * (docs/specs/mcp-consequence.md K2), which decide whether it asks but are not shown.
- * @param {import("../core/agent-checkpoint.mjs").SentFields} sent
- */
-const unmarked = (sent) => ({
-  ...sent,
-  fields: sent.fields.map(({ text, identity, ...f }) => (void text, void identity, f)),
-});
-
-/** Whether the page in `tab` is loading no document now. @param {Tab} tab */
-const notLoading = (tab) => !(tab.linkedBrowser.webProgress?.isLoadingDocument ?? true);
-
-/** @param {MozBrowser} browser  the id of its top document */
-const docOf = (browser) => browser.browsingContext?.currentWindowGlobal?.innerWindowId ?? 0;
-
-/** Key steps that load a page: payment steps where the page may pay (mcp-checkpoints Behaviour 3). */
-const LOADS = new Set(["history.back", "history.forward", "page.url_up", "page.url_root"]);
-
-/**
- * The first step of a `vimma_keys` call that acts (a follow, `gu`, `gU`, `H` or `L`), when it
- * acts on the page in the tab now: only scrolls and finds come before it. An `f` before it lists
- * new labels, so its target is known only as the call runs.
- * @param {import("../core/agent-keys.mjs").AgentStep[]} list
- */
-function firstActing(list) {
-  for (const [index, step] of list.entries()) {
-    if (LOADS.has(step.action)) return { index, step };
-    if (step.action === "hint.follow") return step.label === undefined ? null : { index, step };
-  }
-  return null;
-}
-
-/**
- * The link a follow names now, in the connection's current labels of the page, or null.
- * @param {MozTabBrowser} browser @param {ConnId} conn
- * @param {import("../core/agent-keys.mjs").AgentStep} step
- */
-function linkOf(browser, conn, step) {
-  const session = AgentDrive.current(conn, browser);
-  const target = session?.byLabel.get(/** @type {string} */ (step.label));
-  return target ? { target, elements: session?.source === "elements" } : null;
-}
-
-/**
- * Whether a key step may pay, and its question's payment part (mcp-checkpoints C6, C7): a
- * follow by the link's words and the page's card fields, a load by the card fields.
- * @param {MozTabBrowser} browser @param {ConnId} conn
- * @param {import("../core/agent-keys.mjs").AgentStep} step
- * @param {{ target: HintTarget, elements: boolean } | null} [found]  the follow's link, as the run
- *   resolved it; else it is looked up in the connection's labels now
- */
-async function payStep(browser, conn, step, found = null) {
-  if (step.action !== "hint.follow") return AgentAct.payment(browser, { keys: step.keys });
-  const link = found ?? linkOf(browser, conn, step);
-  // No such link: the follow is refused as it runs, before anything loads.
-  if (!link) return null;
-  if (link.elements) {
-    return AgentAct.payment(browser, { target: link.target, text: link.target.info?.text ?? "" });
-  }
-  return AgentAct.payment(browser, {
-    text: link.target.text ?? "",
-    keys: step.keys,
-    frame: link.target.wg,
-  });
-}
-
-/** @param {number} ms */
-const sleep = (ms) => new Promise((resolve) => lazy.setTimeout(resolve, ms));
-
-/**
- * `promise`, or a `failed` refusal after `ms`.
- * @template T
- * @param {number} ms @param {Promise<T>} promise
- * @returns {Promise<T>}
- */
-function within(ms, promise) {
-  return Promise.race([
-    promise,
-    sleep(ms).then(() => {
-      throw new AgentError("failed", "reading the page took too long");
-    }),
-  ]);
 }
 
 /**
@@ -401,61 +325,6 @@ async function stepList(conn, tool, what, agent, win, tab, ready, filters) {
 }
 
 /**
- * The agent tabs' browsers that commands are running on, and how many commands each.
- * @type {Map<MozBrowser, { count: number, ours: Set<{ priorityHint: boolean }>,
- *   apply: () => void }>}
- */
-const raised = new Map();
-
-/**
- * Runs the content process of `browser` at foreground priority until the returned release is
- * called. An agent works on hidden tabs, whose processes Firefox keeps at background priority,
- * and on macOS that also puts their main thread at the lowest QoS class
- * (threads.lower_mainthread_priority_in_background): a page then loads and answers many times
- * slower than a shown one (issue #605). The tab switcher raises a tab it is about to show the
- * same way, through nsIRemoteTab.priorityHint, which neither renders nor shows anything. A lazy
- * tab gets its process during the command, and a load can move the page to another process:
- * each new frame loader is raised too. Overlapping commands on one tab share the raise.
- * @param {MozBrowser} browser
- * @returns {() => void} release
- */
-function raisePriority(browser) {
-  let entry = raised.get(browser);
-  if (!entry) {
-    /** @type {{ count: number, ours: Set<{ priorityHint: boolean }>, apply: () => void }} */
-    const e = {
-      count: 0,
-      ours: new Set(),
-      apply() {
-        const remote = browser.frameLoader?.remoteTab;
-        // A hint that is already set belongs to the tab switcher: it stays as it is.
-        if (!remote || remote.priorityHint) return;
-        remote.priorityHint = true;
-        e.ours.add(remote);
-      },
-    };
-    entry = e;
-    raised.set(browser, e);
-    browser.addEventListener("XULFrameLoaderCreated", e.apply);
-    e.apply();
-  }
-  entry.count++;
-  const e = entry;
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    if (--e.count > 0) return;
-    raised.delete(browser);
-    browser.removeEventListener("XULFrameLoaderCreated", e.apply);
-    // A tab the user shows meanwhile is the tab switcher's to keep raised.
-    if (browser.docShellIsActive) return;
-    const remote = browser.frameLoader?.remoteTab;
-    if (remote && e.ours.has(remote)) remote.priorityHint = false;
-  };
-}
-
-/**
  * The release of a raise of the agent tab an agent names by `id`, or null when it names none
  * that `conn` may see: a command that refuses it then runs as it would.
  * @param {ConnId} conn @param {unknown} id
@@ -492,35 +361,6 @@ async function loadedPage(win, tab, url, userContextId) {
   if (!ready || !wg) throw new AgentError("failed", "the page did not load in time");
   return wg;
 }
-
-/**
- * Cut `text` to `max` code points.
- * @param {string} text @param {number} max
- */
-function cut(text, max) {
-  const chars = [...text];
-  return chars.length > max
-    ? { text: chars.slice(0, max).join(""), truncated: true }
-    : { text, truncated: false };
-}
-
-/**
- * `s` as well-formed Unicode: a lone surrogate (a page's title or text can hold one) becomes
- * U+FFFD, so the JSON line is one vimma-ctl's strict parser accepts (security.md M7).
- * @param {unknown} s
- */
-const wf = (s) => String(s).toWellFormed();
-
-/**
- * `v`'s property `key`, or undefined when `v` is no object: a reply from a page's process.
- * @param {unknown} v @param {string} key
- * @returns {unknown}
- */
-const fieldOf = (v, key) =>
-  typeof v === "object" && v !== null ? /** @type {unknown} */ (Reflect.get(v, key)) : undefined;
-
-/** UTF-8 length of `value` as JSON. @param {unknown} value */
-const jsonBytes = (value) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 /** The clients (name and vimma-ctl version) told about once this session. */
 const ctlNoticed = new Set();
