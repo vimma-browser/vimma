@@ -5,12 +5,9 @@ import { readSnapshot, toSnapshot } from "../src/workspaces/snapshot.mjs";
 import { createWorkspaces, openTab } from "../src/workspaces/workspaces.mjs";
 import { setTabLabel } from "../src/workspaces/tablabels.mjs";
 
-/**
- * The workspace state a snapshot restores to, without its tab renames.
- * @param {unknown} input
- * @param {Parameters<typeof readSnapshot>[1]} [options]
- */
-const stateOf = (input, options) => readSnapshot(input, options).state;
+/** The workspace state a snapshot restores to, without its tab renames. */
+const stateOf = (input: unknown, options?: Parameters<typeof readSnapshot>[1]) =>
+  readSnapshot(input, options).state;
 
 const valid = () =>
   JSON.parse(

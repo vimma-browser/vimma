@@ -4,8 +4,9 @@ Status: implemented · Area: `packages/vimma-core/src/` (new `agent-cli.mjs`:
 argument builders and stream parsers per CLI; `config.mjs` for `kind = "cli"`; `control.mjs` for
 the ticket hello);
 `src/browser/base/content/vimma/` (new `agent/AgentCli.sys.mjs`: the process runner;
-`agent/AgentChat.sys.mjs`, `ui/agent-chat.mjs` for setup and the header; `ctl/VimmaControl.sys.mjs`
-and `ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mcp_serve.rs`,
+`agent/AgentChat.sys.mjs`, `ui/agent-chat.mjs` for setup and the header (Since changed: the
+header is drawn by `ui/agent-chat-view.mjs`, issue #1110.); `ctl/VimmaControl.sys.mjs` and
+`ctl/agent-commands.mjs` for ticket connections); `tools/vimma-ctl` (`src/mcp_serve.rs`,
 `src/discovery.rs`: connecting with a ticket); `docs/guide.md`, `docs/security/`,
 `docs/limits.md` · Upstream patches: none · ADR: an amendment to
 [ADR-023](../adr/023-in-browser-model-client.md) (C1). No new dependency.

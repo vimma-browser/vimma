@@ -23,45 +23,29 @@ import {
   PaneError,
 } from "../src/panes/panes.mjs";
 
-/** @import { LayoutRect, Leaf, PaneNode, Panes, Split } from "../src/panes/panes.mjs" */
+import type { Direction, LayoutRect, Leaf, PaneNode, Panes, Split } from "../src/panes/panes.mjs";
 
-/**
- * `value`, failing the test where it is missing.
- * @template T
- * @param {T | undefined} value
- * @returns {T}
- */
-const defined = (value) => {
+/** `value`, failing the test where it is missing. */
+const defined = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error("expected a value");
   return value;
 };
 
-/**
- * The pane of leaf `pick`, counted round the leaves.
- * @param {readonly Leaf[]} ls
- * @param {number} pick
- */
-const paneAt = (ls, pick) => defined(ls[pick % ls.length]).pane;
+/** The pane of leaf `pick`, counted round the leaves. */
+const paneAt = (ls: readonly Leaf[], pick: number) => defined(ls[pick % ls.length]).pane;
 
-/**
- * A split's ratios; a leaf has none.
- * @param {PaneNode | undefined} node
- */
-const ratiosOf = (node) => (node?.type === "split" ? node.ratios : undefined);
+/** A split's ratios; a leaf has none. */
+const ratiosOf = (node: PaneNode | undefined) => (node?.type === "split" ? node.ratios : undefined);
 
-/**
- * A split's children; a leaf has none.
- * @param {PaneNode | undefined} node
- */
-const childrenOf = (node) => (node?.type === "split" ? node.children : undefined);
+/** A split's children; a leaf has none. */
+const childrenOf = (node: PaneNode | undefined) =>
+  node?.type === "split" ? node.children : undefined;
 
-/** @param {PaneNode} node @returns {string} */
-function shape(node) {
+function shape(node: PaneNode): string {
   return node.type === "leaf" ? node.pane : `${node.axis}[${node.children.map(shape).join(",")}]`;
 }
 
-/** @param {() => unknown} fn @param {string} code */
-function expectPaneError(fn, code) {
+function expectPaneError(fn: () => unknown, code: string) {
   let err;
   try {
     fn();
@@ -69,7 +53,7 @@ function expectPaneError(fn, code) {
     err = e;
   }
   expect(err).toBeInstanceOf(PaneError);
-  expect(/** @type {PaneError} */ (err).code).toBe(code);
+  expect((err as PaneError).code).toBe(code);
 }
 
 /** x[p1, y[p2, p3]], focus on p3 */
@@ -171,19 +155,17 @@ describe("closePane", () => {
 });
 
 describe("focus", () => {
-  test.each(
-    /** @type {Array<[string, import("../src/panes/panes.mjs").Direction, string]>} */ ([
-      ["p3", "left", "p1"],
-      ["p2", "left", "p1"],
-      ["p1", "right", "p3"], // p2 and p3 both border p1; p3 was used more recently
-      ["p2", "down", "p3"],
-      ["p3", "up", "p2"],
-      ["p1", "up", "p1"], // no wrap
-      ["p1", "left", "p1"],
-      ["p3", "right", "p3"],
-      ["p3", "down", "p3"],
-    ]),
-  )("from %s, focus %s → %s", (from, dir, to) => {
+  test.each([
+    ["p3", "left", "p1"],
+    ["p2", "left", "p1"],
+    ["p1", "right", "p3"], // p2 and p3 both border p1; p3 was used more recently
+    ["p2", "down", "p3"],
+    ["p3", "up", "p2"],
+    ["p1", "up", "p1"], // no wrap
+    ["p1", "left", "p1"],
+    ["p3", "right", "p3"],
+    ["p3", "down", "p3"],
+  ] as Array<[string, Direction, string]>)("from %s, focus %s → %s", (from, dir, to) => {
     const s = focusPane(threePanes(), from);
     const t = focus(s, dir);
     expect(t.focus).toBe(to);
@@ -316,7 +298,7 @@ describe("split refusal (tmux: no space for new pane)", () => {
 
   test("a split past `max` live panes is refused with max-panes, whatever the direction", () => {
     const s = threePanes();
-    for (const dir of /** @type {const} */ (["vertical", "horizontal"])) {
+    for (const dir of ["vertical", "horizontal"] as const) {
       expect(split(s, "p1", dir, "t9", { max: 3 })).toBe(s);
       expect(splitRefusal(s, "p1", dir, { max: 3 })).toEqual({
         code: "max-panes",
@@ -341,14 +323,8 @@ describe("split refusal (tmux: no space for new pane)", () => {
 
   test.each([[0], [-1], [1.5], [NaN], ["4"]])("max = %s is bad-max", (max) => {
     const one = createPanes("t1");
-    expectPaneError(
-      () => split(one, "p1", "vertical", "t2", { max: /** @type {any} */ (max) }),
-      "bad-max",
-    );
-    expectPaneError(
-      () => splitRefusal(one, "p1", "vertical", { max: /** @type {any} */ (max) }),
-      "bad-max",
-    );
+    expectPaneError(() => split(one, "p1", "vertical", "t2", { max: max as any }), "bad-max");
+    expectPaneError(() => splitRefusal(one, "p1", "vertical", { max: max as any }), "bad-max");
   });
 
   test("splitRefusal checks its arguments like split", () => {
@@ -360,8 +336,7 @@ describe("split refusal (tmux: no space for new pane)", () => {
 
 describe("resize", () => {
   const two = () => focusPane(split(createPanes("t1"), "p1", "vertical", "t2"), "p1");
-  /** @param {Panes} s */
-  const ratios = (s) => ratiosOf(s.root);
+  const ratios = (s: Panes) => ratiosOf(s.root);
 
   test("wider grows the focused pane, taking from its next sibling", () => {
     expect(ratios(resize(two(), "wider", 0.1))).toEqual([0.6, 0.4]);
@@ -490,8 +465,8 @@ describe("createRow (a split made outside Vimma, adopted: m4-split-panes sub-spe
 
 // --- properties --------------------------------------------------------------------------------
 
-const DIRS = /** @type {const} */ (["left", "down", "up", "right"]);
-const RESIZES = /** @type {const} */ (["wider", "narrower", "taller", "shorter"]);
+const DIRS = ["left", "down", "up", "right"] as const;
+const RESIZES = ["wider", "narrower", "taller", "shorter"] as const;
 
 const opArb = fc.oneof(
   {
@@ -516,10 +491,9 @@ const opArb = fc.oneof(
   },
 );
 
-/** @typedef {typeof opArb extends fc.Arbitrary<infer T> ? T : never} Op */
+type Op = typeof opArb extends fc.Arbitrary<infer T> ? T : never;
 
-/** @param {Op[]} ops */
-function run(ops) {
+function run(ops: Op[]) {
   let s = createPanes("t0");
   let n = 1;
   for (const o of ops) {
@@ -551,16 +525,14 @@ function run(ops) {
 
 const stateArb = fc.array(opArb, { maxLength: 40 }).map(run);
 
-/**
- * The nearest split on `axis` above `pane`, and the index of the child holding it.
- * @param {PaneNode} root @param {string} pane @param {"x" | "y"} axis
- * @returns {{ node: Split, index: number } | null}
- */
-function nearestSplit(root, pane, axis) {
-  /** @type {{ node: Split, index: number } | null} */
-  let found = null;
-  /** @param {PaneNode} n @returns {boolean} */
-  const visit = (n) => {
+/** The nearest split on `axis` above `pane`, and the index of the child holding it. */
+function nearestSplit(
+  root: PaneNode,
+  pane: string,
+  axis: "x" | "y",
+): { node: Split; index: number } | null {
+  let found: { node: Split; index: number } | null = null;
+  const visit = (n: PaneNode): boolean => {
     if (n.type === "leaf") return n.pane === pane;
     for (let i = 0; i < n.children.length; i++) {
       if (visit(defined(n.children[i]))) {
@@ -574,12 +546,11 @@ function nearestSplit(root, pane, axis) {
   return found;
 }
 
-/**
- * @param {PaneNode} node
- * @param {(n: PaneNode, parent: Split | null) => void} visit
- * @param {Split | null} [parent]
- */
-function walk(node, visit, parent = null) {
+function walk(
+  node: PaneNode,
+  visit: (n: PaneNode, parent: Split | null) => void,
+  parent: Split | null = null,
+) {
   visit(node, parent);
   if (node.type === "split") for (const c of node.children) walk(c, visit, node);
 }
@@ -597,9 +568,7 @@ describe("pane tree properties", () => {
           if (parent && n.axis === parent.axis) {
             // the one exception: flattening would push a pane below MIN_RATIO
             const r = defined(parent.ratios[parent.children.indexOf(n)]);
-            expect(n.ratios.some((/** @type {number} */ cr) => cr * r < MIN_RATIO - 1e-9)).toBe(
-              true,
-            );
+            expect(n.ratios.some((cr: number) => cr * r < MIN_RATIO - 1e-9)).toBe(true);
           }
         });
       }),
@@ -665,10 +634,8 @@ describe("pane tree properties", () => {
   test("every leaf is reachable, pane and tab ids are unique, focus and zoom name existing leaves", () => {
     fc.assert(
       fc.property(stateArb, (s) => {
-        /** @type {string[]} */
-        const panes = [];
-        /** @type {string[]} */
-        const tabs = [];
+        const panes: string[] = [];
+        const tabs: string[] = [];
         walk(s.root, (n) => {
           if (n.type === "leaf") {
             panes.push(n.pane);
@@ -763,14 +730,9 @@ describe("pane tree properties", () => {
         const rects = new Map(layout(s, unit, { round: false }).map((l) => [l.pane, l.rect]));
         const a = defined(rects.get(s.focus));
         const eps = 1e-9;
-        /** @param {LayoutRect} b */
-        const touches = (b) => {
-          const ov = (
-            /** @type {number} */ a0,
-            /** @type {number} */ a1,
-            /** @type {number} */ b0,
-            /** @type {number} */ b1,
-          ) => Math.min(a1, b1) - Math.max(a0, b0) > eps;
+        const touches = (b: LayoutRect) => {
+          const ov = (a0: number, a1: number, b0: number, b1: number) =>
+            Math.min(a1, b1) - Math.max(a0, b0) > eps;
           if (d === "left")
             return (
               Math.abs(b.x + b.width - a.x) < eps && ov(a.y, a.y + a.height, b.y, b.y + b.height)

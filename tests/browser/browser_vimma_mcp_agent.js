@@ -70,7 +70,7 @@ registerCleanupFunction(async () => {
 const agent = () => /** @type {any} */ (WorkspaceStore.agent);
 const agentTabs = () =>
   gBrowser.tabs.filter((t) => t.userContextId === agent().userContextId && !t.closing);
-const idOf = (/** @type {any} */ tab) => String(tab.linkedBrowser.browserId);
+const idOf = (/** @type {MozTabbrowserTab} */ tab) => String(tab.linkedBrowser.browserId);
 const ww = () => /** @type {LiveWorkspaces} */ (WindowWorkspaces.get(window));
 const activeName = () =>
   ww().model.workspaces.find((/** @type {WorkspaceState} */ w) => w.id === ww().model.active)?.name;
@@ -213,10 +213,12 @@ add_task(async function test_agent_sees_only_the_agent_workspace() {
     "only the agent workspace's tab",
   );
 
-  for (const [what, tab] of [
+  /** @type {[string, MozTabbrowserTab][]} */
+  const outside = [
     ["a main tab", mine],
     ["a private tab", privTab],
-  ]) {
+  ];
+  for (const [what, tab] of outside) {
     const r = await c.call("agent-read", { tab: idOf(tab) });
     Assert.equal(r.error?.code, "invalid-args", `${what} is not an agent tab`);
     Assert.equal(AgentGate.waiting.length, 0, "and nothing was asked");

@@ -4,14 +4,13 @@ import { frameApplied, openFrame, planNativeShow } from "../src/workspaces/nativ
 // docs/specs/private-swap-macos.md decisions 2, 7 and 13: "show X in place of Y" on macOS,
 // planned from two plain frame records.
 
-/** @param {object} [over] */
-function frame(over = {}) {
+function frame(over: object = {}) {
   return {
     x: 120,
     y: 80,
     width: 1280,
     height: 800,
-    sizemode: /** @type {const} */ ("normal"),
+    sizemode: "normal" as const,
     restored: null,
     ...over,
   };
@@ -145,12 +144,12 @@ describe("openFrame: where a new private window opens", () => {
 });
 
 describe("frameApplied: the shown window reports what it was given (decision 9)", () => {
-  const plan = /** @type {const} */ ({
+  const plan = {
     kind: "swap",
     frame: { x: 120, y: 80, width: 1280, height: 800 },
     restoreFirst: false,
     zoom: false,
-  });
+  } as const;
 
   test("the same frame, to a pixel of rounding", () => {
     expect(frameApplied(plan, frame())).toBe(true);

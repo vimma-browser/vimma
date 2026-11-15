@@ -209,6 +209,7 @@ declare const Cc: XPCOMClasses;
 // XPCOM results (engine/xpcom/base/ErrorList.py): the codes Vimma names, and any other by name.
 declare const Cr: Record<string, number> & {
   readonly NS_BINDING_ABORTED: number;
+  readonly NS_ERROR_FILE_TOO_BIG: number;
   readonly NS_OK: number;
 };
 
@@ -872,7 +873,8 @@ interface MozTabbrowserTab extends Element {
   readonly linkedPanel: string | null;
   /** The tab's position among all tabs (Tabbrowser `tabIndex` options take it). */
   readonly index: number;
-  readonly label: string;
+  /** Its `label` attribute (customElements.js BaseText): setting it sets the attribute. */
+  label: string;
   readonly pinned: boolean;
   readonly hidden: boolean;
   readonly closing: boolean;
@@ -886,6 +888,33 @@ interface MozTabbrowserTab extends Element {
    * for a tab addTab did not make, as the window's first. */
   readonly openerTab: MozTabbrowserTab | null | undefined;
   toggleMuteAudio(muteReason?: string | null): void;
+}
+
+// engine/browser/components/tabbrowser/Tabbrowser.sys.mjs and AsyncTabSwitcher.sys.mjs
+interface Tabbrowser {
+  /** The tab switch in progress, null when none is (`new AsyncTabSwitcher(this)` while one is). */
+  readonly _switcher: AsyncTabSwitcher | null;
+  /** `#tabbrowser-tabpanels`, the panels of the tabs' browsers. */
+  readonly tabpanels: MozTabpanels;
+}
+// A tab switch in progress, which shows the requested tab once its layers are ready. A tab's
+// state is one of the STATE_* numbers; a tab it has no state for is unloaded.
+interface AsyncTabSwitcher {
+  /** The tab whose layers it waits for, null while it waits for none. */
+  readonly loadingTab: MozTabbrowserTab | null;
+  /** True while it runs its postActions, which a change of state must not reenter. */
+  readonly _processing: boolean;
+  readonly tabState: Map<MozTabbrowserTab, number>;
+  readonly STATE_LOADING: number;
+  readonly STATE_UNLOADING: number;
+  setTabState(tab: MozTabbrowserTab, state: number): void;
+  /** Its events, such as a browser's MozLayerTreeReady (`originalTarget` is the <browser>). */
+  handleEvent(event: { type: string; originalTarget?: EventTarget }, delayed?: boolean): void;
+}
+// engine/toolkit/content/widgets/tabbox.js (MozTabpanels)
+interface MozTabpanels extends XULElement {
+  /** Hides the panels of a split whose tabs are not shown; they keep their split-view class. */
+  suspendSplitViewPanels(tabs: MozTabbrowserTab[]): void;
 }
 
 // engine/browser/components/tabbrowser/content/tabsplitview.mjs
@@ -2192,6 +2221,11 @@ interface nsIFile extends nsISupports {
 interface nsIRequest extends nsISupports {
   loadFlags: number;
   isPending(): boolean;
+}
+// engine/dom/webidl/XMLHttpRequest.webidl: chrome-only, the request's channel (MozChannel, an
+// nsIChannel); null until open() makes it.
+interface XMLHttpRequest {
+  readonly channel: nsIChannel | null;
 }
 interface nsIChannel extends nsIRequest {
   originalURI: nsIURI;
