@@ -2398,3 +2398,14 @@ interface nsICommandLine extends nsISupports {
   /** One of the STATE_ constants: the first launch, or a remote one. */
   readonly state: number;
 }
+// engine/xpcom/system/nsIGIOService.idl, the members Make Default uses (AppLauncher.sys.mjs,
+// #855); merged into the declarations above. findAppFromCommand throws when no entry runs it.
+interface nsIGIOService {
+  findAppFromCommand(command: string): nsIGIOMimeApp;
+}
+interface nsIGIOMimeApp {
+  readonly command: string;
+  setAsDefaultForURIScheme(scheme: string): void;
+  setAsDefaultForMimeType(mimeType: string): void;
+  setAsDefaultForFileExtensions(extensions: string): void;
+}

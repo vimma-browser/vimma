@@ -8,6 +8,7 @@
 
 import {
   dataDirs,
+  handlersRun,
   isDefaultThroughRouter,
   mimeappsLists,
   OMARCHY_ROUTER,
@@ -34,6 +35,21 @@ const APPIMAGE = /^vimma-package=appimage\s*$/m;
 
 const SHELL_SERVICE = "@mozilla.org/browser/shell-service;1";
 const GIO_SERVICE = "@mozilla.org/gio-service;1";
+
+/**
+ * What Firefox's GNOME Make Default sets (nsGNOMEShellService.cpp, appProtocols and appTypes), in
+ * its order: the schemes, then each type with its file extensions.
+ */
+const DEFAULT_SCHEMES = ["http", "https", "chrome"];
+/** @type {[type: string, extensions: string][]} */
+const DEFAULT_TYPES = [
+  ["text/html", "htm html shtml"],
+  ["application/xhtml+xml", "xhtml xht"],
+];
+
+/** The prefs Firefox's Make Default sets afterwards (nsShellService.h). */
+const CHECK_PREF = "browser.shell.checkDefaultBrowser";
+const CHECK_COUNT_PREF = "browser.shell.defaultBrowserCheckCount";
 
 /** A mimeapps.list longer than this is not read: the check then keeps Firefox's answer. */
 const MAX_LIST_BYTES = 64 * 1024;
@@ -145,19 +161,49 @@ function gioDefaultFor(scheme) {
 /**
  * @param {string} program
  * @param {string} path PATH
- * @returns {boolean} whether the shell would find the program: an executable file by its absolute
- *   path, or by its name in an absolute PATH dir
+ * @returns {string} the file the shell would run for the program: the program itself when it is
+ *   an absolute path to an executable file, else the first one by its name in an absolute PATH
+ *   dir; "" when there is none
  */
-function resolvesIn(program, path) {
+function findIn(program, path) {
   if (program.startsWith("/")) {
-    return isExecutableFile(program);
+    return isExecutableFile(program) ? program : "";
   }
   if (program.includes("/")) {
-    return false;
+    return "";
   }
-  return path
-    .split(":")
-    .some((dir) => dir.startsWith("/") && isExecutableFile(PathUtils.join(dir, program)));
+  for (const dir of path.split(":")) {
+    if (dir.startsWith("/") && isExecutableFile(PathUtils.join(dir, program))) {
+      return PathUtils.join(dir, program);
+    }
+  }
+  return "";
+}
+
+/**
+ * @param {string} program
+ * @param {string} path PATH
+ * @returns {boolean} whether the shell would find the program
+ */
+function resolvesIn(program, path) {
+  return findIn(program, path) !== "";
+}
+
+/**
+ * @param {string} scheme
+ * @returns {string} the command line of GIO's default handler, or "" (none, or under Flatpak)
+ */
+function gioCommandFor(scheme) {
+  const gio = gioService();
+  if (!gio || gio.isRunningUnderFlatpak) {
+    return "";
+  }
+  try {
+    const app = gio.getAppForURIScheme(scheme);
+    return app instanceof Ci.nsIGIOMimeApp ? app.command : "";
+  } catch {
+    return "";
+  }
 }
 
 /**
@@ -190,6 +236,24 @@ function safely(check) {
  * }} StartDeps
  */
 
+/**
+ * @param {nsIGIOService | null} gio
+ * @param {string} own
+ * @returns {nsIGIOMimeApp | null} the installed entry whose Exec program, found as the shell
+ *   finds it, is `own` (the first GIO lists); null under Flatpak, or when there is none
+ */
+function ownEntry(gio, own) {
+  if (!gio || gio.isRunningUnderFlatpak) {
+    return null;
+  }
+  try {
+    return gio.findAppFromCommand(own);
+  } catch {
+    // nsGIOService throws NS_ERROR_NOT_AVAILABLE when no installed entry runs it.
+    return null;
+  }
+}
+
 let done = false;
 
 export const AppLauncher = {
@@ -207,6 +271,14 @@ export const AppLauncher = {
    * shell service looks up in PATH).
    */
   appPath: "",
+
+  /**
+   * The package's vimma-open when something started the shell service before Vimma could name
+   * it, so the service took another command (the binary, or a value inherited from the caller);
+   * "" otherwise. Make Default then sets the package's entry itself, and the default-browser
+   * check also counts that entry (wrapSetDefault, handlersRunOwn).
+   */
+  lateOwn: "",
 
   /**
    * Once per process, from the first window's first script: before then only those two cases
@@ -229,14 +301,24 @@ export const AppLauncher = {
     }
     if (!done) {
       done = true;
-      const { started, appPath } = start({});
+      const { started, appPath, own } = start({});
       this.startedFirst = started;
       this.appPath = appPath;
-      if (appPath) {
+      this.lateOwn = own;
+      if (appPath || own) {
         const { ShellService } = ChromeUtils.importESModule(
           "moz-src:///browser/components/shell/ShellService.sys.mjs",
         );
-        this.wrapIsDefault(ShellService, () => this.isDefaultThroughRouter());
+        if (own) {
+          this.wrapSetDefault(ShellService, own);
+        }
+        this.wrapIsDefault(
+          ShellService,
+          () =>
+            (!!appPath && this.isDefaultThroughRouter()) ||
+            (!!own &&
+              (this.handlersRunOwn({ own }) || this.isDefaultThroughRouter({ appPath: own }))),
+        );
       }
     }
     return this.startedFirst;
@@ -246,7 +328,7 @@ export const AppLauncher = {
    * init's work with test doubles, without keeping its result.
    *
    * @param {StartDeps} deps
-   * @returns {{ started: boolean, appPath: string }}
+   * @returns {{ started: boolean, appPath: string, own: string }}
    */
   probe(deps) {
     return start(deps);
@@ -272,6 +354,83 @@ export const AppLauncher = {
     ) {
       return Boolean(await isDefaultAsync.apply(this, args)) || safely(check);
     };
+  },
+
+  /**
+   * Makes Settings' Make Default set the package's own entry, the installed one whose Exec program
+   * is vimma-open's path, as it does when the shell service starts with that path
+   * (nsGNOMEShellService::SetDefaultBrowser), for a shell service that started with another
+   * command. Without such an entry, or where a policy forbids Make Default, Firefox's own method
+   * runs. Only the user's press reaches it: Settings' button and the startup prompt's.
+   *
+   * @param {{ setDefaultBrowser: Function, _attemptedSetDefaultThisSession?: boolean }} target
+   *   ShellService, whose proxy returns its internal object's methods before the native service's
+   * @param {string} own vimma-open's absolute path
+   * @param {{
+   *   gio?: () => nsIGIOService | null,
+   *   allowed?: () => boolean,
+   *   setPref?: (name: string, value: boolean | number) => void,
+   * }} [deps] for tests; each defaults to the real one
+   */
+  wrapSetDefault(target, own, deps = {}) {
+    const original = target.setDefaultBrowser;
+    const gio = deps.gio ?? gioService;
+    const allowed = deps.allowed ?? (() => Services.policies.isAllowed("setDefaultBrowser"));
+    const setPref =
+      deps.setPref ??
+      ((/** @type {string} */ name, /** @type {boolean | number} */ value) =>
+        typeof value === "boolean"
+          ? Services.prefs.setBoolPref(name, value)
+          : Services.prefs.setIntPref(name, value));
+    target.setDefaultBrowser = async function vimmaSetDefaultBrowser(
+      /** @type {unknown[]} */ ...args
+    ) {
+      const app = allowed() ? ownEntry(gio(), own) : null;
+      if (!app) {
+        return original.apply(this, args);
+      }
+      this._attemptedSetDefaultThisSession = true;
+      // Each call stands alone, as in Firefox, which ignores their results.
+      const each = (/** @type {() => void} */ set) => {
+        try {
+          set();
+        } catch (e) {
+          console.error("Vimma: Make Default could not set one association", e);
+        }
+      };
+      for (const scheme of DEFAULT_SCHEMES) {
+        each(() => app.setAsDefaultForURIScheme(scheme));
+      }
+      for (const [type, extensions] of DEFAULT_TYPES) {
+        each(() => app.setAsDefaultForMimeType(type));
+        each(() => app.setAsDefaultForFileExtensions(extensions));
+      }
+      setPref(CHECK_PREF, true);
+      setPref(CHECK_COUNT_PREF, 0);
+      return undefined;
+    };
+  },
+
+  /**
+   * Whether GIO's http and https handlers both run `own`, the package's vimma-open, after a late
+   * start (core/default-browser.mjs handlersRun); false when `own` is "".
+   *
+   * @param {{
+   *   own: string,
+   *   commandFor?: (scheme: string) => string,
+   *   which?: (program: string) => string,
+   * }} deps `commandFor` and `which` for tests; each defaults to the real one
+   * @returns {boolean}
+   */
+  handlersRunOwn({ own, commandFor = gioCommandFor, which }) {
+    if (!own) {
+      return false;
+    }
+    return handlersRun({
+      commandFor,
+      which: which ?? ((program) => findIn(program, Services.env.get("PATH"))),
+      appPath: own,
+    });
   },
 
   /**
@@ -339,8 +498,9 @@ function commandFrom(value, exePath) {
 
 /**
  * @param {StartDeps} deps
- * @returns {{ started: boolean, appPath: string }} whether the shell service started with
- *   vimma-open as its command, and the command it takes
+ * @returns {{ started: boolean, appPath: string, own: string }} whether the shell service
+ *   started with vimma-open as its command, the command it takes, and vimma-open's path when the
+ *   service had started first with another one ("" otherwise)
  */
 function start(deps) {
   const { env = Services.env, exists = isExecutableFile, running = shellServiceRunning } = deps;
@@ -348,21 +508,21 @@ function start(deps) {
     deps.platform ??
     ChromeUtils.importESModule("resource://gre/modules/AppConstants.sys.mjs").AppConstants.platform;
   if (platform !== "linux") {
-    return { started: false, appPath: "" };
+    return { started: false, appPath: "", own: "" };
   }
   const exePath = deps.exePath ?? Services.dirsvc.get("XREExeF", Ci.nsIFile).path;
   const exeDir = deps.exeDir ?? PathUtils.parent(exePath) ?? "";
   const own = PathUtils.join(exeDir, LAUNCHER);
   const marker = deps.marker ?? readSmallFile(PathUtils.join(exeDir, MARKER));
   if (APPIMAGE.test(marker) || !exists(own)) {
-    return { started: false, appPath: commandFrom(env.get(ENV), exePath) };
+    return { started: false, appPath: commandFrom(env.get(ENV), exePath), own: "" };
   }
   const late = running();
   const found = env.get(ENV);
   if (late) {
     console.warn(
       "Vimma: the shell service started before Vimma could name its launcher; " +
-        "Settings' Make Default keeps Firefox's behaviour until the next start (#855)",
+        "Make Default sets the package's own entry through GIO instead (#855)",
     );
   } else {
     env.set(ENV, own);
@@ -373,5 +533,9 @@ function start(deps) {
     }
   }
   env.set(ENV, "");
-  return { started: !late, appPath: late ? commandFrom(found, exePath) : own };
+  return {
+    started: !late,
+    appPath: late ? commandFrom(found, exePath) : own,
+    own: late ? own : "",
+  };
 }
