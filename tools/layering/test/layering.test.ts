@@ -1100,6 +1100,32 @@ describe("jarErrors: manifest lines", () => {
     ).toEqual([MANIFEST(2), MANIFEST(3), MANIFEST(4), MANIFEST(5)]);
   });
 
+  test("AppLauncher's startup entry passes, exactly as written, and nothing like it", () => {
+    const entry =
+      "% category browser-before-ui-startup chrome://browser/content/vimma/services/AppLauncher.sys.mjs AppLauncher.beforeUIStartup";
+    expect(jarErrors(["browser.jar:", entry].join("\n"))).toEqual([]);
+    expect(
+      jarErrors(
+        [
+          "browser.jar:",
+          `% category browser-before-ui-startup ${V}host/AgentGate.sys.mjs AgentGate.init`,
+          entry.replace("AppLauncher.beforeUIStartup", "AppLauncher.init"),
+          entry.replace("browser-before-ui-startup", "browser-idle-startup"),
+          entry.replace(
+            "chrome://browser/content/vimma/",
+            "resource:///chrome/browser/content/browser/vimma/",
+          ),
+          entry.replace("AppLauncher.sys.mjs", "AppLauncher.sys.mjs?x"),
+          `${entry} application=x`,
+          entry.replace("% category ", "%  category "),
+          `${entry} `,
+          entry.replace("AppLauncher.beforeUIStartup", "applauncher.beforeuistartup"),
+          entry.replace("browser-before-ui-startup", "Browser-Before-UI-Startup"),
+        ].join("\n"),
+      ),
+    ).toEqual([2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(MANIFEST));
+  });
+
   test("an override of a page, or of a file with no extension, fails too", () => {
     expect(
       jarErrors(

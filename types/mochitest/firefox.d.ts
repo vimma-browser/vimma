@@ -664,6 +664,8 @@ interface nsICategoryEntry {
 }
 interface nsICategoryManager {
   enumerateCategory(category: string): Iterable<nsICategoryEntry>;
+  /** Throws NS_ERROR_NOT_AVAILABLE when there is no such entry. */
+  getCategoryEntry(category: string, entry: string): string;
 }
 
 // engine/toolkit/components/commandlines/nsICommandLine.idl
