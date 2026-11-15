@@ -47,7 +47,14 @@ import { goToTab, reopenClosed, tabSearchList } from "./tab-search.mjs";
 import { GrepSession } from "./grep.mjs";
 import { closeTabById } from "./tab-ops.mjs";
 import { firefoxIds } from "./browser-ops.mjs";
-import { showAlone, showSplit, showTabs, shownSplit, splitPickerRows } from "./pane-ops.mjs";
+import {
+  hasPanes,
+  showAlone,
+  showSplit,
+  showTabs,
+  shownSplit,
+  splitPickerRows,
+} from "./pane-ops.mjs";
 import { moveTabFromPicker, workspaceNames } from "./workspace-ops.mjs";
 import {
   PRIVATE_WORKSPACE_ID,
@@ -327,6 +334,12 @@ export function newWindowState(host, win, keymap, env) {
         showOutline(state, browser, outline);
       }
       host._emit(state);
+    }),
+    // Resize mode ends once the window is down to one pane or its split hides (a tab closed,
+    // another tab picked): cleared where the panes change, so reading the mode stays a read
+    // (docs/security/01-control-socket.md S9).
+    stopPanes: PaneViews.watch(win, () => {
+      if (state.resize && !hasPanes(win)) state.resize = false;
     }),
     agentPrompt: new AgentPrompt(win),
     updatePrompt: new AgentPrompt(win, {
