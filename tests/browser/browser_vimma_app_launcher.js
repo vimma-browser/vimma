@@ -390,3 +390,151 @@ add_task(async function test_an_empty_entry_on_disk_hides_the_copies_after_it() 
     await IOUtils.remove(root, { recursive: true });
   }
 });
+
+// When something starts the shell service before Vimma's first window (a dedicated profile made
+// at startup, `vimma -setDefaultBrowser`), the service has already taken the binary as its command:
+// Make Default would write a userapp- entry for it, and the package's entry, the one that runs
+// vimma-open, would never count as the default.
+
+add_task(async function test_a_late_shell_service_is_told_vimma_open_s_path() {
+  const probe = (/** @type {boolean} */ late) =>
+    AppLauncher.probe({
+      platform: "linux",
+      env: fakeEnv(),
+      exeDir: DIR,
+      exePath: "/usr/lib/vimma/vimma",
+      exists: (/** @type {string} */ path) => path === OWN,
+      marker: "",
+      running: () => late,
+      startShellService: () => {},
+    });
+  Assert.equal(probe(true).own, OWN, "late: Vimma still knows the package's own command");
+  Assert.equal(probe(false).own, "", "on time: the shell service took vimma-open itself");
+});
+
+/**
+ * A stand-in for nsIGIOService whose only installed entry runs `installed`.
+ *
+ * @param {string} installed
+ */
+function fakeGio(installed) {
+  /** @type {string[]} */
+  const calls = [];
+  const app = {
+    id: "vimma-vimma.desktop",
+    setAsDefaultForURIScheme: (/** @type {string} */ s) => calls.push(`scheme ${s}`),
+    setAsDefaultForMimeType: (/** @type {string} */ t) => calls.push(`type ${t}`),
+    setAsDefaultForFileExtensions: (/** @type {string} */ e) => calls.push(`ext ${e}`),
+  };
+  return {
+    calls,
+    isRunningUnderFlatpak: false,
+    findAppFromCommand(/** @type {string} */ command) {
+      calls.push(`find ${command}`);
+      if (command !== installed) {
+        throw new Error("NS_ERROR_NOT_AVAILABLE");
+      }
+      return app;
+    },
+  };
+}
+
+/**
+ * @param {{ installed?: string, allowed?: boolean, flatpak?: boolean }} options
+ */
+async function setDefaultLate({ installed = OWN, allowed = true, flatpak = false } = {}) {
+  /** @type {unknown[][]} */
+  const original = [];
+  /** @type {Record<string, unknown>} */
+  const prefs = {};
+  const target = {
+    _attemptedSetDefaultThisSession: false,
+    async setDefaultBrowser(/** @type {unknown[]} */ ...args) {
+      original.push(args);
+    },
+  };
+  const gio = fakeGio(installed);
+  gio.isRunningUnderFlatpak = flatpak;
+  AppLauncher.wrapSetDefault(target, OWN, {
+    gio: () => /** @type {nsIGIOService} */ (/** @type {unknown} */ (gio)),
+    allowed: () => allowed,
+    setPref: (/** @type {string} */ name, /** @type {unknown} */ value) => {
+      prefs[name] = value;
+    },
+  });
+  await target.setDefaultBrowser(false);
+  return { target, original, prefs, calls: gio.calls };
+}
+
+add_task(async function test_make_default_sets_the_package_entry_after_a_late_start() {
+  const { target, original, prefs, calls } = await setDefaultLate();
+  Assert.deepEqual(
+    calls,
+    [
+      `find ${OWN}`,
+      "scheme http",
+      "scheme https",
+      "scheme chrome",
+      "type text/html",
+      "ext htm html shtml",
+      "type application/xhtml+xml",
+      "ext xhtml xht",
+    ],
+    "the installed entry that runs vimma-open, for what Firefox's own Make Default sets",
+  );
+  Assert.deepEqual(original, [], "Firefox's userapp- entry for the binary is never written");
+  Assert.ok(target._attemptedSetDefaultThisSession);
+  Assert.deepEqual(
+    prefs,
+    { "browser.shell.checkDefaultBrowser": true, "browser.shell.defaultBrowserCheckCount": 0 },
+    "the prefs Firefox's Make Default sets",
+  );
+});
+
+add_task(async function test_without_the_package_entry_make_default_keeps_firefox_s_way() {
+  const { original, calls } = await setDefaultLate({ installed: "/elsewhere/vimma-open" });
+  Assert.deepEqual(calls, [`find ${OWN}`], "no entry runs vimma-open: nothing set by Vimma");
+  Assert.deepEqual(original, [[false]], "Firefox's own Make Default runs instead");
+});
+
+add_task(async function test_a_policy_against_make_default_is_left_to_firefox() {
+  const { original, calls } = await setDefaultLate({ allowed: false });
+  Assert.deepEqual(calls, [], "GIO is not asked");
+  Assert.deepEqual(original, [[false]], "Firefox's method refuses it as it always does");
+});
+
+add_task(async function test_under_flatpak_make_default_is_left_to_firefox() {
+  const { original, calls } = await setDefaultLate({ flatpak: true });
+  Assert.deepEqual(calls, [], "GIO's entries are the sandbox's: none is looked up or set");
+  Assert.deepEqual(original, [[false]], "Firefox's own method runs");
+});
+
+add_task(async function test_a_late_start_counts_the_package_entry_as_the_default() {
+  const handlers = (/** @type {Record<string, string>} */ commands) =>
+    AppLauncher.handlersRunOwn({
+      own: OWN,
+      commandFor: (/** @type {string} */ scheme) => commands[scheme] ?? "",
+      which: (/** @type {string} */ program) => (program === OWN ? OWN : ""),
+    });
+  Assert.ok(handlers({ http: `${OWN} %u`, https: `${OWN} %u` }), "GIO names the package entry");
+  Assert.ok(!handlers({ http: `${OWN} %u`, https: "/usr/lib/vimma/vimma %u" }), "only one scheme");
+  Assert.ok(
+    !AppLauncher.handlersRunOwn({
+      own: "",
+      commandFor: () => `${OWN} %u`,
+      which: (/** @type {string} */ program) => program,
+    }),
+    "on time, Firefox's own check is the whole answer",
+  );
+});
+
+add_task(async function test_make_default_is_wrapped_only_after_a_late_start() {
+  const { ShellService } = ChromeUtils.importESModule(
+    "moz-src:///browser/components/shell/ShellService.sys.mjs",
+  );
+  Assert.equal(
+    ShellService.setDefaultBrowser.name === "vimmaSetDefaultBrowser",
+    !!AppLauncher.lateOwn,
+    "Firefox's own Make Default when the shell service took vimma-open itself",
+  );
+});
