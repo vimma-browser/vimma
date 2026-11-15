@@ -23,10 +23,15 @@ import {
 } from "../src/ui/grep.mjs";
 import { BLOCK } from "../src/page/motions.mjs";
 
-/** @import { GrepList, GrepPickerState, GrepRow, GrepTab } from "../src/ui/grep.mjs" */
+import type {
+  GrepClosedEntry,
+  GrepList,
+  GrepPickerState,
+  GrepRow,
+  GrepTab,
+} from "../src/ui/grep.mjs";
 
-/** @param {string} q */
-const must = (q) => {
+const must = (q: string) => {
   const parsed = parseQuery(q);
   if (!parsed) throw new Error(`no query for ${q}`);
   return parsed;
@@ -247,13 +252,7 @@ describe("parseGrepReply: a content process's reply, checked", () => {
   });
 });
 
-/**
- * @param {string} tabId
- * @param {number} index
- * @param {Partial<GrepTab>} [extra]
- * @returns {GrepTab}
- */
-const tab = (tabId, index, extra = {}) => ({
+const tab = (tabId: string, index: number, extra: Partial<GrepTab> = {}): GrepTab => ({
   tabId,
   index,
   title: `Tab ${tabId}`,
@@ -265,11 +264,7 @@ const tab = (tabId, index, extra = {}) => ({
   ...extra,
 });
 
-/**
- * @param {number} n
- * @param {string} [ctx]
- */
-const reply = (n, ctx = "a needle") => ({
+const reply = (n: number, ctx: string = "a needle") => ({
   count: n,
   matches: Array.from({ length: n }, (_, i) => ({
     start: i * 10,
@@ -277,7 +272,7 @@ const reply = (n, ctx = "a needle") => ({
     line: i + 1,
     ordinal: i,
     context: ctx,
-    at: /** @type {[number, number]} */ ([2, 8]),
+    at: [2, 8] as [number, number],
   })),
 });
 
@@ -372,14 +367,9 @@ describe("grepRows", () => {
   });
 });
 
-/**
- * @param {string[]} tabIds
- * @returns {GrepRow[]}
- */
-function rowsOf(tabIds) {
+function rowsOf(tabIds: string[]): GrepRow[] {
   const tabs = [...new Set(tabIds)].map((t, i) => tab(t, i + 1));
-  /** @type {Map<string, any[]>} */
-  const frames = new Map();
+  const frames: Map<string, any[]> = new Map();
   for (const t of tabs) {
     const n = tabIds.filter((x) => x === t.tabId).length;
     frames.set(t.tabId, [{ key: "0", host: null, reply: reply(n, `in ${t.tabId}`) }]);
@@ -388,12 +378,8 @@ function rowsOf(tabIds) {
 }
 
 describe("holdReplies: the parent keeps at most the rows it can list, best first", () => {
-  /**
-   * @param {number} rank
-   * @param {number} n
-   */
-  const entry = (rank, n) => ({ rank, reply: reply(n) });
-  const kept = (/** @type {{ reply: { matches: unknown[] } }[]} */ entries) =>
+  const entry = (rank: number, n: number) => ({ rank, reply: reply(n) });
+  const kept = (entries: { reply: { matches: unknown[] } }[]) =>
     entries.reduce((n, e) => n + e.reply.matches.length, 0);
 
   test("matches are kept until 2,000 are held; past that only counts", () => {
@@ -434,8 +420,7 @@ describe("the grep list", () => {
 
   test("steps across tabs and wraps at both ends", () => {
     const alive = () => true;
-    /** @type {GrepList} */
-    let list = { query: "x", rows, index: 0 };
+    let list: GrepList = { query: "x", rows, index: 0 };
     const seen = [];
     for (let i = 0; i < 5; i++) {
       const next = stepGrepList(list, 1, alive);
@@ -477,15 +462,12 @@ describe("the grep list", () => {
 
 describe("grepPickerKey", () => {
   const rows = rowsOf(["a", "a", "b", "b", "c"]);
-  /** @param {Partial<GrepPickerState>} [extra] */
-  const open = (extra = {}) => ({ ...setGrepRows(openGrepPicker("x"), rows), ...extra });
-  /**
-   * @param {GrepPickerState} s
-   * @param {string[]} keys
-   */
-  const press = (s, keys) => {
-    /** @type {ReturnType<typeof grepPickerKey>["effect"]} */
-    let effect = null;
+  const open = (extra: Partial<GrepPickerState> = {}) => ({
+    ...setGrepRows(openGrepPicker("x"), rows),
+    ...extra,
+  });
+  const press = (s: GrepPickerState, keys: string[]) => {
+    let effect: ReturnType<typeof grepPickerKey>["effect"] = null;
     for (const k of keys) ({ state: s, effect } = grepPickerKey(s, k));
     return { state: s, effect };
   };
@@ -529,7 +511,7 @@ describe("grepPickerKey", () => {
     const one = press(open(), ["ctrl+s"]);
     expect(one.state.scope).toBe("window");
     expect(one.effect).toEqual({ type: "scope", scope: "window" });
-    const keys = (/** @type {number} */ n) => Array.from({ length: n }, () => "ctrl+s");
+    const keys = (n: number) => Array.from({ length: n }, () => "ctrl+s");
     expect(press(open(), keys(2)).state.scope).toBe("windows");
     expect(press(open(), keys(3)).state.scope).toBe("closed");
     expect(press(open(), keys(4)).state.scope).toBe("workspace");
@@ -603,14 +585,12 @@ describe("grepPickerKey", () => {
   });
 });
 
-/**
- * @param {number} closedId
- * @param {string} title
- * @param {string} url
- * @param {Partial<import("../src/ui/grep.mjs").GrepClosedEntry>} [extra]
- * @returns {import("../src/ui/grep.mjs").GrepClosedEntry}
- */
-const closedTab = (closedId, title, url, extra = {}) => ({
+const closedTab = (
+  closedId: number,
+  title: string,
+  url: string,
+  extra: Partial<GrepClosedEntry> = {},
+): GrepClosedEntry => ({
   closedId,
   closedWindow: false,
   title,

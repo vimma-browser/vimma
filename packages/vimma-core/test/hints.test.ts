@@ -26,25 +26,16 @@ import {
 import { ACTIONS } from "../src/keys/actions.mjs";
 import { parseKey } from "../src/keys/keys.mjs";
 
-/** @import { HintState, ReplyTarget } from "../src/page/hints.mjs" */
+import type { HintState, ReplyTarget } from "../src/page/hints.mjs";
 
-/**
- * `value`, failing the test where it is missing.
- * @template T
- * @param {T | undefined} value
- * @returns {T}
- */
-const defined = (value) => {
+/** `value`, failing the test where it is missing. */
+const defined = <T>(value: T | undefined): T => {
   if (value === undefined) throw new Error("expected a value");
   return value;
 };
 
-/**
- * ⌈log_k n⌉ by integer arithmetic (no floating-point surprises at exact powers).
- * @param {number} n
- * @param {number} k
- */
-function ceilLog(n, k) {
+/** ⌈log_k n⌉ by integer arithmetic (no floating-point surprises at exact powers). */
+function ceilLog(n: number, k: number) {
   let L = 0;
   let p = 1;
   while (p < n) {
@@ -140,7 +131,7 @@ describe("hintLabels", () => {
           if (n <= k) expect(labels).toEqual([...chars].slice(0, n));
         }
         // ordered by length, then charset order
-        const before = (/** @type {string} */ a, /** @type {string} */ b) => {
+        const before = (a: string, b: string) => {
           if (a.length !== b.length) return a.length < b.length;
           const j = [...a].findIndex((c, idx) => c !== b[idx]);
           return chars.indexOf(defined(a[j])) < chars.indexOf(defined(b[j]));
@@ -153,16 +144,11 @@ describe("hintLabels", () => {
   });
 });
 
-/**
- * @param {number} x
- * @param {number} y
- */
-const r = (x, y, width = 40, height = 16) => ({ x, y, width, height });
+const r = (x: number, y: number, width = 40, height = 16) => ({ x, y, width, height });
 
 describe("orderTargets", () => {
   test("a shuffled 3 × 3 grid reads row by row", () => {
-    /** @type {Array<{ id: string, rect: ReturnType<typeof r> }>} */
-    const grid = [];
+    const grid: Array<{ id: string; rect: ReturnType<typeof r> }> = [];
     for (let row = 0; row < 3; row++)
       for (let col = 0; col < 3; col++)
         grid.push({ id: `${row}${col}`, rect: r(col * 100, row * 50) });
@@ -224,13 +210,9 @@ describe("orderTargets", () => {
 
 /** 12 targets in reading order: one row of 12. */
 const twelve = Array.from({ length: 12 }, (_, i) => ({ id: i, rect: r(i * 50, 0) }));
-const key = (/** @type {string} */ k) => parseKey(k);
-/**
- * Feed space-separated keys; return the last { state, result } and all results.
- * @param {HintState<(typeof twelve)[number]>} state
- * @param {string} keys
- */
-function feed(state, keys) {
+const key = (k: string) => parseKey(k);
+/** Feed space-separated keys; return the last { state, result } and all results. */
+function feed(state: HintState<(typeof twelve)[number]>, keys: string) {
   const results = [];
   for (const k of keys.split(" ")) {
     const out = hintKey(state, key(k));
@@ -554,7 +536,7 @@ describe("parseHintReply: untrusted Vimma:CollectHints replies from a content pr
   // mcp-drive D12: an agent's `f` asks for links with their text, and only for links.
   test("a collection for an agent carries each link's text, capped, and only links", () => {
     const link = { ...t0, text: "Pricing" };
-    const one = (/** @type {object} */ t) => ({ targets: [t], frames: [], ms: 0 });
+    const one = (t: object) => ({ targets: [t], frames: [], ms: 0 });
     expect(HINT_REPLY_MAX_TEXT).toBe(512);
     expect(parseHintReply(one(link), { texts: true })?.targets).toEqual([link]);
     expect(parseHintReply(one(t0), { texts: true })?.targets).toEqual([t0]);
@@ -703,10 +685,8 @@ describe("a collection's waits", () => {
 });
 
 describe("hintCollectReason: which exit of a collection gave its result", () => {
-  /** @param {ReplyTarget[]} targets */
-  const reply = (targets) => ({ targets, frames: [], ms: 0 });
-  /** @type {ReplyTarget} */
-  const t0 = { id: 0, rect: { x: 0, y: 0, width: 1, height: 1 }, kind: "click" };
+  const reply = (targets: ReplyTarget[]) => ({ targets, frames: [], ms: 0 });
+  const t0: ReplyTarget = { id: 0, rect: { x: 0, y: 0, width: 1, height: 1 }, kind: "click" };
   test("each way to an empty result has its own reason", () => {
     expect(hintCollectReason({ queried: false, raw: undefined, reply: null, live: true })).toBe(
       "no-actor",

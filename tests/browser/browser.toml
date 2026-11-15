@@ -219,6 +219,9 @@ support-files = ["file_vimma_cookie.html"]
 ["browser_vimma_mcp_agent.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
+["browser_vimma_mcp_agent_grants.js"]
+support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
+
 ["browser_vimma_mcp_prompt.js"]
 support-files = ["file_vimma_agent_page.html", "head_vimma_control.js"]
 
