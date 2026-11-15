@@ -127,7 +127,8 @@ actions that are not implemented yet (parallel spec).
   page that still scrolls: the scroller under that point inside the layer, else the layer's
   largest visible one. The layer is told by its `position: fixed`, because Cookiebot's is a
   `role=region` and Usercentrics' a dialog without `aria-modal` in a shadow root; tested in
-  `browser_vimma_insert_scroll.js`, issue #864.)
+  `browser_vimma_insert_scroll.js`, issue #864.) (Since changed: the child hands scrolling to its
+  `PageScroll`, `actors/page-scroll.mjs`, issue #1109.)
 - **"Pass if not runnable", revisited.** Unbound bare keys in normal mode pass to the page: plan §3
   ("keys the dispatcher returns `pass` for continue untouched") and plan §2's `[unbind]`, which
   would be pointless if unbound keys were swallowed; sites' own single-key shortcuts (GitHub `s`,
