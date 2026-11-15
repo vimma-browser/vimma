@@ -71,8 +71,10 @@ tests compare stderr cannot have; 22.18.0 and 24.3.0 run it cleanly.
 7. One exception inside `tools/`: the hooks of `tools/claude-plugin` stay `.mjs`. Claude Code and
    Copilot CLI run them on each contributor's own Node, which may be older than 22.18; there a
    `.ts` hook exits 1 with `ERR_UNKNOWN_FILE_EXTENSION`, and a hook that exits with anything but 2
-   does not block, so the guard would stop guarding without a word. The plugin moves only with a
-   plan that fails closed on such a Node, after a security review.
+   does not block, so the guard would stop guarding without a word. The hooks move only with a
+   plan that fails closed on such a Node, after a security review. (Since changed: this exception
+   first covered the whole plugin. Its tests, `tools/claude-plugin/test/`, are `.ts` now: only
+   Vitest runs them, on the Node `.nvmrc` pins, and they still spawn the `.mjs` hooks.)
    A second exception: the guards that workflows run from the base branch, `tools/ci/docs-only.mjs`
    and `tools/ci/key-guard.mjs`, and key-guard's test, which the guard's `GUARD_PATHS` names, stay
    `.mjs`. They judge a pull request inside its checkout, so they run on the runner image's own
