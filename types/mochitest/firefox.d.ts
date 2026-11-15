@@ -179,13 +179,6 @@ interface nsIWindowWatcher {
   unregisterNotification(observer: nsIObserver): void;
 }
 
-// engine/toolkit/content/widgets/browser-custom-element.mjs: a browser's document and window,
-// which only a browser in the parent process (about:preferences, about:addons) has.
-interface MozBrowser {
-  readonly contentDocument: Document | null;
-  readonly contentWindow: (Window & typeof globalThis) | null;
-}
-
 // engine/dom/webidl/Document.webidl
 interface Document {
   readonly hasValidTransientUserGestureActivation: boolean;

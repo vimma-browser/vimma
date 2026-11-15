@@ -40,7 +40,7 @@ const FILE_MODE = 0o600;
 const DIR_MODE = 0o700;
 
 /** An nsIAboutModule that is its own nsIFactory, as about:vimma's (AboutVimma.sys.mjs). */
-const aboutModule = /** @type {any} */ ({
+const aboutModule = {
   QueryInterface: ChromeUtils.generateQI(["nsIAboutModule", "nsIFactory"]),
   getURIFlags() {
     return Ci.nsIAboutModule.ALLOW_SCRIPT | Ci.nsIAboutModule.IS_SECURE_CHROME_UI;
@@ -48,7 +48,7 @@ const aboutModule = /** @type {any} */ ({
   getChromeURI() {
     return Services.io.newURI(PAGE_URL);
   },
-  /** @param {any} uri @param {unknown} loadInfo */
+  /** @param {nsIURI} uri @param {unknown} loadInfo */
   newChannel(uri, loadInfo) {
     const channel = Services.io.newChannelFromURIWithLoadInfo(
       Services.io.newURI(PAGE_URL),
@@ -57,11 +57,11 @@ const aboutModule = /** @type {any} */ ({
     channel.originalURI = uri;
     return channel;
   },
-  /** @param {unknown} iid */
+  /** @param {unknown} iid @returns {unknown} */
   createInstance(iid) {
     return aboutModule.QueryInterface(iid);
   },
-});
+};
 
 /**
  * Every add-on the page has been shown, by GUID: an install is only ever for one of these, so a
@@ -284,23 +284,24 @@ export const SetupHost = {
   /**
    * The <browser> showing `page`. Searched from the windows, because the page's
    * browsingContext.embedderElement is null once a process switch has replaced the context.
-   * @param {any} page  the setup page's window
+   * @param {Window} page  the setup page's window
+   * @returns {MozTabBrowser | null}
    */
   browserFor(page) {
     for (const win of Services.wm.getEnumerator("navigator:browser")) {
-      const found = win.gBrowser?.browsers.find((/** @type {any} */ b) => b.contentWindow === page);
+      const found = win.gBrowser?.browsers.find((b) => b.contentWindow === page);
       if (found) return found;
     }
     return null;
   },
 
-  /** @param {any} browser  closes the page's tab */
+  /** @param {MozBrowser | null} browser  closes the page's tab */
   close(browser) {
     // Through the window list, as browserFor: the browser's ownerGlobal seen from here has no
     // gBrowser.
     for (const win of Services.wm.getEnumerator("navigator:browser")) {
       const gBrowser = win.gBrowser;
-      const tab = gBrowser?.getTabForBrowser(browser);
+      const tab = browser && gBrowser?.getTabForBrowser(browser);
       if (tab) {
         gBrowser.removeTab(tab);
         return;

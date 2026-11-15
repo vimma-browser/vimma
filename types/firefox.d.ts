@@ -1881,3 +1881,61 @@ interface SitePermissionsApi {
   ): void;
   removeFromPrincipal(principal: nsIPrincipal, id: string, browser?: MozBrowser): void;
 }
+
+// ---------------------------------------------------------------------------------------------
+// The windows and tabs workspaces/ and setup/ read (#938).
+
+// engine/dom/base/nsGlobalWindowInner.cpp (DefineArgumentsProperty): the arguments a chrome
+// window was opened with (strings and XPCOM objects: an nsIArray, an nsIPropertyBag2); undefined
+// for a window opened without any.
+interface ChromeWindow {
+  readonly arguments?: readonly unknown[];
+}
+// engine/browser/base/content/utilityOverlay.js
+interface BrowserWindow {
+  /** A new-tab or blank page's URL (about:blank, about:home, the new-tab page). */
+  isBlankPageURL(url: string): boolean;
+}
+// engine/toolkit/content/widgets/browser-custom-element.mjs and XULFrameElement.webidl: a
+// browser's document and window, which only a browser in the parent process has (about:
+// pages such as about:vimma-setup, about:preferences); a remote browser's are null. The window
+// is a full global, so the browser tests reach its own globals through it.
+interface MozBrowser {
+  readonly canGoBack: boolean;
+  readonly contentDocument: Document | null;
+  readonly contentWindow: (Window & typeof globalThis) | null;
+}
+// engine/dom/webidl/Document.webidl (chrome-only)
+interface Document {
+  /** The about:blank a frame starts with, which a load replaces. */
+  readonly isInitialDocument: boolean;
+}
+// engine/browser/modules/URILoadingHelper.sys.mjs openLinkIn: the options workspace routing
+// reads and sets on its copy of `params`.
+interface OpenLinkInParams {
+  private?: boolean;
+  triggeringPrincipal?: nsIPrincipal | null;
+  userContextId?: number | null;
+  /** The browser a "current" load goes to; the target window's selected one when unset. */
+  targetBrowser?: MozBrowser | null;
+}
+// engine/toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs
+// (getIdentityObserverOutput): the subject of the contextual-identity-* notifications.
+interface ContextualIdentityNotification {
+  readonly wrappedJSObject: { readonly userContextId: number; readonly name: string };
+}
+// The XPCOM objects a browser window's arguments hold (engine/xpcom/ds/nsISupportsPrimitives.idl,
+// nsIArray.idl, nsIPropertyBag2.idl). `Ci` is untyped, so `instanceof Ci.nsIArray` does not
+// narrow: the code casts after its check.
+interface nsISupportsString {
+  readonly data: string;
+}
+interface nsIArray {
+  readonly length: number;
+  /** The element as the interface `iid` names; Vimma asks only for nsISupportsString. */
+  queryElementAt(index: number, iid: unknown): nsISupportsString;
+}
+interface nsIPropertyBag2 {
+  /** Throws for a property the bag does not have. */
+  getPropertyAsBool(name: string): boolean;
+}
