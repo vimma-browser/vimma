@@ -17,14 +17,15 @@ import {
 } from "../src/keys/editable.mjs";
 import { resolveEscape } from "../src/keys/escape.mjs";
 
-/** @import { Mode } from "../src/keys/modes.mjs" */
-/**
- * @import { EditableDescriptor, InsertSiteMode, InsertSiteRule, InsertTrigger }
- *   from "../src/keys/editable.mjs"
- */
+import type { Mode } from "../src/keys/modes.mjs";
+import type {
+  EditableDescriptor,
+  InsertSiteMode,
+  InsertSiteRule,
+  InsertTrigger,
+} from "../src/keys/editable.mjs";
 
-/** @param {string | undefined} type */
-const input = (type, extra = {}) => ({ tagName: "INPUT", type, ...extra });
+const input = (type: string | undefined, extra = {}) => ({ tagName: "INPUT", type, ...extra });
 const div = (extra = {}) => ({ tagName: "DIV", ...extra });
 
 describe("isEditable: inputs", () => {
@@ -297,7 +298,7 @@ describe("isEditable: designMode and site overrides", () => {
   });
 
   test("an unknown site mode throws", () => {
-    expect(() => isEditable(div(), { site: /** @type {any} */ ("sometimes") })).toThrow(TypeError);
+    expect(() => isEditable(div(), { site: "sometimes" as any })).toThrow(TypeError);
   });
 
   test("the site modes are auto, never, always", () => {
@@ -306,8 +307,7 @@ describe("isEditable: designMode and site overrides", () => {
 });
 
 describe("matchSiteRule", () => {
-  /** @type {InsertSiteRule[]} */
-  const rules = [
+  const rules: InsertSiteRule[] = [
     { match: "example.com", insert: "never" },
     { match: "docs.example.com", insert: "always" },
     { match: "Other.org", insert: "always" },
@@ -360,14 +360,12 @@ describe("matchSiteRule", () => {
     ["[::1]", "::1"],
     ["[FE80::1]", "fe80::1"],
   ])("Given host %s and rule %s, then the rule matches", (host, match) => {
-    /** @type {InsertSiteRule} */
-    const rule = { match, insert: "always" };
+    const rule: InsertSiteRule = { match, insert: "always" };
     expect(matchSiteRule(host, [rule])).toBe(rule);
   });
 
   test("a rule with a trailing dot or uppercase still matches", () => {
-    /** @type {InsertSiteRule} */
-    const r = { match: "Example.COM.", insert: "never" };
+    const r: InsertSiteRule = { match: "Example.COM.", insert: "never" };
     expect(matchSiteRule("www.example.com", [r])).toBe(r);
   });
 });
@@ -381,8 +379,7 @@ describe("insert mode on focus changes (host contract)", () => {
     expect([...INSERT_TRIGGERS]).toEqual(["focusin", "recheck"]);
   });
 
-  /** @type {Array<[{ site?: InsertSiteMode }, EditableDescriptor]>} */
-  const roots = [
+  const roots: Array<[{ site?: InsertSiteMode }, EditableDescriptor]> = [
     [{ site: "always" }, body],
     [{ site: "always" }, html],
     [{}, { ...body, designMode: true }],
@@ -401,11 +398,10 @@ describe("insert mode on focus changes (host contract)", () => {
   });
 
   test("an unknown trigger throws", () => {
-    expect(() => isEditable(div(), { trigger: /** @type {any} */ ("blur") })).toThrow(TypeError);
+    expect(() => isEditable(div(), { trigger: "blur" as any })).toThrow(TypeError);
   });
 
-  /** @type {Array<[Mode, InsertTrigger, EditableDescriptor, InsertSiteMode, Mode]>} */
-  const focusChanges = [
+  const focusChanges: Array<[Mode, InsertTrigger, EditableDescriptor, InsertSiteMode, Mode]> = [
     ["normal", "focusin", text, "auto", "insert"],
     ["insert", "focusin", div(), "auto", "normal"],
     ["insert", "focusin", text, "auto", "insert"],
@@ -424,8 +420,7 @@ describe("insert mode on focus changes (host contract)", () => {
     },
   );
 
-  /** @type {Array<[string, { site?: InsertSiteMode }, EditableDescriptor]>} */
-  const escToBody = [
+  const escToBody: Array<[string, { site?: InsertSiteMode }, EditableDescriptor]> = [
     ["site always", { site: "always" }, body],
     ["designMode", {}, { ...body, designMode: true }],
   ];

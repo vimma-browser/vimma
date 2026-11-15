@@ -60,8 +60,7 @@ describe("actions", () => {
 
   test("every M2 tab action of plan §2 exists with its default binding (m2-core-logic)", () => {
     const km = compileKeymap();
-    /** @type {Record<string, string[]>} */
-    const want = {
+    const want: Record<string, string[]> = {
       show_keybinds: ["prefix+?"],
       // Firefox's own tab keys too (docs/specs/firefox-keys.md).
       new_tab: ["prefix+c", "ctrl+t", "t"],
@@ -91,7 +90,7 @@ describe("actions", () => {
     expect(getAction("control_command")).toMatchObject({ id: "control.command", group: "Agents" });
     expect(km.bindingsFor("agent_prompt")).toEqual(["prefix+shift+a"]);
     expect(km.bindingsFor("control_command")).toEqual([]);
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       const node = km.trie(mode).children.get("ctrl+b")?.children.get("shift+a");
       expect(node?.action?.id, mode).toBe("mcp.answer");
     }
@@ -108,7 +107,7 @@ describe("actions", () => {
     expect(km.bindingsFor("live_grep")).toEqual(["prefix+f g"]);
     expect(km.bindingsFor("grep_next")).toEqual(["]q"]);
     expect(km.bindingsFor("grep_previous")).toEqual(["[q"]);
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       const f = km.trie(mode).children.get("ctrl+b")?.children.get("f");
       expect(f?.children.get("g")?.action?.id, mode).toBe("grep.open");
     }
@@ -121,7 +120,7 @@ describe("actions", () => {
       group: "Workspaces",
     });
     expect(km.bindingsFor("private_workspace")).toEqual(["prefix+shift+p", "ctrl+shift+p"]);
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       const node = km.trie(mode).children.get("ctrl+shift+p");
       expect(node?.action?.id, mode).toBe("workspace.private");
     }
@@ -130,24 +129,23 @@ describe("actions", () => {
 
 // The "did you mean" suggestion for config keys and values (config.mjs, routes.mjs, cmdline.mjs).
 describe("closest", () => {
-  /** Plain Levenshtein distance, the reference closest() must agree with. @param {string} a @param {string} b */
-  function distance(a, b) {
+  /** Plain Levenshtein distance, the reference closest() must agree with. */
+  function distance(a: string, b: string) {
     let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
     for (let i = 1; i <= a.length; i++) {
       const cur = [i];
       for (let j = 1; j <= b.length; j++) {
         cur[j] = Math.min(
-          /** @type {number} */ (prev[j]) + 1,
-          /** @type {number} */ (cur[j - 1]) + 1,
-          /** @type {number} */ (prev[j - 1]) + (a[i - 1] === b[j - 1] ? 0 : 1),
+          (prev[j] as number) + 1,
+          (cur[j - 1] as number) + 1,
+          (prev[j - 1] as number) + (a[i - 1] === b[j - 1] ? 0 : 1),
         );
       }
       prev = cur;
     }
-    return /** @type {number} */ (prev[b.length]);
+    return prev[b.length] as number;
   }
-  /** @param {string} text @param {string[]} pool */
-  function reference(text, pool) {
+  function reference(text: string, pool: string[]) {
     let best;
     let bestD = Infinity;
     for (const cand of pool) {
@@ -195,7 +193,7 @@ describe("toolbar toggle", () => {
       group: "Navigation",
     });
     const d = createDispatcher(compileKeymap());
-    for (const mode of /** @type {const} */ (["normal", "insert"])) {
+    for (const mode of ["normal", "insert"] as const) {
       expect(d.dispatch(mode, parseKey("ctrl+b"))).toEqual({ kind: "pending" });
       expect(d.dispatch(mode, parseKey("u"))).toEqual({
         kind: "action",
@@ -241,7 +239,7 @@ describe("toolbar toggle", () => {
 
   test("the ELEMENT mode's actions are grouped, and bound only in [modal.element]", () => {
     const km = compileKeymap();
-    for (const [name, id, key] of /** @type {const} */ ([
+    for (const [name, id, key] of [
       ["element_visual", "element.visual", "v"],
       ["element_visual_line", "element.visual_line", "V"],
       ["element_yank", "element.yank", "y"],
@@ -249,7 +247,7 @@ describe("toolbar toggle", () => {
       ["element_child", "element.child", "-"],
       ["element_next", "element.next", "j"],
       ["element_prev", "element.prev", "k"],
-    ])) {
+    ] as const) {
       expect(getAction(name)).toMatchObject({ id, group: "Element focus" });
       expect(km.bindingsFor(name)).toEqual([`${key} [element]`]);
     }
@@ -299,7 +297,7 @@ describe("Firefox's sidebar actions (firefox-surfaces-trim decision 12)", () => 
     expect(getAction("ai_chatbot_sidebar")).toBeUndefined();
     expect(resolveActionName("browser.sidebar_chatbot")).toBeUndefined();
     const km = compileKeymap();
-    for (const mode of /** @type {const} */ (["normal", "insert", "visual", "panel", "help"])) {
+    for (const mode of ["normal", "insert", "visual", "panel", "help"] as const) {
       expect(km.trie(mode).children.get("ctrl+alt+x"), mode).toBeUndefined();
     }
   });
@@ -313,11 +311,11 @@ describe("Firefox's sidebar actions (firefox-surfaces-trim decision 12)", () => 
 
 describe("the split actions (docs/specs/multiple-splits.md decision 13, Delivery 4 to 6)", () => {
   test("split_picker, next_split and previous_split are pane actions", () => {
-    for (const [name, id] of /** @type {const} */ ([
+    for (const [name, id] of [
       ["split_picker", "pane.split_picker"],
       ["next_split", "pane.next_split"],
       ["previous_split", "pane.previous_split"],
-    ])) {
+    ] as const) {
       expect(getAction(name)).toMatchObject({ id, group: "Panes" });
     }
   });
