@@ -584,7 +584,7 @@ interface LazyModules {
   // engine/toolkit/components/formautofill/shared/AutofillFormFactory.sys.mjs
   AutofillFormFactory: { createFromField(field: Element): FormLike };
   ContextualIdentityService: ContextualIdentityServiceApi;
-  // engine/browser/components/downloads/DownloadHistory.sys.mjs: the session's downloads, then
+  // engine/toolkit/components/downloads/DownloadHistory.sys.mjs: the session's downloads, then
   // the newest from history.
   DownloadHistory: {
     getList(options: { type: string; maxHistoryResults?: number }): Promise<DownloadList>;
@@ -1850,7 +1850,7 @@ interface UserSearchEngine extends SearchEngine {
 
 // engine/browser/modules/SitePermissions.sys.mjs: states are the permission manager's actions,
 // scopes are strings. getPermissionLabel gives null for a permission without a label;
-// getMultichoiceStateLabel throws for a state it has no label for.
+// getMultichoiceStateLabel gives null, or throws, for a state it has no label for.
 interface SitePermissionsApi {
   readonly UNKNOWN: number;
   readonly ALLOW: number;
