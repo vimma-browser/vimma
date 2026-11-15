@@ -1277,3 +1277,153 @@ addTidyTask(async function test_label_forwarding_follows_reference_targets() {
   BrowserTestUtils.removeTab(tab);
   await mcp(false);
 });
+
+// Issue #1079: with dom.shadowdom.referenceTarget.enabled, a button's or a field's `form`
+// attribute can name a shadow host whose shadow root forwards to a form inside it, and Gecko
+// makes that inner form the control's owner (nsGenericHTMLFormElement::UpdateFormOwner), which a
+// click or the Enter key submits. But the control's `form` is retargeted to the host
+// (RetargetReferenceTargetForBindings), which has no method, action or fields. The child must
+// judge the inner form: a submit by the button asks as that form's (security.md M28).
+
+/**
+ * Adds a shadow host `#shop` whose shadow root (of `mode`) holds a form `#order` that sends a
+ * field to https://example.com/collect and forwards to it, and a submit button `Buy` outside the
+ * root whose `form` attribute names the host.
+ * @param {any} browser @param {"open" | "closed"} mode
+ */
+async function buttonForShadowForm(browser, mode) {
+  await SpecialPowers.spawn(browser, [mode], (mode) => {
+    const doc = content.document;
+    const host = doc.createElement("span");
+    host.id = "shop";
+    const root = /** @type {any} */ (host.attachShadow({ mode }));
+    root.innerHTML =
+      '<form id="order" action="https://example.com/collect"><input name="note" value="kept">' +
+      "</form>";
+    root.referenceTarget = "order";
+    const button = doc.createElement("button");
+    button.setAttribute("form", "shop");
+    button.textContent = "Buy";
+    doc.body.prepend(host, button);
+  });
+}
+
+addTidyTask(async function test_a_submit_for_a_reference_target_form_asks() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  await buttonForShadowForm(tab.linkedBrowser, "closed");
+  const c = await agentClient();
+  const r = await elements(c, tab, { kind: "grant", minutes: 12 });
+  const items = parsed(r.result.elements).filter((e) => "label" in e);
+  const target = one(items, (e) => e.text === "Buy", "the button for the host's form");
+  const id = c.request("agent-activate", { tab: idOf(tab), label: target.label });
+  /** @type {any} */
+  let reply = null;
+  const replied = c.response(id).then((/** @type {any} */ v) => (reply = v));
+  await until(() => AgentGate.waiting.length > 0 || reply, "a question waits or the call ends");
+  Assert.equal(reply?.error, undefined, "the click is not refused as gone");
+  Assert.equal(reply, null, "the click did not run unasked under the grant (M28)");
+  const q = await question();
+  Assert.equal(q.tool, "vimma_activate", "the click asks");
+  Assert.equal(q.what.submit?.action, "https://example.com/collect", "as the inner form's submit");
+  AgentGate.answer(q.id, { kind: "deny" });
+  Assert.equal((await replied).error?.reason, "user", "a no clicks nothing");
+  c.close();
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});
+
+addTidyTask(async function test_form_owners_follow_reference_targets() {
+  await SpecialPowers.pushPrefEnv({ set: [[REFERENCE_TARGET_PREF, true]] });
+  await mcp(true);
+  const tab = await openAgentTab(PAGE);
+  const got = await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
+    const { actTargetOf, fillTargetOf, formOf } = ChromeUtils.importESModule(
+      "chrome://browser/content/vimma/actors/agent-fields.mjs",
+    );
+    const doc = content.document;
+    const FORM =
+      '<form id="order" method="post" action="https://example.com/collect">' +
+      '<input name="note" value="kept"><button>Send</button></form>';
+    let n = 0;
+    /**
+     * A host in the page whose shadow root (of `mode`) holds FORM and forwards to `target`.
+     * @param {string} target @param {"open" | "closed"} [mode]
+     */
+    const hostFor = (target, mode = "open") => {
+      const host = doc.createElement("span");
+      host.id = `owner${++n}`;
+      const root = /** @type {any} */ (host.attachShadow({ mode }));
+      root.innerHTML = FORM;
+      root.referenceTarget = target;
+      return host;
+    };
+    /** @param {() => string} f @returns {string} what `f` returns, or that it threw */
+    const tried = (f) => {
+      try {
+        return f();
+      } catch (e) {
+        return `threw: ${/** @type {Error} */ (e).message}`;
+      }
+    };
+    /**
+     * What a click on a submit button outside, whose `form` names `host`, would do.
+     * @param {Element} host
+     */
+    const buttonFor = (host) => {
+      if (!host.isConnected) doc.body.append(host);
+      const button = doc.createElement("button");
+      button.setAttribute("form", host.id);
+      doc.body.append(button);
+      return tried(() => {
+        const out = actTargetOf(button);
+        return out.submit ? `${out.submit.method} ${out.submit.action}` : "plain";
+      });
+    };
+    /** @type {Record<string, string>} */
+    const got = {};
+    got["a button for an open root's form"] = buttonFor(hostFor("order"));
+    got["a button for a closed root's form"] = buttonFor(hostFor("order", "closed"));
+    got["a button for a root whose target is missing"] = buttonFor(hostFor("nothing"));
+    // A shadow root that forwards to another host, whose root forwards to its form.
+    const outer = doc.createElement("span");
+    outer.id = "outer-owner";
+    const outerRoot = /** @type {any} */ (outer.attachShadow({ mode: "closed" }));
+    const inner = hostFor("order", "closed");
+    outerRoot.append(inner);
+    outerRoot.referenceTarget = inner.id;
+    doc.body.append(outer);
+    got["a button for a chain of roots to a form"] = buttonFor(outer);
+    // A field outside whose `form` names a host: its default submission and its form.
+    const host = hostFor("order", "closed");
+    doc.body.append(host);
+    const field = doc.createElement("input");
+    field.name = "q";
+    field.setAttribute("form", host.id);
+    doc.body.append(field);
+    got["a field's default submission"] = tried(() => {
+      const fill = fillTargetOf(field, "x");
+      return fill.submit ? `${fill.submit.method} ${fill.submit.action}` : "none";
+    });
+    got["a field's form"] = tried(() => {
+      const form = formOf(field);
+      return form ? `${form.localName}#${form.id}` : "none";
+    });
+    return got;
+  });
+  Assert.deepEqual(
+    got,
+    {
+      "a button for an open root's form": "post https://example.com/collect",
+      "a button for a closed root's form": "post https://example.com/collect",
+      "a button for a root whose target is missing": "plain",
+      "a button for a chain of roots to a form": "post https://example.com/collect",
+      "a field's default submission": "post https://example.com/collect",
+      "a field's form": "form#order",
+    },
+    "a control's form is judged after its reference target, as Gecko submits it",
+  );
+  BrowserTestUtils.removeTab(tab);
+  await mcp(false);
+});

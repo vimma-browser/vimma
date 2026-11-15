@@ -167,12 +167,22 @@ function autocompleteOf(el) {
 
 /**
  * The form `el` belongs to, for any element that has one (a form control, a label, a legend);
- * null for any other.
+ * null for any other. With dom.shadowdom.referenceTarget.enabled, a control's `form` attribute
+ * can name a shadow host whose root forwards to a form inside it: Gecko makes that form the
+ * owner (nsGenericHTMLFormElement::UpdateFormOwner) and submits it, while `form` is retargeted
+ * to the host (RetargetReferenceTargetForBindings), with no method, action or fields of its own
+ * (issue #1079; security.md M28). The owner is followed to the form Gecko submits; one that
+ * leads to no form throws, so that a click or a fill on it is refused, never judged by the host.
  * @param {Element} el
+ * @returns {HTMLFormElement | null}
  */
 export function formOf(el) {
-  const form = "form" in el ? el.form : null;
-  return isHTML(form, "form") ? form : null;
+  // A control's, a label's or a legend's `form` is an element or null.
+  const owner = /** @type {Element | null | undefined} */ ("form" in el ? el.form : null);
+  if (!owner) return null;
+  const form = referenceTargetOf(owner);
+  if (!isHTML(form, "form")) throw new Error("a control's form owner is no form");
+  return form;
 }
 
 /** Selector of the headings a product card names its product in. */
@@ -488,7 +498,12 @@ export function describeAgentElements(els) {
       }));
       if (!sensitive && el.selectedIndex >= 0) info.selected = cap(el.value, TEXT);
     }
-    const form = control?.form;
+    let form = null;
+    try {
+      form = control ? formOf(control) : null;
+    } catch {
+      // A form owner that leads to no form (formOf): listed without one, its click refused.
+    }
     if (form) {
       let n = formIndex.get(form);
       if (n === undefined && forms.length < FORMS) {
@@ -824,7 +839,7 @@ export function submitOf(el) {
   for (const c of candidates) {
     // Only a button or an input submits (core isSubmitControl).
     const submitter = isHTML(c, "button") || isHTML(c, "input") ? c : null;
-    const form = submitter?.form;
+    const form = submitter ? formOf(submitter) : null;
     if (!submitter || !form) continue;
     const { method, action } = destinationOf(form, submitter);
     const control = { localName: submitter.localName, type: submitter.type, inForm: true, method };
@@ -1044,7 +1059,7 @@ export function fillTargetOf(el, value) {
     else if (field === "select" && isHTML(el, "select")) out.accepts = !!optionOf(el, value);
     else if (field === "textarea") out.accepts = true;
   }
-  const form = control?.form;
+  const form = control ? formOf(control) : null;
   const submit = form ? defaultSubmitOf(form) : null;
   if (submit) {
     out.submit = { method: submit.method, action: submit.action, fields: submit.fields };
