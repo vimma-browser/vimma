@@ -704,31 +704,37 @@ of the same commit read it too, so a tree without it could not be released anywa
   extensionless file with a shebang and `mozconfig` included), `package.json`, runbooks,
   contributor and agent instructions, code and the Claude plugin alike, and **never** npm's
   install or update commands, in any spelling npm accepts and with any options before them, nor a
-  command that fetches the package it names (create, init or link with a package). npx and `npm
-exec` run only a binary of a devDependency, as the lockfile records it, never with `--yes` or
-  `--package`. npm and npx spawned from code are read from their argument lists, in JavaScript and
-  Python, and from every string literal: npx passes `--no` first, since without a terminal npm
-  assumes `--yes`, and a program name held in a variable or given arguments that are not a literal
-  list is refused, since what it runs cannot be read. Yarn, pnpm and Bun install nothing and run
-  nothing they fetch, and corepack, which downloads them, is not used. No download is run by a
-  shell or an interpreter, whether piped to it or substituted into it. pip installs only with
-  `--require-hashes`; a crate is installed only with `--locked`, from a git source only at a fixed
-  `--rev`; Cargo.lock is never rewritten by a command, and every cargo command a workflow runs
-  passes `--locked`. Every `uses:` of a workflow or composite action is a file of this repository,
-  an action at a full 40-character commit or a Docker image by digest, and so is every job's
-  container and service image. `package-lock.json` is version 3 and every entry is resolved from
-  `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's dependency `is-apple-silicon`,
-  a git dependency pinned to commit `5f75501` without a hash (spec, R5), which nothing in Surfer's
-  `dist/` loads; the test fails if it moves off that commit. No `package.json` names a dependency
-  by git, URL, path, tag or a range wider than a caret, and the repository holds one lockfile and
-  one `.npmrc`, which sets nothing but `ignore-scripts`. The test reads every file git tracks, so
-  a new file is held to this without being listed. Its exceptions are explicit and checked: lines
-  that name a command only to forbid it, test names, and two lines of a runbook that run wrangler
-  in `vimma-browser/vimma-updates`, another repository, are allowed by their exact text, and the
-  test fails when an allowed line is gone or no longer needs its allowance; the guard's own tests
-  and the Claude plugin's Bash guard and its tests mark their fixtures as blocks, which no other
-  file may. System packages from the runner's distribution (`apt-get`, `brew`, `dnf`) are signed
-  by their distribution and outside this rule.
+  command that fetches the package it names (create, init or link with a package). npx and
+  `npm exec` run only a binary of a devDependency, as the lockfile records it, never with `--yes`
+  or `--package`, and never with a package the code fills in. npm and npx spawned from code are
+  read from their argument lists, in JavaScript and Python, under any path or `.cmd` name and on
+  either side of a ternary, and from every string literal: npx passes `--no` first, since without
+  a terminal npm assumes `--yes`, and a program name held in a variable or given arguments that
+  are not a literal list is refused, since what it runs cannot be read. Any other program spawned
+  with a literal list is read as a command with its arguments, and each literal argument as a
+  command of its own, so a shell given one with `-c` is read too. A workflow's or composite
+  action's `run:` is also read as the shell gets it, with continued lines and folded scalars
+  joined. Where the test can read them, Yarn, pnpm and Bun install nothing and run nothing they
+  fetch, and corepack, which downloads them, is not used; a deliberately hidden spelling, such as
+  a command name kept in a shell variable or a quoted verb, is out of its reach and left to
+  review. No download is run by a shell or an interpreter, whether piped to it or substituted into
+  it. pip installs only with `--require-hashes`; a crate is installed only with `--locked`, from a
+  git source only at a fixed `--rev`; Cargo.lock is never rewritten by a command, and every cargo
+  command a workflow runs passes `--locked`. Every `uses:` of a workflow or composite action is a
+  file of this repository, an action at a full 40-character commit or a Docker image by digest,
+  and so is every job's container and service image. `package-lock.json` is version 3 and every
+  entry is resolved from `registry.npmjs.org` with a `sha512` integrity, but one: Surfer's
+  dependency `is-apple-silicon`, a git dependency pinned to commit `5f75501` without a hash (spec,
+  R5), which nothing in Surfer's `dist/` loads; the test fails if it moves off that commit. No
+  `package.json` names a dependency by git, URL, path, tag or a range wider than a caret, and the
+  repository holds one lockfile and one `.npmrc`, which sets nothing but `ignore-scripts`. The
+  test reads every file git tracks, so a new file is held to this without being listed. Its
+  exceptions are explicit and checked: lines that name a command only to forbid it, test names,
+  and two lines of a runbook that run wrangler in `vimma-browser/vimma-updates`, another
+  repository, are allowed by their exact text, and the test fails when an allowed line is gone or
+  no longer needs its allowance; the guard's own tests and the Claude plugin's Bash guard and its
+  tests mark their fixtures as blocks, which no other file may. System packages from the runner's
+  distribution (`apt-get`, `brew`, `dnf`) are signed by their distribution and outside this rule.
   [`no tracked file installs a package outside the lockfile or pipes a download to a shell`](../../tools/test/supply-chain.test.ts),
   [`reads an npx call from code whose arguments span lines`](../../tools/test/supply-chain.test.ts),
   [`finds the command in %s: %j`](../../tools/test/supply-chain.test.ts),
