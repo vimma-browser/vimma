@@ -334,16 +334,26 @@ function manifestUrl() {
  *   are held
  */
 
+/**
+ * One of Firefox's updater's classes, which only a build with MOZ_UPDATER has: callers check
+ * `has` in firefox() first.
+ * @param {"service" | "manager" | "checker"} name
+ */
+function updaterClass(name) {
+  const contract = /** @type {const} */ (`@mozilla.org/updates/update-${name};1`);
+  const found = Cc[contract];
+  if (!found) throw new Error(`${contract} is missing: a build without MOZ_UPDATER`);
+  return found;
+}
+
 /** @returns {FirefoxUpdater} */
 function firefox() {
   if (firefoxForTest && inAutomation()) return firefoxForTest;
   const has = !!lazy.AppConstants.MOZ_UPDATER && "@mozilla.org/updates/update-service;1" in Cc;
-  const aus = () =>
-    Cc["@mozilla.org/updates/update-service;1"].getService(Ci.nsIApplicationUpdateService);
+  const aus = () => updaterClass("service").getService(Ci.nsIApplicationUpdateService);
   // The update manager's own getters are async; its internal ones are what Firefox's update
   // service reads synchronously (UpdateService.sys.mjs, lazy.UM.internal).
-  const um = () =>
-    Cc["@mozilla.org/updates/update-manager;1"].getService(Ci.nsIUpdateManager).internal;
+  const um = () => updaterClass("manager").getService(Ci.nsIUpdateManager).internal;
   const AUS = Ci.nsIApplicationUpdateService;
   return {
     get usable() {
@@ -370,7 +380,7 @@ function firefox() {
       );
     },
     async check(asked) {
-      const checker = Cc["@mozilla.org/updates/update-checker;1"].getService(Ci.nsIUpdateChecker);
+      const checker = updaterClass("checker").getService(Ci.nsIUpdateChecker);
       // allowCheck runs inside checkForUpdates, synchronously: only this check is the one asked
       // for, not a timer's check that starts while its answer is awaited.
       askedCheck = asked;

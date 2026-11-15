@@ -1961,11 +1961,10 @@ interface XPCOMClasses {
   "@mozilla.org/supports-PRBool;1": nsIJSCID;
   "@mozilla.org/supports-string;1": nsIJSCID;
   "@mozilla.org/text-input-processor;1": nsIJSCID;
-  // The updater's three classes exist only in a build with MOZ_UPDATER; updates/
-  // VimmaUpdates.sys.mjs checks `in Cc` before it reaches them.
-  "@mozilla.org/updates/update-checker;1": nsIJSCID;
-  "@mozilla.org/updates/update-manager;1": nsIJSCID;
-  "@mozilla.org/updates/update-service;1": nsIJSCID;
+  // The updater's three classes: only in a build with MOZ_UPDATER.
+  "@mozilla.org/updates/update-checker;1"?: nsIJSCID;
+  "@mozilla.org/updates/update-manager;1"?: nsIJSCID;
+  "@mozilla.org/updates/update-service;1"?: nsIJSCID;
   "@mozilla.org/widget/clipboardhelper;1": nsIJSCID;
   "@mozilla.org/widget/transferable;1": nsIJSCID;
   /** An about: page's module: undefined for a page no module serves. */
@@ -1985,6 +1984,8 @@ interface XPCOMInterfaces {
     readonly VERDICT_SAFE: number;
     readonly VERDICT_UNCOMMON: number;
   };
+  // The updater's ids, like its classes in XPCOMClasses, exist only with MOZ_UPDATER
+  // (engine/toolkit/moz.build); VimmaUpdates reads their members only once it has the classes.
   nsIApplicationUpdateService: nsIJSIID<nsIApplicationUpdateService> & {
     readonly STATE_DOWNLOADING: number;
     readonly STATE_PENDING: number;
