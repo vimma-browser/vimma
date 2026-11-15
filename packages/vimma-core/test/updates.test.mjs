@@ -1326,6 +1326,17 @@ describe("[updates] check (config.toml, schema 2) and the pref", () => {
           check: false,
           held: false,
         });
+        // A readable statement wins over the setting in effect, held or off (#967).
+        for (const previous of [
+          { check: false, held: true },
+          { check: false, held: false },
+        ]) {
+          for (const raw of [/** @type {const} */ ("missing"), true]) {
+            expect(updatesCheckAfterRead({ errors: 1, inForce, raw, hadConfig, previous })).toEqual(
+              { check: true, held: false },
+            );
+          }
+        }
       }
     }
   });

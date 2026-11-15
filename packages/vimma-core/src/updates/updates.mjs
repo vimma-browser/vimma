@@ -821,7 +821,9 @@ export function updateVersionLine(offer) {
  *   hadConfig: boolean, previous?: { check: boolean, held: boolean } | null }} read
  *   `inForce`: `updates.check` of the config in force after the read; `raw`: rawUpdatesCheck;
  *   `hadConfig`: a config (not the fallback) was in force before the read; `previous`: this
- *   function's last result (or the hold for an unreadable file), the setting in effect
+ *   function's last result (or the hold for an unreadable file), the setting in effect. Every
+ *   caller that keeps a config in force must pass it: left out, an unreadable `check` follows
+ *   the config in force alone and can undo an opt-out stated in a file with errors (#967)
  * @returns {{ check: boolean, held: boolean }}
  */
 export function updatesCheckAfterRead({ errors, inForce, raw, hadConfig, previous = null }) {

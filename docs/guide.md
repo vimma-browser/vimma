@@ -4554,9 +4554,9 @@ Except for the AppImage and such a tarball, it installs nothing; it tells you.
   off (it is not valid TOML, it cannot be read, `check` is not `true` or `false`, or a key in
   `[updates]` or a table name is misspelt, such as `chekc` or `[update]`) and runs on its
   defaults, update checks wait until it is fixed, in case it means `check = false`; `:update`
-  still checks when you ask, unless `vimma.update.enabled` is `false`. Such a file never turns
-  checks on later either: a `check = false` you saved earlier, even in a file with errors,
-  still holds.
+  still checks when you ask, unless `vimma.update.enabled` is `false`. When a config is already
+  in force, such a file never turns checks on: a `check = false` you saved earlier, even in a
+  file with errors, still holds.
 
 ## Privacy defaults
 
