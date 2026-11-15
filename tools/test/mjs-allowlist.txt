@@ -6,25 +6,6 @@
 # (ADR-025, decision 7) and are not listed.
 packages/vimma-core/test/a11y.test.mjs
 packages/vimma-core/test/addons.test.mjs
-packages/vimma-core/test/agent-act.test.mjs
-packages/vimma-core/test/agent-budget.test.mjs
-packages/vimma-core/test/agent-chat.test.mjs
-packages/vimma-core/test/agent-checkpoint.test.mjs
-packages/vimma-core/test/agent-cli.test.mjs
-packages/vimma-core/test/agent-config.test.mjs
-packages/vimma-core/test/agent-downloads.test.mjs
-packages/vimma-core/test/agent-gate.test.mjs
-packages/vimma-core/test/agent-keys.test.mjs
-packages/vimma-core/test/agent-loop.test.mjs
-packages/vimma-core/test/agent-owners.test.mjs
-packages/vimma-core/test/agent-prompt.test.mjs
-packages/vimma-core/test/agent-providers.test.mjs
-packages/vimma-core/test/agent-results.test.mjs
-packages/vimma-core/test/agent-setup.test.mjs
-packages/vimma-core/test/agent-store.test.mjs
-packages/vimma-core/test/agent-tools.test.mjs
-packages/vimma-core/test/agent-wait.test.mjs
-packages/vimma-core/test/agent.test.mjs
 packages/vimma-core/test/appimage-update.test.mjs
 packages/vimma-core/test/blocks.test.mjs
 packages/vimma-core/test/bookmarks-toolbar.test.mjs
@@ -56,7 +37,6 @@ packages/vimma-core/test/help.test.mjs
 packages/vimma-core/test/hints.test.mjs
 packages/vimma-core/test/hyprswap.test.mjs
 packages/vimma-core/test/layouts.test.mjs
-packages/vimma-core/test/load-errors.test.mjs
 packages/vimma-core/test/motions.test.mjs
 packages/vimma-core/test/nativeswap.test.mjs
 packages/vimma-core/test/pageurl.test.mjs
