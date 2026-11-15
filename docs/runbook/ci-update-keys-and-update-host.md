@@ -167,7 +167,7 @@ installs keep trusting it until they are updated by hand.
 
 **5b. The updater's certificates** (spec §6, decision 39; ADR-016). Firefox's updater embeds a
 certificate per slot, `configs/updater/primary.der` and `secondary.der`, which `npm run import`
-links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.mjs`),
+links to `engine/toolkit/mozapps/update/updater/vimma/` (`tools/import/link-update-certs.ts`),
 and a `VIMMA_UPDATES=1` build stops without them or when they differ from `configs/updater/`.
 They are outside `src/` because `npx surfer license-check` reads every file there for an MPL
 header, which a DER file cannot carry. The primary's certificate is self-signed by the KMS key,

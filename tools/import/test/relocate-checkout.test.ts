@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { relocate, replacePath } from "../relocate-checkout.mjs";
+import { relocate, replacePath } from "../relocate-checkout.ts";
 import { tempDir } from "../../test/temp-dir.mjs";
 
 describe("replacePath", () => {

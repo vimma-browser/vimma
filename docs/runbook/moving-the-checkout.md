@@ -4,13 +4,13 @@
 checkout's absolute path in Make dependency, cargo and config files. After `mv old new`, links
 dangle and the build mixes paths. The 2026-10-10 move (`~/repositories/VimHerdr` →
 `~/repositories/vimma`) needed about 139k symlinks retargeted and the old path rewritten in about
-6.9k objdir text files. `tools/import/relocate-checkout.mjs` does both:
+6.9k objdir text files. `tools/import/relocate-checkout.ts` does both:
 
 ```sh
 mv ~/repositories/old ~/repositories/new && cd ~/repositories/new
 git worktree prune                     # or `git worktree repair` for worktrees you keep
-node tools/import/relocate-checkout.mjs --from ~/repositories/old --dry-run   # counts only
-node tools/import/relocate-checkout.mjs --from ~/repositories/old
+node tools/import/relocate-checkout.ts --from ~/repositories/old --dry-run   # counts only
+node tools/import/relocate-checkout.ts --from ~/repositories/old
 npm run import && npx surfer build     # mach reconfigures; the 2026-10-10 full build: 21 min
 ```
 

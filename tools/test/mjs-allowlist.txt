@@ -8,12 +8,6 @@ tools/artifact-build/test/artifact-build.test.mjs
 tools/ci/test/docs-only.test.mjs
 tools/ci/test/tree-covered.test.mjs
 tools/ci/tree-covered.mjs
-tools/import/link-update-certs.mjs
-tools/import/relocate-checkout.mjs
-tools/import/restore-patched.mjs
-tools/import/test/link-update-certs.test.mjs
-tools/import/test/relocate-checkout.test.mjs
-tools/import/test/restore-patched.test.mjs
 tools/mach-python.mjs
 tools/mochitest.mjs
 tools/package/cask.mjs
