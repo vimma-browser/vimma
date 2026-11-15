@@ -164,7 +164,7 @@ describe("classifyClipboard (p, P)", () => {
   test("empty or blank: empty", () => {
     expect(classifyClipboard("")).toEqual({ kind: "empty" });
     expect(classifyClipboard(" \n\t ")).toEqual({ kind: "empty" });
-    expect(classifyClipboard(/** @type {any} */ (null))).toEqual({ kind: "empty" });
+    expect(classifyClipboard(null as any)).toEqual({ kind: "empty" });
   });
 
   test.each([
