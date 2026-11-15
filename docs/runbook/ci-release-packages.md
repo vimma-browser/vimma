@@ -312,7 +312,10 @@ built, release a patch version instead. A manual run, `gh workflow run release.y
 runs the workflow file from `main` (the jobs refuse any other branch) but checks out and builds
 the tag's source: a fix to the workflow file reaches the re-run, while a fix to the source or to a
 script under `tools/` does not, and needs a patch release (leave the failed draft unpublished;
-delete it once the patch release is out). An `aur.yml` failure also opens the issue; re-run it
+delete it once the patch release is out). For the same reason a tag whose tree predates a tool
+`main`'s workflow now calls cannot be rebuilt at all: tags before #988 lack `tools/e2e/e2e.ts`, and
+tags up to v0.1.20 lack the `tools/release/*.ts` names (#946); release a patch version instead.
+An `aur.yml` failure also opens the issue; re-run it
 with `gh workflow run aur.yml -f tag=vX.Y.Z`. That manual run uses `main`'s `aur.yml`, while the
 run started by publishing uses the `aur.yml` at the release's tag, so a fix to `aur.yml` reaches
 an already tagged release only through the manual run. A `homebrew.yml` failure opens it as
