@@ -4,13 +4,14 @@
 
 // The rules the Bash guard enforces. Each one stops a command that has already cost the project
 // something when an agent ran it: an unchecked squash message (#278), a pattern kill that took the
-// agent's own shell, a rewritten branch, a dismissed alert, a disabled workflow.
+// agent's own shell, a rewritten branch, a dismissed alert, a disabled workflow. The install rule
+// keeps an agent from bringing in code that no lockfile pins (docs/security/14, B4).
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createRequire } from "node:module";
-import { isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { commandOf, parseShell } from "./shell.mjs";
 
 /**
@@ -45,6 +46,29 @@ export const REASONS = {
     "<file> with the squash body, so the guard can run commitlint on the exact message first. " +
     'Write the body to a file, then run: gh pr merge <N> --squash --subject "..." ' +
     "--body-file <file>.",
+  install:
+    "Blocked: this installs or updates packages outside package-lock.json. Install exactly what " +
+    "the lockfile pins with `npm ci` (it takes flags such as --ignore-scripts). A new or updated " +
+    "dependency is a package.json and lockfile change for a person to make and review, not " +
+    "something an agent installs.",
+  npx:
+    "Blocked: this npx or npm exec can fetch and run a package from the registry, which no " +
+    "lockfile pins. Run a devDependency's bin with `npx --no -- <bin>` (it never fetches) after " +
+    "`npm ci`; `npx <bin>` passes only when <bin> is already in node_modules/.bin. Any other " +
+    "package is a package.json and lockfile change, not an npx.",
+  pip:
+    "Blocked: pip installs without `--require-hashes` take whatever the index serves. Use " +
+    "`pip install --require-hashes -r <file>` with pinned hashes, or stop and report what is " +
+    "missing. (The npm side installs with `npm ci` only.)",
+  cargo:
+    "Blocked: `cargo install` without `--locked` resolves fresh crate versions instead of the " +
+    "ones Cargo.lock pins (and a --git source needs a fixed --rev); `cargo update` rewrites " +
+    "Cargo.lock. Add `--locked` (and `--rev <sha>`); a lockfile update is a change for a person " +
+    "to make and review. (The npm side installs with `npm ci` only.)",
+  pipe:
+    "Blocked: a script piped from the network into a shell or interpreter runs code that no " +
+    "checksum or signature checked. Download the file, check its checksum or signature, then " +
+    "run it. (The npm side installs with `npm ci` only.)",
 };
 
 /**
@@ -91,7 +115,9 @@ function checkScript(segs, ctx) {
       checkKill(cmd, seg, segs, i) ??
       checkPush(cmd) ??
       checkGh(cmd, { ...ctx, cwd }) ??
-      checkAlertRequest(cmd);
+      checkAlertRequest(cmd) ??
+      checkInstall(cmd, { ...ctx, cwd }) ??
+      checkPipedScript(cmd, seg, segs, i);
     if (found) return found;
   }
   return null;
@@ -229,6 +255,192 @@ function checkAlertRequest(cmd) {
   if (!["curl", "wget", "http", "https", "xh"].includes(cmd.name)) return null;
   const text = cmd.args.map((w) => w.text).join(" ");
   if (ALERTS.test(text) && /dismissed|resolved/.test(text)) return { reason: REASONS.alert };
+  return null;
+}
+
+// Installs outside the lockfile. The rule sees what the shell reader sees: quoted or escaped
+// names ('npm', n\pm), a path (/usr/bin/npm), wrappers (command, env, sudo, xargs, timeout),
+// `cd x &&`, subshells, $(...) and backticks, and the scripts of `bash -c`, `sh -c`, `eval` and
+// the one npx runs with -c (refused anyway). It cannot see a name built at run time ($NPM install), an alias or a function the
+// shell defines, a script file the command runs (bash install.sh), or npm started another way
+// (node .../npm-cli.js install, corepack). It is a guardrail for agents, not a sandbox: the
+// repository-wide supply-chain test and `npm ci` in CI are the checks that hold.
+
+/** npm's install and update commands, with the aliases and typos npm itself accepts. */
+const NPM_INSTALLS = new Set([
+  ..."i in ins inst insta instal install isnt isnta isntal isntall add".split(" "),
+  ..."up update upgrade udpate".split(" "),
+  ..."it install-test".split(" "),
+]);
+
+/** npm commands that fetch the package they name. */
+const NPM_FETCHING = new Set("create init innit link ln".split(" "));
+
+/** npm options before the subcommand that take a separate value. */
+const NPM_VALUE_OPTIONS = new Set([
+  ..."-w --workspace --prefix -C --userconfig --cache --registry --loglevel --tag".split(" "),
+]);
+
+/** The interpreters a downloaded script is piped into. */
+const INTERPRETERS = new Set(
+  "sh bash zsh dash ksh fish python python3 node perl ruby php".split(" "),
+);
+
+/**
+ * @param {Command} cmd
+ * @param {Context} ctx
+ * @returns {Block | null}
+ */
+function checkInstall(cmd, ctx) {
+  const texts = cmd.args.map((w) => w.text);
+  switch (cmd.name) {
+    case "npm": {
+      const k = firstOperand(texts, NPM_VALUE_OPTIONS);
+      const sub = texts[k] ?? "";
+      if (NPM_INSTALLS.has(sub)) return { reason: REASONS.install };
+      if (sub === "exec" || sub === "x") return checkNpx(cmd.args.slice(k + 1), ctx);
+      // `create x` and `init x` run the create-x package, `link x` installs one: with a package
+      // name they fetch; a bare `npm init` or `npm link` does not.
+      if (NPM_FETCHING.has(sub) && texts.slice(k + 1).some((t) => !t.startsWith("-"))) {
+        return { reason: REASONS.install };
+      }
+      return null;
+    }
+    case "npx":
+      return checkNpx(cmd.args, ctx);
+    case "pnpm":
+      return ["add", "install", "i", "update", "up", "upgrade", "dlx"].includes(texts[0] ?? "")
+        ? { reason: REASONS.install }
+        : null;
+    case "yarn":
+      // A bare `yarn` installs.
+      return texts.length === 0 ||
+        ["add", "install", "up", "upgrade", "dlx"].includes(texts[0] ?? "")
+        ? { reason: REASONS.install }
+        : null;
+    case "bun":
+      return ["add", "install", "i", "update", "x"].includes(texts[0] ?? "")
+        ? { reason: REASONS.install }
+        : null;
+    case "pip":
+    case "pip3":
+      return checkPip(texts);
+    case "uv":
+      return texts[0] === "pip" ? checkPip(texts.slice(1)) : null;
+    case "pipx":
+      return ["install", "run", "inject"].includes(texts[0] ?? "") ? { reason: REASONS.pip } : null;
+    case "cargo":
+      return checkCargo(texts);
+    case "corepack":
+      // Downloads package managers (`corepack pnpm ...`, `corepack enable`, `corepack use`).
+      return texts.length === 1 && /^(?:-v|--version|-h|--help)$/.test(texts[0] ?? "")
+        ? null
+        : { reason: REASONS.install };
+    default:
+      // Bun's and pnpm's own npx always fetch what they are not given.
+      if (/^(?:bun|pnp)x$/.test(cmd.name)) return { reason: REASONS.install };
+      if (/^python[\d.]*$/.test(cmd.name)) {
+        const m = texts.indexOf("-m");
+        return m >= 0 && /^pip\d*$/.test(texts[m + 1] ?? "") ? checkPip(texts.slice(m + 2)) : null;
+      }
+      return null;
+  }
+}
+
+/**
+ * `cargo install` keeps to the crate's Cargo.lock only with --locked, and a git source only at
+ * a fixed --rev; `cargo update` rewrites Cargo.lock.
+ * @param {string[]} texts the words after `cargo`
+ */
+function checkCargo(texts) {
+  const args = texts[0]?.startsWith("+") ? texts.slice(1) : texts;
+  if (args[0] === "update") return { reason: REASONS.cargo };
+  if (args[0] !== "install") return null;
+  const git = args.some((t) => t === "--git" || t.startsWith("--git="));
+  const rev = args.some((t) => t === "--rev" || t.startsWith("--rev="));
+  return !args.includes("--locked") || (git && !rev) ? { reason: REASONS.cargo } : null;
+}
+
+/** @param {string[]} texts the words after `pip` */
+function checkPip(texts) {
+  return texts[0] === "install" && !texts.includes("--require-hashes")
+    ? { reason: REASONS.pip }
+    : null;
+}
+
+/** The index of the first word that is not an option or an option's value. @param {string[]} texts @param {Set<string>} valued */
+function firstOperand(texts, valued) {
+  let k = 0;
+  while (k < texts.length && texts[k]?.startsWith("-") && texts[k] !== "--") {
+    k += valued.has(texts[k] ?? "") ? 2 : 1;
+  }
+  if (texts[k] === "--") k++;
+  return k;
+}
+
+/**
+ * npx and npm exec fetch a package that is not installed (a spawned npx has no TTY, so npm takes
+ * that as --yes). They pass with --no, or with no package option and a bin that npm ci already
+ * put in node_modules/.bin, found the way npm finds its local prefix.
+ * @param {Word[]} args the words after `npx` or `npm exec`
+ * @param {Context} ctx
+ * @returns {Block | null}
+ */
+function checkNpx(args, ctx) {
+  let never = false;
+  let k = 0;
+  for (; k < args.length; k++) {
+    const t = args[k]?.text ?? "";
+    if (t === "--") {
+      k++;
+      break;
+    }
+    if (!t.startsWith("-")) break;
+    // --yes, --package (also as -yes, -p=x) and a script through -c or --call, which can name
+    // any package and is not worth reading for the few bins it would run.
+    if (/^-[ypc]/.test(t) || /^--(?:yes(?:=true)?|package|call)(?:=|$)/.test(t)) {
+      return { reason: REASONS.npx };
+    }
+    if (t === "--no" || t === "--no-install" || t === "--yes=false" || t === "--no-yes") {
+      never = true;
+    } else if (NPM_VALUE_OPTIONS.has(t)) k++;
+  }
+  if (never) return null;
+  const bin = args[k];
+  if (!bin) return null;
+  if (bin.dynamic || /[@/:]/.test(bin.text) || ctx.cwd === null) return { reason: REASONS.npx };
+  const prefix = localPrefix(ctx.cwd);
+  return prefix && existsSync(join(prefix, "node_modules", ".bin", bin.text))
+    ? null
+    : { reason: REASONS.npx };
+}
+
+/** npm's local prefix: the nearest directory with a package.json or node_modules. @param {string} cwd */
+function localPrefix(cwd) {
+  for (let dir = resolve(cwd); ; dir = dirname(dir)) {
+    if (existsSync(join(dir, "package.json")) || existsSync(join(dir, "node_modules"))) return dir;
+    if (dirname(dir) === dir) return null;
+  }
+}
+
+/**
+ * A download piped into a shell or interpreter, read by one through `<(...)`, or run as the
+ * script of `sh -c "$(...)"`: code that nothing checked.
+ * @param {Command} cmd @param {Segment} seg @param {Segment[]} segs @param {number} i
+ */
+function checkPipedScript(cmd, seg, segs, i) {
+  const download = (/** @type {Command | null} */ c) => c?.name === "curl" || c?.name === "wget";
+  if (INTERPRETERS.has(cmd.name)) {
+    if (seg.subs.some((sub) => sub.some((s) => download(commandOf(s.words))))) {
+      return { reason: REASONS.pipe };
+    }
+  }
+  if (download(cmd)) {
+    for (let j = i + 1; j < segs.length && segs[j - 1]?.op === "|"; j++) {
+      const next = commandOf(segs[j]?.words ?? []);
+      if (next && INTERPRETERS.has(next.name)) return { reason: REASONS.pipe };
+    }
+  }
   return null;
 }
 
