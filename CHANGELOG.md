@@ -2,7 +2,9 @@
 
 All notable changes to this project are documented here. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow SemVer. Changes that are not released yet are listed under `[Unreleased]`, written by hand. Each release's entry gives those lines first (`-` items), then the list release-please writes from the Conventional Commits on `main` (`*` items) ([docs/runbook.md](docs/runbook.md), Releases).
 
-## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) (2026-11-15)
+## [Unreleased]
+
+## [0.1.20](https://github.com/vimma-browser/vimma/compare/v0.1.19...v0.1.20) · Firefox 160.0 (2026-11-15)
 
 
 ### Fixed
@@ -29,8 +31,6 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 * **start:** keep the Firefox-page latch when a new About process starts as the last one ends ([#991](https://github.com/vimma-browser/vimma/issues/991)) ([5df17ff](https://github.com/vimma-browser/vimma/commit/5df17ff6fd5137a95c38e7a8c0c153ef8c3cfa73)), closes [#984](https://github.com/vimma-browser/vimma/issues/984)
 * **updater:** hold :update while firefox downloads an update ([0b46713](https://github.com/vimma-browser/vimma/commit/0b467130dc6f8b51114517e01b54ab3d08b50bf4))
 * **updates:** keep update checks off when an unreadable check follows an opt-out ([#1080](https://github.com/vimma-browser/vimma/issues/1080)) ([4f9d7fd](https://github.com/vimma-browser/vimma/commit/4f9d7fd026e0f5eaf7b3804edcebaf5bb9bd0937))
-
-## [Unreleased]
 
 ## [0.1.19](https://github.com/vimma-browser/vimma/compare/v0.1.18...v0.1.19) · Firefox 160.0 (2026-11-12)
 
