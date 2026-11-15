@@ -322,9 +322,9 @@ interface URL {
 // The modules Vimma imports by URL, typed as their exports: Vimma's own (types/vimma-modules.d.ts,
 // generated from jar.mn) and the Firefox modules the product imports (types/firefox-modules.d.ts).
 interface VimmaModules {}
-// What importESModule gives for any other URL: `unknown` here, so a product import of a module
-// the map lacks is an error where its exports are read; the browser tests' program, which imports
-// many Firefox modules the map does not type, declares it `any` (types/mochitest/harness.d.ts).
+// What importESModule gives for any other URL: `unknown`, so an import of a module the map lacks
+// is an error where its exports are read (the browser tests' program says the same in
+// types/mochitest/harness.d.ts, and maps their Firefox modules in firefox-test-modules.d.ts).
 interface UnmappedESModule {}
 
 // engine/dom/chrome-webidl/ChromeUtils.webidl

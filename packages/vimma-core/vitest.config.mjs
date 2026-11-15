@@ -10,9 +10,14 @@ export default defineConfig({
     root: fileURLToPath(new URL(".", import.meta.url)),
     include: ["test/**/*.test.mjs"],
     exclude: [...configDefaults.exclude, "test/fuzz/**"],
-    // `timing`: a test that asserts a tight speed budget. Stryker's command leaves these out
-    // (`--tagsFilter '!timing'`): its instrumented copy of the code runs several times slower, so
-    // the budget would fail the dry run and count every mutant of the file as killed.
+    // `timing`: a test that asserts a tight speed budget (a bench). Stryker's instrumented copy of
+    // the code runs several times slower, so the budget would fail the dry run; this config, which
+    // Stryker's vitest runner reads (it takes no command line), leaves them out. Linear-time
+    // checks stay in, with a budget that grows under Stryker (test/budget.mjs). The instrumented
+    // code also runs the slowest property tests (about 2 s each on the real code) past Vitest's
+    // 5 s default, hence the 60 s; a mutant that hangs still ends at Stryker's own timeout.
+    tagsFilter: ["!timing"],
+    testTimeout: 60_000,
     tags: [
       { name: "timing", description: "Asserts a speed budget of the real, uninstrumented code" },
     ],

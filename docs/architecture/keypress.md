@@ -40,7 +40,7 @@ sequenceDiagram
 
 ## Before the key: the keymap
 
-`VimmaHost.init` gives each window a dispatcher over the keymap in force (`settings.keymap`), or
+`VimmaHost.init` gives each window (in `newWindowState`, `host/window-state.mjs`) a dispatcher over the keymap in force (`settings.keymap`), or
 over the built-in one (`compileKeymap({})`) while `config.toml` has not been read yet;
 `VimmaHost.configure` replaces every window's when `ConfigHost` applies the file
 ([Config and theme](config-and-theme.md)). `compileKeymap` in

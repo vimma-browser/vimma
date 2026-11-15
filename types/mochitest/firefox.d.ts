@@ -1201,8 +1201,8 @@ interface nsIRequest {
 }
 
 // engine/toolkit/components/downloads/Downloads.sys.mjs, DownloadList.sys.mjs and
-// DownloadCore.sys.mjs: the downloads module as the tests use it. A test file types its import
-// of the module with DownloadsApi (ChromeUtils.importESModule gives Firefox's modules as `any`).
+// DownloadCore.sys.mjs: the downloads module as the tests use it, which their import of it gives
+// (types/mochitest/firefox-test-modules.d.ts).
 // The list kinds are strings ("{Downloads.PUBLIC}").
 interface DownloadsApi {
   readonly PUBLIC: string;

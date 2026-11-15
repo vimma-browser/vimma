@@ -159,6 +159,8 @@ interface VimmaModules {
   "chrome://browser/content/vimma/host/tab-search.mjs": typeof import("../src/browser/base/content/vimma/host/tab-search.mjs");
   "chrome://browser/content/vimma/host/toolbar-ops.mjs": typeof import("../src/browser/base/content/vimma/host/toolbar-ops.mjs");
   "chrome://browser/content/vimma/host/update-ui.mjs": typeof import("../src/browser/base/content/vimma/host/update-ui.mjs");
+  "chrome://browser/content/vimma/host/urlbar-queries.mjs": typeof import("../src/browser/base/content/vimma/host/urlbar-queries.mjs");
+  "chrome://browser/content/vimma/host/window-state.mjs": typeof import("../src/browser/base/content/vimma/host/window-state.mjs");
   "chrome://browser/content/vimma/host/workspace-ops.mjs": typeof import("../src/browser/base/content/vimma/host/workspace-ops.mjs");
   "chrome://browser/content/vimma/omarchy/OmarchyHook.sys.mjs": typeof import("../src/browser/base/content/vimma/omarchy/OmarchyHook.sys.mjs");
   "chrome://browser/content/vimma/search/SearchHost.sys.mjs": typeof import("../src/browser/base/content/vimma/search/SearchHost.sys.mjs");

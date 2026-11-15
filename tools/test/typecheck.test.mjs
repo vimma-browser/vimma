@@ -89,9 +89,10 @@ describe("npm run typecheck", () => {
       "../types/*.d.ts",
       "../types/mochitest/*.d.ts",
     ]);
-    // Only the product's typing of Firefox's modules stays out: the tests read more of those
-    // modules, and get them as `any` (types/mochitest/harness.d.ts, UnmappedESModule).
-    expect(browserTests.exclude).toEqual(["../types/firefox-modules.d.ts"]);
+    // Nothing stays out, the product's typing of Firefox's modules included: the tests' own
+    // imports of Firefox modules are in types/mochitest/firefox-test-modules.d.ts, and a URL
+    // neither map has gives `unknown`, as in the product's check (#938).
+    expect(browserTests.exclude).toEqual([]);
     // The harness's declarations stay out of the browser code's check.
     expect(root.include).toContain("types/*.d.ts");
     expect(root.include.some((/** @type {string} */ g) => g.includes("mochitest"))).toBe(false);
